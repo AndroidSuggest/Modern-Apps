@@ -154,10 +154,19 @@ data class DeArrowBranding(
     val videoDuration: Double? = null,
 )
 
+/**
+ * SponsorBlock + DeArrow data APIs are mirrored on the self-hosted proxy
+ * (see location_share_server `sb_build.sh` + handlers/sponsorblock.rs), served
+ * from a local copy of the SponsorBlock database. The DeArrow *rendered
+ * thumbnail frame* is not mirrored (it needs the actual video), so
+ * [trustedThumbnailUrl] still points at dearrow-thumb.ajay.app directly.
+ */
+private const val SPONSORBLOCK_MIRROR = "https://api.vayunmathur.com"
+
 suspend fun getDeArrowBranding(videoId: Long): DeArrowBranding? {
     val idString = decodeVideoID(videoId)
     return try {
-        NetworkClient.getJson<DeArrowBranding>("https://sponsor.ajay.app/api/branding?videoID=$idString")
+        NetworkClient.getJson<DeArrowBranding>("$SPONSORBLOCK_MIRROR/api/branding?videoID=$idString")
     } catch (e: Exception) {
         null
     }
@@ -181,7 +190,7 @@ fun DeArrowBranding.trustedThumbnailUrl(videoId: Long): String? {
 suspend fun getSponsorSegments(videoId: Long): List<SponsorSegment> {
     val idString = decodeVideoID(videoId)
     return try {
-        NetworkClient.getJson("https://sponsor.ajay.app/api/skipSegments?videoID=$idString")
+        NetworkClient.getJson("$SPONSORBLOCK_MIRROR/api/skipSegments?videoID=$idString")
     } catch (e: Exception) {
         emptyList()
     }
