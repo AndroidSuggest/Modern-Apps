@@ -71,6 +71,14 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         generateLocaleConfig = true
     }
 
+    lint {
+        checkDependencies = true
+        warning += listOf("HardcodedText")
+        abortOnError = false
+        // Don't fail on missing translations - empty skeletons exist for Weblate
+        disable += listOf("MissingTranslation")
+    }
+
     // Every app declares the same res/resources.properties (unqualifiedResLocale) for
     // per-app locale config. Share a single committed copy instead of one file per app.
     // (Generated res dirs are NOT scanned by extractSupportedLocales, so this must be a

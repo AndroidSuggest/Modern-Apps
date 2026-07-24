@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Flag hardcoded UI strings as warnings -->
+    <issue id="HardcodedText" severity="warning" />
+
+    <!-- Empty translation skeletons for Weblate - informational only -->
+    <issue id="MissingTranslation" severity="informational" />
+
+    <!-- Symbolic / single-char Text() usages that are legitimate -->
+    <!-- We filter those in the verification script; lint may still flag them -->
+</lint>
