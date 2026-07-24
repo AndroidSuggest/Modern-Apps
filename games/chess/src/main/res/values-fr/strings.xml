@@ -57,4 +57,10 @@
     <string name="puzzle_difficulty_medium">Moyen</string>
     <string name="puzzle_difficulty_hard">Difficile</string>
     <string name="puzzle_loading">Chargement du puzzle…</string>
+    <string name="play_as">"Jouer en tant que . . . .    "</string>
+    <string name="draw_insufficient_material">Nul — matériel insuffisant.</string>
+    <string name="piece_white_rook">Tour blanche</string>
+    <string name="tab_puzzles">Puzzles</string>
+    <string name="learn_stage_number">Étape %1$d : %2$s</string>
+    <string name="puzzle_rating">Note %1$d</string>
 </resources>
