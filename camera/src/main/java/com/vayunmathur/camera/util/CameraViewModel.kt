@@ -1293,13 +1293,48 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         false
     }
 
-    /** Highest supported AE target frame-rate range for maxing video fps; null if unavailable. */
+    /**
+     * Stable fixed fps range for regular video.
+     *
+     * Previously we picked the absolute highest upper (e.g. 240) from
+     * CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES, which could be a variable range like
+     * [30,60] or an HFR range like [120,120]. When AE varies the fps within a
+     * variable range the HAL may switch sensor modes (full vs cropped), which shows
+     * as a sudden zoom-in/out flicker. Only Slo-Mo uses the dedicated HFR path, so
+     * it wasn't affected.
+     *
+     * Fix: only allow fixed ranges (lower == upper) and prefer 30fps. If no fixed
+     * range exists we return null and let CameraX pick its default, which avoids the
+     * crop-switch flicker.
+     */
     private fun highestFpsRange(cameraInfo: androidx.camera.core.CameraInfo): android.util.Range<Int>? = try {
-        androidx.camera.camera2.interop.Camera2CameraInfo.from(cameraInfo)
+        val ranges = androidx.camera.camera2.interop.Camera2CameraInfo.from(cameraInfo)
             .getCameraCharacteristic(
                 android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
-            )
-            ?.maxByOrNull { it.upper }
+            ) ?: return null
+
+        // Only fixed ranges avoid variable-fps sensor-mode switches that cause FOV flicker.
+        val fixed = ranges.filter { it.lower == it.upper }
+        if (fixed.isNotEmpty()) {
+            // Prefer exact 30fps; Cinematic with EIS often can't do fixed 60 uncropped, so
+            // stick to 30 for cinematic.
+            if (_cameraMode.value == CameraMode.CINEMATIC) {
+                fixed.firstOrNull { it.upper == 30 }
+                    ?: fixed.filter { it.upper <= 30 }.maxByOrNull { it.upper }
+                    ?: fixed.minByOrNull { kotlin.math.abs(it.upper - 30) }
+            } else {
+                // For normal VIDEO/TIMELAPSE allow 60fps if available, but still fixed.
+                fixed.firstOrNull { it.upper == 30 }
+                    ?: fixed.firstOrNull { it.upper == 60 }
+                    ?: fixed.filter { it.upper <= 30 }.maxByOrNull { it.upper }
+                    ?: fixed.filter { it.upper <= 60 }.maxByOrNull { it.upper }
+                    ?: fixed.minByOrNull { kotlin.math.abs(it.upper - 30) }
+            }
+        } else {
+            // No fixed ranges: don't force a variable range like [30,60] — return null so
+            // CameraX chooses a stable default and avoids the flicker.
+            null
+        }
     } catch (e: Exception) {
         Log.w("VideoSession", "Could not query supported frame-rate ranges", e)
         null
