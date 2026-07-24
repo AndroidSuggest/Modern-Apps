@@ -94,4 +94,6 @@
     <string name="label_youtube_language">内容语言</string>
     <string name="label_youtube_language_description">视频标题、描述、评论和搜索结果的语言</string>
     <string name="label_system_default">系统默认</string>
+    <string name="video_quality">%1$s</string>
+    <string name="audio_bitrate">%1$dkbps</string>
 </resources>
