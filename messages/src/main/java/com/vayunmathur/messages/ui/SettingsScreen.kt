@@ -71,9 +71,9 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    "Connect to these services at your own risk. Account bans are very " +
-                        "rare but technically possible. Messages on E2EE platforms maintain " +
-                        "E2EE on this app.",
+                    stringResource(R.string.connect_to_these_services_at_your_own_ri) +
+                        stringResource(R.string.rare_but_technically_possible_messages_o) +
+                        stringResource(R.string.e2ee_on_this_app),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
@@ -184,11 +184,11 @@ private fun SourceCard(
                     onClick = onDisconnect,
                     contentPadding = ButtonDefaults.ContentPadding,
                 ) {
-                    Text("Disconnect")
+                    Text(stringResource(R.string.disconnect))
                 }
             } else {
                 FilledTonalButton(onClick = onConfigure) {
-                    Text("Set up")
+                    Text(stringResource(R.string.inbox_setup_rcs_action))
                 }
             }
         }

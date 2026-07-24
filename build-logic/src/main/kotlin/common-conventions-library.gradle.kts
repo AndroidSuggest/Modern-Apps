@@ -11,7 +11,7 @@ configure<com.android.build.api.dsl.LibraryExtension> {
         compose = true
     }
 
-    namespace = "com.vayunmathur.${name.replace("-", "")}"
+    namespace = "com.vayunmathur${path.replace(":", ".").replace("-", "")}"
     compileSdk {
         version = release(37)
     }

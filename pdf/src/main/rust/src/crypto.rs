@@ -1,10 +1,11 @@
-//! Standard security handler (RC4, revisions 2 and 3) for the safe PDF stack.
+//! Standard security handler crypto primitives for the safe PDF stack.
 //!
 //! Implements the classic PDF password algorithms (PDF 1.7 §7.6.3): key
-//! derivation, user/owner password entries, per-object keys, and RC4. Enough to
-//! open RC4-encrypted PDFs (empty or supplied password), remove a password
-//! (decrypt then save unencrypted), and set a password (encrypt on save).
-//! AES (V>=4) is intentionally not handled here.
+//! derivation, user/owner password entries, per-object keys, RC4, and the
+//! AES-128 (AESV2/V4) and AES-256 (AESV3/V5, algorithm 2.B) handlers, plus the
+//! SHA-2 hashes they need. Enough to open, remove a password from, and set a
+//! password on RC4- and AES-encrypted PDFs. Public-key / certificate security
+//! handlers are not implemented (they require the recipient's private key).
 
 use md5::{Digest, Md5};
 
@@ -139,6 +140,68 @@ pub fn authenticate(
     } else {
         None
     }
+}
+
+/// AES-256-CBC encrypt without padding, IV = zeros (used to build /UE and /OE).
+pub fn aes256_cbc_encrypt_nopad_zeroiv(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let iv = [0u8; 16];
+    cbc::Encryptor::<aes::Aes256>::new(key.into(), (&iv).into())
+        .encrypt_padded_vec_mut::<NoPadding>(data)
+}
+
+/// The R5/R6 password hash (algorithm 2.B for R6, plain SHA-256 for R5).
+pub fn hash_v5(pw: &[u8], salt: &[u8], udata: &[u8], rev: u8) -> Vec<u8> {
+    if rev >= 6 {
+        hash_2b(pw, salt, udata)
+    } else {
+        sha256(&[pw, salt, udata].concat())
+    }
+}
+
+/// Build the V5 (AESV3) `/U`,`/UE`,`/O`,`/OE` entries for `file_key` (32 bytes)
+/// given user/owner passwords and four 8-byte random salts
+/// `[u_val, u_key, o_val, o_key]`. `rev` is 5 or 6.
+pub fn compute_v5(
+    user_pw: &[u8],
+    owner_pw: &[u8],
+    file_key: &[u8],
+    salts: &[[u8; 8]; 4],
+    rev: u8,
+) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+    // /U = hash(user_pw + uValSalt) || uValSalt || uKeySalt   (48 bytes)
+    let mut u = hash_v5(user_pw, &salts[0], &[], rev);
+    u.truncate(32);
+    u.extend_from_slice(&salts[0]);
+    u.extend_from_slice(&salts[1]);
+    // /UE = AES-256(no pad, IV=0) of file_key with hash(user_pw + uKeySalt)
+    let ik_u = hash_v5(user_pw, &salts[1], &[], rev);
+    let ue = aes256_cbc_encrypt_nopad_zeroiv(&ik_u[..32], file_key);
+    // /O = hash(owner_pw + oValSalt + U) || oValSalt || oKeySalt
+    let mut o = hash_v5(owner_pw, &salts[2], &u, rev);
+    o.truncate(32);
+    o.extend_from_slice(&salts[2]);
+    o.extend_from_slice(&salts[3]);
+    // /OE = AES-256(no pad, IV=0) of file_key with hash(owner_pw + oKeySalt + U)
+    let ik_o = hash_v5(owner_pw, &salts[3], &u, rev);
+    let oe = aes256_cbc_encrypt_nopad_zeroiv(&ik_o[..32], file_key);
+    (u, ue, o, oe)
+}
+
+/// The 16-byte `/Perms` block for V5, encrypted with the file key (AES-256-ECB,
+/// i.e. CBC with a zero IV, no padding).
+pub fn compute_perms_v5(file_key: &[u8], p: i32) -> Vec<u8> {
+    let mut block = [0u8; 16];
+    block[..4].copy_from_slice(&p.to_le_bytes());
+    block[4..8].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
+    block[8] = b'T'; // EncryptMetadata = true
+    block[9] = b'a';
+    block[10] = b'd';
+    block[11] = b'b';
+    block[12] = 0;
+    block[13] = 0;
+    block[14] = 0;
+    block[15] = 0;
+    aes256_cbc_encrypt_nopad_zeroiv(&file_key[..32], &block)
 }
 
 // ---------------------------------------------------------------------------

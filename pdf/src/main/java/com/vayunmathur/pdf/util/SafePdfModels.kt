@@ -23,7 +23,11 @@ enum class BlendMode(val code: Int) {
 }
 
 sealed interface PdfPrimitive {
-    /** A run of text with its baseline origin, on-page size and color. Optional stroke for Tr modes 1,2,5,6 */
+    /**
+     * A run of text with its baseline origin, on-page size and color. Optional
+     * stroke for Tr modes 1,2,5,6. [renderMode] is the PDF text render mode (Tr):
+     * 0 fill, 1 stroke, 2 fill+stroke, 3 invisible, 4-6 = 0-2 plus clip, 7 clip.
+     */
     data class Text(
         val origin: Offset,
         val size: Float,
@@ -32,6 +36,7 @@ sealed interface PdfPrimitive {
         val strokeColor: Int? = null,
         val strokeWidth: Float = 0f,
         val advance: Float = size * 0.5f * text.length,
+        val renderMode: Int = 0,
     ) : PdfPrimitive
 
     /** A filled polygon (one subpath). */
@@ -64,14 +69,26 @@ sealed interface PdfPrimitive {
         val alpha: Float = 1f,
     ) : PdfPrimitive
 
-    /** Push a clipping path (evenOdd true => EVEN_ODD else WINDING) - must be paired with ClipPop via save/restore */
+    /**
+     * Push a clipping path (evenOdd true => EVEN_ODD else WINDING) - must be
+     * paired with ClipPop via save/restore. [points] is the flattened polyline
+     * (v2/v3); [pathOps] carries the bezier-retentive path (v4) for accurate
+     * curved clips, and is preferred when present.
+     */
     data class ClipPush(
         val evenOdd: Boolean,
         val points: List<Offset>,
+        val pathOps: List<PathOp>? = null,
     ) : PdfPrimitive
 
     /** Pop clipping - restores previous clip via canvas restore */
     data object ClipPop : PdfPrimitive
+
+    /**
+     * Marker (v4): intersect the accumulated glyph outlines of the just-ended
+     * text object (Tr clip modes 4-7) into the clip. Paired with a later ClipPop.
+     */
+    data object TextClipApply : PdfPrimitive
 
     /** Transparency group push - saveLayer with blend mode (v3) */
     data class GroupPush(
@@ -83,6 +100,18 @@ sealed interface PdfPrimitive {
 
     /** Pop transparency group - restores layer */
     data object GroupPop : PdfPrimitive
+}
+
+/** A bezier-retentive clip path operation (wire v4), in page space. */
+sealed interface PathOp {
+    data class Move(val x: Float, val y: Float) : PathOp
+    data class Line(val x: Float, val y: Float) : PathOp
+    data class Cubic(
+        val x1: Float, val y1: Float,
+        val x2: Float, val y2: Float,
+        val x3: Float, val y3: Float,
+    ) : PathOp
+    data object Close : PathOp
 }
 
 /** One decoded page: its PDF page dimensions plus the primitives to draw. */

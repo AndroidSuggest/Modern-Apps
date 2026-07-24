@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -74,8 +75,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.draggableHandle
+import com.vayunmathur.library.ui.rememberReorderableLazyListState
 
 /**
  * Composable helper that provides a device-location request action with
@@ -97,7 +99,7 @@ internal fun rememberRequestDeviceLocation(
             if (loc != null) {
                 viewModel.setCurrentLocation("Current location", loc.latitude, loc.longitude)
             } else {
-                Toast.makeText(context, "Couldn't determine location", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.couldn_t_determine_location), Toast.LENGTH_SHORT).show()
             }
             loading = false
         }
@@ -109,7 +111,7 @@ internal fun rememberRequestDeviceLocation(
         if (granted.values.any { it }) {
             fetchLocation()
         } else {
-            Toast.makeText(context, "Location permission denied", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.location_permission_denied), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -194,7 +196,7 @@ fun LocationsScreen(
                 ),
                 title = {
                     Text(
-                        "Locations",
+                        stringResource(R.string.locations),
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.titleLarge,
                     )
@@ -240,7 +242,7 @@ fun LocationsScreen(
                         Spacer(Modifier.height(8.dp))
                     }
                 }
-                items(localData, key = { it.id }) { loc ->
+                itemsIndexed(localData, key = { _, item -> item.id }) { idx, loc ->
                     ReorderableItem(reorderState, key = loc.id) { isDragging ->
                         val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp)
                         val state = forecasts[loc.id]
@@ -262,6 +264,9 @@ fun LocationsScreen(
                                     IconButton(
                                         onClick = {},
                                         modifier = Modifier.draggableHandle(
+                                            reorderState,
+                                            key = loc.id,
+                                            index = idx,
                                             onDragStarted = {
                                                 haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                                             },
@@ -302,7 +307,7 @@ fun LocationsScreen(
                     leadingContent = {
                         IconDelete(tint = MaterialTheme.colorScheme.onSurface)
                     },
-                    content = { Text("Delete", color = MaterialTheme.colorScheme.onSurface) },
+                    content = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.onSurface) },
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
                 Spacer(Modifier.height(4.dp))
@@ -415,7 +420,7 @@ fun SearchLocationPage(backStack: NavBackStack<Route>, viewModel: WeatherViewMod
                     }
                     query.isNotBlank() && results.isEmpty() && !searching -> {
                         Text(
-                            "No matches",
+                            stringResource(R.string.no_matches),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.Center),
                         )

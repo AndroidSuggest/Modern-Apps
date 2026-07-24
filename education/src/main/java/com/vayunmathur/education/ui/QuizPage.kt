@@ -70,6 +70,8 @@ import com.vayunmathur.library.ui.IconKeyboardArrowDown
 import com.vayunmathur.library.ui.IconKeyboardArrowUp
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,13 +90,13 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(exercise?.title?.ifBlank { "Practice" } ?: "Practice") },
+                title = { Text(exercise?.title?.ifBlank { stringResource(R.string.practice) } ?: stringResource(R.string.practice)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
         if (exercise == null || questions.isEmpty()) {
-            MissingContent(padding, "This exercise has no questions yet.")
+            MissingContent(padding, stringResource(R.string.this_exercise_has_no_questions_yet))
             return@Scaffold
         }
 
@@ -114,7 +116,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "Question ${index + 1} of ${questions.size}",
+                stringResource(R.string.question_of, index + 1, questions.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -134,7 +136,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
                     Text("💡 $hint", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (hintsShown < question.hints.size) {
-                    TextButton(onClick = { hintsShown++ }) { Text("Show a hint") }
+                    TextButton(onClick = { hintsShown++ }) { Text(stringResource(R.string.show_a_hint)) }
                 }
             }
 
@@ -150,7 +152,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
                     onClick = { checked = true },
                     enabled = currentAnswer != null,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Check") }
+                ) { Text(stringResource(R.string.check)) }
             } else if (index < questions.lastIndex) {
                 Button(
                     onClick = {
@@ -159,7 +161,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
                         hintsShown = 0
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Next") }
+                ) { Text(stringResource(R.string.next)) }
             } else {
                 Button(
                     onClick = {
@@ -168,7 +170,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
                         backStack.setLast(Route.Results(result.total, result.correct, result.stars))
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Finish") }
+                ) { Text(stringResource(R.string.finish)) }
             }
         }
     }
@@ -185,7 +187,7 @@ private fun FeedbackCard(correct: Boolean, explanation: String?) {
     Card(colors = CardDefaults.cardColors(containerColor = container), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                if (correct) "Correct!" else "Not quite.",
+                if (correct) stringResource(R.string.correct_1) else stringResource(R.string.not_quite),
                 style = MaterialTheme.typography.titleMedium,
                 color = onContainer,
             )
@@ -284,7 +286,7 @@ private fun NumericInput(question: NumericQuestion, enabled: Boolean, onAnswer: 
         },
         enabled = enabled,
         singleLine = true,
-        label = { Text(question.unit?.let { "Answer ($it)" } ?: "Answer") },
+        label = { Text(question.unit?.let { stringResource(R.string.answer_1, it) } ?: stringResource(R.string.answer)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )
 }
@@ -300,7 +302,7 @@ private fun ShortTextInput(enabled: Boolean, onAnswer: (Answer?) -> Unit) {
         },
         enabled = enabled,
         singleLine = true,
-        label = { Text("Answer") },
+        label = { Text(stringResource(R.string.answer)) },
     )
 }
 
@@ -382,7 +384,7 @@ private fun RightSelector(
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (selectedIndex >= 0) options[selectedIndex] else "Choose…")
+            Text(if (selectedIndex >= 0) options[selectedIndex] else stringResource(R.string.choose))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEachIndexed { i, opt ->

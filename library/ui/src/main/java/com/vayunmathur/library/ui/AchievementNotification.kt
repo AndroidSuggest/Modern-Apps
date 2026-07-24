@@ -29,6 +29,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 import com.vayunmathur.library.util.Achievement
 import kotlinx.coroutines.delay
 
@@ -100,7 +102,7 @@ fun AchievementNotification(
                         .weight(1f)
                 ) {
                     Text(
-                        text = "Achievement Unlocked!",
+                        text = stringResource(R.string.achievement_unlocked),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )

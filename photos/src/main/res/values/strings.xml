@@ -51,4 +51,227 @@
         <item quantity="one">%1$d person</item>
         <item quantity="other">%1$d people</item>
     </plurals>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- DrawingSettingsPage -->
+    <string name="opacity">Opacity</string>
+    <string name="thickness">Thickness</string>
+    <string name="color">Color</string>
+    <string name="done">Done</string>
+    <!-- EditPhotoPage -->
+    <string name="reset_all">Reset All</string>
+    <string name="export_as_webp">Export as WebP</string>
+    <string name="rotate_90">Rotate 90°</string>
+    <string name="tolerance">Tolerance</string>
+    <string name="rotate">Rotate</string>
+    <string name="drag_corners_to_distort">Drag corners to distort.</string>
+    <string name="edit_text">Edit Text</string>
+    <string name="tap_the_image_to_pick_a_color">Tap the image to pick a color.</string>
+    <string name="font">Font</string>
+    <string name="cancel">Cancel</string>
+    <string name="edge_softness">Edge softness</string>
+    <string name="reset">Reset</string>
+    <string name="draw">Draw</string>
+    <string name="recent">Recent</string>
+    <string name="export_as_png">Export as PNG</string>
+    <string name="aspect_ratio">Aspect ratio</string>
+    <string name="combine">Combine</string>
+    <string name="apply">Apply</string>
+    <string name="tap_to_add_points">Tap to add points (%1$s)</string>
+    <!-- GalleryPage -->
+    <string name="of_photos_processed">%1$s% of photos processed</string>
+    <string name="photos_indexed_for_visual_search">%1$s / %2$s photos indexed for visual search</string>
+    <string name="photos_indexed_for_text_search">%1$s / %2$s photos indexed for text search</string>
+    <!-- HealingPanel -->
+    <string name="brush_size">Brush Size</string>
+    <!-- MainActivity -->
+    <string name="open_settings">Open Settings</string>
+    <!-- SecureFolderPage -->
+    <string name="secure_folder_is_empty">Secure Folder is empty</string>
+    <!-- SelectiveEditPanel -->
+    <string name="show_mask">Show Mask</string>
+    <!-- TrashPage -->
+    <string name="trash_is_empty">Trash is empty</string>
+
+    <!-- Migrated hardcoded UI strings (auto) v2 -->
+    <!-- AdvancedPanels -->
+    <string name="colors_inverted_toggle_the_layer_s_visib">Colors inverted. Toggle the layer\'s visibility or delete the Invert layer to undo.</string>
+    <!-- HealingPanel -->
+    <string name="set_source_point">Set Source Point</string>
+    <!-- MainActivity -->
+    <string name="media_management_permission_required">Media Management Permission Required</string>
+    <string name="this_app_needs_permission_to_manage_medi">This app needs permission to manage media files to function properly. Please grant \'Allow media management\' permission in Settings.</string>
+    <!-- SelectiveEditPanel -->
+    <string name="add_mask">Add Mask</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- PhotoPage -->
+    <string name="panorama">Panorama</string>
+
+    <!-- Migrated wrapper composable labels (auto) -->
+    <string name="draw_freehand_highlight_erase_or_tap_to">Draw freehand, highlight, erase, or tap to add text. Tap a tool again to change its color and size.</string>
+    <string name="locks_the_crop_to_a_fixed_width_height_s">Locks the crop to a fixed width:height shape. \"Free\" lets you crop to any size.</string>
+    <string name="drag_the_round_handle_above_the_crop_box">Drag the round handle above the crop box to tilt and straighten the photo.</string>
+    <string name="drag_the_four_corner_handles_to_scale_ro">Drag the four corner handles to scale, rotate, skew, or distort the active layer. Apply bakes it in.</string>
+    <string name="new_replaces_the_selection_add_subtract">New replaces the selection. Add/Subtract/Intersect combine the next shape with the current selection.</string>
+    <string name="how_close_in_color_a_pixel_must_be_to_th">How close in color a pixel must be to the tapped spot to be selected. Higher = selects more.</string>
+    <string name="blurs_the_selection_s_edge_so_edits_fade">Blurs the selection\'s edge so edits fade in gradually. 0 = a hard, crisp edge.</string>
+    <string name="fills_the_selected_area_from_surrounding">Fills the selected area from surrounding pixels to remove an object. Works best on simple backgrounds.</string>
+    <string name="strength">Strength</string>
+    <string name="size">Size</string>
+    <string name="brush">Brush</string>
+    <string name="in_black">In Black</string>
+    <string name="in_white">In White</string>
+    <string name="gamma">Gamma</string>
+    <string name="out_black">Out Black</string>
+    <string name="out_white">Out White</string>
+    <string name="red_cyan">Red-Cyan</string>
+    <string name="green_mag">Green-Mag</string>
+    <string name="blue_yellow">Blue-Yellow</string>
+    <string name="reds">Reds</string>
+    <string name="yellows">Yellows</string>
+    <string name="greens">Greens</string>
+    <string name="cyans">Cyans</string>
+    <string name="blues">Blues</string>
+    <string name="magentas">Magentas</string>
+    <string name="amount">Amount</string>
+    <string name="radius">Radius</string>
+    <string name="length">Length</string>
+    <string name="angle">Angle</string>
+    <string name="vibrance">Vibrance</string>
+    <string name="levels">Levels</string>
+    <string name="level">Level</string>
+    <string name="density">Density</string>
+    <string name="cyan">Cyan</string>
+    <string name="magenta">Magenta</string>
+    <string name="yellow">Yellow</string>
+
+    <!-- HSL color range names -->
+    <string name="color_red">Red</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_green">Green</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_purple">Purple</string>
+
+    <!-- Layer blend modes -->
+    <string name="blend_normal">Normal</string>
+    <string name="blend_multiply">Multiply</string>
+    <string name="blend_screen">Screen</string>
+    <string name="blend_overlay">Overlay</string>
+    <string name="blend_darken">Darken</string>
+    <string name="blend_lighten">Lighten</string>
+    <string name="blend_color_dodge">Color Dodge</string>
+    <string name="blend_color_burn">Color Burn</string>
+    <string name="blend_hard_light">Hard Light</string>
+    <string name="blend_soft_light">Soft Light</string>
+    <string name="blend_difference">Difference</string>
+    <string name="blend_exclusion">Exclusion</string>
+    <string name="blend_hue">Hue</string>
+    <string name="blend_saturation">Saturation</string>
+    <string name="blend_luminosity">Luminosity</string>
+
+    <!-- Tool categories -->
+    <string name="tool_cat_adjust">Adjust</string>
+    <string name="tool_cat_filters">Filters</string>
+    <string name="tool_cat_retouch">Retouch</string>
+    <string name="tool_cat_select">Select</string>
+    <string name="tool_cat_transform">Crop</string>
+    <string name="tool_cat_draw">Draw</string>
+    <string name="tool_cat_paint">Paint</string>
+    <string name="tool_cat_layers">Layers</string>
+    <string name="tool_cat_desc_adjust">Tune light and color.</string>
+    <string name="tool_cat_desc_filters">Effects, blur, and presets.</string>
+    <string name="tool_cat_desc_retouch">Fix and clean up areas.</string>
+    <string name="tool_cat_desc_select">Pick an area to limit edits.</string>
+    <string name="tool_cat_desc_transform">Crop, straighten, and rotate.</string>
+    <string name="tool_cat_desc_draw">Draw, highlight, and add text.</string>
+    <string name="tool_cat_desc_paint">Fill, gradients, and shapes.</string>
+    <string name="tool_cat_desc_layers">Manage layers and masks.</string>
+
+    <!-- Selection sub-tools -->
+    <string name="sel_tool_rectangle">Rectangle</string>
+    <string name="sel_tool_ellipse">Ellipse</string>
+    <string name="sel_tool_lasso">Lasso</string>
+    <string name="sel_tool_polygon">Polygon</string>
+    <string name="sel_tool_wand">Magic Wand</string>
+
+    <!-- Adjustment types -->
+    <string name="adj_brightness">Brightness</string>
+    <string name="adj_contrast">Contrast</string>
+    <string name="adj_saturation">Saturation</string>
+    <string name="adj_warmth">Warmth</string>
+    <string name="adj_exposure">Exposure</string>
+    <string name="adj_highlights">Highlights</string>
+    <string name="adj_shadows">Shadows</string>
+    <string name="adj_sharpness">Sharpness</string>
+    <string name="adj_vignette">Vignette</string>
+    <string name="adj_grain">Grain</string>
+    <string name="adj_fade">Fade</string>
+    <string name="adj_tint">Tint</string>
+
+    <!-- Editor tool entries -->
+    <string name="tool_light">Light</string>
+    <string name="tool_presets">Presets</string>
+    <string name="tool_curves">Curves</string>
+    <string name="tool_hsl">HSL</string>
+    <string name="tool_balance">Balance</string>
+    <string name="tool_mixer">Mixer</string>
+    <string name="tool_bw">B&amp;W</string>
+    <string name="tool_gradient">Gradient</string>
+    <string name="tool_photo_filter">Photo Filter</string>
+    <string name="tool_selective_color">Selective Color</string>
+    <string name="tool_posterize">Posterize</string>
+    <string name="tool_threshold">Threshold</string>
+    <string name="tool_invert">Invert</string>
+    <string name="tool_lens_blur">Lens Blur</string>
+    <string name="tool_selective">Selective</string>
+    <string name="tool_filters">Filters</string>
+    <string name="tool_liquify">Liquify</string>
+    <string name="tool_heal">Heal</string>
+    <string name="tool_red_eye">Red-Eye</string>
+    <string name="tool_dodge_burn">Dodge/Burn</string>
+    <string name="tool_smudge">Smudge</string>
+    <string name="tool_marquee">Marquee</string>
+    <string name="tool_crop_rotate">Crop &amp; Rotate</string>
+    <string name="tool_transform">Transform</string>
+    <string name="tool_mask_brush">Mask Brush</string>
+    <string name="tool_fill">Fill</string>
+    <string name="tool_line">Line</string>
+    <string name="tool_eyedropper">Eyedropper</string>
+
+    <!-- Editor mode descriptions -->
+    <string name="editor_desc_none"></string>
+    <string name="editor_desc_adjust">Fine-tune light and color with sliders.</string>
+    <string name="editor_desc_filters">Apply a one-tap preset look.</string>
+    <string name="editor_desc_curves">Reshape brightness and contrast with a curve.</string>
+    <string name="editor_desc_hsl">Adjust hue, saturation, and lightness per color.</string>
+    <string name="editor_desc_levels">Set the black point, white point, and midtones.</string>
+    <string name="editor_desc_color_balance">Shift colors in shadows, midtones, and highlights.</string>
+    <string name="editor_desc_channel_mixer">Blend the red, green, and blue channels.</string>
+    <string name="editor_desc_black_white">Convert to black &amp; white and control how colors map.</string>
+    <string name="editor_desc_gradient_map">Map dark-to-light tones onto a color gradient.</string>
+    <string name="editor_desc_vibrance">Boost muted colors while protecting already-vivid ones and skin tones.</string>
+    <string name="editor_desc_photo_filter">Apply a warming or cooling color wash.</string>
+    <string name="editor_desc_selective_color">Fine-tune cyan/magenta/yellow within one color range.</string>
+    <string name="editor_desc_posterize">Reduce the number of tonal levels for a flat, graphic look.</string>
+    <string name="editor_desc_threshold">Convert to pure black and white at a brightness cutoff.</string>
+    <string name="editor_desc_invert">Invert all colors (photo negative).</string>
+    <string name="editor_desc_lens_blur">Blur the background for a depth-of-field look.</string>
+    <string name="editor_desc_selective">Paint an adjustment onto specific spots.</string>
+    <string name="editor_desc_filter_fx">Apply a baked-in photo filter to the pixels.</string>
+    <string name="editor_desc_liquify">Push and warp pixels around.</string>
+    <string name="editor_desc_healing">Remove blemishes by copying nearby pixels.</string>
+    <string name="editor_desc_red_eye">Tap each eye to remove red-eye.</string>
+    <string name="editor_desc_dodge_burn">Brush to lighten (dodge) or darken (burn).</string>
+    <string name="editor_desc_smudge">Drag to smear pixels like wet paint.</string>
+    <string name="editor_desc_selection">Draw an area; edits then apply only inside it.</string>
+    <string name="editor_desc_crop">Crop, straighten, and rotate the photo.</string>
+    <string name="editor_desc_free_transform">Scale, rotate, skew, or distort the layer by dragging its corners; flip it.</string>
+    <string name="editor_desc_layers">Stack, blend, and mask layers.</string>
+    <string name="editor_desc_mask_paint">Brush on the active layer\'s mask: hide or reveal parts of it.</string>
+    <string name="editor_desc_fill">Tap to flood-fill an area with the chosen color.</string>
+    <string name="editor_desc_gradient_tool">Drag to draw a color-to-transparent gradient.</string>
+    <string name="editor_desc_shape_rect">Drag to draw a filled rectangle.</string>
+    <string name="editor_desc_shape_ellipse">Drag to draw a filled ellipse.</string>
+    <string name="editor_desc_shape_line">Drag to draw a line.</string>
 </resources>

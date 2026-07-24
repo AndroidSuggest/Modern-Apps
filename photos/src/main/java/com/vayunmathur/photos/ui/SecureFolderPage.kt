@@ -104,7 +104,7 @@ fun SecureFolderPage(
     ) { paddingValues ->
         if (photos.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text("Secure Folder is empty", color = Color.Gray)
+                Text(stringResource(R.string.secure_folder_is_empty), color = Color.Gray)
             }
         } else {
             Box(

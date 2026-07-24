@@ -5,7 +5,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.core.text.HtmlCompat
 import kotlinx.serialization.Serializable
-import javax.mail.internet.InternetAddress
+import jakarta.mail.internet.InternetAddress
 
 @Serializable
 @Entity(primaryKeys = ["accountEmail", "fullName"])

@@ -136,7 +136,7 @@ fun InboxScreen(
     if (showSourcePicker) {
         com.vayunmathur.library.ui.AlertDialog(
             onDismissRequest = { showSourcePicker = false },
-            title = { Text("New conversation") },
+            title = { Text(stringResource(R.string.new_conversation)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Only offer services that are actually connected.
@@ -145,9 +145,9 @@ fun InboxScreen(
                         .keys
                         .toList()
                     if (connected.isEmpty()) {
-                        Text("No connected services. Set one up in Settings first.")
+                        Text(stringResource(R.string.no_connected_services_set_one_up_in_sett))
                     } else {
-                        Text("Choose which service to send from:")
+                        Text(stringResource(R.string.choose_which_service_to_send_from))
                         connected.forEach { source ->
                             com.vayunmathur.library.ui.TextButton(onClick = {
                                 showSourcePicker = false
@@ -161,7 +161,7 @@ fun InboxScreen(
             dismissButton = {
                 com.vayunmathur.library.ui.TextButton(onClick = {
                     showSourcePicker = false
-                }) { Text("Cancel") }
+                }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -169,22 +169,22 @@ fun InboxScreen(
     pendingDelete?.let { conv ->
         com.vayunmathur.library.ui.AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete conversation?") },
+            title = { Text(stringResource(R.string.delete_conversation)) },
             text = {
                 Text(
-                    "This deletes the chat for ${conv.peerName ?: "this contact"} on your phone too. " +
-                        "Existing messages can't be recovered.",
+                    stringResource(R.string.this_deletes_the_chat_for_on_your_phone, conv.peerName ?: stringResource(R.string.this_contact)) +
+                        stringResource(R.string.existing_messages_can_t_be_recovered),
                 )
             },
             confirmButton = {
                 com.vayunmathur.library.ui.TextButton(onClick = {
                     vm.deleteConversation(conv.id)
                     pendingDelete = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
                 com.vayunmathur.library.ui.TextButton(onClick = { pendingDelete = null }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             },
         )
@@ -379,7 +379,7 @@ private fun MessageRequestChip() {
         contentColor = color,
     ) {
         Text(
-            "Message request",
+            stringResource(R.string.message_request),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,

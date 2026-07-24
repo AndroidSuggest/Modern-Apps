@@ -18,7 +18,7 @@ tasks.jar {
 }
 
 dependencies {
-    implementation(libs.newpipe.nanojson)
+    implementation(project(":third_party:nanojson"))
     implementation(libs.jsoup)
     implementation(libs.google.jsr305)
     implementation(libs.protobuf.javalite)

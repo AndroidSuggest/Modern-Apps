@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconClose
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.messages.R
 
 /** Max poll options most platforms accept (Telegram caps at 10). */
 private const val MAX_OPTIONS = 10
@@ -51,7 +53,7 @@ fun PollDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New poll") },
+        title = { Text(stringResource(R.string.new_poll)) },
         text = {
             Column(
                 modifier = Modifier
@@ -63,7 +65,7 @@ fun PollDialog(
                 OutlinedTextField(
                     value = question,
                     onValueChange = { question = it },
-                    label = { Text("Question") },
+                    label = { Text(stringResource(R.string.question)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -72,7 +74,7 @@ fun PollDialog(
                         OutlinedTextField(
                             value = value,
                             onValueChange = { options[index] = it },
-                            label = { Text("Option ${index + 1}") },
+                            label = { Text(stringResource(R.string.option, index + 1)) },
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                         )
@@ -90,7 +92,7 @@ fun PollDialog(
                     TextButton(onClick = { options.add("") }) {
                         IconAdd()
                         Spacer(Modifier.size(8.dp))
-                        Text("Add option")
+                        Text(stringResource(R.string.add_option))
                     }
                 }
                 Row(
@@ -101,7 +103,7 @@ fun PollDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        "Allow multiple answers",
+                        stringResource(R.string.allow_multiple_answers),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Switch(checked = allowMultiple, onCheckedChange = { allowMultiple = it })
@@ -112,10 +114,10 @@ fun PollDialog(
             TextButton(
                 onClick = { onCreate(question.trim(), cleanOptions, allowMultiple) },
                 enabled = canCreate,
-            ) { Text("Create") }
+            ) { Text(stringResource(R.string.create)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
 }

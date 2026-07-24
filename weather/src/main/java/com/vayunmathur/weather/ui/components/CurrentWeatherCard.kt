@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.sp
 import com.vayunmathur.weather.util.TemperatureUnit
 import com.vayunmathur.weather.util.formatTemperatureCompact
 import com.vayunmathur.weather.util.weatherConditionForCode
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.weather.R
 
 /**
  * Direct port of WeatherMaster's `PixelStyleCurrentWeatherCard`. Centered
@@ -58,7 +60,7 @@ fun CurrentWeatherCard(
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                text = condition.label,
+                text = stringResource(condition.label),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium,
@@ -72,7 +74,7 @@ fun CurrentWeatherCard(
         )
         if (apparentTemperature != null) {
             Text(
-                text = "Feels like ${formatTemperatureCompact(apparentTemperature, tempUnit)}",
+                text = stringResource(R.string.feels_like, formatTemperatureCompact(apparentTemperature, tempUnit)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium,
@@ -86,7 +88,7 @@ fun CurrentWeatherCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Max ${formatTemperatureCompact(high, tempUnit)}  Min ${formatTemperatureCompact(low, tempUnit)}",
+                    text = stringResource(R.string.max_min, formatTemperatureCompact(high, tempUnit), formatTemperatureCompact(low, tempUnit)),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.titleLarge,
                 )

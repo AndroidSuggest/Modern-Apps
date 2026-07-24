@@ -1,17 +1,19 @@
 package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
+import androidx.annotation.StringRes
+import com.vayunmathur.photos.R
 import kotlin.math.abs
 
-enum class HslColorRange(val label: String, val hueCenter: Float) {
-    Red("Red", 0f),
-    Orange("Orange", 30f),
-    Yellow("Yellow", 60f),
-    Green("Green", 120f),
-    Cyan("Cyan", 180f),
-    Blue("Blue", 240f),
-    Purple("Purple", 270f),
-    Magenta("Magenta", 300f),
+enum class HslColorRange(@StringRes val labelRes: Int, val hueCenter: Float) {
+    Red(R.string.color_red, 0f),
+    Orange(R.string.color_orange, 30f),
+    Yellow(R.string.yellow, 60f),
+    Green(R.string.color_green, 120f),
+    Cyan(R.string.cyan, 180f),
+    Blue(R.string.color_blue, 240f),
+    Purple(R.string.color_purple, 270f),
+    Magenta(R.string.magenta, 300f),
 }
 
 data class HslChannelAdjustment(

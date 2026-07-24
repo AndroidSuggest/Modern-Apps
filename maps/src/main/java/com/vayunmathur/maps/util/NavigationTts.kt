@@ -8,6 +8,7 @@ import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import com.vayunmathur.maps.R
 import com.vayunmathur.maps.util.RouteService.Step
 import java.util.Locale
 import java.util.UUID
@@ -51,8 +52,12 @@ object NavigationTts {
     /** Thresholds (m) — must be in descending order. */
     private val thresholdsMeters = intArrayOf(1000, 300, 100)
 
+    /** Application context for resolving localized spoken phrases. */
+    private var appContext: Context? = null
+
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
+        appContext = context.applicationContext
         audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         tts = TextToSpeech(context.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -144,10 +149,17 @@ object NavigationTts {
         }
     }
 
-    private fun phraseFor(thresholdMeters: Int, instruction: String): String = when {
-        thresholdMeters >= 1000 -> "In ${thresholdMeters / 1000} kilometer${if (thresholdMeters / 1000 == 1) "" else "s"}, $instruction"
-        thresholdMeters >= 100 -> "In $thresholdMeters meters, $instruction"
-        else -> "Now, $instruction"
+    private fun phraseFor(thresholdMeters: Int, instruction: String): String {
+        val ctx = appContext ?: return instruction
+        return when {
+            thresholdMeters >= 1000 -> {
+                val km = thresholdMeters / 1000
+                val distance = ctx.resources.getQuantityString(R.plurals.tts_kilometers, km, km)
+                ctx.getString(R.string.tts_in_distance, distance, instruction)
+            }
+            thresholdMeters >= 100 -> ctx.getString(R.string.tts_in_meters, thresholdMeters, instruction)
+            else -> ctx.getString(R.string.tts_now, instruction)
+        }
     }
 
     private fun speak(text: String) {

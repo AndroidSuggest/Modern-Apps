@@ -38,8 +38,11 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.data.BookedTrip
 import com.vayunmathur.travel.data.RecentSearch
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
+import com.vayunmathur.travel.R
 
-private enum class Product(val label: String) { FLIGHTS("Flights"), STAYS("Stays") }
+private enum class Product(@StringRes val label: Int) { FLIGHTS(R.string.flights), STAYS(R.string.stays) }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,13 +54,13 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Travel") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     if (trips.isNotEmpty()) {
-                        TextButton(onClick = { backStack.add(Route.Trips) }) { Text("My trips") }
+                        TextButton(onClick = { backStack.add(Route.Trips) }) { Text(stringResource(R.string.my_trips)) }
                     }
                     IconButton(onClick = { backStack.add(Route.Settings) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings))
                     }
                 },
             )
@@ -74,7 +77,7 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Product.entries.forEach { p ->
-                    FilterChip(selected = product == p, onClick = { product = p }, label = { Text(p.label) })
+                    FilterChip(selected = product == p, onClick = { product = p }, label = { Text(stringResource(p.label)) })
                 }
             }
 
@@ -125,8 +128,8 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    SectionHeader("Recent searches")
-                    TextButton(onClick = { viewModel.clearRecents() }) { Text("Clear") }
+                    SectionHeader(stringResource(R.string.recent_searches))
+                    TextButton(onClick = { viewModel.clearRecents() }) { Text(stringResource(R.string.clear)) }
                 }
                 recents.forEach { recent ->
                     RecentSearchCard(recent) { openRecent(backStack, recent) }
@@ -134,7 +137,7 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
             }
 
             if (trips.isNotEmpty()) {
-                SectionHeader("My trips")
+                SectionHeader(stringResource(R.string.my_trips))
                 trips.take(3).forEach { trip ->
                     TripSummaryCard(trip) { backStack.add(destinationForTrip(trip)) }
                 }
@@ -142,7 +145,7 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                     TextButton(
                         onClick = { backStack.add(Route.Trips) },
                         modifier = Modifier.padding(horizontal = 8.dp),
-                    ) { Text("See all ${trips.size} trips") }
+                    ) { Text(stringResource(R.string.see_all_trips, trips.size)) }
                 }
             }
 

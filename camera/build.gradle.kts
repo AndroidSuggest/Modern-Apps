@@ -119,7 +119,8 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.video)
     implementation(libs.androidx.camera.compose)
+    implementation(libs.androidx.camera.extensions)
     implementation(libs.androidx.exifinterface)
     implementation(libs.zxing.core)
-    implementation("com.google.mediapipe:tasks-vision:0.10.14")
+    implementation(libs.mediapipe.tasks.vision)
 }

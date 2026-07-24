@@ -25,4 +25,10 @@
     <string name="competitive_time_limit">%1$d seconds per level</string>
     <string name="competitive_solved">Solved! +%1$d points</string>
     <string name="competitive_timed_out">Time\'s up! %1$d points</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_shuffle">Shuffle</string>
+    <string name="cd_hint">Hint</string>
+    <string name="cd_submit">Submit</string>
+    <string name="cd_backspace">Backspace</string>
 </resources>

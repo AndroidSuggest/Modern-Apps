@@ -41,6 +41,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.email.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,7 +75,7 @@ fun EmlViewerScreen(
             TopAppBar(
                 title = {
                     val t = parsed?.message?.subject ?: uriString.substringAfterLast('/').substringAfterLast("%2F")
-                    Text(t.ifBlank { "E-mail file" }, maxLines = 1)
+                    Text(t.ifBlank { stringResource(R.string.e_mail_file) }, maxLines = 1)
                 },
                 navigationIcon = { IconNavigation(onBack) },
                 actions = {
@@ -96,9 +98,9 @@ fun EmlViewerScreen(
             error != null -> {
                 Box(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Couldn't open this .eml file", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.couldn_t_open_this_eml_file), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
-                        Text(error ?: "Unknown error", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        Text(error ?: stringResource(R.string.unknown_error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.height(16.dp))
                         OutlinedButton(onClick = {
                             scope.launch {
@@ -110,7 +112,7 @@ fun EmlViewerScreen(
                                 }
                                 loading = false
                             }
-                        }) { Text("Retry") }
+                        }) { Text(stringResource(R.string.retry)) }
                     }
                 }
             }
@@ -136,8 +138,8 @@ fun EmlViewerScreen(
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(text = senderName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                             Text(text = msg.date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (!msg.to.isNullOrBlank()) Text(text = "To: ${msg.to}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (!msg.cc.isNullOrBlank()) Text(text = "Cc: ${msg.cc}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (!msg.to.isNullOrBlank()) Text(text = stringResource(R.string.to, msg.to), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (!msg.cc.isNullOrBlank()) Text(text = stringResource(R.string.cc_1, msg.cc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
 
@@ -148,8 +150,8 @@ fun EmlViewerScreen(
                         var loadImages by remember(uriString) { mutableStateOf(false) }
                         if (!loadImages && cidMap.isEmpty()) {
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Remote images blocked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick = { loadImages = true }) { Text("Load images") }
+                                Text(stringResource(R.string.remote_images_blocked), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                TextButton(onClick = { loadImages = true }) { Text(stringResource(R.string.load_images)) }
                             }
                         }
                         HtmlText(
@@ -159,12 +161,12 @@ fun EmlViewerScreen(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         )
                     } else {
-                        Text(text = msg.body ?: "(No content)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+                        Text(text = msg.body ?: stringResource(R.string.no_content_1), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
                     }
 
                     if (emlAtts.isNotEmpty()) {
                         Spacer(Modifier.height(16.dp))
-                        Text("Attachments:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
+                        Text(stringResource(R.string.attachments_2), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
                         emlAtts.forEach { att -> EmlAttachmentItem(attachment = att) }
                     }
 
@@ -185,11 +187,11 @@ private fun EmlAttachmentItem(attachment: EmlAttachment) {
         if (opening) {
             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
         } else {
-            Text("Open", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable {
+            Text(stringResource(R.string.open), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable {
                 opening = true
                 openEmlAttachment(context, attachment) { success ->
                     opening = false
-                    if (!success) Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
+                    if (!success) Toast.makeText(context, context.getString(R.string.no_app_can_open_this_file), Toast.LENGTH_SHORT).show()
                 }
             })
         }

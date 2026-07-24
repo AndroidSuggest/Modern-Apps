@@ -196,4 +196,49 @@
     <string name="section_workouts">Workouts</string>
     <string name="label_total_exercise">Total exercise</string>
     <string name="no_workouts">No workouts recorded</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- NutritionPage -->
+    <string name="view_full_breakdown">View full breakdown</string>
+    <!-- RecipeManagementPage -->
+    <string name="no_results_found">No results found</string>
+    <string name="online">Online</string>
+    <string name="original">Original: %1$s</string>
+    <string name="original_1">Original: %1$s</string>
+    <string name="downloaded">Downloaded</string>
+    <string name="saved_locally">Saved Locally</string>
+
+    <!-- Migrated hardcoded UI strings (auto) v3 -->
+    <!-- ExerciseDetailsPage -->
+    <string name="segments">Segments</string>
+    <string name="laps">Laps</string>
+    <string name="lap">Lap %1$s</string>
+    <string name="reps">%1$s reps</string>
+    <string name="route_recorded">Route recorded</string>
+    <!-- FoodLoggingDialogs -->
+    <string name="ingredient">(Ingredient)</string>
+    <!-- NutritionPage -->
+    <string name="calories">Calories</string>
+    <string name="kcal">%1$s / %2$s kcal</string>
+    <!-- RecipeManagementPage -->
+    <string name="create_recipe">Create Recipe</string>
+    <string name="add_your_first_ingredient">Add your first ingredient</string>
+    <string name="create_your_first_recipe">Create your first recipe</string>
+    <string name="edit_recipe">Edit Recipe</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- NutritionPage -->
+    <string name="no_meals_logged_today">No meals logged today</string>
+    <string name="meals_cal">%1$s meals · %2$s cal</string>
+
+    <!-- Migrated enum/data-class UI labels (var->resId) -->
+    <!-- FoodLoggingDialogs – HydrationUnit -->
+    <string name="hydration_liters">Liters</string>
+    <string name="hydration_milliliters">Milliliters</string>
+    <string name="hydration_ounces">Ounces</string>
+    <string name="hydration_cups">Cups</string>
+    <!-- FoodLoggingDialogs – LogMealDialog -->
+    <string name="select_recipe">Select Recipe</string>
+    <string name="quantity_x_100g">Quantity (x 100g)</string>
+    <string name="servings">Servings</string>
 </resources>

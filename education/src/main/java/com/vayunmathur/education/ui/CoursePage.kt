@@ -27,6 +27,7 @@ import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,13 +39,13 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(course?.title ?: "Course") },
+                title = { Text(course?.title ?: stringResource(R.string.course)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
         if (course == null) {
-            MissingContent(padding, "This course is unavailable.")
+            MissingContent(padding, stringResource(R.string.this_course_is_unavailable))
             return@Scaffold
         }
         LazyColumn(
@@ -82,7 +83,7 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
                             StarRow(averageStars(skills, progress))
                         }
                         Text(
-                            "${unit.lessons.size} lessons",
+                            stringResource(R.string.lessons, unit.lessons.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -100,7 +101,7 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
                             .fillMaxWidth()
                             .padding(16.dp),
                     ) {
-                        Text(challenge.title.ifBlank { "Course challenge" })
+                        Text(challenge.title.ifBlank { stringResource(R.string.course_challenge) })
                     }
                 }
             }

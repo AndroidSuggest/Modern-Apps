@@ -1,3 +1,137 @@
 <resources>
     <string name="app_name">Education</string>
+
+    <plurals name="day_count">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="skill_stars_earned">
+        <item quantity="one">%1$d skill with stars earned</item>
+        <item quantity="other">%1$d skills with stars earned</item>
+    </plurals>
+    <plurals name="daily_goal_activities">
+        <item quantity="one">Daily goal: %1$d activity</item>
+        <item quantity="other">Daily goal: %1$d activities</item>
+    </plurals>
+    <plurals name="video_count">
+        <item quantity="one">%1$d video</item>
+        <item quantity="other">%1$d videos</item>
+    </plurals>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- Common -->
+    <!-- ExplorerHomePage -->
+    <string name="find_a_topic">Find a topic</string>
+    <!-- K2RewardPage -->
+    <string name="home_1">🏠  Home</string>
+    <!-- LessonPage -->
+    <string name="watch">Watch</string>
+    <!-- ParentGatePage -->
+    <string name="grown_ups_only">Grown-ups only</string>
+    <string name="pin">PIN</string>
+    <string name="incorrect_pin">Incorrect PIN</string>
+    <string name="cancel">Cancel</string>
+    <string name="enter">Enter</string>
+    <!-- ParentPage -->
+    <string name="parent_settings">Parent settings</string>
+    <string name="name">Name</string>
+    <string name="ok">OK</string>
+    <string name="grade">Grade</string>
+    <string name="band_override">Band override</string>
+    <string name="automatic_by_grade">Automatic (by grade)</string>
+    <string name="new_pin">New PIN</string>
+    <!-- QuizPage -->
+    <string name="show_a_hint">Show a hint</string>
+    <string name="check">Check</string>
+    <string name="next">Next</string>
+    <string name="finish">Finish</string>
+    <string name="answer">Answer</string>
+    <!-- ResultsPage -->
+    <string name="results">Results</string>
+    <string name="keep_going">Keep going</string>
+    <string name="home">Home</string>
+    <!-- VideoPlayerPage -->
+    <string name="couldn_t_load_this_video">Couldn\'t load this video.</string>
+    <string name="open_in_youtube">Open in YouTube</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- BadgesPage -->
+    <string name="my_stickers">My Stickers</string>
+    <string name="badges">Badges</string>
+    <!-- CoursePage -->
+    <string name="course">Course</string>
+    <string name="lessons">%1$s lessons</string>
+    <string name="course_challenge">Course challenge</string>
+    <!-- ExplorerCoursePage -->
+    <string name="topic">Topic</string>
+    <string name="big_challenge">Big challenge!</string>
+    <string name="start_here">Start here</string>
+    <!-- ExplorerHomePage -->
+    <string name="explore">Explore</string>
+    <string name="hi">Hi, %1$s! 👋</string>
+    <string name="jump_back_in">Jump back in</string>
+    <string name="nothing_here_yet_ask_a_grown_up_to_add_l">Nothing here yet — ask a grown-up to add lessons.</string>
+    <string name="topics">%1$s topics</string>
+    <!-- HomePage -->
+    <string name="learn">Learn</string>
+    <string name="hi_1">Hi, %1$s</string>
+    <string name="units">%1$s units</string>
+    <string name="no_content_packs_are_installed_yet">No content packs are installed yet.</string>
+    <!-- K2HomePage -->
+    <string name="all_done_great_job">All done! Great job!</string>
+    <!-- K2QuizPage -->
+    <string name="great_job">Great job!</string>
+    <!-- K2RewardPage -->
+    <string name="you_did_it">You did it!</string>
+    <!-- LessonPage -->
+    <string name="lesson">Lesson</string>
+    <string name="start_exercise">Start exercise</string>
+    <!-- ParentGatePage -->
+    <string name="enter_the_parent_pin_to_manage_settings">Enter the parent PIN to manage settings and deadlines.</string>
+    <!-- ParentPage -->
+    <string name="active_band">Active band: %1$s</string>
+    <string name="set_a_target_date_for_a_unit_it_shows_in">Set a target date for a unit. It shows in your child\'s app as a gentle reminder.</string>
+    <string name="due">Due %1$s</string>
+    <string name="set_date">Set date</string>
+    <string name="change">Change</string>
+    <string name="saved">Saved</string>
+    <string name="save">Save</string>
+    <!-- QuizPage -->
+    <string name="practice">Practice</string>
+    <string name="question_of">Question %1$s of %2$s</string>
+    <string name="correct_1">Correct!</string>
+    <string name="not_quite">Not quite.</string>
+    <string name="answer_1">Answer (%1$s)</string>
+    <string name="choose">Choose…</string>
+    <!-- ResultsPage -->
+    <string name="correct">%1$s / %2$s correct</string>
+    <!-- UnitPage -->
+    <string name="unit">Unit</string>
+    <string name="exercise"> · exercise</string>
+    <string name="unit_quiz">Unit quiz</string>
+    <!-- VideoPlayerPage -->
+    <string name="check_your_connection_or_open_it_in_yout">Check your connection, or open it in YouTube.</string>
+
+    <!-- Migrated wrapper composable labels (auto) -->
+    <string name="due_soon">Due soon</string>
+    <string name="this_course_is_unavailable">This course is unavailable.</string>
+    <string name="learner">Learner</string>
+    <string name="progress">Progress</string>
+    <string name="module_deadlines">Module deadlines</string>
+    <string name="security">Security</string>
+    <string name="let_s_go_back">Let\'s go back.</string>
+    <string name="this_unit_is_unavailable">This unit is unavailable.</string>
+    <string name="this_topic_is_unavailable">This topic is unavailable.</string>
+    <string name="this_lesson_is_unavailable">This lesson is unavailable.</string>
+    <string name="this_exercise_has_no_questions_yet">This exercise has no questions yet.</string>
+
+    <!-- Subject names -->
+    <string name="subject_math">Math</string>
+    <string name="subject_science">Science</string>
+    <string name="subject_reading">Reading &amp; Language Arts</string>
+    <string name="subject_social_studies">Social Studies</string>
+    <string name="subject_computing">Computing</string>
+    <!-- Grade labels -->
+    <string name="grade_kindergarten">Kindergarten</string>
+    <string name="grade_number">Grade %1$d</string>
 </resources>

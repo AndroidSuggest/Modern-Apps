@@ -62,6 +62,8 @@ import com.vayunmathur.photos.data.LevelsAdj
 import com.vayunmathur.photos.data.PixelLayer
 import com.vayunmathur.photos.data.TextLayer
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.photos.R
 
 private val adjustmentFactories: List<Pair<String, () -> LayerAdjustment>> = listOf(
     "Brightness / Contrast" to { BasicAdjustment() },
@@ -160,11 +162,11 @@ fun LayersPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Box {
-                    ActionChip(active.blendMode.label) { showBlend = true }
+                    ActionChip(stringResource(active.blendMode.labelRes)) { showBlend = true }
                     DropdownMenu(expanded = showBlend, onDismissRequest = { showBlend = false }) {
                         LayerBlendMode.entries.forEach { mode ->
                             DropdownMenuItem(
-                                text = { Text(mode.label) },
+                                text = { Text(stringResource(mode.labelRes)) },
                                 onClick = {
                                     showBlend = false
                                     onBlendModeChange(document.activeLayerIndex, mode)
@@ -173,7 +175,7 @@ fun LayersPanel(
                         }
                     }
                 }
-                Text("Opacity", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.opacity), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Slider(
                     value = active.opacity,
                     onValueChange = { onOpacityChange(document.activeLayerIndex, it) },
@@ -293,7 +295,7 @@ private fun LayerRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(layer.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 Text(
-                    "${layer.blendMode.label} · ${(layer.opacity * 100).roundToInt()}%",
+                    "${stringResource(layer.blendMode.labelRes)} · ${(layer.opacity * 100).roundToInt()}%",
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -374,10 +376,10 @@ private fun GroupHeader(group: GroupInfo, onUpdate: (GroupInfo) -> Unit) {
             Text("\uD83D\uDCC1 ${group.name}", fontSize = 12.sp, modifier = Modifier.weight(1f))
             var showBlend by remember { mutableStateOf(false) }
             Box {
-                ActionChip(group.blendMode.label) { showBlend = true }
+                ActionChip(stringResource(group.blendMode.labelRes)) { showBlend = true }
                 DropdownMenu(expanded = showBlend, onDismissRequest = { showBlend = false }) {
                     LayerBlendMode.entries.forEach { mode ->
-                        DropdownMenuItem(text = { Text(mode.label) }, onClick = {
+                        DropdownMenuItem(text = { Text(stringResource(mode.labelRes)) }, onClick = {
                             showBlend = false; onUpdate(group.copy(blendMode = mode))
                         })
                     }
@@ -390,7 +392,7 @@ private fun GroupHeader(group: GroupInfo, onUpdate: (GroupInfo) -> Unit) {
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Opacity", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.opacity), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Slider(
                 value = group.opacity,
                 onValueChange = { onUpdate(group.copy(opacity = it)) },

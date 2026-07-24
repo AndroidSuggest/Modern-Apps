@@ -1,3 +1,17 @@
 <resources>
     <string name="app_name">Things</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- ThingsApp -->
+    <string name="hydration">Hydration</string>
+    <string name="today">Today</string>
+    <string name="scan">Scan</string>
+    <string name="today_s_drinks">Today\'s drinks</string>
+    <string name="devices_found">Devices found:</string>
+    <string name="disconnect">Disconnect</string>
+
+    <!-- Migrated hardcoded UI strings (auto) v3 -->
+    <!-- ThingsApp -->
+    <string name="goal_ml">Goal %1$s mL</string>
+    <string name="ml">%1$s mL</string>
 </resources>

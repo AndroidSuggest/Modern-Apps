@@ -20,6 +20,8 @@ import com.vayunmathur.education.Route
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.education.util.LocalNarrator
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 /** K-2 reward: celebratory stars and praise, no numbers or percentages. */
 @Composable
@@ -39,7 +41,7 @@ fun K2RewardPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
             Text("🦉", fontSize = 96.sp)
             Text("⭐".repeat(stars.coerceIn(1, 3)), fontSize = 56.sp)
             Text(
-                "You did it!",
+                stringResource(R.string.you_did_it),
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,
@@ -51,7 +53,7 @@ fun K2RewardPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("🏠  Home", fontSize = 24.sp)
+                Text(stringResource(R.string.home_1), fontSize = 24.sp)
             }
         }
     }

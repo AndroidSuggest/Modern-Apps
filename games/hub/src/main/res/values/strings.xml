@@ -40,4 +40,69 @@
     <string name="avatar">Avatar</string>
     <string name="choose_avatar">Choose avatar</string>
     <string name="total_xp">Total XP</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- AchievementsScreen -->
+    <string name="achievements_1">Achievements (%1$s)</string>
+    <string name="all_games">All games</string>
+    <string name="no_matching_achievements">No matching achievements</string>
+    <!-- ActivityFeedScreen -->
+    <string name="no_activity_yet_start_playing_games_to_s">No activity yet — start playing games to see your feed!</string>
+    <!-- DashboardScreen -->
+    <string name="see_all">See all</string>
+    <string name="no_activity_yet_play_a_game">No activity yet — play a game!</string>
+    <!-- GameCard -->
+    <string name="playtime_sessions">Playtime: %1$s • %2$s sessions</string>
+    <string name="achievements_2">Achievements: %1$s/%2$s</string>
+    <!-- GameDetailScreen -->
+    <string name="game_not_found">Game not found</string>
+    <string name="achievements">Achievements %1$s/%2$s</string>
+    <string name="recent_sessions">Recent Sessions</string>
+    <!-- ProfileScreen -->
+    <string name="level_1">Level %1$s</string>
+    <string name="stats">Stats</string>
+    <string name="level_table">Level table</string>
+    <string name="level_2">Level %1$s — %2$s%3$s</string>
+    <string name="xp">%1$s XP</string>
+    <string name="edit_profile">Edit profile</string>
+    <string name="display_name">Display name</string>
+    <!-- SettingsScreen -->
+    <string name="backup_restore">Backup &amp; Restore</string>
+    <string name="data">Data</string>
+    <string name="clear_hub_cache_removes_all_cached_game">Clear hub cache — removes all cached game data. Games will re-sync on next launch.</string>
+    <string name="clear_cache">Clear cache</string>
+    <string name="about_gamehub">About GameHub</string>
+    <string name="gamehub_aggregates_achievements_playtime">GameHub aggregates achievements, playtime, and activity across all registered games. Games remain source of truth — hub keeps a mirrored cache pushed via SDK. No leaderboards for now.</string>
+    <string name="package_com_vayunmathur_games_hub">Package: com.vayunmathur.games.hub</string>
+    <string name="clear_cache_1">Clear cache?</string>
+    <string name="this_will_delete_all_cached_games_achiev">This will delete all cached games, achievements, sessions, and activity. Games will re-register on next launch.</string>
+    <string name="clear">Clear</string>
+    <!-- StreakIndicator -->
+    <string name="day_streak">%1$s day streak 🔥</string>
+    <string name="longest_days">Longest: %1$s days</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- AchievementRow -->
+    <string name="xp_1">+%1$s XP</string>
+    <string name="keep_playing_to_reveal">Keep playing to reveal</string>
+    <string name="completed">Completed!</string>
+    <!-- DashboardScreen -->
+    <string name="player">Player</string>
+    <!-- GameDetailScreen -->
+    <string name="play_1">Play %1$s</string>
+    <string name="in_progress">In progress</string>
+    <!-- GamesListScreen -->
+    <string name="no_matching_games">No matching games</string>
+    <string name="no_games_registered_yet_nplay_a_game_to">No games registered yet.\nPlay a game to see it here.</string>
+    <!-- ProfileScreen -->
+    <string name="you"> (you)</string>
+    <!-- XpProgressBar -->
+    <string name="level_3">Level %1$s • %2$s</string>
+    <string name="xp_to_l">%1$s XP to L%2$s</string>
+    <string name="xp_total">%1$s XP total</string>
+    <string name="next_xp">Next: %1$s XP</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_edit">Edit</string>
+    <string name="cd_sort">Sort</string>
 </resources>

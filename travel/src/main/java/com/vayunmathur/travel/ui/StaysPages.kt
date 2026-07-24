@@ -50,6 +50,7 @@ import com.vayunmathur.travel.network.StaySearchResultDto
 import com.vayunmathur.travel.network.StayGuestInputDto
 import com.vayunmathur.travel.util.StayBookingState
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 /**
  * Hotel search form (used from Home when the "Stays" product is selected):
@@ -79,15 +80,15 @@ fun StaySearchForm(
                 longitude = lng
             },
         )
-        DateField("Check-in", checkIn, onDate = { checkIn = it })
-        DateField("Check-out", checkOut, onDate = { checkOut = it })
-        CountStepper("Rooms", rooms, onCount = { rooms = it }, min = 1, max = 5)
-        CountStepper("Guests", adults, onCount = { adults = it }, min = 1, max = 9)
+        DateField(stringResource(R.string.check_in), checkIn, onDate = { checkIn = it })
+        DateField(stringResource(R.string.check_out), checkOut, onDate = { checkOut = it })
+        CountStepper(stringResource(R.string.rooms), rooms, onCount = { rooms = it }, min = 1, max = 5)
+        CountStepper(stringResource(R.string.guests), adults, onCount = { adults = it }, min = 1, max = 9)
         Button(
             onClick = { onSearch(place, checkIn, checkOut, rooms, adults, latitude, longitude) },
             enabled = place.isNotBlank() && checkIn.isNotBlank() && checkOut.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Search hotels") }
+        ) { Text(stringResource(R.string.search_hotels)) }
     }
 }
 
@@ -166,10 +167,10 @@ fun StayResultsPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Hotels in ${route.place}") },
+                title = { Text(stringResource(R.string.hotels_in, route.place)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -214,7 +215,7 @@ private fun StayResultCard(result: StaySearchResultDto, onClick: () -> Unit) {
             }
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(result.name.ifBlank { "Hotel" }, style = MaterialTheme.typography.titleMedium)
+                    Text(result.name.ifBlank { stringResource(R.string.hotel) }, style = MaterialTheme.typography.titleMedium)
                     Text(starLabel(result.rating, result.reviewScore), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (result.address.isNotBlank()) {
                         Text(result.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -228,7 +229,7 @@ private fun StayResultCard(result: StaySearchResultDto, onClick: () -> Unit) {
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("from", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.from), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         formatMoney(result.cheapestAmount, result.cheapestCurrency),
                         style = MaterialTheme.typography.titleMedium,
@@ -254,10 +255,10 @@ fun StayDetailPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(route.name.ifBlank { "Hotel" }) },
+                title = { Text(route.name.ifBlank { stringResource(R.string.hotel) }) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -280,7 +281,7 @@ fun StayDetailPage(
                 )
             }
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(rates.name.ifBlank { "Hotel" }, style = MaterialTheme.typography.headlineSmall)
+                Text(rates.name.ifBlank { stringResource(R.string.hotel) }, style = MaterialTheme.typography.headlineSmall)
                 Text(starLabel(rates.rating, rates.reviewScore), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (rates.address.isNotBlank()) {
                     Text(rates.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -294,10 +295,10 @@ fun StayDetailPage(
                 }
             }
             HorizontalDivider()
-            SectionHeader("Rooms")
+            SectionHeader(stringResource(R.string.rooms))
             rates.rooms.forEach { room ->
                 Text(
-                    room.name.ifBlank { "Room" },
+                    room.name.ifBlank { stringResource(R.string.room) },
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
@@ -320,7 +321,7 @@ private fun RateRow(rate: StayRateDto, onSelect: () -> Unit) {
     ) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(rate.boardType.ifBlank { "Room only" }.replaceFirstChar(Char::uppercase), style = MaterialTheme.typography.bodyLarge)
+                Text(rate.boardType.ifBlank { stringResource(R.string.room_only) }.replaceFirstChar(Char::uppercase), style = MaterialTheme.typography.bodyLarge)
                 Text(rate.cancellation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
@@ -360,10 +361,10 @@ fun StayGuestsPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Guest details") },
+                title = { Text(stringResource(R.string.guest_details)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -380,7 +381,7 @@ fun StayGuestsPage(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Total", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.total), style = MaterialTheme.typography.titleMedium)
                     Text(
                         formatMoney(amount, currency),
                         style = MaterialTheme.typography.titleLarge,
@@ -389,27 +390,27 @@ fun StayGuestsPage(
                     )
                 }
             }
-            OutlinedTextField(givenName, { givenName = it }, label = { Text("Given name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(familyName, { familyName = it }, label = { Text("Family name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            DateField("Date of birth", bornOn, onDate = { bornOn = it }, dateFormat = "MMM d, yyyy")
+            OutlinedTextField(givenName, { givenName = it }, label = { Text(stringResource(R.string.given_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(familyName, { familyName = it }, label = { Text(stringResource(R.string.family_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            DateField(stringResource(R.string.date_of_birth), bornOn, onDate = { bornOn = it }, dateFormat = "MMM d, yyyy")
             OutlinedTextField(
-                email, { email = it }, label = { Text("Email") }, singleLine = true,
+                email, { email = it }, label = { Text(stringResource(R.string.email)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                phone, { phone = it }, label = { Text("Phone (e.g. +14155550123)") }, singleLine = true,
+                phone, { phone = it }, label = { Text(stringResource(R.string.phone_e_g_14155550123)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("Hotel loyalty (optional)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.hotel_loyalty_optional), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    loyaltyProgramme, { loyaltyProgramme = it }, label = { Text("Programme") }, singleLine = true,
+                    loyaltyProgramme, { loyaltyProgramme = it }, label = { Text(stringResource(R.string.programme)) }, singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
                 OutlinedTextField(
-                    loyaltyNumber, { loyaltyNumber = it }, label = { Text("Number") }, singleLine = true,
+                    loyaltyNumber, { loyaltyNumber = it }, label = { Text(stringResource(R.string.number)) }, singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -417,7 +418,7 @@ fun StayGuestsPage(
                 Text(it.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             Text(
-                "Sandbox booking — paid with a Duffel test balance. No card is charged.",
+                stringResource(R.string.sandbox_booking_paid_with_a_duffel_test),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -442,9 +443,9 @@ fun StayGuestsPage(
             ) {
                 if (loading) {
                     CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                    Text("Booking…")
+                    Text(stringResource(R.string.booking))
                 } else {
-                    Text("Book with test balance")
+                    Text(stringResource(R.string.book_with_test_balance))
                 }
             }
         }
@@ -461,7 +462,7 @@ fun StayConfirmationPage(
     val trips by viewModel.bookedTrips.collectAsStateWithLifecycle()
     val trip = trips.find { it.orderId == route.bookingId }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Booking confirmed") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.booking_confirmed)) }) }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -473,7 +474,7 @@ fun StayConfirmationPage(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp).padding(top = 8.dp),
             )
-            Text("You're booked!", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.you_re_booked), style = MaterialTheme.typography.headlineSmall)
             if (trip != null) {
                 ElevatedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -485,7 +486,7 @@ fun StayConfirmationPage(
                     }
                 }
             }
-            Button(onClick = { backStack.reset(Route.Home) }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+            Button(onClick = { backStack.reset(Route.Home) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.done)) }
         }
     }
 }

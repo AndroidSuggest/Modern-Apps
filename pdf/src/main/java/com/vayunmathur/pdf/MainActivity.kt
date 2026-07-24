@@ -1,9 +1,7 @@
 package com.vayunmathur.pdf
 
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.ext.SdkExtensions
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -29,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.pdf.R
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.pdf.ui.CapturePdfScreen
@@ -44,19 +43,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val intentData: Uri? = intent.data
-
-        if (!isAdvancedPdfSupported()) {
-            setContent {
-                DynamicTheme {
-                    Scaffold { paddingValues ->
-                        Box(Modifier.padding(paddingValues).fillMaxSize()) {
-                            Text(stringResource(R.string.unsupported_version), Modifier.align(Alignment.Center))
-                        }
-                    }
-                }
-            }
-            return
-        }
 
         setContent {
             val startedWithIntent = remember { intentData != null }
@@ -115,13 +101,8 @@ fun InitialScreen(onOpenPdf: () -> Unit, onCapturePdf: () -> Unit, onCutGlue: ()
                 Text(stringResource(R.string.capture_pdf))
             }
             Button(onClick = onCutGlue, Modifier.padding(16.dp)) {
-                Text("PDF cut and glue")
+                Text(stringResource(R.string.pdf_cut_and_glue))
             }
         }
     }
-}
-
-fun isAdvancedPdfSupported(): Boolean {
-    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM ||
-        SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R) >= 13
 }

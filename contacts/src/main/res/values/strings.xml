@@ -106,4 +106,10 @@
     <string name="contacts_count">%1$d contacts</string>
     <string name="add_number_to_contact">Add number to contact</string>
     <string name="create_new_contact">Create new contact</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- CropPhotoScreen -->
+    <string name="crop_photo">Crop Photo</string>
+    <!-- SettingsPage -->
+    <string name="import_contacts_from_vcf_files">Import contacts from .vcf files</string>
 </resources>

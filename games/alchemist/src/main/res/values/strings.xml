@@ -11,4 +11,15 @@
     <string name="collection">Collection</string>
     <string name="discovered_counter">%1$d / %2$d discovered</string>
     <string name="hide_maxed_elements">Hide maxed-out elements</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- ItemDetails -->
+    <string name="id">ID: #%1$s</string>
+    <!-- Notification -->
+    <string name="item_discovered">Item discovered!</string>
+    <string name="items_discovered">%1$s items discovered!</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_final_item">Final Item</string>
+    <string name="cd_delete">Delete</string>
 </resources>

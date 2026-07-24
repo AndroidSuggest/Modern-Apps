@@ -23,6 +23,7 @@ import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.util.WindUnit
 import com.vayunmathur.weather.util.compassDirection
 import com.vayunmathur.weather.util.formatWind
+import androidx.compose.ui.res.stringResource
 
 /**
  * Port of WeatherMaster's `WindBlock`. Circular surface with a big arrow
@@ -66,7 +67,7 @@ fun WindBlock(current: Current, unit: WindUnit) {
             )
         }
         Text(
-            text = "From ${compassDirection(current.windDirection)} · Gusts ${formatWind(current.windGusts, unit)}",
+            text = stringResource(R.string.from_gusts, compassDirection(current.windDirection), formatWind(current.windGusts, unit)),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier
                 .align(Alignment.BottomCenter)

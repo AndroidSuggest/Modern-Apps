@@ -13,6 +13,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.toLocalDateTime
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
@@ -21,7 +23,7 @@ import kotlin.time.ExperimentalTime
 val LocalDate.hasYear: Boolean get() = year >= 1901
 
 fun LocalDate.formatDisplay(): String = format(LocalDate.Format {
-    monthName(MonthNames.ENGLISH_FULL)
+    monthName(MonthNames(localizedMonthNames(TextStyle.FULL)))
     chars(" ")
     day()
     if (hasYear) {

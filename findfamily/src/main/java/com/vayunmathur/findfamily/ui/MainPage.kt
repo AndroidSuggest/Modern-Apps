@@ -121,6 +121,8 @@ import kotlinx.datetime.atTime
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -743,7 +745,7 @@ fun timestring(timestamp: Instant, future: Boolean, context: Context): String {
 object DateFormats {
     // example: Jun 4
     val MONTH_DAY = LocalDate.Format {
-        monthName(MonthNames.ENGLISH_ABBREVIATED)
+        monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
         chars(" ")
         day()
     }

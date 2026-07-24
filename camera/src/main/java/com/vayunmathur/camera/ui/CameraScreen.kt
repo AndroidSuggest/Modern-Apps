@@ -1076,7 +1076,7 @@ private fun NightModeButton(
     ) {
         IconBedtime(Modifier.size(20.dp).rotate(iconRotation), if (active) Color.White else Color(0xFFBBBBBB))
         Text(
-            "Night",
+            text = stringResource(R.string.night),
             color = if (active) Color.White else Color(0xFFBBBBBB),
             fontSize = 13.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
@@ -1635,7 +1635,7 @@ private fun IsoBar(
             )
         }
         Text(
-            text = if (selectedIndex == 0) "Auto" else "${isoStops.getOrNull(selectedIndex - 1) ?: ""}",
+            text = if (selectedIndex == 0) stringResource(R.string.auto) else "${isoStops.getOrNull(selectedIndex - 1) ?: ""}",
             color = Color.White,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
@@ -1660,7 +1660,7 @@ private fun PanoramaOverlay(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
                 Spacer(Modifier.height(8.dp))
-                Text("Processing panorama\u2026", color = Color.White, fontSize = 16.sp)
+                Text(text = stringResource(R.string.processing_panorama_u2026), color = Color.White, fontSize = 16.sp)
             }
         }
         return

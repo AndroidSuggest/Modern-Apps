@@ -1,5 +1,7 @@
 package com.vayunmathur.astronomy.data.model
 
+import androidx.annotation.StringRes
+import com.vayunmathur.astronomy.R
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -83,14 +85,14 @@ data class DeepSkyCatalog(val objects: List<DeepSkyObject>)
 @Serializable
 data class OrbitalElementsCatalog(val planets: List<OrbitalElements>)
 
-enum class PlanetId(val displayName: String) {
-    SUN("Sun"),
-    MOON("Moon"),
-    MERCURY("Mercury"),
-    VENUS("Venus"),
-    MARS("Mars"),
-    JUPITER("Jupiter"),
-    SATURN("Saturn"),
-    URANUS("Uranus"),
-    NEPTUNE("Neptune")
+enum class PlanetId(@StringRes val displayNameRes: Int) {
+    SUN(R.string.planet_sun),
+    MOON(R.string.planet_moon),
+    MERCURY(R.string.planet_mercury),
+    VENUS(R.string.planet_venus),
+    MARS(R.string.planet_mars),
+    JUPITER(R.string.planet_jupiter),
+    SATURN(R.string.planet_saturn),
+    URANUS(R.string.planet_uranus),
+    NEPTUNE(R.string.planet_neptune)
 }

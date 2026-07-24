@@ -12,8 +12,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.glance.appwidget.updateAll
-import com.sun.mail.imap.IMAPFolder
-import com.sun.mail.imap.IMAPStore
+import org.eclipse.angus.mail.imap.IMAPFolder
+import org.eclipse.angus.mail.imap.IMAPStore
 import com.vayunmathur.email.EmailManager
 import com.vayunmathur.email.R
 import com.vayunmathur.email.resolveAuth
@@ -21,13 +21,13 @@ import com.vayunmathur.email.imapServer
 import com.vayunmathur.email.loginUser
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.mail.Flags
-import javax.mail.Folder
-import javax.mail.UIDFolder
-import javax.mail.event.MessageChangedEvent
-import javax.mail.event.MessageChangedListener
-import javax.mail.event.MessageCountAdapter
-import javax.mail.event.MessageCountEvent
+import jakarta.mail.Flags
+import jakarta.mail.Folder
+import jakarta.mail.UIDFolder
+import jakarta.mail.event.MessageChangedEvent
+import jakarta.mail.event.MessageChangedListener
+import jakarta.mail.event.MessageCountAdapter
+import jakarta.mail.event.MessageCountEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -100,7 +100,7 @@ class ImapIdleService : Service() {
                 runIdleSession(account)
                 backoffMs = 2_000L
                 delay(1_000L)
-            } catch (e: javax.mail.AuthenticationFailedException) {
+            } catch (e: jakarta.mail.AuthenticationFailedException) {
                 Log.w(TAG, "IDLE auth failed for ${account.email}; stopping retries")
                 return
             } catch (e: Exception) {

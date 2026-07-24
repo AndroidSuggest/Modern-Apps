@@ -4,9 +4,11 @@ import android.content.ContentValues
 import android.net.Uri
 import android.provider.CalendarContract
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.glance.CalendarGlanceWidget
 import com.vayunmathur.calendar.ui.parseICSFile
 import kotlinx.coroutines.Dispatchers
@@ -42,14 +44,14 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     private val _lastViewedDate = MutableStateFlow<LocalDate?>(null)
     val lastViewedDate: StateFlow<LocalDate?> = _lastViewedDate.asStateFlow()
 
-    enum class CalendarLayout(val shortName: String, val prettyName: String) {
-        Agenda("A", "Agenda"),
-        Day("D", "Day"),
-        WorkWeek("W5", "Work Week"),
-        FullWeek("W7", "Full Week"),
-        Month("M", "Month"),
-        WorkWeekSummary("W5S", "Work Week Summary"),
-        FullWeekSummary("W7S", "Full Week Summary")
+    enum class CalendarLayout(@StringRes val shortNameRes: Int, @StringRes val prettyNameRes: Int) {
+        Agenda(R.string.layout_short_agenda, R.string.layout_agenda),
+        Day(R.string.layout_short_day, R.string.layout_day),
+        WorkWeek(R.string.layout_short_work_week, R.string.layout_work_week),
+        FullWeek(R.string.layout_short_full_week, R.string.layout_full_week),
+        Month(R.string.layout_short_month, R.string.layout_month),
+        WorkWeekSummary(R.string.layout_short_work_week_summary, R.string.layout_work_week_summary),
+        FullWeekSummary(R.string.layout_short_full_week_summary, R.string.layout_full_week_summary)
     }
 
     private val _currentLayout = MutableStateFlow(
@@ -66,10 +68,10 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    enum class ThemeMode(val prettyName: String) {
-        System("System default"),
-        Light("Light"),
-        Dark("Dark"),
+    enum class ThemeMode(@StringRes val prettyNameRes: Int) {
+        System(R.string.theme_system_default),
+        Light(R.string.theme_light),
+        Dark(R.string.theme_dark),
     }
 
     private val _themeMode = MutableStateFlow(

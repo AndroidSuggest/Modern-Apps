@@ -19,11 +19,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // JitPack kept only for Stockfish-Library (games:chess) — nanojson vendored to :third_party:nanojson
         maven("https://jitpack.io")
     }
 }
 
 rootProject.name = "apps"
+include(":third_party:nanojson")
 include(":library")
 include(":library:network")
 include(":library:biometric")

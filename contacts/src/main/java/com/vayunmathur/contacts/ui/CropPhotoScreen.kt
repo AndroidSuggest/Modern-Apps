@@ -43,6 +43,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.contacts.R
 
 private enum class DragHandle {
     TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Move, None
@@ -83,9 +85,9 @@ fun CropPhotoScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Crop Photo") },
+                title = { Text(stringResource(R.string.crop_photo)) },
                 navigationIcon = {
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
                 },
                 actions = {
                     TextButton(onClick = {
@@ -105,7 +107,7 @@ fun CropPhotoScreen(
                         val scaled = Bitmap.createScaledBitmap(cropped, 1024, 1024, true)
                         if (cropped !== scaled) cropped.recycle()
                         onCropComplete(scaled)
-                    }) { Text("Done") }
+                    }) { Text(stringResource(R.string.done)) }
                 }
             )
         }

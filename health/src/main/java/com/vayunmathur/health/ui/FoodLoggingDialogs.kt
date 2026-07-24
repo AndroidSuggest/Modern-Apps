@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.health.R
@@ -37,11 +38,11 @@ import com.vayunmathur.health.data.Recipe
 import com.vayunmathur.health.util.HealthViewModel
 import java.time.Instant
 
-enum class HydrationUnit(val displayName: String, val toLiters: Double) {
-    Liters("Liters", 1.0),
-    Milliliters("Milliliters", 0.001),
-    Ounces("Ounces", 0.0295735),
-    Cups("Cups", 0.236588)
+enum class HydrationUnit(@StringRes val displayName: Int, val toLiters: Double) {
+    Liters(R.string.hydration_liters, 1.0),
+    Milliliters(R.string.hydration_milliliters, 0.001),
+    Ounces(R.string.hydration_ounces, 0.0295735),
+    Cups(R.string.hydration_cups, 0.236588)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,7 +79,7 @@ fun LogHydrationDialog(viewModel: HealthViewModel, initialTime: Instant? = null,
                                             verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                                selectedUnit.displayName,
+                                                stringResource(selectedUnit.displayName),
                                                 style = MaterialTheme.typography.bodyMedium
                                         )
                                         ExposedDropdownMenuDefaults.TrailingIcon(
@@ -91,7 +92,7 @@ fun LogHydrationDialog(viewModel: HealthViewModel, initialTime: Instant? = null,
                                     ) {
                                         HydrationUnit.entries.forEach { unit ->
                                             DropdownMenuItem(
-                                                    text = { Text(unit.displayName) },
+                                                    text = { Text(stringResource(unit.displayName)) },
                                                     onClick = {
                                                         selectedUnit = unit
                                                         unitExpanded = false
@@ -164,7 +165,7 @@ fun LogMealDialog(viewModel: HealthViewModel, initialTime: Instant? = null, onDi
                             onExpandedChange = { expanded = !expanded }
                     ) {
                         OutlinedTextField(
-                                value = selectedLoggable?.name ?: "Select Recipe",
+                                value = selectedLoggable?.name ?: stringResource(R.string.select_recipe),
                                 onValueChange = {},
                                 readOnly = true,
                                 trailingIcon = {
@@ -184,7 +185,7 @@ fun LogMealDialog(viewModel: HealthViewModel, initialTime: Instant? = null, onDi
                                                 if (loggable is Loggable.IngredientWrapper) {
                                                     Spacer(Modifier.width(4.dp))
                                                     Text(
-                                                            "(Ingredient)",
+                                                            stringResource(R.string.ingredient),
                                                             style =
                                                                     MaterialTheme.typography
                                                                             .bodySmall,
@@ -205,9 +206,9 @@ fun LogMealDialog(viewModel: HealthViewModel, initialTime: Instant? = null, onDi
                     }
 
                     val labelText = if (selectedLoggable is Loggable.IngredientWrapper) {
-                        "Quantity (x 100g)"
+                        stringResource(R.string.quantity_x_100g)
                     } else {
-                        "Servings"
+                        stringResource(R.string.servings)
                     }
                     OutlinedTextField(
                             value = quantityStr,

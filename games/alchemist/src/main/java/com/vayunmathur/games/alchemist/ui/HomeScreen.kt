@@ -241,7 +241,7 @@ fun HomeScreen(
                             ) {
                                 Icon(
                                     painterResource(id = android.R.drawable.ic_delete),
-                                    contentDescription = "Delete",
+                                    contentDescription = stringResource(R.string.cd_delete),
                                     tint = MaterialTheme.colorScheme.onErrorContainer,
                                     modifier = Modifier.size(48.dp)
                                 )
@@ -301,7 +301,7 @@ fun HomeScreen(
                                             if (item.final) {
                                                 Icon(
                                                     painterResource(id = android.R.drawable.star_on),
-                                                    contentDescription = "Final Item",
+                                                    contentDescription = stringResource(R.string.cd_final_item),
                                                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                                                     modifier = Modifier
                                                         .size(24.dp)

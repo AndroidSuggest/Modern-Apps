@@ -48,6 +48,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.travel.R
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
@@ -172,9 +174,9 @@ fun DateField(
                         onDate(date.toString())
                     }
                     show = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.ok)) }
             },
-            dismissButton = { TextButton(onClick = { show = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { show = false }) { Text(stringResource(R.string.cancel)) } },
         ) { DatePicker(state) }
     }
 }
@@ -199,11 +201,11 @@ fun CountStepper(
         Text(label, style = MaterialTheme.typography.bodyLarge)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onCount((count - 1).coerceAtLeast(min)) }, enabled = count > min) {
-                Icon(Icons.Filled.Remove, contentDescription = "Fewer")
+                Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.cd_fewer))
             }
             Text("$count", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
             IconButton(onClick = { onCount((count + 1).coerceAtMost(max)) }, enabled = count < max) {
-                Icon(Icons.Filled.Add, contentDescription = "More")
+                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.cd_more))
             }
         }
     }

@@ -1,7 +1,6 @@
 [versions]
 # rhino 1.9.0 requires Android minSDK >= 26; rhino-engine only published for 1.8.x
 rhino = "1.8.1"
-nanojson = "e9d656ddb49a412a5a0a5d5ef20ca7ef09549996"
 jsr305 = "3.0.2"
 protobufJavalite = "4.35.0"
 protobufPlugin = "0.10.0"
@@ -37,7 +36,6 @@ datastorePreferences = "1.3.0-alpha09"
 composeBom = "2026.06.01"
 activityCompose = "1.13.0"
 material3 = "1.5.0-alpha23"
-reorderable = "3.1.0"
 material = "1.14.0"
 wearComposeMaterial = "1.7.0-alpha05"
 
@@ -48,7 +46,6 @@ adaptiveNavigation3 = "1.3.0-rc01"
 # Media & Images
 media3Exoplayer = "1.11.0-beta01"
 coilCompose = "2.7.0"
-jaudiotagger = "3.0.1"
 exifinterface = "1.4.2"
 camerax = "1.7.0-alpha02"
 jsoup = "1.22.2"
@@ -83,6 +80,10 @@ keepassJava2 = "2.2.4"
 zxing = "3.5.4"
 bouncycastle = "1.85"
 onnxruntimeAndroid = "1.27.0"
+tasksVision = "0.10.35"
+jakartaMail = "2.0.3"
+angusActivation = "2.0.2"
+jakartaActivationApi = "2.1.3"
 
 [libraries]
 # AndroidX Core & Lifecycle
@@ -102,11 +103,11 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 androidx-camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "camerax" }
+androidx-camera-extensions = { group = "androidx.camera", name = "camera-extensions", version.ref = "camerax" }
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 rhino-engine = { module = "org.mozilla:rhino-engine", version.ref = "rhino" }
-newpipe-nanojson = { module = "com.github.TeamNewPipe:nanojson", version.ref = "nanojson" }
 google-jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "jsr305" }
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufJavalite" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
@@ -152,13 +153,13 @@ flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlinGradlePlugin" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
-reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 
 # Maps
 maplibre-compose = { module = "org.maplibre.compose:maplibre-compose", version.ref = "maplibre" }
 
 # On-device ML segmentation (MediaPipe Tasks — standalone, no Play Services)
-mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version = "0.10.35" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "tasksVision" }
 
 # On-device OCR via ONNX Runtime (MIT, FOSS, no Play Services / no ML Kit). Runs
 # the PaddleOCR PP-OCR mobile detection + recognition models shipped as assets.
@@ -200,11 +201,12 @@ androidx-wear-protolayout-expression = { module = "androidx.wear.protolayout:pro
 androidx-concurrent-futures = { module = "androidx.concurrent:concurrent-futures", version = "1.3.0" }
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptographyCore" }
 cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptographyCore" }
-jaudiotagger = { module = "net.jthink:jaudiotagger", version.ref = "jaudiotagger" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-jakarta-mail = { module = "com.sun.mail:android-mail", version = "1.6.8" }
-jakarta-activation = { module = "com.sun.mail:android-activation", version = "1.6.8" }
+jakarta-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "jakartaMail" }
+jakarta-mail-api = { module = "jakarta.mail:jakarta.mail-api", version = "2.1.3" }
+jakarta-activation = { module = "org.eclipse.angus:angus-activation", version.ref = "angusActivation" }
+jakarta-activation-api = { module = "jakarta.activation:jakarta.activation-api", version.ref = "jakartaActivationApi" }
 androidx-autofill = { group = "androidx.autofill", name = "autofill", version.ref = "autofill" }
 androidx-credentials-lib = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }

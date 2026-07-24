@@ -36,11 +36,13 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
+import com.vayunmathur.travel.R
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.network.SliceDto
 import com.vayunmathur.travel.util.FlightQuery
 import com.vayunmathur.travel.util.OfferSort
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,7 +72,7 @@ fun FlightResultsPage(
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -109,7 +111,7 @@ fun FlightResultsPage(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         Text(
-                            "Still searching for more fares…",
+                            stringResource(R.string.still_searching_for_more_fares),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -145,7 +147,7 @@ private fun SortRow(current: OfferSort, onSort: (OfferSort) -> Unit) {
             FilterChip(
                 selected = current == sort,
                 onClick = { onSort(sort) },
-                label = { Text(sort.label) },
+                label = { Text(stringResource(sort.label)) },
             )
         }
     }
@@ -166,9 +168,9 @@ private fun FilterRow(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        FilterChip(selected = maxStops == null, onClick = { onMaxStops(null) }, label = { Text("Any stops") })
-        FilterChip(selected = maxStops == 0, onClick = { onMaxStops(0) }, label = { Text("Nonstop") })
-        FilterChip(selected = maxStops == 1, onClick = { onMaxStops(1) }, label = { Text("≤ 1 stop") })
+        FilterChip(selected = maxStops == null, onClick = { onMaxStops(null) }, label = { Text(stringResource(R.string.any_stops)) })
+        FilterChip(selected = maxStops == 0, onClick = { onMaxStops(0) }, label = { Text(stringResource(R.string.nonstop)) })
+        FilterChip(selected = maxStops == 1, onClick = { onMaxStops(1) }, label = { Text(stringResource(R.string.n_1_stop)) })
         fareBrands.forEach { brand ->
             FilterChip(
                 selected = brand == selectedFareBrand,
@@ -208,10 +210,10 @@ private fun OfferExpiryBanner(expiresAt: String, onExpired: () -> Unit) {
         ) {
             if (expired) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                Text("Refreshing prices…", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.refreshing_prices), style = MaterialTheme.typography.bodySmall)
             } else {
                 Text(
-                    "Prices held · ${formatCountdown(remaining)}",
+                    stringResource(R.string.prices_held, formatCountdown(remaining)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
@@ -236,7 +238,7 @@ private fun OfferCard(offer: OfferDto, onClick: () -> Unit) {
             AirlineLogo(offer.ownerLogoUrl, offer.ownerIata)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(offer.owner.ifBlank { "Flight" }, style = MaterialTheme.typography.titleMedium)
+                    Text(offer.owner.ifBlank { stringResource(R.string.flight) }, style = MaterialTheme.typography.titleMedium)
                     if (offer.fareBrand.isNotBlank()) {
                         FareBrandBadge(offer.fareBrand)
                     }

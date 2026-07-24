@@ -5,10 +5,12 @@ import kotlinx.datetime.LocalTime
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlin.time.Duration.Companion.minutes
 
 fun LocalDate.displayString() = this.format(LocalDate.Format {
-    monthName(MonthNames.ENGLISH_ABBREVIATED)
+    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
     chars(" ")
     day(Padding.NONE)
     chars(", ")

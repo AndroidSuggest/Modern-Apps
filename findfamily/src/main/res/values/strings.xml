@@ -140,4 +140,20 @@
     <string name="uwb_status_unsupported">Find Nearby (UWB) isn\'t supported on this device.</string>
     <string name="uwb_status_failed">Find Nearby (UWB) failed.</string>
     <string name="uwb_direction_unavailable_hint">Move your phone around to find a direction signal</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- SecurityCodeDialog -->
+    <string name="security_code">Security code</string>
+    <string name="compare_this_code_with_on_their_device_i">Compare this code with %1$s on their device. If the numbers match on both phones, your connection is verified end-to-end — no one is intercepting it.</string>
+    <string name="computing">Computing…</string>
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab">Couldn\'t compute yet — %1$s\'s key isn\'t available. Make sure you\'re both connected, then try again.</string>
+    <string name="done">Done</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- UwbRangingScreen -->
+    <string name="unknown">Unknown</string>
+    <string name="dist">dist: </string>
+    <string name="az">   az: </string>
+    <string name="el">   el: </string>
+    <string name="point_the_back_of_your_phone_toward_your">Point the back of your phone toward your contact</string>
 </resources>

@@ -43,6 +43,8 @@ import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
 import kotlin.math.hypot
 import kotlin.math.min
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.logicgate.R
 
 private sealed class TimelineItem {
     data class ChapterHeader(val chapterId: ChapterId) : TimelineItem()
@@ -77,10 +79,10 @@ fun ProgressionScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { LibText(text = "Logic Gate", fontWeight = FontWeight.Bold) },
+                title = { LibText(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { backStack.add(com.vayunmathur.games.logicgate.Route.GameCenter) }) {
-                        Icon(painterResource(id = android.R.drawable.btn_star_big_on), contentDescription = "Achievements")
+                        Icon(painterResource(id = android.R.drawable.btn_star_big_on), contentDescription = stringResource(R.string.cd_achievements))
                     }
                 }
             )
@@ -95,9 +97,9 @@ fun ProgressionScreen(
             val scroll = rememberScrollState()
             Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(12.dp))
-                LibText(text = "Start with NAND. End with a computer.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 16.dp))
+                LibText(stringResource(R.string.start_with_nand_end_with_a_computer), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 16.dp))
                 Spacer(modifier = Modifier.height(4.dp))
-                LibText(text = "Tap to play • Lines show dependencies • 36 levels", style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8), modifier = Modifier.padding(horizontal = 16.dp))
+                LibText(stringResource(R.string.tap_to_play_lines_show_dependencies_36_l), style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8), modifier = Modifier.padding(horizontal = 16.dp))
                 Spacer(modifier = Modifier.height(16.dp))
                 for (idx in timelineItems.indices) {
                     val item = timelineItems[idx]
@@ -127,9 +129,9 @@ fun ProgressionScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        LibText(text = "${completed.size} / ${Levels.all.size} completed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7FD8BE))
+                        LibText(stringResource(R.string.completed, completed.size, Levels.all.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7FD8BE))
                         Spacer(modifier = Modifier.height(8.dp))
-                        LibText(text = "FOUNDATION 6 • ROUTING+BUS 12 • ARITH 6 • MEMORY 8 • CPU 4 = 36. Bus: 1b green thin 0xFF7ED8B6 2.7px, 4b orange 0xFFF59E0B 4.2px, 8b blue 0xFF60A5FA 6.0px. Ghost dashed yellow.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        LibText(stringResource(R.string.foundation_6_routing_bus_12_arith_6_memo), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
@@ -180,9 +182,9 @@ private fun LevelNode(levelId: String, isCompleted: Boolean, isAvailable: Boolea
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     if (busW > 1) Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(busColor))
                     when {
-                        isLocked -> LibText(text = "LOCK", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6B7280))
-                        isCompleted -> LibText(text = "DONE", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF22C55E))
-                        else -> LibText(text = "PLAY", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7FD8BE))
+                        isLocked -> LibText(stringResource(R.string.lock), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6B7280))
+                        isCompleted -> LibText(stringResource(R.string.done), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF22C55E))
+                        else -> LibText(stringResource(R.string.play), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7FD8BE))
                     }
                 }
             }
@@ -241,7 +243,7 @@ fun TruthTableView(level: LevelDef, failingRows: List<Int>, modifier: Modifier =
     val target = try { ChipLibrary.get(level.targetChipId) } catch (_: Exception) { null }
     if (target == null) {
         Column(modifier = modifier.background(Color(0xFF0E141B), RoundedCornerShape(8.dp)).padding(8.dp)) {
-            LibText(text = "Unknown target chip ${level.targetChipId}", fontSize = 10.sp, color = Color(0xFFFF8A80))
+            LibText(stringResource(R.string.unknown_target_chip, level.targetChipId), fontSize = 10.sp, color = Color(0xFFFF8A80))
         }
         return
     }
@@ -266,8 +268,8 @@ fun TruthTableView(level: LevelDef, failingRows: List<Int>, modifier: Modifier =
     val scroll = rememberScrollState()
     val hScroll = rememberScrollState()
     Column(modifier = modifier.verticalScroll(scroll).background(Color(0xFF0E141B), RoundedCornerShape(8.dp)).padding(8.dp)) {
-        LibText(text = "${level.displayName} • ${totalInBits}b in [${level.inputWidths.joinToString(",")}] → ${totalOutBits}b out [${level.outputWidths.joinToString(",")}] • target ${target.displayName}", fontSize = 9.sp, color = Color(0xFF64748B))
-        if (totalInBits > 10) LibText(text = "Sampled $displayLimit / ${1 shl minOf(totalInBits, 20)}+ cases (bus needs JOIN_8/SPLIT_8)", fontSize = 8.sp, color = Color.Gray)
+        LibText(stringResource(R.string.b_in_b_out_target, level.displayName, totalInBits, level.inputWidths.joinToString(","), totalOutBits, level.outputWidths.joinToString(","), target.displayName), fontSize = 9.sp, color = Color(0xFF64748B))
+        if (totalInBits > 10) LibText(stringResource(R.string.sampled_cases_bus_needs_join_8_split_8, displayLimit, 1 shl minOf(totalInBits, 20)), fontSize = 8.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.horizontalScroll(hScroll), verticalAlignment = Alignment.CenterVertically) {
             level.inputs.forEachIndexed { idx, name ->
@@ -326,10 +328,10 @@ fun TruthTableView(level: LevelDef, failingRows: List<Int>, modifier: Modifier =
             }
         }
         if (failingRows.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(6.dp)); LibText(text = "${failingRows.size} failing • check wiring width match JOIN_8/SPLIT_8", fontSize = 10.sp, color = Color(0xFFFF8A80))
+            Spacer(modifier = Modifier.height(6.dp)); LibText(stringResource(R.string.failing_check_wiring_width_match_join_8, failingRows.size), fontSize = 10.sp, color = Color(0xFFFF8A80))
         }
         if (level.id == "SR_LATCH") {
-            Spacer(modifier = Modifier.height(6.dp)); LibText(text = "SR latch: 2 NOR cross-coupled feedback – cycle expected, structural pass enabled", fontSize = 8.sp, color = Color(0xFFF59E0B))
+            Spacer(modifier = Modifier.height(6.dp)); LibText(stringResource(R.string.sr_latch_2_nor_cross_coupled_feedback_cy), fontSize = 8.sp, color = Color(0xFFF59E0B))
         }
     }
 }
@@ -346,7 +348,7 @@ fun InventoryBar(
     var draggingChip by remember { mutableStateOf<String?>(null) }
     val rowScroll = rememberScrollState()
     Column(modifier = modifier.background(Color(0xFF131C26), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)).padding(8.dp)) {
-        LibText(text = "Inventory: 1b green thin • 4b orange • 8b blue • 0N JOIN_8/SPLIT_8 converters cut tedium. Drag chip onto board.", fontSize = 9.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(bottom = 8.dp))
+        LibText(stringResource(R.string.inventory_1b_green_thin_4b_orange_8b_blu), fontSize = 9.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(bottom = 8.dp))
         Row(
             modifier = if (draggingChip != null) Modifier else Modifier.horizontalScroll(rowScroll),
             horizontalArrangement = Arrangement.spacedBy(8.dp)

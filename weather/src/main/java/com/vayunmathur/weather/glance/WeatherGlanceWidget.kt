@@ -39,6 +39,7 @@ import android.widget.RemoteViews
 import androidx.glance.appwidget.AndroidRemoteViews
 import com.vayunmathur.weather.R
 import com.vayunmathur.library.room.buildDatabase
+import com.vayunmathur.library.util.localizedMonthNames
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import com.vayunmathur.weather.MainActivity
 import com.vayunmathur.weather.data.WeatherDatabase
@@ -216,7 +217,7 @@ private fun TimeBlock(context: Context) {
 @Composable
 private fun DateBlock(now: LocalDateTime) {
     val dateFormat = LocalDateTime.Format {
-        monthName(MonthNames.ENGLISH_ABBREVIATED); char(' '); day(Padding.NONE)
+        monthName(MonthNames(localizedMonthNames(java.time.format.TextStyle.SHORT))); char(' '); day(Padding.NONE)
     }
     Text(
         text = now.format(dateFormat),
@@ -242,10 +243,11 @@ private fun WeatherBlock(weather: WidgetWeather?) {
         return
     }
     val condition = weatherConditionForCode(weather.weatherCode)
+    val context = LocalContext.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(
             provider = ImageProvider(condition.iconRes(weather.isDay)),
-            contentDescription = condition.label,
+            contentDescription = context.getString(condition.label),
             modifier = GlanceModifier.size(44.dp),
         )
         Text(

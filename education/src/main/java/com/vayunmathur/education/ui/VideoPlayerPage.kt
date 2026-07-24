@@ -47,6 +47,8 @@ import com.vayunmathur.education.util.VideoExtractor
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 private sealed interface PlayerUiState {
     data object Loading : PlayerUiState
@@ -175,15 +177,15 @@ private fun VideoError(youtubeId: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Couldn't load this video.", color = MaterialTheme.colorScheme.onSurface)
+        Text(stringResource(R.string.couldn_t_load_this_video), color = MaterialTheme.colorScheme.onSurface)
         Text(
-            "Check your connection, or open it in YouTube.",
+            stringResource(R.string.check_your_connection_or_open_it_in_yout),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Button(onClick = {
             val uri = "https://www.youtube.com/watch?v=$youtubeId".toUri()
             context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-        }) { Text("Open in YouTube") }
+        }) { Text(stringResource(R.string.open_in_youtube)) }
     }
 }

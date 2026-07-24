@@ -27,6 +27,8 @@ import com.vayunmathur.photos.data.ImageAdjustments
 import com.vayunmathur.photos.data.MaskType
 import com.vayunmathur.photos.data.SelectiveMask
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.photos.R
 
 @Composable
 fun SelectiveEditPanel(
@@ -62,7 +64,7 @@ fun SelectiveEditPanel(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Brush Size", fontSize = 12.sp, modifier = Modifier.width(72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.brush_size), fontSize = 12.sp, modifier = Modifier.width(72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Slider(
                     value = mask.brushSize * 100f,
                     onValueChange = { onMaskChanged(mask.copy(brushSize = it / 100f)) },
@@ -84,7 +86,7 @@ fun SelectiveEditPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Show Mask", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.show_mask), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Switch(checked = showMask, onCheckedChange = onShowMaskChanged)
         }
 
@@ -110,8 +112,7 @@ fun SelectiveEditPanel(
                 shape = RoundedCornerShape(4.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
             ) {
-                Text(
-                    "Add Mask",
+                Text(stringResource(R.string.add_mask),
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     color = MaterialTheme.colorScheme.onPrimaryContainer,

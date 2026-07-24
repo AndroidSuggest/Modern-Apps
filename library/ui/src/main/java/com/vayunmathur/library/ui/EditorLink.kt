@@ -17,6 +17,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 /**
  * State of the "link" toolbar button for the current selection/cursor, shared by
@@ -51,13 +53,13 @@ fun LinkDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (context.editing) "Edit link" else "Insert link") },
+        title = { Text(if (context.editing) stringResource(R.string.link_dialog_title_edit) else stringResource(R.string.link_dialog_title_insert)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    label = { Text("Text") },
+                    label = { Text(stringResource(R.string.link_field_text)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -65,7 +67,7 @@ fun LinkDialog(
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("Link to (URL)") },
+                    label = { Text(stringResource(R.string.link_field_url)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -75,20 +77,20 @@ fun LinkDialog(
             TextButton(
                 enabled = url.isNotBlank(),
                 onClick = { onConfirm(text.ifBlank { url }.trim(), url.trim()) },
-            ) { Text(if (context.editing) "Save" else "Add") }
+            ) { Text(if (context.editing) stringResource(R.string.link_action_save) else stringResource(R.string.link_action_add)) }
         },
         dismissButton = {
             Row {
                 if (context.editing && onUnlink != null) {
-                    TextButton(onClick = onUnlink) { Text("Unlink") }
+                    TextButton(onClick = onUnlink) { Text(stringResource(R.string.link_action_unlink)) }
                 }
                 if (context.editing) {
                     TextButton(
                         enabled = url.isNotBlank(),
                         onClick = { runCatching { uriHandler.openUri(url.trim()) }; onDismiss() },
-                    ) { Text("Open") }
+                    ) { Text(stringResource(R.string.link_action_open)) }
                 }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.link_action_cancel)) }
             }
         },
     )

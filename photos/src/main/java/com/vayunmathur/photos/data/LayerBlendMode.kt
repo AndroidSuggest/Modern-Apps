@@ -1,5 +1,7 @@
 package com.vayunmathur.photos.data
 
+import androidx.annotation.StringRes
+import com.vayunmathur.photos.R
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -12,23 +14,23 @@ import kotlin.math.sqrt
  * compositor renders at 512px during editing and full-res only on export, so the
  * per-pixel cost is acceptable.
  */
-enum class LayerBlendMode(val label: String) {
-    Normal("Normal"),
-    Multiply("Multiply"),
-    Screen("Screen"),
-    Overlay("Overlay"),
-    Darken("Darken"),
-    Lighten("Lighten"),
-    ColorDodge("Color Dodge"),
-    ColorBurn("Color Burn"),
-    HardLight("Hard Light"),
-    SoftLight("Soft Light"),
-    Difference("Difference"),
-    Exclusion("Exclusion"),
-    Hue("Hue"),
-    Saturation("Saturation"),
-    Color("Color"),
-    Luminosity("Luminosity");
+enum class LayerBlendMode(@StringRes val labelRes: Int) {
+    Normal(R.string.blend_normal),
+    Multiply(R.string.blend_multiply),
+    Screen(R.string.blend_screen),
+    Overlay(R.string.blend_overlay),
+    Darken(R.string.blend_darken),
+    Lighten(R.string.blend_lighten),
+    ColorDodge(R.string.blend_color_dodge),
+    ColorBurn(R.string.blend_color_burn),
+    HardLight(R.string.blend_hard_light),
+    SoftLight(R.string.blend_soft_light),
+    Difference(R.string.blend_difference),
+    Exclusion(R.string.blend_exclusion),
+    Hue(R.string.blend_hue),
+    Saturation(R.string.blend_saturation),
+    Color(R.string.color),
+    Luminosity(R.string.blend_luminosity);
 
     private val separable: Boolean
         get() = this != Hue && this != Saturation && this != Color && this != Luminosity

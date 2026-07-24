@@ -89,7 +89,7 @@ fun RecipeManagementPage(backStack: NavBackStack<Route>, viewModel: HealthViewMo
                     }) {
                         IconAdd()
                         Spacer(Modifier.width(8.dp))
-                        Text(if (selectedTab == 0) "Create your first recipe" else "Add your first ingredient")
+                        Text(if (selectedTab == 0) stringResource(R.string.create_your_first_recipe) else stringResource(R.string.add_your_first_ingredient))
                     }
                 }
             } else {
@@ -132,7 +132,7 @@ fun IngredientsList(ingredients: List<Ingredient>, viewModel: HealthViewModel) {
             title = { Text(stringResource(R.string.rename_ingredient)) },
             text = {
                 Column {
-                    Text("Original: ${editingIngredient!!.originalName}", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.original_1, editingIngredient!!.originalName), style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = customName,
@@ -161,7 +161,7 @@ fun IngredientsList(ingredients: List<Ingredient>, viewModel: HealthViewModel) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(ingredient.displayName, style = MaterialTheme.typography.titleMedium)
                         if (ingredient.customName != null) {
-                            Text("Original: ${ingredient.originalName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                            Text(stringResource(R.string.original_1, ingredient.originalName), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -247,7 +247,7 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (recipeId == null) "Create Recipe" else "Edit Recipe") },
+                title = { Text(if (recipeId == null) stringResource(R.string.create_recipe) else stringResource(R.string.edit_recipe)) },
                 navigationIcon = {
                     IconNavigation(backStack)
                 }
@@ -455,12 +455,12 @@ fun IngredientSearchDialog(
                         // Show Local results first if included
                         if (includeLocal && localResults.isNotEmpty()) {
                             item {
-                                Text("Downloaded", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
+                                Text(stringResource(R.string.downloaded), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
                             }
                             items(localResults, key = { "local-${it.id}" }) { ingredient ->
                                 ListItem(
                                     content = { Text(ingredient.displayName) },
-                                    supportingContent = { Text("Saved Locally", style = MaterialTheme.typography.bodySmall) },
+                                    supportingContent = { Text(stringResource(R.string.saved_locally), style = MaterialTheme.typography.bodySmall) },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                     modifier = Modifier.clickable { onIngredientSelected(ingredient) }
                                 )
@@ -471,7 +471,7 @@ fun IngredientSearchDialog(
                         // Show Remote results
                         if (remoteResults.isNotEmpty()) {
                             item {
-                                Text("Online", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
+                                Text(stringResource(R.string.online), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
                             }
                             items(remoteResults, key = { "remote-${it.id}" }) { result ->
                                 // Skip if already in local results to avoid duplicates
@@ -498,7 +498,7 @@ fun IngredientSearchDialog(
                         if (!isSearching && !isFetchingData && remoteResults.isEmpty() && localResults.isEmpty() && query.isNotBlank()) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                    Text("No results found", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                                    Text(stringResource(R.string.no_results_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
                                 }
                             }
                         }

@@ -22,6 +22,8 @@ import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun AchievementRow(
@@ -66,13 +68,13 @@ fun AchievementRow(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
-                        text = "+${item.xpReward} XP",
+                        text = stringResource(R.string.xp_1, item.xpReward),
                         style = MaterialTheme.typography.labelSmall,
                         color = tierCol
                     )
                 }
                 Text(
-                    text = if (item.isSecret && isLocked) "Keep playing to reveal" else item.description,
+                    text = if (item.isSecret && isLocked) stringResource(R.string.keep_playing_to_reveal) else item.description,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2
                 )
@@ -91,7 +93,7 @@ fun AchievementRow(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     )
                     Text(
-                        text = if (item.isUnlocked) "Completed!" else "$displayProgress / ${item.targetProgress}",
+                        text = if (item.isUnlocked) stringResource(R.string.completed) else "$displayProgress / ${item.targetProgress}",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(Alignment.End)
                     )

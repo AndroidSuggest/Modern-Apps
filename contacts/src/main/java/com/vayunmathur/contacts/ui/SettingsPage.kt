@@ -167,7 +167,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                 HorizontalDivider()
                 SafeListItem(
                     content = { Text(stringResource(R.string.import_vcf_file)) },
-                    supportingContent = { Text("Import contacts from .vcf files") },
+                    supportingContent = { Text(stringResource(R.string.import_contacts_from_vcf_files)) },
                     modifier = Modifier.clickable {
                         importLauncher.launch(arrayOf(
                             "text/vcard",

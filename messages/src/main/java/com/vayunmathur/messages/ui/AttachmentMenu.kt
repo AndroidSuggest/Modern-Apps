@@ -36,6 +36,8 @@ import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconUpload
 import com.vayunmathur.messages.util.FindFamilyLocation
 import com.vayunmathur.messages.util.MediaCapability
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.messages.R
 
 /**
  * Bottom sheet listing the composer attachment actions supported by the
@@ -101,18 +103,18 @@ fun LocationDurationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Share location") },
+        title = { Text(stringResource(R.string.share_location)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Link name") },
+                    label = { Text(stringResource(R.string.link_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "Active for",
+                    stringResource(R.string.active_for),
                     modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -149,10 +151,10 @@ fun LocationDurationDialog(
                 onClick = {
                     onConfirm(name.trim().ifBlank { defaultName }, selected.millis)
                 },
-            ) { Text("Share") }
+            ) { Text(stringResource(R.string.share)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
 }

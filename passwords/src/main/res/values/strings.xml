@@ -25,4 +25,27 @@
     <string name="passkey_created">Created</string>
     <string name="passkey_last_used">Last Used</string>
     <string name="unlock_database">Unlock Passwords</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- CableActivity -->
+    <string name="cancel">Cancel</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- PasswordEditPage -->
+    <string name="add_password">Add Password</string>
+    <string name="edit_password">Edit Password</string>
+    <string name="hide">Hide</string>
+    <string name="show">Show</string>
+    <!-- PasswordPage -->
+    <string name="no_name">(no name)</string>
+    <string name="no_user">(no user)</string>
+
+    <!-- Import sources -->
+    <string name="import_source_bitwarden">Bitwarden</string>
+    <string name="import_source_chrome">Google Chrome</string>
+    <string name="import_source_firefox">Firefox</string>
+    <string name="import_source_lastpass">LastPass</string>
+    <string name="import_source_one_password">1Password</string>
+    <string name="import_source_dashlane">Dashlane</string>
+    <string name="import_source_apple">Apple Passwords</string>
 </resources>

@@ -348,19 +348,7 @@ object NavigationSessionManager {
                     position = dest,
                 )
                 val routeFeature = SpecificFeature.Route(listOf(fromFeature, toFeature))
-
-                // Prefer the offline router; fall back to the online service.
-                // OfflineRouter.getRoute returns a Route (or throws); it
-                // doesn't return EmptyRoute, so a non-null offline result is
-                // a usable route.
-                val offline = runCatching {
-                    OfflineRouter.getRoute(appContext, routeFeature, from, mode)
-                }.getOrNull()
-                if (offline != null) {
-                    offline
-                } else {
-                    RouteService.computeRoute(routeFeature, from, mode)
-                }
+                OfflineRouter.getRouteMulti(appContext, routeFeature, from, mode)
             }.getOrNull()
 
             if (newRoute == null) {

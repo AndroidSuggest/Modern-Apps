@@ -11,6 +11,7 @@ import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun SearchPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
@@ -18,10 +19,10 @@ fun SearchPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
     var results by remember { mutableStateOf(viewModel.search("")) }
 
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Search") }, navigationIcon = { IconNavigation(backStack) })
+        TopAppBar(title = { Text(stringResource(R.string.search_1)) }, navigationIcon = { IconNavigation(backStack) })
     }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().padding(12.dp)) {
-            OutlinedTextField(value = query, onValueChange = { query = it; results = viewModel.search(it) }, label = { Text("Search stars, planets, Messier") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = query, onValueChange = { query = it; results = viewModel.search(it) }, label = { Text(stringResource(R.string.search_stars_planets_messier)) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(results) { r ->

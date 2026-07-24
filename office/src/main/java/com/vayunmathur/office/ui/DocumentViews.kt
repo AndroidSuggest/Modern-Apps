@@ -119,6 +119,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.vayunmathur.office.odf.*
 import com.vayunmathur.library.ui.odf.*
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.office.R
 
 // --- Headings for outline ---
 
@@ -193,7 +195,7 @@ fun ColorPickerDialog(title: String, onColorSelected: (Long?) -> Unit, onDismiss
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -204,7 +206,7 @@ fun FontSizePickerDialog(onSizeSelected: (Float) -> Unit, onDismiss: () -> Unit)
     val sizes = listOf(8f, 9f, 10f, 11f, 12f, 14f, 16f, 18f, 20f, 24f, 28f, 32f, 36f, 48f, 72f)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Font Size") },
+        title = { Text(stringResource(R.string.font_size_1)) },
         text = {
             Column {
                 for (row in sizes.chunked(5)) {
@@ -223,7 +225,7 @@ fun FontSizePickerDialog(onSizeSelected: (Float) -> Unit, onDismiss: () -> Unit)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -239,7 +241,7 @@ fun SpecialCharsDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Special Character") },
+        title = { Text(stringResource(R.string.special_character)) },
         text = {
             Column {
                 for (row in chars.chunked(6)) {
@@ -256,7 +258,7 @@ fun SpecialCharsDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -265,42 +267,42 @@ fun SpecialCharsDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
 @Composable
 fun FootnoteDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Insert Footnote") },
-        text = { TextField(value = text, onValueChange = { text = it }, label = { Text("Footnote text") }, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(text); onDismiss() } }) { Text("Insert") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.insert_footnote)) },
+        text = { TextField(value = text, onValueChange = { text = it }, label = { Text(stringResource(R.string.footnote_text)) }, modifier = Modifier.fillMaxWidth()) },
+        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 @Composable
 fun CommentDialog(onAdd: (author: String, text: String) -> Unit, onDismiss: () -> Unit) {
     var author by remember { mutableStateOf("") }
     var text by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Insert Comment") },
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.insert_comment)) },
         text = {
             Column {
-                TextField(value = author, onValueChange = { author = it }, label = { Text("Author") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                TextField(value = author, onValueChange = { author = it }, label = { Text(stringResource(R.string.meta_author)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TextField(value = text, onValueChange = { text = it }, label = { Text("Comment") }, modifier = Modifier.fillMaxWidth())
+                TextField(value = text, onValueChange = { text = it }, label = { Text(stringResource(R.string.comment)) }, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(author, text); onDismiss() } }) { Text("Insert") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(author, text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 @Composable
 fun HeaderFooterDialog(initialHeader: String, initialFooter: String, onSave: (header: String, footer: String) -> Unit, onDismiss: () -> Unit) {
     var header by remember { mutableStateOf(initialHeader) }
     var footer by remember { mutableStateOf(initialFooter) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Header & Footer") },
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.header_footer_1)) },
         text = {
             Column {
-                TextField(value = header, onValueChange = { header = it }, label = { Text("Header") }, modifier = Modifier.fillMaxWidth())
+                TextField(value = header, onValueChange = { header = it }, label = { Text(stringResource(R.string.header)) }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TextField(value = footer, onValueChange = { footer = it }, label = { Text("Footer") }, modifier = Modifier.fillMaxWidth())
+                TextField(value = footer, onValueChange = { footer = it }, label = { Text(stringResource(R.string.footer)) }, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(header, footer); onDismiss() }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { onSave(header, footer); onDismiss() }) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 // --- Insert Table Dialog ---
@@ -311,12 +313,12 @@ fun InsertTableDialog(onInsert: (rows: Int, cols: Int) -> Unit, onDismiss: () ->
     var cols by remember { mutableStateOf("3") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Insert Table") },
+        title = { Text(stringResource(R.string.insert_table)) },
         text = {
             Column {
-                TextField(value = rows, onValueChange = { rows = it }, label = { Text("Rows") }, singleLine = true)
+                TextField(value = rows, onValueChange = { rows = it }, label = { Text(stringResource(R.string.rows)) }, singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                TextField(value = cols, onValueChange = { cols = it }, label = { Text("Columns") }, singleLine = true)
+                TextField(value = cols, onValueChange = { cols = it }, label = { Text(stringResource(R.string.columns)) }, singleLine = true)
             }
         },
         confirmButton = {
@@ -325,9 +327,9 @@ fun InsertTableDialog(onInsert: (rows: Int, cols: Int) -> Unit, onDismiss: () ->
                 val c = cols.toIntOrNull()?.coerceIn(1, 26) ?: 3
                 onInsert(r, c)
                 onDismiss()
-            }) { Text("Insert") }
+            }) { Text(stringResource(R.string.insert)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -339,20 +341,20 @@ fun InsertHyperlinkDialog(onInsert: (text: String, url: String) -> Unit, onDismi
     var linkUrl by remember { mutableStateOf("https://") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Insert Hyperlink") },
+        title = { Text(stringResource(R.string.insert_hyperlink)) },
         text = {
             Column {
-                TextField(value = linkText, onValueChange = { linkText = it }, label = { Text("Display Text") }, singleLine = true)
+                TextField(value = linkText, onValueChange = { linkText = it }, label = { Text(stringResource(R.string.display_text)) }, singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                TextField(value = linkUrl, onValueChange = { linkUrl = it }, label = { Text("URL") }, singleLine = true)
+                TextField(value = linkUrl, onValueChange = { linkUrl = it }, label = { Text(stringResource(R.string.url)) }, singleLine = true)
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 if (linkText.isNotBlank() && linkUrl.isNotBlank()) { onInsert(linkText, linkUrl); onDismiss() }
-            }) { Text("Insert") }
+            }) { Text(stringResource(R.string.insert)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -363,18 +365,18 @@ fun GoToSlideDialog(total: Int, onGo: (Int) -> Unit, onDismiss: () -> Unit) {
     var input by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Go to Slide") },
+        title = { Text(stringResource(R.string.go_to_slide)) },
         text = {
             TextField(value = input, onValueChange = { input = it },
-                label = { Text("Slide number (1-$total)") }, singleLine = true)
+                label = { Text(stringResource(R.string.slide_number_1, total)) }, singleLine = true)
         },
         confirmButton = {
             TextButton(onClick = {
                 val n = input.toIntOrNull()
                 if (n != null && n in 1..total) { onGo(n - 1); onDismiss() }
-            }) { Text("Go") }
+            }) { Text(stringResource(R.string.go)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -385,10 +387,10 @@ fun AddBookmarkDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Bookmark") },
-        text = { TextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { onAdd(name); onDismiss() } }) { Text("Add") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        title = { Text(stringResource(R.string.add_bookmark)) },
+        text = { TextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { onAdd(name); onDismiss() } }) { Text(stringResource(R.string.add)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -408,22 +410,22 @@ fun SettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Settings") },
+        title = { Text(stringResource(R.string.settings)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Auto-save", modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.auto_save), modifier = Modifier.weight(1f))
                     TextButton(onClick = { autoSaveEnabled = !autoSaveEnabled }) {
-                        Text(if (autoSaveEnabled) "ON" else "OFF",
+                        Text(if (autoSaveEnabled) stringResource(R.string.on) else stringResource(R.string.off),
                             color = if (autoSaveEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (autoSaveEnabled) {
                     TextField(value = interval, onValueChange = { interval = it },
-                        label = { Text("Interval (seconds)") }, singleLine = true)
+                        label = { Text(stringResource(R.string.interval_seconds)) }, singleLine = true)
                 }
                 Spacer(Modifier.height(16.dp))
-                Text("Default Font Size: ${fontSize.toInt()}pt")
+                Text(stringResource(R.string.default_font_size_pt, fontSize.toInt()))
                 com.vayunmathur.library.ui.Slider(value = fontSize, onValueChange = { fontSize = it }, valueRange = 8f..48f)
             }
         },
@@ -431,9 +433,9 @@ fun SettingsDialog(
             TextButton(onClick = {
                 onSave(autoSaveEnabled, interval.toIntOrNull() ?: 60, fontSize)
                 onDismiss()
-            }) { Text("Save") }
+            }) { Text(stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -445,13 +447,13 @@ fun SortDialog(maxCols: Int, onSort: (colIndex: Int, ascending: Boolean) -> Unit
     var ascending by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Sort Rows") },
+        title = { Text(stringResource(R.string.sort_rows)) },
         text = {
             Column {
                 TextField(value = col, onValueChange = { col = it },
-                    label = { Text("Column index (0-${maxCols - 1})") }, singleLine = true)
+                    label = { Text(stringResource(R.string.column_index_0, maxCols - 1)) }, singleLine = true)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                    Text("Order:", modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.order), modifier = Modifier.weight(1f))
                     TextButton(onClick = { ascending = !ascending }) {
                         Text(if (ascending) "A→Z ↑" else "Z→A ↓")
                     }
@@ -462,9 +464,9 @@ fun SortDialog(maxCols: Int, onSort: (colIndex: Int, ascending: Boolean) -> Unit
             TextButton(onClick = {
                 val c = col.toIntOrNull()?.coerceIn(0, maxCols - 1) ?: 0
                 onSort(c, ascending); onDismiss()
-            }) { Text("Sort") }
+            }) { Text(stringResource(R.string.sort)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -480,20 +482,20 @@ fun ChartEditorDialog(initial: OdfChart?, onConfirm: (OdfChart) -> Unit, onDismi
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "Insert Chart" else "Edit Chart") },
+        title = { Text(if (initial == null) stringResource(R.string.insert_chart) else stringResource(R.string.edit_chart)) },
         text = {
             Column {
                 Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Type:", modifier = Modifier.padding(end = 4.dp))
+                    Text(stringResource(R.string.type), modifier = Modifier.padding(end = 4.dp))
                     for (t in ChartType.entries) {
                         TextButton(onClick = { type = t }) {
                             Text(t.name.lowercase().replaceFirstChar { it.uppercase() }, color = if (type == t) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
-                TextField(value = categories, onValueChange = { categories = it }, label = { Text("Categories (comma separated)") }, modifier = Modifier.fillMaxWidth())
+                TextField(value = categories, onValueChange = { categories = it }, label = { Text(stringResource(R.string.categories_comma_separated)) }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TextField(value = seriesText, onValueChange = { seriesText = it }, label = { Text("Series (Name: v1, v2, ...)") }, modifier = Modifier.fillMaxWidth())
+                TextField(value = seriesText, onValueChange = { seriesText = it }, label = { Text(stringResource(R.string.series_name_v1_v2)) }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -507,9 +509,9 @@ fun ChartEditorDialog(initial: OdfChart?, onConfirm: (OdfChart) -> Unit, onDismi
                     if (vals.isEmpty()) null else OdfChartSeries(name, vals)
                 }
                 if (cats.isNotEmpty() && series.isNotEmpty()) { onConfirm(OdfChart(type, cats, series)); onDismiss() }
-            }) { Text("OK") }
+            }) { Text(stringResource(R.string.ok)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -789,7 +791,7 @@ private fun FullScreenImage(image: OdfImage, onCrop: (() -> Unit)? = null, onDis
             TextButton(onClick = onCrop, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
                 IconCrop(tint = Color.White)
                 Spacer(Modifier.width(4.dp))
-                Text("Crop", color = Color.White)
+                Text(stringResource(R.string.crop), color = Color.White)
             }
         }
     }
@@ -811,14 +813,14 @@ fun ImageCropDialog(
     val preview = image.copy(cropLeftPct = left, cropTopPct = top, cropRightPct = right, cropBottomPct = bottom, width = 0f, height = 0f)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Image") },
+        title = { Text(stringResource(R.string.edit_image)) },
         text = {
             Column {
                 Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) { OdfImageView(preview) }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { onRotate() }) { Text("Rotate 90°") }
-                    TextButton(onClick = { onReplace(); onDismiss() }) { Text("Replace…") }
+                    TextButton(onClick = { onRotate() }) { Text(stringResource(R.string.rotate_90)) }
+                    TextButton(onClick = { onReplace(); onDismiss() }) { Text(stringResource(R.string.replace)) }
                 }
                 CropSlider("Left", left) { left = it }
                 CropSlider("Top", top) { top = it }
@@ -826,11 +828,11 @@ fun ImageCropDialog(
                 CropSlider("Bottom", bottom) { bottom = it }
             }
         },
-        confirmButton = { TextButton(onClick = { onApply(left, top, right, bottom); onDismiss() }) { Text("Apply") } },
+        confirmButton = { TextButton(onClick = { onApply(left, top, right, bottom); onDismiss() }) { Text(stringResource(R.string.apply)) } },
         dismissButton = {
             Row {
-                TextButton(onClick = { onApply(0f, 0f, 0f, 0f); onDismiss() }) { Text("Reset") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = { onApply(0f, 0f, 0f, 0f); onDismiss() }) { Text(stringResource(R.string.reset)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             }
         }
     )
@@ -880,7 +882,7 @@ private fun TableView(
                 }
             }
         }
-        if (table.rows.isEmpty()) Text("(empty table)", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+        if (table.rows.isEmpty()) Text(stringResource(R.string.empty_table), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
     }
 }
 
@@ -961,7 +963,7 @@ fun OdfImageView(image: OdfImage, modifier: Modifier = Modifier) {
         }
     } else {
         Box(modifier.fillMaxWidth().height(120.dp).padding(vertical = 4.dp).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            Text("[Image]", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.image), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1215,7 +1217,7 @@ fun SpreadsheetView(
     onFloatingCrop: (Int, Int) -> Unit = { _, _ -> },
     onSetFreeze: (Int, Int, Int) -> Unit = { _, _, _ -> }
 ) {
-    if (doc.sheets.isEmpty()) { Text("Empty spreadsheet", modifier = Modifier.padding(16.dp)); return }
+    if (doc.sheets.isEmpty()) { Text(stringResource(R.string.empty_spreadsheet), modifier = Modifier.padding(16.dp)); return }
 
     var selectedSheet by remember { mutableIntStateOf(0) }
     var selectedFloating by remember { mutableIntStateOf(-1) }
@@ -1268,35 +1270,35 @@ fun SpreadsheetView(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { commitAndAdvance() }, onDone = { commitAndAdvance() }),
                     colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-                TextButton(onClick = { val (si, r, c) = editingCell!!; onCellTextChange(si, r, c, editText.text); editingCell = null; onCellSelected(si, -1, -1) }) { Text("Done") }
+                TextButton(onClick = { val (si, r, c) = editingCell!!; onCellTextChange(si, r, c, editText.text); editingCell = null; onCellSelected(si, -1, -1) }) { Text(stringResource(R.string.done)) }
             }
         }
 
         if (isEditMode) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { val ri = editingCell?.second ?: (doc.sheets[selectedSheet].rows.size - 1); onAddRow(selectedSheet, ri) }) { Text("+ Row") }
-                TextButton(onClick = { onAddColumn(selectedSheet) }) { Text("+ Col") }
+                TextButton(onClick = { val ri = editingCell?.second ?: (doc.sheets[selectedSheet].rows.size - 1); onAddRow(selectedSheet, ri) }) { Text(stringResource(R.string.row_1)) }
+                TextButton(onClick = { onAddColumn(selectedSheet) }) { Text(stringResource(R.string.col_1)) }
                 if (editingCell != null) {
-                    TextButton(onClick = { onDeleteRow(selectedSheet, editingCell!!.second); editingCell = null }) { Text("- Row") }
-                    TextButton(onClick = { onDeleteColumn(selectedSheet, editingCell!!.third); editingCell = null }) { Text("- Col") }
+                    TextButton(onClick = { onDeleteRow(selectedSheet, editingCell!!.second); editingCell = null }) { Text(stringResource(R.string.row)) }
+                    TextButton(onClick = { onDeleteColumn(selectedSheet, editingCell!!.third); editingCell = null }) { Text(stringResource(R.string.col)) }
                 }
-                TextButton(onClick = { showSortDialog = true }) { Text("Sort") }
+                TextButton(onClick = { showSortDialog = true }) { Text(stringResource(R.string.sort)) }
                 run {
                     val sheet0 = doc.sheets[selectedSheet]
                     val frozen = sheet0.freezeRows > 0 || sheet0.freezeCols > 0
                     if (frozen) {
-                        TextButton(onClick = { onSetFreeze(selectedSheet, 0, 0) }) { Text("Unfreeze") }
+                        TextButton(onClick = { onSetFreeze(selectedSheet, 0, 0) }) { Text(stringResource(R.string.unfreeze)) }
                     } else {
                         TextButton(onClick = {
                             // Freeze rows above and columns left of the active/editing cell (default: header row).
                             val r = editingCell?.second ?: 1
                             val c = editingCell?.third ?: 0
                             onSetFreeze(selectedSheet, r, c)
-                        }) { Text("Freeze") }
+                        }) { Text(stringResource(R.string.freeze)) }
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                if (doc.sheets.size > 1) TextButton(onClick = { onDeleteSheet(selectedSheet); if (selectedSheet >= doc.sheets.size - 1) selectedSheet = maxOf(0, doc.sheets.size - 2) }) { Text("- Sheet", color = MaterialTheme.colorScheme.error) }
+                if (doc.sheets.size > 1) TextButton(onClick = { onDeleteSheet(selectedSheet); if (selectedSheet >= doc.sheets.size - 1) selectedSheet = maxOf(0, doc.sheets.size - 2) }) { Text(stringResource(R.string.sheet_1), color = MaterialTheme.colorScheme.error) }
             }
         }
 
@@ -1418,10 +1420,10 @@ fun SpreadsheetView(
     }
 
     if (showRenameSheet) {
-        AlertDialog(onDismissRequest = { showRenameSheet = false }, title = { Text("Rename Sheet") },
+        AlertDialog(onDismissRequest = { showRenameSheet = false }, title = { Text(stringResource(R.string.rename_sheet)) },
             text = { TextField(value = renameText, onValueChange = { renameText = it }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { onRenameSheet(selectedSheet, renameText); showRenameSheet = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { showRenameSheet = false }) { Text("Cancel") } })
+            confirmButton = { TextButton(onClick = { onRenameSheet(selectedSheet, renameText); showRenameSheet = false }) { Text(stringResource(R.string.ok)) } },
+            dismissButton = { TextButton(onClick = { showRenameSheet = false }) { Text(stringResource(R.string.cancel)) } })
     }
     if (showSortDialog) {
         val maxC = doc.sheets[selectedSheet].rows.maxOfOrNull { it.cells.size } ?: 1
@@ -1455,7 +1457,7 @@ fun PresentationView(
     onElementSelected: (Int, Int) -> Unit = { _, _ -> },
     onCropImage: (Int, Int) -> Unit = { _, _ -> }
 ) {
-    if (doc.slides.isEmpty()) { Text("Empty presentation", modifier = Modifier.padding(16.dp)); return }
+    if (doc.slides.isEmpty()) { Text(stringResource(R.string.empty_presentation), modifier = Modifier.padding(16.dp)); return }
 
     var currentSlide by remember { mutableIntStateOf(0) }
     var showGoToSlide by remember { mutableStateOf(false) }
@@ -1497,13 +1499,13 @@ fun PresentationView(
         // Slide editing controls
         if (isEditMode) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { onAddSlide(currentSlide) }) { Text("+ Slide") }
-                TextButton(onClick = { onAddTextBox(currentSlide) }) { Text("+ Text") }
-                TextButton(onClick = { onDuplicateSlide(currentSlide) }) { Text("Dup") }
+                TextButton(onClick = { onAddSlide(currentSlide) }) { Text(stringResource(R.string.slide_1)) }
+                TextButton(onClick = { onAddTextBox(currentSlide) }) { Text(stringResource(R.string.text)) }
+                TextButton(onClick = { onDuplicateSlide(currentSlide) }) { Text(stringResource(R.string.dup)) }
                 TextButton(onClick = { onMoveSlideUp(currentSlide); if (currentSlide > 0) currentSlide-- }) { Text("↑") }
                 TextButton(onClick = { onMoveSlideDown(currentSlide); if (currentSlide < doc.slides.size - 1) currentSlide++ }) { Text("↓") }
                 if (doc.slides.size > 1) TextButton(onClick = { onDeleteSlide(currentSlide); currentSlide = minOf(currentSlide, doc.slides.size - 2).coerceAtLeast(0) }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -1521,12 +1523,12 @@ fun PresentationView(
         // Navigation bar
         Surface(tonalElevation = 3.dp) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { if (currentSlide > 0) currentSlide-- }, enabled = currentSlide > 0) { Text("◀ Prev") }
-                TextButton(onClick = { showSlideshow = true }) { Text("▶ Play") }
+                TextButton(onClick = { if (currentSlide > 0) currentSlide-- }, enabled = currentSlide > 0) { Text(stringResource(R.string.prev)) }
+                TextButton(onClick = { showSlideshow = true }) { Text(stringResource(R.string.play)) }
                 TextButton(onClick = { showGoToSlide = true }) {
-                    Text("Slide ${currentSlide + 1} of ${doc.slides.size}", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.slide_of, currentSlide + 1, doc.slides.size), style = MaterialTheme.typography.titleSmall)
                 }
-                TextButton(onClick = { if (currentSlide < doc.slides.size - 1) currentSlide++ }, enabled = currentSlide < doc.slides.size - 1) { Text("Next ▶") }
+                TextButton(onClick = { if (currentSlide < doc.slides.size - 1) currentSlide++ }, enabled = currentSlide < doc.slides.size - 1) { Text(stringResource(R.string.next)) }
             }
         }
     }
@@ -1565,7 +1567,7 @@ private fun SlideshowDialog(slides: List<OdfSlide>, startIndex: Int, onSlideChan
                 Box(Modifier.weight(1f).fillMaxHeight().clickable { if (index < slides.size - 1) { index++; onSlideChange(index) } else { onSlideChange(index); onDismiss() } })
             }
             Text("${index + 1} / ${slides.size}", color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
-            TextButton(onClick = { onSlideChange(index); onDismiss() }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) { Text("Close", color = Color.White) }
+            TextButton(onClick = { onSlideChange(index); onDismiss() }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) { Text(stringResource(R.string.close_search), color = Color.White) }
         }
     }
 }
@@ -1594,15 +1596,15 @@ private fun SlideThumbnail(slide: OdfSlide, index: Int, isSelected: Boolean, onC
 
 @Composable
 fun DrawingView(doc: OdfDocument.Drawing) {
-    if (doc.pages.isEmpty()) { Text("Empty drawing", modifier = Modifier.padding(16.dp)); return }
+    if (doc.pages.isEmpty()) { Text(stringResource(R.string.empty_drawing), modifier = Modifier.padding(16.dp)); return }
     var currentPage by remember { mutableIntStateOf(0) }
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.weight(1f).padding(8.dp)) { item { SlideCard(doc.pages[currentPage]) } }
         if (doc.pages.size > 1) Surface(tonalElevation = 3.dp) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) { Text("◀ Prev") }
-                Text("Page ${currentPage + 1} of ${doc.pages.size}", style = MaterialTheme.typography.titleSmall)
-                TextButton(onClick = { if (currentPage < doc.pages.size - 1) currentPage++ }, enabled = currentPage < doc.pages.size - 1) { Text("Next ▶") }
+                TextButton(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) { Text(stringResource(R.string.prev)) }
+                Text(stringResource(R.string.page_of, currentPage + 1, doc.pages.size), style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { if (currentPage < doc.pages.size - 1) currentPage++ }, enabled = currentPage < doc.pages.size - 1) { Text(stringResource(R.string.next)) }
             }
         }
     }
@@ -1637,7 +1639,7 @@ private fun SlideCard(
         }
         if (slide.notes.isNotEmpty()) {
             var expanded by remember { mutableStateOf(false) }
-            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.padding(start = 8.dp)) { Text(if (expanded) "Hide Notes" else "Speaker Notes") }
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.padding(start = 8.dp)) { Text(if (expanded) stringResource(R.string.hide_notes) else stringResource(R.string.speaker_notes_2)) }
             if (expanded) Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { for (note in slide.notes) ParagraphView(note) }
         }
     }

@@ -31,16 +31,20 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 object HistoryDateFormats {
     val MONTH_DAY = LocalDate.Format {
-        monthName(MonthNames.ENGLISH_ABBREVIATED)
+        monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
         chars(" ")
         day()
     }
@@ -205,7 +209,7 @@ fun BoxScope.HistoryScrubberCard(
                 FilterChip(
                     selected = state.nowMode,
                     onClick = { state.goNow() },
-                    label = { Text("Now") }
+                    label = { Text(stringResource(R.string.label_now)) }
                 )
             }
             Row(

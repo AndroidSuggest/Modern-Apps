@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.photos.R
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
@@ -192,13 +193,11 @@ class MainActivity : FragmentActivity() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(32.dp)
                     ) {
-                        Text(
-                            text = "Media Management Permission Required",
+                        Text(stringResource(R.string.media_management_permission_required),
                             style = MaterialTheme.typography.headlineSmall
                         )
                         Spacer(modifier = Modifier.padding(16.dp))
-                        Text(
-                            text = "This app needs permission to manage media files to function properly. Please grant 'Allow media management' permission in Settings.",
+                        Text(stringResource(R.string.this_app_needs_permission_to_manage_medi),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.padding(16.dp))
@@ -210,7 +209,7 @@ class MainActivity : FragmentActivity() {
                                 context.startActivity(intent)
                             }
                         ) {
-                            Text("Open Settings")
+                            Text(stringResource(R.string.open_settings))
                         }
                     }
                 }

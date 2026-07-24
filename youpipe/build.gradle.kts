@@ -27,7 +27,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(project(":youpipe:extractor"))
     implementation(libs.quickjs.kt)
-    implementation(libs.newpipe.nanojson)
     implementation(libs.androidx.webkit)
 
     implementRoom(libs)

@@ -42,6 +42,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.parseMarkdown
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 /**
  * A reusable Markdown body field: a [BasicTextField] that renders the markdown
@@ -163,7 +165,7 @@ fun MarkdownFormatToolbar(
             ) { showHeadingMenu = true }
             DropdownMenu(expanded = showHeadingMenu, onDismissRequest = { showHeadingMenu = false }) {
                 (1..3).forEach { level ->
-                    DropdownMenuItem(text = { Text("Heading $level") }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.heading, level)) }, onClick = {
                         apply { insertHeading(it, level) }
                         showHeadingMenu = false
                     })

@@ -40,6 +40,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.ChangeOfferDto
 import com.vayunmathur.travel.network.SliceDto
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,10 +63,10 @@ fun ChangePage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Change flights") },
+                title = { Text(stringResource(R.string.change_flights)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -84,14 +85,14 @@ fun ChangePage(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(64.dp),
                 )
-                Text("Change confirmed", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.change_confirmed), style = MaterialTheme.typography.headlineSmall)
                 Button(
                     onClick = {
                         viewModel.resetChange()
                         backStack.reset(Route.Home, Route.Trips)
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Done") }
+                ) { Text(stringResource(R.string.done)) }
                 return@Column
             }
 
@@ -101,11 +102,11 @@ fun ChangePage(
             }
 
             if (!change.requested) {
-                Text("Pick a flight to change", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.pick_a_flight_to_change), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                 order.slices.forEachIndexed { index, slice ->
                     SliceChoice(slice, selected = index == selectedSliceIndex) { selectedSliceIndex = index }
                 }
-                DateField("New date", newDate, onDate = { newDate = it }, modifier = Modifier.fillMaxWidth())
+                DateField(stringResource(R.string.new_date), newDate, onDate = { newDate = it }, modifier = Modifier.fillMaxWidth())
                 Button(
                     onClick = {
                         val slice = order.slices[selectedSliceIndex]
@@ -120,16 +121,16 @@ fun ChangePage(
                     },
                     enabled = newDate.isNotBlank() && order.slices.getOrNull(selectedSliceIndex)?.id?.isNotBlank() == true,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Find change options") }
+                ) { Text(stringResource(R.string.find_change_options)) }
             } else {
                 if (change.loading) {
                     StatusBox(loading = true, error = null, isEmpty = false)
                 } else if (change.error != null) {
                     Text(change.error!!, color = MaterialTheme.colorScheme.error)
                 } else if (change.offers.isEmpty()) {
-                    Text("No change options available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.no_change_options_available), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    Text("Change options", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.change_options), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
                     change.offers.forEach { offer ->
                         ChangeOfferCard(offer, confirming = change.confirming) {
                             viewModel.confirmChange(route.orderId, offer.id)
@@ -161,7 +162,7 @@ private fun SliceChoice(slice: SliceDto, selected: Boolean, onClick: () -> Unit)
                 )
             }
             if (selected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -181,16 +182,16 @@ private fun ChangeOfferCard(offer: ChangeOfferDto, confirming: Boolean, onSelect
             val diff = offer.changeTotalAmount.toDoubleOrNull() ?: 0.0
             Text(
                 when {
-                    diff > 0 -> "Extra to pay: ${formatMoney(offer.changeTotalAmount, offer.changeTotalCurrency)}"
-                    diff < 0 -> "Refund: ${formatMoney((-diff).toString(), offer.changeTotalCurrency)}"
-                    else -> "No price change"
+                    diff > 0 -> stringResource(R.string.extra_to_pay, formatMoney(offer.changeTotalAmount, offer.changeTotalCurrency))
+                    diff < 0 -> stringResource(R.string.refund_1, formatMoney((-diff).toString(), offer.changeTotalCurrency))
+                    else -> stringResource(R.string.no_price_change)
                 },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
             )
             Button(onClick = onSelect, enabled = !confirming, modifier = Modifier.fillMaxWidth()) {
-                Text(if (confirming) "Confirming…" else "Select & confirm")
+                Text(if (confirming) stringResource(R.string.confirming) else stringResource(R.string.select_confirm))
             }
         }
     }

@@ -21,8 +21,6 @@ metadataScreenshots {
 dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
-    implementation(libs.jaudiotagger)
-
     implementRoom(libs)
     implementation(project(":library:room"))
 

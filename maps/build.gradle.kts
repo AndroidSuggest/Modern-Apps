@@ -29,8 +29,6 @@ dependencies {
 
     implementation(libs.flatgeobuf)
 
-    //reorderable
-    implementation(libs.reorderable)
 
     // room
     implementRoom(libs)

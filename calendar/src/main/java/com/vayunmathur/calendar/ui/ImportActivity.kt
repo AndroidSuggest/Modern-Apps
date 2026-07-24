@@ -133,7 +133,7 @@ fun EventCard(event: Event) {
                 // Format date range using the shared helper
                 Text(dateRangeString(context, event.startDateTimeDisplay.date, event.endDateTimeDisplay.date, event.startDateTimeDisplay.time, event.endDateTimeDisplay.time, event.allDay))
                 // RRULE text
-                event.rrule?.let { Text(it.toString()) }
+                event.rrule?.let { Text(it.describe(context)) }
 
                 if (event.description.isNotBlank()) {
                     Text(event.description)

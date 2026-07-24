@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">App</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- InitialDownloader -->
+    <string name="initializing_system">Initializing System</string>
+    <string name="mbps">%1$s Mbps</string>
+    <string name="downloading_required_components_for_this">Downloading required components for this app.</string>
+    <string name="completed">Completed</string>
+    <string name="downloading">Downloading...</string>
+</resources>

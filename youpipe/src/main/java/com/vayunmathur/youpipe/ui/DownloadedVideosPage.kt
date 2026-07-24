@@ -42,6 +42,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -60,7 +61,7 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
             TopAppBar(
                 title = { 
                     val totalSelected = selectedIds.size + selectedActiveIds.size
-                    Text(if (isSelectionMode) "$totalSelected Selected" else "Downloads") 
+                    Text(if (isSelectionMode) stringResource(R.string.selected_1, totalSelected) else stringResource(R.string.downloads)) 
                 },
                 actions = {
                     if (isSelectionMode) {

@@ -31,7 +31,7 @@ class GetWeatherByNameIntent : AssistantIntent<LocationQueryInput, WeatherData>(
             val label = listOfNotNull(place.name, place.country)
                 .filter { it.isNotBlank() }
                 .joinToString(", ")
-            forecast.toWeatherData(locationName = label.ifBlank { place.name })
+            forecast.toWeatherData(this, locationName = label.ifBlank { place.name })
         } catch (e: Exception) {
             errorWeatherData(input.name, e.message ?: "Failed to fetch forecast")
         }

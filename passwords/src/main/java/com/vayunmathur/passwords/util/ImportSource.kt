@@ -1,7 +1,10 @@
 package com.vayunmathur.passwords.util
 
+import androidx.annotation.StringRes
+import com.vayunmathur.passwords.R
+
 enum class ImportSource(
-    val label: String,
+    @StringRes val label: Int,
     val nameHeaders: Array<String>,
     val usernameHeaders: Array<String>,
     val passwordHeaders: Array<String>,
@@ -9,7 +12,7 @@ enum class ImportSource(
     val totpHeaders: Array<String>,
 ) {
     BITWARDEN(
-        label = "Bitwarden",
+        label = R.string.import_source_bitwarden,
         nameHeaders = arrayOf("name"),
         usernameHeaders = arrayOf("login_username", "username"),
         passwordHeaders = arrayOf("login_password", "password"),
@@ -17,7 +20,7 @@ enum class ImportSource(
         totpHeaders = arrayOf("login_totp", "totp"),
     ),
     CHROME(
-        label = "Google Chrome",
+        label = R.string.import_source_chrome,
         nameHeaders = arrayOf("name"),
         usernameHeaders = arrayOf("username"),
         passwordHeaders = arrayOf("password"),
@@ -25,7 +28,7 @@ enum class ImportSource(
         totpHeaders = arrayOf("note"),
     ),
     FIREFOX(
-        label = "Firefox",
+        label = R.string.import_source_firefox,
         nameHeaders = arrayOf("url"),
         usernameHeaders = arrayOf("username"),
         passwordHeaders = arrayOf("password"),
@@ -33,7 +36,7 @@ enum class ImportSource(
         totpHeaders = arrayOf(),
     ),
     LASTPASS(
-        label = "LastPass",
+        label = R.string.import_source_lastpass,
         nameHeaders = arrayOf("name"),
         usernameHeaders = arrayOf("username"),
         passwordHeaders = arrayOf("password"),
@@ -41,7 +44,7 @@ enum class ImportSource(
         totpHeaders = arrayOf("totp"),
     ),
     ONE_PASSWORD(
-        label = "1Password",
+        label = R.string.import_source_one_password,
         nameHeaders = arrayOf("title"),
         usernameHeaders = arrayOf("username"),
         passwordHeaders = arrayOf("password"),
@@ -49,7 +52,7 @@ enum class ImportSource(
         totpHeaders = arrayOf("otpauth", "otp"),
     ),
     DASHLANE(
-        label = "Dashlane",
+        label = R.string.import_source_dashlane,
         nameHeaders = arrayOf("title"),
         usernameHeaders = arrayOf("username", "username2", "username3"),
         passwordHeaders = arrayOf("password"),
@@ -57,7 +60,7 @@ enum class ImportSource(
         totpHeaders = arrayOf("otpsecret"),
     ),
     APPLE(
-        label = "Apple Passwords",
+        label = R.string.import_source_apple,
         nameHeaders = arrayOf("title"),
         usernameHeaders = arrayOf("username"),
         passwordHeaders = arrayOf("password"),

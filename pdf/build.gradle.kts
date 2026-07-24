@@ -134,7 +134,6 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.coil.compose)
-    implementation(libs.reorderable)
     implementation(libs.material)
     implementation(libs.bouncycastle)
     implementation(libs.bouncycastle.pkix)

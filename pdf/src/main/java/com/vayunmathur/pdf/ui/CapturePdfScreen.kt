@@ -59,8 +59,9 @@ import com.vayunmathur.pdf.R
 import com.vayunmathur.pdf.ui.components.CameraPreview
 import com.vayunmathur.pdf.ui.components.SubcroppedImage
 import com.vayunmathur.pdf.util.PdfViewModel
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.rememberReorderableLazyListState
+import com.vayunmathur.library.ui.longPressDraggableHandle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,10 +113,10 @@ fun CapturePdfScreen(
             if (pending != null && result.targetUri == pending) {
                 pendingTargetUri.value = null
                 if (result.success) {
-                    Toast.makeText(context, "PDF saved successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.pdf_saved), Toast.LENGTH_SHORT).show()
                     onPdfCreated(result.targetUri)
                 } else {
-                    Toast.makeText(context, "Failed to save PDF", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.failed_to_save_pdf), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -196,7 +197,7 @@ fun CapturePdfScreen(
                                             leadingIcon = {
                                                 if (addOcr) com.vayunmathur.library.ui.IconCheck()
                                             },
-                                            text = { Text("Searchable (OCR)") },
+                                            text = { Text(stringResource(R.string.searchable_ocr)) },
                                             onClick = { addOcr = !addOcr },
                                         )
                                     }
@@ -229,7 +230,7 @@ fun CapturePdfScreen(
                     ) {
                         itemsIndexed(images, key = { _, img -> img.uri.toString() }) { index, img ->
                             ReorderableItem(
-                                state = state,
+                                reorderState = state,
                                 key = img.uri.toString()
                             ) { isDragging ->
                                 Box(

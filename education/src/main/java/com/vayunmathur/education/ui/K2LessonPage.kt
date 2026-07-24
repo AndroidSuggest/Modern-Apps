@@ -26,6 +26,7 @@ import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.education.util.LocalNarrator
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 /** K-2 lesson: two big, narrated tiles — Watch a video, then Play the questions. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,13 +41,13 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(lesson?.title ?: "Lesson") },
+                title = { Text(lesson?.title ?: stringResource(R.string.lesson)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
         if (lesson == null) {
-            MissingContent(padding, "Let's go back.")
+            MissingContent(padding, stringResource(R.string.let_s_go_back))
             return@Scaffold
         }
         Column(

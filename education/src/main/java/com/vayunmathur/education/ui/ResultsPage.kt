@@ -23,6 +23,8 @@ import com.vayunmathur.education.Route
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,7 +40,7 @@ fun ResultsPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Results") },
+                title = { Text(stringResource(R.string.results)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
@@ -53,7 +55,7 @@ fun ResultsPage(
         ) {
             StarRow(stars)
             Text(
-                "$correct / $total correct",
+                stringResource(R.string.correct, correct, total),
                 style = MaterialTheme.typography.headlineMedium,
             )
             Text(
@@ -67,11 +69,11 @@ fun ResultsPage(
             Button(
                 onClick = { backStack.pop() },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Keep going") }
+            ) { Text(stringResource(R.string.keep_going)) }
             OutlinedButton(
                 onClick = { backStack.reset(Route.Home) },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Home") }
+            ) { Text(stringResource(R.string.home)) }
         }
     }
 }

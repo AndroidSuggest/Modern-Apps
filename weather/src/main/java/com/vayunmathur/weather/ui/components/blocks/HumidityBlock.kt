@@ -22,6 +22,7 @@ import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.util.TemperatureUnit
 import com.vayunmathur.weather.util.formatTemperatureCompact
+import androidx.compose.ui.res.stringResource
 
 /**
  * Port of WeatherMaster's `HumidityBlock`. Square `extraLarge` Surface.
@@ -83,7 +84,7 @@ private fun DewPointRow(dewPointCelsius: Double, tempUnit: TemperatureUnit) {
         }
         Spacer(Modifier.width(5.dp))
         Text(
-            "Dew point",
+            stringResource(R.string.dew_point),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )

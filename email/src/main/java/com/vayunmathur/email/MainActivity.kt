@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.email.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -222,7 +223,7 @@ fun EmailApp(viewModel: EmailViewModel) {
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        Text("Unified Inbox", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.unified_inbox), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
                         NavigationDrawerItem(
                             label = { Text(stringResource(R.string.all_accounts)) },
                             selected = selectedAccountEmail == null,
@@ -237,7 +238,7 @@ fun EmailApp(viewModel: EmailViewModel) {
 
                         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-                        Text("Accounts", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.accounts), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
                         accounts.forEach { account ->
                             NavigationDrawerItem(
                                 label = { Text(account.email) },
@@ -274,7 +275,7 @@ fun EmailApp(viewModel: EmailViewModel) {
 
                         if (selectedAccountEmail != null) {
                             HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                            Text("Folders", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.folders), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
                             FolderList(folders, selectedFolderName) { folderName ->
                                 viewModel.selectFolder(folderName)
                                 backStack.reset(Route.MessageList)
@@ -568,7 +569,7 @@ fun MessageListScreen(
                 )
             } else {
                 TopAppBar(
-                    title = { Text(if (selectedAccountEmail == null) "Unified Inbox" else selectedFolderName) },
+                    title = { Text(if (selectedAccountEmail == null) stringResource(R.string.unified_inbox) else selectedFolderName) },
                     navigationIcon = {
                         IconButton(onClick = onOpenDrawer) {
                             IconMenu()
@@ -608,9 +609,9 @@ fun MessageListScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 0, onClick = { msgFilter = 0 }, label = { Text("All") })
-                com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 1, onClick = { msgFilter = 1 }, label = { Text("Unread") })
-                com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 2, onClick = { msgFilter = 2 }, label = { Text("Attachments") })
+                com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 0, onClick = { msgFilter = 0 }, label = { Text(stringResource(R.string.all)) })
+                com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 1, onClick = { msgFilter = 1 }, label = { Text(stringResource(R.string.unread)) })
+                com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 2, onClick = { msgFilter = 2 }, label = { Text(stringResource(R.string.attachments)) })
             }
             val filteredMessages by remember {
                 derivedStateOf {
@@ -629,7 +630,7 @@ fun MessageListScreen(
                 if (messages.isEmpty() && searchQuery.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Text(
-                            text = "No messages found. Pull down to refresh.",
+                            text = stringResource(R.string.no_messages_found_pull_down_to_refresh),
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
@@ -644,13 +645,13 @@ fun MessageListScreen(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text("AI Summary", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Text(stringResource(R.string.ai_summary), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                     Spacer(Modifier.height(8.dp))
                                     if (aiSummaryLoading) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                             Spacer(Modifier.width(8.dp))
-                                            Text("Generating summary…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                            Text(stringResource(R.string.generating_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                         }
                                     } else {
                                         Text(aiSummary ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -829,7 +830,7 @@ fun MessageThreadScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(messages.firstOrNull()?.subject ?: "Conversation") },
+                title = { Text(messages.firstOrNull()?.subject ?: stringResource(R.string.conversation)) },
                 navigationIcon = { IconNavigation(onBack) }
             )
         }
@@ -926,7 +927,7 @@ fun MessageItem(
                     )
                 }
                 Text(
-                    text = "to me",
+                    text = stringResource(R.string.to_me),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -934,17 +935,17 @@ fun MessageItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 var showSnooze by remember { mutableStateOf(false) }
                 Box {
-                    TextButton(onClick = { showSnooze = true }) { Text("Snooze") }
+                    TextButton(onClick = { showSnooze = true }) { Text(stringResource(R.string.snooze)) }
                     DropdownMenu(expanded = showSnooze, onDismissRequest = { showSnooze = false }) {
                         val snooze = { at: Long ->
                             showSnooze = false
                             viewModel.snoozeMessage(msg.accountEmail, msg.folderName, msg.id, at)
-                            android.widget.Toast.makeText(context, "Snoozed", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.getString(R.string.snoozed), android.widget.Toast.LENGTH_SHORT).show()
                             onBack()
                         }
-                        DropdownMenuItem(text = { Text("Later today (6 PM)") }, onClick = { snooze(scheduleTime(18, sameDay = true)) })
-                        DropdownMenuItem(text = { Text("Tomorrow (8 AM)") }, onClick = { snooze(scheduleTime(8, sameDay = false)) })
-                        DropdownMenuItem(text = { Text("In 1 week") }, onClick = { snooze(System.currentTimeMillis() + 7L * 24 * 3600_000) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.later_today_6_pm)) }, onClick = { snooze(scheduleTime(18, sameDay = true)) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.tomorrow_8_am)) }, onClick = { snooze(scheduleTime(8, sameDay = false)) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.in_1_week)) }, onClick = { snooze(System.currentTimeMillis() + 7L * 24 * 3600_000) })
                     }
                 }
                 IconButton(onClick = { onReply(msg.from, msg.subject, msg.serverId) }) {
@@ -962,7 +963,7 @@ fun MessageItem(
                     IconButton(onClick = { showOverflow = true }) { IconMoreVert() }
                     DropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
                         DropdownMenuItem(
-                            text = { Text("Save as .eml") },
+                            text = { Text(stringResource(R.string.save_as_eml)) },
                             leadingIcon = { IconSave(modifier = Modifier.size(20.dp)) },
                             onClick = { showOverflow = false; onExportEml(msg) },
                         )
@@ -992,8 +993,8 @@ fun MessageItem(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Remote images blocked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { loadImages = true }) { Text("Load images") }
+                    Text(stringResource(R.string.remote_images_blocked), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { loadImages = true }) { Text(stringResource(R.string.load_images)) }
                 }
             }
             HtmlText(
@@ -1005,27 +1006,27 @@ fun MessageItem(
             )
             if (hasQuotes) {
                 TextButton(onClick = { showQuotes = !showQuotes }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(if (showQuotes) "Hide quoted text" else "Show quoted text")
+                    Text(if (showQuotes) stringResource(R.string.hide_quoted_text) else stringResource(R.string.show_quoted_text))
                 }
             }
         } else {
             var showQuotes by remember(msg.id) { mutableStateOf(false) }
             val (mainText, quotedText) = remember(msg.body) { splitQuotedText(msg.body ?: "(No Content)") }
             Text(
-                text = if (showQuotes || quotedText.isEmpty()) (msg.body ?: "(No Content)") else mainText,
+                text = if (showQuotes || quotedText.isEmpty()) (msg.body ?: stringResource(R.string.no_content)) else mainText,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
             if (quotedText.isNotEmpty()) {
                 TextButton(onClick = { showQuotes = !showQuotes }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(if (showQuotes) "Hide quoted text" else "Show quoted text")
+                    Text(if (showQuotes) stringResource(R.string.hide_quoted_text) else stringResource(R.string.show_quoted_text))
                 }
             }
         }
 
         if (attachments.isNotEmpty()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text("Attachments:", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.attachments_2), style = MaterialTheme.typography.labelLarge)
                 attachments.forEach { att -> AttachmentItem(att, viewModel) }
             }
         }
@@ -1043,7 +1044,7 @@ fun MessageItem(
             val unsubscribe = remember(msg.listUnsubscribe, msg.listUnsubscribePost, msg.body, msg.isHtml) { msg.detectUnsubscribe() }
             if (unsubscribe != null) {
                 var showConfirm by remember(msg.id) { mutableStateOf(false) }
-                TextButton(onClick = { showConfirm = true }) { Text("Unsubscribe") }
+                TextButton(onClick = { showConfirm = true }) { Text(stringResource(R.string.unsubscribe)) }
                 if (showConfirm) {
                     UnsubscribeDialog(method = unsubscribe, onDismiss = { showConfirm = false }, onConfirm = {
                         showConfirm = false; performUnsubscribe(unsubscribe, context, viewModel, onCompose)
@@ -1052,9 +1053,9 @@ fun MessageItem(
             }
             TextButton(onClick = {
                 viewModel.blockSender(msg.from)
-                android.widget.Toast.makeText(context, "Sender blocked", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, context.getString(R.string.sender_blocked), android.widget.Toast.LENGTH_SHORT).show()
                 onBack()
-            }) { Text("Block sender") }
+            }) { Text(stringResource(R.string.block_sender)) }
         }
         HorizontalDivider()
     }
@@ -1117,7 +1118,7 @@ fun AttachmentItem(attachment: Attachment, viewModel: EmailViewModel) {
         Text(text = attachment.fileName, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         if (localPath != null) {
             Text(
-                "Open",
+                stringResource(R.string.open),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.clickable {
@@ -1130,7 +1131,7 @@ fun AttachmentItem(attachment: Attachment, viewModel: EmailViewModel) {
                         try {
                             context.startActivity(Intent.createChooser(intent, null))
                         } catch (e: Exception) {
-                            Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.no_app_can_open_this_file), Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -1141,10 +1142,10 @@ fun AttachmentItem(attachment: Attachment, viewModel: EmailViewModel) {
                 viewModel.downloadAttachment(attachment, { path ->
                     downloading = false
                     localPath = path
-                    Toast.makeText(context, "Saved to Downloads", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.saved_to_downloads), Toast.LENGTH_SHORT).show()
                 }, { error ->
                     downloading = false
-                    Toast.makeText(context, "Download failed: $error", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.download_failed, error), Toast.LENGTH_SHORT).show()
                 })
             }, enabled = !downloading) {
                 if (downloading) CircularProgressIndicator(modifier = Modifier.size(16.dp))
@@ -1328,7 +1329,7 @@ fun ComposerScreen(
                     }
                     Box {
                         TextButton(onClick = { showSchedule = true }, enabled = fromAccount != null) {
-                            Text("Later")
+                            Text(stringResource(R.string.later))
                         }
                         DropdownMenu(expanded = showSchedule, onDismissRequest = { showSchedule = false }) {
                             val schedule = { at: Long ->
@@ -1344,13 +1345,13 @@ fun ComposerScreen(
                                         inReplyTo = inReplyTo,
                                         references = references, scheduledAt = at,
                                     ) { currentDraftId?.let { viewModel.deleteDraft(it) } }
-                                    android.widget.Toast.makeText(context, "Scheduled", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, context.getString(R.string.scheduled), android.widget.Toast.LENGTH_SHORT).show()
                                     onBack()
                                 }
                             }
-                            DropdownMenuItem(text = { Text("In 1 hour") }, onClick = { schedule(System.currentTimeMillis() + 3_600_000L) })
-                            DropdownMenuItem(text = { Text("This evening (6 PM)") }, onClick = { schedule(scheduleTime(18, sameDay = true)) })
-                            DropdownMenuItem(text = { Text("Tomorrow (8 AM)") }, onClick = { schedule(scheduleTime(8, sameDay = false)) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.in_1_hour)) }, onClick = { schedule(System.currentTimeMillis() + 3_600_000L) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.this_evening_6_pm)) }, onClick = { schedule(scheduleTime(18, sameDay = true)) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.tomorrow_8_am)) }, onClick = { schedule(scheduleTime(8, sameDay = false)) })
                         }
                     }
                     IconButton(onClick = {
@@ -1371,12 +1372,12 @@ fun ComposerScreen(
                             onSuccess = {
                                 sending = false
                                 currentDraftId?.let { viewModel.deleteDraft(it) }
-                                android.widget.Toast.makeText(context, "Message sent", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, context.getString(R.string.message_sent), android.widget.Toast.LENGTH_SHORT).show()
                                 onBack()
                             },
                             onError = { err ->
                                 sending = false
-                                android.widget.Toast.makeText(context, "Saved to Outbox: $err", android.widget.Toast.LENGTH_LONG).show()
+                                android.widget.Toast.makeText(context, context.getString(R.string.saved_to_outbox, err), android.widget.Toast.LENGTH_LONG).show()
                                 onBack()
                             }
                         )
@@ -1458,18 +1459,18 @@ fun ComposerScreen(
                     textStyle = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { showCcBcc = !showCcBcc }) { Text("Cc/Bcc") }
+                TextButton(onClick = { showCcBcc = !showCcBcc }) { Text(stringResource(R.string.cc_bcc)) }
             }
             if (showCcBcc) {
                 OutlinedTextField(
-                    value = cc, onValueChange = { cc = it }, label = { Text("Cc") },
+                    value = cc, onValueChange = { cc = it }, label = { Text(stringResource(R.string.cc)) },
                     trailingIcon = { IconButton(onClick = { pickContact(1) }) { com.vayunmathur.library.ui.IconAdd() } },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
-                    value = bcc, onValueChange = { bcc = it }, label = { Text("Bcc") },
+                    value = bcc, onValueChange = { bcc = it }, label = { Text(stringResource(R.string.bcc)) },
                     trailingIcon = { IconButton(onClick = { pickContact(2) }) { com.vayunmathur.library.ui.IconAdd() } },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium,
@@ -1493,7 +1494,7 @@ fun ComposerScreen(
             // Inline images thumbnail row (text-based to avoid heavy deps; WYSIWYG preview already in editor)
             if (bodyController.inlineImages.isNotEmpty()) {
                 val inlineTotal = bodyController.inlineImages.sumOf { uriSize(context, it.localUri) }
-                Text("Inline images (${bodyController.inlineImages.size} - ${android.text.format.Formatter.formatShortFileSize(context, inlineTotal)})", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.inline_images, bodyController.inlineImages.size, android.text.format.Formatter.formatShortFileSize(context, inlineTotal)), style = MaterialTheme.typography.labelSmall)
                 androidx.compose.foundation.lazy.LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -1517,10 +1518,10 @@ fun ComposerScreen(
 
             if (attachments.isNotEmpty() || bodyController.inlineImages.isNotEmpty()) {
                 val totalBytes = attachments.sumOf { uriSize(context, it) } + bodyController.inlineImages.sumOf { uriSize(context, it.localUri) }
-                Text("Attachments (${android.text.format.Formatter.formatShortFileSize(context, totalBytes)})", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.attachments_1, android.text.format.Formatter.formatShortFileSize(context, totalBytes)), style = MaterialTheme.typography.labelLarge)
                 if (totalBytes > 25L * 1024 * 1024) {
                     Text(
-                        "Total attachment size exceeds 25 MB; many providers will reject it.",
+                        stringResource(R.string.total_attachment_size_exceeds_25_mb_many),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -1564,7 +1565,7 @@ private fun EmailComposerFormatToolbar(
         com.vayunmathur.library.ui.EditorBaseButtons(formatter = controller)
         // Extra image button – use library's image icon
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Insert image",
+            contentDescription = stringResource(R.string.cd_insert_image),
             onClick = onInsertImage,
         ) { com.vayunmathur.library.ui.IconImage() }
     }
@@ -1602,7 +1603,7 @@ fun OutboxScreen(
                     if (outbox.isNotEmpty()) {
                         TextButton(onClick = {
                             viewModel.sendOutboxNow(context)
-                            android.widget.Toast.makeText(context, "Retrying ${outbox.size} pending message(s)…", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.getString(R.string.retrying_pending_message_s, outbox.size), android.widget.Toast.LENGTH_SHORT).show()
                         }) { Text(stringResource(R.string.send_now)) }
                     }
                 },
@@ -1615,7 +1616,7 @@ fun OutboxScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "Outbox is empty",
+                    stringResource(R.string.outbox_is_empty),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1629,7 +1630,7 @@ fun OutboxScreen(
                         entry = entry,
                         onDelete = {
                             viewModel.deleteOutboxEntry(entry)
-                            android.widget.Toast.makeText(context, "Deleted from Outbox", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.getString(R.string.deleted_from_outbox), android.widget.Toast.LENGTH_SHORT).show()
                         },
                     )
                     HorizontalDivider()
@@ -1649,17 +1650,17 @@ private fun OutboxRow(entry: OutboxEntry, onDelete: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    entry.subject.ifBlank { "(no subject)" },
+                    entry.subject.ifBlank { stringResource(R.string.no_subject) },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "From ${entry.accountEmail}",
+                    stringResource(R.string.from, entry.accountEmail),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "To ${entry.to}",
+                    stringResource(R.string.to_1, entry.to),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1679,12 +1680,14 @@ private fun OutboxRow(entry: OutboxEntry, onDelete: () -> Unit) {
             val statusColor =
                 if (entry.lastError != null) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.primary
+            val failedText = if (entry.lastError != null) stringResource(R.string.failed, entry.lastError) else ""
+            val attemptText = if (entry.attemptCount > 0) stringResource(R.string.attempt_s, entry.attemptCount) else ""
             Text(
                 buildString {
-                    if (entry.lastError != null) append("Failed: ${entry.lastError}")
-                    if (entry.attemptCount > 0) {
+                    if (failedText.isNotEmpty()) append(failedText)
+                    if (attemptText.isNotEmpty()) {
                         if (isNotEmpty()) append(" · ")
-                        append("${entry.attemptCount} attempt(s)")
+                        append(attemptText)
                     }
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -1723,7 +1726,7 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Signatures", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.signatures), style = MaterialTheme.typography.titleMedium)
             if (accounts.isEmpty()) {
                 Text(stringResource(R.string.select_account))
             }
@@ -1736,12 +1739,12 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
                         onValueChange = { sig = it },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 3,
-                        placeholder = { Text("Your signature") },
+                        placeholder = { Text(stringResource(R.string.your_signature)) },
                     )
                     Button(
                         onClick = {
                             viewModel.setSignature(acc.email, sig)
-                            android.widget.Toast.makeText(context, "Signature saved", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.getString(R.string.signature_saved), android.widget.Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.align(Alignment.End),
                     ) {
@@ -1752,15 +1755,15 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
             }
 
             val blocked by viewModel.blockedSenders.collectAsStateWithLifecycle(emptyList())
-            Text("Blocked senders", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.blocked_senders), style = MaterialTheme.typography.titleMedium)
             if (blocked.isEmpty()) {
-                Text("None", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             blocked.forEach { b ->
                 ListItem(
                     content = { Text(b.address) },
                     trailingContent = {
-                        TextButton(onClick = { viewModel.unblockSender(b.address) }) { Text("Unblock") }
+                        TextButton(onClick = { viewModel.unblockSender(b.address) }) { Text(stringResource(R.string.unblock)) }
                     },
                 )
                 HorizontalDivider()
@@ -1787,13 +1790,13 @@ fun DraftsScreen(
     ) { padding ->
         if (drafts.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No drafts")
+                Text(stringResource(R.string.no_drafts))
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                 items(drafts, key = { it.id }) { d ->
                     ListItem(
-                        content = { Text(d.subject.ifBlank { "(no subject)" }) },
+                        content = { Text(d.subject.ifBlank { stringResource(R.string.no_subject) }) },
                         supportingContent = {
                             val prefix = if (d.to.isNotBlank()) "To: ${d.to}  " else ""
                             Text(prefix + d.body.replace("\n", " ").take(80), maxLines = 2)
@@ -1894,7 +1897,7 @@ private fun UnsubscribeDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Unsubscribe") },
+        title = { Text(stringResource(R.string.unsubscribe)) },
         text = { Text(message) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
@@ -1910,7 +1913,7 @@ private fun performUnsubscribe(
 ) {
     when (method) {
         is UnsubscribeMethod.OneClickPost -> {
-            android.widget.Toast.makeText(context, "Unsubscribing…", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, context.getString(R.string.unsubscribing), android.widget.Toast.LENGTH_SHORT).show()
             viewModel.oneClickUnsubscribe(method.url) { ok ->
                 val text = if (ok) "Unsubscribed" else "Unsubscribe failed"
                 android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
@@ -1921,7 +1924,7 @@ private fun performUnsubscribe(
                 context.startActivity(Intent(Intent.ACTION_VIEW, method.url.toUri()))
             }.isSuccess
             if (!opened) {
-                android.widget.Toast.makeText(context, "Couldn't open unsubscribe page", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, context.getString(R.string.couldn_t_open_unsubscribe_page), android.widget.Toast.LENGTH_SHORT).show()
             }
         }
         is UnsubscribeMethod.SendMail -> onCompose(method.address, "Unsubscribe")

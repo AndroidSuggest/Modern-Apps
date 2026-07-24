@@ -11,6 +11,8 @@ import com.vayunmathur.games.hub.util.XpLevelCalculator
 import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun XpProgressBar(
@@ -28,12 +30,12 @@ fun XpProgressBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Level $level • ${XpLevelCalculator.title(level)}",
+                text = stringResource(R.string.level_3, level, XpLevelCalculator.title(level)),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "$toNext XP to L${level + 1}",
+                text = stringResource(R.string.xp_to_l, toNext, level + 1),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -47,12 +49,12 @@ fun XpProgressBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "$totalXp XP total",
+                text = stringResource(R.string.xp_total, totalXp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Next: $nextLevelXp XP",
+                text = stringResource(R.string.next_xp, nextLevelXp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

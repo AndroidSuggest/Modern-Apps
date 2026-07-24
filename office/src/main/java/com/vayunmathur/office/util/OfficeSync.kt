@@ -27,6 +27,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.util.UUID
 import kotlin.io.encoding.Base64
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.office.R
 
 /**
  * Client for the Office **pure-relay** server. The server only stores a key directory and an
@@ -186,7 +188,7 @@ object OfficeSync {
                 runCatching {
                     wsClient.webSocket(urlString = WS_URL) {
                         wsSession = this
-                        send(Frame.Text(json.encodeToString(SubMsg("sub", channel))))
+                        send(Frame.Text(json.encodeToString(SubMsg(stringResource(R.string.sub), channel))))
                         backoff = 1000L
                         runCatching { onConnected() } // catch up on anything missed
                         for (frame in incoming) {
@@ -209,7 +211,7 @@ object OfficeSync {
     /** Sends ephemeral presence (encrypted with the doc key) over the live socket, if connected. */
     suspend fun sendPresence(channel: String, key: ByteArray, plaintext: String) {
         val data = Base64.encode(E2ee.aesEncrypt(key, plaintext.encodeToByteArray()))
-        runCatching { wsSession?.send(Frame.Text(json.encodeToString(PresenceMsg("presence", channel, data)))) }
+        runCatching { wsSession?.send(Frame.Text(json.encodeToString(PresenceMsg(stringResource(R.string.presence), channel, data)))) }
     }
 
     /**
@@ -221,7 +223,7 @@ object OfficeSync {
         val session = wsSession ?: return false
         val blobs = items.map { Base64.encode(E2ee.aesEncrypt(key, it.encodeToByteArray())) }
         return runCatching {
-            session.send(Frame.Text(json.encodeToString(AppendMsg("append", channel, blobs))))
+            session.send(Frame.Text(json.encodeToString(AppendMsg(stringResource(R.string.append), channel, blobs))))
             true
         }.getOrDefault(false)
     }

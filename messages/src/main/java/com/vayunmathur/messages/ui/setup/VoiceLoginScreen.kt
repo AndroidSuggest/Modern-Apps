@@ -140,7 +140,7 @@ fun VoiceLoginScreen(backStack: NavBackStack<Route>) {
             )
 
             // The actual paste field — accepts JSON, cURL, or raw Cookie header.
-            Text("Paste cookies", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.paste_cookies), fontWeight = FontWeight.SemiBold)
             OutlinedTextField(
                 value = input,
                 onValueChange = {
@@ -157,7 +157,7 @@ fun VoiceLoginScreen(backStack: NavBackStack<Route>) {
                 supportingText = {
                     when {
                         error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
-                        state is GVoiceClient.State.Connecting -> Text("Validating with Google…")
+                        state is GVoiceClient.State.Connecting -> Text(stringResource(R.string.validating_with_google))
                         else -> Text(stringResource(R.string.setup_voice_field_hint))
                     }
                 },

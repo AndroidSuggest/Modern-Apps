@@ -78,7 +78,9 @@ import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.datetime.format.MonthNames
+import com.vayunmathur.library.util.localizedMonthNames
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import java.time.format.TextStyle
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.number
@@ -142,7 +144,7 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
             TopAppBar(
                 {
                     // show month/year of the currently visible date
-                    val mon = MonthNames.ENGLISH_ABBREVIATED.names[dateViewing.month.number - 1]
+                    val mon = localizedMonthNames(TextStyle.SHORT)[dateViewing.month.number - 1]
                     Row(
                         Modifier.clickable { backStack.add(Route.Calendar.GotoDialog(dateViewing)) },
                         verticalAlignment = Alignment.CenterVertically
@@ -155,14 +157,14 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     Box {
                         TextButton(onClick = { showLayoutMenu = true }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(currentLayout.shortName, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(currentLayout.shortNameRes), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 IconArrowDropDown(tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                         DropdownMenu(expanded = showLayoutMenu, onDismissRequest = { showLayoutMenu = false }) {
                             CalendarViewModel.CalendarLayout.entries.forEach { layout ->
                                 DropdownMenuItem(
-                                    text = { Text(layout.prettyName) },
+                                    text = { Text(stringResource(layout.prettyNameRes)) },
                                     onClick = {
                                         viewModel.setLayout(layout)
                                         showLayoutMenu = false
@@ -695,7 +697,7 @@ private fun WeekHeader(weekDays: List<LocalDate>) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    d.dayOfWeek.name.take(3),
+                    localizedDayOfWeekNames(TextStyle.SHORT)[d.dayOfWeek.isoDayNumber - 1],
                     Modifier,
                     if (isToday) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp

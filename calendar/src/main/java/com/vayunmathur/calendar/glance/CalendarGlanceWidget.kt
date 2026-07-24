@@ -53,6 +53,8 @@ import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 
@@ -96,9 +98,9 @@ class CalendarGlanceWidget : GlanceAppWidget() {
 @Composable
 private fun CalendarPreviewContent() {
     val dateFormatS = LocalDate.Format {
-        dayOfWeek(DayOfWeekNames.ENGLISH_ABBREVIATED)
+        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(java.time.format.TextStyle.SHORT)))
         chars(", ")
-        monthName(MonthNames.ENGLISH_ABBREVIATED)
+        monthName(MonthNames(localizedMonthNames(java.time.format.TextStyle.SHORT)))
         chars(" ")
         day(Padding.NONE)
     }
@@ -132,9 +134,9 @@ private fun CalendarPreviewEvent(title: String, time: String, color: Int) {
 @Composable
 fun Content(context: Context, positionedEvents: Map<LocalDate, List<Instance>>) {
     val dateFormatS = LocalDate.Format {
-        dayOfWeek(DayOfWeekNames.ENGLISH_ABBREVIATED)
+        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(java.time.format.TextStyle.SHORT)))
         chars(", ")
-        monthName(MonthNames.ENGLISH_ABBREVIATED)
+        monthName(MonthNames(localizedMonthNames(java.time.format.TextStyle.SHORT)))
         chars(" ")
         day(Padding.NONE)
     }

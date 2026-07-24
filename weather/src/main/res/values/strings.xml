@@ -12,4 +12,65 @@
     <string name="map_time">Time</string>
     <string name="map_back">Back</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- HomePage -->
+    <string name="no_locations_yet">No locations yet</string>
+    <!-- LocationsScreen -->
+    <string name="couldn_t_determine_location">Couldn\'t determine location</string>
+    <string name="delete">Delete</string>
+    <string name="location_permission_denied">Location permission denied</string>
+    <!-- UseDeviceLocationCard -->
+    <string name="use_current_location">Use current location</string>
+
+    <!-- Migrated hardcoded UI strings (auto) v3 -->
+    <!-- CurrentWeatherCard -->
+    <string name="max_min">Max %1$s  Min %2$s</string>
+    <string name="feels_like">Feels like %1$s</string>
+    <!-- HomePage -->
+    <string name="locating">Locating…</string>
+    <string name="add_a_city_or_use_your_current_location">Add a city or use your current location to see the forecast.</string>
+    <!-- HumidityBlock -->
+    <string name="dew_point">Dew point</string>
+    <!-- LocationsScreen -->
+    <string name="locations">Locations</string>
+    <string name="no_matches">No matches</string>
+    <!-- MetricGraphSheet -->
+    <string name="not_enough_data_to_plot">Not enough data to plot.</string>
+    <!-- UseDeviceLocationCard -->
+    <string name="detect_your_device_s_current_location_au">Detect your device\'s current location automatically and add it to your list</string>
+    <!-- WindBlock -->
+    <string name="from_gusts">From %1$s · Gusts %2$s</string>
+
+    <!-- Migrated enum/data-class UI labels (var->resId) -->
+    <!-- WeatherCondition labels -->
+    <string name="condition_clear">Clear</string>
+    <string name="condition_partly_cloudy">Partly cloudy</string>
+    <string name="condition_cloudy">Cloudy</string>
+    <string name="condition_fog">Fog</string>
+    <string name="condition_drizzle">Drizzle</string>
+    <string name="condition_rain">Rain</string>
+    <string name="condition_snow">Snow</string>
+    <string name="condition_thunderstorm">Thunderstorm</string>
+    <string name="condition_unknown">Unknown</string>
+    <!-- WeatherMetric titles (Dew point reuses dew_point) -->
+    <string name="metric_temperature">Temperature</string>
+    <string name="metric_feels_like">Feels like</string>
+    <string name="metric_humidity">Humidity</string>
+    <string name="metric_precipitation">Precipitation</string>
+    <string name="metric_wind_speed">Wind speed</string>
+    <string name="metric_wind_gusts">Wind gusts</string>
+    <string name="metric_pressure">Pressure</string>
+    <string name="metric_visibility">Visibility</string>
+    <string name="metric_cloud_cover">Cloud cover</string>
+    <string name="metric_uv_index">UV index</string>
+    <!-- SummaryCard / computeDaySummary -->
+    <string name="summary_title">Summary</string>
+    <string name="summary_mixed_conditions">mixed conditions</string>
+    <string name="summary_expect_conditions">Expect %1$s throughout the day.</string>
+    <string name="summary_high_low">High %1$s, low %2$s.</string>
+    <string name="summary_rain_likely">Rain is likely — bring an umbrella.</string>
+    <string name="summary_showers_possible">Showers are possible later on.</string>
+    <string name="summary_slight_chance_rain">A slight chance of rain.</string>
+    <string name="summary_winds_noticeable">Winds will be noticeable today.</string>
 </resources>

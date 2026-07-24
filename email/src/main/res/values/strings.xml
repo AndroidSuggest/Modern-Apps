@@ -36,4 +36,104 @@
     
     <!-- ImapIdleService strings -->
     <string name="listening_for_new_mail">Listening for new mail</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- AddAccountScreen -->
+    <string name="sign_in_with_microsoft">Sign in with Microsoft</string>
+    <string name="account_added">Account added</string>
+    <string name="username">Username</string>
+    <string name="username_is_not_my_email">Username is not my email</string>
+    <string name="smtp_outgoing">SMTP (outgoing)</string>
+    <string name="imap_incoming">IMAP (incoming)</string>
+    <string name="how_to_get_your_app_password">How to get your app password</string>
+    <string name="sign_in_with">Sign in with %1$s</string>
+    <string name="security">Security:</string>
+    <!-- EmailWidget -->
+    <string name="no_recent_emails">No recent emails</string>
+    <!-- EmlViewerScreen -->
+    <string name="retry">Retry</string>
+    <string name="couldn_t_open_this_eml_file">Couldn\'t open this .eml file</string>
+    <string name="to">To: %1$s</string>
+    <string name="open">Open</string>
+    <string name="cc_1">Cc: %1$s</string>
+    <!-- MainActivity -->
+    <string name="signature_saved">Signature saved</string>
+    <string name="couldn_t_open_unsubscribe_page">Couldn\'t open unsubscribe page</string>
+    <string name="unread">Unread</string>
+    <string name="in_1_hour">In 1 hour</string>
+    <string name="later_today_6_pm">Later today (6 PM)</string>
+    <string name="sender_blocked">Sender blocked</string>
+    <string name="save_as_eml">Save as .eml</string>
+    <string name="none">None</string>
+    <string name="retrying_pending_message_s">Retrying %1$s pending message(s)…</string>
+    <string name="unblock">Unblock</string>
+    <string name="tomorrow_8_am">Tomorrow (8 AM)</string>
+    <string name="folders">Folders</string>
+    <string name="unsubscribe">Unsubscribe</string>
+    <string name="this_evening_6_pm">This evening (6 PM)</string>
+    <string name="in_1_week">In 1 week</string>
+    <string name="no_app_can_open_this_file">No app can open this file</string>
+    <string name="snooze">Snooze</string>
+    <string name="signatures">Signatures</string>
+    <string name="later">Later</string>
+    <string name="unsubscribing">Unsubscribing…</string>
+    <string name="accounts">Accounts</string>
+    <string name="remote_images_blocked">Remote images blocked</string>
+    <string name="cc_bcc">Cc/Bcc</string>
+    <string name="blocked_senders">Blocked senders</string>
+    <string name="inline_images">Inline images (%1$s - %2$s)</string>
+    <string name="snoozed">Snoozed</string>
+    <string name="download_failed">Download failed: %1$s</string>
+    <string name="your_signature">Your signature</string>
+    <string name="all">All</string>
+    <string name="attachments">Attachments</string>
+    <string name="cc">Cc</string>
+    <string name="scheduled">Scheduled</string>
+    <string name="no_drafts">No drafts</string>
+    <string name="message_sent">Message sent</string>
+    <string name="load_images">Load images</string>
+    <string name="ai_summary">AI Summary</string>
+    <string name="deleted_from_outbox">Deleted from Outbox</string>
+    <string name="bcc">Bcc</string>
+    <string name="attachments_1">Attachments (%1$s)</string>
+    <string name="attachments_2">Attachments:</string>
+    <string name="unified_inbox">Unified Inbox</string>
+    <string name="saved_to_downloads">Saved to Downloads</string>
+    <string name="saved_to_outbox">Saved to Outbox: %1$s</string>
+    <string name="generating_summary">Generating summary…</string>
+    <string name="block_sender">Block sender</string>
+    <!-- OutlookOAuthActivity -->
+    <string name="added">Added %1$s</string>
+    <string name="microsoft_sign_in_failed">Microsoft sign-in failed</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- AddAccountScreen -->
+    <string name="choose_your_email_provider">Choose your email provider</string>
+    <string name="enter_imap_smtp_server_details_manually">Enter IMAP/SMTP server details manually</string>
+    <string name="oauth2">oauth2</string>
+    <string name="app_password">App password</string>
+    <string name="password">Password</string>
+    <string name="hide">Hide</string>
+    <string name="show">Show</string>
+    <!-- EmlViewerScreen -->
+    <string name="e_mail_file">E-mail file</string>
+    <string name="unknown_error">Unknown error</string>
+    <string name="no_content_1">(No content)</string>
+    <!-- MainActivity -->
+    <string name="no_messages_found_pull_down_to_refresh">No messages found. Pull down to refresh.</string>
+    <string name="conversation">Conversation</string>
+    <string name="to_me">to me</string>
+    <string name="hide_quoted_text">Hide quoted text</string>
+    <string name="show_quoted_text">Show quoted text</string>
+    <string name="no_content">(No Content)</string>
+    <string name="total_attachment_size_exceeds_25_mb_many">Total attachment size exceeds 25 MB; many providers will reject it.</string>
+    <string name="outbox_is_empty">Outbox is empty</string>
+    <string name="no_subject">(no subject)</string>
+    <string name="from">From %1$s</string>
+    <string name="to_1">To %1$s</string>
+    <string name="failed">Failed: %1$s</string>
+    <string name="attempt_s">%1$s attempt(s)</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_insert_image">Insert image</string>
 </resources>

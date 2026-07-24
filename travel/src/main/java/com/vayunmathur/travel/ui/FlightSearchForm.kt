@@ -31,20 +31,23 @@ import androidx.compose.material.icons.filled.Close
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.travel.util.FlightQuery
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
+import com.vayunmathur.travel.R
 
 /** The Duffel cabin classes, with a display label. */
-enum class Cabin(val code: String, val label: String) {
-    ECONOMY("economy", "Economy"),
-    PREMIUM("premium_economy", "Premium"),
-    BUSINESS("business", "Business"),
-    FIRST("first", "First"),
+enum class Cabin(val code: String, @StringRes val label: Int) {
+    ECONOMY("economy", R.string.economy),
+    PREMIUM("premium_economy", R.string.premium),
+    BUSINESS("business", R.string.business),
+    FIRST("first", R.string.first),
 }
 
 /** The three supported trip shapes. */
-enum class TripType(val label: String) {
-    ONE_WAY("One-way"),
-    ROUND_TRIP("Round trip"),
-    MULTI_CITY("Multi-city"),
+enum class TripType(@StringRes val label: Int) {
+    ONE_WAY(R.string.one_way),
+    ROUND_TRIP(R.string.round_trip),
+    MULTI_CITY(R.string.multi_city),
 }
 
 /** A single editable leg (origin/destination/date) used by the form. */
@@ -87,7 +90,7 @@ fun FlightSearchForm(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TripType.entries.forEach { t ->
-                FilterChip(selected = tripType == t, onClick = { tripType = t }, label = { Text(t.label) })
+                FilterChip(selected = tripType == t, onClick = { tripType = t }, label = { Text(stringResource(t.label)) })
             }
         }
 
@@ -107,16 +110,16 @@ fun FlightSearchForm(
                 }
                 if (legs.size < 5) {
                     OutlinedButton(onClick = { legs.add(Leg()) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Add another flight")
+                        Text(stringResource(R.string.add_another_flight))
                     }
                 }
             }
             else -> {
                 PlaceAutocompleteField("From", viewModel, onCodeChange = { origin = it })
                 PlaceAutocompleteField("To", viewModel, onCodeChange = { destination = it })
-                DateField("Depart", depart, onDate = { depart = it })
+                DateField(stringResource(R.string.depart), depart, onDate = { depart = it })
                 if (tripType == TripType.ROUND_TRIP) {
-                    DateField("Return", returnDate, onDate = { returnDate = it })
+                    DateField(stringResource(R.string.return_label), returnDate, onDate = { returnDate = it })
                 }
             }
         }
@@ -128,26 +131,26 @@ fun FlightSearchForm(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Cabin.entries.forEach { c ->
-                FilterChip(selected = cabin == c, onClick = { cabin = c }, label = { Text(c.label) })
+                FilterChip(selected = cabin == c, onClick = { cabin = c }, label = { Text(stringResource(c.label)) })
             }
         }
 
-        CountStepper("Adults", adults, onCount = { adults = it }, min = 1)
-        CountStepper("Children", childAges.size, onCount = { count ->
+        CountStepper(stringResource(R.string.adults), adults, onCount = { adults = it }, min = 1)
+        CountStepper(stringResource(R.string.children), childAges.size, onCount = { count ->
             while (childAges.size < count) childAges.add(8)
             while (childAges.size > count) childAges.removeAt(childAges.size - 1)
         }, min = 0, max = 6)
         childAges.forEachIndexed { index, age ->
-            CountStepper("  Child ${index + 1} age", age, onCount = { childAges[index] = it }, min = 0, max = 17)
+            CountStepper(stringResource(R.string.child_age, index + 1), age, onCount = { childAges[index] = it }, min = 0, max = 17)
         }
-        CountStepper("Infants (on lap)", infants, onCount = { infants = it }, min = 0, max = adults)
+        CountStepper(stringResource(R.string.infants_on_lap), infants, onCount = { infants = it }, min = 0, max = adults)
 
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Nonstop only")
+            Text(stringResource(R.string.nonstop_only))
             Switch(checked = nonstop, onCheckedChange = { nonstop = it })
         }
 
@@ -178,7 +181,7 @@ fun FlightSearchForm(
             },
             enabled = valid,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Search flights") }
+        ) { Text(stringResource(R.string.search_flights)) }
     }
 }
 
@@ -200,17 +203,17 @@ private fun MultiCityLeg(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                "Flight ${index + 1}",
+                stringResource(R.string.flight_1, index + 1),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
             )
             if (removable) {
-                IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = "Remove flight") }
+                IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cd_remove_flight)) }
             }
         }
         PlaceAutocompleteField("From", viewModel, onCodeChange = onOrigin)
         PlaceAutocompleteField("To", viewModel, onCodeChange = onDestination)
-        DateField("Date", date, onDate = onDate)
+        DateField(stringResource(R.string.date), date, onDate = onDate)
     }
 }

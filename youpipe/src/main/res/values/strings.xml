@@ -95,4 +95,29 @@
     <string name="action_remove">Remove</string>
     <string name="action_unblock">Unblock</string>
     <string name="action_unmute">Unmute</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- HistoryPage -->
+    <string name="clear">Clear</string>
+    <string name="selected">%1$s selected</string>
+    <string name="cancel">Cancel</string>
+    <string name="clear_history">Clear History</string>
+    <string name="are_you_sure_you_want_to_clear_all_watch">Are you sure you want to clear all watch history?</string>
+    <!-- SubscriptionsPage -->
+    <string name="loading_recent_subscriptions">Loading recent subscriptions</string>
+    <!-- VideoPage -->
+    <string name="download_options">Download Options</string>
+    <string name="download">Download</string>
+    <string name="resolution">Resolution</string>
+    <string name="language">Language</string>
+    <!-- VideoPlayer -->
+    <string name="off">Off</string>
+    <string name="chapter">Chapter</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- DownloadedVideosPage -->
+    <string name="selected_1">%1$s Selected</string>
+    <string name="downloads">Downloads</string>
+    <!-- VideoPlayer -->
+    <string name="cc">CC</string>
 </resources>

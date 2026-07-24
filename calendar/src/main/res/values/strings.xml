@@ -1,5 +1,26 @@
 <resources>
     <string name="app_name">Calendar</string>
+
+    <!-- Calendar layout labels (CalendarLayout enum) -->
+    <string name="layout_agenda">Agenda</string>
+    <string name="layout_day">Day</string>
+    <string name="layout_work_week">Work Week</string>
+    <string name="layout_full_week">Full Week</string>
+    <string name="layout_month">Month</string>
+    <string name="layout_work_week_summary">Work Week Summary</string>
+    <string name="layout_full_week_summary">Full Week Summary</string>
+    <string name="layout_short_agenda">A</string>
+    <string name="layout_short_day">D</string>
+    <string name="layout_short_work_week">W5</string>
+    <string name="layout_short_full_week">W7</string>
+    <string name="layout_short_month">M</string>
+    <string name="layout_short_work_week_summary">W5S</string>
+    <string name="layout_short_full_week_summary">W7S</string>
+
+    <!-- Theme mode labels (ThemeMode enum) -->
+    <string name="theme_system_default">System default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
     <string name="calendar_widget_description">Upcoming events at a glance — tap to open Calendar</string>
 
     <!-- Common actions -->
@@ -112,4 +133,60 @@
 
     <!-- Settings screen -->
     <string name="default_layout">Default Layout</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- HolidayCalendarsScreen -->
+    <string name="search_countries">Search countries</string>
+    <string name="choose_language">Choose language</string>
+    <string name="add">Add</string>
+    <string name="holiday_calendars">Holiday calendars</string>
+    <!-- MainActivity -->
+    <string name="please_grant_calendar_permission">Please grant calendar permission</string>
+    <!-- SettingsScreen -->
+    <string name="import_events_from_ics_files">Import events from .ics files</string>
+    <string name="theme">Theme</string>
+    <string name="add_public_holidays_for_countries">Add public holidays for countries</string>
+
+    <!-- Reminder labels (EditEventScreen.reminderLabel) -->
+    <string name="reminder_at_time_of_event">At time of event</string>
+    <plurals name="reminder_days_before">
+        <item quantity="one">%1$d day before</item>
+        <item quantity="other">%1$d days before</item>
+    </plurals>
+    <plurals name="reminder_hours_before">
+        <item quantity="one">%1$d hour before</item>
+        <item quantity="other">%1$d hours before</item>
+    </plurals>
+    <plurals name="reminder_minutes_before">
+        <item quantity="one">%1$d minute before</item>
+        <item quantity="other">%1$d minutes before</item>
+    </plurals>
+
+    <!-- Recurrence summary (RRule.describe) -->
+    <string name="rrule_daily">Daily</string>
+    <plurals name="rrule_every_days">
+        <item quantity="one">Every %1$d day</item>
+        <item quantity="other">Every %1$d days</item>
+    </plurals>
+    <string name="rrule_weekly">Weekly</string>
+    <plurals name="rrule_every_weeks">
+        <item quantity="one">Every %1$d week</item>
+        <item quantity="other">Every %1$d weeks</item>
+    </plurals>
+    <string name="rrule_monthly">Monthly</string>
+    <plurals name="rrule_every_months">
+        <item quantity="one">Every %1$d month</item>
+        <item quantity="other">Every %1$d months</item>
+    </plurals>
+    <string name="rrule_yearly">Yearly</string>
+    <plurals name="rrule_every_years">
+        <item quantity="one">Every %1$d year</item>
+        <item quantity="other">Every %1$d years</item>
+    </plurals>
+    <string name="rrule_on_days">%1$s on %2$s</string>
+    <plurals name="rrule_count_suffix">
+        <item quantity="one">, %1$d time</item>
+        <item quantity="other">, %1$d times</item>
+    </plurals>
+    <string name="rrule_until_suffix">, Until %1$s</string>
 </resources>

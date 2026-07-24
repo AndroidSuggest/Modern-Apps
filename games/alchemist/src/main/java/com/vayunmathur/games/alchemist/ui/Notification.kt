@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.alchemist.data.AlchemyItem
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.alchemist.R
 
 @Composable
 fun UnlockNotification(
@@ -74,7 +76,7 @@ fun UnlockNotification(
                         .weight(1f)
                 ) {
                     Text(
-                        text = if (unlock.size == 1) "Item discovered!" else "${unlock.size} items discovered!",
+                        text = if (unlock.size == 1) stringResource(R.string.item_discovered) else stringResource(R.string.items_discovered, unlock.size),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )

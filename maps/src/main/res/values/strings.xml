@@ -1,6 +1,15 @@
 <resources>
     <string name="app_name">Maps</string>
 
+    <!-- Turn-by-turn spoken navigation (TTS) -->
+    <string name="tts_in_distance">In %1$s, %2$s</string>
+    <string name="tts_in_meters">In %1$d meters, %2$s</string>
+    <string name="tts_now">Now, %1$s</string>
+    <plurals name="tts_kilometers">
+        <item quantity="one">%1$d kilometer</item>
+        <item quantity="other">%1$d kilometers</item>
+    </plurals>
+
     <!-- BottomSheetContent -->
     <string name="your_location">Your location</string>
     <string name="walk_duration_distance">Walk %1$s (%2$s km)</string>
@@ -122,4 +131,9 @@
     <string name="nav_arrived_title">You have arrived</string>
     <string name="nav_arrived_dismiss">Dismiss</string>
     <string name="nav_off_route">Off route — recalculating…</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- NavigationOverlay -->
+    <string name="then">Then: %1$s</string>
+    <string name="min">%1$s min · %2$s</string>
 </resources>

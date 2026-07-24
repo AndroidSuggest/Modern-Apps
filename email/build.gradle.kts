@@ -30,10 +30,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/NOTICE.md"
             excludes += "META-INF/LICENSE.md"
-            // Ensure JavaMail provider descriptors are kept
+            // Ensure JavaMail provider descriptors are kept (legacy javax + jakarta)
             pickFirsts += "META-INF/javamail.providers"
             pickFirsts += "META-INF/javamail.default.providers"
             pickFirsts += "META-INF/javamail.default.address.map"
+            pickFirsts += "META-INF/jakarta.mail.providers"
+            pickFirsts += "META-INF/jakarta.mail.default.providers"
+            pickFirsts += "META-INF/jakarta.mail.default.address.map"
+            pickFirsts += "META-INF/jakarta.mail.address.map"
             pickFirsts += "META-INF/mailcap"
             pickFirsts += "META-INF/mailcap.default"
         }
@@ -41,6 +45,8 @@ android {
 }
 
 dependencies {
+    implementation(libs.jakarta.mail.api)
+    implementation(libs.jakarta.activation.api)
     implementation(libs.jakarta.mail)
     implementation(libs.jakarta.activation)
     implementation(libs.androidx.browser)

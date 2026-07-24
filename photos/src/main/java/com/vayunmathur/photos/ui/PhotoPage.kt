@@ -413,7 +413,7 @@ fun PhotoDetailView(
                         color = Color.LightGray
                 )
                 if (photo.panoData != null) {
-                    Text(text = if (isSphere) "360°" else "Panorama", color = Color.LightGray)
+                    Text(text = if (isSphere) "360°" else stringResource(R.string.panorama), color = Color.LightGray)
                 }
                 if (peopleCount > 0) {
                     Text(

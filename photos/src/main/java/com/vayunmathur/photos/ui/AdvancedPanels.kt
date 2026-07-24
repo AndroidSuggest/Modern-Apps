@@ -44,6 +44,8 @@ import com.vayunmathur.photos.data.StylizeParams
 import com.vayunmathur.photos.data.UnsharpMask
 import com.vayunmathur.photos.data.applyToBitmap
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.photos.R
 
 @Composable
 fun LabeledSlider(
@@ -82,11 +84,11 @@ private fun PanelColumn(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 fun LevelsPanel(levels: LevelsAdjustment, onChange: (LevelsAdjustment) -> Unit) = PanelColumn {
-    LabeledSlider("In Black", levels.inBlack, 0f..254f) { onChange(levels.copy(inBlack = it)) }
-    LabeledSlider("In White", levels.inWhite, 1f..255f) { onChange(levels.copy(inWhite = it)) }
-    LabeledSlider("Gamma", levels.gamma * 100f, 10f..300f) { onChange(levels.copy(gamma = it / 100f)) }
-    LabeledSlider("Out Black", levels.outBlack, 0f..254f) { onChange(levels.copy(outBlack = it)) }
-    LabeledSlider("Out White", levels.outWhite, 1f..255f) { onChange(levels.copy(outWhite = it)) }
+    LabeledSlider(stringResource(R.string.in_black), levels.inBlack, 0f..254f) { onChange(levels.copy(inBlack = it)) }
+    LabeledSlider(stringResource(R.string.in_white), levels.inWhite, 1f..255f) { onChange(levels.copy(inWhite = it)) }
+    LabeledSlider(stringResource(R.string.gamma), levels.gamma * 100f, 10f..300f) { onChange(levels.copy(gamma = it / 100f)) }
+    LabeledSlider(stringResource(R.string.out_black), levels.outBlack, 0f..254f) { onChange(levels.copy(outBlack = it)) }
+    LabeledSlider(stringResource(R.string.out_white), levels.outWhite, 1f..255f) { onChange(levels.copy(outWhite = it)) }
 }
 
 @Composable
@@ -103,17 +105,17 @@ fun ColorBalancePanel(balance: ColorBalanceAdjustment, onChange: (ColorBalanceAd
     val rc = when (range) { 0 -> balance.shadowsRedCyan; 1 -> balance.midRedCyan; else -> balance.highRedCyan }
     val gm = when (range) { 0 -> balance.shadowsGreenMagenta; 1 -> balance.midGreenMagenta; else -> balance.highGreenMagenta }
     val by = when (range) { 0 -> balance.shadowsBlueYellow; 1 -> balance.midBlueYellow; else -> balance.highBlueYellow }
-    LabeledSlider("Red-Cyan", rc, -100f..100f) {
+    LabeledSlider(stringResource(R.string.red_cyan), rc, -100f..100f) {
         onChange(when (range) {
             0 -> balance.copy(shadowsRedCyan = it); 1 -> balance.copy(midRedCyan = it); else -> balance.copy(highRedCyan = it)
         })
     }
-    LabeledSlider("Green-Mag", gm, -100f..100f) {
+    LabeledSlider(stringResource(R.string.green_mag), gm, -100f..100f) {
         onChange(when (range) {
             0 -> balance.copy(shadowsGreenMagenta = it); 1 -> balance.copy(midGreenMagenta = it); else -> balance.copy(highGreenMagenta = it)
         })
     }
-    LabeledSlider("Blue-Yellow", by, -100f..100f) {
+    LabeledSlider(stringResource(R.string.blue_yellow), by, -100f..100f) {
         onChange(when (range) {
             0 -> balance.copy(shadowsBlueYellow = it); 1 -> balance.copy(midBlueYellow = it); else -> balance.copy(highBlueYellow = it)
         })
@@ -133,12 +135,12 @@ fun ChannelMixerPanel(mixer: ChannelMixerAdjustment, onChange: (ChannelMixerAdju
 
 @Composable
 fun BlackWhitePanel(bw: BlackAndWhiteAdjustment, onChange: (BlackAndWhiteAdjustment) -> Unit) = PanelColumn {
-    LabeledSlider("Reds", bw.reds, 0f..200f) { onChange(bw.copy(reds = it)) }
-    LabeledSlider("Yellows", bw.yellows, 0f..200f) { onChange(bw.copy(yellows = it)) }
-    LabeledSlider("Greens", bw.greens, 0f..200f) { onChange(bw.copy(greens = it)) }
-    LabeledSlider("Cyans", bw.cyans, 0f..200f) { onChange(bw.copy(cyans = it)) }
-    LabeledSlider("Blues", bw.blues, 0f..200f) { onChange(bw.copy(blues = it)) }
-    LabeledSlider("Magentas", bw.magentas, 0f..200f) { onChange(bw.copy(magentas = it)) }
+    LabeledSlider(stringResource(R.string.reds), bw.reds, 0f..200f) { onChange(bw.copy(reds = it)) }
+    LabeledSlider(stringResource(R.string.yellows), bw.yellows, 0f..200f) { onChange(bw.copy(yellows = it)) }
+    LabeledSlider(stringResource(R.string.greens), bw.greens, 0f..200f) { onChange(bw.copy(greens = it)) }
+    LabeledSlider(stringResource(R.string.cyans), bw.cyans, 0f..200f) { onChange(bw.copy(cyans = it)) }
+    LabeledSlider(stringResource(R.string.blues), bw.blues, 0f..200f) { onChange(bw.copy(blues = it)) }
+    LabeledSlider(stringResource(R.string.magentas), bw.magentas, 0f..200f) { onChange(bw.copy(magentas = it)) }
 }
 
 @Composable
@@ -161,8 +163,7 @@ private fun ApplyButton(onApply: () -> Unit) {
             shape = RoundedCornerShape(6.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
         ) {
-            Text(
-                "Apply",
+            Text(stringResource(R.string.apply),
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -227,15 +228,15 @@ fun FiltersPanel(onAddFx: (com.vayunmathur.photos.data.LayerAdjustment) -> Unit)
     }
     when (tool) {
         "Sharpen" -> {
-            LabeledSlider("Amount", amount, 0f..100f) { amount = it }
-            LabeledSlider("Radius", radius, 0.5f..10f) { radius = it }
+            LabeledSlider(stringResource(R.string.amount), amount, 0f..100f) { amount = it }
+            LabeledSlider(stringResource(R.string.radius), radius, 0.5f..10f) { radius = it }
         }
         "Motion" -> {
-            LabeledSlider("Length", amount, 1f..100f) { amount = it }
-            LabeledSlider("Angle", angle, 0f..360f) { angle = it }
+            LabeledSlider(stringResource(R.string.length), amount, 1f..100f) { amount = it }
+            LabeledSlider(stringResource(R.string.angle), angle, 0f..360f) { angle = it }
         }
-        "Noise" -> LabeledSlider("Amount", amount, 0f..100f) { amount = it }
-        else -> LabeledSlider("Amount", amount, 1f..100f) { amount = it }
+        "Noise" -> LabeledSlider(stringResource(R.string.amount), amount, 0f..100f) { amount = it }
+        else -> LabeledSlider(stringResource(R.string.amount), amount, 1f..100f) { amount = it }
     }
     ApplyButton {
         val a = amount; val r = radius; val ang = angle
@@ -254,23 +255,22 @@ fun FiltersPanel(onAddFx: (com.vayunmathur.photos.data.LayerAdjustment) -> Unit)
 
 @Composable
 fun VibrancePanel(amount: Float, onChange: (Float) -> Unit) = PanelColumn {
-    LabeledSlider("Vibrance", amount, -100f..100f, onChange)
+    LabeledSlider(stringResource(R.string.vibrance), amount, -100f..100f, onChange)
 }
 
 @Composable
 fun PosterizePanel(levels: Int, onChange: (Int) -> Unit) = PanelColumn {
-    LabeledSlider("Levels", levels.toFloat(), 2f..64f) { onChange(it.roundToInt()) }
+    LabeledSlider(stringResource(R.string.levels), levels.toFloat(), 2f..64f) { onChange(it.roundToInt()) }
 }
 
 @Composable
 fun ThresholdPanel(level: Int, onChange: (Int) -> Unit) = PanelColumn {
-    LabeledSlider("Level", level.toFloat(), 0f..255f) { onChange(it.roundToInt()) }
+    LabeledSlider(stringResource(R.string.level), level.toFloat(), 0f..255f) { onChange(it.roundToInt()) }
 }
 
 @Composable
 fun InvertPanel() = PanelColumn {
-    Text(
-        "Colors inverted. Toggle the layer's visibility or delete the Invert layer to undo.",
+    Text(stringResource(R.string.colors_inverted_toggle_the_layer_s_visib),
         fontSize = 12.sp,
         modifier = Modifier.padding(horizontal = 8.dp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -299,7 +299,7 @@ fun PhotoFilterPanel(adj: PhotoFilterAdj, onChange: (PhotoFilterAdj) -> Unit) = 
             )
         }
     }
-    LabeledSlider("Density", adj.density * 100f, 0f..100f) { onChange(adj.copy(density = it / 100f)) }
+    LabeledSlider(stringResource(R.string.density), adj.density * 100f, 0f..100f) { onChange(adj.copy(density = it / 100f)) }
 }
 
 @Composable
@@ -316,7 +316,7 @@ fun SelectiveColorPanel(adj: SelectiveColorAdj, onChange: (SelectiveColorAdj) ->
             )
         }
     }
-    LabeledSlider("Cyan", adj.cyan, -100f..100f) { onChange(adj.copy(cyan = it)) }
-    LabeledSlider("Magenta", adj.magenta, -100f..100f) { onChange(adj.copy(magenta = it)) }
-    LabeledSlider("Yellow", adj.yellow, -100f..100f) { onChange(adj.copy(yellow = it)) }
+    LabeledSlider(stringResource(R.string.cyan), adj.cyan, -100f..100f) { onChange(adj.copy(cyan = it)) }
+    LabeledSlider(stringResource(R.string.magenta), adj.magenta, -100f..100f) { onChange(adj.copy(magenta = it)) }
+    LabeledSlider(stringResource(R.string.yellow), adj.yellow, -100f..100f) { onChange(adj.copy(yellow = it)) }
 }

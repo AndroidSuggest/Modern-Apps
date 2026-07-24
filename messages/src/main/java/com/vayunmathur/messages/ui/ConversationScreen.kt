@@ -60,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -229,7 +230,7 @@ fun ConversationScreen(
                         Spacer(Modifier.size(12.dp))
                         Column {
                             Text(
-                                conversation?.displayTitle() ?: "Conversation",
+                                conversation?.displayTitle() ?: stringResource(R.string.conversation),
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -359,7 +360,7 @@ fun ConversationScreen(
                     CircularProgressIndicator()
                     Spacer(Modifier.size(12.dp))
                     Text(
-                        "Loading messages…",
+                        stringResource(R.string.loading_messages),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -670,7 +671,7 @@ private fun ShareCard(att: MessageAttachment, onClick: () -> Unit) {
                 )
             }
             Text(
-                att.title ?: att.actionUrl ?: "Shared link",
+                att.title ?: att.actionUrl ?: stringResource(R.string.shared_link),
                 modifier = Modifier.padding(10.dp),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
@@ -826,7 +827,7 @@ private fun MessageRequestBar(
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(
-                "This sender isn't in your contacts.",
+                stringResource(R.string.this_sender_isn_t_in_your_contacts),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 6.dp),
@@ -835,11 +836,11 @@ private fun MessageRequestBar(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(onClick = onBlock) { Text("Block") }
-                TextButton(onClick = onDelete) { Text("Delete") }
+                TextButton(onClick = onBlock) { Text(stringResource(R.string.block)) }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.delete)) }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onAccept) {
-                    Text("Accept", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.accept), fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -854,7 +855,7 @@ private fun ReactionPickerDialog(
     val emojis = listOf("\uD83D\uDC4D", "\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDE2E", "\uD83D\uDE22", "\uD83D\uDE21", "\uD83D\uDC4E")
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("React") },
+        title = { Text(stringResource(R.string.react)) },
         text = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -869,7 +870,7 @@ private fun ReactionPickerDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
 }
@@ -910,7 +911,7 @@ private fun PollBody(poll: PollView, onVote: (List<String>) -> Unit) {
         if (poll.totalVoters > 0) {
             Spacer(Modifier.height(2.dp))
             Text(
-                "${poll.totalVoters} vote${if (poll.totalVoters == 1) "" else "s"}",
+                pluralStringResource(R.plurals.vote_count, poll.totalVoters, poll.totalVoters),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

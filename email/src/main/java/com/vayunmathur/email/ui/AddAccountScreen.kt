@@ -105,7 +105,7 @@ private fun ProviderPicker(onPick: (ProviderPreset) -> Unit) {
             .padding(16.dp),
     ) {
         Text(
-            "Choose your email provider",
+            stringResource(R.string.choose_your_email_provider),
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 16.dp),
         )
@@ -118,9 +118,9 @@ private fun ProviderPicker(onPick: (ProviderPreset) -> Unit) {
                     Text(preset.displayName, style = MaterialTheme.typography.titleMedium)
                     Text(
                         when {
-                            preset.id == PROVIDER_CUSTOM -> "Enter IMAP/SMTP server details manually"
-                            preset.authType == "oauth2" -> "Sign in with Microsoft"
-                            else -> "App password"
+                            preset.id == PROVIDER_CUSTOM -> stringResource(R.string.enter_imap_smtp_server_details_manually)
+                            preset.authType == stringResource(R.string.oauth2) -> stringResource(R.string.sign_in_with_microsoft)
+                            else -> stringResource(R.string.app_password)
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -187,13 +187,13 @@ private fun PasswordForm(
                     checked = useDifferentUsername,
                     onCheckedChange = { useDifferentUsername = it },
                 )
-                Text("Username is not my email", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.username_is_not_my_email), style = MaterialTheme.typography.bodyMedium)
             }
             if (useDifferentUsername) {
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it.trim() },
-                    label = { Text("Username") },
+                    label = { Text(stringResource(R.string.username)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -202,27 +202,27 @@ private fun PasswordForm(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text(if (preset.id == PROVIDER_CUSTOM) "Password" else "App password") },
+            label = { Text(if (preset.id == PROVIDER_CUSTOM) stringResource(R.string.password) else stringResource(R.string.app_password)) },
             singleLine = true,
             visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None
             else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
                 TextButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Text(if (passwordVisible) "Hide" else "Show")
+                    Text(if (passwordVisible) stringResource(R.string.hide) else stringResource(R.string.show))
                 }
             },
             modifier = Modifier.fillMaxWidth(),
         )
 
         if (preset.id == PROVIDER_CUSTOM) {
-            Text("IMAP (incoming)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.imap_incoming), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             ServerRow(
                 host = imapHost, onHostChange = { imapHost = it.trim() },
                 port = imapPort, onPortChange = { imapPort = it.filter(Char::isDigit) },
                 useSsl = imapUseSsl, onSslChange = { imapUseSsl = it },
             )
-            Text("SMTP (outgoing)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.smtp_outgoing), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             ServerRow(
                 host = smtpHost, onHostChange = { smtpHost = it.trim() },
                 port = smtpPort, onPortChange = { smtpPort = it.filter(Char::isDigit) },
@@ -263,7 +263,7 @@ private fun PasswordForm(
                     )
                     working = false
                     if (result == null) {
-                        Toast.makeText(context, "Account added", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.account_added), Toast.LENGTH_SHORT).show()
                         onAccountAdded()
                     } else {
                         error = result
@@ -295,7 +295,7 @@ private fun OAuthForm(preset: ProviderPreset) {
     ) {
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Sign in with ${preset.displayName}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.sign_in_with, preset.displayName), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 preset.instructions.forEach { line ->
                     Text("• $line", style = MaterialTheme.typography.bodySmall)
                 }
@@ -305,7 +305,7 @@ private fun OAuthForm(preset: ProviderPreset) {
             onClick = { OutlookOAuth.start(context) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Sign in with Microsoft")
+            Text(stringResource(R.string.sign_in_with_microsoft))
         }
     }
 }
@@ -315,7 +315,7 @@ private fun InstructionsCard(preset: ProviderPreset) {
     val context = LocalContext.current
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("How to get your app password", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.how_to_get_your_app_password), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             preset.instructions.forEachIndexed { i, line ->
                 Text("${i + 1}. $line", style = MaterialTheme.typography.bodySmall)
             }
@@ -353,7 +353,7 @@ private fun ServerRow(
         )
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Security:", modifier = Modifier.padding(end = 8.dp))
+        Text(stringResource(R.string.security), modifier = Modifier.padding(end = 8.dp))
         FilterChip(
             selected = useSsl,
             onClick = { onSslChange(true) },
@@ -397,7 +397,7 @@ private suspend fun testAndPersistAccount(
             user = loginUser,
             auth = EmailManager.AuthType.Password(password),
         )
-    } catch (e: javax.mail.AuthenticationFailedException) {
+    } catch (e: jakarta.mail.AuthenticationFailedException) {
         return@withContext "Authentication failed — check your email and app password."
     } catch (e: Exception) {
         return@withContext "Couldn't reach ${imap.host}:${imap.port} — ${e.javaClass.simpleName}: ${e.message ?: "unknown error"}"

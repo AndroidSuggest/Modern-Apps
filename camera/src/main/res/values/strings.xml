@@ -35,6 +35,12 @@
 
     <string name="settings_video_codec">Video codec</string>
     <string name="settings_video_codec_label">Video codec</string>
+    <string name="codec_avc_label">H.264 / AVC</string>
+    <string name="codec_avc_description">Most compatible</string>
+    <string name="codec_hevc_label">H.265 / HEVC</string>
+    <string name="codec_hevc_description">More efficient</string>
+    <string name="codec_av1_label">AV1</string>
+    <string name="codec_av1_description">Most efficient</string>
 
     <string name="mode_portrait">Portrait</string>
 
@@ -53,4 +59,13 @@
     <string name="ae_af_lock">AE/AF LOCK</string>
     <string name="pause_recording">Pause</string>
     <string name="resume_recording">Resume</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- CameraScreen -->
+    <string name="processing_panorama_u2026">Processing panorama\u2026</string>
+    <string name="night">Night</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- CameraScreen -->
+    <string name="auto">Auto</string>
 </resources>

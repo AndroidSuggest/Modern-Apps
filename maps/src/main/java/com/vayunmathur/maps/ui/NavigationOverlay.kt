@@ -205,7 +205,7 @@ private fun ManeuverCard(
                     if (secondary != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Then: ${secondary.navInstruction.instructions}",
+                            stringResource(R.string.then, secondary.navInstruction.instructions),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                         )
@@ -266,7 +266,7 @@ private fun EtaStrip(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    "$remainingMinutes min · $remainingDistance",
+                    stringResource(R.string.min, remainingMinutes, remainingDistance),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

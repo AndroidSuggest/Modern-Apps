@@ -38,6 +38,8 @@ import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.OdfSpan
 import com.vayunmathur.library.ui.odf.OdfTextEditorState
 import com.vayunmathur.library.ui.odf.ParagraphStyle
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 /**
  * Controller for a Markdown body edited through the shared ODF editor. Holds the in-memory ODF
@@ -185,11 +187,11 @@ private fun OdfMarkdownToolbar(
                     headingMenu = false
                     state.mutateRunParagraphs(runStart, runEnd, selStart, selEnd) { it.copy(style = s) }
                 }
-                DropdownMenuItem(text = { Text("Normal") }, onClick = { setStyle(ParagraphStyle.BODY) })
-                DropdownMenuItem(text = { Text("Heading 1") }, onClick = { setStyle(ParagraphStyle.HEADING1) })
-                DropdownMenuItem(text = { Text("Heading 2") }, onClick = { setStyle(ParagraphStyle.HEADING2) })
-                DropdownMenuItem(text = { Text("Heading 3") }, onClick = { setStyle(ParagraphStyle.HEADING3) })
-                DropdownMenuItem(text = { Text("Heading 4") }, onClick = { setStyle(ParagraphStyle.HEADING4) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.style_normal)) }, onClick = { setStyle(ParagraphStyle.BODY) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.style_heading1)) }, onClick = { setStyle(ParagraphStyle.HEADING1) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.style_heading2)) }, onClick = { setStyle(ParagraphStyle.HEADING2) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.style_heading3)) }, onClick = { setStyle(ParagraphStyle.HEADING3) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.style_heading4)) }, onClick = { setStyle(ParagraphStyle.HEADING4) })
             }
         }
 

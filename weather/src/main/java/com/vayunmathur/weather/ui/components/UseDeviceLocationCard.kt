@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.weather.R
+import androidx.compose.ui.res.stringResource
 
 /**
  * Direct port of WeatherMaster's `UseDeviceLocationCard`. Pill / extraLarge
@@ -56,11 +57,11 @@ fun UseDeviceLocationCard(onClick: () -> Unit, isLoading: Boolean = false) {
                 }
             },
             content = {
-                Text("Use current location", color = MaterialTheme.colorScheme.onSurface)
+                Text(stringResource(R.string.use_current_location), color = MaterialTheme.colorScheme.onSurface)
             },
             supportingContent = {
                 Text(
-                    "Detect your device's current location automatically and add it to your list",
+                    stringResource(R.string.detect_your_device_s_current_location_au),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },

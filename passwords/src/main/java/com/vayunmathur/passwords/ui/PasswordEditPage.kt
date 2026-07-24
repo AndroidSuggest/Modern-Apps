@@ -81,7 +81,7 @@ fun PasswordEditPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (current.id == 0L) "Add Password" else "Edit Password") },
+                title = { Text(if (current.id == 0L) stringResource(R.string.add_password) else stringResource(R.string.edit_password)) },
                 navigationIcon = {
                     IconNavigation(backStack)
                 }
@@ -137,7 +137,7 @@ fun PasswordEditPage(
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         trailingIcon = {
-                            TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) "Hide" else "Show") }
+                            TextButton(onClick = { showPassword = !showPassword }) { Text(if (showPassword) stringResource(R.string.hide) else stringResource(R.string.show)) }
                         }
                     )
 

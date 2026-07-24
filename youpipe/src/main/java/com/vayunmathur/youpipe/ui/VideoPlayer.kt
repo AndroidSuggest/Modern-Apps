@@ -489,13 +489,13 @@ fun VideoPlayer(
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(text = selectedSubtitle?.languageTag?.ifEmpty { "CC" } ?: "CC", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                                    Text(text = selectedSubtitle?.languageTag?.ifEmpty { stringResource(R.string.cc) } ?: stringResource(R.string.cc), color = Color.White, style = MaterialTheme.typography.labelMedium)
                                     IconArrowDropDown(tint = Color.White)
                                 }
                             }
                             DropdownMenu(expanded = isCaptionMenuExpanded, onDismissRequest = { isCaptionMenuExpanded = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Off") },
+                                    text = { Text(stringResource(R.string.off)) },
                                     onClick = { selectedSubtitle = null; isCaptionMenuExpanded = false }
                                 )
                                 subtitles.forEach { sub ->
@@ -603,7 +603,7 @@ fun VideoPlayer(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = "Chapter", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(text = stringResource(R.string.chapter), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         IconButton(onClick = { isChapterMenuVisible = false }) {
                             IconClose(tint = Color.White)
                         }

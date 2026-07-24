@@ -162,14 +162,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vayunmathur.pdf.R
 import com.vayunmathur.pdf.util.PdfPrimitive
+import com.vayunmathur.pdf.util.BlendMode
+import com.vayunmathur.pdf.util.PathOp
 import com.vayunmathur.pdf.util.SafeAnnotation
 import com.vayunmathur.pdf.util.SafeFormField
 import com.vayunmathur.pdf.util.SafeLink
 import com.vayunmathur.pdf.util.SafePdfDocument
 import com.vayunmathur.pdf.util.PdfStateStore
 import com.vayunmathur.pdf.util.SafePdfPage
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.io.ByteArrayOutputStream
 
 private sealed interface LoadState {
@@ -425,21 +425,21 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         var pwInput by remember { mutableStateOf("") }
         com.vayunmathur.library.ui.AlertDialog(
             onDismissRequest = { onBack() },
-            title = { Text("Password required") },
+            title = { Text(stringResource(R.string.password_required)) },
             text = {
                 Column {
-                    if (pwError) Text("Incorrect password", color = MaterialTheme.colorScheme.error)
+                    if (pwError) Text(stringResource(R.string.incorrect_password), color = MaterialTheme.colorScheme.error)
                     TextField(
                         value = pwInput,
                         onValueChange = { pwInput = it },
                         singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        placeholder = { Text("Password") },
+                        placeholder = { Text(stringResource(R.string.password)) },
                     )
                 }
             },
-            confirmButton = { TextButton({ needsPassword = false; password = pwInput }) { Text("Open") } },
-            dismissButton = { TextButton({ onBack() }) { Text("Cancel") } },
+            confirmButton = { TextButton({ needsPassword = false; password = pwInput }) { Text(stringResource(R.string.open)) } },
+            dismissButton = { TextButton({ onBack() }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -680,7 +680,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
             }
             android.widget.Toast.makeText(
                 context,
-                if (bytes != null) "Signed & saved" else "Signing failed",
+                if (bytes != null) context.getString(R.string.signed_and_saved) else context.getString(R.string.signing_failed),
                 android.widget.Toast.LENGTH_SHORT,
             ).show()
         }
@@ -753,8 +753,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(Modifier.fillMaxWidth(0.82f)) {
-                Text(
-                    "Outline",
+                Text(stringResource(R.string.outline),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(16.dp),
                 )
@@ -799,7 +798,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                                 singleLine = true,
                             )
                             Checkbox(checked = caseSensitive, onCheckedChange = { caseSensitive = it })
-                            Text("Aa", style = MaterialTheme.typography.labelSmall)
+                            Text(stringResource(R.string.aa), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 },
@@ -869,11 +868,11 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                                     onDismissRequest = { showSaveMenu = false },
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Save") },
+                                        text = { Text(stringResource(R.string.pdf_save)) },
                                         onClick = { showSaveMenu = false; saveInPlace() },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Save as\u2026") },
+                                        text = { Text(stringResource(R.string.save_as_u2026)) },
                                         onClick = {
                                             showSaveMenu = false
                                             saveLauncher.launch(uri.lastPathSegment ?: "edited.pdf")
@@ -1025,9 +1024,9 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         var noteText by remember { mutableStateOf("") }
         com.vayunmathur.library.ui.AlertDialog(
             onDismissRequest = { pendingNote = null },
-            title = { Text("Sticky note") },
+            title = { Text(stringResource(R.string.sticky_note)) },
             text = {
-                TextField(value = noteText, onValueChange = { noteText = it }, placeholder = { Text("Note text") })
+                TextField(value = noteText, onValueChange = { noteText = it }, placeholder = { Text(stringResource(R.string.note_text)) })
             },
             confirmButton = {
                 TextButton({
@@ -1037,9 +1036,9 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                         registerCreated(page, id); markEdited(page)
                     }
                     pendingNote = null
-                }) { Text("Add") }
+                }) { Text(stringResource(R.string.add)) }
             },
-            dismissButton = { TextButton({ pendingNote = null }) { Text("Cancel") } },
+            dismissButton = { TextButton({ pendingNote = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -1047,7 +1046,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         var calloutText by remember { mutableStateOf("Text") }
         com.vayunmathur.library.ui.AlertDialog(
             onDismissRequest = { pendingCallout = null },
-            title = { Text("Callout") },
+            title = { Text(stringResource(R.string.callout)) },
             text = { TextField(value = calloutText, onValueChange = { calloutText = it }) },
             confirmButton = {
                 TextButton({
@@ -1057,9 +1056,9 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                         registerCreated(page, id); markEdited(page)
                     }
                     pendingCallout = null
-                }) { Text("Add") }
+                }) { Text(stringResource(R.string.add)) }
             },
-            dismissButton = { TextButton({ pendingCallout = null }) { Text("Cancel") } },
+            dismissButton = { TextButton({ pendingCallout = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -1079,23 +1078,23 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         var pw by remember { mutableStateOf("") }
         com.vayunmathur.library.ui.AlertDialog(
             onDismissRequest = { showEncrypt = false },
-            title = { Text("Encrypt with password") },
+            title = { Text(stringResource(R.string.encrypt_with_password)) },
             text = {
                 TextField(
                     value = pw,
                     onValueChange = { pw = it },
                     singleLine = true,
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    placeholder = { Text("Password") },
+                    placeholder = { Text(stringResource(R.string.password)) },
                 )
             },
             confirmButton = {
                 TextButton({
                     showEncrypt = false
                     if (pw.isNotEmpty()) { pendingEncryptPw = pw; encryptLauncher.launch("encrypted.pdf") }
-                }) { Text("Save encrypted") }
+                }) { Text(stringResource(R.string.save_encrypted)) }
             },
-            dismissButton = { TextButton({ showEncrypt = false }) { Text("Cancel") } },
+            dismissButton = { TextButton({ showEncrypt = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     }
@@ -1400,8 +1399,8 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
                     if (r != null) {
                         val text = glyphs.subList(r.first, r.last + 1).joinToString("") { it.ch }
                         if (text.isNotBlank()) {
-                            scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("text", text))) }
-                            android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                            scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText(context.getString(R.string.text), text))) }
+                            android.widget.Toast.makeText(context, context.getString(R.string.copied), android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
@@ -1834,8 +1833,7 @@ private fun FormFieldOverlay(
                         .background(Color(0x22000000)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "Sign",
+                    Text(stringResource(R.string.sign),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2045,11 +2043,11 @@ private fun StyleDialog(
     var b by remember(color) { mutableFloatStateOf(color.blue) }
     com.vayunmathur.library.ui.AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onDismiss) { Text("Done") } },
-        title = { Text("Style") },
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.done)) } },
+        title = { Text(stringResource(R.string.style)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("Color", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.color), style = MaterialTheme.typography.labelLarge)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                     for (c in palette) {
                         Box(
@@ -2068,15 +2066,15 @@ private fun StyleDialog(
                         }
                     }
                 }
-                Text("Red", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.red), style = MaterialTheme.typography.labelSmall)
                 Slider(value = r, onValueChange = { r = it; onColor(Color(r, g, b)) })
-                Text("Green", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.green), style = MaterialTheme.typography.labelSmall)
                 Slider(value = g, onValueChange = { g = it; onColor(Color(r, g, b)) })
-                Text("Blue", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.blue), style = MaterialTheme.typography.labelSmall)
                 Slider(value = b, onValueChange = { b = it; onColor(Color(r, g, b)) })
-                Text("Opacity ${(opacity * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.opacity, (opacity * 100).toInt()), style = MaterialTheme.typography.labelSmall)
                 Slider(value = opacity, onValueChange = onOpacity, valueRange = 0.1f..1f)
-                Text("Line width ${strokeWidth.toInt()}", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.line_width, strokeWidth.toInt()), style = MaterialTheme.typography.labelSmall)
                 Slider(value = strokeWidth, onValueChange = onWidth, valueRange = 1f..20f)
             }
         },
@@ -2113,6 +2111,29 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
     var groupSaveCount = 0
 
     fun clipOffsetList(pts: List<Offset>): List<Offset> = pts.map { map(it) }
+
+    // Bezier-retentive clip path (v4) and text-clip accumulation (Tr 4-7).
+    fun pathOpsToPath(ops: List<PathOp>): android.graphics.Path {
+        val p = android.graphics.Path()
+        for (op in ops) {
+            when (op) {
+                is PathOp.Move -> { val o = map(Offset(op.x, op.y)); p.moveTo(o.x, o.y) }
+                is PathOp.Line -> { val o = map(Offset(op.x, op.y)); p.lineTo(o.x, o.y) }
+                is PathOp.Cubic -> {
+                    val a = map(Offset(op.x1, op.y1))
+                    val b = map(Offset(op.x2, op.y2))
+                    val c = map(Offset(op.x3, op.y3))
+                    p.cubicTo(a.x, a.y, b.x, b.y, c.x, c.y)
+                }
+                PathOp.Close -> p.close()
+            }
+        }
+        return p
+    }
+    val textClipPath = android.graphics.Path()
+    var hasTextClip = false
+    val glyphPathPaint = android.graphics.Paint().apply { isAntiAlias = true }
+    val tmpGlyphPath = android.graphics.Path()
 
     for (prim in page.primitives) {
         // Primitive count guard double-check (OOM avoidance if Rust guard fails)
@@ -2173,34 +2194,34 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                 if (prim.text.isBlank()) continue
                 val origin = map(prim.origin)
                 val ts = (prim.size * scale).coerceAtLeast(1f)
-                // Improved text rendering mode handling per Phase 6: correctly skip fill for stroke-only, skip stroke for fill-only.
-                // Rust now emits fill only when has_fill, stroke only when has_stroke - it emits Text with fill color always but stroke nullable.
-                // For stroke-only (Tr 1,5), has_fill is false but we still emit Text with stroke present and fill color = stroke color. So we should NOT draw fill if stroke present and fill should be skipped? Our show_string now emits Text only for has_fill or has_stroke with appropriate colors:
-                //   has_fill -> fill color = fill, stroke optional
-                //   has_stroke-only -> fill = stroke color (for visibility) but actually should be stroke-only.
-                // To differentiate, we treat: if strokeColor != null && color == strokeColor and original mode was stroke-only, we skip fill and draw stroke only.
-                // Heuristic: if strokeColor != null, we draw stroke; then draw fill only if strokeColor == null or we are in fill+stroke mode. For now we draw stroke then fill both, but for stroke-only we will draw stroke only.
-                // Better: check prim advances: if stroke present, we assume it may be stroke-only or fill+stroke. For true stroke-only per PDF spec, we should draw stroke only.
-                // We'll implement: if strokeColor != null, draw stroke; if strokeColor == null or prim.color != strokeColor or we consider fill+stroke, also draw fill.
-                // For simplicity, we will draw fill only when strokeColor == null OR we detect fill+stroke via presence of both but different? Actually plan says fix Tr handling.
-
+                val rm = prim.renderMode
                 val isStrokeOnly = prim.strokeColor != null && prim.color == prim.strokeColor
-                // Actually for has_fill we have fill color != stroke, for stroke-only fill color set to stroke. So heuristic above.
 
-                if (prim.strokeColor != null && prim.strokeWidth > 0f) {
-                    textStrokePaint.color = prim.strokeColor
-                    textStrokePaint.textSize = ts
-                    textStrokePaint.strokeWidth = (prim.strokeWidth * scale).coerceAtLeast(0.5f)
-                    // Respect cap/join: Rust passed line_width but not cap/join per text? Kotlin previously hardcoded ROUND. Now respect primitive? Text doesn't carry cap/join, so keep ROUND for readability but allow override if needed.
-                    textStrokePaint.strokeCap = android.graphics.Paint.Cap.ROUND
-                    textStrokePaint.strokeJoin = android.graphics.Paint.Join.ROUND
-                    // For stroke-only invisible modes 3,7 Rust does not emit Text at all, so safe.
-                    nativeCanvas.drawText(prim.text, origin.x, origin.y, textStrokePaint)
+                // Paint the glyphs unless this is a clip-only run (Tr 7).
+                if (rm != 7) {
+                    if (prim.strokeColor != null && prim.strokeWidth > 0f) {
+                        textStrokePaint.color = prim.strokeColor
+                        textStrokePaint.textSize = ts
+                        textStrokePaint.strokeWidth = (prim.strokeWidth * scale).coerceAtLeast(0.5f)
+                        textStrokePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                        textStrokePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                        nativeCanvas.drawText(prim.text, origin.x, origin.y, textStrokePaint)
+                    }
+                    if (!isStrokeOnly) {
+                        textPaint.color = prim.color
+                        textPaint.textSize = ts
+                        nativeCanvas.drawText(prim.text, origin.x, origin.y, textPaint)
+                    }
                 }
-                if (!isStrokeOnly) {
-                    textPaint.color = prim.color
-                    textPaint.textSize = ts
-                    nativeCanvas.drawText(prim.text, origin.x, origin.y, textPaint)
+
+                // Accumulate glyph outlines for text-clip render modes (Tr 4-7),
+                // applied at the following TextClipApply marker.
+                if (rm in 4..7) {
+                    glyphPathPaint.textSize = ts
+                    tmpGlyphPath.reset()
+                    glyphPathPaint.getTextPath(prim.text, 0, prim.text.length, origin.x, origin.y, tmpGlyphPath)
+                    textClipPath.addPath(tmpGlyphPath)
+                    hasTextClip = true
                 }
             }
 
@@ -2235,16 +2256,18 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
             }
 
             is PdfPrimitive.ClipPush -> {
-                // Save and apply clip with bezier support via evenOdd, but pts remain polygon (bezier flattened in Rust for v2, v3 would preserve cubic)
-                // Keep degenerate clip guard (<3 pts, shoelace) - shoelace check done in Rust, but double-guard here.
-                if (prim.points.size < 3) {
-                    continue
-                }
+                // Save and apply clip; prefer the bezier-retentive path (v4) for
+                // accurate curved clips, falling back to the flattened polyline.
                 nativeCanvas.save()
                 saveCount++
-                clipPath.reset()
-                val mapped = clipOffsetList(prim.points)
-                if (mapped.size >= 2) {
+                val ops = prim.pathOps
+                if (ops != null && ops.isNotEmpty()) {
+                    val cp = pathOpsToPath(ops)
+                    cp.fillType = if (prim.evenOdd) android.graphics.Path.FillType.EVEN_ODD else android.graphics.Path.FillType.WINDING
+                    nativeCanvas.clipPath(cp)
+                } else if (prim.points.size >= 3) {
+                    clipPath.reset()
+                    val mapped = clipOffsetList(prim.points)
                     clipPath.moveTo(mapped[0].x, mapped[0].y)
                     for (i in 1 until mapped.size) {
                         clipPath.lineTo(mapped[i].x, mapped[i].y)
@@ -2262,8 +2285,23 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                 }
             }
 
+            is PdfPrimitive.TextClipApply -> {
+                // Intersect the accumulated glyph outlines into the clip. Paired
+                // with a later ClipPop (Rust incremented the clip depth).
+                nativeCanvas.save()
+                saveCount++
+                if (hasTextClip) {
+                    nativeCanvas.clipPath(textClipPath)
+                }
+                textClipPath.reset()
+                hasTextClip = false
+            }
+
             is PdfPrimitive.GroupPush -> {
-                // Transparency group with alpha + blend (Phase 4)
+                // Transparency group with alpha + blend. Isolated groups are the
+                // default with saveLayer (a fresh backdrop-free layer); knockout
+                // groups are not directly expressible with Canvas layers and are
+                // approximated as non-knockout.
                 val alpha = prim.alpha.coerceIn(0f,1f)
                 val blend = prim.blend
                 // saveLayer with alpha
@@ -2298,7 +2336,23 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                         }
                         nativeCanvas.saveLayer(null, paint)
                     } else {
-                        nativeCanvas.saveLayerAlpha(null, (alpha*255).toInt())
+                        // API < 29: map the Porter-Duff-expressible separable blend
+                        // modes via PorterDuffXfermode; non-separable modes
+                        // (Hue/Saturation/Color/Luminosity) and unavailable ones
+                        // fall back to Normal.
+                        val paint = android.graphics.Paint()
+                        paint.alpha = (alpha*255).toInt()
+                        val pd = when (blend) {
+                            BlendMode.Multiply -> android.graphics.PorterDuff.Mode.MULTIPLY
+                            BlendMode.Screen -> android.graphics.PorterDuff.Mode.SCREEN
+                            BlendMode.Darken -> android.graphics.PorterDuff.Mode.DARKEN
+                            BlendMode.Lighten -> android.graphics.PorterDuff.Mode.LIGHTEN
+                            else -> null
+                        }
+                        if (pd != null) {
+                            paint.xfermode = android.graphics.PorterDuffXfermode(pd)
+                        }
+                        nativeCanvas.saveLayer(null, paint)
                     }
                     groupSaveCount++
                     // Also track in saveCount for balanced restore? Keep separate.

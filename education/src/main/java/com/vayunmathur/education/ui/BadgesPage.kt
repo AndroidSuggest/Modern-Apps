@@ -33,6 +33,7 @@ import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.AchievementStatus
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 /** Badges (Explorer/Scholar) / stickers (K-2) gallery. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,7 +47,7 @@ fun BadgesPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (band == Band.K2) "My Stickers" else "Badges") },
+                title = { Text(if (band == Band.K2) stringResource(R.string.my_stickers) else stringResource(R.string.badges)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },

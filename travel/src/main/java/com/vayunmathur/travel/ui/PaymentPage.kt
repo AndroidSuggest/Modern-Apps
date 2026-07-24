@@ -33,6 +33,7 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.util.BookingState
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 /**
  * Payment screen.
@@ -72,10 +73,10 @@ fun PaymentPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Payment") },
+                title = { Text(stringResource(R.string.payment)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -98,7 +99,7 @@ fun PaymentPage(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Total due", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.total_due), style = MaterialTheme.typography.titleMedium)
                     Text(
                         if (offer != null) formatMoney(offer.totalAmount, offer.currency) else "—",
                         style = MaterialTheme.typography.titleLarge,
@@ -110,7 +111,7 @@ fun PaymentPage(
 
             if (activeCustomer != null) {
                 Text(
-                    "Booking for ${activeCustomer.displayName}",
+                    stringResource(R.string.booking_for, activeCustomer.displayName),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -124,21 +125,21 @@ fun PaymentPage(
                     com.vayunmathur.library.ui.FilterChip(
                         selected = !hold,
                         onClick = { hold = false },
-                        label = { Text("Pay now") },
+                        label = { Text(stringResource(R.string.pay_now)) },
                     )
                     com.vayunmathur.library.ui.FilterChip(
                         selected = hold,
                         onClick = { hold = true },
-                        label = { Text("Hold (pay later)") },
+                        label = { Text(stringResource(R.string.hold_pay_later)) },
                     )
                 }
             }
 
             Text(
                 if (hold) {
-                    "Hold order — the price is held and you pay from your test balance before the deadline."
+                    stringResource(R.string.hold_order_the_price_is_held_and_you_pay)
                 } else {
-                    "Sandbox booking — paid with a Duffel test balance. No card is charged."
+                    stringResource(R.string.sandbox_booking_paid_with_a_duffel_test)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -155,9 +156,9 @@ fun PaymentPage(
             ) {
                 if (loading) {
                     CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                    Text("Booking…")
+                    Text(stringResource(R.string.booking))
                 } else {
-                    Text(if (hold) "Place hold" else "Pay with test balance")
+                    Text(if (hold) stringResource(R.string.place_hold) else stringResource(R.string.pay_with_test_balance))
                 }
             }
         }

@@ -103,7 +103,7 @@ fun ItemDetailsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "ID: #${item.id}",
+                            text = stringResource(R.string.id, item.id),
                             style = MaterialTheme.typography.labelMedium
                         )
                     }

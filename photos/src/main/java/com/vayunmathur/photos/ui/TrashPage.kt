@@ -126,7 +126,7 @@ fun TrashPage(backStack: NavBackStack<Route>, galleryViewModel: GalleryViewModel
     ) { paddingValues ->
         if (trashedPhotos.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text("Trash is empty", color = Color.Gray)
+                Text(stringResource(R.string.trash_is_empty), color = Color.Gray)
             }
         } else {
             Box(

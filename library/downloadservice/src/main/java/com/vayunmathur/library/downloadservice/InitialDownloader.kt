@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.downloadservice.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -22,11 +24,51 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.security.MessageDigest
+
+/**
+ * Internal unit of work: one on-disk [fileName] fetched from a single [url] with
+ * an optional [sha256] verified after the download completes. Both the plain
+ * `Triple(url, fileName, description)` API and the [ModelDownloadItem] API funnel
+ * into this so the download loop only deals with one shape.
+ */
+private data class DownloadSpec(
+    val fileName: String,
+    val description: String,
+    val url: String,
+    val sha256: String? = null,
+)
+
+private fun Triple<String, String, String>.toSpec() =
+    DownloadSpec(fileName = second, description = third, url = first)
+
+private fun ModelDownloadItem.toSpec() =
+    DownloadSpec(fileName = fileName, description = description, url = url, sha256 = sha256)
 
 @Composable
 fun InitialDownloadChecker(
     ds: DataStoreUtils,
     filesToDownload: List<Triple<String, String, String>>,
+    mainPage: @Composable () -> Unit
+) = InitialDownloadCheckerSpecs(ds, filesToDownload.map { it.toSpec() }, mainPage)
+
+/**
+ * Model variant of [InitialDownloadChecker]: each [ModelDownloadItem] is fetched
+ * from the self-hosted mirror only (no third-party fallback), with optional
+ * SHA-256 integrity verification. This is the supply-chain mitigation #1 entry
+ * point (see [ModelUrls]).
+ */
+@Composable
+fun InitialModelDownloadChecker(
+    ds: DataStoreUtils,
+    models: List<ModelDownloadItem>,
+    mainPage: @Composable () -> Unit
+) = InitialDownloadCheckerSpecs(ds, models.map { it.toSpec() }, mainPage)
+
+@Composable
+private fun InitialDownloadCheckerSpecs(
+    ds: DataStoreUtils,
+    specs: List<DownloadSpec>,
     mainPage: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -35,27 +77,27 @@ fun InitialDownloadChecker(
     // otherwise show the download screen. This self-heals if a file is deleted or
     // the flag drifts out of sync with disk.
     var filesPresent by remember {
-        mutableStateOf(allFilesPresent(context, filesToDownload))
+        mutableStateOf(allFilesPresent(context, specs))
     }
     if (filesPresent) {
         mainPage()
     } else {
-        InitialDownloadScreen(ds, filesToDownload, onAllDownloaded = { filesPresent = true })
+        InitialDownloadScreen(ds, specs, onAllDownloaded = { filesPresent = true })
     }
 }
 
 private fun allFilesPresent(
     context: Context,
-    files: List<Triple<String, String, String>>,
+    specs: List<DownloadSpec>,
 ): Boolean {
     val dir = context.getExternalFilesDir(null)
-    return files.all { File(dir, it.second).exists() }
+    return specs.all { File(dir, it.fileName).exists() }
 }
 
 @Composable
-fun InitialDownloadScreen(
+private fun InitialDownloadScreen(
     ds: DataStoreUtils,
-    filesToDownload: List<Triple<String, String, String>>,
+    specs: List<DownloadSpec>,
     onAllDownloaded: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -64,8 +106,8 @@ fun InitialDownloadScreen(
     // the same DataStore keys the UI below observes. When every requested file is
     // present on disk, advance to the main page.
     LaunchedEffect(Unit) {
-        runDownloads(context, ds, filesToDownload)
-        if (allFilesPresent(context, filesToDownload)) {
+        runDownloadsCore(context, ds, specs)
+        if (allFilesPresent(context, specs)) {
             onAllDownloaded()
         }
     }
@@ -78,12 +120,12 @@ fun InitialDownloadScreen(
                 .padding(24.dp)
         ) {
             Text(
-                "Initializing System",
+                text = stringResource(R.string.initializing_system),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Downloading required components for this app.",
+                text = stringResource(R.string.downloading_required_components_for_this),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray
             )
@@ -94,16 +136,16 @@ fun InitialDownloadScreen(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(filesToDownload, key = { it.second }) { (_, fileName, desc) ->
+                items(specs, key = { it.fileName }) { spec ->
                     // Each item observes its own progress and speed from DataStore.
                     // "Done" is derived from progress (1.0) — no separate persisted
                     // flag that could disagree with disk state.
-                    val progress by ds.doubleFlow("progress_$fileName").collectAsState(0.0)
-                    val speedMbps by ds.doubleFlow("speed_$fileName").collectAsState(0.0)
+                    val progress by ds.doubleFlow("progress_${spec.fileName}").collectAsState(0.0)
+                    val speedMbps by ds.doubleFlow("speed_${spec.fileName}").collectAsState(0.0)
                     val isDone = progress >= 0.999
 
                     FileProgressItem(
-                        label = desc,
+                        label = spec.description,
                         progress = progress,
                         speedMbps = speedMbps,
                         isDone = isDone
@@ -117,70 +159,58 @@ fun InitialDownloadScreen(
 private const val SPEED_WINDOW_MS = 4000L
 
 private class Active(
-    val fileName: String,
+    val spec: DownloadSpec,
     val id: Long,
 ) {
+    val fileName get() = spec.fileName
+
     /** Recent (timeMs, bytesSoFar) samples for a moving-average download speed. */
     val samples = ArrayDeque<Pair<Long, Long>>()
 }
 
 /**
- * Drive the initial downloads with Android's [DownloadManager]. Gating is by
- * file presence (see [InitialDownloadChecker]), so there is no completion flag to
- * flip here.
+ * Mirror-only on-demand download: fetches each [ModelDownloadItem] from the
+ * self-hosted mirror (no third-party fallback), with optional SHA-256
+ * verification (supply-chain mitigation #1). Publishes the same `progress_*` /
+ * `speed_*` DataStore keys as the initial screen, skips files already present on
+ * disk, and resumes still-valid prior requests.
  */
-private suspend fun runDownloads(
+suspend fun downloadModels(
     context: Context,
     ds: DataStoreUtils,
-    files: List<Triple<String, String, String>>,
-) {
-    runDownloadsCore(context, ds, files)
-}
+    models: List<ModelDownloadItem>,
+) = runDownloadsCore(context, ds, models.map { it.toSpec() })
 
 /**
- * On-demand download of [files] (url, fileName, description) into external
- * files, publishing the same `progress_*` / `speed_*` DataStore keys as the
- * initial screen but **without** touching the `dbSetupComplete` gate (so it is
- * safe for optional, feature-triggered model fetches like SigLIP2). Skips files
- * already present on disk and resumes still-valid prior requests. Returns when
- * the current polling pass finishes (all active downloads reached a terminal
- * state).
- */
-suspend fun downloadModelFiles(
-    context: Context,
-    ds: DataStoreUtils,
-    files: List<Triple<String, String, String>>,
-) = runDownloadsCore(context, ds, files)
-
-/**
- * Shared enqueue + poll loop. Each file is enqueued (reusing a still-valid prior
- * request id stored in DataStore so we resume across process restarts), then the
- * manager is polled to publish `progress_*` / `speed_*`.
+ * Shared enqueue + poll loop. Each file is enqueued once (reusing a still-valid
+ * prior request id stored in DataStore so we resume across process restarts),
+ * then the manager is polled to publish `progress_*` / `speed_*`. On failure or
+ * a SHA-256 mismatch the file is dropped and re-enqueued on the next entry.
  */
 private suspend fun runDownloadsCore(
     context: Context,
     ds: DataStoreUtils,
-    files: List<Triple<String, String, String>>,
+    specs: List<DownloadSpec>,
 ) = withContext(Dispatchers.IO) {
     val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
     val active = mutableListOf<Active>()
     val dir = context.getExternalFilesDir(null)
-    for ((url, fileName, _) in files) {
+    for (spec in specs) {
         // Gate purely on disk presence — there is no persisted "done" flag that
         // could drift out of sync with disk and hang the init screen. If the file
         // is already on disk, mark its bar complete and skip; otherwise download.
-        if (File(dir, fileName).exists()) {
-            ds.setDouble("progress_$fileName", 1.0)
+        if (File(dir, spec.fileName).exists()) {
+            ds.setDouble("progress_${spec.fileName}", 1.0)
             continue
         }
-        val existingId = ds.getLong("dlid_$fileName") ?: 0L
+        val existingId = ds.getLong("dlid_${spec.fileName}") ?: 0L
         val id = if (existingId > 0L && isQueryable(dm, existingId)) {
             existingId
         } else {
-            enqueue(dm, context, ds, url, fileName)
+            enqueue(dm, context, ds, spec)
         }
-        active += Active(fileName, id)
+        active += Active(spec, id)
     }
 
     while (active.isNotEmpty()) {
@@ -201,8 +231,15 @@ private suspend fun runDownloadsCore(
                 val now = System.currentTimeMillis()
                 when (status) {
                     DownloadManager.STATUS_SUCCESSFUL -> {
-                        ds.setDouble("progress_${a.fileName}", 1.0)
-                        ds.setDouble("speed_${a.fileName}", 0.0)
+                        if (checksumOk(dir, a.spec)) {
+                            ds.setDouble("progress_${a.fileName}", 1.0)
+                            ds.setDouble("speed_${a.fileName}", 0.0)
+                        } else {
+                            // Corrupt/tampered mirror copy — drop it and forget the
+                            // id so it re-downloads on the next entry.
+                            File(dir, a.fileName).takeIf { it.exists() }?.delete()
+                            ds.setLong("dlid_${a.fileName}", 0L)
+                        }
                         active.remove(a)
                     }
                     DownloadManager.STATUS_FAILED -> {
@@ -241,22 +278,43 @@ private suspend fun enqueue(
     dm: DownloadManager,
     context: Context,
     ds: DataStoreUtils,
-    url: String,
-    fileName: String,
+    spec: DownloadSpec,
 ): Long {
     // DownloadManager fails if the destination already exists; clear any stale partial.
-    File(context.getExternalFilesDir(null), fileName).takeIf { it.exists() }?.delete()
-    val request = DownloadManager.Request(url.toUri()).apply {
-        setTitle(fileName)
+    File(context.getExternalFilesDir(null), spec.fileName).takeIf { it.exists() }?.delete()
+    val request = DownloadManager.Request(spec.url.toUri()).apply {
+        setTitle(spec.fileName)
         setDescription("Downloading required components")
         setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-        setDestinationInExternalFilesDir(context, null, fileName)
+        setDestinationInExternalFilesDir(context, null, spec.fileName)
         setAllowedOverMetered(true)
         setAllowedOverRoaming(true)
     }
     val id = dm.enqueue(request)
-    ds.setLong("dlid_$fileName", id)
+    ds.setLong("dlid_${spec.fileName}", id)
     return id
+}
+
+/**
+ * True when the downloaded file matches [DownloadSpec.sha256]. Files without an
+ * expected hash pass unconditionally (integrity is opt-in until the mirror is
+ * populated with published checksums).
+ */
+private fun checksumOk(dir: File?, spec: DownloadSpec): Boolean {
+    val expected = spec.sha256 ?: return true
+    val file = File(dir, spec.fileName)
+    if (!file.exists()) return false
+    val md = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { ins ->
+        val buf = ByteArray(1 shl 16)
+        while (true) {
+            val n = ins.read(buf)
+            if (n < 0) break
+            md.update(buf, 0, n)
+        }
+    }
+    val actual = md.digest().joinToString("") { "%02x".format(it) }
+    return actual.equals(expected, ignoreCase = true)
 }
 
 private fun isQueryable(dm: DownloadManager, id: Long): Boolean {
@@ -295,7 +353,7 @@ fun FileProgressItem(
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(
-                        text = "${speedMbps.round(1)} Mbps",
+                        text = stringResource(R.string.mbps, speedMbps.round(1).toString()),
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -308,7 +366,7 @@ fun FileProgressItem(
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
-                text = if (isDone) "Completed" else "Downloading...",
+                text = if (isDone) stringResource(R.string.completed) else stringResource(R.string.downloading),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.Gray
             )

@@ -32,6 +32,7 @@ import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.education.util.LocalNarrator
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 /**
  * K-2 "Guided Playground" home: audio-first, minimal text. Surfaces exactly one
@@ -86,7 +87,7 @@ fun K2HomePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
 
             if (nextLesson == null) {
                 Text(
-                    "All done! Great job!",
+                    stringResource(R.string.all_done_great_job),
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
                 )

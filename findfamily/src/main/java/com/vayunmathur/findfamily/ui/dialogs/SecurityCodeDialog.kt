@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.findfamily.R
 
 /**
  * Shows the connection's verification **security code**. Both people open this for each other and
@@ -34,14 +36,14 @@ fun SecurityCodeDialog(user: User, ffViewModel: FindFamilyViewModel, onDismiss: 
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Security code") },
+        title = { Text(stringResource(R.string.security_code)) },
         text = {
             Column {
-                Text("Compare this code with ${user.name} on their device. If the numbers match on both phones, your connection is verified end-to-end — no one is intercepting it.")
+                Text(stringResource(R.string.compare_this_code_with_on_their_device_i, user.name))
                 Spacer(Modifier.height(16.dp))
                 when {
-                    loading -> Text("Computing…")
-                    code == null -> Text("Couldn't compute yet — ${user.name}'s key isn't available. Make sure you're both connected, then try again.")
+                    loading -> Text(stringResource(R.string.computing))
+                    code == null -> Text(stringResource(R.string.couldn_t_compute_yet_s_key_isn_t_availab, user.name))
                     else -> Text(
                         code!!,
                         style = MaterialTheme.typography.titleLarge,
@@ -50,6 +52,6 @@ fun SecurityCodeDialog(user: User, ffViewModel: FindFamilyViewModel, onDismiss: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } }
     )
 }

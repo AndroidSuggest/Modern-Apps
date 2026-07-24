@@ -34,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 /** The base formatting actions every editor toolbar can offer. */
 enum class EditorFormat { BOLD, ITALIC, UNDERLINE, STRIKETHROUGH, BULLET, ORDERED_LIST, INDENT, OUTDENT, LINK }
@@ -162,7 +164,7 @@ fun EditorBaseButtons(formatter: EditorFormatter) {
         val linkCtx = formatter.linkContext()
         FormatIconButton(
             icon = Icons.Filled.Link,
-            contentDescription = "Link",
+            contentDescription = stringResource(R.string.cd_link),
             active = linkCtx?.editing == true,
             enabled = formatter.enabled && linkCtx != null,
             onClick = { showLink = true },

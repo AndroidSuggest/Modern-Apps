@@ -48,6 +48,9 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import java.time.Instant
 import java.time.ZoneOffset
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import com.vayunmathur.education.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,7 +66,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Parent settings") },
+                title = { Text(stringResource(R.string.parent_settings)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
@@ -77,12 +80,12 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // --- Learner ---
-            SectionHeader("Learner")
+            SectionHeader(stringResource(R.string.learner))
             var name by remember { mutableStateOf(l.name) }
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it; viewModel.setName(it) },
-                label = { Text("Name") },
+                label = { Text(stringResource(R.string.name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -90,7 +93,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
             GradeDropdown(current = l.gradeLevel, onSelect = viewModel::setGrade)
             BandOverrideDropdown(current = l.bandOverride, onSelect = viewModel::setBandOverride)
             Text(
-                "Active band: ${bandLabel(viewModel.bandOf(l))}",
+                stringResource(R.string.active_band, bandLabel(viewModel.bandOf(l))),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -100,23 +103,23 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
             HorizontalDivider()
 
             // --- Progress ---
-            SectionHeader("Progress")
+            SectionHeader(stringResource(R.string.progress))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StreakChip(l.streakCount)
                 StarsChip(l.totalStars)
             }
             val practiced = progress.values.count { it.stars > 0 }
             Text(
-                "$practiced skill${if (practiced == 1) "" else "s"} with stars earned",
+                pluralStringResource(R.plurals.skill_stars_earned, practiced, practiced),
                 style = MaterialTheme.typography.bodyMedium,
             )
 
             HorizontalDivider()
 
             // --- Deadlines ---
-            SectionHeader("Module deadlines")
+            SectionHeader(stringResource(R.string.module_deadlines))
             Text(
-                "Set a target date for a unit. It shows in your child's app as a gentle reminder.",
+                stringResource(R.string.set_a_target_date_for_a_unit_it_shows_in),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -136,7 +139,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
                             Text(unit.title, style = MaterialTheme.typography.bodyLarge)
                             deadline?.let {
                                 Text(
-                                    "Due ${formatEpochDay(it.dueEpochDay)}",
+                                    stringResource(R.string.due, formatEpochDay(it.dueEpochDay)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
@@ -146,7 +149,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
                             IconButton(onClick = { viewModel.removeDeadline(deadline) }) { IconDelete() }
                         }
                         OutlinedButton(onClick = { pendingDeadlineUnitId = unit.id }) {
-                            Text(if (deadline == null) "Set date" else "Change")
+                            Text(if (deadline == null) stringResource(R.string.set_date) else stringResource(R.string.change))
                         }
                     }
                 }
@@ -155,7 +158,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
             HorizontalDivider()
 
             // --- Security ---
-            SectionHeader("Security")
+            SectionHeader(stringResource(R.string.security))
             ChangePinRow(onSetPin = viewModel::setPin)
         }
     }
@@ -174,15 +177,21 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
                         }
                         pendingDeadlineUnitId = null
                     },
-                ) { Text("OK") }
+                ) { Text(stringResource(R.string.ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeadlineUnitId = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingDeadlineUnitId = null }) { Text(stringResource(R.string.cancel)) }
             },
         ) {
             DatePicker(state)
         }
     }
+}
+
+@Composable
+private fun gradeLabel(grade: Int): String = when {
+    grade <= 0 -> stringResource(R.string.grade_kindergarten)
+    else -> stringResource(R.string.grade_number, grade)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -191,10 +200,10 @@ private fun GradeDropdown(current: Int, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = Grades.label(current),
+            value = gradeLabel(current),
             onValueChange = {},
             readOnly = true,
-            label = { Text("Grade") },
+            label = { Text(stringResource(R.string.grade)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -203,7 +212,7 @@ private fun GradeDropdown(current: Int, onSelect: (Int) -> Unit) {
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Grades.all.forEach { g ->
                 DropdownMenuItem(
-                    text = { Text(Grades.label(g)) },
+                    text = { Text(gradeLabel(g)) },
                     onClick = { onSelect(g); expanded = false },
                 )
             }
@@ -222,7 +231,7 @@ private fun BandOverrideDropdown(current: String?, onSelect: (Band?) -> Unit) {
             value = currentLabel,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Band override") },
+            label = { Text(stringResource(R.string.band_override)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -230,7 +239,7 @@ private fun BandOverrideDropdown(current: String?, onSelect: (Band?) -> Unit) {
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("Automatic (by grade)") },
+                text = { Text(stringResource(R.string.automatic_by_grade)) },
                 onClick = { onSelect(null); expanded = false },
             )
             Band.entries.forEach { band ->
@@ -246,7 +255,7 @@ private fun BandOverrideDropdown(current: String?, onSelect: (Band?) -> Unit) {
 @Composable
 private fun DailyGoalRow(goal: Int, onChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Daily goal: $goal activit${if (goal == 1) "y" else "ies"}", Modifier.weight(1f))
+        Text(pluralStringResource(R.plurals.daily_goal_activities, goal, goal), Modifier.weight(1f))
         OutlinedButton(onClick = { onChange((goal - 1).coerceAtLeast(1)) }) { Text("-") }
         Text("  $goal  ", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { onChange(goal + 1) }) { Text("+") }
@@ -261,7 +270,7 @@ private fun ChangePinRow(onSetPin: (String) -> Unit) {
         OutlinedTextField(
             value = pin,
             onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) { pin = it; saved = false } },
-            label = { Text("New PIN") },
+            label = { Text(stringResource(R.string.new_pin)) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
@@ -271,6 +280,6 @@ private fun ChangePinRow(onSetPin: (String) -> Unit) {
             onClick = { onSetPin(pin); pin = ""; saved = true },
             enabled = pin.length >= 4,
             modifier = Modifier.padding(start = 8.dp),
-        ) { Text(if (saved) "Saved" else "Save") }
+        ) { Text(if (saved) stringResource(R.string.saved) else stringResource(R.string.save)) }
     }
 }

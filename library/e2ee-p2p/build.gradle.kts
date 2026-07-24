@@ -14,6 +14,6 @@ dependencies {
     // BouncyCastle for post-quantum crypto (ML-KEM / ML-DSA), used by the Office app only.
     implementation(libs.bouncycastle)
 
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

@@ -30,6 +30,8 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 enum class GameSort { LAST_PLAYED, MOST_PLAYED, NAME, COMPLETION }
 
@@ -76,14 +78,14 @@ fun GamesListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Games") },
+                title = { Text(stringResource(R.string.tab_games)) },
                 actions = {
-                    IconButton(onClick = { showSortMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Sort") }
+                    IconButton(onClick = { showSortMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.cd_sort)) }
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                        DropdownMenuItem(text = { Text("Last played") }, onClick = { sort = GameSort.LAST_PLAYED; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Most played") }, onClick = { sort = GameSort.MOST_PLAYED; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Name") }, onClick = { sort = GameSort.NAME; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Completion") }, onClick = { sort = GameSort.COMPLETION; showSortMenu = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.sort_last_played)) }, onClick = { sort = GameSort.LAST_PLAYED; showSortMenu = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.sort_most_played)) }, onClick = { sort = GameSort.MOST_PLAYED; showSortMenu = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.sort_name)) }, onClick = { sort = GameSort.NAME; showSortMenu = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.sort_completion)) }, onClick = { sort = GameSort.COMPLETION; showSortMenu = false })
                     }
                 }
             )
@@ -92,7 +94,7 @@ fun GamesListScreen(
         LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { CommonSearchBar(value = search, onValueChange = { search = it }, placeholder = "Search games", padding = PaddingValues(0.dp)) }
             if (filteredSorted.isEmpty()) {
-                item { Text(text = if (search.isNotEmpty()) "No matching games" else "No games registered yet.\nPlay a game to see it here.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 32.dp)) }
+                item { Text(text = if (search.isNotEmpty()) stringResource(R.string.no_matching_games) else stringResource(R.string.no_games_registered_yet_nplay_a_game_to), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 32.dp)) }
             }
             items(filteredSorted, key = { it.gameId }) { game ->
                 GameCard(

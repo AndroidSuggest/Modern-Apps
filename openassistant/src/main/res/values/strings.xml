@@ -13,4 +13,7 @@
     <string name="error_inference_timeout">Inference timed out</string>
     <string name="error_ai_engine_failed">AI engine failed</string>
     <string name="error_ai_json_schema_mismatch">AI failed to return valid JSON matching the schema.</string>
+    <string name="settings_title">Settings</string>
+    <string name="memories">Memories</string>
+    <string name="no_memories_yet">No memories yet.</string>
 </resources>

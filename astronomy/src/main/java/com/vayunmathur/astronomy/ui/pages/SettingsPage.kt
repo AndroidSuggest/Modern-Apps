@@ -11,6 +11,7 @@ import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.astronomy.ui.ConstellationMode
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
@@ -28,57 +29,57 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) 
     var lonText by remember(observer) { mutableStateOf(observer?.lonDeg?.toString() ?: "") }
 
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Settings") }, navigationIcon = { IconNavigation(backStack) })
+        TopAppBar(title = { Text(stringResource(R.string.settings)) }, navigationIcon = { IconNavigation(backStack) })
     }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Display", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.display), style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("Constellations")
+                Text(stringResource(R.string.constellations))
                 var expanded by remember { mutableStateOf(false) }
                 Box {
                     TextButton(onClick = { expanded = true }) {
                         Text(
                             when (showConst) {
-                                ConstellationMode.OFF -> "Off"
-                                ConstellationMode.LINES -> "Lines only"
-                                ConstellationMode.LINES_AND_ART -> "Lines + art"
+                                ConstellationMode.OFF -> stringResource(R.string.off)
+                                ConstellationMode.LINES -> stringResource(R.string.lines_only)
+                                ConstellationMode.LINES_AND_ART -> stringResource(R.string.lines_art)
                             }
                         )
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(text = { Text("Off") }, onClick = { viewModel.setShowConstellations(ConstellationMode.OFF); expanded = false })
-                        DropdownMenuItem(text = { Text("Lines only") }, onClick = { viewModel.setShowConstellations(ConstellationMode.LINES); expanded = false })
-                        DropdownMenuItem(text = { Text("Lines + art") }, onClick = { viewModel.setShowConstellations(ConstellationMode.LINES_AND_ART); expanded = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.off)) }, onClick = { viewModel.setShowConstellations(ConstellationMode.OFF); expanded = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.lines_only)) }, onClick = { viewModel.setShowConstellations(ConstellationMode.LINES); expanded = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.lines_art)) }, onClick = { viewModel.setShowConstellations(ConstellationMode.LINES_AND_ART); expanded = false })
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Coordinate grid (whole sphere)"); Switch(checked = showGrid, onCheckedChange = { viewModel.setShowGrid(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Deep sky (Messier)"); Switch(checked = showDeep, onCheckedChange = { viewModel.setShowDeepSky(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Planets / Sun / Moon"); Switch(checked = showPlanets, onCheckedChange = { viewModel.setShowPlanets(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Show below horizon (all sky)"); Switch(checked = showBelow, onCheckedChange = { viewModel.setShowBelowHorizon(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Night mode (red)"); Switch(checked = nightMode, onCheckedChange = { viewModel.setNightMode(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.coordinate_grid_whole_sphere)); Switch(checked = showGrid, onCheckedChange = { viewModel.setShowGrid(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.show_deep_sky)); Switch(checked = showDeep, onCheckedChange = { viewModel.setShowDeepSky(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.planets_sun_moon)); Switch(checked = showPlanets, onCheckedChange = { viewModel.setShowPlanets(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.show_below_horizon_all_sky)); Switch(checked = showBelow, onCheckedChange = { viewModel.setShowBelowHorizon(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.night_mode)); Switch(checked = nightMode, onCheckedChange = { viewModel.setNightMode(it) }) }
 
             HorizontalDivider()
 
-            Text("Magnitude limit: ${magLimit.format(1)}", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.magnitude_limit, magLimit.format(1)), style = MaterialTheme.typography.bodyMedium)
             Slider(value = magLimit, onValueChange = { viewModel.setMagLimit(it) }, valueRange = 1f..7f)
 
-            Text("FOV: ${fov.toInt()}°", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.fov, fov.toInt()), style = MaterialTheme.typography.bodyMedium)
             Slider(value = fov, onValueChange = { viewModel.setFov(it) }, valueRange = 10f..120f)
 
             HorizontalDivider()
-            Text("Location", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(value = latText, onValueChange = { latText = it }, label = { Text("Latitude deg") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = lonText, onValueChange = { lonText = it }, label = { Text("Longitude deg") }, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.location), style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(value = latText, onValueChange = { latText = it }, label = { Text(stringResource(R.string.latitude_deg)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = lonText, onValueChange = { lonText = it }, label = { Text(stringResource(R.string.longitude_deg)) }, modifier = Modifier.fillMaxWidth())
             Button(onClick = {
                 val lat = latText.toDoubleOrNull(); val lon = lonText.toDoubleOrNull()
                 if (lat != null && lon != null) viewModel.setManualLocation(lat, lon)
-            }) { Text("Save location") }
-            Button(onClick = { viewModel.refreshLocation() }) { Text("Use current location") }
+            }) { Text(stringResource(R.string.save_location)) }
+            Button(onClick = { viewModel.refreshLocation() }) { Text(stringResource(R.string.use_current_location)) }
 
             HorizontalDivider()
-            Text("Notes: True north correction via geomagnetic declination. AR uses CameraX + rotation vector fusion.", style = MaterialTheme.typography.labelSmall)
-            Text("Catalog: ${viewModel.getCatalog().stars.size} stars, ${viewModel.getCatalog().constellations.size} constellations, ${viewModel.getCatalog().deepSky.size} DSO.", style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.notes_true_north_correction_via_geomagne), style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.catalog_stars_constellations_dso, viewModel.getCatalog().stars.size, viewModel.getCatalog().constellations.size, viewModel.getCatalog().deepSky.size), style = MaterialTheme.typography.labelSmall)
         }
     }
 }

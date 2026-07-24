@@ -30,6 +30,7 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
@@ -50,7 +51,7 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
     ) {
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Connect WhatsApp",
+            text = stringResource(R.string.connect_whatsapp),
             style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center
         )
@@ -60,7 +61,7 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
         when (val currentState = state) {
             is WhatsAppClient.State.NeedsSetup -> {
                 Text(
-                    text = "Preparing to connect...",
+                    text = stringResource(R.string.preparing_to_connect),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center
                 )
@@ -70,13 +71,13 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
 
             is WhatsAppClient.State.AwaitingQrScan -> {
                 Text(
-                    text = "Scan this QR code with WhatsApp on your phone",
+                    text = stringResource(R.string.scan_this_qr_code_with_whatsapp_on_your),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Open WhatsApp > Settings > Linked Devices > Link a Device",
+                    text = stringResource(R.string.open_whatsapp_settings_linked_devices_li),
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -92,7 +93,7 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
                 CircularProgressIndicator()
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Waiting for scan...",
+                    text = stringResource(R.string.waiting_for_scan),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -100,7 +101,7 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
 
             is WhatsAppClient.State.Connecting -> {
                 Text(
-                    text = "Connecting to WhatsApp...",
+                    text = stringResource(R.string.connecting_to_whatsapp),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center
                 )
@@ -110,7 +111,7 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
 
             is WhatsAppClient.State.Connected -> {
                 Text(
-                    text = "Connected successfully!",
+                    text = stringResource(R.string.connected_successfully),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.primary
@@ -120,13 +121,13 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
                     onClick = { backStack.pop() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Continue")
+                    Text(stringResource(R.string.continue_action))
                 }
             }
 
             is WhatsAppClient.State.Disconnected -> {
                 Text(
-                    text = "Connection failed",
+                    text = stringResource(R.string.connection_failed),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.error
@@ -143,13 +144,13 @@ fun WhatsAppLoginScreen(backStack: NavBackStack<Route>) {
                     onClick = { WhatsAppClient.startProvisioning() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Try Again")
+                    Text(stringResource(R.string.try_again))
                 }
             }
 
             else -> {
                 Text(
-                    text = "Initializing...",
+                    text = stringResource(R.string.initializing),
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -187,12 +188,12 @@ private fun QrCodeImage(data: String, modifier: Modifier = Modifier) {
     if (bitmap != null) {
         Image(
             bitmap = bitmap,
-            contentDescription = "WhatsApp QR Code",
+            contentDescription = stringResource(R.string.cd_whatsapp_qr_code),
             modifier = modifier
         )
     } else {
         Text(
-            text = "Failed to generate QR code",
+            text = stringResource(R.string.failed_to_generate_qr_code),
             color = MaterialTheme.colorScheme.error
         )
     }

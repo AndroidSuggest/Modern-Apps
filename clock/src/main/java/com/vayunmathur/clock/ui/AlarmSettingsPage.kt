@@ -34,12 +34,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.vayunmathur.clock.Route
+import com.vayunmathur.clock.R
 import com.vayunmathur.clock.util.ClockViewModel
 import com.vayunmathur.clock.util.RINGTONE_SILENT
 import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
 
 /** Snooze length choices, in minutes. */
 val SNOOZE_OPTIONS = listOf(1, 5, 10, 15, 20, 30)
@@ -47,15 +49,15 @@ val SNOOZE_OPTIONS = listOf(1, 5, 10, 15, 20, 30)
 /** Gradually-increase-volume choices, in seconds (0 = off). */
 val GRADUAL_OPTIONS = listOf(0, 5, 15, 30, 60)
 
-fun gradualLabel(seconds: Int): String = if (seconds <= 0) "Off" else "${seconds}s"
+fun gradualLabel(context: android.content.Context, seconds: Int): String = if (seconds <= 0) context.getString(R.string.gradual_off) else "${seconds}s"
 
 /** Human-readable name for a stored ringtone value (null = default, [RINGTONE_SILENT] = silent). */
 fun ringtoneTitle(context: android.content.Context, uriString: String?): String = when (uriString) {
-    null -> "Default"
-    RINGTONE_SILENT -> "Silent"
+    null -> context.getString(R.string.ringtone_default)
+    RINGTONE_SILENT -> context.getString(R.string.ringtone_silent)
     else -> runCatching {
         RingtoneManager.getRingtone(context, uriString.toUri())?.getTitle(context)
-    }.getOrNull() ?: "Custom"
+    }.getOrNull() ?: context.getString(R.string.ringtone_custom)
 }
 
 /** Build a system ringtone-picker intent seeded with the current selection. */
@@ -117,8 +119,8 @@ fun AlarmOptionControls(
         }
         OptionRow(label = "Gradually increase volume") {
             OptionDropdown(
-                value = gradualLabel(gradualVolumeSeconds),
-                options = GRADUAL_OPTIONS.map { it to gradualLabel(it) },
+                value = gradualLabel(context, gradualVolumeSeconds),
+                options = GRADUAL_OPTIONS.map { it to gradualLabel(context, it) },
                 onSelect = onGradualChange,
             )
         }
@@ -178,7 +180,7 @@ fun AlarmSettingsPage(backStack: NavBackStack<Route>, ds: DataStoreUtils) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Alarm settings") },
+            title = { Text(stringResource(R.string.alarm_settings)) },
             navigationIcon = { IconButton(onClick = { backStack.pop() }) { IconBack() } },
         )
     }) { paddingValues ->
@@ -189,7 +191,7 @@ fun AlarmSettingsPage(backStack: NavBackStack<Route>, ds: DataStoreUtils) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                "Defaults for new alarms",
+                stringResource(R.string.defaults_for_new_alarms),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
             )

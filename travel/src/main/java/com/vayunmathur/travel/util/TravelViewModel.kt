@@ -1,11 +1,13 @@
 package com.vayunmathur.travel.util
 
 import android.app.Application
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.travel.R
 import com.vayunmathur.travel.data.BookedTrip
 import com.vayunmathur.travel.data.BookedTripDao
 import com.vayunmathur.travel.data.Customer
@@ -73,10 +75,10 @@ data class FlightQuery(
 )
 
 /** Server-side sort options for the offer list. */
-enum class OfferSort(val key: String?, val label: String) {
-    BEST(null, "Best"),
-    CHEAPEST("total_amount", "Cheapest"),
-    FASTEST("total_duration", "Fastest"),
+enum class OfferSort(val key: String?, @StringRes val label: Int) {
+    BEST(null, R.string.sort_best),
+    CHEAPEST("total_amount", R.string.sort_cheapest),
+    FASTEST("total_duration", R.string.sort_fastest),
 }
 
 /** Client-side filters applied over the fetched offers. */

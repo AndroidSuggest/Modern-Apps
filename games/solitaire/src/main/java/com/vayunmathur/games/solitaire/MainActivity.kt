@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.solitaire.R
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -215,7 +216,7 @@ fun HomeScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel) {
                                 textAlign = TextAlign.Center
                             )
                             Text(
-                                "won",
+                                stringResource(R.string.won),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                 textAlign = TextAlign.Center
@@ -448,7 +449,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel, mo
                                 onClick = { viewModel.klondikeAutoComplete() },
                                 Modifier.align(Alignment.CenterHorizontally)
                             ) {
-                                Text("Auto Complete")
+                                Text(stringResource(R.string.auto_complete))
                             }
                         }
                     }

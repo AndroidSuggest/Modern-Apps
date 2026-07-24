@@ -46,7 +46,9 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
-import kotlinx.datetime.format.MonthNames
+import com.vayunmathur.library.util.localizedMonthNames
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import java.time.format.TextStyle
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.number
 
@@ -84,9 +86,9 @@ fun RecurrenceDialog(backStack: NavBackStack<Route>, resultKey: String, startDat
     }
 
     // Values derived from the chosen start date, used to label the preset options.
-    val weekdayFull = startDate.dayOfWeek.name.lowercase().replaceFirstChar { it.titlecase() }
+    val weekdayFull = localizedDayOfWeekNames(TextStyle.FULL)[startDate.dayOfWeek.isoDayNumber - 1]
     val nthOfMonth = ordinal((startDate.day - 1) / 7 + 1)
-    val monthName = MonthNames.ENGLISH_FULL.names[startDate.month.number - 1]
+    val monthName = localizedMonthNames(TextStyle.FULL)[startDate.month.number - 1]
 
     AlertDialog(
         onDismissRequest = { backStack.pop() },
@@ -165,7 +167,7 @@ fun RecurrenceDialog(backStack: NavBackStack<Route>, resultKey: String, startDat
                         }, color = if(d in daysOfWeek) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
                             shape = CircleShape) {
                             Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) {
-                                Text(d.name.take(3).lowercase().replaceFirstChar { it.titlecase() })
+                                Text(localizedDayOfWeekNames(TextStyle.SHORT)[d.isoDayNumber - 1])
                             }
                         }
                     }

@@ -9,9 +9,6 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.compose.adaptive.navigation3)
 
-    //reorderable
-    implementation(libs.reorderable)
-
     // room
     implementRoom(libs)
 

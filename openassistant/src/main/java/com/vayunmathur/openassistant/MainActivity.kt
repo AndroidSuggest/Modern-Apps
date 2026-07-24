@@ -10,7 +10,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.downloadservice.InitialDownloadChecker
+import com.vayunmathur.library.downloadservice.InitialModelDownloadChecker
+import com.vayunmathur.library.downloadservice.ModelUrls
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.IntentLauncher
 import com.vayunmathur.library.util.MainNavigation
@@ -18,13 +19,11 @@ import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 import com.vayunmathur.openassistant.data.AppDatabase
-import com.vayunmathur.openassistant.data.ConversationDao
 import com.vayunmathur.openassistant.data.MemoryDao
 import com.vayunmathur.openassistant.data.MessageDao
 import com.vayunmathur.openassistant.ui.LiteRTChatUi
 import com.vayunmathur.openassistant.ui.SettingsPage
 import com.vayunmathur.openassistant.util.AssistantViewModel
-import com.vayunmathur.openassistant.util.SiglipEmbedder
 
 class MainActivity : ComponentActivity() {
 
@@ -56,14 +55,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                InitialDownloadChecker(ds, listOf(
-                    Triple("https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm", "gemma4-2b.litertlm", "Model"),
-                    // SigLIP2 semantic-search models, downloaded upfront so the
-                    // photos app's first embed request is served immediately.
-                    Triple(SiglipEmbedder.VISION_URL, SiglipEmbedder.VISION_FILE, "Vision Model"),
-                    Triple(SiglipEmbedder.TEXT_URL, SiglipEmbedder.TEXT_FILE, "Text Model"),
-                    Triple(SiglipEmbedder.TOKENIZER_URL, SiglipEmbedder.TOKENIZER_FILE, "Tokenizer"),
-                )) {
+                // Gemma + SigLIP2 semantic-search models, mirror-first with a
+                // HuggingFace fallback (supply-chain mitigation #1). SigLIP2 is
+                // fetched upfront so the photos app's first embed is served
+                // immediately.
+                InitialModelDownloadChecker(ds, ModelUrls.INITIAL) {
                     // Touching the assistantViewModel triggers init, which pre-warms
                     // the inference service and runs the legacy model-file cleanup.
                     Navigation(assistantViewModel)

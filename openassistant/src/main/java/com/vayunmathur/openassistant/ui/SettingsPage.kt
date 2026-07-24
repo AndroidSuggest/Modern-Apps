@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.BackupButtons
@@ -16,6 +17,7 @@ import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.room.SqlCipherDbCodec
 import com.vayunmathur.library.util.DatabaseHelper
 import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.openassistant.R
 import com.vayunmathur.openassistant.Route
 import com.vayunmathur.openassistant.data.Memory
 import com.vayunmathur.openassistant.util.AssistantViewModel
@@ -29,7 +31,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconNavigation(backStack)
                 },
@@ -53,7 +55,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) 
         ) {
             item {
                 Text(
-                    text = "Memories",
+                    text = stringResource(R.string.memories),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -61,7 +63,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) 
             }
             if (memories.isEmpty()) {
                 item {
-                    Text("No memories yet.", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.no_memories_yet), style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
                 items(memories, key = { it.id }) { memory ->

@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 @Composable
 fun BackupButtons(
@@ -84,10 +86,10 @@ fun BackupButtons(format: BackupFormat) {
     if (showPasswordDialog != null) {
         AlertDialog(
             onDismissRequest = { showPasswordDialog = null },
-            title = { Text(if (showPasswordDialog == PasswordDialogAction.EXPORT) "Export Password" else "Import Password") },
+            title = { Text(if (showPasswordDialog == PasswordDialogAction.EXPORT) stringResource(R.string.backup_dialog_title_export) else stringResource(R.string.backup_dialog_title_import)) },
             text = {
                 Column {
-                    Text("Enter a master password for the KDBX file:")
+                    Text(stringResource(R.string.backup_password_prompt))
                     TextField(
                         value = passwordText,
                         onValueChange = { passwordText = it },
@@ -116,10 +118,10 @@ fun BackupButtons(format: BackupFormat) {
                         }
                     },
                     enabled = passwordText.isNotEmpty()
-                ) { Text("OK") }
+                ) { Text(stringResource(R.string.backup_dialog_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showPasswordDialog = null }) { Text("Cancel") }
+                TextButton(onClick = { showPasswordDialog = null }) { Text(stringResource(R.string.link_action_cancel)) }
             }
         )
     }
@@ -145,12 +147,12 @@ private suspend fun runExport(
             format.export(context, password, os)
         }
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Backup exported successfully", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.backup_export_success), Toast.LENGTH_SHORT).show()
         }
     } catch (e: Exception) {
         Log.e("BackupButtons", "Export FAILED", e)
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Backup export failed: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.backup_export_failed_format, e.message), Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -166,12 +168,12 @@ private suspend fun runImport(
             format.import(context, password, isStream)
         }
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Backup imported successfully. Please restart the app.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.backup_import_success), Toast.LENGTH_LONG).show()
         }
     } catch (e: Exception) {
         Log.e("BackupButtons", "Import FAILED", e)
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Backup import failed: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.backup_import_failed_format, e.message), Toast.LENGTH_LONG).show()
         }
     }
 }

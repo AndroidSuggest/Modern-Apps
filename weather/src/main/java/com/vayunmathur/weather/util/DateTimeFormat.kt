@@ -1,5 +1,7 @@
 package com.vayunmathur.weather.util
 
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -13,6 +15,7 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
+import java.time.format.TextStyle
 
 /**
  * Centralized date/time display formatting for the weather module, built on
@@ -58,16 +61,16 @@ private val ClockTime24 = LocalTime.Format {
 
 /** "Mon" … "Sun". */
 private val WeekdayShort = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames.ENGLISH_ABBREVIATED)
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
 }
 
 /** "Wed 25 Jun". */
 private val DayMonthLabel = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames.ENGLISH_ABBREVIATED)
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
     char(' ')
     day(Padding.NONE)
     char(' ')
-    monthName(MonthNames.ENGLISH_ABBREVIATED)
+    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
 }
 
 private fun localTimeAt(epochSec: Long): LocalTime =

@@ -195,7 +195,7 @@ dependencies {
     implementation(project(mapOf("path" to ":whatsapp-signal", "configuration" to "shaded")))
 
     // Ktor OkHttp engine — required for proper TLS hostname verification (fixes GVoice "hostname aware checkServerTrusted" error)
-    implementation("io.ktor:ktor-client-okhttp:3.2.3")
+    implementation(libs.ktor.client.okhttp)
 
     // kotlinx.serialization — session data persistence
     implementation(libs.kotlinx.serialization.json)

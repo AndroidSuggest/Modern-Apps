@@ -35,6 +35,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.network.ServiceDto
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,10 +53,10 @@ fun AncillariesPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add extras") },
+                title = { Text(stringResource(R.string.add_extras)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -76,7 +77,7 @@ fun AncillariesPage(
             val multiPassenger = offer.passengers.size > 1
             val bags = offer.availableServices.filter { it.type == "baggage" }
             if (bags.isNotEmpty()) {
-                SectionHeader("Extra baggage")
+                SectionHeader(stringResource(R.string.extra_baggage))
                 bags.forEach { svc ->
                     BaggageRow(
                         service = svc,
@@ -89,7 +90,7 @@ fun AncillariesPage(
 
             val extras = offer.availableServices.filter { it.type != "baggage" && it.type != "seat" }
             if (extras.isNotEmpty()) {
-                SectionHeader("Extras")
+                SectionHeader(stringResource(R.string.extras))
                 extras.forEach { svc ->
                     ExtraServiceRow(
                         service = svc,
@@ -100,7 +101,7 @@ fun AncillariesPage(
                 }
             }
 
-            SectionHeader("Seats")
+            SectionHeader(stringResource(R.string.seats_1))
                 offer.slices.forEach { slice ->
                 slice.segments.forEach { seg ->
                     val segSeats = selectedSeats.filterKeys { it.startsWith("${seg.id}|") }.values
@@ -115,7 +116,7 @@ fun AncillariesPage(
                                 Text("${seg.origin} → ${seg.destination}", style = MaterialTheme.typography.bodyLarge)
                                 if (chosenLabels.isNotBlank()) {
                                     Text(
-                                        "Seats: $chosenLabels",
+                                        stringResource(R.string.seats, chosenLabels),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary,
                                     )
@@ -124,7 +125,7 @@ fun AncillariesPage(
                             OutlinedButton(
                                 onClick = { backStack.add(Route.SeatMap(offer.offerId, seg.id)) },
                                 enabled = seg.id.isNotBlank(),
-                            ) { Text(if (segSeats.isNotEmpty()) "Change" else "Choose") }
+                            ) { Text(if (segSeats.isNotEmpty()) stringResource(R.string.change) else stringResource(R.string.choose)) }
                         }
                     }
                 }
@@ -139,7 +140,7 @@ fun AncillariesPage(
                     backStack.add(Route.Passengers(offer.offerId))
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Continue to passengers") }
+            ) { Text(stringResource(R.string.continue_to_passengers)) }
         }
     }
 }
@@ -158,15 +159,15 @@ private fun BaggageRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Column(Modifier.weight(1f)) {
-                Text(service.title.ifBlank { "Extra bag" }, style = MaterialTheme.typography.bodyLarge)
+                Text(service.title.ifBlank { stringResource(R.string.extra_bag) }, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    formatMoney(service.totalAmount, service.totalCurrency) + " each",
+                    formatMoney(service.totalAmount, service.totalCurrency) + stringResource(R.string.each),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (passengerLabel != null) {
                     Text(
-                        "For $passengerLabel",
+                        stringResource(R.string.for_passenger, passengerLabel),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -177,12 +178,12 @@ private fun BaggageRow(
             IconButton(
                 onClick = { onQuantity((quantity - 1).coerceAtLeast(0)) },
                 enabled = quantity > 0,
-            ) { Icon(Icons.Filled.Remove, contentDescription = "Fewer") }
+            ) { Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.cd_fewer)) }
             Text("$quantity", style = MaterialTheme.typography.titleMedium)
             IconButton(
                 onClick = { onQuantity((quantity + 1).coerceAtMost(max.toLong())) },
                 enabled = quantity < max,
-            ) { Icon(Icons.Filled.Add, contentDescription = "More") }
+            ) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.cd_more)) }
         }
     }
 }
@@ -203,7 +204,7 @@ private fun ExtraServiceRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Column(Modifier.weight(1f)) {
-                Text(service.title.ifBlank { "Extra" }, style = MaterialTheme.typography.bodyLarge)
+                Text(service.title.ifBlank { stringResource(R.string.extra) }, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     formatMoney(service.totalAmount, service.totalCurrency),
                     style = MaterialTheme.typography.bodySmall,
@@ -211,7 +212,7 @@ private fun ExtraServiceRow(
                 )
                 if (passengerLabel != null) {
                     Text(
-                        "For $passengerLabel",
+                        stringResource(R.string.for_passenger, passengerLabel),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -255,7 +256,7 @@ private fun ExtrasSummary(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text("Extras", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.extras), style = MaterialTheme.typography.titleMedium)
         Text(
             formatMoney(total.toString(), currency),
             style = MaterialTheme.typography.titleMedium,

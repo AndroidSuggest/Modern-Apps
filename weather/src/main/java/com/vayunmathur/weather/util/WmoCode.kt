@@ -1,5 +1,6 @@
 package com.vayunmathur.weather.util
 
+import androidx.annotation.StringRes
 import com.vayunmathur.weather.R
 
 /**
@@ -10,16 +11,16 @@ import com.vayunmathur.weather.R
  *
  * Use [forCode] from anywhere that needs a label / icon for a numeric code.
  */
-enum class WeatherCondition(val label: String) {
-    Clear("Clear"),
-    PartlyCloudy("Partly cloudy"),
-    Cloudy("Cloudy"),
-    Fog("Fog"),
-    Drizzle("Drizzle"),
-    Rain("Rain"),
-    Snow("Snow"),
-    Thunderstorm("Thunderstorm"),
-    Unknown("Unknown");
+enum class WeatherCondition(@StringRes val label: Int) {
+    Clear(R.string.condition_clear),
+    PartlyCloudy(R.string.condition_partly_cloudy),
+    Cloudy(R.string.condition_cloudy),
+    Fog(R.string.condition_fog),
+    Drizzle(R.string.condition_drizzle),
+    Rain(R.string.condition_rain),
+    Snow(R.string.condition_snow),
+    Thunderstorm(R.string.condition_thunderstorm),
+    Unknown(R.string.condition_unknown);
 
     /** Drawable id for this condition. `isDay` swaps clear/partly-cloudy night variants. */
     fun iconRes(isDay: Boolean): Int = when (this) {

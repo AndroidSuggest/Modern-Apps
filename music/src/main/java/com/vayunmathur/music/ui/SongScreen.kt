@@ -1,7 +1,5 @@
 package com.vayunmathur.music.ui
 
-import android.content.Context
-import android.net.Uri
 import android.util.Log
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
@@ -18,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,10 +33,6 @@ import com.vayunmathur.music.util.PlaybackSource
 import com.vayunmathur.music.util.formatDuration
 import com.vayunmathur.music.R
 import com.vayunmathur.music.Route
-import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.tag.FieldKey
-import java.io.File
-import java.io.FileOutputStream
 
 // Data class to hold parsed lyric lines
 data class LyricLine(val timestamp: Long, val text: String)
@@ -47,7 +40,6 @@ data class LyricLine(val timestamp: Long, val text: String)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
-    val context = LocalContext.current
     val currentlyPlaying by musicViewModel.currentMediaItem.collectAsState()
     val song = currentlyPlaying ?: return
 
@@ -60,25 +52,16 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
 
     // UI States
     var showLyrics by remember { mutableStateOf(false) }
-    var rawLyrics by remember { mutableStateOf("") }
+    // Embedded lyrics removed: jaudiotagger dep eliminated (supply-chain mitigation).
+    // Lyrics overlay now shows "no lyrics" gracefully.
+    val rawLyrics by remember { mutableStateOf("") }
 
     val currentSource by musicViewModel.currentSource.collectAsState()
     val currentSourceName by musicViewModel.currentSourceName.collectAsState()
 
-    // Parse lyrics whenever rawLyrics changes
     val parsedLyrics = remember(rawLyrics) { parseLyrics(rawLyrics) }
-
-    // Find the current active lyric index based on currentPos
     val currentLyricIndex = remember(parsedLyrics, currentPos) {
         parsedLyrics.indexOfLast { it.timestamp <= currentPos }
-    }
-
-    LaunchedEffect(currentlyPlaying) {
-        if (currentlyPlaying != null) {
-            // Note: Ensure artworkUri is the correct URI for the audio file containing tags
-            val lyrics = getLyricsFromContentUri(context, currentlyPlaying!!.mediaMetadata.artworkUri!!)
-            rawLyrics = lyrics ?: ""
-        }
     }
 
     Scaffold(
@@ -304,23 +287,4 @@ fun parseLyrics(lrcContent: String): List<LyricLine> {
         }
     }
     return lines.sortedBy { it.timestamp }
-}
-
-fun getLyricsFromContentUri(context: Context, contentUri: Uri): String? {
-    var tempFile: File? = null
-    try {
-        tempFile = File.createTempFile("temp_music", ".m4a", context.cacheDir)
-        context.contentResolver.openInputStream(contentUri)?.use { inputStream ->
-            FileOutputStream(tempFile).use { outputStream ->
-                inputStream.copyTo(outputStream)
-            }
-        }
-        val f = AudioFileIO.read(tempFile)
-        return f.tag?.getFirst(FieldKey.LYRICS)
-    } catch (e: Exception) {
-        Log.e("SongScreen", "Error getting lyrics from content URI: $contentUri", e)
-        return null
-    } finally {
-        tempFile?.takeIf { it.exists() }?.delete()
-    }
 }

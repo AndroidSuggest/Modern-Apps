@@ -15,6 +15,7 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.ResultEffect
 import kotlinx.datetime.LocalDate
 import kotlin.time.ExperimentalTime
+import androidx.compose.ui.res.stringResource
 
 // Astronomy scrubs across a wide time range, so the relative jumps are hours/days
 // rather than the minutes/seconds FindFamily uses.
@@ -62,7 +63,7 @@ fun SkyMapPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Astronomy") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = { backStack.add(Route.Search) }) { IconSearch() }
                     IconButton(onClick = { cameraOn = !cameraOn }) {

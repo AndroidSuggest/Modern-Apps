@@ -28,6 +28,8 @@ import com.vayunmathur.email.data.EmailDatabase
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.email.R
 
 class EmailWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -84,7 +86,7 @@ class EmailWidget : GlanceAppWidget() {
                     actions = {
                         CircleIconButton(
                             imageProvider = ImageProvider(com.vayunmathur.library.R.drawable.edit_24px),
-                            contentDescription = "Compose",
+                            contentDescription = stringResource(R.string.compose),
                             onClick = actionStartActivity(Intent(LocalContext.current, MainActivity::class.java).apply {
                                 putExtra("compose", true)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -102,7 +104,7 @@ class EmailWidget : GlanceAppWidget() {
         ) {
             if (messages.isEmpty()) {
                 Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = "No recent emails", style = TextStyle(color = GlanceTheme.colors.onBackground))
+                    Text(text = stringResource(R.string.no_recent_emails), style = TextStyle(color = GlanceTheme.colors.onBackground))
                 }
             } else {
                 LazyColumn(modifier = GlanceModifier.fillMaxSize().background(GlanceTheme.colors.surface)) {

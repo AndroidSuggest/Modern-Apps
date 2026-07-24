@@ -95,23 +95,13 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
                 // Start with an empty map
                 emit(emptyMap())
 
-                // Run calculations for each mode
+                // Offline-only routing with chained multi-waypoint support
                 RouteService.TravelMode.entries.forEach { mode ->
-                    var result: RouteService.RouteType? = try {
-                        OfflineRouter.getRoute(application, routeFeature, pos, mode)
+                    val result = try {
+                        OfflineRouter.getRouteMulti(application, routeFeature, pos, mode)
                     } catch (_: Exception) {
                         null
                     }
-
-                    if (result == null || result is RouteService.EmptyRoute) {
-                        result = try {
-                            RouteService.computeRoute(routeFeature, pos, mode)
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-
-                    // Emit the new pair
                     emit(mapOf(mode to (result ?: RouteService.EmptyRoute())))
                 }
             }

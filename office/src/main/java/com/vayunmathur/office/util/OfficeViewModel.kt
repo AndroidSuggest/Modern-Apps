@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.vayunmathur.office.R
 
 /** Local metadata for a document in the online folder (title/key stay client-side; never sent in the clear). */
 @Serializable
@@ -2811,9 +2812,9 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                         syncDoc(currentDocId!!, currentDocKey!!)
                     }
                 }
-                launch(Dispatchers.Main) { Toast.makeText(getApplication(), "Saved", Toast.LENGTH_SHORT).show() }
+                launch(Dispatchers.Main) { Toast.makeText(getApplication(), getApplication().getString(R.string.saved), Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
-                launch(Dispatchers.Main) { Toast.makeText(getApplication(), "Save failed: ${e.message}", Toast.LENGTH_SHORT).show() }
+                launch(Dispatchers.Main) { Toast.makeText(getApplication(), getApplication().getString(R.string.save_failed, e.message), Toast.LENGTH_SHORT).show() }
             } finally {
                 _isSaving.value = false
             }

@@ -31,6 +31,7 @@ import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +51,7 @@ fun ConfirmationPage(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(if (trip?.awaitingPayment == true) "On hold" else "Booking confirmed") }) },
+        topBar = { TopAppBar(title = { Text(if (trip?.awaitingPayment == true) stringResource(R.string.on_hold) else stringResource(R.string.booking_confirmed)) }) },
     ) { padding ->
         Column(
             Modifier
@@ -62,9 +63,9 @@ fun ConfirmationPage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (trip == null) {
-                Text("Trip not found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.trip_not_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = { backStack.reset(Route.Home) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Back to search")
+                    Text(stringResource(R.string.back_to_search))
                 }
                 return@Column
             }
@@ -75,7 +76,7 @@ fun ConfirmationPage(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp).padding(top = 8.dp),
             )
-            Text(if (trip.awaitingPayment) "Held — pay to confirm" else "You're booked!", style = MaterialTheme.typography.headlineSmall)
+            Text(if (trip.awaitingPayment) stringResource(R.string.held_pay_to_confirm) else stringResource(R.string.you_re_booked), style = MaterialTheme.typography.headlineSmall)
 
             ElevatedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -100,20 +101,20 @@ fun ConfirmationPage(
                     onClick = { viewModel.payOrder(trip.orderId) },
                     enabled = !paying,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (paying) "Paying…" else "Pay now with test balance") }
+                ) { Text(if (paying) stringResource(R.string.paying) else stringResource(R.string.pay_now_with_test_balance)) }
             }
 
             Button(onClick = { backStack.reset(Route.Home) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Done")
+                Text(stringResource(R.string.done))
             }
             OutlinedButton(
                 onClick = { backStack.add(Route.OrderDetail(trip.orderId)) },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("View full itinerary") }
+            ) { Text(stringResource(R.string.view_full_itinerary)) }
             OutlinedButton(
                 onClick = { backStack.reset(Route.Home, Route.Trips) },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("View my trips") }
+            ) { Text(stringResource(R.string.view_my_trips)) }
         }
     }
 }

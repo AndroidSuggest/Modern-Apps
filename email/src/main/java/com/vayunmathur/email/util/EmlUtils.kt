@@ -5,10 +5,10 @@ import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Properties
-import javax.mail.Part
-import javax.mail.Session
-import javax.mail.internet.MimeMessage
-import javax.mail.internet.MimeMultipart
+import jakarta.mail.Part
+import jakarta.mail.Session
+import jakarta.mail.internet.MimeMessage
+import jakarta.mail.internet.MimeMultipart
 
 data class EmlAttachment(
     val fileName: String,
@@ -45,8 +45,8 @@ object EmlUtils {
             val receivedDate = mime.receivedDate
             val dateStr = (sentDate ?: receivedDate)?.toString() ?: ""
             val dateMillis = sentDate?.time ?: receivedDate?.time ?: 0L
-            val to = mime.getRecipients(javax.mail.Message.RecipientType.TO)?.joinToString { it.toString() }
-            val cc = mime.getRecipients(javax.mail.Message.RecipientType.CC)?.joinToString { it.toString() }
+            val to = mime.getRecipients(jakarta.mail.Message.RecipientType.TO)?.joinToString { it.toString() }
+            val cc = mime.getRecipients(jakarta.mail.Message.RecipientType.CC)?.joinToString { it.toString() }
             val serverId = mime.getHeader("Message-ID")?.firstOrNull()
             val refs = mime.getHeader("References")?.firstOrNull() ?: mime.getHeader("In-Reply-To")?.firstOrNull()
             val listUnsub = mime.getHeader("List-Unsubscribe")?.firstOrNull()

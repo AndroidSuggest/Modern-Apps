@@ -114,4 +114,101 @@
 
     <!-- Permissions -->
     <string name="permissions_post_notifications">Allow notifications so new messages can alert you.</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- AttachmentMenu -->
+    <string name="share_location">Share location</string>
+    <string name="share">Share</string>
+    <string name="link_name">Link name</string>
+    <string name="cancel">Cancel</string>
+    <!-- ComposeScreen -->
+    <string name="name_or_phone_number">Name or phone number</string>
+    <!-- ConversationScreen -->
+    <string name="block">Block</string>
+    <string name="accept">Accept</string>
+    <string name="react">React</string>
+    <!-- InboxScreen -->
+    <string name="new_conversation">New conversation</string>
+    <string name="choose_which_service_to_send_from">Choose which service to send from:</string>
+    <string name="delete">Delete</string>
+    <string name="delete_conversation">Delete conversation?</string>
+    <string name="no_connected_services_set_one_up_in_sett">No connected services. Set one up in Settings first.</string>
+    <!-- MessagesPairingScreen -->
+    <string name="requesting_a_pairing_slot_from_google">Requesting a pairing slot from Google…</string>
+    <!-- PollDialog -->
+    <string name="create">Create</string>
+    <string name="option">Option %1$s</string>
+    <string name="question">Question</string>
+    <string name="new_poll">New poll</string>
+    <string name="add_option">Add option</string>
+    <!-- SettingsScreen -->
+    <string name="disconnect">Disconnect</string>
+    <!-- SignalLoginScreen -->
+    <string name="retry">Retry</string>
+    <string name="connected_to_signal">Connected to Signal!</string>
+    <!-- TelegramLoginScreen -->
+    <string name="connected_to_telegram">Connected to Telegram!</string>
+    <string name="sign_in_with_qr_code">Sign in with QR code</string>
+    <string name="use_phone_number_instead">Use phone number instead</string>
+    <!-- VoiceLoginScreen -->
+    <string name="validating_with_google">Validating with Google…</string>
+    <string name="paste_cookies">Paste cookies</string>
+    <!-- WhatsAppLoginScreen -->
+    <string name="try_again">Try Again</string>
+    <string name="continue_action">Continue</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- AttachmentMenu -->
+    <string name="active_for">Active for</string>
+    <!-- ComposeScreen -->
+    <string name="sending_via">Sending via %1$s</string>
+    <string name="sending_via_1">Sending via %1$s</string>
+    <string name="attachment">attachment</string>
+    <!-- ConversationScreen -->
+    <string name="conversation">Conversation</string>
+    <string name="loading_messages">Loading messages…</string>
+    <string name="shared_link">Shared link</string>
+    <string name="this_sender_isn_t_in_your_contacts">This sender isn\'t in your contacts.</string>
+    <plurals name="vote_count">
+        <item quantity="one">%1$d vote</item>
+        <item quantity="other">%1$d votes</item>
+    </plurals>
+    <!-- InboxScreen -->
+    <string name="this_deletes_the_chat_for_on_your_phone">This deletes the chat for %1$s on your phone too. </string>
+    <string name="existing_messages_can_t_be_recovered">Existing messages can\'t be recovered.</string>
+    <string name="message_request">Message request</string>
+    <!-- MessagesPairingScreen -->
+    <string name="paired">Paired ✓</string>
+    <!-- PollDialog -->
+    <string name="allow_multiple_answers">Allow multiple answers</string>
+    <!-- SettingsScreen -->
+    <string name="connect_to_these_services_at_your_own_ri">Connect to these services at your own risk. Account bans are very </string>
+    <string name="rare_but_technically_possible_messages_o">rare but technically possible. Messages on E2EE platforms maintain </string>
+    <string name="e2ee_on_this_app">E2EE on this app.</string>
+    <!-- TelegramLoginScreen -->
+    <string name="or_use_your_phone_number">or use your phone number</string>
+    <string name="open_telegram_on_your_phone_settings_dev">Open Telegram on your phone → Settings → Devices → </string>
+    <string name="link_desktop_device_then_scan_this_code">Link Desktop Device, then scan this code.</string>
+    <string name="waiting_for_you_to_scan">Waiting for you to scan…</string>
+    <!-- WhatsAppLoginScreen -->
+    <string name="connect_whatsapp">Connect WhatsApp</string>
+    <string name="preparing_to_connect">Preparing to connect...</string>
+    <string name="scan_this_qr_code_with_whatsapp_on_your">Scan this QR code with WhatsApp on your phone</string>
+    <string name="open_whatsapp_settings_linked_devices_li">Open WhatsApp &gt; Settings &gt; Linked Devices &gt; Link a Device</string>
+    <string name="waiting_for_scan">Waiting for scan...</string>
+    <string name="connecting_to_whatsapp">Connecting to WhatsApp...</string>
+    <string name="connected_successfully">Connected successfully!</string>
+    <string name="connection_failed">Connection failed</string>
+    <string name="initializing">Initializing...</string>
+    <string name="failed_to_generate_qr_code">Failed to generate QR code</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- InboxScreen -->
+    <string name="this_contact">this contact</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_qr_code">QR Code</string>
+    <string name="cd_pairing_qr_code">Pairing QR code</string>
+    <string name="cd_whatsapp_qr_code">WhatsApp QR Code</string>
+    <string name="cd_telegram_qr_code">Telegram QR code</string>
 </resources>

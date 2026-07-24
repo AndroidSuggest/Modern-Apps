@@ -43,6 +43,8 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun GameDetailScreen(
@@ -65,7 +67,7 @@ fun GameDetailScreen(
     Scaffold(topBar = { TopAppBar(title = { Text(game?.displayName ?: gameId) }, navigationIcon = { IconNavigation(backStack) }) }) { padding ->
         val g = game
         if (g == null) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text("Game not found", style = MaterialTheme.typography.bodyLarge) }
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text(stringResource(R.string.game_not_found), style = MaterialTheme.typography.bodyLarge) }
             return@Scaffold
         }
         val iconBmp = remember(iconDrawable) { try { iconDrawable?.toBitmap(128,128) } catch (_:Exception){ null } }
@@ -84,7 +86,7 @@ fun GameDetailScreen(
                     }
                 }
             }
-            item { Button(onClick = { launchGame(context, g) }, enabled = isInstalled, modifier = Modifier.fillMaxWidth()) { Text(if (isInstalled) "Play ${g.displayName}" else "Not installed") } }
+            item { Button(onClick = { launchGame(context, g) }, enabled = isInstalled, modifier = Modifier.fillMaxWidth()) { Text(if (isInstalled) stringResource(R.string.play_1, g.displayName) else stringResource(R.string.not_installed)) } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 StatCard(label = "Playtime", value = formatPlaytime(g.totalPlaytimeMs), modifier = Modifier.weight(1f))
                 StatCard(label = "Sessions", value = "${sessions.size}", modifier = Modifier.weight(1f))
@@ -92,22 +94,22 @@ fun GameDetailScreen(
             } }
             if (achievements.isNotEmpty()) {
                 val unlocked = achievements.count { it.isUnlocked }
-                item { Text(text = "Achievements $unlocked/${achievements.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                item { Text(stringResource(R.string.achievements, unlocked, achievements.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 items(achievements, key = { it.achievementId }) { ach -> AchievementRow(item = ach, showGameTag = false) }
             }
             if (sessions.isNotEmpty()) {
-                item { Text(text = "Recent Sessions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                item { Text(stringResource(R.string.recent_sessions), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 items(sessions.take(10), key = { it.id }) { session ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(text = formatRelativeTime(session.startTime), style = MaterialTheme.typography.bodySmall)
-                            Text(text = session.durationMs?.let { formatDurationMs(it) } ?: "In progress", style = MaterialTheme.typography.labelSmall)
+                            Text(text = session.durationMs?.let { formatDurationMs(it) } ?: stringResource(R.string.in_progress), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
             }
             if (activity.isNotEmpty()) {
-                item { Text(text = "Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                item { Text(stringResource(R.string.tab_activity), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 items(activity, key = { it.id }) { event -> ActivityItemCard(event = event) }
             }
         }

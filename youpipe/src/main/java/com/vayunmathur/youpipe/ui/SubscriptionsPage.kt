@@ -51,7 +51,7 @@ fun SubscriptionsPage(
             if (fetchProgress in 0f..1f) {
                 item {
                     ListItem(
-                        content = { Text("Loading recent subscriptions") },
+                        content = { Text(stringResource(R.string.loading_recent_subscriptions)) },
                         trailingContent = {
                             CircularProgressIndicator(
                                 progress = { fetchProgress },

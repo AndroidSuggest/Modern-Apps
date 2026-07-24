@@ -28,6 +28,8 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun SettingsScreen(
@@ -39,28 +41,28 @@ fun SettingsScreen(
 ) {
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { IconNavigation(backStack) }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.tab_settings)) }, navigationIcon = { IconNavigation(backStack) }) }) { padding ->
         LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
-                Text(text = "Backup & Restore", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.backup_restore), style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     BackupButtons(dbConfigs = dbConfigs, datastoreNames = datastoreNames)
                 }
             }
             item { HorizontalDivider() }
             item {
-                Text(text = "Data", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.data), style = MaterialTheme.typography.titleMedium)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    Text(text = "Clear hub cache — removes all cached game data. Games will re-sync on next launch.", style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { showClearConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Clear cache") }
+                    Text(stringResource(R.string.clear_hub_cache_removes_all_cached_game), style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = { showClearConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.clear_cache)) }
                 }
             }
             item { HorizontalDivider() }
             item {
-                Text(text = "About GameHub", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.about_gamehub), style = MaterialTheme.typography.titleMedium)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    Text(text = "GameHub aggregates achievements, playtime, and activity across all registered games. Games remain source of truth — hub keeps a mirrored cache pushed via SDK. No leaderboards for now.", style = MaterialTheme.typography.bodySmall)
-                    Text(text = "Package: com.vayunmathur.games.hub", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.gamehub_aggregates_achievements_playtime), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.package_com_vayunmathur_games_hub), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -68,10 +70,10 @@ fun SettingsScreen(
         if (showClearConfirm) {
             AlertDialog(
                 onDismissRequest = { showClearConfirm = false },
-                title = { Text("Clear cache?") },
-                text = { Text("This will delete all cached games, achievements, sessions, and activity. Games will re-register on next launch.") },
-                confirmButton = { Button(onClick = { viewModel.clearAllData(); showClearConfirm = false }) { Text("Clear") } },
-                dismissButton = { com.vayunmathur.library.ui.TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") } }
+                title = { Text(stringResource(R.string.clear_cache_1)) },
+                text = { Text(stringResource(R.string.this_will_delete_all_cached_games_achiev)) },
+                confirmButton = { Button(onClick = { viewModel.clearAllData(); showClearConfirm = false }) { Text(stringResource(R.string.clear)) } },
+                dismissButton = { com.vayunmathur.library.ui.TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.cancel)) } }
             )
         }
     }

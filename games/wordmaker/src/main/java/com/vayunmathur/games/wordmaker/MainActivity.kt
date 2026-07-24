@@ -74,6 +74,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.wordmaker.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -522,7 +523,7 @@ fun WordGameScreen(
                     ) {
                         Icon(
                             painterResource(android.R.drawable.ic_menu_help),
-                            contentDescription = "Hint",
+                            contentDescription = stringResource(R.string.cd_hint),
                             modifier = Modifier.graphicsLayer { alpha = if (hintEnabled) 1f else 0.5f }
                         )
                     }
@@ -1040,7 +1041,7 @@ fun LetterChooser(
                     FilledIconButton(onClick = {
                         selectedLettersIndices = selectedLettersIndices.dropLast(1)
                     }) {
-                        Icon(painterResource(R.drawable.backspace_24px), contentDescription = "Backspace")
+                        Icon(painterResource(R.drawable.backspace_24px), contentDescription = stringResource(R.string.cd_backspace))
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     FilledIconButton(onClick = {
@@ -1053,7 +1054,7 @@ fun LetterChooser(
                             }
                         }
                     }) {
-                        Icon(painterResource(R.drawable.keyboard_return_24px), contentDescription = "Submit")
+                        Icon(painterResource(R.drawable.keyboard_return_24px), contentDescription = stringResource(R.string.cd_submit))
                     }
                 }
             }
@@ -1145,7 +1146,7 @@ fun LetterChooser(
                 }
             }
             FilledIconButton(onClick = onShuffle) {
-                Icon(painterResource(R.drawable.ic_shuffle), contentDescription = "Shuffle")
+                Icon(painterResource(R.drawable.ic_shuffle), contentDescription = stringResource(R.string.cd_shuffle))
             }
         }
     }

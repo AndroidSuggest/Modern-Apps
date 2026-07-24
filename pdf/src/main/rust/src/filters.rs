@@ -283,13 +283,12 @@ pub fn decode_ccitt(data: &[u8], w: u32, h: u32, params: &CcittParams) -> Option
                 if cur_x>=cols_us { break; }
             }
         }
-        // Handle BlackIs1 inversion: if true, 1=black already (our mapping). If false but spec says 1=black also? Keep; if false needs invert per PDF? Actually BlackIs1 false historically means 1=white? Let's keep straightforward: if black_is1==false && typical encoder expects 0=black, need invert? We'll invert when black_is1==false to test visual.
-        if !params.black_is1 {
-            // In our encoding black=>1, but if BlackIs1 false expects 1=white, we should invert?
-            // Per PDF spec default false => 1 bits are black? Actually need to verify. We'll not invert here default, so only invert if explicit true? Let's keep no invert and rely on reader test.
-            // Instead implement: if !black_is1 then invert packed bits (swap black/white) to attempt both.
-            // To be safe we invert when black_is1 == false to match classic T.4 where 0=white. But fax maps Black to black. So black_is1 affects decoding of raw bits, not our transition mapping. For decoded transitions, colors are already White/Black. So we should not need BlackIs1 beyond mapping. So keep.
-        }
+        // NOTE ON /BlackIs1: the `fax` decoder yields *semantic* colors
+        // (fax::Color::Black is a truly black pixel), so our packed output
+        // already uses the convention 1 = black. /BlackIs1 only describes how a
+        // consumer maps the decoded 1-bit samples to black/white; since we go
+        // straight from semantic color to RGBA (1 => black) it must NOT be
+        // re-applied here, or the image would invert. It is therefore a no-op.
         Some(packed)
     } else {
         // Group3
@@ -324,30 +323,17 @@ pub fn decode_stream_chain(mut data: Vec<u8>, specs: &[(FilterKind, Option<Dicti
             }
             FilterKind::RunLength => { data = decode_runlength(&data); }
             FilterKind::Flate => {
-                // Handle PNG predictors via parms if present
+                // Handle PNG/TIFF predictors via parms if present
                 if let Some(d) = decode_flate(&data) { data = d; } else { return None; }
-                // Predictor handling via lopdf png module if needed
-                if let Some(dict) = parms {
-                    if let Some(pred) = dict.get(b"Predictor").ok().and_then(num).or_else(|| dict.get(b"Predictor").ok().and_then(|o| deref(doc,o).and_then(num))) {
-                        if (10.0..=15.0).contains(&pred) {
-                            let cols = dict.get(b"Columns").ok().and_then(num).unwrap_or(1.0) as usize;
-                            let colors = dict.get(b"Colors").ok().and_then(num).unwrap_or(1.0) as usize;
-                            let bpc = dict.get(b"BitsPerComponent").ok().and_then(num).unwrap_or(8.0) as usize;
-                            let bpp = colors * bpc /8;
-                            let bpp = bpp.max(1);
-                            // Use lopdf's png decode
-                            if let Ok(decoded) = lopdf::filters::png::decode_frame(data.as_slice(), bpp, cols) {
-                                data = decoded;
-                            }
-                        }
-                    }
-                }
+                data = apply_predictor(data, parms.as_ref(), doc);
             }
             FilterKind::Lzw => {
                 let early = parms.as_ref().and_then(|d| {
                     d.get(b"EarlyChange").ok().and_then(num).or_else(|| d.get(b"EarlyChange").ok().and_then(|o| deref(doc,o).and_then(num)))
                 }).map(|v| v!=0.0).unwrap_or(true);
                 if let Some(d)=decode_lzw(&data, early) { data=d; } else { return None; }
+                // LZW supports the same PNG/TIFF predictors as Flate.
+                data = apply_predictor(data, parms.as_ref(), doc);
             }
             FilterKind::Ccitt => {
                 // Need width/height from parms? Use parse helper
@@ -363,11 +349,70 @@ pub fn decode_stream_chain(mut data: Vec<u8>, specs: &[(FilterKind, Option<Dicti
                 // Stop chain for DCT/JPX/JBIG2 - they are not decoded via chain here (handled specially in image extraction)
                 // Keep data as is
             }
-            FilterKind::Crypt => { /* ignore */ }
+            FilterKind::Crypt => {
+                // Stream decryption already happens at document load (decrypt.rs),
+                // so by here the bytes are plaintext regardless of /Name. A /Crypt
+                // filter with /Name /Identity means "not encrypted" — either way a
+                // no-op in the decode chain.
+            }
             FilterKind::Unknown(_) => { /* return None to avoid silent corruption */ return None; }
         }
     }
     Some(data)
+}
+
+/// Apply a PNG (Predictor >= 10) or TIFF (Predictor == 2) predictor to `data`
+/// using the `/DecodeParms` values. Returns `data` unchanged if no predictor.
+fn apply_predictor(data: Vec<u8>, parms: Option<&Dictionary>, doc: &Document) -> Vec<u8> {
+    let dict = match parms {
+        Some(d) => d,
+        None => return data,
+    };
+    let pred = dict
+        .get(b"Predictor")
+        .ok()
+        .and_then(num)
+        .or_else(|| dict.get(b"Predictor").ok().and_then(|o| deref(doc, o).and_then(num)))
+        .unwrap_or(1.0);
+    if pred <= 1.0 {
+        return data;
+    }
+    let cols = dict.get(b"Columns").ok().and_then(num).unwrap_or(1.0) as usize;
+    let colors = dict.get(b"Colors").ok().and_then(num).unwrap_or(1.0) as usize;
+    let bpc = dict.get(b"BitsPerComponent").ok().and_then(num).unwrap_or(8.0) as usize;
+    let bpp = (colors * bpc / 8).max(1);
+    if (10.0..=15.0).contains(&pred) {
+        if let Ok(decoded) = lopdf::filters::png::decode_frame(data.as_slice(), bpp, cols) {
+            return decoded;
+        }
+        data
+    } else if pred == 2.0 {
+        apply_tiff_predictor2(data, cols, colors, bpc)
+    } else {
+        data
+    }
+}
+
+/// TIFF Predictor 2: horizontal differencing. Only the common 8-bit case is
+/// reversed exactly; other bit depths are returned unchanged.
+fn apply_tiff_predictor2(mut data: Vec<u8>, cols: usize, colors: usize, bpc: usize) -> Vec<u8> {
+    if bpc != 8 || cols == 0 || colors == 0 {
+        return data;
+    }
+    let row_bytes = cols * colors;
+    if row_bytes == 0 {
+        return data;
+    }
+    let rows = data.len() / row_bytes;
+    for r in 0..rows {
+        let base = r * row_bytes;
+        for i in colors..row_bytes {
+            let prev = data[base + i - colors];
+            let cur = data[base + i];
+            data[base + i] = cur.wrapping_add(prev);
+        }
+    }
+    data
 }
 
 #[cfg(test)]
@@ -396,5 +441,13 @@ mod tests {
         assert_eq!(normalize_filter_name("DCTDecode"), FilterKind::Dct);
         assert_eq!(normalize_filter_name("JBIG2Decode"), FilterKind::Jbig2);
         assert_eq!(normalize_filter_name("CCITTFaxDecode"), FilterKind::Ccitt);
+    }
+    #[test] fn tiff_predictor2_horizontal() {
+        // Two rows, 3 columns, 1 color, 8bpc. Encoded as left-differences.
+        // Row0 original [10, 20, 30] -> diffs [10, 10, 10].
+        // Row1 original [ 5,  5,  5] -> diffs [ 5,  0,  0].
+        let encoded = vec![10u8, 10, 10, 5, 0, 0];
+        let out = apply_tiff_predictor2(encoded, 3, 1, 8);
+        assert_eq!(out, vec![10, 20, 30, 5, 5, 5]);
     }
 }

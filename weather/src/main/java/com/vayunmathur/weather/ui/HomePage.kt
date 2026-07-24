@@ -262,7 +262,7 @@ private fun LocationPage(
         val gm = graphMetric
         if (gm != null && forecast != null) {
             MetricGraphSheet(
-                title = gm.title,
+                title = stringResource(gm.title),
                 points = com.vayunmathur.weather.util.metricSeries(forecast, gm, selected),
                 valueLabel = metricValueFormatter(gm, tempUnit, windUnit, pressureUnit),
                 timeLabel = { epoch -> formatHourAxisLabel(epoch, use24Hour) },
@@ -300,9 +300,9 @@ private fun EmptyHome(viewModel: WeatherViewModel, onAddLocation: () -> Unit) {
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.weather_title)) }) }) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No locations yet", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.no_locations_yet), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Add a city or use your current location to see the forecast.",
+                    stringResource(R.string.add_a_city_or_use_your_current_location),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
@@ -319,7 +319,7 @@ private fun EmptyHome(viewModel: WeatherViewModel, onAddLocation: () -> Unit) {
                             strokeWidth = 2.dp,
                         )
                     }
-                    Text(if (requesting) "Locating…" else "Use current location")
+                    Text(if (requesting) stringResource(R.string.locating) else stringResource(R.string.use_current_location))
                 }
             }
         }

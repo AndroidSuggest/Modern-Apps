@@ -13,4 +13,8 @@
     <string name="move_down">Move down</string>
     <string name="shrink">Shrink</string>
     <string name="enlarge">Enlarge</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- NotePage -->
+    <string name="note">note</string>
 </resources>

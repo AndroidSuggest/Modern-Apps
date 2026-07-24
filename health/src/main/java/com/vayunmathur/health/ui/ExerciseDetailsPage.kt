@@ -37,12 +37,15 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.DayOfWeekNames
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import java.time.ZoneId
 
 private val dateFormatter = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames.ENGLISH_FULL)
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.FULL)))
     chars(", ")
-    monthName(MonthNames.ENGLISH_ABBREVIATED)
+    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
     chars(" ")
     day(Padding.NONE)
     chars(", ")
@@ -197,7 +200,7 @@ private fun ExerciseSessionCard(record: Record) {
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "Route recorded",
+                        stringResource(R.string.route_recorded),
                         style = MaterialTheme.typography.labelMedium,
                         color = HealthColors.Activity
                     )
@@ -210,7 +213,7 @@ private fun ExerciseSessionCard(record: Record) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Segments",
+                    stringResource(R.string.segments),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -232,7 +235,7 @@ private fun ExerciseSessionCard(record: Record) {
                             )
                             if (segment.repetitions > 0) {
                                 Text(
-                                    "${segment.repetitions} reps",
+                                    stringResource(R.string.reps, segment.repetitions),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
@@ -254,7 +257,7 @@ private fun ExerciseSessionCard(record: Record) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Laps",
+                    stringResource(R.string.laps),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -270,7 +273,7 @@ private fun ExerciseSessionCard(record: Record) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Lap ${idx + 1}",
+                            stringResource(R.string.lap, idx + 1),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {

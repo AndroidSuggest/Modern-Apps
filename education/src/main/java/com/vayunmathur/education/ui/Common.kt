@@ -16,6 +16,9 @@ import com.vayunmathur.library.ui.IconStar
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import com.vayunmathur.education.R
 
 /** A row of up to [max] stars, [stars] of them filled. */
 @Composable
@@ -35,7 +38,7 @@ fun StreakChip(count: Int) {
     AssistChip(
         onClick = {},
         enabled = false,
-        label = { Text("$count day${if (count == 1) "" else "s"}") },
+        label = { Text(pluralStringResource(R.plurals.day_count, count, count)) },
         leadingIcon = { IconFire(tint = MaterialTheme.colorScheme.tertiary) },
         colors = AssistChipDefaults.assistChipColors(
             disabledLabelColor = MaterialTheme.colorScheme.onSurface,
@@ -49,7 +52,7 @@ fun StarsChip(count: Int) {
     AssistChip(
         onClick = {},
         enabled = false,
-        label = { Text("$count") },
+        label = { Text(count.toString()) },
         leadingIcon = { IconStar(tint = MaterialTheme.colorScheme.tertiary) },
         colors = AssistChipDefaults.assistChipColors(
             disabledLabelColor = MaterialTheme.colorScheme.onSurface,

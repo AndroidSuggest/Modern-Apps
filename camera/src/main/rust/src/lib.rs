@@ -33,6 +33,11 @@ fn registry() -> &'static Mutex<HashMap<i64, Session>> {
     REG.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn night_registry() -> &'static Mutex<HashMap<i64, Vec<Rgba>>> {
+    static NREG: OnceLock<Mutex<HashMap<i64, Vec<Rgba>>>> = OnceLock::new();
+    NREG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 fn next_handle() -> i64 {
     static CTR: OnceLock<Mutex<i64>> = OnceLock::new();
     let m = CTR.get_or_init(|| Mutex::new(1));
@@ -64,16 +69,24 @@ fn do_stitch(s: &mut Session) -> Option<Vec<u8>> {
     let frames = std::mem::take(&mut s.frames);
     let yaw = std::mem::take(&mut s.yaw);
     let pitch = std::mem::take(&mut s.pitch);
-    let _ = s.sphere; // sphere vs cylindrical handled by the (planar-chain) pipeline for now
+    let _ = s.sphere;
     let result = stitch::stitch_panorama(&frames, &yaw, &pitch)?;
     encode_jpeg(&result, 92)
 }
 
 fn do_merge(s: &mut Session) -> Option<Vec<u8>> {
     let frames = std::mem::take(&mut s.frames);
-    // Decode the JPEG burst to RGBA for alignment + merge.
     let decoded: Vec<Rgba> = frames.iter().filter_map(|j| Rgba::from_jpeg(j)).collect();
     let result = night::align_and_merge(&decoded)?;
+    encode_jpeg(&result, 95)
+}
+
+fn do_merge_night_rgba(handle: i64) -> Option<Vec<u8>> {
+    let frames = night_registry().lock().unwrap().remove(&handle)?;
+    if frames.is_empty() {
+        return None;
+    }
+    let result = night::align_and_merge(&frames)?;
     encode_jpeg(&result, 95)
 }
 
@@ -104,7 +117,7 @@ fn serialize_estimate(est: &stitch::Estimate) -> Vec<u8> {
 }
 
 // Registration-only path for the GPU compositor. Borrows the session (does not
-// consume its frames) so a CPU-stitch fallback can still run if the GPU fails.
+// consume its frames) so a CPU-stitch fallback can still run if the GPU path fails.
 fn do_estimate(s: &Session) -> Option<Vec<u8>> {
     let est = stitch::estimate_pano(&s.frames, &s.yaw, &s.pitch)?;
     Some(serialize_estimate(&est))
@@ -119,9 +132,6 @@ mod tests {
         std::fs::read(path).expect("read image bytes")
     }
 
-    /// Stitches the two sample photos from linrl3/Image-Stitching-OpenCV and
-    /// writes the result to testdata/output.jpg for visual comparison against
-    /// testdata/panorama.jpg. Run with:  cargo test stitch_two_samples -- --nocapture
     #[test]
     fn stitch_two_samples() {
         let a = load("testdata/q11.jpg");
@@ -136,9 +146,6 @@ mod tests {
         let dt = t0.elapsed();
         let jpeg = encode_jpeg(&out, 92).expect("encode");
         std::fs::write("testdata/output.jpg", &jpeg).expect("write output");
-
-        // Quantitatively count pure-black pixels (the uncovered-warp fill) — both
-        // overall and specifically on the four borders.
         let total = out.w * out.h;
         let mut black = 0usize;
         for i in 0..total {
@@ -163,8 +170,6 @@ mod tests {
             count_px(out.w - 1, y, &mut border_black);
         }
         let black_pct = 100.0 * black as f64 / total as f64;
-        // Locate the brightest vertical streak in the sky (top 25%): per-column
-        // mean brightness, find the peak column and dump values around it.
         let top = out.h / 4;
         let colmean: Vec<f64> = (0..out.w)
             .map(|x| {
@@ -182,32 +187,15 @@ mod tests {
             "streak: peak col {} mean {:.0} vs avg {:.0} (+{:.0})",
             peak, colmean[peak], avg, colmean[peak] - avg
         );
-        let y = top / 2;
-        let mut line = String::new();
-        for x in (peak.saturating_sub(10))..(peak + 11).min(out.w) {
-            let i = (y * out.w + x) * 4;
-            line.push_str(&format!("{}:{},{},{} ", x, out.px[i], out.px[i + 1], out.px[i + 2]));
-        }
-        eprintln!("row {y} around peak: {line}");
         eprintln!(
             "inputs {aw}x{ah}; stitched {}x{} in {:?} -> {} KB; black={} ({:.3}%), border_black={}",
-            out.w,
-            out.h,
-            dt,
-            jpeg.len() / 1024,
-            black,
-            black_pct,
-            border_black
+            out.w, out.h, dt, jpeg.len() / 1024, black, black_pct, border_black
         );
         assert!(out.w > 800 && out.h > 800, "degenerate crop: {}x{}", out.w, out.h);
         assert_eq!(border_black, 0, "black pixels on the border");
         assert!(black_pct < 0.05, "too many black pixels: {:.3}%", black_pct);
     }
 
-    /// Registration-only path used by the GPU compositor: decode the estimate
-    /// blob and assert it yields 2 cameras with finite intrinsics/rotation and a
-    /// plausible canvas size. (GLES compositing itself needs an Android EGL
-    /// context, so it can't run under host `cargo test`.)
     #[test]
     fn estimate_two_samples() {
         let a = load("testdata/q11.jpg");
@@ -215,8 +203,6 @@ mod tests {
         let est = crate::stitch::estimate_pano(&[a, b], &[0.0, 0.0], &[0.0, 0.0])
             .expect("estimate returned None");
         let blob = serialize_estimate(&est);
-
-        // Header: canvas_w u32, canvas_h u32, u0 f64, v0 f64, scale f64, count u32.
         let u32_at = |o: usize| u32::from_le_bytes(blob[o..o + 4].try_into().unwrap());
         let f64_at = |o: usize| f64::from_le_bytes(blob[o..o + 8].try_into().unwrap());
         let canvas_w = u32_at(0);
@@ -229,8 +215,6 @@ mod tests {
             canvas_w > 800 && canvas_h > 400 && (canvas_w as u64 * canvas_h as u64) < 12_000_000,
             "implausible canvas {canvas_w}x{canvas_h}"
         );
-
-        // Per-cam records begin at offset 36; each is 4 + 8*12 + 4 = 104 bytes.
         let rec = 4 + 8 * 12 + 4;
         assert_eq!(blob.len(), 36 + count as usize * rec, "blob size mismatch");
         for i in 0..count as usize {
@@ -251,7 +235,7 @@ mod tests {
 mod jni_bindings {
     use super::*;
     use jni::objects::{JByteArray, JClass};
-    use jni::sys::{jboolean, jbyteArray, jfloat, jlong};
+    use jni::sys::{jboolean, jbyteArray, jfloat, jint, jlong};
     use jni::JNIEnv;
 
     #[no_mangle]
@@ -317,9 +301,6 @@ mod jni_bindings {
         handle: jlong,
     ) -> jbyteArray {
         let null = std::ptr::null_mut();
-        // Move the session data out so the (long) registration doesn't hold the
-        // registry lock, then restore it afterwards so a CPU-stitch fallback can
-        // still consume the same frames if the GPU path fails.
         let session = match registry().lock().unwrap().get_mut(&(handle as i64)) {
             Some(s) => Session {
                 sphere: s.sphere,
@@ -345,6 +326,75 @@ mod jni_bindings {
         }
     }
 
+    // --- Lossless night path: RGBA frames without double JPEG ---
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_newNightSession<'l>(
+        _env: JNIEnv<'l>,
+        _class: JClass<'l>,
+    ) -> jlong {
+        let h = next_handle();
+        night_registry().lock().unwrap().insert(h, Vec::new());
+        h
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_addNightRgbaFrame<'l>(
+        env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        handle: jlong,
+        rgba: JByteArray<'l>,
+        width: jint,
+        height: jint,
+    ) {
+        let w = width as usize;
+        let h = height as usize;
+        if w == 0 || h == 0 || w > 20000 || h > 20000 {
+            return;
+        }
+        let bytes = match env.convert_byte_array(&rgba) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        if bytes.len() != w * h * 4 {
+            return;
+        }
+        let frame = Rgba::from_bytes(w, h, bytes);
+        if let Some(v) = night_registry().lock().unwrap().get_mut(&(handle as i64)) {
+            v.push(frame);
+        }
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_mergeNight<'l>(
+        env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        handle: jlong,
+    ) -> jbyteArray {
+        let null = std::ptr::null_mut();
+        let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            do_merge_night_rgba(handle as i64)
+        }))
+        .unwrap_or(None);
+        match bytes {
+            Some(b) => match env.byte_array_from_slice(&b) {
+                Ok(arr) => arr.into_raw(),
+                Err(_) => null,
+            },
+            None => null,
+        }
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_freeNight<'l>(
+        _env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        handle: jlong,
+    ) {
+        night_registry().lock().unwrap().remove(&(handle as i64));
+        registry().lock().unwrap().remove(&(handle as i64));
+    }
+
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_camera_util_StitchNative_free<'l>(
         _env: JNIEnv<'l>,
@@ -352,11 +402,11 @@ mod jni_bindings {
         handle: jlong,
     ) {
         registry().lock().unwrap().remove(&(handle as i64));
+        night_registry().lock().unwrap().remove(&(handle as i64));
     }
 
     fn run_and_return(env: JNIEnv, handle: jlong, panorama: bool) -> jbyteArray {
         let null = std::ptr::null_mut();
-        // Pull the session out so the (potentially long) compute doesn't hold the lock.
         let mut session = match registry().lock().unwrap().get_mut(&(handle as i64)) {
             Some(s) => Session {
                 sphere: s.sphere,
@@ -366,7 +416,6 @@ mod jni_bindings {
             },
             None => return null,
         };
-        // Never let a panic unwind across the JNI/FFI boundary — return null instead.
         let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if panorama {
                 do_stitch(&mut session)
@@ -384,4 +433,3 @@ mod jni_bindings {
         }
     }
 }
-

@@ -28,6 +28,8 @@ import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,13 +41,13 @@ fun UnitPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, unit
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(unit?.title ?: "Unit") },
+                title = { Text(unit?.title ?: stringResource(R.string.unit)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
         if (unit == null) {
-            MissingContent(padding, "This unit is unavailable.")
+            MissingContent(padding, stringResource(R.string.this_unit_is_unavailable))
             return@Scaffold
         }
         LazyColumn(
@@ -79,11 +81,10 @@ fun UnitPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, unit
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(lesson.title, style = MaterialTheme.typography.titleMedium)
+                            val videoText = pluralStringResource(R.plurals.video_count, lesson.videos.size, lesson.videos.size)
+                            val exerciseSuffix = if (lesson.exercise != null) stringResource(R.string.exercise) else ""
                             Text(
-                                buildString {
-                                    append("${lesson.videos.size} video${if (lesson.videos.size == 1) "" else "s"}")
-                                    if (lesson.exercise != null) append(" · exercise")
-                                },
+                                videoText + exerciseSuffix,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -100,7 +101,7 @@ fun UnitPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, unit
                             .fillMaxWidth()
                             .padding(16.dp),
                     ) {
-                        Text(quiz.title.ifBlank { "Unit quiz" })
+                        Text(quiz.title.ifBlank { stringResource(R.string.unit_quiz) })
                     }
                 }
             }

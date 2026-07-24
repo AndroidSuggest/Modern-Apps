@@ -38,6 +38,8 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun DashboardScreen(
@@ -85,7 +87,7 @@ fun DashboardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("GameHub", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 actions = { BackupButtons(dbConfigs = dbConfigs, datastoreNames = datastoreNames) }
             )
         }
@@ -100,7 +102,7 @@ fun DashboardScreen(
                     Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         LevelBadge(level = level, large = true)
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(text = profile?.displayName ?: "Player", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(text = profile?.displayName ?: stringResource(R.string.player), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(text = title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             XpProgressBar(totalXp = xp, modifier = Modifier.fillMaxWidth())
                         }
@@ -123,8 +125,8 @@ fun DashboardScreen(
             if (recentlyPlayedGames.isNotEmpty()) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "Continue playing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onGamesClick) { Text("See all") }
+                        Text(stringResource(R.string.continue_playing), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onGamesClick) { Text(stringResource(R.string.see_all)) }
                     }
                 }
                 item {
@@ -146,15 +148,15 @@ fun DashboardScreen(
             if (recentActivity.isNotEmpty()) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "Recent activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onActivityClick) { Text("See all") }
+                        Text(stringResource(R.string.recent_activity), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onActivityClick) { Text(stringResource(R.string.see_all)) }
                     }
                 }
                 items(recentActivity.take(5), key = { it.id }) { event -> ActivityItemCard(event = event, onGameClick = onGameClick) }
             } else {
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
-                        Text(text = "No activity yet — play a game!", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.no_activity_yet_play_a_game), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

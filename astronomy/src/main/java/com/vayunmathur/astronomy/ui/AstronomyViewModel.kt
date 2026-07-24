@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.astronomy.data.CatalogRepository
+import com.vayunmathur.astronomy.data.model.PlanetId
+import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.domain.engine.*
 import com.vayunmathur.astronomy.domain.sensor.DeviceOrientation
 import com.vayunmathur.astronomy.domain.sensor.LocationProvider
@@ -368,17 +370,22 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
         val q = query.lowercase()
         val results = mutableListOf<SearchResult>()
         catalog.stars.filter { (it.name?.lowercase()?.contains(q) == true) || (it.properName?.lowercase()?.contains(q) == true) }.take(20).forEach {
-            results.add(SearchResult("STAR_${it.id}", it.properName ?: it.name ?: "Star ${it.id}", "Star mag ${it.mag}", it.ra to it.dec))
+            results.add(SearchResult("STAR_${it.id}", it.properName ?: it.name ?: context.getString(R.string.search_result_star_fallback, it.id.toString()), context.getString(R.string.search_result_star_mag, it.mag.toString()), it.ra to it.dec))
         }
-        listOf("Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune").filter { it.lowercase().contains(q) }.forEach {
-            val pid = if (it=="Sun") "SUN" else if (it=="Moon") "MOON" else "PLANET_${it.uppercase()}"
-            results.add(SearchResult(pid, it, "Planet", null))
-        }
+        PlanetId.entries.map { it to context.getString(it.displayNameRes) }
+            .filter { (_, name) -> name.lowercase().contains(q) }
+            .forEach { (planet, name) ->
+                val pid = when (planet) {
+                    PlanetId.SUN, PlanetId.MOON -> planet.name
+                    else -> "PLANET_${planet.name}"
+                }
+                results.add(SearchResult(pid, name, context.getString(R.string.search_result_planet), null))
+            }
         catalog.deepSky.filter { it.id.lowercase().contains(q) || it.name.lowercase().contains(q) }.take(20).forEach {
             results.add(SearchResult(it.id, "${it.id} ${it.name}", it.type, it.ra to it.dec))
         }
         catalog.constellations.filter { it.abbr.lowercase().contains(q) || it.name.lowercase().contains(q) }.forEach {
-            results.add(SearchResult("CONST_${it.abbr}", it.name, "Constellation ${it.abbr}", null))
+            results.add(SearchResult("CONST_${it.abbr}", it.name, context.getString(R.string.search_result_constellation, it.abbr), null))
         }
         return results
     }

@@ -78,7 +78,7 @@ fun PasswordPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(password.name.ifBlank { "Password" }) },
+                title = { Text(password.name.ifBlank { stringResource(R.string.section_password) }) },
                 actions = {
                     IconButton(onClick = { viewModel.delete(password); backStack.pop() }) {
                         IconDelete()
@@ -124,9 +124,9 @@ fun PasswordPage(
                     Spacer(Modifier.width(12.dp))
 
                     Column(Modifier.weight(1f)) {
-                        Text(password.name.ifBlank { "(no name)" }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(password.name.ifBlank { stringResource(R.string.no_name) }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(4.dp))
-                        Text(password.userId.ifBlank { "(no user)" }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(password.userId.ifBlank { stringResource(R.string.no_user) }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

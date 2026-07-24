@@ -62,8 +62,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyGridState
+import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.longPressDraggableHandle
+import com.vayunmathur.library.ui.rememberReorderableLazyGridState
+import androidx.compose.ui.res.stringResource
 
 /**
  * "Cut and glue": compose a new PDF by appending whole PDFs or images, then
@@ -133,7 +135,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cut & Glue") },
+                title = { Text(stringResource(R.string.cut_glue)) },
                 navigationIcon = { IconNavigation { onBack() } },
                 actions = {
                     if (pageKeys.isNotEmpty()) {
@@ -148,7 +150,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
                         leadingIcon = { com.vayunmathur.library.ui.IconImage() },
-                        text = { Text("Append image") },
+                        text = { Text(stringResource(R.string.append_image)) },
                         onClick = {
                             menuOpen = false
                             imagePicker.launch(
@@ -158,7 +160,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
                     )
                     DropdownMenuItem(
                         leadingIcon = { com.vayunmathur.library.ui.IconShapeRectOutline() },
-                        text = { Text("Append PDF") },
+                        text = { Text(stringResource(R.string.append_pdf)) },
                         onClick = { menuOpen = false; pdfPicker.launch(arrayOf("application/pdf")) },
                     )
                 }
@@ -167,8 +169,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             if (pageKeys.isEmpty()) {
-                Text(
-                    "Tap + to append a PDF or image",
+                Text(stringResource(R.string.tap_to_append_a_pdf_or_image),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.Center),
@@ -195,7 +196,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
                                         scope.launch { doc.removePage(index) }
                                     }
                                 },
-                                dragHandle = Modifier.longPressDraggableHandle(),
+                                dragHandle = Modifier.longPressDraggableHandle(reorderState, key = key, index = index),
                             )
                         }
                     }

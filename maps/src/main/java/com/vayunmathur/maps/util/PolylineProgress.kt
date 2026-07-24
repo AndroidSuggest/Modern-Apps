@@ -112,9 +112,8 @@ class PolylineIndex(val route: Route) {
         //
         // INVARIANT: route.polyline MUST be the concatenation of
         // step[i].polyline with shared endpoints deduplicated. OfflineRouter
-        // produces this; RouteService.computeRoute also rebuilds the
-        // polyline this way (see RouteService for the rebuild call) so the
-        // index ranges below are valid for both offline and online routes.
+        // produces this (including getRouteMulti) so the index ranges below
+        // are valid for all offline routes.
         val ranges = mutableListOf<IntRange>()
         var cursor = 0
         for (step in route.step) {

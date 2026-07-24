@@ -441,12 +441,12 @@ private fun MeasureSelector(
     var expanded by remember { mutableStateOf(false) }
     Box {
         FilledTonalButton(onClick = { expanded = true }) {
-            Text(selected.title)
+            Text(stringResource(selected.title))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { m ->
                 DropdownMenuItem(
-                    text = { Text(m.title) },
+                    text = { Text(stringResource(m.title)) },
                     onClick = {
                         onSelect(m)
                         expanded = false
@@ -462,7 +462,7 @@ private fun Legend(metric: WeatherMetric, minLabel: String, maxLabel: String) {
     val colors = metric.colorRamp.map { it.color }
     Column {
         Text(
-            text = metric.title,
+            text = stringResource(metric.title),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,

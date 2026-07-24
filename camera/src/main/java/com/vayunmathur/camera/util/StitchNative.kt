@@ -35,9 +35,23 @@ object StitchNative {
      */
     external fun estimate(handle: Long): ByteArray?
 
-    /** Aligns + merges the added frames (night mode); returns JPEG bytes or null. Consumes the frames. */
+    /** Aligns + merges the added frames (night mode, JPEG path); returns JPEG bytes or null. Consumes the frames. */
     external fun merge(handle: Long): ByteArray?
 
-    /** Releases the session. */
+    /** Releases the session (also cleans night registry if mixed). */
     external fun free(handle: Long)
+
+    // --- Lossless night path: RGBA frames without double JPEG (no quality loss) ---
+
+    /** Opens a night session that holds RGBA frames directly (lossless). */
+    external fun newNightSession(): Long
+
+    /** Adds one RGBA frame (len = w*h*4, R,G,B,A order) to a night session. */
+    external fun addNightRgbaFrame(handle: Long, rgba: ByteArray, width: Int, height: Int)
+
+    /** Aligns + merges the RGBA night session; returns JPEG bytes or null. Consumes session. */
+    external fun mergeNight(handle: Long): ByteArray?
+
+    /** Releases a night session (also cleans pano registry if mixed). */
+    external fun freeNight(handle: Long)
 }

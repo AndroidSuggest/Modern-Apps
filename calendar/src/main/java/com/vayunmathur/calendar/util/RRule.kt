@@ -1,11 +1,16 @@
 package com.vayunmathur.calendar.util
+import android.content.Context
+import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.ui.dateFormat
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import java.time.format.TextStyle
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
 import kotlinx.datetime.format
+import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
@@ -37,10 +42,10 @@ private fun RRule.EndCondition.toRRuleSuffix(timeZone: TimeZone): String = when 
     is RRule.EndCondition.Until -> ";UNTIL=${date.toIcalString(timeZone)}"
 }
 
-private fun RRule.EndCondition.toStringSuffix(): String = when (this) {
+private fun RRule.EndCondition.describeSuffix(context: Context): String = when (this) {
     is RRule.EndCondition.Never -> ""
-    is RRule.EndCondition.Count -> ", $count times"
-    is RRule.EndCondition.Until -> ", Until ${date.format(dateFormat)}"
+    is RRule.EndCondition.Count -> context.resources.getQuantityString(R.plurals.rrule_count_suffix, count.toInt(), count)
+    is RRule.EndCondition.Until -> context.getString(R.string.rrule_until_suffix, date.format(dateFormat))
 }
 
 @Serializable
@@ -54,10 +59,10 @@ sealed class RRule {
     abstract val wkst: DayOfWeek?
     abstract val byDay: List<DayOfWeek>?
     abstract fun asString(firstDay: LocalDate, timeZone: TimeZone): String
-    final override fun toString(): String {
-        return toStringImpl() + endCondition.toStringSuffix()
+    fun describe(context: Context): String {
+        return describeImpl(context) + endCondition.describeSuffix(context)
     }
-    protected abstract fun toStringImpl(): String
+    protected abstract fun describeImpl(context: Context): String
 
     companion object {
         fun parse(content: String, timeZone: TimeZone): RRule? {
@@ -183,7 +188,9 @@ sealed class RRule {
             val base = "FREQ=YEARLY;INTERVAL=$years"
             return buildRRuleString(base, timeZone)
         }
-        override fun toStringImpl(): String = if (years == 1) "Yearly" else "Every $years years"
+        override fun describeImpl(context: Context): String =
+            if (years == 1) context.getString(R.string.rrule_yearly)
+            else context.resources.getQuantityString(R.plurals.rrule_every_years, years, years)
     }
 
     @Serializable
@@ -212,7 +219,9 @@ sealed class RRule {
             }
             return buildRRuleString(base + byDayPart, timeZone)
         }
-        override fun toStringImpl(): String = if (months == 1) "Monthly" else "Every $months months"
+        override fun describeImpl(context: Context): String =
+            if (months == 1) context.getString(R.string.rrule_monthly)
+            else context.resources.getQuantityString(R.plurals.rrule_every_months, months, months)
     }
 
     @Serializable
@@ -233,13 +242,14 @@ sealed class RRule {
             val base = "FREQ=WEEKLY;INTERVAL=$weeks;BYDAY=$days"
             return buildRRuleString(base, timeZone)
         }
-        override fun toStringImpl(): String {
-            val prefix = if (weeks == 1) "Weekly" else "Every $weeks weeks"
+        override fun describeImpl(context: Context): String {
+            val prefix = if (weeks == 1) context.getString(R.string.rrule_weekly)
+            else context.resources.getQuantityString(R.plurals.rrule_every_weeks, weeks, weeks)
             if (daysOfWeek.isEmpty()) return prefix
             val days = daysOfWeek.sorted().joinToString(", ") {
-                it.name.take(3).lowercase().replaceFirstChar { c -> c.titlecase() }
+                localizedDayOfWeekNames(TextStyle.SHORT)[it.isoDayNumber - 1]
             }
-            return "$prefix on $days"
+            return context.getString(R.string.rrule_on_days, prefix, days)
         }
     }
 
@@ -259,6 +269,8 @@ sealed class RRule {
             val base = "FREQ=DAILY;INTERVAL=$days"
             return buildRRuleString(base, timeZone)
         }
-        override fun toStringImpl(): String = if (days == 1) "Daily" else "Every $days days"
+        override fun describeImpl(context: Context): String =
+            if (days == 1) context.getString(R.string.rrule_daily)
+            else context.resources.getQuantityString(R.plurals.rrule_every_days, days, days)
     }
 }

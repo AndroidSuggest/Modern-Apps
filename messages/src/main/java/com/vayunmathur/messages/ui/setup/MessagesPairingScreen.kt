@@ -124,11 +124,11 @@ fun MessagesPairingScreen(
             when (val s = state) {
                 is GMessagesClient.State.Pairing -> QrCard(s.qrUrl)
                 GMessagesClient.State.Connected -> Text(
-                    "Paired ✓",
+                    stringResource(R.string.paired),
                     fontWeight = FontWeight.SemiBold,
                 )
                 is GMessagesClient.State.Disconnected -> Text(
-                    "Disconnected: ${s.reason}",
+                    stringResource(R.string.setup_signal_disconnected, s.reason),
                     color = MaterialTheme.colorScheme.error,
                 )
                 GMessagesClient.State.Idle -> {
@@ -136,7 +136,7 @@ fun MessagesPairingScreen(
                         Text(error!!, color = MaterialTheme.colorScheme.error)
                     } else {
                         CircularProgressIndicator()
-                        Text("Requesting a pairing slot from Google…")
+                        Text(stringResource(R.string.requesting_a_pairing_slot_from_google))
                     }
                 }
             }
@@ -168,7 +168,7 @@ private fun QrCard(url: String) {
             } else {
                 Image(
                     bitmap = bm.asImageBitmap(),
-                    contentDescription = "Pairing QR code",
+                    contentDescription = stringResource(R.string.cd_pairing_qr_code),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )

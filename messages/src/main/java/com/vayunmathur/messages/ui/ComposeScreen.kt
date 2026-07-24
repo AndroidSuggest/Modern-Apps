@@ -66,6 +66,7 @@ import com.vayunmathur.messages.util.MessagesViewModel
 import com.vayunmathur.messages.util.NewMediaPart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
 
 /**
  * Compose-new screen.
@@ -147,7 +148,7 @@ fun ComposeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("New conversation") },
+                title = { Text(stringResource(R.string.new_conversation)) },
                 navigationIcon = { IconNavigation(backStack) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -172,7 +173,7 @@ fun ComposeScreen(
                 // Source picker — hidden when initialSource is locked.
                 if (initialSource != null) {
                     Text(
-                        "Sending via ${labelFor(initialSource)}",
+                        stringResource(R.string.sending_via, labelFor(initialSource)),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
@@ -188,7 +189,7 @@ fun ComposeScreen(
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("Name or phone number") },
+                    placeholder = { Text(stringResource(R.string.name_or_phone_number)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -296,7 +297,7 @@ private fun SourcePicker(
     if (available.size == 1) {
         val s = available.single()
         Text(
-            "Sending via ${labelFor(s)}",
+            stringResource(R.string.sending_via_1, labelFor(s)),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
@@ -435,7 +436,7 @@ private fun MediaThumb(uri: Uri, onRemove: () -> Unit) {
             )
         }
         Spacer(Modifier.width(12.dp))
-        Text(uri.lastPathSegment ?: "attachment", modifier = Modifier.weight(1f))
+        Text(uri.lastPathSegment ?: stringResource(R.string.attachment), modifier = Modifier.weight(1f))
         IconButton(onClick = onRemove) { IconClose() }
     }
 }

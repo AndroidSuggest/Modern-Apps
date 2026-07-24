@@ -42,6 +42,8 @@ import com.vayunmathur.education.content.Subject
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +77,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (l.name.isBlank()) "Explore" else "Hi, ${l.name}! 👋") },
+                title = { Text(if (l.name.isBlank()) stringResource(R.string.explore) else stringResource(R.string.hi, l.name)) },
                 actions = {
                     IconButton(onClick = { backStack.add(Route.Badges) }) {
                         IconEmojiEvents()
@@ -116,7 +118,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(
-                                "Jump back in",
+                                stringResource(R.string.jump_back_in),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
@@ -134,7 +136,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Find a topic") },
+                    label = { Text(stringResource(R.string.find_a_topic)) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -145,7 +147,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
             content.subjects.forEach { subject ->
                 val subjectCourses = visibleCourses.filter { it.subject == subject }
                 if (subjectCourses.isNotEmpty()) {
-                    item { SectionHeader(subject.displayName) }
+                    item { SectionHeader(stringResource(subject.displayNameRes)) }
                     items(subjectCourses, key = { it.id }) { course ->
                         ExplorerCourseCard(course) { backStack.add(Route.Course(course.id)) }
                     }
@@ -155,7 +157,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
             if (visibleCourses.isEmpty()) {
                 item {
                     Text(
-                        "Nothing here yet — ask a grown-up to add lessons.",
+                        stringResource(R.string.nothing_here_yet_ask_a_grown_up_to_add_l),
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -190,7 +192,7 @@ private fun ExplorerCourseCard(course: Course, onClick: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    course.subject.displayName.first().toString(),
+                    stringResource(course.subject.displayNameRes).first().toString(),
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleLarge,
@@ -199,7 +201,7 @@ private fun ExplorerCourseCard(course: Course, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(course.title, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "${course.units.size} topics",
+                    stringResource(R.string.topics, course.units.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -17,4 +17,33 @@
     <string name="next">Next</string>
     <string name="prev">Prev</string>
     <string name="hint">Hint</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- MainActivity -->
+    <string name="loading">Loading...</string>
+    <string name="hint_1">Hint: %1$s</string>
+    <string name="cancel_wire">Cancel Wire</string>
+    <string name="gates"> %1$s gates </string>
+    <!-- Screens -->
+    <string name="start_with_nand_end_with_a_computer">Start with NAND. End with a computer.</string>
+    <string name="tap_to_play_lines_show_dependencies_36_l">Tap to play • Lines show dependencies • 36 levels</string>
+    <string name="completed">%1$s / %2$s completed</string>
+    <string name="foundation_6_routing_bus_12_arith_6_memo">FOUNDATION 6 • ROUTING+BUS 12 • ARITH 6 • MEMORY 8 • CPU 4 = 36. Bus: 1b green thin 0xFF7ED8B6 2.7px, 4b orange 0xFFF59E0B 4.2px, 8b blue 0xFF60A5FA 6.0px. Ghost dashed yellow.</string>
+    <string name="lock">LOCK</string>
+    <string name="done">DONE</string>
+    <string name="play">PLAY</string>
+    <string name="unknown_target_chip">Unknown target chip %1$s</string>
+    <string name="b_in_b_out_target">%1$s • %2$sb in [%3$s] → %4$sb out [%5$s] • target %6$s</string>
+    <string name="sampled_cases_bus_needs_join_8_split_8">Sampled %1$s / %2$s+ cases (bus needs JOIN_8/SPLIT_8)</string>
+    <string name="failing_check_wiring_width_match_join_8">%1$s failing • check wiring width match JOIN_8/SPLIT_8</string>
+    <string name="sr_latch_2_nor_cross_coupled_feedback_cy">SR latch: 2 NOR cross-coupled feedback – cycle expected, structural pass enabled</string>
+    <string name="inventory_1b_green_thin_4b_orange_8b_blu">Inventory: 1b green thin • 4b orange • 8b blue • 0N JOIN_8/SPLIT_8 converters cut tedium. Drag chip onto board.</string>
+
+    <!-- Migrated inner Text constants v3 (auto) -->
+    <!-- MainActivity -->
+    <string name="hide_tt">Hide TT</string>
+    <string name="show_tt">Show TT</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_achievements">Achievements</string>
 </resources>

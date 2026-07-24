@@ -68,6 +68,9 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.DayOfWeekNames
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
@@ -145,7 +148,7 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
     var endTime by remember { mutableStateOf(event?.endDateTimeDisplay?.time ?: initialEndLdt?.time ?: startTime) }
     var timezone by remember { mutableStateOf(event?.timezone ?: TimeZone.currentSystemDefault().id) }
     var rruleObj by remember { mutableStateOf(event?.rrule) }
-    val rruleString by remember { derivedStateOf {rruleObj?.toString() ?: ""} }
+    val rruleString by remember { derivedStateOf {rruleObj?.describe(context) ?: ""} }
     var reminders by remember { mutableStateOf(event?.reminders ?: emptyList()) }
 
     // Shift the end date/time to preserve the current event duration when the start moves.
@@ -322,7 +325,7 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
             reminders.forEach { minutes ->
                 Item(
                     { IconSchedule() },
-                    { Text(reminderLabel(minutes)) },
+                    { Text(reminderLabel(context, minutes)) },
                     { Text(stringResource(R.string.remove), Modifier.clickable { reminders = reminders - minutes }) },
                 )
             }
@@ -337,7 +340,7 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
                             DropdownMenu(addReminderExpanded, { addReminderExpanded = false }) {
                                 available.forEach { m ->
                                     DropdownMenuItem(
-                                        text = { Text(reminderLabel(m)) },
+                                        text = { Text(reminderLabel(context, m)) },
                                         onClick = {
                                             addReminderExpanded = false
                                             reminders = (reminders + m).sorted()
@@ -373,9 +376,9 @@ fun Item(icon: @Composable () -> Unit = {}, left: @Composable () -> Unit, right:
 }
 
 val dateFormat = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames.ENGLISH_ABBREVIATED)
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
     chars(", ")
-    monthName(MonthNames.ENGLISH_ABBREVIATED)
+    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
     chars(" ")
     day(Padding.NONE)
     chars(", ")
@@ -399,9 +402,9 @@ val timeFormat24 = LocalTime.Format {
 /** Common reminder offsets, in minutes before the event start. */
 val REMINDER_PRESETS = listOf(0, 5, 10, 15, 30, 60, 120, 1440)
 
-fun reminderLabel(minutes: Int): String = when {
-    minutes <= 0 -> "At time of event"
-    minutes % 1440 == 0 -> "${minutes / 1440} day${if (minutes / 1440 > 1) "s" else ""} before"
-    minutes % 60 == 0 -> "${minutes / 60} hour${if (minutes / 60 > 1) "s" else ""} before"
-    else -> "$minutes minutes before"
+fun reminderLabel(context: android.content.Context, minutes: Int): String = when {
+    minutes <= 0 -> context.getString(R.string.reminder_at_time_of_event)
+    minutes % 1440 == 0 -> context.resources.getQuantityString(R.plurals.reminder_days_before, minutes / 1440, minutes / 1440)
+    minutes % 60 == 0 -> context.resources.getQuantityString(R.plurals.reminder_hours_before, minutes / 60, minutes / 60)
+    else -> context.resources.getQuantityString(R.plurals.reminder_minutes_before, minutes, minutes)
 }

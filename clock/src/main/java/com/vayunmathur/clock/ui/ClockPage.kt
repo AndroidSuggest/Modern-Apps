@@ -42,6 +42,9 @@ import kotlinx.datetime.format.DayOfWeekNames
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
 import kotlinx.datetime.toLocalDateTime
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,9 +86,9 @@ fun ClockPage(backStack: NavBackStack<Route>, ds: DataStoreUtils, clockViewModel
             }
             item {
                 Text(time.date.format(LocalDate.Format {
-                    dayOfWeek(DayOfWeekNames.ENGLISH_ABBREVIATED)
+                    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
                     chars(", ")
-                    monthName(MonthNames.ENGLISH_ABBREVIATED)
+                    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
                     chars(" ")
                     day(Padding.NONE)
                 }))

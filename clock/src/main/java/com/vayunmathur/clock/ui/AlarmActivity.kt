@@ -158,7 +158,7 @@ fun AlarmRingingScreen(
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontSize = 80.sp,
                         fontWeight = FontWeight.Black,
-                        // Tighten letter spacing for that "Clock" look
+                        // Tighten letter spacing for that stringResource(R.string.label_clock) look
                         letterSpacing = (-2).sp
                     ),
                     color = MaterialTheme.colorScheme.onPrimaryContainer

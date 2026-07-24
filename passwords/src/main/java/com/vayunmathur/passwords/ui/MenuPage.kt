@@ -54,7 +54,7 @@ fun MenuPage(
 
     ListPage<CredentialItem, Route, Route.PasswordEditPage>(backStack, items, "Passwords", {
         when (it) {
-            is CredentialItem.PasswordItem -> Text(it.password.name.ifBlank { "(no name)" })
+            is CredentialItem.PasswordItem -> Text(it.password.name.ifBlank { stringResource(R.string.no_name) })
             is CredentialItem.PasskeyItem -> Row(verticalAlignment = Alignment.CenterVertically) {
                 IconKey(Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))

@@ -1,5 +1,6 @@
 package com.vayunmathur.weather.intents
 
+import android.content.Context
 import com.vayunmathur.library.intents.weather.WeatherData
 import com.vayunmathur.library.util.AssistantIntent
 import com.vayunmathur.weather.network.ForecastResponse
@@ -29,7 +30,7 @@ class GetWeatherIntent : AssistantIntent<LatLonInput, WeatherData>(
     override suspend fun performCalculation(input: LatLonInput): WeatherData {
         return try {
             val forecast = WeatherApi.forecast(input.latitude, input.longitude)
-            forecast.toWeatherData(locationName = null)
+            forecast.toWeatherData(this, locationName = null)
         } catch (e: Exception) {
             errorWeatherData(null, e.message ?: "Failed to fetch forecast")
         }
@@ -52,9 +53,9 @@ internal fun errorWeatherData(locationName: String?, error: String) = WeatherDat
 )
 
 /** Distill a full [ForecastResponse] into the cross-app [WeatherData] payload. */
-internal fun ForecastResponse.toWeatherData(locationName: String?): WeatherData {
+internal fun ForecastResponse.toWeatherData(context: Context, locationName: String?): WeatherData {
     val current = current ?: return errorWeatherData(locationName, "No current observations available")
-    val condition = weatherConditionForCode(current.weatherCode).label
+    val condition = context.getString(weatherConditionForCode(current.weatherCode).label)
     val hi = daily?.temperatureMax?.firstOrNull() ?: current.temperature
     val lo = daily?.temperatureMin?.firstOrNull() ?: current.temperature
     val precip = daily?.precipitationProbabilityMax?.firstOrNull() ?: 0

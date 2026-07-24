@@ -76,4 +76,18 @@
 
     <string name="analog_clock_widget_label">Analog Clock</string>
     <string name="analog_clock_widget_description">Material You analog clock — tap to open the clock</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- AlarmSettingsPage -->
+    <string name="alarm_settings">Alarm settings</string>
+
+    <!-- Migrated hardcoded UI strings (auto) v3 -->
+    <!-- AlarmSettingsPage -->
+    <string name="defaults_for_new_alarms">Defaults for new alarms</string>
+
+    <!-- AlarmSettingsPage (variable-stored labels) -->
+    <string name="gradual_off">Off</string>
+    <string name="ringtone_default">Default</string>
+    <string name="ringtone_silent">Silent</string>
+    <string name="ringtone_custom">Custom</string>
 </resources>

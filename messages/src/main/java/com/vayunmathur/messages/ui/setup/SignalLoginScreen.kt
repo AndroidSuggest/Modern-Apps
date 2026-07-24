@@ -106,7 +106,7 @@ fun SignalLoginScreen(backStack: NavBackStack<Route>) {
                     if (bitmap != null) {
                         Image(
                             bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "QR Code",
+                            contentDescription = stringResource(R.string.cd_qr_code),
                             modifier = Modifier
                                 .fillMaxWidth(0.8f)
                                 .aspectRatio(1f),
@@ -115,7 +115,7 @@ fun SignalLoginScreen(backStack: NavBackStack<Route>) {
                 }
 
                 is SignalClient.State.Connected -> {
-                    Text("Connected to Signal!")
+                    Text(stringResource(R.string.connected_to_signal))
                 }
 
                 is SignalClient.State.Disconnected -> {
@@ -129,7 +129,7 @@ fun SignalLoginScreen(backStack: NavBackStack<Route>) {
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 14.dp),
                     ) {
-                        Text("Retry", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.retry), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

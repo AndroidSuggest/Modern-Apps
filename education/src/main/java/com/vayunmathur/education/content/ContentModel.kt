@@ -1,5 +1,7 @@
 package com.vayunmathur.education.content
 
+import androidx.annotation.StringRes
+import com.vayunmathur.education.R
 import kotlinx.serialization.Serializable
 
 /**
@@ -24,22 +26,17 @@ object Grades {
         else -> Band.SCHOLAR
     }
 
-    fun label(grade: Int): String = when {
-        grade <= 0 -> "Kindergarten"
-        else -> "Grade $grade"
-    }
-
     val all: List<Int> = (KINDERGARTEN..MAX).toList()
 }
 
 /** Top-level curriculum subjects, mirroring Khan Academy's taxonomy. */
 @Serializable
-enum class Subject(val displayName: String) {
-    MATH("Math"),
-    SCIENCE("Science"),
-    READING("Reading & Language Arts"),
-    SOCIAL_STUDIES("Social Studies"),
-    COMPUTING("Computing"),
+enum class Subject(@StringRes val displayNameRes: Int) {
+    MATH(R.string.subject_math),
+    SCIENCE(R.string.subject_science),
+    READING(R.string.subject_reading),
+    SOCIAL_STUDIES(R.string.subject_social_studies),
+    COMPUTING(R.string.subject_computing),
 }
 
 /**

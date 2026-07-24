@@ -75,6 +75,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -178,9 +179,15 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private enum class ToolCategory(val label: String) {
-    Adjust("Adjust"), Filters("Filters"), Retouch("Retouch"),
-    Select("Select"), Transform("Crop"), Draw("Draw"), Paint("Paint"), Layers("Layers"),
+private enum class ToolCategory(@StringRes val labelRes: Int, @StringRes val descriptionRes: Int) {
+    Adjust(R.string.tool_cat_adjust, R.string.tool_cat_desc_adjust),
+    Filters(R.string.tool_cat_filters, R.string.tool_cat_desc_filters),
+    Retouch(R.string.tool_cat_retouch, R.string.tool_cat_desc_retouch),
+    Select(R.string.tool_cat_select, R.string.tool_cat_desc_select),
+    Transform(R.string.tool_cat_transform, R.string.tool_cat_desc_transform),
+    Draw(R.string.tool_cat_draw, R.string.tool_cat_desc_draw),
+    Paint(R.string.tool_cat_paint, R.string.tool_cat_desc_paint),
+    Layers(R.string.tool_cat_layers, R.string.tool_cat_desc_layers),
 }
 
 private enum class EditorMode {
@@ -197,132 +204,122 @@ private enum class EditorMode {
     Fill, GradientTool, ShapeRect, ShapeEllipse, ShapeLine, Eyedropper,
 }
 
-private data class ToolEntry(val mode: EditorMode, val label: String)
+private data class ToolEntry(val mode: EditorMode, @StringRes val labelRes: Int)
 
 /** Selection sub-tools for the Select category. */
-private enum class SelectionTool(val label: String) {
-    Rectangle("Rectangle"), Ellipse("Ellipse"), Lasso("Lasso"), Polygon("Polygon"), Wand("Magic Wand"),
+private enum class SelectionTool(@StringRes val labelRes: Int) {
+    Rectangle(R.string.sel_tool_rectangle), Ellipse(R.string.sel_tool_ellipse), Lasso(R.string.sel_tool_lasso), Polygon(R.string.sel_tool_polygon), Wand(R.string.sel_tool_wand),
 }
 
 private val categoryTools: Map<ToolCategory, List<ToolEntry>> = mapOf(
     ToolCategory.Adjust to listOf(
-        ToolEntry(EditorMode.Adjust, "Light"),
-        ToolEntry(EditorMode.Filters, "Presets"),
-        ToolEntry(EditorMode.Curves, "Curves"),
-        ToolEntry(EditorMode.HSL, "HSL"),
-        ToolEntry(EditorMode.Levels, "Levels"),
-        ToolEntry(EditorMode.ColorBalance, "Balance"),
-        ToolEntry(EditorMode.ChannelMixer, "Mixer"),
-        ToolEntry(EditorMode.BlackWhite, "B&W"),
-        ToolEntry(EditorMode.GradientMap, "Gradient"),
-        ToolEntry(EditorMode.Vibrance, "Vibrance"),
-        ToolEntry(EditorMode.PhotoFilter, "Photo Filter"),
-        ToolEntry(EditorMode.SelectiveColor, "Selective Color"),
-        ToolEntry(EditorMode.Posterize, "Posterize"),
-        ToolEntry(EditorMode.Threshold, "Threshold"),
-        ToolEntry(EditorMode.Invert, "Invert"),
+        ToolEntry(EditorMode.Adjust, R.string.tool_light),
+        ToolEntry(EditorMode.Filters, R.string.tool_presets),
+        ToolEntry(EditorMode.Curves, R.string.tool_curves),
+        ToolEntry(EditorMode.HSL, R.string.tool_hsl),
+        ToolEntry(EditorMode.Levels, R.string.levels),
+        ToolEntry(EditorMode.ColorBalance, R.string.tool_balance),
+        ToolEntry(EditorMode.ChannelMixer, R.string.tool_mixer),
+        ToolEntry(EditorMode.BlackWhite, R.string.tool_bw),
+        ToolEntry(EditorMode.GradientMap, R.string.tool_gradient),
+        ToolEntry(EditorMode.Vibrance, R.string.vibrance),
+        ToolEntry(EditorMode.PhotoFilter, R.string.tool_photo_filter),
+        ToolEntry(EditorMode.SelectiveColor, R.string.tool_selective_color),
+        ToolEntry(EditorMode.Posterize, R.string.tool_posterize),
+        ToolEntry(EditorMode.Threshold, R.string.tool_threshold),
+        ToolEntry(EditorMode.Invert, R.string.tool_invert),
     ),
     ToolCategory.Filters to listOf(
-        ToolEntry(EditorMode.LensBlur, "Lens Blur"),
-        ToolEntry(EditorMode.Selective, "Selective"),
-        ToolEntry(EditorMode.FilterFx, "Filters"),
-        ToolEntry(EditorMode.Liquify, "Liquify"),
+        ToolEntry(EditorMode.LensBlur, R.string.tool_lens_blur),
+        ToolEntry(EditorMode.Selective, R.string.tool_selective),
+        ToolEntry(EditorMode.FilterFx, R.string.tool_filters),
+        ToolEntry(EditorMode.Liquify, R.string.tool_liquify),
     ),
     ToolCategory.Retouch to listOf(
-        ToolEntry(EditorMode.Healing, "Heal"),
-        ToolEntry(EditorMode.RedEye, "Red-Eye"),
-        ToolEntry(EditorMode.DodgeBurn, "Dodge/Burn"),
-        ToolEntry(EditorMode.Smudge, "Smudge"),
+        ToolEntry(EditorMode.Healing, R.string.tool_heal),
+        ToolEntry(EditorMode.RedEye, R.string.tool_red_eye),
+        ToolEntry(EditorMode.DodgeBurn, R.string.tool_dodge_burn),
+        ToolEntry(EditorMode.Smudge, R.string.tool_smudge),
     ),
     ToolCategory.Select to listOf(
-        ToolEntry(EditorMode.Selection, "Marquee"),
+        ToolEntry(EditorMode.Selection, R.string.tool_marquee),
     ),
     ToolCategory.Transform to listOf(
-        ToolEntry(EditorMode.Crop, "Crop & Rotate"),
-        ToolEntry(EditorMode.FreeTransform, "Transform"),
+        ToolEntry(EditorMode.Crop, R.string.tool_crop_rotate),
+        ToolEntry(EditorMode.FreeTransform, R.string.tool_transform),
     ),
     ToolCategory.Layers to listOf(
-        ToolEntry(EditorMode.Layers, "Layers"),
-        ToolEntry(EditorMode.MaskPaint, "Mask Brush"),
+        ToolEntry(EditorMode.Layers, R.string.tool_cat_layers),
+        ToolEntry(EditorMode.MaskPaint, R.string.tool_mask_brush),
     ),
     ToolCategory.Paint to listOf(
-        ToolEntry(EditorMode.Fill, "Fill"),
-        ToolEntry(EditorMode.GradientTool, "Gradient"),
-        ToolEntry(EditorMode.ShapeRect, "Rectangle"),
-        ToolEntry(EditorMode.ShapeEllipse, "Ellipse"),
-        ToolEntry(EditorMode.ShapeLine, "Line"),
-        ToolEntry(EditorMode.Eyedropper, "Eyedropper"),
+        ToolEntry(EditorMode.Fill, R.string.tool_fill),
+        ToolEntry(EditorMode.GradientTool, R.string.tool_gradient),
+        ToolEntry(EditorMode.ShapeRect, R.string.sel_tool_rectangle),
+        ToolEntry(EditorMode.ShapeEllipse, R.string.sel_tool_ellipse),
+        ToolEntry(EditorMode.ShapeLine, R.string.tool_line),
+        ToolEntry(EditorMode.Eyedropper, R.string.tool_eyedropper),
     ),
 )
 
-private fun ToolCategory.description(): String = when (this) {
-    ToolCategory.Adjust -> "Tune light and color."
-    ToolCategory.Filters -> "Effects, blur, and presets."
-    ToolCategory.Retouch -> "Fix and clean up areas."
-    ToolCategory.Select -> "Pick an area to limit edits."
-    ToolCategory.Transform -> "Crop, straighten, and rotate."
-    ToolCategory.Draw -> "Draw, highlight, and add text."
-    ToolCategory.Paint -> "Fill, gradients, and shapes."
-    ToolCategory.Layers -> "Manage layers and masks."
-}
-
-private fun EditorMode.description(): String = when (this) {
-    EditorMode.Adjust -> "Fine-tune light and color with sliders."
-    EditorMode.Filters -> "Apply a one-tap preset look."
-    EditorMode.Curves -> "Reshape brightness and contrast with a curve."
-    EditorMode.HSL -> "Adjust hue, saturation, and lightness per color."
-    EditorMode.Levels -> "Set the black point, white point, and midtones."
-    EditorMode.ColorBalance -> "Shift colors in shadows, midtones, and highlights."
-    EditorMode.ChannelMixer -> "Blend the red, green, and blue channels."
-    EditorMode.BlackWhite -> "Convert to black & white and control how colors map."
-    EditorMode.GradientMap -> "Map dark-to-light tones onto a color gradient."
-    EditorMode.Vibrance -> "Boost muted colors while protecting already-vivid ones and skin tones."
-    EditorMode.PhotoFilter -> "Apply a warming or cooling color wash."
-    EditorMode.SelectiveColor -> "Fine-tune cyan/magenta/yellow within one color range."
-    EditorMode.Posterize -> "Reduce the number of tonal levels for a flat, graphic look."
-    EditorMode.Threshold -> "Convert to pure black and white at a brightness cutoff."
-    EditorMode.Invert -> "Invert all colors (photo negative)."
-    EditorMode.LensBlur -> "Blur the background for a depth-of-field look."
-    EditorMode.Selective -> "Paint an adjustment onto specific spots."
-    EditorMode.FilterFx -> "Apply a baked-in photo filter to the pixels."
-    EditorMode.Liquify -> "Push and warp pixels around."
-    EditorMode.Healing -> "Remove blemishes by copying nearby pixels."
-    EditorMode.RedEye -> "Tap each eye to remove red-eye."
-    EditorMode.DodgeBurn -> "Brush to lighten (dodge) or darken (burn)."
-    EditorMode.Smudge -> "Drag to smear pixels like wet paint."
-    EditorMode.Selection -> "Draw an area; edits then apply only inside it."
-    EditorMode.Crop -> "Crop, straighten, and rotate the photo."
-    EditorMode.FreeTransform -> "Scale, rotate, skew, or distort the layer by dragging its corners; flip it."
-    EditorMode.Layers -> "Stack, blend, and mask layers."
-    EditorMode.MaskPaint -> "Brush on the active layer's mask: hide or reveal parts of it."
-    EditorMode.Fill -> "Tap to flood-fill an area with the chosen color."
-    EditorMode.GradientTool -> "Drag to draw a color-to-transparent gradient."
-    EditorMode.ShapeRect -> "Drag to draw a filled rectangle."
-    EditorMode.ShapeEllipse -> "Drag to draw a filled ellipse."
-    EditorMode.ShapeLine -> "Drag to draw a line."
-    EditorMode.Eyedropper -> "Tap the image to pick a color."
-    EditorMode.None -> ""
+@StringRes
+private fun EditorMode.descriptionRes(): Int = when (this) {
+    EditorMode.Adjust -> R.string.editor_desc_adjust
+    EditorMode.Filters -> R.string.editor_desc_filters
+    EditorMode.Curves -> R.string.editor_desc_curves
+    EditorMode.HSL -> R.string.editor_desc_hsl
+    EditorMode.Levels -> R.string.editor_desc_levels
+    EditorMode.ColorBalance -> R.string.editor_desc_color_balance
+    EditorMode.ChannelMixer -> R.string.editor_desc_channel_mixer
+    EditorMode.BlackWhite -> R.string.editor_desc_black_white
+    EditorMode.GradientMap -> R.string.editor_desc_gradient_map
+    EditorMode.Vibrance -> R.string.editor_desc_vibrance
+    EditorMode.PhotoFilter -> R.string.editor_desc_photo_filter
+    EditorMode.SelectiveColor -> R.string.editor_desc_selective_color
+    EditorMode.Posterize -> R.string.editor_desc_posterize
+    EditorMode.Threshold -> R.string.editor_desc_threshold
+    EditorMode.Invert -> R.string.editor_desc_invert
+    EditorMode.LensBlur -> R.string.editor_desc_lens_blur
+    EditorMode.Selective -> R.string.editor_desc_selective
+    EditorMode.FilterFx -> R.string.editor_desc_filter_fx
+    EditorMode.Liquify -> R.string.editor_desc_liquify
+    EditorMode.Healing -> R.string.editor_desc_healing
+    EditorMode.RedEye -> R.string.editor_desc_red_eye
+    EditorMode.DodgeBurn -> R.string.editor_desc_dodge_burn
+    EditorMode.Smudge -> R.string.editor_desc_smudge
+    EditorMode.Selection -> R.string.editor_desc_selection
+    EditorMode.Crop -> R.string.editor_desc_crop
+    EditorMode.FreeTransform -> R.string.editor_desc_free_transform
+    EditorMode.Layers -> R.string.editor_desc_layers
+    EditorMode.MaskPaint -> R.string.editor_desc_mask_paint
+    EditorMode.Fill -> R.string.editor_desc_fill
+    EditorMode.GradientTool -> R.string.editor_desc_gradient_tool
+    EditorMode.ShapeRect -> R.string.editor_desc_shape_rect
+    EditorMode.ShapeEllipse -> R.string.editor_desc_shape_ellipse
+    EditorMode.ShapeLine -> R.string.editor_desc_shape_line
+    EditorMode.Eyedropper -> R.string.tap_the_image_to_pick_a_color
+    EditorMode.None -> R.string.editor_desc_none
 }
 
 private enum class AdjustmentType(
-    val label: String,
+    @StringRes val label: Int,
     val min: Float,
     val max: Float,
     val get: (ImageAdjustments) -> Float,
     val set: (ImageAdjustments, Float) -> ImageAdjustments,
 ) {
-    Brightness("Brightness", -100f, 100f, { it.brightness }, { a, v -> a.copy(brightness = v) }),
-    Contrast("Contrast", -100f, 100f, { it.contrast }, { a, v -> a.copy(contrast = v) }),
-    Saturation("Saturation", -100f, 100f, { it.saturation }, { a, v -> a.copy(saturation = v) }),
-    Warmth("Warmth", -100f, 100f, { it.warmth }, { a, v -> a.copy(warmth = v) }),
-    Exposure("Exposure", -100f, 100f, { it.exposure }, { a, v -> a.copy(exposure = v) }),
-    Highlights("Highlights", -100f, 100f, { it.highlights }, { a, v -> a.copy(highlights = v) }),
-    Shadows("Shadows", -100f, 100f, { it.shadows }, { a, v -> a.copy(shadows = v) }),
-    Sharpness("Sharpness", 0f, 100f, { it.sharpness }, { a, v -> a.copy(sharpness = v) }),
-    Vignette("Vignette", 0f, 100f, { it.vignette }, { a, v -> a.copy(vignette = v) }),
-    Grain("Grain", 0f, 100f, { it.grain }, { a, v -> a.copy(grain = v) }),
-    Fade("Fade", 0f, 100f, { it.fade }, { a, v -> a.copy(fade = v) }),
-    Tint("Tint", -100f, 100f, { it.tint }, { a, v -> a.copy(tint = v) }),
+    Brightness(R.string.adj_brightness, -100f, 100f, { it.brightness }, { a, v -> a.copy(brightness = v) }),
+    Contrast(R.string.adj_contrast, -100f, 100f, { it.contrast }, { a, v -> a.copy(contrast = v) }),
+    Saturation(R.string.adj_saturation, -100f, 100f, { it.saturation }, { a, v -> a.copy(saturation = v) }),
+    Warmth(R.string.adj_warmth, -100f, 100f, { it.warmth }, { a, v -> a.copy(warmth = v) }),
+    Exposure(R.string.adj_exposure, -100f, 100f, { it.exposure }, { a, v -> a.copy(exposure = v) }),
+    Highlights(R.string.adj_highlights, -100f, 100f, { it.highlights }, { a, v -> a.copy(highlights = v) }),
+    Shadows(R.string.adj_shadows, -100f, 100f, { it.shadows }, { a, v -> a.copy(shadows = v) }),
+    Sharpness(R.string.adj_sharpness, 0f, 100f, { it.sharpness }, { a, v -> a.copy(sharpness = v) }),
+    Vignette(R.string.adj_vignette, 0f, 100f, { it.vignette }, { a, v -> a.copy(vignette = v) }),
+    Grain(R.string.adj_grain, 0f, 100f, { it.grain }, { a, v -> a.copy(grain = v) }),
+    Fade(R.string.adj_fade, 0f, 100f, { it.fade }, { a, v -> a.copy(fade = v) }),
+    Tint(R.string.adj_tint, -100f, 100f, { it.tint }, { a, v -> a.copy(tint = v) }),
 }
 
 private inline fun <reified T : LayerAdjustment> EditDocument.activeAdjustment(): T? =
@@ -710,11 +707,11 @@ fun EditPhotoPage(
                                 onClick = { showSaveMenu = false; doSave(true, com.vayunmathur.photos.util.ExportFormat.Jpeg) },
                             )
                             DropdownMenuItem(
-                                text = { Text("Export as PNG") },
+                                text = { Text(stringResource(R.string.export_as_png)) },
                                 onClick = { showSaveMenu = false; doSave(true, com.vayunmathur.photos.util.ExportFormat.Png) },
                             )
                             DropdownMenuItem(
-                                text = { Text("Export as WebP") },
+                                text = { Text(stringResource(R.string.export_as_webp)) },
                                 onClick = { showSaveMenu = false; doSave(true, com.vayunmathur.photos.util.ExportFormat.Webp) },
                             )
                         }
@@ -1174,8 +1171,8 @@ fun EditPhotoPage(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             IconButton(onClick = { goHome() }) { IconBack() }
-                            Text("Draw", fontWeight = FontWeight.Bold)
-                            InfoHint("Draw freehand, highlight, erase, or tap to add text. Tap a tool again to change its color and size.")
+                            Text(stringResource(R.string.draw), fontWeight = FontWeight.Bold)
+                            InfoHint(stringResource(R.string.draw_freehand_highlight_erase_or_tap_to))
                             Spacer(Modifier.weight(1f))
                             if (selectedTextId != null) {
                                 IconButton(onClick = {
@@ -1392,10 +1389,10 @@ fun EditPhotoPage(
                         },
                         textStyle = TextStyle(fontSize = 18.sp),
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Edit Text") },
+                        label = { Text(stringResource(R.string.edit_text)) },
                     )
                     Spacer(Modifier.height(8.dp))
-                    Text("Font", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.font), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1434,7 +1431,7 @@ private fun CategoryBar(onSelect: (ToolCategory) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 CategoryIcon(cat)
-                Text(cat.label, fontSize = 11.sp)
+                Text(stringResource(cat.labelRes), fontSize = 11.sp)
             }
         }
     }
@@ -1468,8 +1465,8 @@ private fun ToolScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) { IconBack() }
-            Text(category.label, fontWeight = FontWeight.Bold)
-            InfoHint(category.description())
+            Text(stringResource(category.labelRes), fontWeight = FontWeight.Bold)
+            InfoHint(stringResource(category.descriptionRes))
         }
         if (categoryTools[category].orEmpty().size > 1) {
             Row(
@@ -1482,19 +1479,19 @@ private fun ToolScreen(
                         shape = RoundedCornerShape(8.dp),
                         color = if (editorMode == entry.mode) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                     ) {
-                        Text(entry.label, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        Text(stringResource(entry.labelRes), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                     }
                 }
             }
         }
-        val toolLabel = categoryTools[category]?.firstOrNull { it.mode == editorMode }?.label
+        val toolLabel = categoryTools[category]?.firstOrNull { it.mode == editorMode }?.labelRes
         if (toolLabel != null && editorMode != EditorMode.None) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(toolLabel, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                InfoHint(editorMode.description())
+                Text(stringResource(toolLabel), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                InfoHint(stringResource(editorMode.descriptionRes()))
             }
         }
         panel()
@@ -1565,8 +1562,8 @@ private fun CropRotatePanel(
     )
     PanelContainer(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Aspect ratio", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            InfoHint("Locks the crop to a fixed width:height shape. \"Free\" lets you crop to any size.")
+            Text(stringResource(R.string.aspect_ratio), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            InfoHint(stringResource(R.string.locks_the_crop_to_a_fixed_width_height_s))
         }
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -1577,8 +1574,8 @@ private fun CropRotatePanel(
             }
         }
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Rotate", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            InfoHint("Drag the round handle above the crop box to tilt and straighten the photo.")
+            Text(stringResource(R.string.rotate), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            InfoHint(stringResource(R.string.drag_the_round_handle_above_the_crop_box))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(
@@ -1590,13 +1587,13 @@ private fun CropRotatePanel(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { IconRotateRight(); Text("Rotate 90°", fontSize = 13.sp) }
+                ) { IconRotateRight(); Text(stringResource(R.string.rotate_90), fontSize = 13.sp) }
             }
             Surface(
                 modifier = Modifier.clickable { onReset() },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
-            ) { Text("Reset", fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
+            ) { Text(stringResource(R.string.reset), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Surface(
@@ -1608,7 +1605,7 @@ private fun CropRotatePanel(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { IconClose(); Text("Cancel", fontSize = 13.sp) }
+                ) { IconClose(); Text(stringResource(R.string.cancel), fontSize = 13.sp) }
             }
             Surface(
                 modifier = Modifier.clickable { onApply() },
@@ -1619,7 +1616,7 @@ private fun CropRotatePanel(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { IconCheck(); Text("Apply", fontSize = 13.sp) }
+                ) { IconCheck(); Text(stringResource(R.string.apply), fontSize = 13.sp) }
             }
         }
     }
@@ -1847,8 +1844,8 @@ private fun LiquifyPanel(
                 SelectableChip(t.name, tool == t, { onTool(t) }, horizontalPadding = 10.dp)
             }
         }
-        LabeledSlider("Strength", strength * 100f, 5f..100f) { onStrength(it / 100f) }
-        LabeledSlider("Size", radius * 100f, 5f..50f) { onRadius(it / 100f) }
+        LabeledSlider(stringResource(R.string.strength), strength * 100f, 5f..100f) { onStrength(it / 100f) }
+        LabeledSlider(stringResource(R.string.size), radius * 100f, 5f..50f) { onRadius(it / 100f) }
     }
 }
 
@@ -1870,7 +1867,7 @@ private fun PaintPanel(
     )
     PanelContainer(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (mode == EditorMode.Eyedropper) {
-            Text("Tap the image to pick a color.", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.tap_the_image_to_pick_a_color), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
@@ -1895,7 +1892,7 @@ private fun PaintPanel(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Recent", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.recent), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 recentColors.forEach { rc ->
                     Box(
                         modifier = Modifier.size(24.dp).background(rc, CircleShape)
@@ -1905,10 +1902,10 @@ private fun PaintPanel(
             }
         }
         if (mode == EditorMode.Fill) {
-            LabeledSlider("Tolerance", fillTolerance * 100f, 1f..80f) { onFillTolerance(it / 100f) }
+            LabeledSlider(stringResource(R.string.tolerance), fillTolerance * 100f, 1f..80f) { onFillTolerance(it / 100f) }
         }
         if (mode == EditorMode.ShapeLine) {
-            LabeledSlider("Thickness", strokeWidth * 100f, 0.2f..5f) { onStrokeWidth(it / 100f) }
+            LabeledSlider(stringResource(R.string.thickness), strokeWidth * 100f, 0.2f..5f) { onStrokeWidth(it / 100f) }
         }
     }
 }
@@ -1965,8 +1962,8 @@ private fun FreeTransformPanel(
 ) {
     PanelContainer(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Drag corners to distort.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            InfoHint("Drag the four corner handles to scale, rotate, skew, or distort the active layer. Apply bakes it in.")
+            Text(stringResource(R.string.drag_corners_to_distort), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            InfoHint(stringResource(R.string.drag_the_four_corner_handles_to_scale_ro))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             SmallButton("Flip H", true, onFlipH)
@@ -1978,12 +1975,12 @@ private fun FreeTransformPanel(
                 modifier = Modifier.clickable { onDone() },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
-            ) { Text("Done", fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            ) { Text(stringResource(R.string.done), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             Surface(
                 modifier = Modifier.clickable { onApply() },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
-            ) { Text("Apply", fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            ) { Text(stringResource(R.string.apply), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         }
     }
 }
@@ -2001,7 +1998,7 @@ private fun MaskPaintPanel(
             SelectableChip("Reveal", reveal, { onReveal(true) })
             InfoHint("Paint on the active layer's mask. Hide erases (black), Reveal restores (white). Adds a full mask if the layer has none.")
         }
-        LabeledSlider("Brush", brushSize * 100f, 1f..30f) { onBrushSize(it / 100f) }
+        LabeledSlider(stringResource(R.string.brush), brushSize * 100f, 1f..30f) { onBrushSize(it / 100f) }
     }
 }
 
@@ -2020,7 +2017,7 @@ private fun DodgeBurnPanel(mode: DodgeBurnMode, onMode: (DodgeBurnMode) -> Unit,
                 SelectableChip(m.name, mode == m, { onMode(m) })
             }
         }
-        LabeledSlider("Brush", brushSize * 100f, 1f..20f) { onBrushSize(it / 100f) }
+        LabeledSlider(stringResource(R.string.brush), brushSize * 100f, 1f..20f) { onBrushSize(it / 100f) }
     }
 }
 
@@ -2047,12 +2044,12 @@ private fun SelectionPanel(
     PanelContainer(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SelectionTool.entries.forEach { t ->
-                SelectableChip(t.label, tool == t, { onTool(t) })
+                SelectableChip(stringResource(t.labelRes), tool == t, { onTool(t) })
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Combine", fontSize = 12.sp, modifier = Modifier.width(72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            InfoHint("New replaces the selection. Add/Subtract/Intersect combine the next shape with the current selection.")
+            Text(stringResource(R.string.combine), fontSize = 12.sp, modifier = Modifier.width(72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            InfoHint(stringResource(R.string.new_replaces_the_selection_add_subtract))
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 SelectionCombine.entries.forEach { c ->
                     SelectableChip(c.name, combine == c, { onCombine(c) })
@@ -2061,21 +2058,21 @@ private fun SelectionPanel(
         }
         if (tool == SelectionTool.Wand) {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Tolerance", fontSize = 12.sp, modifier = Modifier.width(92.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                InfoHint("How close in color a pixel must be to the tapped spot to be selected. Higher = selects more.")
+                Text(stringResource(R.string.tolerance), fontSize = 12.sp, modifier = Modifier.width(92.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                InfoHint(stringResource(R.string.how_close_in_color_a_pixel_must_be_to_th))
                 com.vayunmathur.library.ui.Slider(value = wandTolerance, onValueChange = onWandTolerance, valueRange = 0.01f..0.6f, modifier = Modifier.weight(1f))
                 Text("${(wandTolerance * 100).roundToInt()}", fontSize = 12.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.End, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (tool == SelectionTool.Polygon) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Tap to add points ($polygonPointCount)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.tap_to_add_points, polygonPointCount), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SmallButton("Close path", polygonPointCount >= 3, onClosePolygon)
             }
         }
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Edge softness", fontSize = 12.sp, modifier = Modifier.width(92.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            InfoHint("Blurs the selection's edge so edits fade in gradually. 0 = a hard, crisp edge.")
+            Text(stringResource(R.string.edge_softness), fontSize = 12.sp, modifier = Modifier.width(92.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            InfoHint(stringResource(R.string.blurs_the_selection_s_edge_so_edits_fade))
             com.vayunmathur.library.ui.Slider(value = feather, onValueChange = onFeather, onValueChangeFinished = onFeatherCommit, valueRange = 0f..50f, modifier = Modifier.weight(1f))
             Text("${feather.roundToInt()}", fontSize = 12.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.End, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -2090,7 +2087,7 @@ private fun SelectionPanel(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SmallButton("Remove (content-aware)", hasSelection, onContentAwareFill)
-            InfoHint("Fills the selected area from surrounding pixels to remove an object. Works best on simple backgrounds.")
+            InfoHint(stringResource(R.string.fills_the_selected_area_from_surrounding))
         }
     }
 }
@@ -2457,15 +2454,16 @@ private fun AdjustmentPanel(
                     shape = RoundedCornerShape(8.dp),
                     color = if (selectedAdjustment == type) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
                 ) {
+                    val label = stringResource(type.label)
                     Text(
-                        if (value != 0f) "${type.label} ${value.roundToInt()}" else type.label,
+                        if (value != 0f) "$label ${value.roundToInt()}" else label,
                         fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
             }
         }
         val currentValue = selectedAdjustment.get(adjustments)
-        LabeledSlider(selectedAdjustment.label, currentValue, selectedAdjustment.min..selectedAdjustment.max) {
+        LabeledSlider(stringResource(selectedAdjustment.label), currentValue, selectedAdjustment.min..selectedAdjustment.max) {
             onUpdateAdjustment { adj -> selectedAdjustment.set(adj, it) }
         }
         if (adjustments != ImageAdjustments()) {
@@ -2475,7 +2473,7 @@ private fun AdjustmentPanel(
                     shape = RoundedCornerShape(4.dp),
                     color = MaterialTheme.colorScheme.errorContainer,
                 ) {
-                    Text("Reset All", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(stringResource(R.string.reset_all), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
         }

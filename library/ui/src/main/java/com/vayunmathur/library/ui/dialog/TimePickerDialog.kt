@@ -13,6 +13,8 @@ import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.LocalNavResultRegistry
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,7 +25,7 @@ fun <T: NavKey> TimePickerDialogContent(backStack: NavBackStack<T>, resultKey: S
     val scope = rememberCoroutineScope()
     TimePickerDialog(
         onDismissRequest = { backStack.pop() },
-        title = { Text("Select time") },
+        title = { Text(stringResource(R.string.time_picker_title)) },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -32,11 +34,11 @@ fun <T: NavKey> TimePickerDialogContent(backStack: NavBackStack<T>, resultKey: S
                 },
                 enabled = (minTime == null || selectedTime >= minTime)
             ) {
-                Text("OK")
+                Text(stringResource(R.string.dialog_ok))
             }
         },
         dismissButton = {
-            TextButton(onClick = { backStack.pop() }) { Text("Cancel") }
+            TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.link_action_cancel)) }
         }
     ) {
         TimePicker(state)

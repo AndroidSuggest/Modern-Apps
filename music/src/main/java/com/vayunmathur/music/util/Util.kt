@@ -32,6 +32,7 @@ import com.vayunmathur.music.data.Music
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
 
 // Process-scope LRU for album thumbnails. Bounded so we don't retain decoded
 // bitmaps for the entire library; 64 entries covers a typical visible list.
@@ -159,7 +160,7 @@ fun AlbumArt(artUri: Uri, modifier: Modifier) {
     }
     AsyncImage(
         model = bitmap,
-        contentDescription = "Album Art",
+        contentDescription = stringResource(R.string.content_desc_album_art),
         modifier = modifier
     )
 }
@@ -182,7 +183,7 @@ fun AlbumArt(artUris: List<Uri>, modifier: Modifier) {
 
     AsyncImage(
         model = bitmap,
-        contentDescription = "Album Art Grid",
+        contentDescription = stringResource(R.string.content_desc_album_art_grid),
         modifier = modifier
     )
 }

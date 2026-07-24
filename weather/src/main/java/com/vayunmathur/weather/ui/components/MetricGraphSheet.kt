@@ -91,7 +91,7 @@ fun MetricGraphSheet(
 
             if (points.size < 2) {
                 Text(
-                    text = "Not enough data to plot.",
+                    text = stringResource(R.string.not_enough_data_to_plot),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

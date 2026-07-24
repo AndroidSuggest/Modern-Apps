@@ -36,10 +36,17 @@ object SafePdfParser {
     private const val TAG_CLIP_POP = 6
     private const val TAG_GROUP_PUSH = 7
     private const val TAG_GROUP_POP = 8
+    private const val TAG_TEXT_CLIP_APPLY = 9
+
+    private const val PATHOP_MOVE = 0
+    private const val PATHOP_LINE = 1
+    private const val PATHOP_CUBIC = 2
+    private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 3
+    const val WIRE_VERSION: Int = 4
     private const val WIRE_VERSION_V2 = 2
+    private const val WIRE_VERSION_V4 = 4
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -76,9 +83,10 @@ object SafePdfParser {
         }
 
         val isV2OrV3 = wireVersion >= WIRE_VERSION_V2
-        // Allow v2 backward compat for cached pages, but v3 preferred. Future versions >3 tolerated if same tags.
-        if (wireVersion != 1 && wireVersion != WIRE_VERSION_V2 && wireVersion != WIRE_VERSION) {
-            // Forward compat: if version >3, still try to parse if tags are known, but log.
+        val isV4 = wireVersion >= WIRE_VERSION_V4
+        // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
+        // forward-compat parsing as long as the tags are known.
+        if (wireVersion !in 1..WIRE_VERSION) {
             if (wireVersion > WIRE_VERSION) {
                 android.util.Log.w("SafePdfParser", "Wire version $wireVersion > $WIRE_VERSION, attempting forward compat parse")
             } else {
@@ -118,6 +126,10 @@ object SafePdfParser {
                         strokeColor = null
                         strokeWidth = 0f
                     }
+                    val renderMode = if (isV4) {
+                        if (buf.remaining() < 1) throw IllegalArgumentException("Text v4 renderMode truncated")
+                        buf.get().toInt() and 0xFF
+                    } else 0
                     // For accurate search rect, use advance estimated from size*charCount but refined later with Paint.measureText in Kotlin UI.
                     val txt = String(strBytes, Charsets.UTF_8)
                     val adv = size * 0.5f * txt.length.coerceAtLeast(1)
@@ -130,6 +142,7 @@ object SafePdfParser {
                             strokeColor = strokeColor,
                             strokeWidth = strokeWidth,
                             advance = adv,
+                            renderMode = renderMode,
                         )
                     )
                 }
@@ -200,14 +213,19 @@ object SafePdfParser {
                 TAG_CLIP_PUSH -> {
                     val evenOdd = buf.get().toInt() != 0
                     val pts = readPoints(buf)
+                    val pathOps = if (isV4) readPathOps(buf) else null
                     // Degenerate clip guard (shoelace <1e-3 or <3 pts) already enforced in Rust, but double-guard in Kotlin saveCount restore.
-                    if (pts.size >= 3) {
-                        primitives.add(PdfPrimitive.ClipPush(evenOdd, pts))
+                    if (pts.size >= 3 || (pathOps != null && pathOps.isNotEmpty())) {
+                        primitives.add(PdfPrimitive.ClipPush(evenOdd, pts, pathOps))
                     }
                 }
 
                 TAG_CLIP_POP -> {
                     primitives.add(PdfPrimitive.ClipPop)
+                }
+
+                TAG_TEXT_CLIP_APPLY -> {
+                    primitives.add(PdfPrimitive.TextClipApply)
                 }
 
                 TAG_GROUP_PUSH -> {
@@ -320,6 +338,32 @@ object SafePdfParser {
             points.add(Offset(x, y))
         }
         return points
+    }
+
+    /** Decode the v4 bezier-retentive clip path-ops section. */
+    private fun readPathOps(buf: ByteBuffer): List<PathOp> {
+        val n = buf.short.toInt() and 0xFFFF
+        val ops = ArrayList<PathOp>(n.coerceAtLeast(0))
+        repeat(n) {
+            if (!buf.hasRemaining()) return@repeat
+            when (buf.get().toInt() and 0xFF) {
+                PATHOP_MOVE -> {
+                    if (buf.remaining() < 8) return@repeat
+                    ops.add(PathOp.Move(buf.float, buf.float))
+                }
+                PATHOP_LINE -> {
+                    if (buf.remaining() < 8) return@repeat
+                    ops.add(PathOp.Line(buf.float, buf.float))
+                }
+                PATHOP_CUBIC -> {
+                    if (buf.remaining() < 24) return@repeat
+                    ops.add(PathOp.Cubic(buf.float, buf.float, buf.float, buf.float, buf.float, buf.float))
+                }
+                PATHOP_CLOSE -> ops.add(PathOp.Close)
+                else -> {}
+            }
+        }
+        return ops
     }
 
     /** Decode an image payload: format 1 = JPEG bytes, 0 = raw RGBA8888. */

@@ -281,10 +281,10 @@ fun VideoDetails(
         Dialog(onDismissRequest = { isDownloadDialogVisible = false }) {
             Card {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Download Options", style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.download_options), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(16.dp))
                     
-                    Text("Resolution", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.resolution), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     ExposedDropdownMenuBox(
                         expanded = videoExpanded,
@@ -316,7 +316,7 @@ fun VideoDetails(
                     
                     if (languages.size > 1) {
                         Spacer(Modifier.height(16.dp))
-                        Text("Language", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.language), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         ExposedDropdownMenuBox(
                             expanded = languageExpanded,
@@ -350,12 +350,12 @@ fun VideoDetails(
 
                     Spacer(Modifier.height(24.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { isDownloadDialogVisible = false }) { Text("Cancel") }
+                        TextButton(onClick = { isDownloadDialogVisible = false }) { Text(stringResource(R.string.cancel)) }
                         TextButton(onClick = {
                             isDownloadDialogVisible = false
                             val videoInfo = VideoInfo(videoData.title, videoID, videoData.duration, videoData.views, videoData.uploadDate, videoData.thumbnailURL, videoData.author)
                             DownloadManager.enqueueDownload(context, videoInfo, selectedVideoStream.url, selectedAudioStream?.url)
-                        }) { Text("Download") }
+                        }) { Text(stringResource(R.string.download)) }
                     }
                 }
             }

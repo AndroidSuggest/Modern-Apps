@@ -122,7 +122,7 @@ fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: Nav
                 Column {
                     Text(calendar.displayName)
                     Text(dateRangeString(context,instance.startDateTimeDisplay.date, instance.endDateTimeDisplay.date, instance.startDateTimeDisplay.time, instance.endDateTimeDisplay.time, instance.allDay))
-                    instance.rrule?.let { Text(it.toString()) }
+                    instance.rrule?.let { Text(it.describe(context)) }
                 }
             }, leadingContent = {
                 Box(Modifier.size(24.dp).background(Color(calendar.color), RoundedCornerShape(4.dp)))

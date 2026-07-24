@@ -30,6 +30,7 @@ import com.vayunmathur.library.ui.IconChevronRight
 import com.vayunmathur.library.ui.IconEmojiEvents
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +43,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (l.name.isBlank()) "Learn" else "Hi, ${l.name}") },
+                title = { Text(if (l.name.isBlank()) stringResource(R.string.learn) else stringResource(R.string.hi_1, l.name)) },
                 actions = {
                     IconButton(onClick = { backStack.add(Route.Badges) }) {
                         IconEmojiEvents()
@@ -73,7 +74,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
             }
 
             if (deadlines.isNotEmpty()) {
-                item { SectionHeader("Due soon") }
+                item { SectionHeader(stringResource(R.string.due_soon)) }
                 items(deadlines, key = { it.id }) { d ->
                     val type = runCatching { ModuleType.valueOf(d.moduleType) }.getOrNull()
                     val title = type?.let { content.moduleTitle(it, d.moduleId) } ?: "Assignment"
@@ -98,7 +99,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
             }
 
             content.subjects.forEach { subject ->
-                item { SectionHeader(subject.displayName) }
+                item { SectionHeader(stringResource(subject.displayNameRes)) }
                 items(content.coursesForSubject(subject), key = { it.id }) { course ->
                     ElevatedCard(
                         modifier = Modifier
@@ -115,7 +116,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
                             Column(Modifier.weight(1f)) {
                                 Text(course.title, style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "${course.units.size} units",
+                                    stringResource(R.string.units, course.units.size),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -129,7 +130,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
             if (content.courses.isEmpty()) {
                 item {
                     Text(
-                        "No content packs are installed yet.",
+                        stringResource(R.string.no_content_packs_are_installed_yet),
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

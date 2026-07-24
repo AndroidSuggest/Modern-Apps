@@ -26,6 +26,8 @@ import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,13 +38,13 @@ fun LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, le
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(lesson?.title ?: "Lesson") },
+                title = { Text(lesson?.title ?: stringResource(R.string.lesson)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
         if (lesson == null) {
-            MissingContent(padding, "This lesson is unavailable.")
+            MissingContent(padding, stringResource(R.string.this_lesson_is_unavailable))
             return@Scaffold
         }
         Column(
@@ -54,7 +56,7 @@ fun LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, le
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (lesson.videos.isNotEmpty()) {
-                Text("Watch", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.watch), style = MaterialTheme.typography.titleMedium)
                 lesson.videos.forEach { video ->
                     VideoRow(video) {
                         backStack.add(Route.VideoPlayer(video.youtubeId, video.title))
@@ -66,7 +68,7 @@ fun LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, le
                     onClick = { backStack.add(Route.Quiz(exercise.id)) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(exercise.title.ifBlank { "Start exercise" })
+                    Text(exercise.title.ifBlank { stringResource(R.string.start_exercise) })
                 }
             }
         }

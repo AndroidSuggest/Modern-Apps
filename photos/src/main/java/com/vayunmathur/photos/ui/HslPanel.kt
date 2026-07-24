@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +62,7 @@ fun HslPanel(
                 FilterChip(
                     selected = selectedRange == range,
                     onClick = { onRangeSelected(range) },
-                    label = { Text(range.label, fontSize = 12.sp) },
+                    label = { Text(stringResource(range.labelRes), fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = chipColor.copy(alpha = 0.3f),
                     ),

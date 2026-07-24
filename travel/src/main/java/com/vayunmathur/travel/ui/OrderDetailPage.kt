@@ -35,6 +35,7 @@ import com.vayunmathur.travel.network.OrderDetailDto
 import com.vayunmathur.travel.network.SliceDto
 import com.vayunmathur.travel.util.PaymentActionState
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,10 +63,10 @@ fun OrderDetailPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Order") },
+                title = { Text(stringResource(R.string.order)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -124,18 +125,18 @@ fun OrderDetailPage(
                     onClick = { viewModel.payOrder(order.orderId) },
                     enabled = !paying,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (paying) "Paying…" else "Pay now with test balance") }
+                ) { Text(if (paying) stringResource(R.string.paying) else stringResource(R.string.pay_now_with_test_balance)) }
             }
 
             if (order.status != "cancelled") {
                 OutlinedButton(
                     onClick = { backStack.add(Route.Change(order.orderId)) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Change flights") }
+                ) { Text(stringResource(R.string.change_flights)) }
                 OutlinedButton(
                     onClick = { backStack.add(Route.Cancel(order.orderId)) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Cancel order") }
+                ) { Text(stringResource(R.string.cancel_order)) }
             }
         }
     }

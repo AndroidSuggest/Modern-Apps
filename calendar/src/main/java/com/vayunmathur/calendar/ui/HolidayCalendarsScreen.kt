@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.calendar.R
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -41,6 +42,7 @@ import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,7 +106,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Holiday calendars") },
+            title = { Text(stringResource(R.string.holiday_calendars)) },
             navigationIcon = { IconNavigation(backStack) },
         )
     }) { paddingValues ->
@@ -113,7 +115,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder = { Text("Search countries") },
+                placeholder = { Text(stringResource(R.string.search_countries)) },
                 singleLine = true,
             )
             LazyColumn(Modifier.fillMaxSize()) {
@@ -136,7 +138,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
                             } else if (isAdded) {
                                 Switch(checked = true, onCheckedChange = { removeCountry(country.code) })
                             } else {
-                                TextButton(onClick = { showLangPickerFor = country.code }) { Text("Add") }
+                                TextButton(onClick = { showLangPickerFor = country.code }) { Text(stringResource(R.string.add)) }
                             }
                         },
                     )
@@ -158,14 +160,14 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
 
         AlertDialog(
             onDismissRequest = { showLangPickerFor = null },
-            title = { Text("Choose language") },
+            title = { Text(stringResource(R.string.choose_language)) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = langQuery,
                         onValueChange = { langQuery = it },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        label = { Text("Search") },
+                        label = { Text(stringResource(R.string.search)) },
                         singleLine = true,
                     )
                     LazyColumn(modifier = Modifier.height(360.dp)) {
@@ -191,7 +193,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
                 }
             },
             confirmButton = {
-                Button(onClick = { showLangPickerFor = null }) { Text("Close") }
+                Button(onClick = { showLangPickerFor = null }) { Text(stringResource(R.string.close)) }
             }
         )
     }

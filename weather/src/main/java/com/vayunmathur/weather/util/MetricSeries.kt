@@ -1,23 +1,25 @@
 package com.vayunmathur.weather.util
 
+import androidx.annotation.StringRes
 import androidx.compose.ui.graphics.Color
+import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.ForecastResponse
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.roundToInt
 
 /** A metric that has an hourly series we can plot. */
-enum class WeatherMetric(val title: String) {
-    Temperature("Temperature"),
-    FeelsLike("Feels like"),
-    Humidity("Humidity"),
-    DewPoint("Dew point"),
-    Precipitation("Precipitation"),
-    WindSpeed("Wind speed"),
-    WindGusts("Wind gusts"),
-    Pressure("Pressure"),
-    Visibility("Visibility"),
-    CloudCover("Cloud cover"),
-    UvIndex("UV index"),
+enum class WeatherMetric(@StringRes val title: Int) {
+    Temperature(R.string.metric_temperature),
+    FeelsLike(R.string.metric_feels_like),
+    Humidity(R.string.metric_humidity),
+    DewPoint(R.string.dew_point),
+    Precipitation(R.string.metric_precipitation),
+    WindSpeed(R.string.metric_wind_speed),
+    WindGusts(R.string.metric_wind_gusts),
+    Pressure(R.string.metric_pressure),
+    Visibility(R.string.metric_visibility),
+    CloudCover(R.string.metric_cloud_cover),
+    UvIndex(R.string.metric_uv_index),
 }
 
 /**

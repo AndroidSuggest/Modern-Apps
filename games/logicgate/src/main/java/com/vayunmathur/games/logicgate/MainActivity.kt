@@ -42,6 +42,8 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.logicgate.R
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,9 +103,9 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                 navigationIcon = { IconNavigation(backStack) },
                 actions = {
                     Row(modifier = Modifier.padding(end = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (uiState.canUndo) Button(onClick = { viewModel.undo() }) { Text(text = "Undo", fontSize = 10.sp) }
-                        if (uiState.canRedo) Button(onClick = { viewModel.redo() }) { Text(text = "Redo", fontSize = 10.sp) }
-                        Button(onClick = { viewModel.toggleTruthTable() }) { Text(text = if (uiState.showTruthTable) "Hide TT" else "Show TT", fontSize = 10.sp) }
+                        if (uiState.canUndo) Button(onClick = { viewModel.undo() }) { Text(stringResource(R.string.undo), fontSize = 10.sp) }
+                        if (uiState.canRedo) Button(onClick = { viewModel.redo() }) { Text(stringResource(R.string.redo), fontSize = 10.sp) }
+                        Button(onClick = { viewModel.toggleTruthTable() }) { Text(text = if (uiState.showTruthTable) stringResource(R.string.hide_tt) else stringResource(R.string.show_tt), fontSize = 10.sp) }
                     }
                 }
             )
@@ -135,7 +137,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
         }
     ) { padding ->
         if (!isCurrent) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) { Text(text = "Loading...") }
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) { Text(stringResource(R.string.loading)) }
             return@Scaffold
         }
 
@@ -158,12 +160,12 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = statusText, fontSize = 11.sp, color = statusColor)
                         Text(text = level.description, fontSize = 10.sp, color = Color(0xFF94A3B8))
-                        if (level.hint.isNotEmpty()) Text(text = "Hint: ${level.hint}", fontSize = 10.sp, color = Color(0xFF64748B))
+                        if (level.hint.isNotEmpty()) Text(stringResource(R.string.hint_1, level.hint), fontSize = 10.sp, color = Color(0xFF64748B))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Button(onClick = { viewModel.clearCircuit() }) { Text(text = "Clear", fontSize = 10.sp) }
-                        if (uiState.wiringFrom != null) Button(onClick = { viewModel.cancelWiring() }) { Text(text = "Cancel Wire", fontSize = 10.sp) }
-                        Card(modifier = Modifier.padding(start = 4.dp)) { Text(text = " ${uiState.circuit.gates.size} gates ", fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
+                        Button(onClick = { viewModel.clearCircuit() }) { Text(stringResource(R.string.clear), fontSize = 10.sp) }
+                        if (uiState.wiringFrom != null) Button(onClick = { viewModel.cancelWiring() }) { Text(stringResource(R.string.cancel_wire), fontSize = 10.sp) }
+                        Card(modifier = Modifier.padding(start = 4.dp)) { Text(stringResource(R.string.gates, uiState.circuit.gates.size), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
                     }
                 }
             }

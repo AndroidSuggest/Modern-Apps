@@ -18,6 +18,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,11 +51,11 @@ fun <T: NavKey> DatePickerDialog(backStack: NavBackStack<T>, resultKey: String, 
                 scope.launch { registry.dispatchResult(resultKey, result) }
                 backStack.pop()
             }, enabled = state.selectedDateMillis != null) {
-                Text("OK")
+                Text(stringResource(R.string.dialog_ok))
             }
         },
         dismissButton = {
-            TextButton(onClick = { backStack.pop() }) { Text("Cancel") }
+            TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.link_action_cancel)) }
         }
     ) {
         DatePicker(state)

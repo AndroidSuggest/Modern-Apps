@@ -20,8 +20,10 @@ import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.glance.CalendarGlanceWidgetReceiver
 import com.vayunmathur.calendar.ui.*
@@ -141,7 +143,7 @@ fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean)
                     permissionRequestor.launch(permissions)
                 }, Modifier.align(Alignment.Center)
             ) {
-                Text(text = "Please grant calendar permission")
+                Text(text = stringResource(R.string.please_grant_calendar_permission))
             }
         }
     }

@@ -100,13 +100,13 @@ fun TelegramLoginScreen(backStack: NavBackStack<Route>) {
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 14.dp),
                     ) {
-                        Text("Sign in with QR code", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.sign_in_with_qr_code), fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         HorizontalDivider(Modifier.weight(1f))
                         Text(
-                            "or use your phone number",
+                            stringResource(R.string.or_use_your_phone_number),
                             modifier = Modifier.padding(horizontal = 12.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -206,7 +206,7 @@ fun TelegramLoginScreen(backStack: NavBackStack<Route>) {
                 }
 
                 is TelegramClient.State.Connected -> {
-                    Text("Connected to Telegram!")
+                    Text(stringResource(R.string.connected_to_telegram))
                 }
 
                 // QR pairing: scan tg://login?token=… from Telegram on the
@@ -214,8 +214,8 @@ fun TelegramLoginScreen(backStack: NavBackStack<Route>) {
                 // a new AwaitingQrScan(qrUrl), so the QR below re-renders.
                 is TelegramClient.State.AwaitingQrScan -> {
                     Text(
-                        "Open Telegram on your phone → Settings → Devices → " +
-                            "Link Desktop Device, then scan this code.",
+                        stringResource(R.string.open_telegram_on_your_phone_settings_dev) +
+                            stringResource(R.string.link_desktop_device_then_scan_this_code),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -228,14 +228,14 @@ fun TelegramLoginScreen(backStack: NavBackStack<Route>) {
                             strokeWidth = 2.dp,
                         )
                         Text(
-                            "Waiting for you to scan…",
+                            stringResource(R.string.waiting_for_you_to_scan),
                             modifier = Modifier.padding(start = 10.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     TextButton(onClick = { TelegramClient.start() }) {
-                        Text("Use phone number instead")
+                        Text(stringResource(R.string.use_phone_number_instead))
                     }
                 }
 
@@ -250,7 +250,7 @@ fun TelegramLoginScreen(backStack: NavBackStack<Route>) {
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 14.dp),
                     ) {
-                        Text("Retry", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.retry), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -281,7 +281,7 @@ private fun TelegramQrCard(url: String) {
             } else {
                 Image(
                     bitmap = bm.asImageBitmap(),
-                    contentDescription = "Telegram QR code",
+                    contentDescription = stringResource(R.string.cd_telegram_qr_code),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )

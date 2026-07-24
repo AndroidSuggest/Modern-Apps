@@ -114,7 +114,7 @@ fun UwbRangingScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(peer?.name ?: "Unknown") },
+                title = { Text(peer?.name ?: stringResource(R.string.unknown)) },
                 navigationIcon = { IconNavigation { backStack.pop() } }
             )
         }
@@ -219,11 +219,14 @@ private fun RangingBody(sample: RangingSample) {
         }
 
         // Debug overlay
+        val distText = stringResource(R.string.dist)
+        val azText = stringResource(R.string.az)
+        val elText = stringResource(R.string.el)
         Text(
             text = buildString {
-                append("dist: ").append(distance?.let { "%.2f m".format(it) } ?: "—")
-                append("   az: ").append(azimuth?.let { "%+.1f°".format(it) } ?: "—")
-                append("   el: ").append(sample.elevationDeg?.let { "%+.1f°".format(it) } ?: "—")
+                append(distText).append(distance?.let { "%.2f m".format(it) } ?: "—")
+                append(azText).append(azimuth?.let { "%+.1f°".format(it) } ?: "—")
+                append(elText).append(sample.elevationDeg?.let { "%+.1f°".format(it) } ?: "—")
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -232,7 +235,7 @@ private fun RangingBody(sample: RangingSample) {
 
         if (azimuth == null) {
             Text(
-                text = "Point the back of your phone toward your contact",
+                text = stringResource(R.string.point_the_back_of_your_phone_toward_your),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

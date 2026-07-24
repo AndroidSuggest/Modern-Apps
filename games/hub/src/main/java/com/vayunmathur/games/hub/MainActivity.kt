@@ -38,6 +38,8 @@ import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 class MainActivity : ComponentActivity() {
 
@@ -98,16 +100,16 @@ fun HubNavigation(
 
     val bottomBarItems: List<BottomBarItem<out MainRoute>> = listOf(
         BottomBarItem("Home", MainRoute.Dashboard) {
-            Icon(Icons.Filled.Dashboard, contentDescription = "Home")
+            Icon(Icons.Filled.Dashboard, contentDescription = stringResource(R.string.tab_dashboard))
         },
         BottomBarItem("Games", MainRoute.GamesList) {
-            Icon(Icons.Filled.SportsEsports, contentDescription = "Games")
+            Icon(Icons.Filled.SportsEsports, contentDescription = stringResource(R.string.tab_games))
         },
         BottomBarItem("Achievements", MainRoute.Achievements) {
-            Icon(Icons.Filled.EmojiEvents, contentDescription = "Achievements")
+            Icon(Icons.Filled.EmojiEvents, contentDescription = stringResource(R.string.achievements_for))
         },
         BottomBarItem("Profile", MainRoute.Profile) {
-            Icon(Icons.Filled.Person, contentDescription = "Profile")
+            Icon(Icons.Filled.Person, contentDescription = stringResource(R.string.profile_title))
         },
     )
 

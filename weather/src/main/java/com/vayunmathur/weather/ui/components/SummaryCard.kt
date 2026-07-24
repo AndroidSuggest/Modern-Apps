@@ -11,6 +11,8 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.ForecastResponse
@@ -24,14 +26,14 @@ import com.vayunmathur.weather.util.computeDaySummary
  */
 @Composable
 fun SummaryCard(forecast: ForecastResponse, tempUnit: TemperatureUnit) {
-    val summary = computeDaySummary(forecast, tempUnit)
+    val summary = computeDaySummary(LocalContext.current, forecast, tempUnit)
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = MaterialTheme.shapes.extraLarge,
         shadowElevation = 2.dp,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            CardsHeader(text = "Summary", icon = { m, c -> IconCalendar(m, c) })
+            CardsHeader(text = stringResource(R.string.summary_title), icon = { m, c -> IconCalendar(m, c) })
             Spacer(Modifier.height(8.dp))
             Text(
                 text = summary,

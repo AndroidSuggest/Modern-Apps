@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import com.vayunmathur.library.downloadservice.ModelUrls
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -50,17 +51,11 @@ object SiglipEmbedder {
      */
     const val MODEL_VERSION = 1
 
-    const val VISION_FILE = "siglip2_vision_model_fp16.onnx"
-    const val TEXT_FILE = "siglip2_text_model_int8.onnx"
-    const val TOKENIZER_FILE = "siglip2_tokenizer.model"
-
-    /** Direct HF `resolve/main` download URLs for the on-demand fetch. */
-    const val VISION_URL =
-        "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main/onnx/vision_model_fp16.onnx"
-    const val TEXT_URL =
-        "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main/onnx/text_model_int8.onnx"
-    const val TOKENIZER_URL =
-        "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/main/tokenizer.model"
+    // On-disk names shared with the mirror-first downloader (single source of
+    // truth in ModelUrls) so file-presence gating and the fetch always agree.
+    const val VISION_FILE = ModelUrls.SIGLIP_VISION_FILE
+    const val TEXT_FILE = ModelUrls.SIGLIP_TEXT_FILE
+    const val TOKENIZER_FILE = ModelUrls.SIGLIP_TOKENIZER_FILE
 
     /** Square RGB input side the SigLIP2 image encoder expects. */
     const val IMAGE_SIZE = 224

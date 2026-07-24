@@ -38,6 +38,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.data.Customer
 import com.vayunmathur.travel.data.FrequentFlyer
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 /**
  * App settings. Currently holds saved frequent-flyer accounts, which are applied
@@ -57,10 +58,10 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -74,17 +75,17 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Frequent flyer numbers", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.frequent_flyer_numbers), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Saved numbers are sent when searching so member fares and perks " +
-                    "are priced, and are pre-filled when booking.",
+                stringResource(R.string.saved_numbers_are_sent_when_searching_so) +
+                    stringResource(R.string.are_priced_and_are_pre_filled_when_booki),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             if (frequentFlyers.isEmpty()) {
                 Text(
-                    "No frequent-flyer numbers saved yet.",
+                    stringResource(R.string.no_frequent_flyer_numbers_saved_yet),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -102,17 +103,17 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
 
             HorizontalDivider()
 
-            Text("Customers", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.customers), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Bookings are associated with the active customer so orders and " +
-                    "payments can be tracked per person.",
+                stringResource(R.string.bookings_are_associated_with_the_active) +
+                    stringResource(R.string.payments_can_be_tracked_per_person),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             if (customers.isEmpty()) {
                 Text(
-                    "No customers yet.",
+                    stringResource(R.string.no_customers_yet),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -162,10 +163,10 @@ private fun CustomerRow(
             FilterChip(
                 selected = active,
                 onClick = onSelect,
-                label = { Text(if (active) "Active" else "Use") },
+                label = { Text(if (active) stringResource(R.string.active) else stringResource(R.string.use)) },
             )
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Remove")
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.cd_remove))
             }
         }
     }
@@ -182,19 +183,19 @@ private fun AddCustomerForm(
     var phone by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Add a customer", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.add_a_customer), style = MaterialTheme.typography.titleSmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = given,
                 onValueChange = { given = it },
-                label = { Text("First name") },
+                label = { Text(stringResource(R.string.first_name)) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
             OutlinedTextField(
                 value = family,
                 onValueChange = { family = it },
-                label = { Text("Last name") },
+                label = { Text(stringResource(R.string.last_name)) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
@@ -202,14 +203,14 @@ private fun AddCustomerForm(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text(stringResource(R.string.email)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = phone,
             onValueChange = { phone = it },
-            label = { Text("Phone (optional)") },
+            label = { Text(stringResource(R.string.phone_optional)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -223,7 +224,7 @@ private fun AddCustomerForm(
             },
             enabled = email.isNotBlank() && given.isNotBlank() && family.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Create customer") }
+        ) { Text(stringResource(R.string.create_customer)) }
     }
 }
 
@@ -246,7 +247,7 @@ private fun FrequentFlyerRow(ff: FrequentFlyer, onDelete: () -> Unit) {
                 )
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Remove")
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.cd_remove))
             }
         }
     }
@@ -262,14 +263,14 @@ private fun AddFrequentFlyerForm(
     var number by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Add a number", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.add_a_number), style = MaterialTheme.typography.titleSmall)
         AirlineDropdown(airlines = airlines, selectedIata = iata, modifier = Modifier.fillMaxWidth()) {
             iata = it
         }
         OutlinedTextField(
             value = number,
             onValueChange = { number = it },
-            label = { Text("Account number") },
+            label = { Text(stringResource(R.string.account_number)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -282,6 +283,6 @@ private fun AddFrequentFlyerForm(
             },
             enabled = iata.isNotBlank() && number.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Save") }
+        ) { Text(stringResource(R.string.save)) }
     }
 }

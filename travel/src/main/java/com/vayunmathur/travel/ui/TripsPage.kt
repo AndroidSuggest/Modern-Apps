@@ -34,6 +34,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.data.BookedTrip
 import com.vayunmathur.travel.network.OrderDetailDto
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,10 +50,10 @@ fun TripsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My trips") },
+                title = { Text(stringResource(R.string.my_trips)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -66,16 +67,16 @@ fun TripsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                 OutlinedButton(
                     onClick = { viewModel.loadRemoteOrders() },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                ) { Text(if (remote.loading) "Syncing…" else "Sync remote orders") }
+                ) { Text(if (remote.loading) stringResource(R.string.syncing) else stringResource(R.string.sync_remote_orders)) }
             }
 
             if (trips.isNotEmpty()) {
-                item { SectionHeader("Saved") }
+                item { SectionHeader(stringResource(R.string.saved)) }
                 items(trips) { trip -> LocalTripCard(trip) { backStack.add(destinationForTrip(trip)) } }
             }
 
             if (remote.orders.isNotEmpty()) {
-                item { SectionHeader("Synced from Duffel") }
+                item { SectionHeader(stringResource(R.string.synced_from_duffel)) }
                 items(remote.orders) { order ->
                     RemoteOrderCard(order, hasUpdates = orderEvents[order.orderId].orEmpty().isNotEmpty()) {
                         backStack.add(Route.OrderDetail(order.orderId))
@@ -127,9 +128,9 @@ private fun LocalTripCard(trip: BookedTrip, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (trip.awaitingPayment) {
-                    AssistChip(onClick = onClick, label = { Text("Payment due") })
+                    AssistChip(onClick = onClick, label = { Text(stringResource(R.string.payment_due)) })
                 } else if (trip.status.equals("cancelled", ignoreCase = true)) {
-                    AssistChip(onClick = onClick, label = { Text("Cancelled") })
+                    AssistChip(onClick = onClick, label = { Text(stringResource(R.string.cancelled)) })
                 }
             }
             Text(
@@ -157,9 +158,9 @@ private fun RemoteOrderCard(order: OrderDetailDto, hasUpdates: Boolean = false, 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (hasUpdates) {
-                    AssistChip(onClick = onClick, label = { Text("Schedule change") })
+                    AssistChip(onClick = onClick, label = { Text(stringResource(R.string.schedule_change)) })
                 } else if (order.paymentStatus == "awaiting_payment") {
-                    AssistChip(onClick = onClick, label = { Text("Payment due") })
+                    AssistChip(onClick = onClick, label = { Text(stringResource(R.string.payment_due)) })
                 }
             }
             Text(

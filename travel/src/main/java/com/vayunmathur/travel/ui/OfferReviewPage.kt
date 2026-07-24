@@ -35,6 +35,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.network.SliceDto
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,10 +55,10 @@ fun OfferReviewPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Review flight") },
+                title = { Text(stringResource(R.string.review_flight)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -82,7 +83,7 @@ fun OfferReviewPage(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 AirlineLogo(offer.ownerLogoUrl, offer.ownerIata, size = 40.dp)
-                Text(offer.owner.ifBlank { "Flight" }, style = MaterialTheme.typography.titleLarge)
+                Text(offer.owner.ifBlank { stringResource(R.string.flight) }, style = MaterialTheme.typography.titleLarge)
             }
 
             val chips = conditionsLabels(offer.conditions)
@@ -101,7 +102,7 @@ fun OfferReviewPage(
                     if (remaining <= 0L) viewModel.refreshOffer(offer.offerId)
                 }
                 Text(
-                    if (remaining <= 0L) "Refreshing price…" else "Price held · ${formatCountdown(remaining)}",
+                    if (remaining <= 0L) stringResource(R.string.refreshing_price) else stringResource(R.string.price_held, formatCountdown(remaining)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -132,7 +133,7 @@ fun OfferReviewPage(
                 onClick = { backStack.add(Route.Ancillaries(offer.offerId)) },
                 enabled = !review.loading,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Continue") }
+            ) { Text(stringResource(R.string.continue_action)) }
         }
     }
 }
@@ -172,7 +173,7 @@ private fun SliceDetailCard(title: String, slice: SliceDto) {
                     val bags = seg.baggages.filter { it.quantity > 0 }.joinToString(" · ") { it.label }
                     if (bags.isNotBlank()) {
                         Text(
-                            "Bags: $bags",
+                            stringResource(R.string.bags, bags),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -192,7 +193,7 @@ private fun PriceSummaryCard(offer: OfferDto, loading: Boolean) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Total", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.total), style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (loading) CircularProgressIndicator()
                     Text(
@@ -206,7 +207,7 @@ private fun PriceSummaryCard(offer: OfferDto, loading: Boolean) {
             if (offer.expiresAt.isNotBlank()) {
                 HorizontalDivider()
                 Text(
-                    "Offer held until ${formatTime(offer.expiresAt)} · price may change",
+                    stringResource(R.string.offer_held_until_price_may_change, formatTime(offer.expiresAt)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

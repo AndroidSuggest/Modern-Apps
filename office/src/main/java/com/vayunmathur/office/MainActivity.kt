@@ -105,6 +105,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.office.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -279,22 +280,22 @@ private fun resolveDisplayName(context: android.content.Context, uri: Uri): Stri
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InitialScreen(viewModel: OfficeViewModel, onOpenDocument: () -> Unit, onNavigateEditor: () -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("Office") }) }) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).background(MaterialTheme.colorScheme.background).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(24.dp))
-            Text("Open Document Format Viewer & Editor", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.open_document_format_viewer_editor), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(32.dp))
 
             Button(onClick = onOpenDocument, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.open_document)) }
             Spacer(Modifier.height(4.dp))
-            Text("Opens ODF, Word/Excel/PowerPoint, CSV, TSV, Markdown & text files",
+            Text(stringResource(R.string.opens_odf_word_excel_powerpoint_csv_tsv),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             Spacer(Modifier.height(16.dp))
 
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { viewModel.createNewTextDocument(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text("New Doc") }
-                OutlinedButton(onClick = { viewModel.createNewSpreadsheet(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text("New Sheet") }
-                OutlinedButton(onClick = { viewModel.createNewPresentation(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text("New Slides") }
+                OutlinedButton(onClick = { viewModel.createNewTextDocument(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_doc)) }
+                OutlinedButton(onClick = { viewModel.createNewSpreadsheet(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_sheet)) }
+                OutlinedButton(onClick = { viewModel.createNewPresentation(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_slides)) }
             }
         }
     }
@@ -311,22 +312,21 @@ private fun OnlineInit(viewModel: OfficeViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OnlineDisabledScreen(onEnable: () -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("Online") }) }) { pad ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.online)) }) }) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(24.dp))
-            Text("Online sharing is off", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.online_sharing_is_off), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(12.dp))
-            Text(
-                "Turn on online sharing to collaborate on documents in real time. This generates your encryption keys and a device id and registers your device so others can share with you. Nothing is created or sent until you enable it.",
+            Text(stringResource(R.string.turn_on_online_sharing_to_collaborate_on),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onEnable, modifier = Modifier.fillMaxWidth()) { Text("Enable online sharing") }
+            Button(onClick = onEnable, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.enable_online_sharing_1)) }
         }
     }
 }
@@ -336,10 +336,10 @@ private fun OnlineDisabledScreen(onEnable: () -> Unit) {
 fun EnableOnlineDialog(onEnable: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Enable online sharing?") },
-        text = { Text("Sharing online generates your encryption keys and a device id and registers your device so others can collaborate with you. You only need to do this once.") },
-        confirmButton = { TextButton(onClick = onEnable) { Text("Enable") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        title = { Text(stringResource(R.string.enable_online_sharing)) },
+        text = { Text(stringResource(R.string.sharing_online_generates_your_encryption)) },
+        confirmButton = { TextButton(onClick = onEnable) { Text(stringResource(R.string.enable)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -372,25 +372,25 @@ fun ShareOnlineDialog(
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Share online") },
+        title = { Text(stringResource(R.string.share_online)) },
         text = {
             Column {
                 if (members.isNotEmpty()) {
-                    Text("People with access:", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.people_with_access), style = MaterialTheme.typography.labelMedium)
                     members.filter { it.role != com.vayunmathur.office.util.OfficeRoles.REVOKED }.forEach { m ->
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             val label = (if (m.name.isNotBlank()) m.name else m.id.take(8)) + if (m.id == deviceId) " (you)" else ""
                             Text("• $label — ${m.role}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             if (isOwner && m.id != deviceId) {
                                 Box {
-                                    TextButton(onClick = { memberMenu = m.id }) { Text("Manage") }
+                                    TextButton(onClick = { memberMenu = m.id }) { Text(stringResource(R.string.manage)) }
                                     DropdownMenu(expanded = memberMenu == m.id, onDismissRequest = { memberMenu = null }) {
                                         if (m.role == com.vayunmathur.office.util.OfficeRoles.EDITOR)
-                                            DropdownMenuItem(text = { Text("Make viewer") }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.VIEWER) })
+                                            DropdownMenuItem(text = { Text(stringResource(R.string.make_viewer)) }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.VIEWER) })
                                         else
-                                            DropdownMenuItem(text = { Text("Make editor") }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.EDITOR) })
-                                        DropdownMenuItem(text = { Text("Make owner") }, onClick = { memberMenu = null; onTransferOwner(m.id) })
-                                        DropdownMenuItem(text = { Text("Remove") }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.REVOKED) })
+                                            DropdownMenuItem(text = { Text(stringResource(R.string.make_editor)) }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.EDITOR) })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.make_owner)) }, onClick = { memberMenu = null; onTransferOwner(m.id) })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.REVOKED) })
                                     }
                                 }
                             }
@@ -399,58 +399,58 @@ fun ShareOnlineDialog(
                     Spacer(Modifier.height(12.dp))
                 }
                 if (!isOwner) {
-                    Text("You have $myRole access. Only the owner can change sharing.", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.you_have_access_only_the_owner_can_chang, myRole), style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(8.dp))
-                    Text("Your device id:", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.your_device_id), style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(deviceId.ifEmpty { "…" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text("Copy") }
+                        TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text(stringResource(R.string.copy)) }
                     }
                 } else {
                     if (!isOnline) {
                         // Owner names the document before it first goes online.
                         OutlinedTextField(
                             value = docName, onValueChange = { docName = it },
-                            label = { Text("Document name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                            label = { Text(stringResource(R.string.document_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(8.dp))
                     } else {
                         // Already online: owner can rename; the new name is published to all members.
                         OutlinedTextField(
                             value = docName, onValueChange = { docName = it },
-                            label = { Text("Document name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                            label = { Text(stringResource(R.string.document_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth()
                         )
-                        TextButton(enabled = docName.isNotBlank() && docName.trim() != initialName, onClick = { onRename(docName.trim()) }) { Text("Rename") }
+                        TextButton(enabled = docName.isNotBlank() && docName.trim() != initialName, onClick = { onRename(docName.trim()) }) { Text(stringResource(R.string.rename)) }
                         Spacer(Modifier.height(8.dp))
                     }
-                    Text("Add someone by device id (copies this document into your online folder, end-to-end encrypted):")
+                    Text(stringResource(R.string.add_someone_by_device_id_copies_this_doc))
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = recipient, onValueChange = { recipient = it; code = null },
-                        label = { Text("Recipient device id") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                        label = { Text(stringResource(R.string.recipient_device_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Role:", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.role), style = MaterialTheme.typography.bodySmall)
                         Box {
                             TextButton(onClick = { roleMenu = true }) { Text(addRole) }
                             DropdownMenu(expanded = roleMenu, onDismissRequest = { roleMenu = false }) {
-                                DropdownMenuItem(text = { Text("editor") }, onClick = { addRole = com.vayunmathur.office.util.OfficeRoles.EDITOR; roleMenu = false })
-                                DropdownMenuItem(text = { Text("viewer") }, onClick = { addRole = com.vayunmathur.office.util.OfficeRoles.VIEWER; roleMenu = false })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.editor)) }, onClick = { addRole = com.vayunmathur.office.util.OfficeRoles.EDITOR; roleMenu = false })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.viewer)) }, onClick = { addRole = com.vayunmathur.office.util.OfficeRoles.VIEWER; roleMenu = false })
                             }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("Your device id:", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.your_device_id), style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(deviceId.ifEmpty { "…" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text("Copy") }
+                        TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text(stringResource(R.string.copy)) }
                     }
                     TextButton(
                         enabled = recipient.isNotBlank() && !computing,
                         onClick = { computing = true; code = null; onComputeCode(recipient.trim()) { c -> code = c; computing = false } }
-                    ) { Text(if (computing) "Computing…" else "Show security code") }
+                    ) { Text(if (computing) stringResource(R.string.computing) else stringResource(R.string.show_security_code)) }
                     code?.let {
-                        Text("Compare with the recipient out-of-band — it must match on both devices:", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.compare_with_the_recipient_out_of_band_i), style = MaterialTheme.typography.bodySmall)
                         Text(it, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
                     }
                     status?.let {
@@ -471,10 +471,10 @@ fun ShareOnlineDialog(
                         if (err == null) recipient = ""
                     }
                 }
-            ) { Text(if (sharing) "Adding…" else "Add") }
-            else TextButton(onClick = onDismiss) { Text("Close") }
+            ) { Text(if (sharing) stringResource(R.string.adding) else stringResource(R.string.add)) }
+            else TextButton(onClick = onDismiss) { Text(stringResource(R.string.close_search)) }
         },
-        dismissButton = { if (isOwner) TextButton(onClick = onDismiss) { Text("Close") } }
+        dismissButton = { if (isOwner) TextButton(onClick = onDismiss) { Text(stringResource(R.string.close_search)) } }
     )
 }
 
@@ -495,7 +495,7 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Online") },
+                title = { Text(stringResource(R.string.online)) },
                 actions = {
                     IconButton(onClick = { viewModel.refreshOnline() }) {
                         IconRefresh()
@@ -505,15 +505,15 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
         }
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)) {
-            Text("Your device id (share this so others can send you documents):",
+            Text(stringResource(R.string.your_device_id_share_this_so_others_can),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(deviceId.ifEmpty { "…" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text("Copy") }
+                TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text(stringResource(R.string.copy)) }
             }
             Spacer(Modifier.height(12.dp))
             if (docs.isEmpty()) {
-                Text("No online documents yet. Open a document and use \u201CShare\u201D to copy it here and send it to someone, or ask them to share to your device id, then tap refresh.",
+                Text(stringResource(R.string.no_online_documents_yet_open_a_document),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -521,7 +521,7 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
                         Card(Modifier.fillMaxWidth().clickable { onOpenDoc(meta) }) {
                             ListItem(
                                 content = { Text(meta.title) },
-                                supportingContent = { Text(if (meta.owner) "Shared by you" else "Shared with you") }
+                                supportingContent = { Text(if (meta.owner) stringResource(R.string.shared_by_you) else stringResource(R.string.shared_with_you)) }
                             )
                         }
                     }
@@ -729,7 +729,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                     Text(stringResource(R.string.outline), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
                     HorizontalDivider()
                     if (bookmarks.isNotEmpty()) {
-                        Text("Bookmarks", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp))
+                        Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp))
                         LazyColumn(modifier = Modifier.height(150.dp)) {
                             items(bookmarks) { bk ->
                                 Text("🔖 ${bk.name}", modifier = Modifier.fillMaxWidth()
@@ -780,86 +780,86 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp)) {
                             // File
                             Box {
-                                TextButton(onClick = { fileMenu = true }) { Text("File") }
+                                TextButton(onClick = { fileMenu = true }) { Text(stringResource(R.string.file)) }
                                 DropdownMenu(expanded = fileMenu, onDismissRequest = { fileMenu = false }) {
                                     if (!isOnline) {
-                                        DropdownMenuItem(text = { Text("Save") }, enabled = hasUnsavedChanges, leadingIcon = { IconSave() }, onClick = { fileMenu = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() })
-                                        DropdownMenuItem(text = { Text("Save As…") }, onClick = { fileMenu = false; saveAsLauncher.launch(saveAsName) })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, enabled = hasUnsavedChanges, leadingIcon = { IconSave() }, onClick = { fileMenu = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.save_as_1)) }, onClick = { fileMenu = false; saveAsLauncher.launch(saveAsName) })
                                     } else {
-                                        DropdownMenuItem(text = { Text("Synced to cloud") }, enabled = false, leadingIcon = { IconSave() }, onClick = {})
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.synced_to_cloud)) }, enabled = false, leadingIcon = { IconSave() }, onClick = {})
                                     }
-                                    DropdownMenuItem(text = { Text("Share online…") }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; if (onlineEnabled) showShareDialog = true else showEnableOnlineDialog = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.share_online_1)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; if (onlineEnabled) showShareDialog = true else showEnableOnlineDialog = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.print_doc)) }, onClick = { fileMenu = false; printDocument(activity, document) })
                                     viewModel.documentUri?.let { uri ->
                                         DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, null)) })
                                     }
-                                    DropdownMenuItem(text = { Text("Export ▸") }, leadingIcon = { IconDownload() }, onClick = { fileMenu = false; exportMenu = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.export)) }, leadingIcon = { IconDownload() }, onClick = { fileMenu = false; exportMenu = true })
                                     HorizontalDivider()
-                                    DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { IconSettings() }, onClick = { fileMenu = false; showSettings = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { IconSettings() }, onClick = { fileMenu = false; showSettings = true })
                                 }
                                 // Export submenu (opened from File ▸ Export)
                                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
                                     val baseName = document.title.substringBeforeLast('.').ifBlank { "document" }
-                                    DropdownMenuItem(text = { Text("Export as Text") }, onClick = { exportMenu = false; val t = viewModel.exportAsPlainText(); if (t.isNotEmpty()) context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, t) }, null)) })
-                                    DropdownMenuItem(text = { Text("Flat ODF…") }, onClick = { exportMenu = false; val ext = when { isTextDoc -> ".fodt"; isSpreadsheet -> ".fods"; isPresentation -> ".fodp"; else -> ".fodg" }; flatExportLauncher.launch(document.title.substringBeforeLast('.') + ext) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.export_as_text)) }, onClick = { exportMenu = false; val t = viewModel.exportAsPlainText(); if (t.isNotEmpty()) context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, t) }, null)) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.flat_odf)) }, onClick = { exportMenu = false; val ext = when { isTextDoc -> ".fodt"; isSpreadsheet -> ".fods"; isPresentation -> ".fodp"; else -> ".fodg" }; flatExportLauncher.launch(document.title.substringBeforeLast('.') + ext) })
                                     if (isTextDoc) {
-                                        DropdownMenuItem(text = { Text("Word (.docx)…") }, onClick = { exportMenu = false; exportWarning = { ooxmlExportLauncher.launch("$baseName.docx") } })
-                                        DropdownMenuItem(text = { Text("PDF (.pdf)…") }, onClick = { exportMenu = false; exportWarning = { pdfExportLauncher.launch("$baseName.pdf") } })
-                                        DropdownMenuItem(text = { Text("HTML (.html)…") }, onClick = { exportMenu = false; exportWarning = { htmlExportLauncher.launch("$baseName.html") } })
-                                        DropdownMenuItem(text = { Text("Rich Text (.rtf)…") }, onClick = { exportMenu = false; exportWarning = { rtfExportLauncher.launch("$baseName.rtf") } })
-                                        DropdownMenuItem(text = { Text("EPUB (.epub)…") }, onClick = { exportMenu = false; exportWarning = { epubExportLauncher.launch("$baseName.epub") } })
-                                        DropdownMenuItem(text = { Text("LaTeX (.tex)…") }, onClick = { exportMenu = false; exportWarning = { latexExportLauncher.launch("$baseName.tex") } })
-                                        DropdownMenuItem(text = { Text("Markdown (.md)…") }, onClick = { exportMenu = false; exportWarning = { markdownExportLauncher.launch("$baseName.md") } })
-                                        DropdownMenuItem(text = { Text("Text (.txt)…") }, onClick = { exportMenu = false; exportWarning = { txtExportLauncher.launch("$baseName.txt") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.word_docx)) }, onClick = { exportMenu = false; exportWarning = { ooxmlExportLauncher.launch("$baseName.docx") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.pdf_pdf)) }, onClick = { exportMenu = false; exportWarning = { pdfExportLauncher.launch("$baseName.pdf") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.html_html)) }, onClick = { exportMenu = false; exportWarning = { htmlExportLauncher.launch("$baseName.html") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.rich_text_rtf)) }, onClick = { exportMenu = false; exportWarning = { rtfExportLauncher.launch("$baseName.rtf") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.epub_epub)) }, onClick = { exportMenu = false; exportWarning = { epubExportLauncher.launch("$baseName.epub") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.latex_tex)) }, onClick = { exportMenu = false; exportWarning = { latexExportLauncher.launch("$baseName.tex") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.markdown_md)) }, onClick = { exportMenu = false; exportWarning = { markdownExportLauncher.launch("$baseName.md") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.text_txt)) }, onClick = { exportMenu = false; exportWarning = { txtExportLauncher.launch("$baseName.txt") } })
                                     }
                                     if (isSpreadsheet) {
-                                        DropdownMenuItem(text = { Text("Excel (.xlsx)…") }, onClick = { exportMenu = false; exportWarning = { ooxmlExportLauncher.launch("$baseName.xlsx") } })
-                                        DropdownMenuItem(text = { Text("CSV…") }, onClick = { exportMenu = false; exportWarning = { csvExportLauncher.launch("$baseName.csv") } })
-                                        DropdownMenuItem(text = { Text("TSV…") }, onClick = { exportMenu = false; exportWarning = { tsvExportLauncher.launch("$baseName.tsv") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.excel_xlsx)) }, onClick = { exportMenu = false; exportWarning = { ooxmlExportLauncher.launch("$baseName.xlsx") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.csv)) }, onClick = { exportMenu = false; exportWarning = { csvExportLauncher.launch("$baseName.csv") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.tsv)) }, onClick = { exportMenu = false; exportWarning = { tsvExportLauncher.launch("$baseName.tsv") } })
                                     }
                                     if (isPresentation) {
-                                        DropdownMenuItem(text = { Text("PowerPoint (.pptx)…") }, onClick = { exportMenu = false; exportWarning = { ooxmlExportLauncher.launch("$baseName.pptx") } })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.powerpoint_pptx)) }, onClick = { exportMenu = false; exportWarning = { ooxmlExportLauncher.launch("$baseName.pptx") } })
                                     }
                                 }
                             }
                             // Edit menu removed: Search moved to a top-bar icon; paragraph ops live in the bottom bar's ⋮ menu.
                             // Insert
                             if (isTextDoc) Box {
-                                TextButton(onClick = { insertMenu = true }) { Text("Insert") }
+                                TextButton(onClick = { insertMenu = true }) { Text(stringResource(R.string.insert)) }
                                 DropdownMenu(expanded = insertMenu, onDismissRequest = { insertMenu = false }) {
-                                    DropdownMenuItem(text = { Text("Image…") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; imagePickerLauncher.launch("image/*") })
-                                    DropdownMenuItem(text = { Text("Chart") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; editingChartBlock = -1; showChartEditor = true })
-                                    DropdownMenuItem(text = { Text("Special character…") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; showSpecialChars = true })
-                                    DropdownMenuItem(text = { Text("Date (field)") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "date", viewModel.fieldDisplayValue("date")) })
-                                    DropdownMenuItem(text = { Text("Time (field)") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "time", viewModel.fieldDisplayValue("time")) })
-                                    DropdownMenuItem(text = { Text("Page number") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "page-number", viewModel.fieldDisplayValue("page-number")) })
-                                    DropdownMenuItem(text = { Text("Page count") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "page-count", viewModel.fieldDisplayValue("page-count")) })
-                                    DropdownMenuItem(text = { Text("File name") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "file-name", viewModel.fieldDisplayValue("file-name")) })
-                                    DropdownMenuItem(text = { Text("Author") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "author-name", viewModel.fieldDisplayValue("author-name")) })
-                                    DropdownMenuItem(text = { Text("Title (field)") }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "title", viewModel.fieldDisplayValue("title")) })
-                                    DropdownMenuItem(text = { Text("Bookmark") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; showAddBookmark = true })
-                                    DropdownMenuItem(text = { Text("Footnote…") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; showFootnote = true })
-                                    DropdownMenuItem(text = { Text("Comment…") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; showComment = true })
-                                    DropdownMenuItem(text = { Text("Table of contents") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; viewModel.insertTableOfContents(focusedPara) })
-                                    DropdownMenuItem(text = { Text("Header & footer…") }, onClick = { insertMenu = false; showHeaderFooter = true })
-                                    DropdownMenuItem(text = { Text("Horizontal line") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; viewModel.insertHorizontalLine(focusedPara) })
-                                    DropdownMenuItem(text = { Text("Page break") }, enabled = focusedPara >= 0, onClick = { insertMenu = false; viewModel.insertPageBreak(focusedPara) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.image_1)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; imagePickerLauncher.launch("image/*") })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.chart)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; editingChartBlock = -1; showChartEditor = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.special_character_1)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; showSpecialChars = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.date_field)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "date", viewModel.fieldDisplayValue("date")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.time_field)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "time", viewModel.fieldDisplayValue("time")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.page_number)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "page-number", viewModel.fieldDisplayValue("page-number")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.page_count)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "page-count", viewModel.fieldDisplayValue("page-count")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.file_name)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "file-name", viewModel.fieldDisplayValue("file-name")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.meta_author)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "author-name", viewModel.fieldDisplayValue("author-name")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.title_field)) }, enabled = activeRunStart >= 0, onClick = { insertMenu = false; if (activeRunStart >= 0) viewModel.insertFieldInRun(activeRunStart, activeRunEnd, selStart, "title", viewModel.fieldDisplayValue("title")) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.bookmark)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; showAddBookmark = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.footnote)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; showFootnote = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.comment_1)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; showComment = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.table_of_contents)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; viewModel.insertTableOfContents(focusedPara) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.header_footer)) }, onClick = { insertMenu = false; showHeaderFooter = true })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.horizontal_line)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; viewModel.insertHorizontalLine(focusedPara) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.page_break)) }, enabled = focusedPara >= 0, onClick = { insertMenu = false; viewModel.insertPageBreak(focusedPara) })
                                 }
                             }
                             // Format menu removed: font size, clear formatting, and list level/restart moved to the bottom bar's ⋮ menu.
                             // View
                             Box {
-                                TextButton(onClick = { viewMenu = true }) { Text("View") }
+                                TextButton(onClick = { viewMenu = true }) { Text(stringResource(R.string.view)) }
                                 DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
                                     if (isTextDoc && (headings.isNotEmpty() || bookmarks.isNotEmpty())) DropdownMenuItem(text = { Text(stringResource(R.string.outline)) }, onClick = { viewMenu = false; scope.launch { drawerState.open() } })
-                                    DropdownMenuItem(text = { Text("Zoom text") }, onClick = { viewMenu = false; showFontControl = !showFontControl })
-                                    DropdownMenuItem(text = { Text(if (nightMode) "✓ Night reading mode" else "Night reading mode") }, onClick = { viewMenu = false; viewModel.toggleNightMode() })
-                                    if (isTextDoc) DropdownMenuItem(text = { Text(if (showWordBar) "✓ Word count bar" else "Word count bar") }, onClick = { viewMenu = false; showWordBar = !showWordBar })
-                                    if (isTextDoc) DropdownMenuItem(text = { Text("Comments…") }, onClick = { viewMenu = false; showComments = true })
-                                    if (isTextDoc) DropdownMenuItem(text = { Text("Track changes…") }, onClick = { viewMenu = false; showChanges = true })
-                                    if (isTextDoc) DropdownMenuItem(text = { Text("Page setup…") }, onClick = { viewMenu = false; showPageSetup = true })
-                                    if (isTextDoc && wordCount > 0) DropdownMenuItem(text = { Text("$wordCount words · $charCount chars · ~${readingTime} min") }, enabled = false, onClick = { })
-                                    if (isPresentation) DropdownMenuItem(text = { Text("Presentation timer") }, onClick = { viewMenu = false; showTimer = !showTimer })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.zoom_text)) }, onClick = { viewMenu = false; showFontControl = !showFontControl })
+                                    DropdownMenuItem(text = { Text(if (nightMode) stringResource(R.string.night_reading_mode) else stringResource(R.string.night_reading_mode_1)) }, onClick = { viewMenu = false; viewModel.toggleNightMode() })
+                                    if (isTextDoc) DropdownMenuItem(text = { Text(if (showWordBar) stringResource(R.string.word_count_bar) else stringResource(R.string.word_count_bar_1)) }, onClick = { viewMenu = false; showWordBar = !showWordBar })
+                                    if (isTextDoc) DropdownMenuItem(text = { Text(stringResource(R.string.comments)) }, onClick = { viewMenu = false; showComments = true })
+                                    if (isTextDoc) DropdownMenuItem(text = { Text(stringResource(R.string.track_changes)) }, onClick = { viewMenu = false; showChanges = true })
+                                    if (isTextDoc) DropdownMenuItem(text = { Text(stringResource(R.string.page_setup)) }, onClick = { viewMenu = false; showPageSetup = true })
+                                    if (isTextDoc && wordCount > 0) DropdownMenuItem(text = { Text(stringResource(R.string.words_chars_min, wordCount, charCount, readingTime)) }, enabled = false, onClick = { })
+                                    if (isPresentation) DropdownMenuItem(text = { Text(stringResource(R.string.presentation_timer)) }, onClick = { viewMenu = false; showTimer = !showTimer })
                                 }
                             }
                         }
@@ -869,8 +869,8 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("⏱ %02d:%02d".format(timerSeconds / 60, timerSeconds % 60), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                 Spacer(Modifier.weight(1f))
-                                TextButton(onClick = { timerSeconds = 0 }) { Text("Reset") }
-                                TextButton(onClick = { showTimer = false }) { Text("Stop") }
+                                TextButton(onClick = { timerSeconds = 0 }) { Text(stringResource(R.string.reset)) }
+                                TextButton(onClick = { showTimer = false }) { Text(stringResource(R.string.stop)) }
                             }
                         }
                     }
@@ -881,7 +881,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 trailingIcon = {
                                     Row {
-                                        if (isTextDoc) TextButton(onClick = { showReplaceBar = !showReplaceBar }) { Text(if (showReplaceBar) "Hide" else "Replace") }
+                                        if (isTextDoc) TextButton(onClick = { showReplaceBar = !showReplaceBar }) { Text(if (showReplaceBar) stringResource(R.string.hide) else stringResource(R.string.replace_1)) }
                                         IconButton(onClick = { showSearch = false; searchQuery = ""; showReplaceBar = false }) { IconClose() }
                                     }
                                 })
@@ -895,8 +895,8 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                         scope.launch { listState.animateScrollToItem(matches[findIndex].coerceIn(0, document.content.size - 1)) }
                                     }
                                     val total = remember(searchQuery, matchCase, wholeWord, document) { viewModel.findMatchBlocks(searchQuery, matchCase, wholeWord).size }
-                                    TextButton(onClick = { jump(-1) }) { Text("◀ Prev") }
-                                    TextButton(onClick = { jump(1) }) { Text("Next ▶") }
+                                    TextButton(onClick = { jump(-1) }) { Text(stringResource(R.string.prev)) }
+                                    TextButton(onClick = { jump(1) }) { Text(stringResource(R.string.next)) }
                                     Text(if (total > 0) "${(findIndex % total) + 1}/$total" else "0/0", style = MaterialTheme.typography.labelMedium)
                                 }
                             }
@@ -905,12 +905,12 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                         TextField(value = replaceText, onValueChange = { replaceText = it }, placeholder = { Text(stringResource(R.string.replace_hint)) }, singleLine = true, modifier = Modifier.weight(1f),
                                             colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-                                        TextButton(onClick = { viewModel.replaceInDocument(searchQuery, replaceText, false, matchCase, wholeWord) }) { Text("One") }
-                                        TextButton(onClick = { val n = viewModel.replaceInDocument(searchQuery, replaceText, true, matchCase, wholeWord); if (n > 0) searchQuery = "" }) { Text("All") }
+                                        TextButton(onClick = { viewModel.replaceInDocument(searchQuery, replaceText, false, matchCase, wholeWord) }) { Text(stringResource(R.string.one)) }
+                                        TextButton(onClick = { val n = viewModel.replaceInDocument(searchQuery, replaceText, true, matchCase, wholeWord); if (n > 0) searchQuery = "" }) { Text(stringResource(R.string.all)) }
                                     }
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        TextButton(onClick = { matchCase = !matchCase }) { Text(if (matchCase) "☑ Case" else "☐ Case") }
-                                        TextButton(onClick = { wholeWord = !wholeWord }) { Text(if (wholeWord) "☑ Word" else "☐ Word") }
+                                        TextButton(onClick = { matchCase = !matchCase }) { Text(if (matchCase) stringResource(R.string.case) else stringResource(R.string.case_1)) }
+                                        TextButton(onClick = { wholeWord = !wholeWord }) { Text(if (wholeWord) stringResource(R.string.word) else stringResource(R.string.word_1)) }
                                     }
                                 }
                             }
@@ -927,7 +927,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                     }
                     AnimatedVisibility(visible = showWordBar && isTextDoc) {
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
-                            Text("$wordCount words · $charCount characters · ~$readingTime min read",
+                            Text(stringResource(R.string.words_characters_min_read, wordCount, charCount, readingTime),
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
                         }
@@ -989,8 +989,8 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                         modifier = Modifier.align(Alignment.TopCenter).zIndex(1f).fillMaxWidth()
                     ) {
                         Text(
-                            presence.joinToString(", ") { it.name + (it.loc?.let { l -> " · $l" } ?: "") + if (it.typing) " (typing…)" else "" }
-                                .let { "Online: $it" },
+                            presence.joinToString(", ") { it.name + (it.loc?.let { l -> " · $l" } ?: "") + if (it.typing) stringResource(R.string.typing) else "" }
+                                .let { stringResource(R.string.online_1, it) },
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
@@ -1095,9 +1095,9 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
         dismissButton = { Row { TextButton(onClick = { showUnsavedDialog = false }) { Text(stringResource(R.string.cancel)) }
             TextButton(onClick = { showUnsavedDialog = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() }) { Text(stringResource(R.string.save), fontWeight = FontWeight.Bold) } } })
     exportWarning?.let { action ->
-        AlertDialog(onDismissRequest = { exportWarning = null }, title = { Text("Export to non-ODF format") },
-            text = { Text("Some formatting and features may be lost when exporting outside the Open Document Format. Continue?") },
-            confirmButton = { TextButton(onClick = { exportWarning = null; action() }) { Text("Export", fontWeight = FontWeight.Bold) } },
+        AlertDialog(onDismissRequest = { exportWarning = null }, title = { Text(stringResource(R.string.export_to_non_odf_format)) },
+            text = { Text(stringResource(R.string.some_formatting_and_features_may_be_lost)) },
+            confirmButton = { TextButton(onClick = { exportWarning = null; action() }) { Text(stringResource(R.string.export_1), fontWeight = FontWeight.Bold) } },
             dismissButton = { TextButton(onClick = { exportWarning = null }) { Text(stringResource(R.string.cancel)) } })
     }
     if (showSettings) SettingsDialog(autoSave = viewModel.getAutoSaveEnabled(context), autoSaveInterval = viewModel.getAutoSaveInterval(context),
@@ -1122,39 +1122,39 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                 }
             }
         }
-        AlertDialog(onDismissRequest = { showComments = false }, title = { Text("Comments (${comments.size})") },
+        AlertDialog(onDismissRequest = { showComments = false }, title = { Text(stringResource(R.string.comments_1, comments.size)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (comments.isEmpty()) Text("No comments yet. Use Insert ▸ Comment to add one.")
+                    if (comments.isEmpty()) Text(stringResource(R.string.no_comments_yet_use_insert_comment_to_ad))
                     comments.forEach { (bi, si, ann) ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text("${ann.author ?: "Anonymous"}${ann.date?.let { " · $it" } ?: ""}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.annotation_author_date, ann.author ?: stringResource(R.string.anonymous), ann.date?.let { " · $it" } ?: ""), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                             Text(ann.paragraphs.joinToString("\n") { p -> p.spans.joinToString("") { it.text } }, style = MaterialTheme.typography.bodySmall)
                             Row {
-                                TextButton(onClick = { scope.launch { listState.animateScrollToItem(bi.coerceIn(0, (td?.content?.size ?: 1) - 1)) } }) { Text("Go to") }
-                                TextButton(onClick = { viewModel.resolveComment(bi, si) }) { Text("Resolve") }
+                                TextButton(onClick = { scope.launch { listState.animateScrollToItem(bi.coerceIn(0, (td?.content?.size ?: 1) - 1)) } }) { Text(stringResource(R.string.go_to)) }
+                                TextButton(onClick = { viewModel.resolveComment(bi, si) }) { Text(stringResource(R.string.resolve)) }
                             }
                             HorizontalDivider()
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showComments = false }) { Text("Close") } })
+            confirmButton = { TextButton(onClick = { showComments = false }) { Text(stringResource(R.string.close_search)) } })
     }
     if (showChanges) {
         val td = document as? OdfDocument.TextDocument
         val changes = td?.changes ?: emptyList()
-        AlertDialog(onDismissRequest = { showChanges = false }, title = { Text("Tracked changes (${changes.size})") },
+        AlertDialog(onDismissRequest = { showChanges = false }, title = { Text(stringResource(R.string.tracked_changes, changes.size)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (changes.isEmpty()) Text("No tracked changes in this document.")
+                    if (changes.isEmpty()) Text(stringResource(R.string.no_tracked_changes_in_this_document))
                     changes.forEach { ch ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text("${ch.type.replaceFirstChar { it.uppercase() }} · ${ch.author ?: "Unknown"}${ch.date?.let { " · ${it.take(10)}" } ?: ""}",
+                            Text(stringResource(R.string.tracked_change_author_date, ch.type.replaceFirstChar { it.uppercase() }, ch.author ?: stringResource(R.string.unknown), ch.date?.let { " · ${it.take(10)}" } ?: ""),
                                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                             Row {
-                                TextButton(onClick = { viewModel.acceptChange(ch.id) }) { Text("Accept") }
-                                TextButton(onClick = { viewModel.rejectChange(ch.id) }) { Text("Reject") }
+                                TextButton(onClick = { viewModel.acceptChange(ch.id) }) { Text(stringResource(R.string.accept)) }
+                                TextButton(onClick = { viewModel.rejectChange(ch.id) }) { Text(stringResource(R.string.reject)) }
                             }
                             HorizontalDivider()
                         }
@@ -1164,10 +1164,10 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
             confirmButton = {
                 Row {
                     if (changes.isNotEmpty()) {
-                        TextButton(onClick = { viewModel.acceptAllChanges() }) { Text("Accept all") }
-                        TextButton(onClick = { viewModel.rejectAllChanges() }) { Text("Reject all") }
+                        TextButton(onClick = { viewModel.acceptAllChanges() }) { Text(stringResource(R.string.accept_all)) }
+                        TextButton(onClick = { viewModel.rejectAllChanges() }) { Text(stringResource(R.string.reject_all)) }
                     }
-                    TextButton(onClick = { showChanges = false }) { Text("Close") }
+                    TextButton(onClick = { showChanges = false }) { Text(stringResource(R.string.close_search)) }
                 }
             })
     }
@@ -1181,21 +1181,21 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
             mutableStateOf(papers.minByOrNull { kotlin.math.abs(it.wCm - wcm) }?.name ?: "A4")
         }
         var marginCm by remember(showPageSetup) { mutableStateOf(cur.marginLeftPx / 37.795f) }
-        AlertDialog(onDismissRequest = { showPageSetup = false }, title = { Text("Page setup") },
+        AlertDialog(onDismissRequest = { showPageSetup = false }, title = { Text(stringResource(R.string.page_setup_1)) },
             text = {
                 Column {
-                    Text("Paper size", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.paper_size), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Row { papers.forEach { p -> TextButton(onClick = { paper = p.name }) { Text(if (paper == p.name) "● ${p.name}" else p.name) } } }
-                    Text("Orientation", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.orientation), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Row {
-                        TextButton(onClick = { landscape = false }) { Text(if (!landscape) "● Portrait" else "Portrait") }
-                        TextButton(onClick = { landscape = true }) { Text(if (landscape) "● Landscape" else "Landscape") }
+                        TextButton(onClick = { landscape = false }) { Text(if (!landscape) stringResource(R.string.portrait) else stringResource(R.string.portrait_1)) }
+                        TextButton(onClick = { landscape = true }) { Text(if (landscape) stringResource(R.string.landscape) else stringResource(R.string.landscape_1)) }
                     }
-                    Text("Margins", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.margins), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Row {
-                        TextButton(onClick = { marginCm = 1.27f }) { Text(if (marginCm < 1.5f) "● Narrow" else "Narrow") }
-                        TextButton(onClick = { marginCm = 2f }) { Text(if (marginCm in 1.5f..2.3f) "● Normal" else "Normal") }
-                        TextButton(onClick = { marginCm = 2.54f }) { Text(if (marginCm > 2.3f) "● Wide" else "Wide") }
+                        TextButton(onClick = { marginCm = 1.27f }) { Text(if (marginCm < 1.5f) stringResource(R.string.narrow) else stringResource(R.string.narrow_1)) }
+                        TextButton(onClick = { marginCm = 2f }) { Text(if (marginCm in 1.5f..2.3f) stringResource(R.string.normal_1) else stringResource(R.string.normal)) }
+                        TextButton(onClick = { marginCm = 2.54f }) { Text(if (marginCm > 2.3f) stringResource(R.string.wide) else stringResource(R.string.wide_1)) }
                     }
                 }
             },
@@ -1207,9 +1207,9 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                     val m = marginCm * 37.795f
                     viewModel.setPageSetup(OdfPageSetup(wPx, hPx, m, m, m, m))
                     showPageSetup = false
-                }) { Text("Apply") }
+                }) { Text(stringResource(R.string.apply)) }
             },
-            dismissButton = { TextButton(onClick = { showPageSetup = false }) { Text("Cancel") } })
+            dismissButton = { TextButton(onClick = { showPageSetup = false }) { Text(stringResource(R.string.cancel)) } })
     }
     if (showHeaderFooter) {
         val td = document as? OdfDocument.TextDocument
@@ -1246,10 +1246,10 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
         var text by remember(showCellComment) { mutableStateOf(viewModel.cellCommentText(s, r, c)) }
         AlertDialog(
             onDismissRequest = { showCellComment = false },
-            title = { Text("Cell comment") },
-            text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text("Comment") }, modifier = Modifier.height(120.dp)) },
-            confirmButton = { TextButton(onClick = { viewModel.setCellComment(s, r, c, "", text); showCellComment = false }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { showCellComment = false }) { Text("Cancel") } }
+            title = { Text(stringResource(R.string.cell_comment)) },
+            text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text(stringResource(R.string.comment)) }, modifier = Modifier.height(120.dp)) },
+            confirmButton = { TextButton(onClick = { viewModel.setCellComment(s, r, c, "", text); showCellComment = false }) { Text(stringResource(R.string.save)) } },
+            dismissButton = { TextButton(onClick = { showCellComment = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (showCellResize && (activeCell?.second ?: -1) >= 0) {
@@ -1258,30 +1258,30 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
         var h by remember(showCellResize) { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCellResize = false },
-            title = { Text("Row / column size") },
+            title = { Text(stringResource(R.string.row_column_size_1)) },
             text = {
                 Column {
-                    TextField(value = w, onValueChange = { w = it }, label = { Text("Column width (px)") })
+                    TextField(value = w, onValueChange = { w = it }, label = { Text(stringResource(R.string.column_width_px)) })
                     Spacer(Modifier.height(8.dp))
-                    TextField(value = h, onValueChange = { h = it }, label = { Text("Row height (px)") })
+                    TextField(value = h, onValueChange = { h = it }, label = { Text(stringResource(R.string.row_height_px)) })
                 }
             },
             confirmButton = { TextButton(onClick = {
                 w.toFloatOrNull()?.let { viewModel.setColumnWidth(s, c, it) }
                 h.toFloatOrNull()?.let { viewModel.setRowHeight(s, r, it) }
                 showCellResize = false
-            }) { Text("Apply") } },
-            dismissButton = { TextButton(onClick = { showCellResize = false }) { Text("Cancel") } }
+            }) { Text(stringResource(R.string.apply)) } },
+            dismissButton = { TextButton(onClick = { showCellResize = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (showSlideNotes && isPresentation) {
         var text by remember(showSlideNotes) { mutableStateOf(viewModel.slideNotesText(activeSlide)) }
         AlertDialog(
             onDismissRequest = { showSlideNotes = false },
-            title = { Text("Speaker notes") },
-            text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text("Notes for this slide") }, modifier = Modifier.height(160.dp)) },
-            confirmButton = { TextButton(onClick = { viewModel.setSlideNotes(activeSlide, text); showSlideNotes = false }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { showSlideNotes = false }) { Text("Cancel") } }
+            title = { Text(stringResource(R.string.speaker_notes)) },
+            text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text(stringResource(R.string.notes_for_this_slide)) }, modifier = Modifier.height(160.dp)) },
+            confirmButton = { TextButton(onClick = { viewModel.setSlideNotes(activeSlide, text); showSlideNotes = false }) { Text(stringResource(R.string.save)) } },
+            dismissButton = { TextButton(onClick = { showSlideNotes = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (showSlideBackground && isPresentation) {
@@ -1293,7 +1293,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
         var expanded by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showSlideTransition = false },
-            title = { Text("Slide transition") },
+            title = { Text(stringResource(R.string.slide_transition_1)) },
             text = {
                 Box {
                     TextButton(onClick = { expanded = true }) { Text(type.replaceFirstChar { it.uppercase() }) }
@@ -1302,8 +1302,8 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { viewModel.setSlideTransition(activeSlide, type.takeIf { it != "none" }, "medium"); showSlideTransition = false }) { Text("Apply") } },
-            dismissButton = { TextButton(onClick = { showSlideTransition = false }) { Text("Cancel") } }
+            confirmButton = { TextButton(onClick = { viewModel.setSlideTransition(activeSlide, type.takeIf { it != "none" }, "medium"); showSlideTransition = false }) { Text(stringResource(R.string.apply)) } },
+            dismissButton = { TextButton(onClick = { showSlideTransition = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (cropImageBlock >= 0) {
@@ -1383,7 +1383,7 @@ private fun MetadataDialog(metadata: OdfMetadata, onSave: (OdfMetadata) -> Unit,
                 onDismiss()
             }) { Text(stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 @Composable private fun MetadataRow(label: String, value: String) {

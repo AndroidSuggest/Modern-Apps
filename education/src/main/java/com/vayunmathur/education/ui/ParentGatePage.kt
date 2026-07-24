@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.education.Route
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.education.R
 
 /**
  * PIN gate shown as a dialog. Deliberately trivial for an adult, hard for a
@@ -42,16 +44,16 @@ fun ParentGatePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel
             Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Grown-ups only", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.grown_ups_only), style = MaterialTheme.typography.titleLarge)
             Text(
-                "Enter the parent PIN to manage settings and deadlines.",
+                stringResource(R.string.enter_the_parent_pin_to_manage_settings),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
                 value = pin,
                 onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) { pin = it; error = false } },
-                label = { Text("PIN") },
+                label = { Text(stringResource(R.string.pin)) },
                 singleLine = true,
                 isError = error,
                 visualTransformation = PasswordVisualTransformation(),
@@ -59,10 +61,10 @@ fun ParentGatePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel
                 modifier = Modifier.fillMaxWidth(),
             )
             if (error) {
-                Text("Incorrect PIN", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.incorrect_pin), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { backStack.pop() }) { Text("Cancel") }
+                TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
                 Button(
                     onClick = {
                         if (viewModel.verifyPin(pin)) {
@@ -73,7 +75,7 @@ fun ParentGatePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel
                         }
                     },
                     enabled = pin.length >= 4,
-                ) { Text("Enter") }
+                ) { Text(stringResource(R.string.enter)) }
             }
         }
     }

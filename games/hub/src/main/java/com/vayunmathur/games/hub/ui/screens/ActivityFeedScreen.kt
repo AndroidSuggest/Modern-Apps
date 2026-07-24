@@ -22,6 +22,8 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun ActivityFeedScreen(
@@ -34,13 +36,13 @@ fun ActivityFeedScreen(
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Activity") },
+            title = { Text(stringResource(R.string.tab_activity)) },
             navigationIcon = { backStack?.let { IconNavigation(it) } }
         )
     }) { padding ->
         if (activity.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), contentAlignment = Alignment.TopStart) {
-                Text("No activity yet — start playing games to see your feed!", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.no_activity_yet_start_playing_games_to_s), style = MaterialTheme.typography.bodyMedium)
             }
         } else {
             LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

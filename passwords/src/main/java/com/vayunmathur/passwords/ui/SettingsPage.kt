@@ -91,7 +91,7 @@ fun SettingsPage(
                 ) {
                     ImportSource.entries.forEach { source ->
                         DropdownMenuItem(
-                            text = { Text(source.label) },
+                            text = { Text(stringResource(source.label)) },
                             onClick = {
                                 dropdownExpanded = false
                                 selectedSource = source

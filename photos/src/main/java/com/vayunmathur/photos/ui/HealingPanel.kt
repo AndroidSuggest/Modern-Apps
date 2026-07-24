@@ -18,6 +18,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.photos.R
 
 @Composable
 fun HealingPanel(
@@ -36,7 +38,7 @@ fun HealingPanel(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Brush Size", fontSize = 12.sp, modifier = Modifier.width(72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.brush_size), fontSize = 12.sp, modifier = Modifier.width(72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Slider(
                 value = brushSize * 100f,
                 onValueChange = { onBrushSizeChanged(it / 100f) },
@@ -57,8 +59,7 @@ fun HealingPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                "Set Source Point",
+            Text(stringResource(R.string.set_source_point),
                 fontSize = 12.sp,
                 color = if (isSettingSource) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )

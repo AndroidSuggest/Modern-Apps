@@ -118,19 +118,19 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     var showDefaultLayoutMenu by remember { mutableStateOf(false) }
 
                     ListItem(
-                        content = { Text("Default Layout") },
+                        content = { Text(stringResource(R.string.default_layout)) },
                         trailingContent = {
                             Box {
                                 TextButton(onClick = { showDefaultLayoutMenu = true }) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(currentLayout.prettyName)
+                                        Text(stringResource(currentLayout.prettyNameRes))
                                         IconArrowDropDown()
                                     }
                                 }
                                 DropdownMenu(expanded = showDefaultLayoutMenu, onDismissRequest = { showDefaultLayoutMenu = false }) {
                                     CalendarViewModel.CalendarLayout.entries.forEach { layout ->
                                         DropdownMenuItem(
-                                            text = { Text(layout.prettyName) },
+                                            text = { Text(stringResource(layout.prettyNameRes)) },
                                             onClick = {
                                                 viewModel.setLayout(layout)
                                                 showDefaultLayoutMenu = false
@@ -149,19 +149,19 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     var showThemeMenu by remember { mutableStateOf(false) }
 
                     ListItem(
-                        content = { Text("Theme") },
+                        content = { Text(stringResource(R.string.theme)) },
                         trailingContent = {
                             Box {
                                 TextButton(onClick = { showThemeMenu = true }) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(currentTheme.prettyName)
+                                        Text(stringResource(currentTheme.prettyNameRes))
                                         IconArrowDropDown()
                                     }
                                 }
                                 DropdownMenu(expanded = showThemeMenu, onDismissRequest = { showThemeMenu = false }) {
                                     CalendarViewModel.ThemeMode.entries.forEach { mode ->
                                         DropdownMenuItem(
-                                            text = { Text(mode.prettyName) },
+                                            text = { Text(stringResource(mode.prettyNameRes)) },
                                             onClick = {
                                                 viewModel.setThemeMode(mode)
                                                 showThemeMenu = false
@@ -177,8 +177,8 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
 
                 item {
                     ListItem(
-                        content = { Text("Holiday calendars") },
-                        supportingContent = { Text("Add public holidays for countries") },
+                        content = { Text(stringResource(R.string.holiday_calendars)) },
+                        supportingContent = { Text(stringResource(R.string.add_public_holidays_for_countries)) },
                         modifier = Modifier.clickable { backStack.add(Route.Settings.HolidayCalendars) },
                         trailingContent = {
                             IconArrowDropDown()
@@ -190,7 +190,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                 item {
                     ListItem(
                         content = { Text(stringResource(R.string.import_ics_file)) },
-                        supportingContent = { Text("Import events from .ics files") },
+                        supportingContent = { Text(stringResource(R.string.import_events_from_ics_files)) },
                         modifier = Modifier.clickable {
                             importLauncher.launch(arrayOf(
                                 "text/calendar",

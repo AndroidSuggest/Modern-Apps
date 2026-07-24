@@ -17,7 +17,8 @@ import com.google.ai.edge.litertlm.*
 import com.vayunmathur.library.util.SecureResultReceiver
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.util.DataStoreUtils
-import com.vayunmathur.library.downloadservice.downloadModelFiles
+import com.vayunmathur.library.downloadservice.downloadModels
+import com.vayunmathur.library.downloadservice.ModelUrls
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.catch
 import java.io.File
@@ -304,7 +305,7 @@ class InferenceService : Service() {
         downloadJob = serviceScope.launch {
             try {
                 val ds = DataStoreUtils.getInstance(applicationContext)
-                downloadModelFiles(applicationContext, ds, siglipDownloadFiles())
+                downloadModels(applicationContext, ds, ModelUrls.SIGLIP)
             } catch (e: Exception) {
                 Log.e("InferenceService", "SigLIP2 model download failed", e)
             }
@@ -316,12 +317,6 @@ class InferenceService : Service() {
         val files = listOf(SiglipEmbedder.VISION_FILE, SiglipEmbedder.TEXT_FILE, SiglipEmbedder.TOKENIZER_FILE)
         return files.sumOf { ds.getDouble("progress_$it") ?: 0.0 } / files.size
     }
-
-    private fun siglipDownloadFiles(): List<Triple<String, String, String>> = listOf(
-        Triple(SiglipEmbedder.VISION_URL, SiglipEmbedder.VISION_FILE, "Vision Model"),
-        Triple(SiglipEmbedder.TEXT_URL, SiglipEmbedder.TEXT_FILE, "Text Model"),
-        Triple(SiglipEmbedder.TOKENIZER_URL, SiglipEmbedder.TOKENIZER_FILE, "Tokenizer"),
-    )
 
     private suspend fun resetConversation(conversationId: Long, userText: String) {
         currentConversation?.close()

@@ -1,0 +1,59 @@
+<resources>
+    <!-- BackupButtons -->
+    <string name="backup_dialog_title_export">Export Password</string>
+    <string name="backup_dialog_title_import">Import Password</string>
+    <string name="backup_password_prompt">Enter a master password for the KDBX file:</string>
+    <string name="backup_dialog_ok">OK</string>
+    <string name="backup_dialog_cancel">Cancel</string>
+    <string name="backup_export_success">Backup exported successfully</string>
+    <string name="backup_export_failed_format">Backup export failed: %1$s</string>
+    <string name="backup_import_success">Backup imported successfully. Please restart the app.</string>
+    <string name="backup_import_failed_format">Backup import failed: %1$s</string>
+
+    <!-- Time / Date pickers -->
+    <string name="time_picker_title">Select time</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Cancel</string>
+
+    <!-- HistoryScrubber -->
+    <string name="label_now">Now</string>
+
+    <!-- GameCenterScreen -->
+    <string name="title_game_center">Game Center</string>
+    <string name="achievement_secret_name">\?\?\?</string>
+    <string name="achievement_secret_description">Keep playing to reveal this achievement</string>
+    <string name="achievement_completed">Completed!</string>
+    <string name="achievement_progress_format">%1$d / %2$d</string>
+
+    <!-- MarkdownEditor -->
+    <string name="heading_level_format">Heading %1$d</string>
+
+    <!-- OdfMarkdownEditor -->
+    <string name="style_normal">Normal</string>
+    <string name="style_heading1">Heading 1</string>
+    <string name="style_heading2">Heading 2</string>
+    <string name="style_heading3">Heading 3</string>
+    <string name="style_heading4">Heading 4</string>
+
+    <!-- EditorLink dialog -->
+    <string name="link_dialog_title_edit">Edit link</string>
+    <string name="link_dialog_title_insert">Insert link</string>
+    <string name="link_field_text">Text</string>
+    <string name="link_field_url">Link to (URL)</string>
+    <string name="link_action_save">Save</string>
+    <string name="link_action_add">Add</string>
+    <string name="link_action_unlink">Unlink</string>
+    <string name="link_action_open">Open</string>
+    <string name="link_action_cancel">Cancel</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- MarkdownEditor -->
+    <string name="heading">Heading %1$s</string>
+
+    <!-- Migrated hardcoded UI strings (auto) -->
+    <!-- AchievementNotification -->
+    <string name="achievement_unlocked">Achievement Unlocked!</string>
+
+    <!-- Content descriptions (accessibility) -->
+    <string name="cd_link">Link</string>
+</resources>

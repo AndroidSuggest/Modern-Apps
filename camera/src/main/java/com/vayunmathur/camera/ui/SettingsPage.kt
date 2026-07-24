@@ -88,7 +88,7 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                         onExpandedChange = { expanded = it }
                     ) {
                         OutlinedTextField(
-                            value = "${videoCodec.label} — ${videoCodec.description}",
+                            value = "${stringResource(videoCodec.labelRes)} — ${stringResource(videoCodec.descriptionRes)}",
                             onValueChange = {},
                             readOnly = true,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
@@ -106,9 +106,9 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                                 DropdownMenuItem(
                                     text = {
                                         Column {
-                                            Text(codec.label)
+                                            Text(stringResource(codec.labelRes))
                                             Text(
-                                                codec.description,
+                                                stringResource(codec.descriptionRes),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )

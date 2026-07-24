@@ -230,6 +230,42 @@ object OfflineRouter {
                 return@withContext getRoute(context, start, end, type)
             }
 
+    /**
+     * Offline-only multi-waypoint chaining. Replaces the old server-side
+     * routing that handled intermediates remotely.
+     * Positions = route.waypoints.map { it?.position ?: userPosition }.
+     * Chains A->B, B->C ... using [getRoute] and concatenates polylines
+     * (dedup join), steps, and sums distance/duration. Returns null if
+     * any leg fails or if <2 positions.
+     */
+    suspend fun getRouteMulti(context: Context, route: SpecificFeature.Route, userPosition: Position, type: RouteService.TravelMode): RouteService.Route? = withContext(Dispatchers.Default) {
+        val positions = route.waypoints.map { it?.position ?: userPosition }
+        if (positions.size < 2) return@withContext null
+        val legs = mutableListOf<RouteService.Route>()
+        for (i in 0 until positions.size - 1) {
+            val leg = try { getRoute(context, positions[i], positions[i+1], type) } catch (_: Exception) { return@withContext null }
+            legs.add(leg)
+        }
+        if (legs.isEmpty()) return@withContext null
+        if (legs.size == 1) return@withContext legs.first()
+        val combinedPolyline = mutableListOf<Position>()
+        val combinedSteps = mutableListOf<RouteService.Step>()
+        var totalDist = 0.0
+        var totalSec = 0L
+        for (leg in legs) {
+            if (combinedPolyline.isEmpty()) combinedPolyline.addAll(leg.polyline)
+            else {
+                val first = leg.polyline.firstOrNull()
+                if (first != null && combinedPolyline.lastOrNull() == first) combinedPolyline.addAll(leg.polyline.drop(1))
+                else combinedPolyline.addAll(leg.polyline)
+            }
+            combinedSteps.addAll(leg.step)
+            totalDist += leg.distanceMeters
+            totalSec += leg.duration.inWholeSeconds
+        }
+        RouteService.Route(duration = totalSec.seconds, distanceMeters = totalDist, polyline = combinedPolyline, step = combinedSteps)
+    }
+
     suspend fun getRoute(
             context: Context,
             start: Position,

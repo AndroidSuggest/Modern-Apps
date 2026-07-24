@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.solitaire.data.SpiderState
 import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.solitaire.R
 
 @Composable
 fun SpiderBoard(state: SpiderState, viewModel: SolitaireViewModel, modifier: Modifier = Modifier) {
@@ -32,7 +34,7 @@ fun SpiderBoard(state: SpiderState, viewModel: SolitaireViewModel, modifier: Mod
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Completed: ${state.completedSuits}/8",
+                    stringResource(R.string.completed_8, state.completedSuits),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground
                 )

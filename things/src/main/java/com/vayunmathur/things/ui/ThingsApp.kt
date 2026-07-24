@@ -26,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.things.util.BleManager
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.things.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +44,7 @@ fun ThingsApp(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Hydration") })
+            TopAppBar(title = { Text(stringResource(R.string.hydration)) })
         }
     ) { padding ->
         Column(
@@ -61,14 +63,14 @@ fun ThingsApp(
             ) {
                 Text(connectionState, style = MaterialTheme.typography.titleMedium)
                 if (connectionState == "Connected") {
-                    OutlinedButton(onClick = onDisconnectClick) { Text("Disconnect") }
+                    OutlinedButton(onClick = onDisconnectClick) { Text(stringResource(R.string.disconnect)) }
                 } else {
-                    Button(onClick = onScanClick, enabled = !scanning) { Text("Scan") }
+                    Button(onClick = onScanClick, enabled = !scanning) { Text(stringResource(R.string.scan)) }
                 }
             }
 
             if (discoveredDevices.isNotEmpty() && connectionState != "Connected") {
-                Text("Devices found:", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.devices_found), style = MaterialTheme.typography.labelLarge)
                 discoveredDevices.forEach { device ->
                     Card(
                         modifier = Modifier
@@ -85,7 +87,7 @@ fun ThingsApp(
 
             if (messages.isNotEmpty()) {
                 HorizontalDivider()
-                Text("Today's drinks", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.today_s_drinks), style = MaterialTheme.typography.titleSmall)
             }
 
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
@@ -110,9 +112,9 @@ private fun HydrationCard(totalMl: Int, goalMl: Int) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Today", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.today), style = MaterialTheme.typography.titleMedium)
             Text(
-                "$totalMl mL",
+                stringResource(R.string.ml, totalMl),
                 style = MaterialTheme.typography.displayMedium
             )
             Spacer(Modifier.height(12.dp))
@@ -123,7 +125,7 @@ private fun HydrationCard(totalMl: Int, goalMl: Int) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Goal $goalMl mL",
+                stringResource(R.string.goal_ml, goalMl),
                 style = MaterialTheme.typography.bodySmall
             )
         }

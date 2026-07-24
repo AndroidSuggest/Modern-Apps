@@ -42,7 +42,7 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
     Scaffold(topBar = {
         TopAppBar(
             title = {
-                if (inSelectionMode) Text("${selectedIds.size} selected")
+                if (inSelectionMode) Text(stringResource(R.string.selected, selectedIds.size))
                 else Text(stringResource(R.string.title_history))
             },
             navigationIcon = {
@@ -102,16 +102,16 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
     if (showClearAllDialog) {
         AlertDialog(
             onDismissRequest = { showClearAllDialog = false },
-            title = { Text("Clear History") },
-            text = { Text("Are you sure you want to clear all watch history?") },
+            title = { Text(stringResource(R.string.clear_history)) },
+            text = { Text(stringResource(R.string.are_you_sure_you_want_to_clear_all_watch)) },
             confirmButton = {
                 TextButton(onClick = {
                     youPipeViewModel.clearHistory()
                     showClearAllDialog = false
-                }) { Text("Clear") }
+                }) { Text(stringResource(R.string.clear)) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearAllDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showClearAllDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

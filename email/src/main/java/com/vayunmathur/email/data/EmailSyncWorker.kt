@@ -167,7 +167,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
          * keep the local read status in sync with other clients.
          */
         private suspend fun EmailSyncWorker.syncReadStatus(
-            store: javax.mail.Store,
+            store: jakarta.mail.Store,
             accountEmail: String,
             folderName: String,
             knownUids: Set<Long>,
@@ -175,16 +175,16 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
             val db = EmailDatabase.getInstance(applicationContext)
             val dao = db.emailDao()
             val folder = store.getFolder(folderName)
-            if ((folder.type and javax.mail.Folder.HOLDS_MESSAGES) == 0) return
-            folder.open(javax.mail.Folder.READ_ONLY)
+            if ((folder.type and jakarta.mail.Folder.HOLDS_MESSAGES) == 0) return
+            folder.open(jakarta.mail.Folder.READ_ONLY)
             try {
-                val uidFolder = folder as? javax.mail.UIDFolder ?: return
+                val uidFolder = folder as? jakarta.mail.UIDFolder ?: return
                 // Check read status for the 50 most recent known UIDs
                 val uidsToCheck = knownUids.sortedDescending().take(50)
                 for (uid in uidsToCheck) {
                     try {
                         val msg = uidFolder.getMessageByUID(uid) ?: continue
-                        val serverIsRead = msg.isSet(javax.mail.Flags.Flag.SEEN)
+                        val serverIsRead = msg.isSet(jakarta.mail.Flags.Flag.SEEN)
                         dao.updateReadStatus(accountEmail, folderName, uid, serverIsRead)
                     } catch (_: Exception) {}
                 }

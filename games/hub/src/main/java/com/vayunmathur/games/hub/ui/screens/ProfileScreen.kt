@@ -39,6 +39,8 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 private val avatarOptions = listOf(
     "person", "stadia_controller", "sports_esports", "emoji_events", "military_tech",
@@ -65,13 +67,13 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Profile") },
+            title = { Text(stringResource(R.string.profile_title)) },
             actions = {
                 androidx.compose.material3.IconButton(onClick = {
                     editName = profile?.displayName ?: ""
                     selectedAvatar = profile?.avatarSymbol
                     showEditDialog = true
-                }) { M3Icon(Icons.Filled.Person, contentDescription = "Edit") }
+                }) { M3Icon(Icons.Filled.Person, contentDescription = stringResource(R.string.cd_edit)) }
             }
         )
     }) { padding ->
@@ -80,14 +82,14 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         LevelBadge(level = level, large = true)
-                        Text(text = profile?.displayName ?: "Player", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(text = profile?.displayName ?: stringResource(R.string.player), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(text = "Level $level", style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.level_1, level), style = MaterialTheme.typography.labelLarge)
                         XpProgressBar(totalXp = xp, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
-            item { Text(text = "Stats", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            item { Text(stringResource(R.string.stats), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatCard(label = "Playtime", value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
@@ -106,7 +108,7 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
                     StatCard(label = "Best streak", value = "${crossStats.longestStreak}d", modifier = Modifier.weight(1f))
                 }
             }
-            item { Text(text = "Level table", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
+            item { Text(stringResource(R.string.level_table), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
             items((1..maxOf(level + 2, 10)).toList(), key = { it }) { lvl ->
                 val lvlXp = XpLevelCalculator.xpForLevel(lvl)
                 val isCurrent = lvl == level
@@ -116,8 +118,8 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
                     else androidx.compose.material3.CardDefaults.cardColors()
                 ) {
                     Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "Level $lvl — ${XpLevelCalculator.title(lvl)}${if (isCurrent) " (you)" else ""}", fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal)
-                        Text(text = "$lvlXp XP", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.level_2, lvl, XpLevelCalculator.title(lvl), if (isCurrent) stringResource(R.string.you) else ""), fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal)
+                        Text(stringResource(R.string.xp, lvlXp), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -126,11 +128,11 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
         if (showEditDialog) {
             AlertDialog(
                 onDismissRequest = { showEditDialog = false; editName = "" },
-                title = { Text("Edit profile") },
+                title = { Text(stringResource(R.string.edit_profile)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Display name") }, singleLine = true)
-                        Text(text = "Avatar", style = MaterialTheme.typography.labelMedium)
+                        OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text(stringResource(R.string.display_name)) }, singleLine = true)
+                        Text(stringResource(R.string.avatar), style = MaterialTheme.typography.labelMedium)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(avatarOptions) { sym ->
                                 FilterChip(selected = selectedAvatar == sym, onClick = { selectedAvatar = if (selectedAvatar == sym) null else sym }, label = { Text(sym) })
@@ -143,9 +145,9 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
                         if (editName.isNotBlank()) viewModel.updateDisplayName(editName.trim())
                         viewModel.updateAvatarSymbol(selectedAvatar)
                         showEditDialog = false; editName = ""
-                    }) { Text("Save") }
+                    }) { Text(stringResource(R.string.save)) }
                 },
-                dismissButton = { TextButton(onClick = { showEditDialog = false; editName = "" }) { Text("Cancel") } }
+                dismissButton = { TextButton(onClick = { showEditDialog = false; editName = "" }) { Text(stringResource(R.string.cancel)) } }
             )
         }
     }

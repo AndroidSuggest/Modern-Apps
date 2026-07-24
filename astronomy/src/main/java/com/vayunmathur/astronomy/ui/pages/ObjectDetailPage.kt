@@ -13,6 +13,7 @@ import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
 import kotlin.time.ExperimentalTime
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalTime::class)
 @Composable
@@ -28,7 +29,7 @@ fun ObjectDetailPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewMod
     }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (detail == null) {
-                Text("Object not found: $objectId")
+                Text(stringResource(R.string.object_not_found, objectId))
                 return@Column
             }
             Text(detail.title, style = MaterialTheme.typography.headlineSmall)
@@ -36,36 +37,36 @@ fun ObjectDetailPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewMod
 
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("RA: ${detail.raDeg.format(2)}° Dec: ${detail.decDeg.format(2)}°")
-                    Text("RA h: ${(detail.raDeg/15.0).format(2)}h")
-                    detail.altAz?.let { Text("Alt: ${it.first.format(1)}° Az: ${it.second.format(1)}°") }
-                    detail.mag?.let { Text("Mag: ${it.format(1)}") }
+                    Text(stringResource(R.string.ra_dec, detail.raDeg.format(2), detail.decDeg.format(2)))
+                    Text(stringResource(R.string.ra_h_h, (detail.raDeg/15.0).format(2)))
+                    detail.altAz?.let { Text(stringResource(R.string.alt_az, it.first.format(1), it.second.format(1))) }
+                    detail.mag?.let { Text(stringResource(R.string.mag, it.format(1))) }
                     detail.extra?.let { Text(it) }
                 }
             }
 
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Rise / Transit / Set", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.rise_transit_set), style = MaterialTheme.typography.titleSmall)
                     val rs = riseSet
-                    if (rs == null) Text("Calculating...")
-                    else if (rs.isNeverUp) Text("Never rises at this location")
-                    else if (rs.isCircumpolar) Text("Circumpolar - never sets")
+                    if (rs == null) Text(stringResource(R.string.calculating))
+                    else if (rs.isNeverUp) Text(stringResource(R.string.never_rises_at_this_location))
+                    else if (rs.isCircumpolar) Text(stringResource(R.string.circumpolar_never_sets))
                     else {
-                        Text("Rise: ${rs.riseJd?.let { jdToLocal(it) } ?: "--"}")
-                        Text("Transit: ${rs.transitJd?.let { jdToLocal(it) } ?: "--"}")
-                        Text("Set: ${rs.setJd?.let { jdToLocal(it) } ?: "--"}")
+                        Text(stringResource(R.string.rise_1, rs.riseJd?.let { jdToLocal(it))--"}")
+                        Text(stringResource(R.string.transit_1, rs.transitJd?.let { jdToLocal(it))--"}")
+                        Text(stringResource(R.string.set_1, rs.setJd?.let { jdToLocal(it))--"}")
                     }
                 }
             }
 
             // No center button per request – detail only, view always follows phone
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { backStack.pop() }) { Text("Close") }
+                OutlinedButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.close)) }
             }
 
             if (trajectory.isNotEmpty()) {
-                Text("Trajectory 24h (15m steps) - yellow line on map", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.trajectory_24h_15m_steps_yellow_line_on), style = MaterialTheme.typography.labelSmall)
             }
         }
     }

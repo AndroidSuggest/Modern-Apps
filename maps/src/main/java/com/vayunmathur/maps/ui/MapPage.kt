@@ -99,8 +99,8 @@ import org.maplibre.compose.map.RenderOptions
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.util.ClickResult
 import org.maplibre.spatialk.geojson.Position
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.rememberReorderableLazyListState
 import java.io.File
 import com.vayunmathur.maps.R as MapsR
 
@@ -384,7 +384,7 @@ fun MapPage(backStack: NavBackStack<Route>, viewModel: SelectedFeatureViewModel,
                         modifier = Modifier.align(Alignment.TopCenter).padding(16.dp).fillMaxWidth()
                     ) {
                         itemsIndexed(routeFeature.waypoints, key = { idx, it -> it?.position?.toString()?:"" }) { idx, item ->
-                            ReorderableItem(state, key = item?.position?.toString() ?: "") { isDragging ->
+                            ReorderableItem(reorderState = state, key = item?.position?.toString() ?: "") { isDragging ->
 
                                 val elevation by animateDpAsState(if (isDragging) 4.dp else 0.dp)
 
@@ -415,7 +415,7 @@ fun MapPage(backStack: NavBackStack<Route>, viewModel: SelectedFeatureViewModel,
                                                     IconClose()
                                                 }
                                             }
-                                            IconDragHandle(Modifier.draggableHandle())
+                                            IconDragHandle(Modifier.draggableHandle(state, key = itemKey, index = idx))
                                         }
                                     }, colors = ListItemDefaults.colors(Color.Transparent))
                                 }

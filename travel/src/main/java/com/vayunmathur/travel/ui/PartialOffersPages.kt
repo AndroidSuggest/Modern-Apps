@@ -33,6 +33,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.util.FlightQuery
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 /**
  * Round-trip step 1: pick the outbound flight. Starts the partial offer request
@@ -131,7 +132,7 @@ private fun PartialLegScaffold(
                 },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -172,7 +173,7 @@ private fun PartialOfferCard(offer: OfferDto, onClick: () -> Unit) {
             AirlineLogo(offer.ownerLogoUrl, offer.ownerIata)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(offer.owner.ifBlank { "Flight" }, style = MaterialTheme.typography.titleMedium)
+                    Text(offer.owner.ifBlank { stringResource(R.string.flight) }, style = MaterialTheme.typography.titleMedium)
                     if (offer.fareBrand.isNotBlank()) {
                         AssistChip(onClick = {}, label = { Text(offer.fareBrand) })
                     }

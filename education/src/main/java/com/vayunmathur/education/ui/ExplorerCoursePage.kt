@@ -37,6 +37,7 @@ import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,13 +50,13 @@ fun ExplorerCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewM
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(course?.title ?: "Topic") },
+                title = { Text(course?.title ?: stringResource(R.string.topic)) },
                 navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
         if (course == null) {
-            MissingContent(padding, "This topic is unavailable.")
+            MissingContent(padding, stringResource(R.string.this_topic_is_unavailable))
             return@Scaffold
         }
 
@@ -90,7 +91,7 @@ fun ExplorerCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewM
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                    ) { Text(challenge.title.ifBlank { "Big challenge!" }) }
+                    ) { Text(challenge.title.ifBlank { stringResource(R.string.big_challenge) }) }
                 }
             }
         }
@@ -143,7 +144,7 @@ private fun PathNode(
             Column(Modifier.padding(16.dp)) {
                 if (isNext) {
                     Text(
-                        "Start here",
+                        stringResource(R.string.start_here),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,

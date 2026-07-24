@@ -178,12 +178,12 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Calories",
+                            text = stringResource(R.string.calories),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "${totalCalories.round(0).toInt()} / ${caloriesGoal.toInt()} kcal",
+                            text = stringResource(R.string.kcal, totalCalories.round(0).toInt(), caloriesGoal.toInt()),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -207,11 +207,11 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                 ListItem(
                     content = {
                         Text(
-                            if (loggedMeals.isEmpty()) "No meals logged today"
-                            else "${loggedMeals.size} meals · ${totalCal.round(0).toInt()} cal"
+                            if (loggedMeals.isEmpty()) stringResource(R.string.no_meals_logged_today)
+                            else stringResource(R.string.meals_cal, loggedMeals.size, totalCal.round(0).toInt())
                         )
                     },
-                    supportingContent = { Text("View full breakdown") },
+                    supportingContent = { Text(stringResource(R.string.view_full_breakdown)) },
                     trailingContent = {
                         IconArrowForward(
                             tint = HealthColors.Nutrition,

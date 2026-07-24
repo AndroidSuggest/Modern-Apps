@@ -48,6 +48,7 @@ import com.vayunmathur.education.util.LocalNarrator
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
 
 /**
  * K-2 quiz: audio-first, no-typing. Supports tap-the-tile multiple choice,
@@ -80,7 +81,7 @@ fun K2QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, ex
         },
     ) { padding ->
         if (questions.isEmpty()) {
-            MissingContent(padding, "Let's go back.")
+            MissingContent(padding, stringResource(R.string.let_s_go_back))
             return@Scaffold
         }
 
@@ -170,7 +171,7 @@ fun K2QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, ex
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🎉", fontSize = 96.sp)
                         Text(
-                            "Great job!",
+                            stringResource(R.string.great_job),
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.onTertiaryContainer,
                             textAlign = TextAlign.Center,

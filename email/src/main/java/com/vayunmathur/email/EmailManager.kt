@@ -14,10 +14,10 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
 import java.util.Properties
-import javax.activation.DataHandler
-import javax.activation.DataSource
-import javax.mail.*
-import javax.mail.internet.*
+import jakarta.activation.DataHandler
+import jakarta.activation.DataSource
+import jakarta.mail.*
+import jakarta.mail.internet.*
 import java.util.*
 
 data class ServerConfig(val host: String, val port: Int, val useSsl: Boolean) {
@@ -76,7 +76,7 @@ class EmailManager {
                 this["mail.$proto.starttls.required"] = "true"
             }
         }
-        return Session.getInstance(properties).also { registerProviders(it) }
+        return Session.getInstance(properties)
     }
 
     private fun getSmtpSession(server: ServerConfig, oauth: Boolean = false): Session {
@@ -97,18 +97,7 @@ class EmailManager {
                 this["mail.$proto.starttls.required"] = "true"
             }
         }
-        return Session.getInstance(properties).also { registerProviders(it) }
-    }
-
-    private fun registerProviders(session: Session) {
-        try {
-            session.setProvider(Provider(Provider.Type.STORE, "imap", "com.sun.mail.imap.IMAPStore", "Oracle", ""))
-            session.setProvider(Provider(Provider.Type.STORE, "imaps", "com.sun.mail.imap.IMAPSSLStore", "Oracle", ""))
-            session.setProvider(Provider(Provider.Type.TRANSPORT, "smtp", "com.sun.mail.smtp.SMTPTransport", "Oracle", ""))
-            session.setProvider(Provider(Provider.Type.TRANSPORT, "smtps", "com.sun.mail.smtp.SMTPSSLTransport", "Oracle", ""))
-        } catch (t: Throwable) {
-            android.util.Log.e("EmailManager", "registerProviders failed: ${t.message}", t)
-        }
+        return Session.getInstance(properties)
     }
 
     suspend fun <T> withStore(server: ServerConfig, user: String, auth: AuthType, block: suspend (Store) -> T): T = withContext(Dispatchers.IO) {

@@ -47,8 +47,8 @@ import com.vayunmathur.notes.Route
 import com.vayunmathur.notes.data.Note
 import com.vayunmathur.notes.data.noteDbConfigs
 import com.vayunmathur.notes.util.NotesViewModel
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable

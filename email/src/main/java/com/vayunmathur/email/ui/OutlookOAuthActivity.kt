@@ -8,6 +8,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.email.MainActivity
 import com.vayunmathur.email.data.OutlookOAuth
 import kotlinx.coroutines.launch
+import com.vayunmathur.email.R
 
 /**
  * Receives the Outlook OAuth redirect (`com.vayunmathur.email://oauth`),
@@ -25,7 +26,7 @@ class OutlookOAuthActivity : ComponentActivity() {
             val email = OutlookOAuth.complete(applicationContext, data)
             Toast.makeText(
                 applicationContext,
-                if (email != null) "Added $email" else "Microsoft sign-in failed",
+                if (email != null) applicationContext.getString(R.string.added, email) else applicationContext.getString(R.string.microsoft_sign_in_failed),
                 Toast.LENGTH_SHORT,
             ).show()
             startActivity(

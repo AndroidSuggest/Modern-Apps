@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.library.util.BaseBackupAgent
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +50,7 @@ fun GameCenterScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Game Center") },
+                title = { Text(stringResource(R.string.title_game_center)) },
                 navigationIcon = {
                     IconNavigation(onBack)
                 },
@@ -112,7 +114,7 @@ fun AchievementItem(status: com.vayunmathur.library.util.AchievementStatus) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (achievement.isSecret && !status.isUnlocked) "Keep playing to reveal this achievement" else achievement.description,
+                    text = if (achievement.isSecret && !status.isUnlocked) stringResource(R.string.achievement_secret_description) else achievement.description,
                     style = MaterialTheme.typography.bodySmall
                 )
                 
@@ -128,7 +130,7 @@ fun AchievementItem(status: com.vayunmathur.library.util.AchievementStatus) {
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                     Text(
-                        text = if (status.isUnlocked) "Completed!" else "$displayProgress / ${achievement.targetProgress}",
+                        text = if (status.isUnlocked) stringResource(R.string.achievement_completed) else "$displayProgress / ${achievement.targetProgress}",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(Alignment.End)
                     )

@@ -30,6 +30,8 @@ import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 @Composable
 fun GameCard(
@@ -79,13 +81,13 @@ fun GameCard(
 
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(text = game.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(text = if (isInstalled) "Installed" else "Not installed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = if (isInstalled) stringResource(R.string.installed) else stringResource(R.string.not_installed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (game.totalPlaytimeMs > 0) {
-                    Text(text = "Playtime: ${formatPlaytime(game.totalPlaytimeMs)} • ${game.totalSessions} sessions", style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(R.string.playtime_sessions, formatPlaytime(game.totalPlaytimeMs), game.totalSessions), style = MaterialTheme.typography.labelSmall)
                 }
                 achievementProgress?.let { (unlocked, total) ->
                     if (total > 0) {
-                        Text(text = "Achievements: $unlocked/$total", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.achievements_2, unlocked, total), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }

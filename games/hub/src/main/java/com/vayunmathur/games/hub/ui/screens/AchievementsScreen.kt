@@ -24,6 +24,8 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.hub.R
 
 enum class AchievementFilter { ALL, LOCKED, UNLOCKED }
 
@@ -58,20 +60,20 @@ fun AchievementsScreen(
         list.sortedWith(compareBy<AchievementWithProgress> { !it.isUnlocked }.thenBy { it.gameId }.thenBy { it.name })
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Achievements (${filtered.size})") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.achievements_1, filtered.size)) }) }) { padding ->
         LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item { CommonSearchBar(value = search, onValueChange = { search = it }, padding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { FilterChip(selected = statusFilter == AchievementFilter.ALL, onClick = { statusFilter = AchievementFilter.ALL }, label = { Text("All") }) }
-                    item { FilterChip(selected = statusFilter == AchievementFilter.UNLOCKED, onClick = { statusFilter = AchievementFilter.UNLOCKED }, label = { Text("Unlocked") }) }
-                    item { FilterChip(selected = statusFilter == AchievementFilter.LOCKED, onClick = { statusFilter = AchievementFilter.LOCKED }, label = { Text("Locked") }) }
+                    item { FilterChip(selected = statusFilter == AchievementFilter.ALL, onClick = { statusFilter = AchievementFilter.ALL }, label = { Text(stringResource(R.string.filter_all)) }) }
+                    item { FilterChip(selected = statusFilter == AchievementFilter.UNLOCKED, onClick = { statusFilter = AchievementFilter.UNLOCKED }, label = { Text(stringResource(R.string.filter_unlocked)) }) }
+                    item { FilterChip(selected = statusFilter == AchievementFilter.LOCKED, onClick = { statusFilter = AchievementFilter.LOCKED }, label = { Text(stringResource(R.string.filter_locked)) }) }
                 }
             }
             if (gameIds.isNotEmpty()) {
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        item { FilterChip(selected = gameFilter == null, onClick = { gameFilter = null }, label = { Text("All games") }) }
+                        item { FilterChip(selected = gameFilter == null, onClick = { gameFilter = null }, label = { Text(stringResource(R.string.all_games)) }) }
                         items(gameIds, key = { it }) { gid ->
                             FilterChip(selected = gameFilter == gid, onClick = { gameFilter = if (gameFilter == gid) null else gid }, label = { Text(gid) })
                         }
@@ -79,7 +81,7 @@ fun AchievementsScreen(
                 }
             }
             if (filtered.isEmpty()) {
-                item { Text(text = "No matching achievements", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp)) }
+                item { Text(stringResource(R.string.no_matching_achievements), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp)) }
             }
             items(filtered, key = { "${it.gameId}:${it.achievementId}" }) { ach -> AchievementRow(item = ach, showGameTag = true) }
         }

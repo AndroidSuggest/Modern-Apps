@@ -47,6 +47,7 @@ import com.vayunmathur.travel.network.SeatCabinDto
 import com.vayunmathur.travel.network.SeatElementDto
 import com.vayunmathur.travel.network.SeatRowDto
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 private val CELL = 44.dp
 private val GAP = 4.dp
@@ -104,10 +105,10 @@ fun SeatMapPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Choose seats") },
+                title = { Text(stringResource(R.string.choose_seats)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -134,7 +135,7 @@ fun SeatMapPage(
             Button(
                 onClick = { backStack.pop() },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-            ) { Text("Done") }
+            ) { Text(stringResource(R.string.done)) }
         }
     }
 }

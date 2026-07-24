@@ -58,6 +58,7 @@ import com.vayunmathur.travel.util.readSessionContact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.res.stringResource
 
 private val TITLES = listOf("mr", "ms", "mrs", "miss")
 private val GENDERS = listOf("m" to "Male", "f" to "Female")
@@ -88,10 +89,10 @@ fun PassengersPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Passengers") },
+                title = { Text(stringResource(R.string.passengers)) },
                 navigationIcon = {
                     IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
             )
@@ -125,7 +126,7 @@ fun PassengersPage(
                     passengers.indices.all { passengers[it].isValid(offerPassengers.getOrNull(it), identityRequired) } &&
                     allInfantsLinked,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Continue to payment") }
+            ) { Text(stringResource(R.string.continue_to_payment)) }
         }
     }
 }
@@ -203,7 +204,7 @@ private fun PassengerForm(
                             contentDescription = null,
                             modifier = Modifier.padding(end = 8.dp),
                         )
-                        Text("Contacts")
+                        Text(stringResource(R.string.contacts))
                     }
                 }
             }
@@ -215,20 +216,20 @@ private fun PassengerForm(
             OutlinedTextField(
                 value = passenger.givenName,
                 onValueChange = { onChange(passenger.copy(givenName = it)) },
-                label = { Text("Given name") },
+                label = { Text(stringResource(R.string.given_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = passenger.familyName,
                 onValueChange = { onChange(passenger.copy(familyName = it)) },
-                label = { Text("Family name") },
+                label = { Text(stringResource(R.string.family_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             DateField(
-                "Date of birth",
+                stringResource(R.string.date_of_birth),
                 passenger.bornOn,
                 onDate = { onChange(passenger.copy(bornOn = it)) },
                 dateFormat = "MMM d, yyyy",
@@ -239,7 +240,7 @@ private fun PassengerForm(
             OutlinedTextField(
                 value = passenger.email,
                 onValueChange = { onChange(passenger.copy(email = it)) },
-                label = { Text(if (isAdult) "Email" else "Email (optional)") },
+                label = { Text(if (isAdult) stringResource(R.string.email) else stringResource(R.string.email_optional)) },
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                 modifier = Modifier.fillMaxWidth(),
@@ -247,7 +248,7 @@ private fun PassengerForm(
             OutlinedTextField(
                 value = passenger.phoneNumber,
                 onValueChange = { onChange(passenger.copy(phoneNumber = it)) },
-                label = { Text(if (isAdult) "Phone (e.g. +14155550123)" else "Phone (optional)") },
+                label = { Text(if (isAdult) stringResource(R.string.phone_e_g_14155550123) else stringResource(R.string.phone_optional)) },
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone),
                 modifier = Modifier.fillMaxWidth(),
@@ -285,26 +286,26 @@ private fun PassengerForm(
 private fun IdentityDocumentFields(doc: IdentityDocumentDto?, onChange: (IdentityDocumentDto) -> Unit) {
     val current = doc ?: IdentityDocumentDto()
     Text(
-        "Passport",
+        stringResource(R.string.passport),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     OutlinedTextField(
         value = current.uniqueIdentifier,
         onValueChange = { onChange(current.copy(uniqueIdentifier = it)) },
-        label = { Text("Passport number") },
+        label = { Text(stringResource(R.string.passport_number)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = current.issuingCountryCode,
         onValueChange = { onChange(current.copy(issuingCountryCode = it.uppercase().take(2))) },
-        label = { Text("Issuing country (e.g. GB)") },
+        label = { Text(stringResource(R.string.issuing_country_e_g_gb)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
     DateField(
-        "Expiry date",
+        stringResource(R.string.expiry_date),
         current.expiresOn,
         onDate = { onChange(current.copy(expiresOn = it)) },
         dateFormat = "MMM d, yyyy",
@@ -320,7 +321,7 @@ private fun LoyaltyFields(
 ) {
     val current = account ?: LoyaltyAccountDto()
     Text(
-        "Frequent flyer (optional)",
+        stringResource(R.string.frequent_flyer_optional),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -339,7 +340,7 @@ private fun LoyaltyFields(
                 val next = current.copy(accountNumber = it)
                 onChange(if (next.airlineIataCode.isBlank() && next.accountNumber.isBlank()) null else next)
             },
-            label = { Text("Number") },
+            label = { Text(stringResource(R.string.number)) },
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
@@ -363,7 +364,7 @@ fun AirlineDropdown(
         OutlinedTextField(
             value = selectedIata,
             onValueChange = { onSelect(it.uppercase().take(2)) },
-            label = { Text("Airline") },
+            label = { Text(stringResource(R.string.airline)) },
             singleLine = true,
             modifier = modifier,
         )
@@ -393,7 +394,7 @@ fun AirlineDropdown(
                 expanded = true
                 if (it.isBlank()) onSelect("")
             },
-            label = { Text("Airline") },
+            label = { Text(stringResource(R.string.airline)) },
             singleLine = true,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
@@ -425,7 +426,7 @@ private fun InfantLinkField(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            "Accompanying infant",
+            stringResource(R.string.accompanying_infant),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -433,7 +434,7 @@ private fun InfantLinkField(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilterChip(selected = selected.isNullOrBlank(), onClick = { onSelect(null) }, label = { Text("None") })
+            FilterChip(selected = selected.isNullOrBlank(), onClick = { onSelect(null) }, label = { Text(stringResource(R.string.none)) })
             infantOptions.forEach { (id, label) ->
                 FilterChip(selected = selected == id, onClick = { onSelect(id) }, label = { Text(label) })
             }

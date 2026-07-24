@@ -41,6 +41,8 @@ import com.vayunmathur.library.util.LocalNavResultRegistry
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.data.DrawingTool
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.photos.R
 
 @Composable
 fun DrawingSettingsPage(
@@ -86,7 +88,7 @@ fun DrawingSettingsPage(
                     .height(thickness.dp)
             )
 
-            Text("Thickness", color = Color.White)
+            Text(stringResource(R.string.thickness), color = Color.White)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Slider(
                     value = thickness,
@@ -98,7 +100,7 @@ fun DrawingSettingsPage(
             }
 
             if (tool == DrawingTool.Highlighter) {
-                Text("Opacity", color = Color.White)
+                Text(stringResource(R.string.opacity), color = Color.White)
                 Slider(
                     value = opacity,
                     onValueChange = { opacity = it },
@@ -107,7 +109,7 @@ fun DrawingSettingsPage(
             }
 
             if (tool != DrawingTool.Eraser && tool != DrawingTool.Pointer) {
-                Text("Color", color = Color.White)
+                Text(stringResource(R.string.color), color = Color.White)
                 val colors = listOf(
                     Color.Red, Color.Green, Color.Blue, Color.Yellow,
                     Color.Cyan, Color.Magenta, Color.White, Color.Black,
@@ -141,7 +143,7 @@ fun DrawingSettingsPage(
                 onClick = { dispatchAndPop() },
                 modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
             ) {
-                Text("Done")
+                Text(stringResource(R.string.done))
             }
         }
     }

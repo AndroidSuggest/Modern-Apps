@@ -66,8 +66,9 @@ import com.vayunmathur.photos.util.SearchAiState
 import com.vayunmathur.photos.util.SecureFolderViewModel
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.toLocalDateTime
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlin.math.roundToInt
 import kotlin.time.Instant
 import com.vayunmathur.library.R as LibraryR
@@ -76,11 +77,12 @@ internal fun groupPhotosByMonth(
     photos: List<Photo>,
     resources: android.content.res.Resources,
 ): Map<String, List<Photo>> {
+    val monthNames = localizedMonthNames(TextStyle.SHORT)
     return photos.groupBy {
         val date = Instant.fromEpochMilliseconds(it.date).toLocalDateTime(TimeZone.currentSystemDefault())
         LocalDate(date.year, date.month, 1)
     }.toSortedMap(compareByDescending { it }).mapKeys {
-        resources.getString(R.string.month_year_format, MonthNames.ENGLISH_ABBREVIATED.names[it.key.month.ordinal], it.key.year)
+        resources.getString(R.string.month_year_format, monthNames[it.key.month.ordinal], it.key.year)
     }.mapValues { pair -> pair.value.sortedByDescending { it.date } }
 }
 
@@ -280,8 +282,8 @@ fun GalleryPage(
                             if (ocrTargetCount > 0) {
                                 val pct = if (ocrTargetCount > 0) (ocrCount * 100 / ocrTargetCount) else 0
                                 ListItem(
-                                    content = { Text("$pct% of photos processed") },
-                                    supportingContent = { Text("$ocrCount / $ocrTargetCount photos indexed for text search") },
+                                    content = { Text(stringResource(R.string.of_photos_processed, pct)) },
+                                    supportingContent = { Text(stringResource(R.string.photos_indexed_for_text_search, ocrCount, ocrTargetCount)) },
                                     leadingContent = {
                                         CircularProgressIndicator(
                                             progress = { ocrCount.toFloat() / ocrTargetCount },
@@ -294,8 +296,8 @@ fun GalleryPage(
                             if (clipTargetCount > 0) {
                                 val pct = if (clipTargetCount > 0) (clipCount * 100 / clipTargetCount) else 0
                                 ListItem(
-                                    content = { Text("$pct% of photos processed") },
-                                    supportingContent = { Text("$clipCount / $clipTargetCount photos indexed for visual search") },
+                                    content = { Text(stringResource(R.string.of_photos_processed, pct)) },
+                                    supportingContent = { Text(stringResource(R.string.photos_indexed_for_visual_search, clipCount, clipTargetCount)) },
                                     leadingContent = {
                                         CircularProgressIndicator(
                                             progress = { clipCount.toFloat() / clipTargetCount },

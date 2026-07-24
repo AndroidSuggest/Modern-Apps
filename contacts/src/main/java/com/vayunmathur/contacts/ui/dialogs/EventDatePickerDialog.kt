@@ -24,6 +24,8 @@ import com.vayunmathur.library.util.LocalNavResultRegistry
 import kotlinx.coroutines.launch
 import kotlinx.datetime.*
 import kotlinx.datetime.format.MonthNames
+import com.vayunmathur.library.util.localizedMonthNames
+import java.time.format.TextStyle
 import kotlin.math.abs
 import kotlin.time.Clock
 
@@ -82,7 +84,7 @@ fun EventDatePickerDialog(id: String, initialDate: LocalDate?, onDismiss: () -> 
                 val previewText = try {
                     val date = LocalDate(selectedYear, selectedMonth, selectedDay)
                     date.format(LocalDate.Format {
-                        monthName(MonthNames.ENGLISH_FULL)
+                        monthName(MonthNames(localizedMonthNames(TextStyle.FULL)))
                         chars(" ")
                         day()
                         if (includeYear) {
@@ -107,7 +109,7 @@ fun EventDatePickerDialog(id: String, initialDate: LocalDate?, onDismiss: () -> 
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     WheelPicker(
-                        items = months.map { Month(it).name.take(3).lowercase().replaceFirstChar { it.uppercase() } },
+                        items = months.map { localizedMonthNames(TextStyle.SHORT)[it - 1] },
                         initialIndex = selectedMonth - 1,
                         onIndexSelected = { selectedMonth = it + 1 },
                         modifier = Modifier.weight(1f)

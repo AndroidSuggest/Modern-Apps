@@ -142,7 +142,6 @@ dependencies {
     implementation(project(":library:network"))
     implementation(project(":library:widgets"))
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.reorderable)
     implementation(libs.maplibre.compose)
     implementRoom(libs)
     implementation(project(":library:room"))

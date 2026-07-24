@@ -30,6 +30,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.util.TravelViewModel
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,10 +61,10 @@ fun CancellationPage(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(64.dp),
                     )
-                    Text("Order cancelled", style = MaterialTheme.typography.headlineSmall)
+                    Text(stringResource(R.string.order_cancelled), style = MaterialTheme.typography.headlineSmall)
                     state.quote?.let {
                         Text(
-                            "Refund of ${formatMoney(it.refundAmount, it.refundCurrency)} issued to your ${it.refundTo.ifBlank { "balance" }}.",
+                            stringResource(R.string.refund_of_issued_to_your, formatMoney(it.refundAmount, it.refundCurrency), it.refundTo.ifBlank { stringResource(R.string.balance) }),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -74,16 +75,16 @@ fun CancellationPage(
                             backStack.reset(Route.Home, Route.Trips)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Done") }
+                    ) { Text(stringResource(R.string.done)) }
                 }
                 state.quote != null -> {
                     val quote = state.quote!!
                     ElevatedCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Cancel this order?", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.cancel_this_order), style = MaterialTheme.typography.titleMedium)
                             HorizontalDivider()
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Refund", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.refund), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     formatMoney(quote.refundAmount, quote.refundCurrency),
                                     style = MaterialTheme.typography.titleMedium,
@@ -92,7 +93,7 @@ fun CancellationPage(
                                 )
                             }
                             Text(
-                                "Refunded to your ${quote.refundTo.ifBlank { "balance" }}.",
+                                stringResource(R.string.refunded_to_your, quote.refundTo.ifBlank { stringResource(R.string.balance) }),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -105,7 +106,7 @@ fun CancellationPage(
                         onClick = { viewModel.confirmCancellation(route.orderId) },
                         enabled = !state.confirming,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (state.confirming) "Cancelling…" else "Confirm cancellation") }
+                    ) { Text(if (state.confirming) stringResource(R.string.cancelling) else stringResource(R.string.confirm_cancellation)) }
                 }
                 else -> StatusBox(
                     loading = state.loading,
@@ -122,10 +123,10 @@ fun CancellationPage(
 @Composable
 private fun TopBar(onBack: () -> Unit) {
     com.vayunmathur.library.ui.TopAppBar(
-        title = { Text("Cancel order") },
+        title = { Text(stringResource(R.string.cancel_order)) },
         navigationIcon = {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
             }
         },
     )
