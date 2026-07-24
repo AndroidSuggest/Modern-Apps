@@ -82,6 +82,9 @@ pub(crate) struct GraphicsState {
     /// Active fill/stroke pattern (object id) when the colorspace is `/Pattern`.
     pub(crate) fill_pattern: Option<ObjectId>,
     pub(crate) stroke_pattern: Option<ObjectId>,
+    /// Active ExtGState soft mask: (`/G` group stream id, mask type where
+    /// 0 = alpha, 1 = luminosity). `None` when `/SMask` is `/None`.
+    pub(crate) soft_mask: Option<(ObjectId, u8)>,
 }
 
 impl Default for GraphicsState {
@@ -111,6 +114,7 @@ impl Default for GraphicsState {
             blend_mode: BlendMode::Normal,
             fill_pattern: None,
             stroke_pattern: None,
+            soft_mask: None,
         }
     }
 }

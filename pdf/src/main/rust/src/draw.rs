@@ -53,12 +53,13 @@ pub(crate) fn emit_stroke(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], g
                 join: gs.line_join,
                 miter: gs.miter_limit as f32,
                 pts: sp.iter().map(|&(x, y)| (x as f32, y as f32)).collect(),
+                blend: gs.blend_mode,
             });
         }
     }
 }
 
-pub(crate) fn emit_fill(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], argb: u32, even_odd: bool, alpha_fill: f64) {
+pub(crate) fn emit_fill(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], argb: u32, even_odd: bool, alpha_fill: f64, blend: BlendMode) {
     let argb = apply_alpha_to_argb(argb, alpha_fill);
     for sp in subpaths {
         if sp.len() >= 3 {
@@ -66,6 +67,7 @@ pub(crate) fn emit_fill(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], arg
                 argb,
                 even_odd,
                 pts: sp.iter().map(|&(x, y)| (x as f32, y as f32)).collect(),
+                blend,
             });
         }
     }
@@ -115,6 +117,7 @@ pub(crate) fn show_string(
                         stroke_width: None,
                         advance: size,
                         render_mode: gs.render_mode as u8,
+                        blend: gs.blend_mode,
                     });
                 }
             }
@@ -168,6 +171,7 @@ pub(crate) fn show_string(
                             stroke_argb: if has_stroke { Some(apply_alpha_to_argb(gs.stroke, stroke_alpha)) } else { None },
                             stroke_width: if has_stroke { Some(device_stroke_w) } else { None },
                             render_mode: rm,
+                            blend: gs.blend_mode,
                         });
                     } else if has_stroke {
                         prims.push(Prim::Text {
@@ -180,6 +184,7 @@ pub(crate) fn show_string(
                             stroke_argb: Some(apply_alpha_to_argb(gs.stroke, stroke_alpha)),
                             stroke_width: Some(device_stroke_w),
                             render_mode: rm,
+                            blend: gs.blend_mode,
                         });
                     } else if clip_only {
                         // Mode 7: no paint, but carry the glyph so Kotlin can add
@@ -194,6 +199,7 @@ pub(crate) fn show_string(
                             stroke_argb: None,
                             stroke_width: None,
                             render_mode: 7,
+                            blend: gs.blend_mode,
                         });
                     }
                 }

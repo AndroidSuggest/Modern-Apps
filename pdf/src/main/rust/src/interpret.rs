@@ -290,6 +290,24 @@ pub(crate) fn interpret_content(
                                 }
                             }
                         }
+                        // Soft mask: /SMask /None clears; a dict << /S /Luminosity|/Alpha
+                        // /G <group stream ref> >> sets a luminosity/alpha soft mask.
+                        if let Some(sm_raw) = dict.get(b"SMask").ok() {
+                            if let Ok(n) = sm_raw.as_name() {
+                                if n == b"None" { gs.soft_mask = None; }
+                            } else if let Some(sm) = deref(doc, sm_raw).or(Some(sm_raw)) {
+                                if let Ok(smdict) = sm.as_dict() {
+                                    let mask_type = match smdict.get(b"S").ok().and_then(|o| o.as_name().ok()) {
+                                        Some(b"Luminosity") => 1u8,
+                                        _ => 0u8, // Alpha (default)
+                                    };
+                                    // /G must be an indirect reference to the group stream.
+                                    if let Some(Object::Reference(gid)) = smdict.get(b"G").ok() {
+                                        gs.soft_mask = Some((*gid, mask_type));
+                                    }
+                                }
+                            }
+                        }
                     };
                     if let Some(&id) = extgstates.get(name) {
                         if let Ok(dict) = doc.get_dictionary(id) {
@@ -413,7 +431,11 @@ pub(crate) fn interpret_content(
                     }
                 }
                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
-                    if prims.len() < MAX_PRIMITIVES { emit_stroke(prims, &subpaths, &gs); }
+                    if let Some(pid) = gs.stroke_pattern {
+                        paint_pattern_stroke(doc, pid, &subpaths, &gs, &pattern_base_ctm, prims, depth);
+                    } else if prims.len() < MAX_PRIMITIVES {
+                        emit_stroke(prims, &subpaths, &gs);
+                    }
                 }
                 subpaths.clear(); clip_path_ops.clear();
             }
@@ -434,7 +456,7 @@ pub(crate) fn interpret_content(
                     if let Some(pid) = gs.fill_pattern {
                         paint_pattern_fill(doc, pid, &subpaths, op.operator == "f*", &pattern_base_ctm, gs.fill, prims, depth);
                     } else if prims.len() < MAX_PRIMITIVES {
-                        emit_fill(prims, &subpaths, gs.fill, op.operator == "f*", gs.alpha_fill);
+                        emit_fill(prims, &subpaths, gs.fill, op.operator == "f*", gs.alpha_fill, gs.blend_mode);
                     }
                 }
                 subpaths.clear(); clip_path_ops.clear();
@@ -461,9 +483,13 @@ pub(crate) fn interpret_content(
                     if let Some(pid) = gs.fill_pattern {
                         paint_pattern_fill(doc, pid, &subpaths, op.operator.ends_with('*'), &pattern_base_ctm, gs.fill, prims, depth);
                     } else if prims.len() < MAX_PRIMITIVES {
-                        emit_fill(prims, &subpaths, gs.fill, op.operator.ends_with('*'), gs.alpha_fill);
+                        emit_fill(prims, &subpaths, gs.fill, op.operator.ends_with('*'), gs.alpha_fill, gs.blend_mode);
                     }
-                    if prims.len() < MAX_PRIMITIVES { emit_stroke(prims, &subpaths, &gs); }
+                    if let Some(pid) = gs.stroke_pattern {
+                        paint_pattern_stroke(doc, pid, &subpaths, &gs, &pattern_base_ctm, prims, depth);
+                    } else if prims.len() < MAX_PRIMITIVES {
+                        emit_stroke(prims, &subpaths, &gs);
+                    }
                 }
                 subpaths.clear(); clip_path_ops.clear();
             }
@@ -549,7 +575,20 @@ pub(crate) fn interpret_content(
                                         } else { (false,false,false) }
                                     } else { (false,false,false) }
                                 };
-                                let should_emit_group = is_transparency_group && !text_only && !oc_stack.last().copied().unwrap_or(false) && depth < crate::MAX_PATTERN_RECURSION as u32;
+                                // ExtGState soft mask active at this Do: bracket
+                                // the form as the masked content and emit the /G
+                                // group as the mask. The soft-mask layer provides
+                                // isolation, so skip the form's own group push.
+                                let active_smask = gs.soft_mask;
+                                let use_smask = active_smask.is_some()
+                                    && !text_only
+                                    && !oc_stack.last().copied().unwrap_or(false)
+                                    && prims.len() < crate::MAX_PRIMITIVES
+                                    && depth < crate::MAX_PATTERN_RECURSION as u32;
+                                if let (true, Some((_g, mtype))) = (use_smask, active_smask) {
+                                    prims.push(Prim::SoftMaskPush { mask_type: mtype });
+                                }
+                                let should_emit_group = is_transparency_group && !use_smask && !text_only && !oc_stack.last().copied().unwrap_or(false) && depth < crate::MAX_PATTERN_RECURSION as u32;
                                 if should_emit_group {
                                     if prims.len() < crate::MAX_PRIMITIVES && group_depth < 32 {
                                         prims.push(Prim::GroupPush { isolated, knockout, alpha: gs.alpha_fill as f32 * gs.alpha_stroke as f32, blend: gs.blend_mode });
@@ -559,6 +598,8 @@ pub(crate) fn interpret_content(
                                 if let Ok(sub) = Content::decode(&stream_data_with_doc(doc, &stream)) {
                                         let mut sub_gs = gs.clone();
                                         sub_gs.ctm = mat_mul(&form_matrix, &gs.ctm);
+                                        // The mask does not apply to nested Do's inside the masked content.
+                                        sub_gs.soft_mask = None;
                                         let res_ref = form_res.as_ref().or(resources);
                                         interpret_content(
                                             doc,
@@ -569,6 +610,36 @@ pub(crate) fn interpret_content(
                                             depth + 1,
                                             text_only,
                                         );
+                                }
+                                // Emit the mask group content, then close the bracket.
+                                if let (true, Some((g_id, _mtype))) = (use_smask, active_smask) {
+                                    prims.push(Prim::SoftMaskContent);
+                                    if let Ok(Object::Stream(mstream)) = doc.get_object(g_id) {
+                                        let mmatrix = mstream.dict.get(b"Matrix").ok().and_then(read_matrix_obj).unwrap_or(IDENTITY);
+                                        let mres = mstream.dict.get(b"Resources").ok()
+                                            .and_then(|o| deref(doc, o))
+                                            .and_then(|o| o.as_dict().ok())
+                                            .cloned();
+                                        if let Ok(msub) = Content::decode(&stream_data_with_doc(doc, mstream)) {
+                                            let mut mgs = gs.clone();
+                                            mgs.ctm = mat_mul(&mmatrix, &gs.ctm);
+                                            mgs.soft_mask = None;
+                                            mgs.blend_mode = BlendMode::Normal;
+                                            mgs.alpha_fill = 1.0;
+                                            mgs.alpha_stroke = 1.0;
+                                            let mres_ref = mres.as_ref().or(resources);
+                                            interpret_content(
+                                                doc,
+                                                &msub.operations,
+                                                mres_ref,
+                                                mgs,
+                                                prims,
+                                                depth + 1,
+                                                text_only,
+                                            );
+                                        }
+                                    }
+                                    prims.push(Prim::SoftMaskPop);
                                 }
                             }
                         }
@@ -917,6 +988,103 @@ pub(crate) fn uncolored_pattern_argb(comps: &[f64]) -> u32 {
 /// Paint a pattern fill within the region described by `polys` (device space).
 /// Handles PatternType 2 (shading) and PatternType 1 (tiling), bounded by
 /// [`MAX_PATTERN_RECURSION`] and a per-pattern tile cap.
+/// Build stroke-outline quadrilaterals (device space) for a set of polyline
+/// subpaths, offsetting each segment by `hw` (half the device line width) on
+/// both sides, plus a small square at every vertex so joints/caps don't leave
+/// gaps. Each quad is painted independently so the segments union correctly.
+fn stroke_outline_quads(subpaths: &[Vec<(f64, f64)>], hw: f64) -> Vec<Vec<(f64, f64)>> {
+    let mut quads: Vec<Vec<(f64, f64)>> = Vec::new();
+    for sp in subpaths {
+        if sp.len() < 2 { continue; }
+        for w in sp.windows(2) {
+            let (x0, y0) = w[0];
+            let (x1, y1) = w[1];
+            let dx = x1 - x0;
+            let dy = y1 - y0;
+            let len = (dx*dx + dy*dy).sqrt();
+            if len < 1e-9 { continue; }
+            let nx = -dy / len * hw;
+            let ny = dx / len * hw;
+            quads.push(vec![
+                (x0 + nx, y0 + ny),
+                (x1 + nx, y1 + ny),
+                (x1 - nx, y1 - ny),
+                (x0 - nx, y0 - ny),
+            ]);
+        }
+        for &(x, y) in sp.iter() {
+            quads.push(vec![
+                (x - hw, y - hw),
+                (x + hw, y - hw),
+                (x + hw, y + hw),
+                (x - hw, y + hw),
+            ]);
+        }
+    }
+    quads
+}
+
+/// Paint a tiling/shading pattern along a stroked path. The stroke is converted
+/// to outline quads (`stroke_outline_quads`); each quad is clipped independently
+/// and the pattern rasterized within it, so the painted region is the union of
+/// the segments (matching how a real stroke covers the path).
+pub(crate) fn paint_pattern_stroke(
+    doc: &Document,
+    pattern_id: ObjectId,
+    subpaths: &[Vec<(f64, f64)>],
+    gs: &GraphicsState,
+    pattern_base_ctm: &Mat,
+    prims: &mut Vec<Prim>,
+    depth: u32,
+) {
+    if depth >= MAX_PATTERN_RECURSION || prims.len() >= MAX_PRIMITIVES {
+        return;
+    }
+    let obj = match doc.get_object(pattern_id) {
+        Ok(o) => o,
+        Err(_) => return,
+    };
+    let dict = match obj {
+        Object::Dictionary(d) => d,
+        Object::Stream(s) => &s.dict,
+        _ => return,
+    };
+    let ptype = dict.get(b"PatternType").ok().and_then(num).unwrap_or(0.0) as i64;
+    let matrix = dict.get(b"Matrix").ok().and_then(read_matrix_obj).unwrap_or(IDENTITY);
+    let pmat = mat_mul(&matrix, pattern_base_ctm);
+
+    // Half stroke width in device space (CTM average axis scale).
+    let ctm = &gs.ctm;
+    let sx = (ctm[0]*ctm[0] + ctm[1]*ctm[1]).sqrt();
+    let sy = (ctm[2]*ctm[2] + ctm[3]*ctm[3]).sqrt();
+    let scale = (sx + sy) / 2.0;
+    let hw = ((gs.line_width * scale) / 2.0).max(0.35);
+
+    let quads = stroke_outline_quads(subpaths, hw);
+    for quad in &quads {
+        if prims.len() >= MAX_PRIMITIVES { break; }
+        if quad.len() < 3 || shoelace_area(quad).abs() < 1e-3 { continue; }
+        prims.push(Prim::ClipPush {
+            even_odd: false,
+            pts: quad.iter().map(|&(x, y)| (x as f32, y as f32)).collect(),
+            path_ops: None,
+        });
+        if ptype == 2 {
+            if let Some(shobj) = dict.get(b"Shading").ok().and_then(|o| deref(doc, o)) {
+                if let Some((ctm, w, h, data)) = rasterize_shading(doc, shobj, &pmat, &HashMap::new(), 256) {
+                    if prims.len() < MAX_PRIMITIVES {
+                        prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: 1.0 });
+                    }
+                }
+            }
+        } else if ptype == 1 {
+            let region = std::slice::from_ref(quad);
+            paint_tiling_pattern(doc, obj, dict, &pmat, gs.stroke, region, prims, depth);
+        }
+        prims.push(Prim::ClipPop);
+    }
+}
+
 pub(crate) fn paint_pattern_fill(
     doc: &Document,
     pattern_id: ObjectId,
@@ -1076,4 +1244,34 @@ pub(crate) fn read_rect(doc: &Document, obj: &Object) -> Option<[f64; 4]> {
         out[i] = deref(doc, v).and_then(num)?;
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod stroke_pattern_tests {
+    use super::stroke_outline_quads;
+
+    // A single horizontal segment yields one segment quad plus two vertex
+    // squares, all offset by the half width.
+    #[test]
+    fn horizontal_segment_quad_offsets_by_half_width() {
+        let sp = vec![vec![(0.0, 0.0), (10.0, 0.0)]];
+        let quads = stroke_outline_quads(&sp, 2.0);
+        // 1 segment quad + 2 vertex squares.
+        assert_eq!(quads.len(), 3);
+        let seg = &quads[0];
+        assert_eq!(seg.len(), 4);
+        // Normal to a horizontal segment is vertical: y offset = +/-hw.
+        assert!(seg.iter().any(|&(_, y)| (y - 2.0).abs() < 1e-9));
+        assert!(seg.iter().any(|&(_, y)| (y + 2.0).abs() < 1e-9));
+    }
+
+    // Zero-length segments are skipped (no NaN normals), but the vertex square
+    // still covers the point.
+    #[test]
+    fn degenerate_segment_is_skipped() {
+        let sp = vec![vec![(5.0, 5.0), (5.0, 5.0)]];
+        let quads = stroke_outline_quads(&sp, 1.0);
+        // No segment quad, just the two coincident vertex squares.
+        assert_eq!(quads.len(), 2);
+    }
 }

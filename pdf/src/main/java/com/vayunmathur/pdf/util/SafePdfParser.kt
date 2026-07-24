@@ -8,20 +8,24 @@ import java.nio.ByteOrder
  * Decodes the compact little-endian primitive buffer produced by the native
  * renderer ([PdfNative.renderPage]) into a [SafePdfPage].
  *
- * Wire format v3 (must stay in sync with `pdf/rust/src/lib.rs` `wire` module):
+ * Wire format v5 (must stay in sync with `pdf/rust/src/wire.rs`):
  * ```
- * header: u32 MAGIC=0x50444657, u32 VERSION=3, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+ * header: u32 MAGIC=0x50444657, u32 VERSION=5, f32 pageWidth, f32 pageHeight, u32 primitiveCount
  *  Legacy v1 fallback: header is f32 W,H,u32 count (no magic)
- *  v2 fallback: VERSION=2 (same as v2 spec)
+ *  v2/v3/v4 fallbacks: same layout with fewer trailing per-primitive fields
  * per primitive: u8 tag, then payload
- *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth
- *   2 Fill:   u32 argb, u8 evenOdd, u16 nPts, [f32 x, f32 y]...
- *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]...
+ *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5)
+ *   2 Fill:   u32 argb, u8 evenOdd, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
+ *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
  *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes]
- *   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]...
+ *   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [...] (v4)
  *   6 ClipPop: empty
  *   7 GroupPush: u8 isolated, u8 knockout, f32 alpha, u8 blend
  *   8 GroupPop: empty
+ *   9 TextClipApply: empty (v4)
+ *   10 SoftMaskPush: u8 maskType (0 alpha, 1 luminosity) (v5)
+ *   11 SoftMaskContent: empty (v5)
+ *   12 SoftMaskPop: empty (v5)
  * ```
  * Pure function -> unit-testable with no Android dependencies beyond [Offset].
  * Enforces count guards to avoid OOM: max 50k primitives.
@@ -37,6 +41,9 @@ object SafePdfParser {
     private const val TAG_GROUP_PUSH = 7
     private const val TAG_GROUP_POP = 8
     private const val TAG_TEXT_CLIP_APPLY = 9
+    private const val TAG_SMASK_PUSH = 10
+    private const val TAG_SMASK_CONTENT = 11
+    private const val TAG_SMASK_POP = 12
 
     private const val PATHOP_MOVE = 0
     private const val PATHOP_LINE = 1
@@ -44,9 +51,10 @@ object SafePdfParser {
     private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 4
+    const val WIRE_VERSION: Int = 5
     private const val WIRE_VERSION_V2 = 2
     private const val WIRE_VERSION_V4 = 4
+    private const val WIRE_VERSION_V5 = 5
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -84,6 +92,7 @@ object SafePdfParser {
 
         val isV2OrV3 = wireVersion >= WIRE_VERSION_V2
         val isV4 = wireVersion >= WIRE_VERSION_V4
+        val isV5 = wireVersion >= WIRE_VERSION_V5
         // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
         // forward-compat parsing as long as the tags are known.
         if (wireVersion !in 1..WIRE_VERSION) {
@@ -130,6 +139,10 @@ object SafePdfParser {
                         if (buf.remaining() < 1) throw IllegalArgumentException("Text v4 renderMode truncated")
                         buf.get().toInt() and 0xFF
                     } else 0
+                    val blend = if (isV5) {
+                        if (buf.remaining() < 1) throw IllegalArgumentException("Text v5 blend truncated")
+                        BlendMode.fromCode(buf.get().toInt() and 0xFF)
+                    } else BlendMode.Normal
                     // For accurate search rect, use advance estimated from size*charCount but refined later with Paint.measureText in Kotlin UI.
                     val txt = String(strBytes, Charsets.UTF_8)
                     val adv = size * 0.5f * txt.length.coerceAtLeast(1)
@@ -143,6 +156,7 @@ object SafePdfParser {
                             strokeWidth = strokeWidth,
                             advance = adv,
                             renderMode = renderMode,
+                            blend = blend,
                         )
                     )
                 }
@@ -150,7 +164,12 @@ object SafePdfParser {
                 TAG_FILL -> {
                     val argb = buf.int
                     val evenOdd = buf.get().toInt() != 0
-                    primitives.add(PdfPrimitive.FillPath(argb, evenOdd, readPoints(buf)))
+                    val points = readPoints(buf)
+                    val blend = if (isV5) {
+                        if (buf.remaining() < 1) throw IllegalArgumentException("Fill v5 blend truncated")
+                        BlendMode.fromCode(buf.get().toInt() and 0xFF)
+                    } else BlendMode.Normal
+                    primitives.add(PdfPrimitive.FillPath(argb, evenOdd, points, blend))
                 }
 
                 TAG_STROKE -> {
@@ -172,8 +191,13 @@ object SafePdfParser {
                     } else {
                         cap = 0; join = 0; miter = 10f
                     }
+                    val points = readPoints(buf)
+                    val blend = if (isV5) {
+                        if (buf.remaining() < 1) throw IllegalArgumentException("Stroke v5 blend truncated")
+                        BlendMode.fromCode(buf.get().toInt() and 0xFF)
+                    } else BlendMode.Normal
                     primitives.add(
-                        PdfPrimitive.StrokePath(argb, strokeWidth, dash, dashPhase, readPoints(buf), cap, join, miter)
+                        PdfPrimitive.StrokePath(argb, strokeWidth, dash, dashPhase, points, cap, join, miter, blend)
                     )
                 }
 
@@ -239,6 +263,20 @@ object SafePdfParser {
 
                 TAG_GROUP_POP -> {
                     primitives.add(PdfPrimitive.GroupPop)
+                }
+
+                TAG_SMASK_PUSH -> {
+                    if (buf.remaining() < 1) throw IllegalArgumentException("SoftMaskPush truncated")
+                    val maskType = buf.get().toInt() and 0xFF
+                    primitives.add(PdfPrimitive.SoftMaskPush(maskType))
+                }
+
+                TAG_SMASK_CONTENT -> {
+                    primitives.add(PdfPrimitive.SoftMaskContent)
+                }
+
+                TAG_SMASK_POP -> {
+                    primitives.add(PdfPrimitive.SoftMaskPop)
                 }
 
                 else -> throw IllegalArgumentException("Unknown primitive tag: $tag wireVersion=$wireVersion width=$width")

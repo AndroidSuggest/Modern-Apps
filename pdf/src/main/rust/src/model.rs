@@ -16,11 +16,15 @@ pub(crate) enum Prim {
         /// PDF text rendering mode (Tr): 0 fill, 1 stroke, 2 fill+stroke, 3
         /// invisible, 4-6 = 0-2 plus add-to-clip, 7 clip-only. Serialized in v4.
         render_mode: u8,
+        /// Blend mode (from the graphics-state `/BM`). Serialized in v5.
+        blend: BlendMode,
     },
     Fill {
         argb: u32,
         even_odd: bool,
         pts: Vec<(f32, f32)>,
+        /// Blend mode (from the graphics-state `/BM`). Serialized in v5.
+        blend: BlendMode,
     },
     Stroke {
         argb: u32,
@@ -32,6 +36,8 @@ pub(crate) enum Prim {
         join: u8,
         miter: f32,
         pts: Vec<(f32, f32)>,
+        /// Blend mode (from the graphics-state `/BM`). Serialized in v5.
+        blend: BlendMode,
     },
     /// A raster image placed by mapping the unit square through `ctm` (PDF image
     /// space). `format`: 0 = raw RGBA8888 (`w*h*4` bytes), 1 = JPEG bytes.
@@ -65,6 +71,14 @@ pub(crate) enum Prim {
         blend: BlendMode,
     },
     GroupPop,
+    /// Begin an ExtGState soft-masked region (v5). `mask_type`: 0 = alpha,
+    /// 1 = luminosity. Primitives until `SoftMaskContent` are the masked
+    /// content; those from `SoftMaskContent` to `SoftMaskPop` are the mask.
+    SoftMaskPush { mask_type: u8 },
+    /// Marker: switch from masked content to mask drawing (v5).
+    SoftMaskContent,
+    /// End a soft-masked region; composite the mask onto the content (v5).
+    SoftMaskPop,
 }
 
 /// Path operation for bezier-retentive clip (Phase 5 fidelity).
@@ -111,6 +125,9 @@ pub(crate) fn scale_prim_alpha(prim: &mut Prim, alpha_mul: f64) {
         Prim::TextClipApply => {},
         Prim::GroupPush { alpha: ga, .. } => { let cur = *ga as f64; *ga = (cur * alpha_mul.clamp(0.0,1.0)) as f32; },
         Prim::GroupPop => {},
+        Prim::SoftMaskPush { .. } => {},
+        Prim::SoftMaskContent => {},
+        Prim::SoftMaskPop => {},
     }
 }
 

@@ -2081,6 +2081,66 @@ private fun StyleDialog(
     )
 }
 
+/** Map the renderer's [BlendMode] to a Compose blend mode (SrcOver = normal). */
+private fun BlendMode.toCompose(): androidx.compose.ui.graphics.BlendMode = when (this) {
+    BlendMode.Normal -> androidx.compose.ui.graphics.BlendMode.SrcOver
+    BlendMode.Multiply -> androidx.compose.ui.graphics.BlendMode.Multiply
+    BlendMode.Screen -> androidx.compose.ui.graphics.BlendMode.Screen
+    BlendMode.Overlay -> androidx.compose.ui.graphics.BlendMode.Overlay
+    BlendMode.Darken -> androidx.compose.ui.graphics.BlendMode.Darken
+    BlendMode.Lighten -> androidx.compose.ui.graphics.BlendMode.Lighten
+    BlendMode.ColorDodge -> androidx.compose.ui.graphics.BlendMode.ColorDodge
+    BlendMode.ColorBurn -> androidx.compose.ui.graphics.BlendMode.ColorBurn
+    BlendMode.HardLight -> androidx.compose.ui.graphics.BlendMode.Hardlight
+    BlendMode.SoftLight -> androidx.compose.ui.graphics.BlendMode.Softlight
+    BlendMode.Difference -> androidx.compose.ui.graphics.BlendMode.Difference
+    BlendMode.Exclusion -> androidx.compose.ui.graphics.BlendMode.Exclusion
+    BlendMode.Hue -> androidx.compose.ui.graphics.BlendMode.Hue
+    BlendMode.Saturation -> androidx.compose.ui.graphics.BlendMode.Saturation
+    BlendMode.Color -> androidx.compose.ui.graphics.BlendMode.Color
+    BlendMode.Luminosity -> androidx.compose.ui.graphics.BlendMode.Luminosity
+}
+
+/** The API 29+ [android.graphics.BlendMode] for a renderer [BlendMode]. */
+@androidx.annotation.RequiresApi(29)
+private fun BlendMode.toAndroid(): android.graphics.BlendMode = when (this) {
+    BlendMode.Normal -> android.graphics.BlendMode.SRC_OVER
+    BlendMode.Multiply -> android.graphics.BlendMode.MULTIPLY
+    BlendMode.Screen -> android.graphics.BlendMode.SCREEN
+    BlendMode.Overlay -> android.graphics.BlendMode.OVERLAY
+    BlendMode.Darken -> android.graphics.BlendMode.DARKEN
+    BlendMode.Lighten -> android.graphics.BlendMode.LIGHTEN
+    BlendMode.ColorDodge -> android.graphics.BlendMode.COLOR_DODGE
+    BlendMode.ColorBurn -> android.graphics.BlendMode.COLOR_BURN
+    BlendMode.HardLight -> android.graphics.BlendMode.HARD_LIGHT
+    BlendMode.SoftLight -> android.graphics.BlendMode.SOFT_LIGHT
+    BlendMode.Difference -> android.graphics.BlendMode.DIFFERENCE
+    BlendMode.Exclusion -> android.graphics.BlendMode.EXCLUSION
+    BlendMode.Hue -> android.graphics.BlendMode.HUE
+    BlendMode.Saturation -> android.graphics.BlendMode.SATURATION
+    BlendMode.Color -> android.graphics.BlendMode.COLOR
+    BlendMode.Luminosity -> android.graphics.BlendMode.LUMINOSITY
+}
+
+/** Pre-29 Porter-Duff fallback for the separable blend modes; null otherwise. */
+private fun BlendMode.toPorterDuffOrNull(): android.graphics.PorterDuff.Mode? = when (this) {
+    BlendMode.Multiply -> android.graphics.PorterDuff.Mode.MULTIPLY
+    BlendMode.Screen -> android.graphics.PorterDuff.Mode.SCREEN
+    BlendMode.Darken -> android.graphics.PorterDuff.Mode.DARKEN
+    BlendMode.Lighten -> android.graphics.PorterDuff.Mode.LIGHTEN
+    else -> null
+}
+
+/** Set (or clear) the blend mode on a reused native [android.graphics.Paint]. */
+private fun android.graphics.Paint.setBlend(blend: BlendMode) {
+    if (android.os.Build.VERSION.SDK_INT >= 29) {
+        blendMode = if (blend == BlendMode.Normal) null else blend.toAndroid()
+    } else {
+        xfermode = if (blend == BlendMode.Normal) null
+        else blend.toPorterDuffOrNull()?.let { android.graphics.PorterDuffXfermode(it) }
+    }
+}
+
 /**
  * Draw a page's primitives, mapping PDF page space (origin bottom-left) to the
  * canvas (origin top-left) with a uniform fit-to-width scale + Y-flip.
@@ -2109,6 +2169,11 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
     var saveCount = 0
     val clipPath = android.graphics.Path()
     var groupSaveCount = 0
+    // Active ExtGState soft-mask brackets. Each frame tracks how many mask
+    // layers were opened at the SoftMaskContent marker so SoftMaskPop can undo
+    // exactly the content layer + mask (+ luma) layers.
+    class SoftMaskFrame(val maskType: Int) { var maskLayers = 0 }
+    val softMaskStack = ArrayDeque<SoftMaskFrame>()
 
     fun clipOffsetList(pts: List<Offset>): List<Offset> = pts.map { map(it) }
 
@@ -2145,7 +2210,7 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
             is PdfPrimitive.FillPath -> {
                 val path = prim.points.toPath(::map) ?: continue
                 if (prim.evenOdd) path.fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
-                drawPath(path, Color(prim.color), style = Fill)
+                drawPath(path, Color(prim.color), style = Fill, blendMode = prim.blend.toCompose())
             }
 
             is PdfPrimitive.StrokePath -> {
@@ -2187,6 +2252,7 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                         join = join,
                         pathEffect = pathEffect,
                     ),
+                    blendMode = prim.blend.toCompose(),
                 )
             }
 
@@ -2205,11 +2271,13 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                         textStrokePaint.strokeWidth = (prim.strokeWidth * scale).coerceAtLeast(0.5f)
                         textStrokePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                         textStrokePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                        textStrokePaint.setBlend(prim.blend)
                         nativeCanvas.drawText(prim.text, origin.x, origin.y, textStrokePaint)
                     }
                     if (!isStrokeOnly) {
                         textPaint.color = prim.color
                         textPaint.textSize = ts
+                        textPaint.setBlend(prim.blend)
                         nativeCanvas.drawText(prim.text, origin.x, origin.y, textPaint)
                     }
                 }
@@ -2373,9 +2441,62 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                     saveCount--
                 }
             }
+
+            is PdfPrimitive.SoftMaskPush -> {
+                // Open the layer that will hold the masked content.
+                nativeCanvas.saveLayer(null, null)
+                softMaskStack.addLast(SoftMaskFrame(prim.maskType))
+            }
+
+            is PdfPrimitive.SoftMaskContent -> {
+                val frame = softMaskStack.lastOrNull()
+                if (frame != null) {
+                    // The mask layer composites onto the content layer with
+                    // DST_IN, so the content is kept only where the mask has alpha.
+                    val maskPaint = android.graphics.Paint()
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        maskPaint.blendMode = android.graphics.BlendMode.DST_IN
+                    } else {
+                        maskPaint.xfermode =
+                            android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+                    }
+                    nativeCanvas.saveLayer(null, maskPaint)
+                    frame.maskLayers = 1
+                    // Luminosity masks: convert the mask's luminance to alpha
+                    // (RGB -> 0, A = Rec.709 luma) as the luma layer composites down.
+                    if (frame.maskType == 1) {
+                        val lumaPaint = android.graphics.Paint()
+                        val lm = android.graphics.ColorMatrix(
+                            floatArrayOf(
+                                0f, 0f, 0f, 0f, 0f,
+                                0f, 0f, 0f, 0f, 0f,
+                                0f, 0f, 0f, 0f, 0f,
+                                0.2126f, 0.7152f, 0.0722f, 0f, 0f,
+                            )
+                        )
+                        lumaPaint.colorFilter = android.graphics.ColorMatrixColorFilter(lm)
+                        nativeCanvas.saveLayer(null, lumaPaint)
+                        frame.maskLayers = 2
+                    }
+                }
+            }
+
+            is PdfPrimitive.SoftMaskPop -> {
+                val frame = softMaskStack.removeLastOrNull()
+                if (frame != null) {
+                    // Restore the mask (+luma) layers, then the content layer.
+                    repeat(frame.maskLayers) { nativeCanvas.restore() }
+                    nativeCanvas.restore()
+                }
+            }
         }
     }
     // Ensure balanced restore
+    while (softMaskStack.isNotEmpty()) {
+        val frame = softMaskStack.removeLast()
+        repeat(frame.maskLayers) { nativeCanvas.restore() }
+        nativeCanvas.restore()
+    }
     while (groupSaveCount > 0) {
         nativeCanvas.restore()
         groupSaveCount--

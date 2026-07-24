@@ -4,15 +4,16 @@ Parses PDFs entirely in Rust with [`lopdf`] (no pdfium / no system PDF stack)
 and reduces each page to plain drawing primitives — text runs (with accurate
 advance), filled/stroked polygons, raster images (JPEG, JPEG2000 via openjp2,
 JBIG2 via hayro-jbig2, CCITTFax G3/G4 via the `fax` crate), clipping with bezier
-retention, axial/radial and mesh shadings, tiling/shading patterns, Type 3
-fonts, and transparency groups — for the "Open PDF (safe)" viewer. Built into
-`libpdf_render.so` and called from Kotlin via `PdfNative`.
+retention, axial/radial and mesh shadings, tiling/shading patterns (for both
+fills and strokes), Type 3 fonts, transparency groups, and ExtGState soft masks —
+for the "Open PDF (safe)" viewer. Built into `libpdf_render.so` and called from
+Kotlin via `PdfNative`.
 
 The point of "safe": all untrusted binary parsing happens in memory-safe Rust,
 and the JNI boundary only ever passes a flat little-endian buffer of geometry +
 UTF-8 text, so Kotlin never touches the raw PDF bytes.
 
-## Scope (v4 — implemented)
+## Scope (v5 — implemented)
 
 - **PDF functions** (`functions.rs`): a full evaluator for all four function
   types — Type 0 sampled (multilinear interpolation), Type 2 exponential, Type 3
@@ -42,13 +43,17 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
   axial, Type 3 radial (all using `PdfFunction`), and real mesh shadings —
   Type 4 free-form Gouraud (flag-driven triangle strips), Type 5 lattice
   (`/VerticesPerRow`), and Type 6/7 Coons/tensor patches subdivided from their
-  actual boundary Bézier curves. A byte-accurate `BitReader` handles arbitrary
-  `BitsPerCoordinate/Component/Flag`.
+  actual boundary Bézier curves. Radial (Type 3) shadings solve the true
+  circle-family parameter per pixel (honoring `/Extend` and non-negative radii),
+  rather than approximating them as axial. A byte-accurate `BitReader` handles
+  arbitrary `BitsPerCoordinate/Component/Flag`.
 - **Patterns** (`interpret.rs`): PatternType 2 (shading) patterns are rasterized
   with the pattern `/Matrix` and clipped to the fill region; PatternType 1
   (tiling) patterns replay their content stream tiled across the fill bbox
   (colored and uncolored `/PaintType`), bounded by `MAX_PATTERN_RECURSION` and a
-  per-pattern tile cap.
+  per-pattern tile cap. Both tiling and shading patterns are honored for
+  **strokes** too: the stroked path is converted to outline quads and the
+  pattern is painted within each segment (`paint_pattern_stroke`).
 - **Filters** (`filters.rs`): ASCIIHex, ASCII85, RunLength, LZW and Flate, both
   now with PNG (Predictor 10–15) **and TIFF (Predictor 2)** support; CCITT
   G3/G4; JBIG2 and DCT/JPX passthrough. Decode failures for JPX/CCITT/DCT no
@@ -56,11 +61,23 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
 - **Encryption** (`crypto.rs` + `decrypt.rs`): open and save with the Standard
   security handler — RC4-128 and **AES-128 (V4/R4)** and **AES-256 (V5/R6)**.
   `save_encrypted` defaults to AES-128.
-- **Wire format v4**: header `MAGIC 0x50444657 VERSION=4 f32 w,h u32 count`;
-  tags 1 Text, 2 Fill, 3 Stroke, 4 Image, 5 ClipPush (now carrying a
-  bezier-retentive path-ops section), 6 ClipPop, 7 GroupPush, 8 GroupPop,
-  9 TextClipApply. Text carries its render mode. `SafePdfParser.kt` parses v4 and
-  keeps v1/v2/v3 as fallbacks.
+- **Wire format v5**: header `MAGIC 0x50444657 VERSION=5 f32 w,h u32 count`;
+  tags 1 Text, 2 Fill, 3 Stroke, 4 Image, 5 ClipPush (with a bezier-retentive
+  path-ops section), 6 ClipPop, 7 GroupPush, 8 GroupPop, 9 TextClipApply,
+  10 SoftMaskPush, 11 SoftMaskContent, 12 SoftMaskPop. Text carries its render
+  mode; Text/Fill/Stroke each carry a per-primitive blend byte (v5).
+  `SafePdfParser.kt` parses v5 and keeps v1–v4 as fallbacks.
+- **Blend modes**: honored not just on transparency groups but on individual
+  fills, strokes and text (the graphics-state `/BM` travels with each Text/Fill/
+  Stroke primitive and is applied per-draw in Kotlin via `Paint.blendMode`
+  (API 29+) / Compose `BlendMode`, with a Porter-Duff fallback for the separable
+  modes on older devices).
+- **ExtGState soft masks** (`/SMask`): luminosity and alpha soft masks set via
+  `gs` are applied around the following Form XObject. Rust brackets the masked
+  content and the `/G` group content with SoftMaskPush/Content/Pop; Kotlin
+  composites them with nested `saveLayer`s — a `DST_IN` mask layer, plus a
+  luminance→alpha `ColorMatrix` layer for luminosity masks. `/SMask /None`
+  clears the mask.
 - **Kotlin drawing**: bezier clips via `cubicTo`; text-clip modes accumulate
   glyph outlines (`Paint.getTextPath`) and intersect them into the clip at the
   `TextClipApply` marker; blend modes use `Paint.blendMode` on API 29+ and fall
@@ -98,9 +115,10 @@ cd pdf/src/main/rust
 cargo test
 ```
 
-Covers PDF function evaluation (all four types), mesh-shading rasterization,
-Type 3 glyph emission, image colorspace conversion, LZW/TIFF predictors,
-RC4/AES-128/AES-256 save round-trips, CFF/Type 1 encoding recovery,
-case-sensitive search, and the wire round-trip.
+Covers PDF function evaluation (all four types), radial-shading parameterization,
+mesh-shading rasterization, stroke-outline quad generation, Type 3 glyph
+emission, image colorspace conversion, LZW/TIFF predictors, RC4/AES-128/AES-256
+save round-trips, CFF/Type 1 encoding recovery, case-sensitive search, and the
+wire round-trip (including per-primitive blend and soft-mask markers).
 
 [`lopdf`]: https://crates.io/crates/lopdf

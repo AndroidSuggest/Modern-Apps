@@ -1,7 +1,7 @@
 use crate::*;
 
     const WIRE_MAGIC: u32 = 0x50444657; // 'PDFW'
-    const WIRE_VERSION: u32 = 4;
+    const WIRE_VERSION: u32 = 5;
     #[allow(dead_code)]
     const WIRE_VERSION_V2: u32 = 2;
     const TAG_TEXT: u8 = 1;
@@ -13,20 +13,23 @@ use crate::*;
     const TAG_GROUP_PUSH: u8 = 7;
     const TAG_GROUP_POP: u8 = 8;
     const TAG_TEXT_CLIP_APPLY: u8 = 9;
+    const TAG_SMASK_PUSH: u8 = 10;
+    const TAG_SMASK_CONTENT: u8 = 11;
+    const TAG_SMASK_POP: u8 = 12;
 
     const PATHOP_MOVE: u8 = 0;
     const PATHOP_LINE: u8 = 1;
     const PATHOP_CUBIC: u8 = 2;
     const PATHOP_CLOSE: u8 = 3;
 
-    /// Serialize a page into a compact little-endian buffer v4:
+    /// Serialize a page into a compact little-endian buffer v5:
     ///
     /// ```text
-    /// header: u32 MAGIC=0x50444657, u32 VERSION=4, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+    /// header: u32 MAGIC=0x50444657, u32 VERSION=5, f32 pageWidth, f32 pageHeight, u32 primitiveCount
     /// per primitive: u8 tag, then payload
-    ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode  (renderMode is v4)
-    ///   2 Fill:   u32 argb, u8 evenOdd, u16 nPts, [f32 x, f32 y]...
-    ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]...
+    ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5)
+    ///   2 Fill:   u32 argb, u8 evenOdd, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
+    ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
     ///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
     ///   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [u8 kind, coords]...  (path-ops section is v4)
     ///              path-op kinds: 0 Move(2f32) 1 Line(2f32) 2 Cubic(6f32) 3 Close(0)
@@ -34,7 +37,10 @@ use crate::*;
     ///   7 GroupPush: u8 isolated, u8 knockout, f32 alpha, u8 blend
     ///   8 GroupPop: empty
     ///   9 TextClipApply: empty (v4)
-    /// v1 legacy (no magic), v2 and v3 remain backward compatible for cached pages.
+    ///   10 SoftMaskPush: u8 maskType (0 alpha, 1 luminosity) (v5)
+    ///   11 SoftMaskContent: empty (v5)
+    ///   12 SoftMaskPop: empty (v5)
+    /// v1 legacy (no magic), v2/v3/v4 remain backward compatible for cached pages.
     /// ```
     pub fn serialize(page: &PageData) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -45,7 +51,7 @@ use crate::*;
         buf.extend_from_slice(&(page.prims.len() as u32).to_le_bytes());
         for prim in &page.prims {
             match prim {
-                Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance: _, render_mode, .. } => {
+                Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance: _, render_mode, blend } => {
                     buf.push(TAG_TEXT);
                     buf.extend_from_slice(&x.to_le_bytes());
                     buf.extend_from_slice(&y.to_le_bytes());
@@ -65,14 +71,16 @@ use crate::*;
                         buf.extend_from_slice(&0f32.to_le_bytes());
                     }
                     buf.push(*render_mode); // v4
+                    buf.push(*blend as u8); // v5
                 }
-                Prim::Fill { argb, even_odd, pts } => {
+                Prim::Fill { argb, even_odd, pts, blend } => {
                     buf.push(TAG_FILL);
                     buf.extend_from_slice(&argb.to_le_bytes());
                     buf.push(if *even_odd { 1 } else { 0 });
                     write_points(&mut buf, pts);
+                    buf.push(*blend as u8); // v5
                 }
-                Prim::Stroke { argb, width, dash, dash_phase, cap, join, miter, pts } => {
+                Prim::Stroke { argb, width, dash, dash_phase, cap, join, miter, pts, blend } => {
                     buf.push(TAG_STROKE);
                     buf.extend_from_slice(&argb.to_le_bytes());
                     buf.extend_from_slice(&width.to_le_bytes());
@@ -86,6 +94,7 @@ use crate::*;
                     buf.push(*join);
                     buf.extend_from_slice(&miter.to_le_bytes());
                     write_points(&mut buf, pts);
+                    buf.push(*blend as u8); // v5
                 }
                 Prim::Image { ctm, w, h, format, data, alpha: _ } => {
                     buf.push(TAG_IMAGE);
@@ -119,6 +128,16 @@ use crate::*;
                 }
                 Prim::GroupPop => {
                     buf.push(TAG_GROUP_POP);
+                }
+                Prim::SoftMaskPush { mask_type } => {
+                    buf.push(TAG_SMASK_PUSH);
+                    buf.push(*mask_type);
+                }
+                Prim::SoftMaskContent => {
+                    buf.push(TAG_SMASK_CONTENT);
+                }
+                Prim::SoftMaskPop => {
+                    buf.push(TAG_SMASK_POP);
                 }
             }
         }
@@ -219,11 +238,13 @@ use crate::*;
                         stroke_width: Some(0.5),
                         advance: 12.0,
                         render_mode: 0,
+                        blend: BlendMode::Multiply,
                     },
                     Prim::Fill {
                         argb: 0xFFAABBCC,
                         even_odd: true,
                         pts: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+                        blend: BlendMode::Screen,
                     },
                     Prim::Stroke {
                         argb: 0xFF010203,
@@ -234,6 +255,7 @@ use crate::*;
                         join: 1,
                         miter: 10.0,
                         pts: vec![(3.0, 4.0), (5.0, 6.0)],
+                        blend: BlendMode::Normal,
                     },
                     Prim::ClipPush {
                         even_odd: false,
@@ -246,6 +268,9 @@ use crate::*;
                     },
                     Prim::ClipPop,
                     Prim::TextClipApply,
+                    Prim::SoftMaskPush { mask_type: 1 },
+                    Prim::SoftMaskContent,
+                    Prim::SoftMaskPop,
                 ],
             };
             let buf = serialize(&page);
@@ -254,7 +279,7 @@ use crate::*;
             assert_eq!(r.u32(), WIRE_VERSION);
             assert_eq!(r.f32(), 612.0);
             assert_eq!(r.f32(), 792.0);
-            assert_eq!(r.u32(), 6);
+            assert_eq!(r.u32(), 9);
 
             assert_eq!(r.u8(), TAG_TEXT);
             assert_eq!(r.f32(), 10.0);
@@ -269,12 +294,14 @@ use crate::*;
             assert_eq!(r.u32(), 0xFF445566);
             assert!((r.f32() - 0.5).abs() < 1e-6);
             assert_eq!(r.u8(), 0); // render_mode (v4)
+            assert_eq!(r.u8(), BlendMode::Multiply as u8); // blend (v5)
 
             assert_eq!(r.u8(), TAG_FILL);
             assert_eq!(r.u32(), 0xFFAABBCC);
             assert_eq!(r.u8(), 1); // even-odd
             assert_eq!(r.u16(), 3);
             r.pos += 3 * 8;
+            assert_eq!(r.u8(), BlendMode::Screen as u8); // blend (v5)
 
             assert_eq!(r.u8(), TAG_STROKE);
             assert_eq!(r.u32(), 0xFF010203);
@@ -288,6 +315,7 @@ use crate::*;
             assert!((r.f32() - 10.0).abs() < 1e-4);
             assert_eq!(r.u16(), 2);
             r.pos += 2*8;
+            assert_eq!(r.u8(), BlendMode::Normal as u8); // blend (v5)
 
             assert_eq!(r.u8(), TAG_CLIP_PUSH);
             assert_eq!(r.u8(), 0); // evenOdd false
@@ -304,5 +332,9 @@ use crate::*;
 
             assert_eq!(r.u8(), TAG_CLIP_POP);
             assert_eq!(r.u8(), TAG_TEXT_CLIP_APPLY);
+            assert_eq!(r.u8(), TAG_SMASK_PUSH);
+            assert_eq!(r.u8(), 1); // mask_type luminosity
+            assert_eq!(r.u8(), TAG_SMASK_CONTENT);
+            assert_eq!(r.u8(), TAG_SMASK_POP);
         }
     }

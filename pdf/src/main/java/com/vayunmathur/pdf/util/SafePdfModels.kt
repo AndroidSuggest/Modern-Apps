@@ -37,6 +37,7 @@ sealed interface PdfPrimitive {
         val strokeWidth: Float = 0f,
         val advance: Float = size * 0.5f * text.length,
         val renderMode: Int = 0,
+        val blend: BlendMode = BlendMode.Normal,
     ) : PdfPrimitive
 
     /** A filled polygon (one subpath). */
@@ -44,6 +45,7 @@ sealed interface PdfPrimitive {
         val color: Int,
         val evenOdd: Boolean,
         val points: List<Offset>,
+        val blend: BlendMode = BlendMode.Normal,
     ) : PdfPrimitive
 
     /** A stroked polyline (one subpath). [dash] is empty for a solid line. */
@@ -56,6 +58,7 @@ sealed interface PdfPrimitive {
         val cap: Int = 0,
         val join: Int = 0,
         val miter: Float = 10f,
+        val blend: BlendMode = BlendMode.Normal,
     ) : PdfPrimitive
 
     /**
@@ -100,6 +103,20 @@ sealed interface PdfPrimitive {
 
     /** Pop transparency group - restores layer */
     data object GroupPop : PdfPrimitive
+
+    /**
+     * Begin an ExtGState soft-masked region (v5). [maskType] is 0 for an alpha
+     * mask or 1 for a luminosity mask. The primitives up to [SoftMaskContent]
+     * are the masked content; the primitives from [SoftMaskContent] to
+     * [SoftMaskPop] are the mask itself.
+     */
+    data class SoftMaskPush(val maskType: Int) : PdfPrimitive
+
+    /** Marker: switch from drawing the masked content to drawing the mask (v5). */
+    data object SoftMaskContent : PdfPrimitive
+
+    /** End a soft-masked region: composite the mask onto the content (v5). */
+    data object SoftMaskPop : PdfPrimitive
 }
 
 /** A bezier-retentive clip path operation (wire v4), in page space. */

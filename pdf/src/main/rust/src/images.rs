@@ -734,6 +734,51 @@ pub(crate) fn extract_inline_image(doc: &Document, stream: &lopdf::Stream, _fill
     Some(ImageData { w, h, format: 0, data: rgba })
 }
 
+/// Radial (Type 3) shading parameter at a point in shading space.
+///
+/// The gradient is defined by the family of circles C(s) centered at
+/// c0 + s·(c1−c0) with radius r0 + s·(r1−r0), for `coords` = [x0 y0 r0 x1 y1 r1].
+/// For a point (fx,fy) this returns the largest `s` such that the point lies on
+/// C(s) with a non-negative radius, honoring the two `/Extend` flags (`e0` past
+/// s<0, `e1` past s>1). Solving |p − c(s)| = r(s) yields the quadratic
+/// a·s² − 2b·s + c = 0. Returns `None` when no circle covers the point (the
+/// caller leaves that pixel transparent).
+pub(crate) fn radial_shading_param(coords: &[f64], e0: bool, e1: bool, fx: f64, fy: f64) -> Option<f64> {
+    if coords.len() < 6 { return None; }
+    let (x0, y0, r0) = (coords[0], coords[1], coords[2]);
+    let (x1, y1, r1) = (coords[3], coords[4], coords[5]);
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let dr = r1 - r0;
+    let px = fx - x0;
+    let py = fy - y0;
+    let a = dx*dx + dy*dy - dr*dr;
+    let b = px*dx + py*dy + r0*dr;
+    let c = px*px + py*py - r0*r0;
+
+    let mut best: Option<f64> = None;
+    let mut consider = |s: f64| {
+        // The interpolated circle radius must be non-negative.
+        if r0 + s*dr < 0.0 { return; }
+        // Respect the shading domain unless extended past an end.
+        let in_range = (s >= 0.0 && s <= 1.0) || (s < 0.0 && e0) || (s > 1.0 && e1);
+        if !in_range { return; }
+        best = Some(match best { Some(cur) if cur >= s => cur, _ => s });
+    };
+    if a.abs() < 1e-9 {
+        // Degenerate to a linear equation: -2b·s + c = 0.
+        if b.abs() > 1e-12 { consider(c / (2.0*b)); }
+    } else {
+        let disc = b*b - a*c;
+        if disc >= 0.0 {
+            let sq = disc.sqrt();
+            consider((b + sq)/a);
+            consider((b - sq)/a);
+        }
+    }
+    best
+}
+
 pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: &Mat, cs_resources: &HashMap<Vec<u8>, ObjectId>, size: u32) -> Option<(Mat, u32, u32, Vec<u8>)> {
     // A shading may be a plain dictionary (Type 1-3) or a stream (Type 4-7,
     // whose mesh data lives in the stream body).
@@ -808,18 +853,21 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                     }
                 } else { 0.0 }
             } else {
-                // Radial: coords [x0 y0 r0 x1 y1 r1]; compute t by interpolating distance between circles approx
+                // Radial (Type 3): solve for the gradient parameter at (fx,fy).
                 if coords.len()>=6 {
-                    let x0=coords[0]; let y0=coords[1]; let _r0=coords[2];
-                    let x1=coords[3]; let y1=coords[4]; let _r1=coords[5];
-                    // Simplified: project onto line between centers
-                    let dx = x1 - x0;
-                    let dy = y1 - y0;
-                    let len2 = dx*dx+dy*dy;
-                    let t = if len2<1e-12 { 0.0 } else { ((fx - x0)*dx + (fy - y0)*dy)/len2 };
-                    t
+                    radial_shading_param(
+                        &coords,
+                        extend.get(0).copied().unwrap_or(true),
+                        extend.get(1).copied().unwrap_or(true),
+                        fx, fy,
+                    ).unwrap_or(f64::NAN)
                 } else { 0.0 }
             };
+
+            // Radial pixels not covered by any circle stay transparent.
+            if t.is_nan() {
+                continue;
+            }
 
             // Extend handling
             let t_clamped = if t<0.0 {
@@ -1243,4 +1291,43 @@ pub(crate) fn read_smask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u3
         }
     }
     Some(alpha)
+}
+
+#[cfg(test)]
+mod radial_tests {
+    use super::radial_shading_param;
+
+    // A concentric radial gradient (same center, r0=0..r1=50) must vary with
+    // distance from the center — the old axial approximation collapsed it to a
+    // single value because the centers coincide.
+    #[test]
+    fn concentric_radial_varies_with_radius() {
+        let coords = [50.0, 50.0, 0.0, 50.0, 50.0, 50.0];
+        let center = radial_shading_param(&coords, true, true, 50.0, 50.0).unwrap();
+        let mid = radial_shading_param(&coords, true, true, 75.0, 50.0).unwrap();
+        let edge = radial_shading_param(&coords, true, true, 100.0, 50.0).unwrap();
+        assert!((center - 0.0).abs() < 1e-6, "center s={center}");
+        assert!((mid - 0.5).abs() < 1e-6, "mid s={mid}");
+        assert!((edge - 1.0).abs() < 1e-6, "edge s={edge}");
+        assert!(center < mid && mid < edge);
+    }
+
+    // Outside the outer circle with Extend[1]=false there is no covering circle.
+    #[test]
+    fn outside_without_extend_is_none() {
+        let coords = [50.0, 50.0, 0.0, 50.0, 50.0, 50.0];
+        assert!(radial_shading_param(&coords, false, false, 200.0, 50.0).is_none());
+        // With Extend[1]=true the far point still maps (s>1 allowed).
+        let s = radial_shading_param(&coords, false, true, 200.0, 50.0).unwrap();
+        assert!(s > 1.0, "expected extended s>1, got {s}");
+    }
+
+    // Offset circles (different centers) still resolve on the axis.
+    #[test]
+    fn offset_circles_resolve_on_axis() {
+        let coords = [0.0, 0.0, 10.0, 100.0, 0.0, 10.0];
+        // On the segment between centers, near the start circle boundary.
+        let s = radial_shading_param(&coords, true, true, 10.0, 0.0).unwrap();
+        assert!(s >= 0.0 && s <= 1.0, "s={s}");
+    }
 }
