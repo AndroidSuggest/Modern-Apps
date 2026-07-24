@@ -10,4 +10,6 @@
     <string name="hide_maxed_elements">Masquer les éléments ayant atteint leur limite maximale</string>
     <string name="recipes">Recettes (%1$d)</string>
     <string name="alchemy_icon_content_description">Icône Alchimie %1$d</string>
+    <string name="item_details">Détails de l\'objet</string>
+    <string name="locked">+ %1$d recettes verrouillées.</string>
 </resources>
