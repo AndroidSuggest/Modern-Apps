@@ -36,7 +36,6 @@ metadataScreenshots {
 
 dependencies {
     implementation(libs.androidx.compose.foundation)
-    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.fragment.ktx)
     implementation(project(":library:map"))
     implementation(libs.coil.compose)
@@ -45,7 +44,7 @@ dependencies {
     // On-device face detection (SCRFD), face embedding (MobileFaceNet) and
     // subject segmentation (U²-Net) run on ncnn via the generalist AAR (BSD-3,
     // no ONNX Runtime / Play Services / MediaPipe). OCR uses it via :library:ocr.
-    implementation("com.github.vayun-mathur:ncnn-android:1.1.0")
+    implementation(libs.ncnn.android)
 
     implementRoom(libs)
     implementation(project(":library:room"))

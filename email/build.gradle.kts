@@ -49,10 +49,6 @@ dependencies {
     implementation(libs.jakarta.mail)
     implementation(libs.jakarta.activation)
     implementation(libs.androidx.browser)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.json)
     // Room
     implementation(libs.androidx.room.runtime)
@@ -64,5 +60,4 @@ dependencies {
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
     implementation(project(":library:widgets"))
-    implementation(libs.coil.compose)
 }

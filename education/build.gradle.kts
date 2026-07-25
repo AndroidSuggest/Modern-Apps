@@ -18,9 +18,6 @@ dependencies {
     implementRoom(libs)
     implementation(project(":library:room"))
 
-    implementation(libs.coil.compose)
-    implementation("androidx.compose.material:material-icons-extended")
-
     // Video playback (Khan/YouTube streaming via NewPipe + media3), like :youpipe.
     implementation(project(":youpipe:extractor"))
     implementation(libs.androidx.media3.exoplayer)

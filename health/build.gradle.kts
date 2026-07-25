@@ -20,8 +20,6 @@ dependencies {
 
     implementation(libs.androidx.work.runtime.ktx)
 
-    implementation(libs.fhir.model)
-
     // room
     implementRoom(libs)
     implementation(project(":library:room"))

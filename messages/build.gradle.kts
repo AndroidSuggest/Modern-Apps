@@ -147,9 +147,6 @@ androidComponents {
 }
 
 dependencies {
-    // External Libraries
-    implementation(libs.libphonenumber)
-
     // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -176,14 +173,13 @@ dependencies {
     // CameraX — built-in capture fallback when no system camera app
     // handles ACTION_IMAGE_CAPTURE (see ui/CameraCaptureScreen.kt).
     implementation(libs.androidx.camera.core)
-    implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
     // Signal protocol crypto (Double Ratchet, sealed sender, pre-keys, etc.).
     // Also provides constant-time X25519 (org.signal.libsignal.protocol.ecc.Curve)
     // used by the WhatsApp Noise handshake — no Bouncy Castle needed.
-    implementation("org.signal:libsignal-android:0.86.5")
+    implementation(libs.libsignal.android)
     // Classic pure-Java Signal protocol (X3DH) for the WhatsApp bridge. libsignal-android 0.86
     // removed X3DH (PQXDH-only), which WhatsApp companion sessions require. This artifact has no
     // native lib and a different package (org.whispersystems.libsignal.*), so it coexists with

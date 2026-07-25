@@ -8,7 +8,6 @@ quickjs = "1.0.5"
 brotli = "0.1.2"
 # Build & Core Language
 agp = "9.4.0-alpha04"
-fhirModel = "1.0.0-beta02"
 flatgeobuf = "3.29.0"
 kotlin = "2.4.0"
 kotlinGradlePlugin = "2.3.20"
@@ -66,9 +65,6 @@ browser = "1.9.0"
 biometric = "1.4.0-alpha07"
 glance = "1.3.0-alpha02"
 connectClient = "1.2.0-alpha04"
-healthServicesClient = "1.1.0-rc02"
-wearTiles = "1.6.1"
-wearProtolayout = "1.4.1"
 cryptographyCore = "0.6.0"
 libphonenumber = "9.0.34"
 material3AdaptiveNavigationSuite = "1.5.0-alpha23"
@@ -86,6 +82,11 @@ onnxruntimeAndroid = "1.27.0"
 jakartaMail = "2.0.3"
 angusActivation = "2.0.2"
 jakartaActivationApi = "2.1.3"
+stockfishLibrary = "1.1.0"
+ncnnAndroid = "1.1.0"
+kxml2 = "2.3.0"
+libsignalAndroid = "0.86.5"
+signalProtocolJava = "2.8.1"
 
 [libraries]
 # AndroidX Core & Lifecycle
@@ -114,7 +115,6 @@ google-jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "jsr
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufJavalite" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
 brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
-javax-annotation-api = { module = "javax.annotation:javax.annotation-api", version = "1.3.2" }
 
 # Instrumented screenshot tests (metadata generation)
 junit = { module = "junit:junit", version.ref = "junit" }
@@ -131,8 +131,6 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-wear-compose-material = { group = "androidx.wear.compose", name = "compose-material", version.ref = "wearComposeMaterial" }
 androidx-wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearComposeMaterial" }
-androidx-compose-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata" }
-
 # Navigation
 androidx-navigation3-runtime = { group = "androidx.navigation3", name = "navigation3-runtime", version.ref = "navigation3" }
 androidx-navigation3-ui = { group = "androidx.navigation3", name = "navigation3-ui", version.ref = "navigation3" }
@@ -150,21 +148,16 @@ androidx-media3-datasource-okhttp = { group = "androidx.media3", name = "media3-
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
 coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coilCompose" }
 coil-video = { module = "io.coil-kt:coil-video", version.ref = "coilCompose" }
-fhir-model = { module = "com.google.fhir:fhir-model", version.ref = "fhirModel" }
 flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlinGradlePlugin" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
-kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 
 # Maps
 maplibre-compose = { module = "org.maplibre.compose:maplibre-compose", version.ref = "maplibre" }
 spatialk-geojson = { module = "org.maplibre.spatialk:geojson", version.ref = "spatialk" }
 
-# On-device OCR
-
-# On-device OCR via ONNX Runtime (MIT, FOSS, no Play Services / no ML Kit). Runs
-# the PaddleOCR PP-OCR mobile detection + recognition models shipped as assets.
+# On-device AI
 onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
 
 # App Widgets (Glance)
@@ -191,22 +184,11 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 
 # Specialized Utilities
 androidx-connect-client = { module = "androidx.health.connect:connect-client", version.ref = "connectClient" }
-# Wear OS Health Services — direct, OEM-calibrated on-watch measurements. Not
-# Google Play / GMS; safe to keep isolated to the watch module.
-androidx-health-services-client = { module = "androidx.health:health-services-client", version.ref = "healthServicesClient" }
-# Wear OS Tiles + ProtoLayout — quick-glance workout controls surface. Wear-only
-# platform components; no Google Play / GMS.
-androidx-wear-tiles = { module = "androidx.wear.tiles:tiles", version.ref = "wearTiles" }
-androidx-wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wearProtolayout" }
-androidx-wear-protolayout-material = { module = "androidx.wear.protolayout:protolayout-material", version.ref = "wearProtolayout" }
-androidx-wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wearProtolayout" }
-androidx-concurrent-futures = { module = "androidx.concurrent:concurrent-futures", version = "1.3.0" }
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptographyCore" }
 cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptographyCore" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 jakarta-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "jakartaMail" }
-jakarta-mail-api = { module = "jakarta.mail:jakarta.mail-api", version = "2.1.3" }
 jakarta-activation = { module = "org.eclipse.angus:angus-activation", version.ref = "angusActivation" }
 jakarta-activation-api = { module = "jakarta.activation:jakarta.activation-api", version.ref = "jakartaActivationApi" }
 androidx-autofill = { group = "androidx.autofill", name = "autofill", version.ref = "autofill" }
@@ -223,12 +205,15 @@ androidx-ink-authoring = { group = "androidx.ink", name = "ink-authoring", versi
 androidx-ink-brush = { group = "androidx.ink", name = "ink-brush", version.ref = "ink" }
 androidx-ink-strokes = { group = "androidx.ink", name = "ink-strokes", version.ref = "ink" }
 androidx-ink-rendering = { group = "androidx.ink", name = "ink-rendering", version.ref = "ink" }
-androidx-ink-geometry = { group = "androidx.ink", name = "ink-geometry", version.ref = "ink" }
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 keepassjava2-dom = { module = "org.linguafranca.pwdb:KeePassJava2-dom", version.ref = "keepassJava2" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-bouncycastle-pkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+stockfish-library = { module = "com.github.vayun-mathur:Stockfish-Library", version.ref = "stockfishLibrary" }
+ncnn-android = { module = "com.github.vayun-mathur:ncnn-android", version.ref = "ncnnAndroid" }
+kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
+libsignal-android = { module = "org.signal:libsignal-android", version.ref = "libsignalAndroid" }
+signal-protocol-java = { module = "org.whispersystems:signal-protocol-java", version.ref = "signalProtocolJava" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

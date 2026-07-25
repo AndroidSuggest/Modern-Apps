@@ -11,5 +11,5 @@ dependencies {
     // Pure-Kotlin coordinate types (Position / BoundingBox) shared with the apps.
     api(libs.spatialk.geojson)
 
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
 }

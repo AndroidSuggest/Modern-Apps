@@ -10,5 +10,4 @@ dependencies {
     api(libs.androidx.ink.brush)
     api(libs.androidx.ink.strokes)
     api(libs.androidx.ink.rendering)
-    api(libs.androidx.ink.geometry)
 }

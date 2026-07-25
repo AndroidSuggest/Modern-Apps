@@ -19,5 +19,4 @@ dependencies {
     implementation(project(":library:room"))
     implementation(project(":library:ink"))
     implementation(libs.coil.compose)
-    implementation("androidx.compose.material:material-icons-extended")
 }

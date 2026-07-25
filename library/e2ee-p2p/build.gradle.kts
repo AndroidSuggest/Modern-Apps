@@ -15,5 +15,4 @@ dependencies {
     implementation(libs.bouncycastle)
 
     testImplementation(libs.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
 }

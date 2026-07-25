@@ -21,7 +21,7 @@ plugins {
 dependencies {
     // Classic X3DH Signal protocol. Transitively pulls curve25519-java:0.5.0
     // and protobuf-javalite:3.10.0, both bundled into the shaded jar.
-    implementation("org.whispersystems:signal-protocol-java:2.8.1")
+    implementation(libs.signal.protocol.java)
 }
 
 tasks.named<ShadowJar>("shadowJar") {

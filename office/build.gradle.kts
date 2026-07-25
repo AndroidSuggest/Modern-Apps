@@ -23,7 +23,7 @@ dependencies {
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.websockets)
 
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
     // Provides a real XmlPullParser implementation for JVM unit tests (Android's is a stub).
-    testImplementation("net.sf.kxml:kxml2:2.3.0")
+    testImplementation(libs.kxml2)
 }

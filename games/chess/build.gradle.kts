@@ -18,6 +18,6 @@ android {
 
 dependencies {
     implementation(project(":sdk:games"))
-    implementation("com.github.vayun-mathur:Stockfish-Library:1.1.0")
-    testImplementation("junit:junit:4.13.2")
+    implementation(libs.stockfish.library)
+    testImplementation(libs.junit)
 }

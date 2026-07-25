@@ -53,8 +53,5 @@ dependencies {
     // ktor client (custom WebDAV methods + JSON)
     implementation(project(":library:network"))
 
-    // Material icons (Default.* + AutoMirrored)
-    implementation("androidx.compose.material:material-icons-extended")
-
     testImplementation(libs.junit)
 }
