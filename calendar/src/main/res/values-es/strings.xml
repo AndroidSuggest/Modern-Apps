@@ -41,9 +41,13 @@
     <string name="every">Cada</string>
     <string name="label_title">Título</string>
     <string name="label_description">Descripción</string>
-    <string name="label_location">Lugar</string>
+    <string name="label_location">Ubicación</string>
     <string name="select_calendar">Seleccionar calendario</string>
     <string name="local_account">(Local)</string>
     <string name="until">Hasta</string>
     <string name="new_local_calendar">Nuevo calendario local</string>
+    <string name="calendar_widget_description">Resumen de los próximos eventos — toca para abrir el calendario</string>
+    <string name="add_reminder">Añadir recordatorio</string>
+    <string name="twelve_am">12:00</string>
+    <string name="twelve_pm">00:00</string>
 </resources>
