@@ -382,6 +382,14 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _photoSessionActive = MutableStateFlow(false)
     val photoSessionActive = _photoSessionActive.asStateFlow()
 
+    /**
+     * True while the live preview is bound with the CameraX NIGHT extension (plain
+     * PHOTO mode, low light). When set, capture goes straight through the already
+     * extension-enabled session instead of the momentary rebind path.
+     */
+    private val _nightPreviewActive = MutableStateFlow(false)
+    val nightPreviewActive = _nightPreviewActive.asStateFlow()
+
     // AE/AF lock (long-press-to-lock on the preview).
     private val _focusLocked = MutableStateFlow(false)
     val focusLocked = _focusLocked.asStateFlow()
@@ -724,6 +732,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun switchCameraMode(newMode: CameraMode) {
+        // A new mode starts with a clean night-detection slate (teardown no longer
+        // resets it, since it also runs on night<->normal preview rebinds).
+        if (newMode != _cameraMode.value) resetNightModeDetection()
         // Slo-Mo is back-camera only; enforce it when entering Slo-Mo.
         if (newMode == CameraMode.SLOW_MO) {
             if (_lensFacing.value != CameraSelector.LENS_FACING_BACK) {
@@ -1071,6 +1082,87 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Binds the CameraX NIGHT extension for the live PREVIEW (plain PHOTO mode):
+     * Preview + ImageCapture, and — when the vendor extension reports it supports
+     * concurrent analysis via [ExtensionsManager.isImageAnalysisSupported] — an
+     * ImageAnalysis stream too, so [PhotoAnalyzer] keeps sampling luminance and
+     * night mode can auto-disengage when the scene brightens (otherwise the moon
+     * button is the manual exit). Falls back to the normal photo session if the
+     * extension isn't available or can't be bound.
+     */
+    suspend fun setupNightPreviewSession(): Boolean {
+        return try {
+            val provider = ProcessCameraProvider.awaitInstance(app)
+            cameraProvider = provider
+            val mgr = getExtensionsManager(provider) ?: return setupPhotoSession()
+            val baseSelector = CameraSelector.Builder()
+                .requireLensFacing(_lensFacing.value)
+                .build()
+            if (!mgr.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)) {
+                return setupPhotoSession()
+            }
+            provider.unbindAll()
+            val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
+            val analysisSupported = try {
+                mgr.isImageAnalysisSupported(baseSelector, ExtensionMode.NIGHT)
+            } catch (e: Exception) {
+                Log.w("NightPreview", "isImageAnalysisSupported query failed", e)
+                false
+            }
+
+            val preview = Preview.Builder().build()
+            preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+
+            val owner = ManualLifecycleOwner()
+            owner.start()
+            sessionLifecycleOwner = owner
+
+            val capture = ImageCapture.Builder()
+                .setFlashMode(getImageCaptureFlashMode())
+                .setTargetRotation(targetRotation)
+                .build()
+            imageCapture = capture
+
+            // Extensions manage AE/AF/multi-frame internally, so we bind default
+            // resolutions (no max-res 3-stream ladder) to stay within the combos
+            // the vendor extension guarantees.
+            fun bind(withAnalysis: Boolean): Camera {
+                return if (withAnalysis) {
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                    imageAnalysis = analysis
+                    provider.bindToLifecycle(owner, nightSelector, preview, capture, analysis)
+                } else {
+                    imageAnalysis = null
+                    provider.bindToLifecycle(owner, nightSelector, preview, capture)
+                }
+            }
+
+            boundCamera = try {
+                bind(withAnalysis = analysisSupported)
+            } catch (e: Exception) {
+                if (!analysisSupported) throw e
+                Log.w("NightPreview", "Night+analysis bind failed; retrying preview+capture only", e)
+                provider.unbindAll()
+                bind(withAnalysis = false)
+            }
+
+            boundCamera?.cameraInfo?.zoomState?.value?.let {
+                updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
+                _zoomRatio.value = it.zoomRatio
+            }
+            _nightPreviewActive.value = true
+            _photoSessionActive.value = true
+            true
+        } catch (e: Exception) {
+            Log.e("NightPreview", "Failed to set up night preview session; using normal session", e)
+            _nightPreviewActive.value = false
+            setupPhotoSession()
+        }
+    }
+
+    /**
      * Binds a lean Preview + capped-resolution ImageAnalysis session for the
      * panorama and photo-sphere modes. These sweep off the analysis stream and
      * never use ImageCapture. The analysis stream is capped at ~3 MP: the pano
@@ -1414,11 +1506,15 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         cameraProvider = null
         _surfaceRequest.value = null
         _photoSessionActive.value = false
+        _nightPreviewActive.value = false
         _highSpeedActive.value = false
         _videoSessionActive.value = false
         _videoSnapshotSupported.value = false
         _focusLocked.value = false
-        resetNightModeDetection()
+        // Note: night-mode detection is intentionally NOT reset here. Teardown
+        // runs on every night<->normal preview rebind, and resetting would clear
+        // nightModeActive mid-swap and thrash the session. Explicit resets live in
+        // switchCameraMode / flipCamera instead.
         resetManualControls()
         clearMotionFrames()
     }
@@ -1583,6 +1679,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     private fun capturePhoto() {
         if (imageCapture == null) return
         when {
+            // Preview is already bound with the NIGHT extension: the vendor pipeline
+            // processes the shot, so a plain single capture yields the night image.
+            nightModeActive.value && isExposureAuto() && _nightPreviewActive.value -> captureSinglePhoto()
             // Multi-frame night capture only when night mode is active and exposure is fully auto.
             nightModeActive.value && isExposureAuto() -> captureNightPhoto()
             // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a caller).

@@ -275,6 +275,15 @@ fun CameraScreen(
     }
     val highSpeedActive by viewModel.highSpeedActive.collectAsState()
     val photoSessionActive by viewModel.photoSessionActive.collectAsState()
+    // Whether the CameraX NIGHT extension is available on the current lens (PHOTO only).
+    var nightExtAvailable by remember { mutableStateOf(false) }
+    LaunchedEffect(lensFacing, cameraMode) {
+        nightExtAvailable = if (cameraMode == CameraMode.PHOTO) viewModel.isNightExtensionAvailable() else false
+    }
+    // Bind the NIGHT-extension preview when low light is auto-detected in PHOTO mode
+    // and the extension is available; otherwise the normal photo session is used.
+    val useNightPreview = sessionKind == SessionKind.PHOTO && cameraMode == CameraMode.PHOTO &&
+        nightModeActive && nightExtAvailable
     val surfaceRequest by viewModel.surfaceRequest.collectAsState()
     val coordinateTransformer = remember { MutableCoordinateTransformer() }
     val availableZoomLevels by viewModel.availableZoomLevels.collectAsState()
@@ -413,7 +422,7 @@ fun CameraScreen(
     // backgrounded and rebound on resume. Without this the ManualLifecycleOwner stays RESUMED,
     // the OS reclaims the camera while we're away, and the preview comes back frozen.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(lensFacing, sessionKind, lifecycleOwner) {
+    LaunchedEffect(lensFacing, sessionKind, useNightPreview, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             viewModel.teardownSession()
             delay(250)
@@ -421,7 +430,9 @@ fun CameraScreen(
                 SessionKind.HIGH_SPEED -> viewModel.setupHighSpeedSession()
                 SessionKind.VIDEO -> viewModel.setupVideoSession()
                 SessionKind.PANORAMA -> viewModel.setupPanoramaSession()
-                SessionKind.PHOTO -> viewModel.setupPhotoSession()
+                SessionKind.PHOTO ->
+                    if (useNightPreview) viewModel.setupNightPreviewSession()
+                    else viewModel.setupPhotoSession()
             }
             try {
                 awaitCancellation()
