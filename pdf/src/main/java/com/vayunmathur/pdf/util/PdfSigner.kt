@@ -1,33 +1,18 @@
 package com.vayunmathur.pdf.util
 
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
-import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
-import org.bouncycastle.cms.CMSProcessableByteArray
-import org.bouncycastle.cms.CMSSignedDataGenerator
-import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder
-import org.bouncycastle.jce.provider.BouncyCastleProvider
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
-import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder
-import org.bouncycastle.asn1.x500.X500Name
 import java.io.ByteArrayOutputStream
-import java.math.BigInteger
-import java.security.KeyPairGenerator
-import java.security.PrivateKey
-import java.security.cert.X509Certificate
-import java.util.Date
 
 /**
  * Produces a cryptographically signed PDF (detached PKCS#7 / adbe.pkcs7.detached)
- * from a signature-ready PDF built by [PdfNative.prepareSignature]. Uses a
- * freshly generated self-signed RSA certificate. The signed PDF validates its
- * own byte-range digest; trust must be established out of band (self-signed).
+ * from a signature-ready PDF built by [PdfNative.prepareSignature]. The CMS
+ * signature (fresh self-signed RSA-2048 cert, SHA-256 with RSA) is generated in
+ * the native Rust core ([PdfNative.signCms]) — no Bouncy Castle. The signed PDF
+ * validates its own byte-range digest; trust must be established out of band
+ * (self-signed).
  */
 object PdfSigner {
     /** Size (bytes) of the /Contents placeholder; must fit the CMS signature. */
     const val CONTENTS_BYTES = 8192
-
-    private val bc = BouncyCastleProvider()
 
     /** Patch [prepared] (from prepareSignature) with a real detached signature. */
     fun sign(prepared: ByteArray, name: String): ByteArray? {
@@ -57,14 +42,14 @@ object PdfSigner {
         val padded = br.padEnd(slot, ' ').toByteArray(Charsets.US_ASCII)
         System.arraycopy(padded, 0, buf, brOpen + 1, slot)
 
-        // Build the detached CMS over the two byte ranges.
+        // Concatenate the two signed byte ranges.
         val content = ByteArrayOutputStream(a + c).apply {
             write(buf, 0, a)
             write(buf, b, c)
         }.toByteArray()
 
-        val (key, cert) = generateKeyAndCert(name)
-        val cms = buildDetachedCms(content, key, cert) ?: return null
+        // Detached CMS built natively (RustCrypto), replacing Bouncy Castle.
+        val cms = PdfNative.signCms(content, name.ifBlank { "PDF Signer" }) ?: return null
 
         val hex = toHex(cms)
         val hexSlot = cClose - (cOpen + 1)
@@ -72,37 +57,6 @@ object PdfSigner {
         val hexPadded = hex.padEnd(hexSlot, '0').toByteArray(Charsets.US_ASCII)
         System.arraycopy(hexPadded, 0, buf, cOpen + 1, hexSlot)
         return buf
-    }
-
-    private fun buildDetachedCms(
-        content: ByteArray,
-        key: PrivateKey,
-        cert: X509Certificate,
-    ): ByteArray? = runCatching {
-        val signer = JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(key)
-        val digestProvider = JcaDigestCalculatorProviderBuilder().setProvider(bc).build()
-        val gen = CMSSignedDataGenerator()
-        gen.addSignerInfoGenerator(
-            JcaSignerInfoGeneratorBuilder(digestProvider).build(signer, cert)
-        )
-        gen.addCertificate(JcaX509CertificateHolder(cert))
-        val processable = CMSProcessableByteArray(content)
-        gen.generate(processable, false).encoded // detached
-    }.getOrNull()
-
-    private fun generateKeyAndCert(name: String): Pair<PrivateKey, X509Certificate> {
-        val kpg = KeyPairGenerator.getInstance("RSA")
-        kpg.initialize(2048)
-        val kp = kpg.generateKeyPair()
-        val now = Date()
-        val end = Date(now.time + 3650L * 24 * 60 * 60 * 1000)
-        val subject = X500Name("CN=${name.ifBlank { "PDF Signer" }}")
-        val serial = BigInteger.valueOf(System.currentTimeMillis())
-        val builder = JcaX509v3CertificateBuilder(subject, serial, now, end, subject, kp.public)
-        val certSigner = JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(kp.private)
-        val holder = builder.build(certSigner)
-        val cert = JcaX509CertificateConverter().setProvider(bc).getCertificate(holder)
-        return kp.private to cert
     }
 
     private fun toHex(bytes: ByteArray): String {
