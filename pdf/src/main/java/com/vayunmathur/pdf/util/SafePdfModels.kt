@@ -40,11 +40,15 @@ sealed interface PdfPrimitive {
         val blend: BlendMode = BlendMode.Normal,
     ) : PdfPrimitive
 
-    /** A filled polygon (one subpath). */
+    /**
+     * A filled region made of one or more closed [contours]. Interior contours
+     * (glyph counters / holes) are cut out by the even-odd or nonzero winding
+     * rule when all contours are filled as a single path.
+     */
     data class FillPath(
         val color: Int,
         val evenOdd: Boolean,
-        val points: List<Offset>,
+        val contours: List<List<Offset>>,
         val blend: BlendMode = BlendMode.Normal,
     ) : PdfPrimitive
 

@@ -13,6 +13,11 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.pdf"
     }
+    androidResources {
+        // ncnn-android is generalist; pdf only uses PpOcr (OCR), so strip the
+        // portrait (erdnet) model it never loads.
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:erdnet.*"
+    }
     // The Rust build drops <abi>/libpdf_render.so under this dir; register it as
     // a jniLibs source so AGP packages the native lib.
     sourceSets["main"].jniLibs.directories.add(layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath)

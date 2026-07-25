@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
-    <string name="safe_pdf_error">Ce PDF n\'a pas pu être ouvert par la visionneuse sécurisée. Il est peut-être chiffré ou utilise des fonctionnalités non prises en charge.</string>
     <string name="open_pdf">Ouvrir le PDF</string>
     <string name="share_pdf">Partager le PDF</string>
     <string name="unsupported_version">Cette application nécessite soit Android 15, soit une version entièrement mise à jour des services Google Play. Si vous ne pouvez satisfaire à aucune de ces conditions, votre appareil n\'est malheureusement pas pris en charge.</string>

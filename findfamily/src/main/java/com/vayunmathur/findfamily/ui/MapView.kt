@@ -49,14 +49,10 @@ import com.vayunmathur.findfamily.util.FindFamilyViewModel
 import com.vayunmathur.library.ui.invisibleClickable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.maplibre.compose.camera.CameraPosition
-import org.maplibre.compose.camera.CameraState
-import org.maplibre.compose.map.GestureOptions
-import org.maplibre.compose.map.MapOptions
-import org.maplibre.compose.map.MaplibreMap
-import org.maplibre.compose.map.OrnamentOptions
-import org.maplibre.compose.style.BaseStyle
-import org.maplibre.compose.util.ClickResult
+import com.vayunmathur.library.map.CameraPosition
+import com.vayunmathur.library.map.CameraState
+import com.vayunmathur.library.map.RasterMap
+import com.vayunmathur.library.map.TileSource
 import org.maplibre.spatialk.geojson.Position
 import kotlin.io.encoding.Base64
 import kotlin.math.abs
@@ -106,24 +102,11 @@ fun MapView(
                 )
             }
         }) {
-            MaplibreMap(
-                Modifier,
-                BaseStyle.Uri("https://tiles.openfreemap.org/styles/liberty"),
-                camera,
-                0f..20f,
-                options = MapOptions(
-                    gestureOptions = GestureOptions(
-                        isRotateEnabled = false,
-                        isScrollEnabled = true,
-                        isTiltEnabled = false,
-                        isZoomEnabled = true
-                    ),
-                    ornamentOptions = OrnamentOptions.AllDisabled
-                ),
-                onMapClick = { _, _ ->
-                    onMapClick()
-                    ClickResult.Pass
-                },
+            RasterMap(
+                cameraState = camera,
+                tileSource = TileSource.CartoVoyager,
+                zoomRange = 0f..20f,
+                onMapClick = { onMapClick() },
             )
 
             if (initialized) {

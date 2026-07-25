@@ -69,18 +69,14 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
-import org.maplibre.compose.camera.CameraPosition
-import org.maplibre.compose.camera.rememberCameraState
-import org.maplibre.compose.expressions.dsl.const
-import org.maplibre.compose.layers.RasterLayer
-import org.maplibre.compose.map.GestureOptions
-import org.maplibre.compose.map.MapOptions
-import org.maplibre.compose.map.MaplibreMap
-import org.maplibre.compose.map.OrnamentOptions
-import org.maplibre.compose.map.RenderOptions
-import org.maplibre.compose.sources.rememberImageSource
-import org.maplibre.compose.style.BaseStyle
-import org.maplibre.compose.util.PositionQuad
+import com.vayunmathur.library.map.CameraPosition
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.ImageOverlay
+import com.vayunmathur.library.map.MapOptions
+import com.vayunmathur.library.map.OrnamentOptions
+import com.vayunmathur.library.map.RasterMap
+import com.vayunmathur.library.map.TileSource
+import com.vayunmathur.library.map.rememberCameraState
 import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 
@@ -103,27 +99,6 @@ private const val RASTER_MAX_DIM = 512
  * region's time would be misleading. The initial camera zoom is 7 (≈ regional).
  */
 private const val MIN_ZOOM_FOR_REGION_TZ = 7.0
-
-/** Muted, keyless raster basemap. Isolated here so the provider is swappable. */
-private const val BASEMAP_TILE_URL =
-    "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
-
-private fun rasterStyleJson(): String = """
-{
-  "version": 8,
-  "sources": {
-    "carto-light": {
-      "type": "raster",
-      "tiles": ["$BASEMAP_TILE_URL"],
-      "tileSize": 256,
-      "attribution": "© OpenStreetMap © CARTO"
-    }
-  },
-  "layers": [
-    { "id": "carto-light", "type": "raster", "source": "carto-light" }
-  ]
-}
-""".trimIndent()
 
 /** A decoded + geolocated weather field ready to colorize into a bitmap. */
 private data class DecodedRegion(
@@ -168,7 +143,7 @@ fun WeatherMapPage(
 
     // north-up, no tilt so the axis-aligned image quad stays correct.
     val camera = rememberCameraState(
-        CameraPosition(target = Position(longitude, latitude), zoom = 7.0, bearing = 0.0, tilt = 0.0),
+        CameraPosition(target = Position(longitude, latitude), zoom = 7.0),
     )
 
     var metadata by remember { mutableStateOf<OmMapMetadata?>(null) }
@@ -176,9 +151,8 @@ fun WeatherMapPage(
     var userScrubbed by remember { mutableStateOf(false) }
     var visibleBbox by remember { mutableStateOf<BoundingBox?>(null) }
     var overlay by remember { mutableStateOf<ImageBitmap?>(null) }
-    var overlayQuad by remember { mutableStateOf<PositionQuad?>(null) }
+    var overlayBounds by remember { mutableStateOf<BoundingBox?>(null) }
     var loading by remember { mutableStateOf(false) }
-
     // The viewer's own zone: the primary time label is always shown in it.
     val userZone = remember { TimeZone.currentSystemDefault() }
     // The zone of the map center, resolved only when sufficiently zoomed in.
@@ -189,8 +163,6 @@ fun WeatherMapPage(
     // Cache decoded regions by (rounded bbox, variable, valid_time) so panning
     // back and forth (or re-selecting a measure/time) doesn't re-fetch.
     val cache = remember { mutableMapOf<String, DecodedRegion>() }
-
-    val styleJson = remember { rasterStyleJson() }
 
     val supportedMetrics = remember(metadata) {
         metadata?.let { m -> mapMetrics.filter { m.supports(it) } } ?: mapMetrics
@@ -306,7 +278,7 @@ fun WeatherMapPage(
 
                 if (region != null) {
                     overlay = colorizeToBitmap(region.values, region.width, region.height, req.metric.colorRamp)
-                    overlayQuad = quadFor(region.bbox)
+                    overlayBounds = region.bbox
                 }
             }
     }
@@ -315,28 +287,20 @@ fun WeatherMapPage(
     val valueFormatter = metricValueFormatter(selectedMetric, tempUnit, windUnit, pressureUnit)
 
     Box(modifier = Modifier.fillMaxSize()) {
-        MaplibreMap(
+        RasterMap(
             modifier = Modifier.fillMaxSize(),
-            baseStyle = BaseStyle.Json(styleJson),
             cameraState = camera,
+            tileSource = TileSource.CartoPositron,
             options = MapOptions(
-                RenderOptions(),
                 // Lock rotation/tilt so the north-up image quad stays aligned.
-                GestureOptions.RotationLocked,
-                OrnamentOptions.AllDisabled,
+                gestureOptions = GestureOptions.RotationLocked,
+                // Weather shows its own attribution in the bottom panel.
+                ornamentOptions = OrnamentOptions.AllDisabled,
             ),
-        ) {
-            val bitmap = overlay
-            val quad = overlayQuad
-            if (bitmap != null && quad != null) {
-                val source = rememberImageSource(position = quad, bitmap = bitmap)
-                RasterLayer(
-                    id = "weather-om",
-                    source = source,
-                    opacity = const(0.7f),
-                )
-            }
-        }
+            imageOverlay = overlay?.let { bmp ->
+                overlayBounds?.let { bounds -> ImageOverlay(bmp, bounds, 0.7f) }
+            },
+        )
 
         // Top bar: back + title + measure selector.
         Column(
@@ -484,14 +448,6 @@ private fun Legend(metric: WeatherMetric, minLabel: String, maxLabel: String) {
         }
     }
 }
-
-/** Axis-aligned [PositionQuad] over [bbox] corners (north-up map). */
-private fun quadFor(bbox: BoundingBox): PositionQuad = PositionQuad(
-    topLeft = Position(bbox.west, bbox.north),
-    topRight = Position(bbox.east, bbox.north),
-    bottomRight = Position(bbox.east, bbox.south),
-    bottomLeft = Position(bbox.west, bbox.south),
-)
 
 /** Overlay raster size for [bbox], longest side [RASTER_MAX_DIM], aspect-matched. */
 private fun rasterSize(bbox: BoundingBox): Pair<Int, Int> {

@@ -8,14 +8,14 @@ import java.nio.ByteOrder
  * Decodes the compact little-endian primitive buffer produced by the native
  * renderer ([PdfNative.renderPage]) into a [SafePdfPage].
  *
- * Wire format v5 (must stay in sync with `pdf/rust/src/wire.rs`):
+ * Wire format v6 (must stay in sync with `pdf/rust/src/wire.rs`):
  * ```
- * header: u32 MAGIC=0x50444657, u32 VERSION=5, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+ * header: u32 MAGIC=0x50444657, u32 VERSION=6, f32 pageWidth, f32 pageHeight, u32 primitiveCount
  *  Legacy v1 fallback: header is f32 W,H,u32 count (no magic)
- *  v2/v3/v4 fallbacks: same layout with fewer trailing per-primitive fields
+ *  v2..v5 fallbacks: same layout with fewer trailing per-primitive fields
  * per primitive: u8 tag, then payload
  *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5)
- *   2 Fill:   u32 argb, u8 evenOdd, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
+ *   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
  *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
  *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes]
  *   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [...] (v4)
@@ -51,10 +51,11 @@ object SafePdfParser {
     private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 5
+    const val WIRE_VERSION: Int = 6
     private const val WIRE_VERSION_V2 = 2
     private const val WIRE_VERSION_V4 = 4
     private const val WIRE_VERSION_V5 = 5
+    private const val WIRE_VERSION_V6 = 6
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -93,6 +94,7 @@ object SafePdfParser {
         val isV2OrV3 = wireVersion >= WIRE_VERSION_V2
         val isV4 = wireVersion >= WIRE_VERSION_V4
         val isV5 = wireVersion >= WIRE_VERSION_V5
+        val isV6 = wireVersion >= WIRE_VERSION_V6
         // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
         // forward-compat parsing as long as the tags are known.
         if (wireVersion !in 1..WIRE_VERSION) {
@@ -164,12 +166,19 @@ object SafePdfParser {
                 TAG_FILL -> {
                     val argb = buf.int
                     val evenOdd = buf.get().toInt() != 0
-                    val points = readPoints(buf)
+                    val contours = if (isV6) {
+                        val n = buf.short.toInt() and 0xFFFF
+                        if (n > MAX_PRIMITIVES) throw IllegalArgumentException("Fill contour count out of bounds $n")
+                        (0 until n).map { readPoints(buf) }
+                    } else {
+                        // v5 and earlier: a single polygon per fill.
+                        listOf(readPoints(buf))
+                    }
                     val blend = if (isV5) {
                         if (buf.remaining() < 1) throw IllegalArgumentException("Fill v5 blend truncated")
                         BlendMode.fromCode(buf.get().toInt() and 0xFF)
                     } else BlendMode.Normal
-                    primitives.add(PdfPrimitive.FillPath(argb, evenOdd, points, blend))
+                    primitives.add(PdfPrimitive.FillPath(argb, evenOdd, contours, blend))
                 }
 
                 TAG_STROKE -> {

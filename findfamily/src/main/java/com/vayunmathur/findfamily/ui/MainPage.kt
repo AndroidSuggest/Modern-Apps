@@ -54,7 +54,6 @@ import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.ToggleFloatingActionButton
 import com.vayunmathur.library.ui.TopAppBar
-import com.vayunmathur.library.ui.TopAppBarDefaults
 import com.vayunmathur.library.ui.dynamicLightColorScheme
 import com.vayunmathur.library.ui.rememberBottomSheetScaffoldState
 import com.vayunmathur.library.ui.rememberSliderState
@@ -229,10 +228,9 @@ fun MainPage(
         sheetSwipeEnabled = !historyMode,
         sheetDragHandle = if (historyMode) null else { { BottomSheetDefaults.DragHandle() } },
         sheetContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        // Transparent app bar so the map shows through behind it.
+        // Default (solid) app bar so the map stays cut off beneath it while panning.
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 title = {
                     if (historyMode) {
                         val historyUser by ffViewModel.userByIdState(selectedUserId!!)

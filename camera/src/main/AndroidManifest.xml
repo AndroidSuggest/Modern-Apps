@@ -5,7 +5,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- MediaPipe's tasks-vision AAR merges INTERNET; vision runs on-device, so strip it. -->
+    <!-- Camera vision runs fully on-device; strip any INTERNET/network permission a
+         transitive dependency might merge in. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 

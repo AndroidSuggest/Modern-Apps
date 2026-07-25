@@ -17,5 +17,4 @@
     <string name="pdf_save">Salvesta</string>
     <string name="pdf_save_as_copy">Salvesta koopiana</string>
     <string name="safe_pdf_viewer_title">PDF-failide kuvaja (ohutult)</string>
-    <string name="safe_pdf_error">Selle PDF-faili avamine ohutus režiimis polnud võimalik. Ta võib olla krüptitud või on kasutusel mõni mittetoetatud funktsionaalsus.</string>
 </resources>

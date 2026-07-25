@@ -18,6 +18,9 @@ android {
         // compressed; store it uncompressed so ONNX Runtime can read it directly
         // from assets. (SigLIP2 semantic search now lives in OpenAssistant.)
         noCompress += "onnx"
+        // ncnn-android is generalist; photos only uses PpOcr (OCR), so strip the
+        // portrait (erdnet) model it never loads.
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:erdnet.*"
     }
     packaging {
         jniLibs {
@@ -39,14 +42,14 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.fragment.ktx)
-    implementation(libs.maplibre.compose)
+    implementation(project(":library:map"))
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     implementation(libs.androidx.exifinterface)
     // Face detection (BlazeFace), face embedding (EdgeFace), and subject
     // segmentation (U²-Net) all run on ONNX Runtime (MIT, FOSS, no Play
-    // Services / no MediaPipe). The native .so ships via :library:ocr, but this
-    // module needs its own compile dependency to call the ORT API directly.
+    // Services / no MediaPipe). Photos owns this dependency directly (it is no
+    // longer pulled in transitively via :library:ocr, which now uses ncnn).
     implementation(libs.onnxruntime.android)
 
     implementRoom(libs)

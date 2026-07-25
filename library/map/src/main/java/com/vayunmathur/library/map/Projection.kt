@@ -1,0 +1,51 @@
+package com.vayunmathur.library.map
+
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.dp
+import org.maplibre.spatialk.geojson.BoundingBox
+import org.maplibre.spatialk.geojson.Position
+
+/**
+ * Immutable snapshot of the camera (center + zoom) and viewport used to map
+ * between geographic [Position]s and on-screen [DpOffset]s. Mirrors the subset
+ * of maplibre-compose's projection API the apps call, so migration is an
+ * import swap.
+ *
+ * The map center projects to the viewport center; offsets are density
+ * independent (`Dp`) and measured from the viewport's top-left corner.
+ */
+class Projection internal constructor(
+    private val center: Position,
+    private val zoom: Double,
+    private val widthDp: Float,
+    private val heightDp: Float,
+) {
+    /** Screen location (from the viewport top-left) of a geographic [position]. */
+    fun screenLocationFromPosition(position: Position): DpOffset {
+        val c = Mercator.project(center.longitude, center.latitude, zoom)
+        val p = Mercator.project(position.longitude, position.latitude, zoom)
+        val x = (p.x - c.x) + widthDp / 2.0
+        val y = (p.y - c.y) + heightDp / 2.0
+        return DpOffset(x.toFloat().dp, y.toFloat().dp)
+    }
+
+    /** Geographic position under a screen [offset] (from the viewport top-left). */
+    fun positionFromScreenLocation(offset: DpOffset): Position {
+        val c = Mercator.project(center.longitude, center.latitude, zoom)
+        val x = c.x + (offset.x.value - widthDp / 2.0)
+        val y = c.y + (offset.y.value - heightDp / 2.0)
+        return Mercator.unproject(x, y, zoom)
+    }
+
+    /** The lon/lat bounds of the currently visible viewport. */
+    fun queryVisibleBoundingBox(): BoundingBox {
+        val topLeft = positionFromScreenLocation(DpOffset(0.dp, 0.dp))
+        val bottomRight = positionFromScreenLocation(DpOffset(widthDp.dp, heightDp.dp))
+        return BoundingBox(
+            west = topLeft.longitude,
+            south = bottomRight.latitude,
+            east = bottomRight.longitude,
+            north = topLeft.latitude,
+        )
+    }
+}

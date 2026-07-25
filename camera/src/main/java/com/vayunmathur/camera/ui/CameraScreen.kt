@@ -19,6 +19,7 @@ import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
@@ -401,10 +402,14 @@ fun CameraScreen(
     }
 
     // Owns the PORTRAIT bokeh segmenter so it is closed (and its mask recycled) on mode change.
-    // Also keyed on photoSessionActive so the analyzer re-attaches after a rebind.
-    DisposableEffect(cameraMode, photoSessionActive) {
+    // Keyed on photoSessionActive (re-attach after a rebind) and lensFacing (front/back changes
+    // the frame orientation/mirroring the analyzer must apply).
+    DisposableEffect(cameraMode, photoSessionActive, lensFacing) {
         val analyzer = if (cameraMode == CameraMode.PORTRAIT) {
-            BokehAnalyzer(context) { mask ->
+            BokehAnalyzer(
+                context,
+                isFrontFacing = lensFacing == CameraSelector.LENS_FACING_FRONT
+            ) { mask ->
                 maskBitmap?.recycle()
                 maskBitmap = mask
             }.also {

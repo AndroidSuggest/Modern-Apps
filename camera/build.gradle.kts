@@ -13,6 +13,12 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.camera"
     }
+    androidResources {
+        // The ncnn-android AAR is generalist and also bundles the PP-OCRv5 OCR
+        // models. Camera only uses PortraitSegmenter, so strip the OCR assets it
+        // never loads (~8MB) from this APK.
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:PP_OCRv5_mobile_*"
+    }
     // The Rust stitcher drops <abi>/libcamera_stitch.so under this dir; register
     // it as a jniLibs source so AGP packages the native lib.
     sourceSets["main"].jniLibs.directories.add(layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath)
@@ -122,5 +128,7 @@ dependencies {
     implementation(libs.androidx.camera.extensions)
     implementation(libs.androidx.exifinterface)
     implementation(libs.zxing.core)
-    implementation(libs.mediapipe.tasks.vision)
+    // On-device portrait segmentation via ncnn (Tencent, BSD-3, CPU-only). Forked
+    // and published as an AAR through JitPack, same pattern as Stockfish-Library.
+    implementation("com.github.vayun-mathur:ncnn-android:1.0.0")
 }

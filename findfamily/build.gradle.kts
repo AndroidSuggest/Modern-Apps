@@ -28,8 +28,8 @@ dependencies {
 
     implementation(libs.coil.compose)
 
-    // maplibre
-    implementation(libs.maplibre.compose)
+    // Compose-native raster map (replaces maplibre; keeps spatialk coordinate types).
+    implementation(project(":library:map"))
 
     // Public AOSP ranging API (android.ranging.*) is part of the framework
     // on Android 15+ — no third-party library needed. We intentionally avoid

@@ -43,10 +43,9 @@ import com.vayunmathur.photos.util.GalleryViewModel
 import com.vayunmathur.photos.util.ImageLoader
 import com.vayunmathur.photos.util.PhotoMapViewModel
 import kotlinx.coroutines.delay
-import org.maplibre.compose.camera.rememberCameraState
-import org.maplibre.compose.map.MaplibreMap
-import org.maplibre.compose.style.BaseStyle
-import org.maplibre.compose.util.ClickResult
+import com.vayunmathur.library.map.RasterMap
+import com.vayunmathur.library.map.TileSource
+import com.vayunmathur.library.map.rememberCameraState
 import org.maplibre.spatialk.geojson.Position
 
 // Helper class to hold cluster data
@@ -105,12 +104,11 @@ fun MapPage(
 
     Scaffold(bottomBar = { NavigationBar(Route.Map, backStack) }) { paddingValues ->
         Box(Modifier.padding(paddingValues).fillMaxSize()) {
-            MaplibreMap(
-                baseStyle = BaseStyle.Uri("https://tiles.openfreemap.org/styles/liberty"),
+            RasterMap(
                 cameraState = cameraState,
-                onMapClick = { _, _ ->
+                tileSource = TileSource.CartoVoyager,
+                onMapClick = {
                     selectedCluster = null
-                    ClickResult.Pass
                 },
                 onFrame = {
                     val projection = cameraState.projection

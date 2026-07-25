@@ -15,8 +15,8 @@ android {
         applicationId = "com.vayunmathur.weather"
     }
     // The Rust build drops <abi>/libweather_om.so under this dir; register it as
-    // a jniLibs source so AGP packages the native lib like the existing
-    // libmaplibre.so.
+    // a jniLibs source so AGP packages the native lib alongside the app's other
+    // native libraries.
     sourceSets["main"].jniLibs.directories.add(layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath)
 }
 
@@ -142,7 +142,7 @@ dependencies {
     implementation(project(":library:network"))
     implementation(project(":library:widgets"))
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.maplibre.compose)
+    implementation(project(":library:map"))
     implementRoom(libs)
     implementation(project(":library:room"))
 }
