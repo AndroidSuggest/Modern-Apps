@@ -1,11 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="close">Zamknij</string>
     <string name="app_name">Word Maker</string>
-    <string name="all_levels_completed">Wszystkie poziomy zostały ukończone</string>
-    <string name="stay_tuned_new_levels">Bądź na bieżąco – nowe poziomy już wkrótce w kolejnych aktualizacjach</string>
     <string name="error_parse_level">Nie udało się przetworzyć danych poziomu.</string>
-    <string name="error_load_level">Nie udało się wczytać danych poziomu: %1$s</string>
     <string name="level_number">Poziom %1$d</string>
     <string name="next_level">Następny poziom</string>
     <string name="bonus_words">Dodatkowe słowa</string>

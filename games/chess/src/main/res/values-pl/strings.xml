@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Szachy</string>
     <string name="start_new_game">Startuj nową grę</string>
@@ -15,7 +14,6 @@
     <string name="human_vs_ai">Człowiek vs AI</string>
     <string name="promote_pawn">Promuj pionka</string>
     <string name="check">Szach!</string>
-    <string name="checkmate_wins">Szachmat! %1$s wygrał.</string>
     <string name="white_wins">Szachmat! Biały wygrał.</string>
     <string name="black_wins">Szachmat! Czarny wygrał.</string>
     <string name="piece_white_king">Biały król</string>

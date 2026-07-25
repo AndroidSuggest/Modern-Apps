@@ -1,19 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Contacts</string>
     <string name="ok">Ok</string>
     <string name="contact_not_found">Contact non trouvé</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
     <string name="contact_photo_description">Photo de %1$s</string>
-    <string name="favorite">Favori</string>
     <string name="share_contact">Partager le contact</string>
     <string name="about_name">À propos de %1$s</string>
     <string name="birthday">Anniversaire</string>
     <string name="note">Note</string>
-    <string name="action">Action</string>
     <string name="favorites">Favoris</string>
-    <string name="user_profile">Profil de l\'utilisateur</string>
-    <string name="profiles">Profils</string>
     <string name="export_contacts">Exporter tous les contacts</string>
     <string name="on_device">Sur l\'appareil</string>
     <string name="add_contact">Ajouter un contact</string>
@@ -25,10 +20,7 @@
     <string name="nickname">Surnom</string>
     <string name="company">Entreprise</string>
     <string name="account">Compte</string>
-    <string name="choose_account">Sélectionner un compte</string>
     <string name="account_display_format">%1$s (%2$s)</string>
-    <string name="full_name_format">%1$s %2$s</string>
-    <string name="remove_birthday">Supprimer la date d\'anniversaire</string>
     <string name="add_phone">Ajouter un numéro de téléphone</string>
     <string name="remove_phone">Supprimer le numéro de téléphone</string>
     <string name="add_email">Ajouter une adresse e-mail</string>
@@ -36,7 +28,6 @@
     <string name="add_address">Ajouter une adresse</string>
     <string name="remove_address">Supprimer l\'adresse</string>
     <string name="add_date">Ajouter une date</string>
-    <string name="remove_date">Supprimer la date</string>
     <string name="dates">Dates</string>
     <string name="phone">Numéro de téléphone</string>
     <string name="email">E-mail</string>
@@ -73,7 +64,6 @@
     <string name="delete_contact_name_confirm">Voulez-vous vraiment supprimer \"%1$s\" ? Cette action est irréversible.</string>
     <string name="grant_contacts_permission">Veuillez autoriser l\'accès aux contacts</string>
     <string name="delete_selected_contacts_confirm">Voulez-vous vraiment supprimer les %1$d contacts sélectionnés ? Cette action est irréversible.</string>
-    <string name="search">Rechercher</string>
     <string name="search_contacts">Rechercher un contact</string>
     <string name="include_year">Inclure l\'année</string>
     <string name="system_default">Préférence système</string>
@@ -86,15 +76,9 @@
     <string name="select_group_hint">Sélectionnez un groupe pour afficher ses contacts</string>
     <string name="add_to_group">Ajouter au groupe</string>
     <string name="add_group">Ajouter un groupe</string>
-    <string name="group_name">Nom du groupe</string>
     <string name="enter_group_name">Entrer le nom du groupe</string>
     <string name="delete_group_title">Supprimer le groupe</string>
     <string name="delete_group_confirm">Voulez-vous vraiment supprimer ce groupe ? Les contacts du groupe ne seront pas supprimés.</string>
-    <string name="remove_from_group">Supprimer du groupe</string>
-    <string name="copied_to_clipboard">Copié dans le presse-papier</string>
-    <string name="select_account_to_import">Sélectionnez un compte dans lequel effectuer l\'importation :</string>
-    <string name="create_new_account">+ Créer un nouveau compte</string>
-    <string name="import_button">Importer</string>
     <string name="no_groups_found">Aucun groupe trouvé. Créez-en un dans l\'onglet Groupes.</string>
     <string name="contacts_count">%1$d contacts</string>
     <string name="done">Complété</string>

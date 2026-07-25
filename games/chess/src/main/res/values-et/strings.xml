@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Male</string>
     <string name="start_new_game">Alusta uut mängu</string>
@@ -14,7 +13,6 @@
     <string name="two_player_local">Kahe mängijaga kohalik mäng</string>
     <string name="human_vs_ai">Inimene tehisaru vastu</string>
     <string name="check">Tuli!</string>
-    <string name="checkmate_wins">Matt! %1$s võitis.</string>
     <string name="white_wins">Matt! Valged võitsid.</string>
     <string name="black_wins">Matt! Mustad võitsid.</string>
     <string name="piece_white_king">Valge kuningas</string>
@@ -37,7 +35,6 @@
     <string name="tab_puzzles">Pusled</string>
     <string name="learn_stage_number">%1$d. õppetund: %2$s</string>
     <string name="learn_lets_go">Alustame!</string>
-    <string name="learn_level">Tase %1$d/%2$d</string>
     <string name="learn_next">Järgmine</string>
     <string name="learn_retry">Proovi uuesti</string>
     <string name="learn_completed">See läks sul hästi!</string>
@@ -45,17 +42,14 @@
     <string name="puzzle_next">Järgmine pusle</string>
     <string name="puzzle_retry">Proovi uuesti</string>
     <string name="puzzle_show_solution">Näita lahendust</string>
-    <string name="puzzle_difficulty">Raskusaste</string>
     <string name="puzzle_difficulty_easy">Lihtne</string>
     <string name="puzzle_difficulty_medium">Keskmine</string>
     <string name="puzzle_difficulty_hard">Raske</string>
     <string name="puzzle_loading">Laadin puslet…</string>
     <string name="learn_next_stage">Järgmine: %1$s</string>
-    <string name="learn_stage_complete">Õppetund on tehtud!</string>
     <string name="learn_stage_complete_n">%1$d . õppetund on tehtud</string>
     <string name="learn_your_score">Sinu punktiskoor: %1$d</string>
     <string name="learn_back_to_menu">Tagasi menüüsse</string>
-    <string name="learn_back_to_lessons">Tagasi õppima</string>
     <string name="puzzle_rating">Hinnang: %1$d</string>
     <string name="puzzle_your_move">Sinu kord - leia parim käik.</string>
     <string name="puzzle_white_to_move">Valgete kord.</string>

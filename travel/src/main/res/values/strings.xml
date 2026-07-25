@@ -1,208 +1,352 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher. Noun -->
     <string name="app_name">Travel</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- AncillariesPage -->
-    <string name="add_extras">Add extras</string>
-    <string name="continue_to_passengers">Continue to passengers</string>
-    <string name="extras">Extras</string>
-    <!-- CancellationPage -->
-    <string name="cancel_this_order">Cancel this order?</string>
-    <string name="cancel_order">Cancel order</string>
-    <string name="order_cancelled">Order cancelled</string>
-    <string name="refund">Refund</string>
-    <!-- ChangePage -->
-    <string name="no_change_options_available">No change options available.</string>
-    <string name="change_options">Change options</string>
-    <string name="find_change_options">Find change options</string>
-    <string name="pick_a_flight_to_change">Pick a flight to change</string>
-    <string name="change_confirmed">Change confirmed</string>
-    <!-- Common -->
+    <!-- Generic confirmation. Noun/adjective short -->
     <string name="ok">OK</string>
+    <!-- Generic dismiss/cancel action. Verb -->
     <string name="cancel">Cancel</string>
-    <!-- ConfirmationPage -->
-    <string name="back_to_search">Back to search</string>
-    <string name="view_full_itinerary">View full itinerary</string>
-    <string name="view_my_trips">View my trips</string>
-    <string name="trip_not_found">Trip not found.</string>
-    <!-- FlightResultsPage -->
-    <string name="nonstop">Nonstop</string>
-    <string name="n_1_stop">≤ 1 stop</string>
-    <string name="refreshing_prices">Refreshing prices…</string>
-    <string name="any_stops">Any stops</string>
-    <!-- FlightSearchForm -->
-    <string name="add_another_flight">Add another flight</string>
-    <string name="search_flights">Search flights</string>
-    <string name="nonstop_only">Nonstop only</string>
-    <!-- HomePage -->
+    <!-- Generic clear action for recent searches. Verb -->
     <string name="clear">Clear</string>
-    <string name="see_all_trips">See all %1$s trips</string>
-    <!-- OfferReviewPage -->
-    <string name="review_flight">Review flight</string>
-    <string name="continue_action">Continue</string>
-    <!-- OrderDetailPage -->
-    <string name="change_flights">Change flights</string>
-    <string name="order">Order</string>
-    <!-- PassengersPage -->
-    <string name="issuing_country_e_g_gb">Issuing country (e.g. GB)</string>
-    <string name="none">None</string>
-    <string name="airline">Airline</string>
-    <string name="contacts">Contacts</string>
-    <string name="passengers">Passengers</string>
-    <string name="passport_number">Passport number</string>
-    <string name="continue_to_payment">Continue to payment</string>
-    <!-- PaymentPage -->
-    <string name="pay_now">Pay now</string>
-    <string name="hold_pay_later">Hold (pay later)</string>
-    <string name="total_due">Total due</string>
-    <string name="payment">Payment</string>
-    <!-- SeatMapPage -->
-    <string name="choose_seats">Choose seats</string>
-    <!-- SettingsPage -->
-    <string name="create_customer">Create customer</string>
-    <string name="phone_optional">Phone (optional)</string>
-    <string name="customers">Customers</string>
-    <string name="first_name">First name</string>
-    <string name="account_number">Account number</string>
-    <string name="frequent_flyer_numbers">Frequent flyer numbers</string>
-    <string name="last_name">Last name</string>
-    <string name="settings">Settings</string>
-    <string name="add_a_customer">Add a customer</string>
-    <string name="add_a_number">Add a number</string>
-    <string name="save">Save</string>
-    <!-- StaysPages -->
-    <string name="search_hotels">Search hotels</string>
-    <string name="programme">Programme</string>
-    <string name="from">from</string>
-    <string name="hotel_loyalty_optional">Hotel loyalty (optional)</string>
-    <string name="number">Number</string>
-    <string name="phone_e_g_14155550123">Phone (e.g. +14155550123)</string>
-    <string name="booking_confirmed">Booking confirmed</string>
-    <string name="given_name">Given name</string>
-    <string name="total">Total</string>
-    <string name="guest_details">Guest details</string>
+    <!-- Generic complete/finish action. Verb -->
     <string name="done">Done</string>
-    <string name="you_re_booked">You\'re booked!</string>
-    <string name="book_with_test_balance">Book with test balance</string>
-    <string name="booking">Booking…</string>
-    <string name="family_name">Family name</string>
-    <string name="hotels_in">Hotels in %1$s</string>
-    <string name="email">Email</string>
-    <!-- TripsPage -->
-    <string name="cancelled">Cancelled</string>
-    <string name="schedule_change">Schedule change</string>
+    <!-- Generic save action for forms. Verb -->
+    <string name="save">Save</string>
+
+    <!-- Section header: saved and remote trips grouped -->
     <string name="my_trips">My trips</string>
-    <string name="payment_due">Payment due</string>
-
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- AncillariesPage -->
-    <string name="seats">Seats: %1$s</string>
-    <string name="change">Change</string>
-    <string name="choose">Choose</string>
-    <string name="extra_bag">Extra bag</string>
-    <string name="each"> each</string>
-    <string name="for_passenger">For %1$s</string>
-    <string name="extra">Extra</string>
-    <!-- CancellationPage -->
-    <string name="refund_of_issued_to_your">Refund of %1$s issued to your %2$s.</string>
-    <string name="refunded_to_your">Refunded to your %1$s.</string>
-    <string name="cancelling">Cancelling…</string>
-    <string name="confirm_cancellation">Confirm cancellation</string>
-    <!-- ChangePage -->
-    <string name="extra_to_pay">Extra to pay: %1$s</string>
-    <string name="refund_1">Refund: %1$s</string>
-    <string name="no_price_change">No price change</string>
-    <string name="confirming">Confirming…</string>
-    <string name="select_confirm">Select &amp; confirm</string>
-    <!-- ConfirmationPage -->
-    <string name="on_hold">On hold</string>
-    <string name="held_pay_to_confirm">Held — pay to confirm</string>
-    <string name="paying">Paying…</string>
-    <string name="pay_now_with_test_balance">Pay now with test balance</string>
-    <!-- FlightResultsPage -->
-    <string name="still_searching_for_more_fares">Still searching for more fares…</string>
-    <string name="prices_held">Prices held · %1$s</string>
-    <!-- FlightSearchForm -->
-    <string name="flight_1">Flight %1$s</string>
-    <!-- OfferReviewPage -->
-    <string name="refreshing_price">Refreshing price…</string>
-    <string name="price_held">Price held · %1$s</string>
-    <string name="bags">Bags: %1$s</string>
-    <string name="offer_held_until_price_may_change">Offer held until %1$s · price may change</string>
-    <!-- PartialOffersPages -->
-    <string name="flight">Flight</string>
-    <!-- PassengersPage -->
-    <string name="email_optional">Email (optional)</string>
-    <string name="passport">Passport</string>
-    <string name="frequent_flyer_optional">Frequent flyer (optional)</string>
-    <string name="accompanying_infant">Accompanying infant</string>
-    <!-- PaymentPage -->
-    <string name="booking_for">Booking for %1$s</string>
-    <string name="hold_order_the_price_is_held_and_you_pay">Hold order — the price is held and you pay from your test balance before the deadline.</string>
-    <string name="place_hold">Place hold</string>
-    <string name="pay_with_test_balance">Pay with test balance</string>
-    <!-- SettingsPage -->
-    <string name="saved_numbers_are_sent_when_searching_so">Saved numbers are sent when searching so member fares and perks </string>
-    <string name="are_priced_and_are_pre_filled_when_booki">are priced, and are pre-filled when booking.</string>
-    <string name="no_frequent_flyer_numbers_saved_yet">No frequent-flyer numbers saved yet.</string>
-    <string name="bookings_are_associated_with_the_active">Bookings are associated with the active customer so orders and </string>
-    <string name="payments_can_be_tracked_per_person">payments can be tracked per person.</string>
-    <string name="no_customers_yet">No customers yet.</string>
-    <string name="active">Active</string>
-    <string name="use">Use</string>
-    <!-- StaysPages -->
-    <string name="hotel">Hotel</string>
-    <string name="room">Room</string>
-    <string name="room_only">Room only</string>
-    <string name="sandbox_booking_paid_with_a_duffel_test">Sandbox booking — paid with a Duffel test balance. No card is charged.</string>
-    <!-- TripsPage -->
-    <string name="syncing">Syncing…</string>
-    <string name="sync_remote_orders">Sync remote orders</string>
-
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- CancellationPage -->
-    <string name="balance">balance</string>
-
-    <!-- Migrated wrapper composable labels (auto) -->
-    <string name="rooms">Rooms</string>
-    <string name="check_in">Check-in</string>
-    <string name="check_out">Check-out</string>
-    <string name="date_of_birth">Date of birth</string>
-    <string name="guests">Guests</string>
-    <string name="saved">Saved</string>
-    <string name="synced_from_duffel">Synced from Duffel</string>
-    <string name="expiry_date">Expiry date</string>
+    <!-- Link to view all trips in overflow card. %1$s = total count e.g. 5 -->
+    <string name="see_all_trips">See all <xliff:g id="count" example="3">%1$s</xliff:g> trips</string>
+    <!-- Label for recent flight/hotel searches header. Noun phrase -->
     <string name="recent_searches">Recent searches</string>
-    <string name="extra_baggage">Extra baggage</string>
-    <string name="seats_1">Seats</string>
+
+    <!-- Trip type enum: one-way flight. Noun phrase -->
+    <string name="one_way">One-way</string>
+    <!-- Trip type enum: round trip. Noun phrase -->
+    <string name="round_trip">Round trip</string>
+    <!-- Trip type enum: multi-city. Noun phrase -->
+    <string name="multi_city">Multi-city</string>
+    <!-- Cabin class enum: economy. Noun -->
+    <string name="economy">Economy</string>
+    <!-- Cabin class enum: premium economy. Noun -->
+    <string name="premium">Premium</string>
+    <!-- Cabin class enum: business class. Noun -->
+    <string name="business">Business</string>
+    <!-- Cabin class enum: first class. Noun -->
+    <string name="first">First</string>
+    <!-- Product tab: flights search. Noun plural -->
+    <string name="flights">Flights</string>
+    <!-- Product tab: hotel stays search. Noun plural -->
+    <string name="stays">Stays</string>
+    <!-- Label for departure segment / calendar sheet. Verb/noun departure -->
     <string name="depart">Depart</string>
+    <!-- Label for return segment, avoids keyword 'return'. Noun -->
     <string name="return_label">Return</string>
+    <!-- Generic date label for picker. Noun -->
     <string name="date">Date</string>
+    <!-- Leg header: Flight number in itinerary. %1$s = leg index 1,2,3 -->
+    <string name="flight_1">Flight <xliff:g id="number" example="1">%1$s</xliff:g></string>
+    <!-- Passenger picker: adult count. Noun plural -->
     <string name="adults">Adults</string>
+    <!-- Passenger picker: children count. Noun plural -->
     <string name="children">Children</string>
-    <string name="child_age">  Child %1$s age</string>
+    <!-- Passenger picker: child age row. %1$s = child index 1,2. Leading spaces are layout padding, preserve -->
+    <string name="child_age">  Child <xliff:g id="child_number" example="1">%1$s</xliff:g> age</string>
+    <!-- Passenger picker: infants on lap. Noun phrase -->
     <string name="infants_on_lap">Infants (on lap)</string>
+    <!-- Filter chip: nonstop only toggle. Noun phrase -->
+    <string name="nonstop_only">Nonstop only</string>
+    <!-- Button: add another flight leg in multi-city. Verb phrase -->
+    <string name="add_another_flight">Add another flight</string>
+    <!-- CTA: search flights submit button. Verb phrase -->
+    <string name="search_flights">Search flights</string>
+    <!-- Date field label: new requested date when changing flight -->
     <string name="new_date">New date</string>
 
-    <!-- Content descriptions (accessibility) -->
-    <string name="cd_remove_flight">Remove flight</string>
-    <string name="cd_selected">Selected</string>
-    <string name="cd_fewer">Fewer</string>
-    <string name="cd_back">Back</string>
-    <string name="cd_remove">Remove</string>
-    <string name="cd_more">More</string>
-
-    <!-- Enum labels (migrated) -->
-    <string name="flights">Flights</string>
-    <string name="stays">Stays</string>
-    <string name="economy">Economy</string>
-    <string name="premium">Premium</string>
-    <string name="business">Business</string>
-    <string name="first">First</string>
-    <string name="one_way">One-way</string>
-    <string name="round_trip">Round trip</string>
-    <string name="multi_city">Multi-city</string>
+    <!-- Filter chip: any number of stops. Noun phrase -->
+    <string name="any_stops">Any stops</string>
+    <!-- Filter chip: nonstop flights only. Noun/adj -->
+    <string name="nonstop">Nonstop</string>
+    <!-- Filter chip: up to one stop with math symbol ≤. Keep symbol -->
+    <string name="n_1_stop">≤ 1 stop</string>
+    <!-- Sort: best value (combination). Adjective -->
     <string name="sort_best">Best</string>
+    <!-- Sort: cheapest price. Adjective -->
     <string name="sort_cheapest">Cheapest</string>
+    <!-- Sort: fastest duration. Adjective -->
     <string name="sort_fastest">Fastest</string>
+    <!-- Loading row while still polling Duffel for more fares -->
+    <string name="still_searching_for_more_fares">Still searching for more fares…</string>
+    <!-- Banner: live price refresh in progress -->
+    <string name="refreshing_prices">Refreshing prices…</string>
+    <!-- Banner: prices locked until deadline. %1$s = expiry time e.g. 10:42 AM -->
+    <string name="prices_held">Prices held · <xliff:g id="expiry" example="10:42 AM">%1$s</xliff:g></string>
+    <!-- Fallback airline name when owner blank. Noun -->
+    <string name="flight">Flight</string>
+
+    <!-- PartialOffersPages & shared offer components -->
+    <!-- (reuses flight fallback above) -->
+
+    <!-- TopAppBar title for reviewing flight offer. Verb phrase -->
+    <string name="review_flight">Review flight</string>
+    <!-- Price hold countdown while on review screen. -->
+    <string name="refreshing_price">Refreshing price…</string>
+    <!-- Hold banner: price locked until time. %1$s = expiry e.g. 5m 23s -->
+    <string name="price_held">Price held · <xliff:g id="expiry" example="5m 23s">%1$s</xliff:g></string>
+    <!-- Segment detail: baggage allowance. %1$s = e.g. 1 checked bag -->
+    <string name="bags">Bags: <xliff:g id="allowance" example="1 checked bag">%1$s</xliff:g></string>
+    <!-- Disclaimer: offer hold expiry warning. %1$s = deadline time -->
+    <string name="offer_held_until_price_may_change">Offer held until <xliff:g id="deadline" example="10:45 AM">%1$s</xliff:g> · price may change</string>
+    <!-- Price summary total label. Noun -->
+    <string name="total">Total</string>
+    <!-- CTA to ancillaries extras page. Verb -->
+    <string name="continue_action">Continue</string>
+
+    <!-- TopAppBar title for extras / ancillaries. Verb phrase -->
+    <string name="add_extras">Add extras</string>
+    <!-- Section header: extra baggage products. Noun phrase -->
+    <string name="extra_baggage">Extra baggage</string>
+    <!-- Section header: extras total summary. Noun plural -->
+    <string name="extras">Extras</string>
+    <!-- Section header: seats map section. Noun plural, title case for header -->
+    <string name="seats_1">Seats</string>
+    <!-- Row showing selected seats for segment. %1$s = seat codes e.g. 12A, 12B -->
+    <string name="seats">Seats: <xliff:g id="seats" example="12A, 12B">%1$s</xliff:g></string>
+    <!-- Button: change selected seats. Verb -->
+    <string name="change">Change</string>
+    <!-- Button: choose seats (initial state). Verb -->
+    <string name="choose">Choose</string>
+    <!-- Fallback title for baggage product when name empty. Noun phrase -->
+    <string name="extra_bag">Extra bag</string>
+    <!-- Price suffix: per each baggage unit. Leading space intentional for inline layout -->
+    <string name="each"> each</string>
+    <!-- Baggage row: shows passenger this extra is for. %1$s = passenger name -->
+    <string name="for_passenger">For <xliff:g id="passenger" example="John">%1$s</xliff:g></string>
+    <!-- Category label: generic extra (seat, bag). Noun -->
+    <string name="extra">Extra</string>
+    <!-- CTA to passengers form after extras. Verb phrase -->
+    <string name="continue_to_passengers">Continue to passengers</string>
+
+    <!-- TopAppBar title for passengers input. Noun plural -->
+    <string name="passengers">Passengers</string>
+    <!-- Button to import contacts from phone. Noun plural -->
+    <string name="contacts">Contacts</string>
+    <!-- Section label: first/given name. Noun phrase -->
+    <string name="given_name">Given name</string>
+    <!-- Section label: last/family name. Noun phrase -->
+    <string name="family_name">Family name</string>
+    <!-- Field label: first name short version for add customer form. Noun -->
+    <string name="first_name">First name</string>
+    <!-- Field label: last name short version. Noun -->
+    <string name="last_name">Last name</string>
+    <!-- Field label: date of birth. Noun phrase -->
+    <string name="date_of_birth">Date of birth</string>
+    <!-- Field label: email address. Noun -->
+    <string name="email">Email</string>
+    <!-- Field label: optional email. Noun with hint -->
+    <string name="email_optional">Email (optional)</string>
+    <!-- Field label: phone formatted example. Keep +14155550123 example, not translatable pattern but label -->
+    <string name="phone_e_g_14155550123">Phone (e.g. +14155550123)</string>
+    <!-- Field label: optional phone. Noun -->
+    <string name="phone_optional">Phone (optional)</string>
+    <!-- Section header: passport identity document. Noun -->
+    <string name="passport">Passport</string>
+    <!-- Field label: passport number. Noun phrase -->
+    <string name="passport_number">Passport number</string>
+    <!-- Field label: issuing country code example GB. Keep GB as example, not translate code -->
+    <string name="issuing_country_e_g_gb">Issuing country (e.g. GB)</string>
+    <!-- Field label: passport expiry date. Noun phrase -->
+    <string name="expiry_date">Expiry date</string>
+    <!-- Field label: frequent flyer optional section. Noun phrase -->
+    <string name="frequent_flyer_optional">Frequent flyer (optional)</string>
+    <!-- Field label: airline selector for FF number. Noun -->
+    <string name="airline">Airline</string>
+    <!-- Field label: FF account number. Noun phrase -->
+    <string name="number">Number</string>
+    <!-- Chip/label: no infant. Noun -->
+    <string name="none">None</string>
+    <!-- Link: accompanying infant selector row. Noun phrase -->
+    <string name="accompanying_infant">Accompanying infant</string>
+    <!-- CTA to payment page. Verb phrase -->
+    <string name="continue_to_payment">Continue to payment</string>
+
+    <!-- TopAppBar title for payment. Noun -->
+    <string name="payment">Payment</string>
+    <!-- Total due amount card header. Noun phrase -->
+    <string name="total_due">Total due</string>
+    <!-- Info: which customer booking is for. %1$s = customer name -->
+    <string name="booking_for">Booking for <xliff:g id="customer" example="John">%1$s</xliff:g></string>
+    <!-- Toggle chip: pay now. Verb phrase -->
+    <string name="pay_now">Pay now</string>
+    <!-- Toggle chip: hold order and pay later. Verb phrase in parentheses -->
+    <string name="hold_pay_later">Hold (pay later)</string>
+    <!-- Explanation: hold order meaning, price held until deadline paid from test balance -->
+    <string name="hold_order_the_price_is_held_and_you_pay">Hold order — the price is held and you pay from your test balance before the deadline.</string>
+    <!-- Loading state while booking request in flight -->
+    <string name="booking">Booking…</string>
+    <!-- Button: confirm hold placement. Verb phrase -->
+    <string name="place_hold">Place hold</string>
+    <!-- Button: pay using Duffel test balance (sandbox, no card charged). Verb phrase -->
+    <string name="pay_with_test_balance">Pay with test balance</string>
+
+    <!-- Title variants: booking confirmed vs on hold. Noun phrases -->
+    <string name="booking_confirmed">Booking confirmed</string>
+    <!-- Status: order on hold awaiting payment -->
+    <string name="on_hold">On hold</string>
+    <!-- Headline: success you are booked. Phrase with apostrophe escaped -->
+    <string name="you_re_booked">You\'re booked!</string>
+    <!-- Headline for held order state. Noun phrase with em dash -->
+    <string name="held_pay_to_confirm">Held — pay to confirm</string>
+    <!-- Error empty when trip not found after booking -->
+    <string name="trip_not_found">Trip not found.</string>
+    <!-- Fallback button to return to search. Verb phrase -->
+    <string name="back_to_search">Back to search</string>
+    <!-- Loading: paying for held order -->
+    <string name="paying">Paying…</string>
+    <!-- Button: pay held order with test balance -->
+    <string name="pay_now_with_test_balance">Pay now with test balance</string>
+    <!-- Navigation: go to full itinerary detail -->
+    <string name="view_full_itinerary">View full itinerary</string>
+    <!-- Navigation: go to my trips list -->
+    <string name="view_my_trips">View my trips</string>
+
+    <!-- TopAppBar title for order detail. Noun -->
+    <string name="order">Order</string>
+    <!-- Action: change flights in this order. Verb phrase -->
+    <string name="change_flights">Change flights</string>
+
+    <!-- Sync remote Duffel orders button. Verb phrase -->
+    <string name="sync_remote_orders">Sync remote orders</string>
+    <!-- Loading sync state -->
+    <string name="syncing">Syncing…</string>
+    <!-- Section header: locally saved trips. Noun past participle -->
+    <string name="saved">Saved</string>
+    <!-- Section header: trips synced from Duffel sandbox API -->
+    <string name="synced_from_duffel">Synced from Duffel</string>
+    <!-- Chip: payment due on trip card. Noun phrase -->
+    <string name="payment_due">Payment due</string>
+    <!-- Chip: trip cancelled state. Verb past participle -->
+    <string name="cancelled">Cancelled</string>
+    <!-- Chip: airline schedule change notification. Noun phrase -->
+    <string name="schedule_change">Schedule change</string>
+
+    <!-- TopAppBar title: cancel order screen -->
+    <string name="cancel_order">Cancel order</string>
+    <!-- Quote/state card title: confirm intent to cancel -->
+    <string name="cancel_this_order">Cancel this order?</string>
+    <!-- Label for refund amount row. Noun -->
+    <string name="refund">Refund</string>
+    <!-- Quote detail: refund amount %1$s issued to destination %2$s (e.g. balance) -->
+    <string name="refund_of_issued_to_your">Refund of <xliff:g id="amount" example="$120.00">%1$s</xliff:g> issued to your <xliff:g id="destination" example="balance">%2$s</xliff:g>.</string>
+    <!-- Quote detail: refund destination only when refundTo payment method known. %1$s = e.g. balance -->
+    <string name="refunded_to_your">Refunded to your <xliff:g id="destination" example="balance">%1$s</xliff:g>.</string>
+    <!-- Fallback noun for payment destination: balance (test balance) used in refund messages. Lowercase -->
+    <string name="balance">balance</string>
+    <!-- Success headline after cancellation API call succeeded -->
+    <string name="order_cancelled">Order cancelled</string>
+    <!-- Loading state cancelling -->
+    <string name="cancelling">Cancelling…</string>
+    <!-- Button: confirm cancellation action. Verb phrase -->
+    <string name="confirm_cancellation">Confirm cancellation</string>
+
+    <!-- Headline: pick a flight leg to change -->
+    <string name="pick_a_flight_to_change">Pick a flight to change</string>
+    <!-- Button to search for change alternatives -->
+    <string name="find_change_options">Find change options</string>
+    <!-- Empty state when Duffel returns no change options -->
+    <string name="no_change_options_available">No change options available.</string>
+    <!-- Section header: list of change options -->
+    <string name="change_options">Change options</string>
+    <!-- Difference banner: extra amount to pay. %1$s = amount e.g. $45 -->
+    <string name="extra_to_pay">Extra to pay: <xliff:g id="amount" example="$45.00">%1$s</xliff:g></string>
+    <!-- Difference banner: refund amount. %1$s = amount -->
+    <string name="refund_1">Refund: <xliff:g id="amount" example="$45.00">%1$s</xliff:g></string>
+    <!-- Difference banner: no price difference -->
+    <string name="no_price_change">No price change</string>
+    <!-- Loading: confirming change -->
+    <string name="confirming">Confirming…</string>
+    <!-- Button: select alternative and confirm change -->
+    <string name="select_confirm">Select &amp; confirm</string>
+    <!-- Success headline after change confirmed -->
+    <string name="change_confirmed">Change confirmed</string>
+
+    <!-- TopAppBar title for seat map. Verb phrase -->
+    <string name="choose_seats">Choose seats</string>
+
+    <!-- TopAppBar title for settings. Noun plural -->
+    <string name="settings">Settings</string>
+    <!-- Section header: frequent flyer numbers saved. Noun phrase -->
+    <string name="frequent_flyer_numbers">Frequent flyer numbers</string>
+    <!-- Explanatory text: first half of sentence about FF numbers being sent during search. Trailing space intentional for concatenation -->
+    <string name="saved_numbers_are_sent_when_searching_so">Saved numbers are sent when searching so member fares and perks </string>
+    <!-- Explanatory text: second half concatenated after above. Leading up to are priced… -->
+    <string name="are_priced_and_are_pre_filled_when_booki">are priced, and are pre-filled when booking.</string>
+    <!-- Empty state when no FF numbers saved -->
+    <string name="no_frequent_flyer_numbers_saved_yet">No frequent-flyer numbers saved yet.</string>
+    <!-- Section header: customers/profiles saved -->
+    <string name="customers">Customers</string>
+    <!-- Explanatory: bookings linked to active customer. First half sentence, trailing space for concat -->
+    <string name="bookings_are_associated_with_the_active">Bookings are associated with the active customer so orders and </string>
+    <!-- Explanatory: second half for active customer tracking -->
+    <string name="payments_can_be_tracked_per_person">payments can be tracked per person.</string>
+    <!-- Empty state when no customers saved -->
+    <string name="no_customers_yet">No customers yet.</string>
+    <!-- Chip/badge: active customer indicator. Adjective -->
+    <string name="active">Active</string>
+    <!-- Button: use this customer as active. Verb -->
+    <string name="use">Use</string>
+    <!-- Button/form: add a customer profile. Verb phrase -->
+    <string name="add_a_customer">Add a customer</string>
+    <!-- Form field label: create customer submit. Verb phrase -->
+    <string name="create_customer">Create customer</string>
+    <!-- Field label: optional phone for customer form. Noun with (optional) -->
+    <string name="phone_optional">Phone (optional)</string>
+    <!-- Button: add a frequent flyer number. Verb phrase -->
+    <string name="add_a_number">Add a number</string>
+    <!-- Field label: account number for FF -->
+    <string name="account_number">Account number</string>
+
+    <!-- CTA: search hotels button. Verb phrase -->
+    <string name="search_hotels">Search hotels</string>
+    <!-- Field label: check-in date. Noun phrase -->
+    <string name="check_in">Check-in</string>
+    <!-- Field label: check-out date. Noun phrase -->
+    <string name="check_out">Check-out</string>
+    <!-- Field label: number of rooms stepper. Noun plural -->
+    <string name="rooms">Rooms</string>
+    <!-- Field label: number of guests stepper. Noun plural -->
+    <string name="guests">Guests</string>
+    <!-- Results title: Hotels in city. %1$s = city name e.g. Paris -->
+    <string name="hotels_in">Hotels in <xliff:g id="city" example="Paris">%1$s</xliff:g></string>
+    <!-- Fallback label: hotel when name missing. Noun -->
+    <string name="hotel">Hotel</string>
+    <!-- Fallback label: room when name missing. Noun -->
+    <string name="room">Room</string>
+    <!-- Rate label: room only (no breakfast). Noun phrase -->
+    <string name="room_only">Room only</string>
+    <!-- Price prefix: cheapest offer from. Preposition, keep lowercase -->
+    <string name="from">from</string>
+    <!-- Guest details form title. Noun phrase -->
+    <string name="guest_details">Guest details</string>
+    <!-- Field label: hotel loyalty programme optional. British spelling programme kept -->
+    <string name="hotel_loyalty_optional">Hotel loyalty (optional)</string>
+    <!-- Field label: loyalty programme name. Noun -->
+    <string name="programme">Programme</string>
+    <!-- Disclaimer: sandbox booking paid with test balance, no card charged -->
+    <string name="sandbox_booking_paid_with_a_duffel_test">Sandbox booking — paid with a Duffel test balance. No card is charged.</string>
+    <!-- Booking action: loading state booking hotel -->
+    <string name="book_with_test_balance">Book with test balance</string>
+
+    <!-- CD: remove flight leg icon. Verb phrase for TalkBack -->
+    <string name="cd_remove_flight">Remove flight</string>
+    <!-- CD: selected checkmark for change option. Adjective -->
+    <string name="cd_selected">Selected</string>
+    <!-- CD: fewer guests/rooms decrement button. Adjective comparative -->
+    <string name="cd_fewer">Fewer</string>
+    <!-- CD: back navigation arrow. Noun, navigation -->
+    <string name="cd_back">Back</string>
+    <!-- CD: remove item icon (customer, FF number). Verb -->
+    <string name="cd_remove">Remove</string>
+    <!-- CD: more guests/rooms increment button. Adjective comparative -->
+    <string name="cd_more">More</string>
 </resources>

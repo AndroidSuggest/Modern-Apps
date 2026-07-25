@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kalendář</string>
     <string name="ok">OK</string>
@@ -58,12 +57,6 @@
     <string name="open_location_in_navigation">Otevřít polohu</string>
     <string name="delete_this_event">Smazat tuto událost</string>
     <string name="delete_all_events">Smazat všechny události</string>
-    <string name="new_local_calendar_title">Nový lokální kalendář</string>
-    <string name="calendar_name_label">Název kalendáře</string>
-    <string name="loading_events">Načítání událostí…</string>
-    <string name="import_events_title">Import událostí</string>
-    <string name="select_calendar_to_import">Vybrat kalendář, do kterého chcete importovat:</string>
     <string name="create_new_calendar">+ Vytvořit nový kalendář</string>
-    <string name="import_button">Import</string>
     <string name="default_layout">Výchozí rozložení</string>
 </resources>

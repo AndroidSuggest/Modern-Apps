@@ -1,25 +1,36 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- HomeScreen / launcher: App name. Noun, proper, title of alchemy combining game -->
     <string name="app_name">Alchemist</string>
-    <string name="alchemy_icon_content_description">Alchemy Icon %1$d</string>
+    <!-- DynamicAlchemyIcon: Accessibility content description for element icon. %1$d = icon/element ID number, e.g. 12. Noun phrase -->
+    <string name="alchemy_icon_content_description">Alchemy Icon <xliff:g id="icon_id" example="12">%1$d</xliff:g></string>
+    <!-- HomeScreen: Context menu (long-press) action to open detail view. Verb phrase -->
     <string name="see_details">See details</string>
+    <!-- ItemDetailsScreen: TopAppBar title for item detail view. Noun phrase -->
     <string name="item_details">Item Details</string>
-    <string name="counter">%1$d / %2$d</string>
-    <string name="recipes">Recipes (%1$d)</string>
-    <string name="used_in">Used in (%1$d)</string>
-    <string name="locked">+ %1$d locked recipes.</string>
+    <!-- HomeScreen: Inventory progress header showing discovered vs total. %1$d = discovered count e.g. 10, %2$d = total count e.g. 100. Noun/stat display -->
+    <string name="counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
+    <!-- ItemDetails: Sticky header for recipes that create this item. %1$d = count of recipes where item is output, e.g. 3. Noun with count -->
+    <string name="recipes">Recipes (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
+    <!-- ItemDetails: Sticky header for recipes that use this item as ingredient. %1$d = count of recipes where item is input, e.g. 5. Verb phrase passive -->
+    <string name="used_in">Used in (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
+    <!-- ItemDetails: Label showing how many recipes remain hidden because outputs not discovered. %1$d = locked recipe count, e.g. 2. Status noun -->
+    <string name="locked">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> locked recipes.</string>
+    <!-- ItemDetails: Explainer under locked count. Sentence telling user to unlock all outputs to reveal -->
     <string name="locked_description">Unlock all outputs of these recipes to see them.</string>
+    <!-- CollectionScreen: TopAppBar title for grid of all discovered elements. Noun -->
     <string name="collection">Collection</string>
-    <string name="discovered_counter">%1$d / %2$d discovered</string>
+    <!-- CollectionScreen: Header progress in collection grid. %1$d = available/discovered count e.g. 10, %2$d = total e.g. 100. Noun phrase stat -->
+    <string name="discovered_counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g> discovered</string>
+    <!-- HomeScreen: Overflow menu toggle to hide elements that have no remaining combinations (final items). Verb phrase toggle -->
     <string name="hide_maxed_elements">Hide maxed-out elements</string>
-
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- ItemDetails -->
-    <string name="id">ID: #%1$s</string>
-    <!-- Notification -->
+    <!-- ItemDetails: Label showing numeric element ID. %1$s = element ID string e.g. 042. Noun label -->
+    <string name="id">ID: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
+    <!-- Notification: Single-item discovery toast when one new element unlocked. Sentence, celebratory -->
     <string name="item_discovered">Item discovered!</string>
-    <string name="items_discovered">%1$s items discovered!</string>
-
-    <!-- Content descriptions (accessibility) -->
+    <!-- Notification: Multi-item discovery toast when combo yields several outputs. %1$s = count as string e.g. 3, number of items just discovered. Sentence -->
+    <string name="items_discovered"><xliff:g id="count" example="3">%1$s</xliff:g> items discovered!</string>
+    <!-- HomeScreen: Accessibility content description for final-item star badge on palette icons. Noun phrase, indicates no outgoing recipes -->
     <string name="cd_final_item">Final Item</string>
+    <!-- HomeScreen: Accessibility description for trash drop zone when dragging board item to delete. Verb -->
     <string name="cd_delete">Delete</string>
 </resources>

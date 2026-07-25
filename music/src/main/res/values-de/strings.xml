@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="nav_playlists">Playlisten</string>
     <string name="nav_home">Home</string>
@@ -7,12 +6,9 @@
     <string name="app_name">Musik</string>
     <string name="page_title_music">Musik</string>
     <string name="page_title_playlists">Wiedergabelisten</string>
-    <string name="now_playing">Läuft gerade</string>
     <string name="go_to_source">Gehe zu %1$s</string>
     <string name="unknown_title">Unbekannter Titel</string>
     <string name="unknown_artist">Unbekannter Künstler</string>
-    <string name="content_desc_repeat">Wiederholung</string>
-    <string name="content_desc_shuffle">Mischen</string>
     <string name="no_lyrics_available">Kein Songtext verfügbar</string>
     <string name="label_album">Album</string>
     <string name="album_info_format">%1$s\n%2$s • %3$d Songs • %4$s</string>
@@ -34,8 +30,4 @@
     <string name="grant_storage_permissions">Erlaube Speicher Berechtigung</string>
     <string name="content_desc_album_art">Album Cover</string>
     <string name="content_desc_album_art_grid">Album Cover Raster</string>
-    <string name="content_desc_add_to_playlist">Zu Wiedergabeliste hinzufügen</string>
-    <string name="various_artists">Verschiedene Künstler</string>
-    <string name="notification_shuffle">Mischen</string>
-    <string name="notification_repeat">Wiederholen</string>
-</resources>
+    </resources>

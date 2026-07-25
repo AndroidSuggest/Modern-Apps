@@ -1,67 +1,120 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- MainActivity: App name displayed in TopAppBar and launcher. Noun, proper -->
     <string name="app_name">Chess</string>
+    <!-- ChessGame / NewGameDialog: Dialog title when starting new Human vs AI game. Verb phrase -->
     <string name="start_new_game">Start New Game</string>
+    <!-- NewGameDialog: Label before color chooser White/Black. Verb phrase, trailing spaces separate from chips -->
     <string name="play_as">"Play as    "</string>
+    <!-- NewGameDialog: Color option White for player side. Noun/adjective -->
     <string name="color_white">White</string>
+    <!-- NewGameDialog: Color option Black for player side. Noun/adjective -->
     <string name="color_black">Black</string>
+    <!-- NewGameDialog: AI difficulty Easy. Noun/adjective -->
     <string name="difficulty_easy">Easy</string>
+    <!-- NewGameDialog: AI difficulty Medium. Noun/adjective -->
     <string name="difficulty_medium">Medium</string>
+    <!-- NewGameDialog: AI difficulty Hard. Noun/adjective -->
     <string name="difficulty_hard">Hard</string>
+    <!-- NewGameDialog: AI difficulty Master (hardest). Noun/adjective -->
     <string name="difficulty_master">Master</string>
+    <!-- NewGameDialog: Confirm button to start AI game. Verb phrase CTA -->
     <string name="start_game">Start Game</string>
+    <!-- ChessGame: Button to start new game, also win overlay action. Verb phrase CTA -->
     <string name="new_game">New Game</string>
+    <!-- MainActivity: Game mode option for two players on same device. Noun phrase -->
     <string name="two_player_local">2-Player Local</string>
+    <!-- MainActivity: Game mode option Human vs AI. Noun phrase -->
     <string name="human_vs_ai">Human vs AI</string>
+    <!-- PawnPromotionDialog / Learn / Puzzles: Title when pawn reaches last rank choose piece. Verb phrase -->
     <string name="promote_pawn">Promote Pawn</string>
+    <!-- ChessViewModel: Game status when king in check. Interjection/noun -->
     <string name="check">Check!</string>
-    <string name="checkmate_wins">Checkmate! %1$s wins.</string>
+    <!-- ChessViewModel: Game over when white checkmates black. Sentence -->
     <string name="white_wins">Checkmate! White wins.</string>
+    <!-- ChessViewModel: Game over when black checkmates white. Sentence -->
     <string name="black_wins">Checkmate! Black wins.</string>
+    <!-- ChessViewModel: Game over stalemate draw. Sentence -->
     <string name="stalemate">Stalemate! It\'s a draw.</string>
+    <!-- ChessViewModel: Game over insufficient material draw. Sentence -->
     <string name="draw_insufficient_material">Draw — insufficient material.</string>
 
+    <!-- ChessBoard: Accessibility content description for white king piece. Noun phrase -->
     <string name="piece_white_king">White King</string>
+    <!-- ChessBoard: Accessibility description for white queen. Noun -->
     <string name="piece_white_queen">White Queen</string>
+    <!-- ChessBoard: Accessibility description for white rook. Noun -->
     <string name="piece_white_rook">White Rook</string>
+    <!-- ChessBoard: Accessibility description for white bishop. Noun -->
     <string name="piece_white_bishop">White Bishop</string>
+    <!-- ChessBoard: Accessibility description for white knight. Noun -->
     <string name="piece_white_knight">White Knight</string>
+    <!-- ChessBoard: Accessibility description for white pawn. Noun -->
     <string name="piece_white_pawn">White Pawn</string>
+    <!-- ChessBoard: Accessibility description for black king. Noun -->
     <string name="piece_black_king">Black King</string>
+    <!-- ChessBoard: Accessibility description for black queen. Noun -->
     <string name="piece_black_queen">Black Queen</string>
+    <!-- ChessBoard: Accessibility description for black rook. Noun -->
     <string name="piece_black_rook">Black Rook</string>
+    <!-- ChessBoard: Accessibility description for black bishop. Noun -->
     <string name="piece_black_bishop">Black Bishop</string>
+    <!-- ChessBoard: Accessibility description for black knight. Noun -->
     <string name="piece_black_knight">Black Knight</string>
+    <!-- ChessBoard: Accessibility description for black pawn. Noun -->
     <string name="piece_black_pawn">Black Pawn</string>
 
+    <!-- MainActivity: Bottom navigation tab for Play screen (game modes). Noun -->
     <string name="tab_play">Play</string>
+    <!-- MainActivity: Bottom navigation tab for Puzzles screen. Noun -->
     <string name="tab_puzzles">Puzzles</string>
+    <!-- MainActivity: Bottom navigation tab for Learn lessons. Noun -->
     <string name="tab_learn">Learn</string>
-    <string name="learn_stage_number">Stage %1$d: %2$s</string>
+    <!-- Learn: Stage intro dialog title. %1$d = stage id integer e.g. 1, %2$s = stage title e.g. Basics. Noun heading -->
+    <string name="learn_stage_number">Stage <xliff:g id="stage_id" example="1">%1$d</xliff:g>: <xliff:g id="stage_title" example="Basics">%2$s</xliff:g></string>
+    <!-- Learn: CTA button in stage intro to start lessons. Verb phrase -->
     <string name="learn_lets_go">Let\'s go!</string>
-    <string name="learn_level">Level %1$d/%2$d</string>
+    <!-- Learn: Button to advance to next level after success when not last. Verb -->
     <string name="learn_next">Next</string>
+    <!-- Learn: Button to retry failed lesson. Verb -->
     <string name="learn_retry">Retry</string>
+    <!-- Learn: Feedback text when lesson succeeded. Declarative, celebratory -->
     <string name="learn_completed">Well done!</string>
+    <!-- Learn: Feedback text when lesson failed. Sentence, encouraging -->
     <string name="learn_failed">Not quite — try again.</string>
-    <string name="learn_stage_complete">Stage complete!</string>
-    <string name="learn_stage_complete_n">Stage %1$d complete</string>
-    <string name="learn_your_score">Your score: %1$d</string>
-    <string name="learn_next_stage">Next: %1$s</string>
+    <!-- Learn: StageCompleteDialog title. %1$d = stage id e.g. 2. Noun phrase -->
+    <string name="learn_stage_complete_n">Stage <xliff:g id="stage_id" example="2">%1$d</xliff:g> complete</string>
+    <!-- Learn: Score display in stage complete dialog. %1$d = score integer e.g. 350, includes apples, captures, bonus -->
+    <string name="learn_your_score">Your score: <xliff:g id="score" example="350">%1$d</xliff:g></string>
+    <!-- Learn: Button to go to next stage after completing. %1$s = next stage title e.g. Tactics. CTA -->
+    <string name="learn_next_stage">Next: <xliff:g id="next_stage" example="Tactics">%1$s</xliff:g></string>
+    <!-- Learn: Button back to main menu after stage complete. Verb phrase -->
     <string name="learn_back_to_menu">Back to menu</string>
-    <string name="learn_back_to_lessons">Back to Lessons</string>
-    <string name="learn_progress">%1$d/%2$d</string>
-    <string name="puzzle_rating">Rating %1$d</string>
+    <!-- Learn: Progress indicator on stage card. %1$d = completed levels with star e.g. 3, %2$d = total levels e.g. 5. Status -->
+    <string name="learn_progress"><xliff:g id="done" example="3">%1$d</xliff:g>/<xliff:g id="total" example="5">%2$d</xliff:g></string>
+    <!-- Puzzles: Header showing puzzle rating. %1$d = Lichess rating integer e.g. 1200. Noun -->
+    <string name="puzzle_rating">Rating <xliff:g id="rating" example="1200">%1$d</xliff:g></string>
+    <!-- Puzzles: Instruction when puzzle starts, user to find best move. Sentence -->
     <string name="puzzle_your_move">Your turn — find the best move.</string>
+    <!-- Puzzles: Turn indicator White to move. Declarative -->
     <string name="puzzle_white_to_move">White to move.</string>
+    <!-- Puzzles: Turn indicator Black to move. Declarative -->
     <string name="puzzle_black_to_move">Black to move.</string>
+    <!-- Puzzles: Status when puzzle solved correctly. Declarative -->
     <string name="puzzle_solved">Solved!</string>
+    <!-- Puzzles: Status when puzzle failed. Sentence, encouraging retry -->
     <string name="puzzle_failed">Not quite — try again.</string>
+    <!-- Puzzles: Button to load next random puzzle after solved. Verb phrase -->
     <string name="puzzle_next">Next Puzzle</string>
+    <!-- Puzzles: Button to retry failed puzzle. Verb -->
     <string name="puzzle_retry">Retry</string>
+    <!-- Puzzles: Button to reveal solution after failing. Verb phrase -->
     <string name="puzzle_show_solution">Show Solution</string>
-    <string name="puzzle_difficulty">Difficulty</string>
+    <!-- Puzzles: Segmented filter Easy difficulty. Noun/adjective -->
     <string name="puzzle_difficulty_easy">Easy</string>
+    <!-- Puzzles: Segmented filter Medium difficulty. Noun/adjective -->
     <string name="puzzle_difficulty_medium">Medium</string>
+    <!-- Puzzles: Segmented filter Hard difficulty. Noun/adjective -->
     <string name="puzzle_difficulty_hard">Hard</string>
+    <!-- Puzzles: Loading state while fetching puzzle. Verb progressive -->
     <string name="puzzle_loading">Loading puzzle…</string>
 </resources>

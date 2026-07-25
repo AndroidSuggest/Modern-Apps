@@ -1,18 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">OK</string>
     <string name="delete">Odstranit</string>
-    <string name="search">Hledat</string>
     <string name="settings">Nastavení</string>
     <string name="app_name">Kontakty</string>
     <string name="contact_not_found">Kontakt nenalezen</string>
-    <string name="favorite">Oblíbené</string>
     <string name="share_contact">Sdílet kontakt</string>
     <string name="birthday">Narozeniny</string>
     <string name="note">Poznámka</string>
-    <string name="action">Akce</string>
     <string name="favorites">Oblíbené</string>
-    <string name="profiles">Profily</string>
     <string name="export_contacts">Exportovat všechny kontakty</string>
     <string name="add_contact">Přidat kontakt</string>
     <string name="edit_contact">Upravit kontakt</string>
@@ -23,8 +18,6 @@
     <string name="nickname">Přezdívka</string>
     <string name="company">Společnost</string>
     <string name="account">Účet</string>
-    <string name="choose_account">Vyberte účet</string>
-    <string name="remove_birthday">Odebrat narozeniny</string>
     <string name="add_phone">Přidat telefon</string>
     <string name="remove_phone">Odebrat telefon</string>
     <string name="add_email">Přidat e-mail</string>
@@ -32,7 +25,6 @@
     <string name="add_address">Přidat adresu</string>
     <string name="remove_address">Odebrat adresu</string>
     <string name="add_date">Přidat datum</string>
-    <string name="remove_date">Odebrat datum</string>
     <string name="dates">Data</string>
     <string name="phone">Telefon</string>
     <string name="email">E-mail</string>
@@ -59,9 +51,7 @@
     <string name="cancel">Zrušit</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
     <string name="about_name">O %1$s</string>
-    <string name="user_profile">Uživatelský profil</string>
     <string name="account_display_format">%1$s (%2$s)</string>
-    <string name="full_name_format">%1$s %2$s</string>
     <string name="contact_photo">Fotografie kontaktu</string>
     <string name="change_picture">Změnit</string>
     <string name="add_contacts_account">Přidat účet kontaktů</string>
@@ -72,7 +62,6 @@
     <string name="selected_count">%1$d vybráno</string>
     <string name="display">Zobrazit</string>
     <string name="include_year">Zahrnout rok</string>
-    <string name="import_button">Import</string>
     <string name="contact_photo_description">%1$s fotka</string>
     <string name="on_device">V zařízení</string>
     <string name="done">Hotovo</string>
@@ -88,14 +77,9 @@
     <string name="select_group_hint">Vyberte skupinu pro zobrazení kontaktů</string>
     <string name="add_to_group">Přidat do skupiny</string>
     <string name="add_group">Přidat skupinu</string>
-    <string name="group_name">Název skupiny</string>
     <string name="enter_group_name">Zadejte název skupiny</string>
     <string name="delete_group_title">Smazat skupinu</string>
     <string name="delete_group_confirm">Opravdu chcete smazat tuto skupinu? Kontakty nebudou smazány.</string>
-    <string name="remove_from_group">Odebrat ze skupiny</string>
-    <string name="copied_to_clipboard">Zkopírováno do schránky</string>
-    <string name="select_account_to_import">Vyberte účet, do kterého chcete importovat:</string>
-    <string name="create_new_account">+ Vytvořit nový účet</string>
     <string name="no_groups_found">Nebyly nalezeny žádné skupiny. Vytvořte ji na kartě skupiny.</string>
     <string name="contacts_count">%1$d kontaktů</string>
 </resources>

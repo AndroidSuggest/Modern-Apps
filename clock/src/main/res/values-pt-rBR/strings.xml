@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Relógio</string>
     <string name="label_alarm">Alarme</string>
@@ -7,8 +6,6 @@
     <string name="label_stopwatch">Cronômetro</string>
     <string name="button_save">Salvar</string>
     <string name="time_pm">PM</string>
-    <string name="field_minutes">Minutos</string>
-    <string name="field_seconds">Segundos</string>
     <string name="button_cancel">Cancelar</string>
     <string name="time_am">AM</string>
     <string name="header_total">Total</string>

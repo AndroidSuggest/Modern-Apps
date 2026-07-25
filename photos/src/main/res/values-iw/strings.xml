@@ -1,22 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="close">סגירה</string>
     <string name="app_name">תמונות</string>
     <string name="title_edit_photo">עריכת תמונה</string>
     <string name="action_save">שמירה</string>
     <string name="action_save_as_copy">שמירה בתור עותק</string>
-    <string name="action_undo">ביטול פעולה</string>
     <string name="label_gallery">גלריה</string>
     <string name="label_map">מפה</string>
     <string name="label_trash">אשפה</string>
     <string name="label_secure_folder">תיקייה מאובטחת</string>
-    <string name="action_move_to_secure">העברה לתיקייה המאובטחת</string>
-    <string name="action_restore_from_secure">שחזור מהתיקייה המאובטחת</string>
-    <string name="secure_folder_auth_title">פתיחת התיקייה המאובטחת</string>
     <string name="taken_on">מועד צילום: %1$s</string>
     <string name="location">מיקום: %1$s</string>
     <string name="detecting">מתבצע זיהוי…</string>
-    <string name="search_photos">חיפוש בתמונות…</string>
-    <string name="enable_ai_search_title">הפעלת חיפוש בינה מלאכותית</string>
-    <string name="enable_ai_search_button">הפעלה</string>
-</resources>
+    </resources>

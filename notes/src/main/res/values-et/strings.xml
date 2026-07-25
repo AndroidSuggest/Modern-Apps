@@ -1,16 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Märkmik</string>
-    <string name="search">Otsi</string>
     <string name="title">Pealkiri</string>
-    <string name="content">Sisu</string>
     <string name="drawing">Joonistus</string>
     <string name="add_image">Lisa pilt</string>
     <string name="add_drawing">Lisa joonistus</string>
-    <string name="move_up">Liiguta ülespoole</string>
-    <string name="move_down">Liiguta allapoole</string>
-    <string name="shrink">Ahenda</string>
-    <string name="enlarge">Suurenda</string>
     <string name="external_saved">Salvestatud faili</string>
     <string name="external_save_failed">Salvestamine ei õnnestunud (fail võib olla vaid lugemisõigustes)</string>
     <string name="external_read_failed">Faili avamine ei õnnestunud</string>

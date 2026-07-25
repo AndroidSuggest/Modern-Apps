@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Muzyka</string>
     <string name="nav_home">Dom</string>
@@ -7,11 +6,8 @@
     <string name="nav_playlists">Listy odtwarzania</string>
     <string name="page_title_music">Muzyka</string>
     <string name="page_title_playlists">Listy odtwarzania</string>
-    <string name="now_playing">Teraz odtwarzane</string>
     <string name="unknown_title">Nieznany tytuł</string>
     <string name="unknown_artist">Nieznany wykonawca</string>
-    <string name="content_desc_repeat">Powtarzanie</string>
-    <string name="content_desc_shuffle">Losowo</string>
     <string name="no_lyrics_available">Brak dostępnych tekstów</string>
     <string name="label_album">Albumy</string>
     <string name="album_info_format">%1$s\n%2$s • %3$d utworów • %4$s</string>
@@ -33,17 +29,11 @@
     <string name="grant_storage_permissions">Zezwól na dostęp do pamięci</string>
     <string name="content_desc_album_art">Okładka albumu</string>
     <string name="content_desc_album_art_grid">Siatka okładek albumów</string>
-    <string name="content_desc_add_to_playlist">Dodaj do listy odtwarzania</string>
-    <string name="various_artists">Różni wykonawcy</string>
-    <string name="notification_shuffle">Losowo</string>
-    <string name="notification_repeat">Powtórz</string>
     <string name="go_to_source">Przejdź do %1$s</string>
     <string name="dialog_delete_playlist">Usuń listę odtwarzania</string>
     <string name="dialog_delete_playlist_confirm">Usunąć „%1$s”? Tej czynności nie można cofnąć.</string>
     <string name="dialog_delete">Usuń</string>
-    <string name="menu_delete_playlist">Usuń listę odtwarzania</string>
     <string name="dialog_create_playlist">Utwórz listę odtwarzania</string>
     <string name="dialog_create">Utwórz</string>
     <string name="playlist_name_hint">Nazwa listy odtwarzania</string>
-    <string name="show_lyrics_on_lock_screen">Pokaż tekst na ekranie blokady</string>
-</resources>
+    </resources>

@@ -1,76 +1,113 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name: launcher label and system widget owner title. Noun -->
     <string name="app_name">Weather</string>
+    <!-- Glance widget metadata description shown in widget picker — what widget does. Full sentence -->
     <string name="weather_widget_description">Current time, date, and weather at a glance — tap for the forecast</string>
-    <string name="search_location">Search location</string>
-    <string name="confirm_delete">Confirm delete</string>
-    <string name="city_name_hint">City name</string>
+    <!-- Empty-state TopAppBar title when no locations saved yet. Noun -->
     <string name="weather_title">Weather</string>
+
+    <!-- Empty state headline when no cities saved. Noun phrase -->
+    <string name="no_locations_yet">No locations yet</string>
+    <!-- Subtitle explaining onboarding: add city or use device location to see forecast -->
+    <string name="add_a_city_or_use_your_current_location">Add a city or use your current location to see the forecast.</string>
+    <!-- Primary CTA button when empty to add first city. Verb phrase -->
     <string name="add_location">Add a location</string>
-    <string name="open_map">Open map</string>
-    <string name="weather_map_title">Weather map</string>
-    <string name="map_measure">Measure</string>
+    <!-- Button / Tab label for using device location (GPS). Verb phrase -->
+    <string name="use_current_location">Use current location</string>
+    <!-- Button label while requesting location permission / GPS fix. Verb present participle with ellipsis -->
+    <string name="locating">Locating…</string>
+
+    <!-- Supporting text explaining automatic device location detection and adding to list -->
+    <string name="detect_your_device_s_current_location_au">Detect your device\'s current location automatically and add it to your list</string>
+
+    <!-- Section header title for locations drawer sheet. Noun plural -->
+    <string name="locations">Locations</string>
+    <!-- Search dialog title and bottom bar button to open search. Verb phrase -->
+    <string name="search_location">Search location</string>
+    <!-- TextField placeholder/hint for entering city name. Noun phrase -->
+    <string name="city_name_hint">City name</string>
+    <!-- Empty search results when query yields no city matches. Noun phrase -->
+    <string name="no_matches">No matches</string>
+    <!-- Long-press bottom sheet action: delete saved location. Verb -->
+    <string name="delete">Delete</string>
+    <!-- Bottom sheet confirmation button for delete action. Verb phrase -->
+    <string name="confirm_delete">Confirm delete</string>
+    <!-- Toast error when LocationProvider fails to obtain fix -->
+    <string name="couldn_t_determine_location">Couldn\'t determine location</string>
+    <!-- Toast error when user denies location permission -->
+    <string name="location_permission_denied">Location permission denied</string>
+
+    <!-- Row label showing daily high/low temps. %1$s = max temp e.g. 28°C, %2$s = min temp e.g. 14°C. Keep Max/Min keywords -->
+    <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g>  Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
+    <!-- Feels-like temperature row. %1$s = apparent temperature e.g. 26°C -->
+    <string name="feels_like">Feels like <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
+    <!-- HumidityBlock: row label for dew point inside humidity details. Noun phrase -->
+    <string name="dew_point">Dew point</string>
+    <!-- WindBlock: wind details line. %1$s = compass direction e.g. NW, %2$s = gusts speed e.g. 18 km/h -->
+    <string name="from_gusts">From <xliff:g id="direction" example="NW">%1$s</xliff:g> · Gusts <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
+
+    <!-- Placeholder when not enough data points (<2) to draw graph line -->
+    <string name="not_enough_data_to_plot">Not enough data to plot.</string>
+
+    <!-- Map time slider label when layer time is null fallback. Noun -->
     <string name="map_time">Time</string>
-    <string name="map_back">Back</string>
+    <!-- Attribution footer for OpenStreetMap &amp; CARTO tile sources on map. Keep © symbols and names -->
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- HomePage -->
-    <string name="no_locations_yet">No locations yet</string>
-    <!-- LocationsScreen -->
-    <string name="couldn_t_determine_location">Couldn\'t determine location</string>
-    <string name="delete">Delete</string>
-    <string name="location_permission_denied">Location permission denied</string>
-    <!-- UseDeviceLocationCard -->
-    <string name="use_current_location">Use current location</string>
-
-    <!-- Migrated hardcoded UI strings (auto) v3 -->
-    <!-- CurrentWeatherCard -->
-    <string name="max_min">Max %1$s  Min %2$s</string>
-    <string name="feels_like">Feels like %1$s</string>
-    <!-- HomePage -->
-    <string name="locating">Locating…</string>
-    <string name="add_a_city_or_use_your_current_location">Add a city or use your current location to see the forecast.</string>
-    <!-- HumidityBlock -->
-    <string name="dew_point">Dew point</string>
-    <!-- LocationsScreen -->
-    <string name="locations">Locations</string>
-    <string name="no_matches">No matches</string>
-    <!-- MetricGraphSheet -->
-    <string name="not_enough_data_to_plot">Not enough data to plot.</string>
-    <!-- UseDeviceLocationCard -->
-    <string name="detect_your_device_s_current_location_au">Detect your device\'s current location automatically and add it to your list</string>
-    <!-- WindBlock -->
-    <string name="from_gusts">From %1$s · Gusts %2$s</string>
-
-    <!-- Migrated enum/data-class UI labels (var->resId) -->
-    <!-- WeatherCondition labels -->
+    <!-- Condition: clear sky. Adjective/noun -->
     <string name="condition_clear">Clear</string>
+    <!-- Condition: partly cloudy. Noun phrase -->
     <string name="condition_partly_cloudy">Partly cloudy</string>
+    <!-- Condition: fully cloudy. Adjective -->
     <string name="condition_cloudy">Cloudy</string>
+    <!-- Condition: fog. Noun -->
     <string name="condition_fog">Fog</string>
+    <!-- Condition: drizzle. Noun -->
     <string name="condition_drizzle">Drizzle</string>
+    <!-- Condition: rain. Noun -->
     <string name="condition_rain">Rain</string>
+    <!-- Condition: snow. Noun -->
     <string name="condition_snow">Snow</string>
+    <!-- Condition: thunderstorm. Noun -->
     <string name="condition_thunderstorm">Thunderstorm</string>
+    <!-- Condition: unknown/fallback. Adjective -->
     <string name="condition_unknown">Unknown</string>
-    <!-- WeatherMetric titles (Dew point reuses dew_point) -->
+
+    <!-- Metric: air temperature. Noun -->
     <string name="metric_temperature">Temperature</string>
+    <!-- Metric: feels-like temperature. Noun phrase -->
     <string name="metric_feels_like">Feels like</string>
+    <!-- Metric: relative humidity percentage. Noun -->
     <string name="metric_humidity">Humidity</string>
+    <!-- Metric: precipitation amount/probability. Noun -->
     <string name="metric_precipitation">Precipitation</string>
+    <!-- Metric: wind speed average. Noun phrase -->
     <string name="metric_wind_speed">Wind speed</string>
+    <!-- Metric: wind gusts max. Noun phrase -->
     <string name="metric_wind_gusts">Wind gusts</string>
+    <!-- Metric: atmospheric pressure. Noun -->
     <string name="metric_pressure">Pressure</string>
+    <!-- Metric: visibility distance. Noun -->
     <string name="metric_visibility">Visibility</string>
+    <!-- Metric: cloud cover percentage. Noun phrase -->
     <string name="metric_cloud_cover">Cloud cover</string>
+    <!-- Metric: UV index value. Noun phrase, keep UV uppercase -->
     <string name="metric_uv_index">UV index</string>
-    <!-- SummaryCard / computeDaySummary -->
+
+    <!-- Card header for AI-generated daily summary. Noun -->
     <string name="summary_title">Summary</string>
+    <!-- Fallback when current WMO code unavailable, sentence fragment used as condition placeholder. Noun phrase lowercased in sentence -->
     <string name="summary_mixed_conditions">mixed conditions</string>
-    <string name="summary_expect_conditions">Expect %1$s throughout the day.</string>
-    <string name="summary_high_low">High %1$s, low %2$s.</string>
+    <!-- Sentence template: Expect {condition} throughout the day. %1$s = condition phrase e.g. light rain, must fit grammar "Expect %s throughout the day." -->
+    <string name="summary_expect_conditions">Expect <xliff:g id="conditions" example="light rain">%1$s</xliff:g> throughout the day.</string>
+    <!-- Sentence template: daily high/low temps. %1$s = high e.g. 24°C, %2$s = low e.g. 12°C -->
+    <string name="summary_high_low">High <xliff:g id="high" example="24°C">%1$s</xliff:g>, low <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
+    <!-- Warning: rain highly likely today -->
     <string name="summary_rain_likely">Rain is likely — bring an umbrella.</string>
+    <!-- Warning: showers possible later -->
     <string name="summary_showers_possible">Showers are possible later on.</string>
+    <!-- Warning: slight chance of rain threshold -->
     <string name="summary_slight_chance_rain">A slight chance of rain.</string>
+    <!-- Warning: noticeable wind today -->
     <string name="summary_winds_noticeable">Winds will be noticeable today.</string>
 </resources>

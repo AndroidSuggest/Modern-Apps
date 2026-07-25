@@ -1,19 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cancel">Cancelar</string>
     <string name="delete">Apagar</string>
     <string name="ok">Ok</string>
-    <string name="search">Pesquisar</string>
     <string name="settings">Configurações</string>
-    <string name="favorite">Favorito</string>
     <string name="share_contact">Partilhar Contacto</string>
     <string name="about_name">Sobre %1$s</string>
     <string name="birthday">Data de Nascimento</string>
     <string name="note">Anotação</string>
-    <string name="action">Ação</string>
     <string name="favorites">Favoritos</string>
-    <string name="user_profile">Perfil do Utilizador</string>
-    <string name="profiles">Perfis</string>
     <string name="app_name">Contactos</string>
     <string name="contact_not_found">Contacto não encontrado</string>
     <string name="on_device">No dispositivo</string>
@@ -26,7 +20,6 @@
     <string name="nickname">Apelido</string>
     <string name="company">Companhia</string>
     <string name="account">Conta</string>
-    <string name="choose_account">Escolher conta</string>
     <string name="phone">Telefone</string>
     <string name="email">Email</string>
     <string name="addresses">Adereços</string>
@@ -51,8 +44,6 @@
     <string name="select_group_hint">Seleciona um grupo para ver contactos</string>
     <string name="add_to_group">Adicionar a um Grupo</string>
     <string name="add_group">Adicionar grupo</string>
-    <string name="group_name">­Nome do Grupo</string>
     <string name="no_groups_found">Sem grupos encontrados. Cria um na aba de grupos.</string>
     <string name="contacts_count">%1$d contactos</string>
-    <string name="import_button">Importar</string>
-</resources>
+    </resources>

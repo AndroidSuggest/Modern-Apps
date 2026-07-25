@@ -1,17 +1,21 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name: launcher label, appears in app drawer -->
     <string name="app_name">Things</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- ThingsApp -->
+    <!-- TopAppBar title. Noun, refers to hydration tracking feature -->
     <string name="hydration">Hydration</string>
+    <!-- HydrationCard: header label for today's total intake. Noun/adjective, Title Case -->
     <string name="today">Today</string>
+    <!-- Button to start BLE scan for smart bottle/cup. Verb, short action label -->
     <string name="scan">Scan</string>
-    <string name="today_s_drinks">Today\'s drinks</string>
+    <!-- Device list label when BLE devices discovered. Noun phrase, colon intentional -->
     <string name="devices_found">Devices found:</string>
+    <!-- Button to disconnect from BLE device. Verb -->
     <string name="disconnect">Disconnect</string>
-
-    <!-- Migrated hardcoded UI strings (auto) v3 -->
-    <!-- ThingsApp -->
-    <string name="goal_ml">Goal %1$s mL</string>
-    <string name="ml">%1$s mL</string>
+    <!-- Section header above daily drink log LazyColumn. Noun phrase -->
+    <string name="today_s_drinks">Today\'s drinks</string>
+    <!-- HydrationCard: total consumed. %1$s = volume number e.g. 450. Keep mL unit after placeholder -->
+    <string name="ml"><xliff:g id="volume" example="450">%1$s</xliff:g> mL</string>
+    <!-- HydrationCard: daily goal beneath progress bar. %1$s = goal number e.g. 2000 -->
+    <string name="goal_ml">Goal <xliff:g id="goal" example="2000">%1$s</xliff:g> mL</string>
 </resources>

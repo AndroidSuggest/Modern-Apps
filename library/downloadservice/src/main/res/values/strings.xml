@@ -1,11 +1,14 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- Shared library: downloadservice – App name placeholder, required for manifest merger, not user-visible, overridden by host app -->
     <string name="app_name">App</string>
-
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- InitialDownloader -->
+    <!-- Shared library: downloadservice – InitialDownloader: Headline on first-launch blocker screen while preparing components. Title Case, keep short -->
     <string name="initializing_system">Initializing System</string>
-    <string name="mbps">%1$s Mbps</string>
+    <!-- Shared library: downloadservice – InitialDownloader: FileProgressItem speed badge in secondaryContainer. %1$s = formatted speed value with one decimal. Keep Mbps unit -->
+    <string name="mbps"><xliff:g id="speed" example="12.5">%1$s</xliff:g> Mbps</string>
+    <!-- Shared library: downloadservice – InitialDownloader: Subtitle below headline explaining required app components are being downloaded. BodyMedium gray text -->
     <string name="downloading_required_components_for_this">Downloading required components for this app.</string>
+    <!-- Shared library: downloadservice – InitialDownloader: Status label left of percent in progress row when file download is finished -->
     <string name="completed">Completed</string>
+    <!-- Shared library: downloadservice – InitialDownloader: Status label left of percent when download is in progress, includes ellipsis -->
     <string name="downloading">Downloading...</string>
 </resources>

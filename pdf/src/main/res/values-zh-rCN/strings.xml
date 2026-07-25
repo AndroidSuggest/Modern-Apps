@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
     <string name="search_label">查找</string>
@@ -10,12 +9,9 @@
     <string name="pdf_saved">PDF 已成功保存</string>
     <string name="pdf_save_error">保存 PDF 时出错</string>
     <string name="share_pdf">分享 PDF</string>
-    <string name="unsupported_version">此应用需要 Android 15 或 Google Play 服务已完全更新。如果您无法满足上述任一条件，很遗憾，您的设备不受支持。</string>
     <string name="crop_image">裁剪图片</string>
     <string name="continue_label">继续</string>
     <string name="auto_detect">自动检测</string>
     <string name="pdf_save">保存</string>
-    <string name="pdf_save_as_copy">另存为副本</string>
     <string name="safe_pdf_error">安全查看器无法打开此 PDF。它可能已损坏或使用不支持的功能。</string>
-    <string name="safe_pdf_viewer_title">PDF 查看器（安全）</string>
-</resources>
+    </resources>

@@ -1,80 +1,118 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Astronomy</string>
-    <string name="search">Search sky</string>
-    <string name="settings">Settings</string>
-    <string name="ar_mode">AR Mode</string>
-    <string name="time_travel">Time</string>
-    <string name="now">Now</string>
-    <string name="grant_location">Grant Location Permission</string>
-    <string name="grant_camera">Grant Camera Permission</string>
-    <string name="no_location">Location unavailable — set manually in settings</string>
-    <string name="mag_limit">Magnitude limit</string>
-    <string name="show_constellation_lines">Constellation lines</string>
-    <string name="show_grid">Coordinate grid</string>
-    <string name="show_deep_sky">Deep sky (Messier)</string>
-    <string name="show_planets">Planets &amp; Moon &amp; Sun</string>
-    <string name="night_mode">Night mode (red)</string>
-    <string name="device_pointing">Device pointing</string>
-    <string name="rise">Rise</string>
-    <string name="transit">Transit</string>
-    <string name="set">Set</string>
-    <string name="never_up">Never rises</string>
-    <string name="circumpolar">Circumpolar</string>
-    <string name="object_detail">Details</string>
-    <string name="center_on_object">Center</string>
-    <string name="azimuth">Az</string>
-    <string name="altitude">Alt</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- ObjectDetailPage -->
+    <!-- SkyMapPage / TopAppBar -->
+    <!-- App-wide: button to open settings. Noun. -->
+    <string name="settings">Settings</string>
+
+    <!-- SettingsPage: Display section -->
+    <!-- SettingsPage: switch to show Messier deep-sky objects -->
+    <string name="show_deep_sky">Deep sky (Messier)</string>
+    <!-- SettingsPage: toggle night mode with red overlay to preserve dark adaptation -->
+    <string name="night_mode">Night mode (red)</string>
+
+    <!-- ObjectDetailPage: Rise / Transit / Set -->
+
+    <!-- ObjectDetailPage: common and calculations -->
+    <!-- Generic dismiss button. Verb. -->
     <string name="close">Close</string>
-    <string name="object_not_found">Object not found: %1$s</string>
+    <!-- ObjectDetailPage: error when object id not found. %1$s = object id or name searched -->
+    <string name="object_not_found">Object not found: <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
+    <!-- ObjectDetailPage: status when object never sets (circumpolar) -->
     <string name="circumpolar_never_sets">Circumpolar - never sets</string>
-    <string name="alt_az">Alt: %1$s° Az: %2$s°</string>
-    <string name="mag">Mag: %1$s</string>
+    <!-- ObjectDetailPage: displays altitude and azimuth coordinates. %1$s = altitude value, %2$s = azimuth value -->
+    <string name="alt_az">Alt: <xliff:g id="altitude" example="45">%1$s</xliff:g>° Az: <xliff:g id="azimuth" example="180">%2$s</xliff:g>°</string>
+    <!-- ObjectDetailPage: stellar magnitude label. %1$s = magnitude number, e.g. 1.5 -->
+    <string name="mag">Mag: <xliff:g id="magnitude" example="1.5">%1$s</xliff:g></string>
+    <!-- ObjectDetailPage: section header for rise transit set times -->
     <string name="rise_transit_set">Rise / Transit / Set</string>
+    <!-- ObjectDetailPage: explanatory note about trajectory line on map -->
     <string name="trajectory_24h_15m_steps_yellow_line_on">Trajectory 24h (15m steps) - yellow line on map</string>
-    <string name="transit_1">Transit: %1$s ?: </string>
+    <!-- ObjectDetailPage: transit time row. %1$s = time string, ?: is placeholder for unknown optional part -->
+    <string name="transit_1">Transit: <xliff:g id="time" example="21:30">%1$s</xliff:g> ?: </string>
+    <!-- ObjectDetailPage: shown while rise/set times are being computed -->
     <string name="calculating">Calculating...</string>
-    <string name="ra_dec">RA: %1$s° Dec: %2$s°</string>
+    <!-- ObjectDetailPage: equatorial coordinates. %1$s = RA value, %2$s = Dec value -->
+    <string name="ra_dec">RA: <xliff:g id="ra" example="5.5">%1$s</xliff:g>° Dec: <xliff:g id="dec" example="-8.2">%2$s</xliff:g>°</string>
+    <!-- ObjectDetailPage: empty state when object never rises at observer location -->
     <string name="never_rises_at_this_location">Never rises at this location</string>
-    <string name="rise_1">Rise: %1$s ?: </string>
-    <string name="set_1">Set: %1$s ?: </string>
-    <string name="ra_h_h">RA h: %1$sh</string>
+    <!-- ObjectDetailPage: rise time row. %1$s = time string -->
+    <string name="rise_1">Rise: <xliff:g id="time" example="18:45">%1$s</xliff:g> ?: </string>
+    <!-- ObjectDetailPage: set time row. %1$s = time string -->
+    <string name="set_1">Set: <xliff:g id="time" example="04:12">%1$s</xliff:g> ?: </string>
+    <!-- ObjectDetailPage: right ascension in hours. %1$s = hours value -->
+    <string name="ra_h_h">RA h: <xliff:g id="hours" example="5.5">%1$s</xliff:g>h</string>
+
     <!-- SearchPage -->
+    <!-- SearchPage: TopAppBar title. Verb/Noun, action to search -->
     <string name="search_1">Search</string>
+    <!-- SearchPage: hint text in search field -->
     <string name="search_stars_planets_messier">Search stars, planets, Messier</string>
+
     <!-- SettingsPage -->
-    <string name="magnitude_limit">Magnitude limit: %1$s</string>
+    <!-- SettingsPage: slider label showing current magnitude limit. %1$s = numeric limit e.g. 4.5 -->
+    <string name="magnitude_limit">Magnitude limit: <xliff:g id="limit" example="4.5">%1$s</xliff:g></string>
+    <!-- SettingsPage: text field label for manual longitude input in degrees -->
     <string name="longitude_deg">Longitude deg</string>
+    <!-- SettingsPage: button to save manually entered location. Verb. -->
     <string name="save_location">Save location</string>
-    <string name="catalog_stars_constellations_dso">Catalog: %1$s stars, %2$s constellations, %3$s DSO.</string>
+    <!-- SettingsPage: footer showing catalog stats. %1$s = star count, %2$s = constellation count, %3$s = DSO count -->
+    <string name="catalog_stars_constellations_dso">Catalog: <xliff:g id="star_count" example="5000">%1$s</xliff:g> stars, <xliff:g id="constellation_count" example="88">%2$s</xliff:g> constellations, <xliff:g id="dso_count" example="110">%3$s</xliff:g> DSO.</string>
+    <!-- SettingsPage: option in dropdown meaning disabled -->
     <string name="off">Off</string>
+    <!-- SettingsPage: section header for display options -->
     <string name="display">Display</string>
+    <!-- SettingsPage: section header for constellation settings -->
     <string name="constellations">Constellations</string>
+    <!-- SettingsPage: dropdown option to show constellation lines only -->
     <string name="lines_only">Lines only</string>
+    <!-- SettingsPage: toggle to show sky below horizon (full sphere) -->
     <string name="show_below_horizon_all_sky">Show below horizon (all sky)</string>
+    <!-- SettingsPage: footer note explaining true north correction and AR implementation -->
     <string name="notes_true_north_correction_via_geomagne">Notes: True north correction via geomagnetic declination. AR uses CameraX + rotation vector fusion.</string>
+    <!-- SettingsPage: dropdown option to show constellation lines plus artwork -->
     <string name="lines_art">Lines + art</string>
+    <!-- SettingsPage: section header for location settings -->
     <string name="location">Location</string>
+    <!-- SettingsPage: switch to show coordinate grid covering whole sphere -->
     <string name="coordinate_grid_whole_sphere">Coordinate grid (whole sphere)</string>
+    <!-- SettingsPage: text field label for manual latitude input in degrees -->
     <string name="latitude_deg">Latitude deg</string>
+    <!-- SettingsPage: button to use device GPS location -->
     <string name="use_current_location">Use current location</string>
+    <!-- SettingsPage: switch to show planets, Sun and Moon toggle -->
     <string name="planets_sun_moon">Planets / Sun / Moon</string>
-    <string name="fov">FOV: %1$s°</string>
-    <!-- Planet names -->
+    <!-- SettingsPage: slider label for field of view. %1$s = degrees value e.g. 60 -->
+    <string name="fov">FOV: <xliff:g id="degrees" example="60">%1$s</xliff:g>°</string>
+
+    <!-- Planet names: used in search results and planet labels. Keep astronomical names, transliterate if needed -->
+    <!-- Planet name: Sun -->
     <string name="planet_sun">Sun</string>
+    <!-- Planet name: Moon -->
     <string name="planet_moon">Moon</string>
+    <!-- Planet name: Mercury -->
     <string name="planet_mercury">Mercury</string>
+    <!-- Planet name: Venus -->
     <string name="planet_venus">Venus</string>
+    <!-- Planet name: Mars -->
     <string name="planet_mars">Mars</string>
+    <!-- Planet name: Jupiter -->
     <string name="planet_jupiter">Jupiter</string>
+    <!-- Planet name: Saturn -->
     <string name="planet_saturn">Saturn</string>
+    <!-- Planet name: Uranus -->
     <string name="planet_uranus">Uranus</string>
+    <!-- Planet name: Neptune -->
     <string name="planet_neptune">Neptune</string>
-    <!-- Search result labels -->
+
+    <!-- Search result labels: subtitle indicating result type -->
+    <!-- Search result type: planet -->
     <string name="search_result_planet">Planet</string>
-    <string name="search_result_star_fallback">Star %1$s</string>
-    <string name="search_result_star_mag">Star mag %1$s</string>
-    <string name="search_result_constellation">Constellation %1$s</string>
+    <!-- Search result fallback: generic star label. %1$s = star identifier or catalog number -->
+    <string name="search_result_star_fallback">Star <xliff:g id="star_id" example="123">%1$s</xliff:g></string>
+    <!-- Search result: star with magnitude. %1$s = magnitude value -->
+    <string name="search_result_star_mag">Star mag <xliff:g id="magnitude" example="2.1">%1$s</xliff:g></string>
+    <!-- Search result type: constellation. %1$s = constellation name or abbreviation -->
+    <string name="search_result_constellation">Constellation <xliff:g id="constellation" example="Orion">%1$s</xliff:g></string>
 </resources>

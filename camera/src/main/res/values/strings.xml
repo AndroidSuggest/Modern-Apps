@@ -1,71 +1,81 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Camera</string>
 
-    <string name="mode_photo">Photo</string>
-    <string name="mode_video">Video</string>
-
-    <string name="flash_on">Flash On</string>
-    <string name="flash_off">Flash Off</string>
-    <string name="flash_auto">Flash Auto</string>
-
-    <string name="flip_camera">Flip Camera</string>
-    <string name="open_gallery">Gallery</string>
-    <string name="settings">Settings</string>
-    <string name="capture">Capture</string>
-    <string name="start_recording">Record</string>
-    <string name="stop_recording">Stop</string>
-
-    <string name="grant_camera_permission">Grant Camera Permission</string>
-
-    <string name="settings_timer">Timer</string>
-    <string name="timer_off">Off</string>
-    <string name="timer_3s">3s</string>
-    <string name="timer_5s">5s</string>
-    <string name="timer_10s">10s</string>
-
-    <string name="settings_aspect_ratio">Aspect Ratio</string>
-    <string name="ratio_16_9">16:9</string>
-    <string name="ratio_4_3">4:3</string>
-    <string name="ratio_1_1">1:1</string>
-
-    <string name="settings_flash">Flash</string>
-
-    <string name="settings_location">Location</string>
-    <string name="settings_location_description">Save location in photo metadata</string>
-
-    <string name="settings_video_codec">Video codec</string>
-    <string name="settings_video_codec_label">Video codec</string>
-    <string name="codec_avc_label">H.264 / AVC</string>
-    <string name="codec_avc_description">Most compatible</string>
-    <string name="codec_hevc_label">H.265 / HEVC</string>
-    <string name="codec_hevc_description">More efficient</string>
-    <string name="codec_av1_label">AV1</string>
-    <string name="codec_av1_description">Most efficient</string>
-
-    <string name="mode_portrait">Portrait</string>
-
-    <string name="qr_result">QR Code</string>
-    <string name="open_url">Open URL</string>
-    <string name="no_app_to_open_url">No app can open this link</string>
-    <string name="copy_text">Copy</string>
-
-    <string name="level">Level</string>
-    <string name="blur">Blur</string>
-    <string name="iso">ISO</string>
-    <string name="not_available">N/A</string>
-    <string name="burst_count">Burst %1$d</string>
-
-    <string name="mic">Microphone</string>
-    <string name="ae_af_lock">AE/AF LOCK</string>
-    <string name="pause_recording">Pause</string>
-    <string name="resume_recording">Resume</string>
-
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- CameraScreen -->
-    <string name="processing_panorama_u2026">Processing panorama\u2026</string>
+    <!-- Main camera: mode selector at bottom (Photo / Video / Portrait etc) -->
+    <!-- TopBar / Auto night: night mode button shown in low light -->
     <string name="night">Night</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- CameraScreen -->
+    <!-- TopBar: flash cycle states -->
+
+    <!-- TopBar / ShutterRow controls -->
+    <!-- ShutterRow: thumbnail button that opens last photo in gallery. Noun. Accessibility label -->
+    <string name="open_gallery">Gallery</string>
+    <!-- TopAppBar title for settings screen and button to open settings -->
+    <string name="settings">Settings</string>
+
+    <!-- Permissions -->
+    <!-- Full-screen permission gate when CAMERA and RECORD_AUDIO not granted -->
+    <string name="grant_camera_permission">Grant Camera Permission</string>
+
+    <!-- TopBar settings strip: timer, aspect ratio, flash categories -->
+
+    <!-- Aspect ratio -->
+    <!-- Setting category and TopBar contentDescription for aspect ratio picker -->
+    <string name="settings_aspect_ratio">Aspect Ratio</string>
+
+    <!-- Flash setting category in settings row -->
+
+    <!-- Location / Geotagging settings -->
+    <!-- SettingsPage: section title for location tagging -->
+    <string name="settings_location">Location</string>
+    <!-- SettingsPage: summary explaining save location in EXIF metadata -->
+    <string name="settings_location_description">Save location in photo metadata</string>
+
+    <!-- Video codec settings (SettingsPage) -->
+    <!-- SettingsPage: section header for video codec selection -->
+    <string name="settings_video_codec">Video codec</string>
+    <!-- SettingsPage: text field label for video codec dropdown -->
+    <string name="settings_video_codec_label">Video codec</string>
+    <!-- Video codec option label: H.264 / AVC -->
+    <string name="codec_avc_label">H.264 / AVC</string>
+    <!-- Video codec description: most compatible, explain compatibility trade-off -->
+    <string name="codec_avc_description">Most compatible</string>
+    <!-- Video codec option label: H.265 / HEVC -->
+    <string name="codec_hevc_label">H.265 / HEVC</string>
+    <!-- Video codec description: more efficient than AVC -->
+    <string name="codec_hevc_description">More efficient</string>
+    <!-- Video codec option label: AV1 -->
+    <string name="codec_av1_label">AV1</string>
+    <!-- Video codec description: most efficient but may not be supported everywhere -->
+    <string name="codec_av1_description">Most efficient</string>
+
+    <!-- QR code detection overlay -->
+    <!-- QrResultOverlay: header title when QR code detected -->
+    <string name="qr_result">QR Code</string>
+    <!-- QrResultOverlay: button to open URL from QR. Verb. -->
+    <string name="open_url">Open URL</string>
+    <!-- Toast error when no app can handle the URL from QR -->
+    <string name="no_app_to_open_url">No app can open this link</string>
+    <!-- QrResultOverlay: button to copy QR text to clipboard. Verb. -->
+    <string name="copy_text">Copy</string>
+
+    <!-- Pro / manual controls -->
+    <!-- CameraScreen: slider label for portrait blur/bokeh strength -->
+    <string name="blur">Blur</string>
+    <!-- Shown when ISO values not available. Abbreviation for Not Available -->
+    <string name="not_available">N/A</string>
+    <!-- ShutterRow overlay: counts burst shots taken while holding shutter. %1$d = shot count -->
+    <string name="burst_count">Burst <xliff:g id="count" example="12">%1$d</xliff:g></string>
+
+    <!-- Audio and focus controls -->
+    <!-- CameraScreen overlay pill: auto-exposure and auto-focus locked after long press on preview -->
+    <string name="ae_af_lock">AE/AF LOCK</string>
+
+    <!-- Panorama and generic auto -->
+    <!-- PanoramaOverlay: full-screen status while stitching panorama images. \u2026 is ellipsis -->
+    <string name="processing_panorama_u2026">Processing panorama\u2026</string>
+
+    <!-- Generic auto option for ISO / exposure / flash etc. Noun/adjective -->
     <string name="auto">Auto</string>
 </resources>

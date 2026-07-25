@@ -1,6 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="settings">הגדרות</string>
     <string name="notification_channel_location_tracking_name">איכון מיקום</string>
     <string name="notification_low_battery">הסוללה של %1$s נמוכה</string>
     <string name="permission_upgrade_dialog_dismiss">לא עכשיו</string>

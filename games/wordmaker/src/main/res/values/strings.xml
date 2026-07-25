@@ -1,34 +1,57 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- Manifest / launcher: App name. Noun, proper, word puzzle game -->
     <string name="app_name">Word Maker</string>
-    <string name="all_levels_completed">All levels have been completed</string>
-    <string name="stay_tuned_new_levels">Stay tuned for new levels in future updates</string>
+    <!-- WordMakerViewModel: Error when parsing level data fails (CrosswordData.fromAsset null). Sentence -->
     <string name="error_parse_level">Failed to parse level data.</string>
-    <string name="error_load_level">Failed to load level data: %1$s</string>
-    <string name="level_number">Level %1$d</string>
+    <!-- WordMakerTopBar: Title in casual mode when level number present. %1$d = level number integer, e.g. 12. Noun phrase -->
+    <string name="level_number">Level <xliff:g id="level" example="12">%1$d</xliff:g></string>
+    <!-- WordGameScreen: Primary button to advance to next level after win. Also competitive lobby shows when result exists. Verb phrase CTA -->
     <string name="next_level">Next Level</string>
+    <!-- DefinitionDialog / BonusWordsDialog: Confirm/dismiss dialog button. Verb -->
     <string name="close">Close</string>
+    <!-- BonusWordsDialog: Title for dialog listing extra words not in puzzle. Noun phrase -->
     <string name="bonus_words">Bonus Words</string>
+    <!-- SettingsPage: TopAppBar title. Noun -->
     <string name="settings">Settings</string>
+    <!-- Settings: Toggle for tap-to-spell input mode. Label -->
     <string name="tap_to_spell">Tap to Spell</string>
+    <!-- SettingsPage: Subtitle explaining tap-to-spell behavior. Sentence -->
     <string name="tap_to_spell_description">Tap letters to build words instead of dragging</string>
+    <!-- Hint confirmation dialog: Title asking confirm before using hint (consumes cooldown). Question sentence -->
     <string name="hint_confirmation">Are you sure you want to use a hint?</string>
+    <!-- Hint confirmation dialog: Confirm button. Yes -->
     <string name="yes">Yes</string>
+    <!-- Hint confirmation dialog: Dismiss button. No -->
     <string name="no">No</string>
+    <!-- GameModeDropdown: Casual mode label. Noun/adjective -->
     <string name="mode_casual">Casual</string>
+    <!-- GameModeDropdown: Competitive timed mode label. Adjective -->
     <string name="mode_competitive">Competitive</string>
+    <!-- DifficultyDropdown: Easy difficulty. Noun/adjective -->
     <string name="difficulty_easy">Easy</string>
+    <!-- DifficultyDropdown: Medium difficulty ~45s per level. Noun/adjective -->
     <string name="difficulty_medium">Medium</string>
+    <!-- DifficultyDropdown: Hard difficulty ~20s per level. Noun/adjective -->
     <string name="difficulty_hard">Hard</string>
-    <string name="competitive_score">Score: %1$d</string>
+    <!-- CompetitiveLobbyScreen / CompetitiveStatusBar: Score display. %1$d = current competitive score integer, e.g. 150. Noun with number -->
+    <string name="competitive_score">Score: <xliff:g id="score" example="150">%1$d</xliff:g></string>
+    <!-- CompetitiveLobbyScreen: Primary button before first game to start competitive. Verb -->
     <string name="competitive_start">Start</string>
+    <!-- CompetitiveLobbyScreen: Label above difficulty dropdown. Noun -->
     <string name="competitive_difficulty">Difficulty</string>
-    <string name="competitive_time_limit">%1$d seconds per level</string>
-    <string name="competitive_solved">Solved! +%1$d points</string>
-    <string name="competitive_timed_out">Time\'s up! %1$d points</string>
+    <!-- CompetitiveLobbyScreen: Info showing time limit per level for selected difficulty. %1$d = seconds e.g. 45. Noun phrase duration -->
+    <string name="competitive_time_limit"><xliff:g id="seconds" example="45">%1$d</xliff:g> seconds per level</string>
+    <!-- CompetitiveLobbyScreen: Result when level solved within time. %1$d = points delta e.g. 50 positive. Celebratory sentence -->
+    <string name="competitive_solved">Solved! +<xliff:g id="points" example="50">%1$d</xliff:g> points</string>
+    <!-- CompetitiveLobbyScreen: Result when timer expired. %1$d = points delta negative e.g. -15 or penalized, but displays as positive in string with context. Sentence -->
+    <string name="competitive_timed_out">Time\'s up! <xliff:g id="points" example="-15">%1$d</xliff:g> points</string>
 
-    <!-- Content descriptions (accessibility) -->
+    <!-- LetterChooser: Accessibility content description for shuffle button that randomizes letter order. Verb -->
     <string name="cd_shuffle">Shuffle</string>
+    <!-- WordGameScreen: Accessibility description for hint button (help icon) that reveals a letter with 30s cooldown indicator. Noun -->
     <string name="cd_hint">Hint</string>
+    <!-- WordGameScreen tap mode: Accessibility description for submit button (return icon) to submit formed word. Verb -->
     <string name="cd_submit">Submit</string>
+    <!-- WordGameScreen tap mode: Accessibility description for backspace button to delete last selected letter. Noun -->
     <string name="cd_backspace">Backspace</string>
 </resources>

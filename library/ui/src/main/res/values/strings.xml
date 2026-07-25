@@ -1,59 +1,66 @@
-<resources>
-    <!-- BackupButtons -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- Shared library: UI – BackupButtons: AlertDialog title when exporting KDBX backup, shown after SAF CreateDocument picker if password needed -->
     <string name="backup_dialog_title_export">Export Password</string>
+    <!-- Shared library: UI – BackupButtons: AlertDialog title when importing KDBX backup, shown after SAF OpenDocument picker if password needed -->
     <string name="backup_dialog_title_import">Import Password</string>
+    <!-- Shared library: UI – BackupButtons: Prompt above password TextField asking user to enter master password for KDBX file -->
     <string name="backup_password_prompt">Enter a master password for the KDBX file:</string>
+    <!-- Shared library: UI – BackupButtons: Confirm button in password dialog, label OK, enabled only when password non-empty -->
     <string name="backup_dialog_ok">OK</string>
-    <string name="backup_dialog_cancel">Cancel</string>
+    <!-- Shared library: UI – BackupButtons: Toast shown when KDBX backup export succeeds. Short success feedback -->
     <string name="backup_export_success">Backup exported successfully</string>
-    <string name="backup_export_failed_format">Backup export failed: %1$s</string>
+    <!-- Shared library: UI – BackupButtons: Toast when export fails. %1$s = raw exception message, do not translate placeholder content -->
+    <string name="backup_export_failed_format">Backup export failed: <xliff:g id="error" example="permission denied">%1$s</xliff:g></string>
+    <!-- Shared library: UI – BackupButtons: Toast when import succeeds, asks user to restart app. Long duration -->
     <string name="backup_import_success">Backup imported successfully. Please restart the app.</string>
-    <string name="backup_import_failed_format">Backup import failed: %1$s</string>
-
-    <!-- Time / Date pickers -->
+    <!-- Shared library: UI – BackupButtons: Toast when import fails. %1$s = raw exception message, do not translate placeholder content -->
+    <string name="backup_import_failed_format">Backup import failed: <xliff:g id="error" example="invalid file">%1$s</xliff:g></string>
+    <!-- Shared library: UI – TimePickerDialog: Dialog title for time picker, shown in top of picker. Noun phrase, keep short -->
     <string name="time_picker_title">Select time</string>
+    <!-- Shared library: UI – TimePickerDialog / DatePickerDialog: Generic OK confirm button, enabled conditionally (e.g. selectedDateMillis != null, >= minTime). Keep short -->
     <string name="dialog_ok">OK</string>
+    <!-- Cancel button label. Verb. Keep short. -->
     <string name="dialog_cancel">Cancel</string>
-
-    <!-- HistoryScrubber -->
+    <!-- Shared library: UI – HistoryScrubber: FilterChip label that jumps timeline/slider to present (nowMode). Short noun, chip label -->
     <string name="label_now">Now</string>
-
-    <!-- GameCenterScreen -->
+    <!-- Shared library: UI – GameCenterScreen: TopAppBar title for achievement game center screen -->
     <string name="title_game_center">Game Center</string>
-    <string name="achievement_secret_name">\?\?\?</string>
+    <!-- Shared library: UI – GameCenterScreen: Placeholder description for locked secret achievement, encourages playing more to reveal -->
     <string name="achievement_secret_description">Keep playing to reveal this achievement</string>
+    <!-- Shared library: UI – GameCenterScreen: Badge/status label under progress bar when achievement is unlocked. Shows completion state -->
     <string name="achievement_completed">Completed!</string>
-    <string name="achievement_progress_format">%1$d / %2$d</string>
-
-    <!-- MarkdownEditor -->
-    <string name="heading_level_format">Heading %1$d</string>
-
-    <!-- OdfMarkdownEditor -->
+    <!-- Shared library: UI – OdfMarkdownEditor: Paragraph style dropdown option for normal/body text in bottom bar style selector -->
     <string name="style_normal">Normal</string>
+    <!-- Shared library: UI – OdfMarkdownEditor: Style option for Heading 1 in paragraph style dropdown, maps to ParagraphStyle.HEADING1 -->
     <string name="style_heading1">Heading 1</string>
+    <!-- Shared library: UI – OdfMarkdownEditor: Style option for Heading 2 in paragraph style dropdown, maps to ParagraphStyle.HEADING2 -->
     <string name="style_heading2">Heading 2</string>
+    <!-- Shared library: UI – OdfMarkdownEditor: Style option for Heading 3 in paragraph style dropdown, maps to ParagraphStyle.HEADING3 -->
     <string name="style_heading3">Heading 3</string>
+    <!-- Shared library: UI – OdfMarkdownEditor: Style option for Heading 4 in paragraph style dropdown, maps to ParagraphStyle.HEADING4 -->
     <string name="style_heading4">Heading 4</string>
-
-    <!-- EditorLink dialog -->
+    <!-- Shared library: UI – EditorLink: Dialog title when editing existing hyperlink, shared by Markdown and HTML/WYSIWYG editors -->
     <string name="link_dialog_title_edit">Edit link</string>
+    <!-- Shared library: UI – EditorLink: Dialog title when inserting new hyperlink, shared by Markdown and HTML editors -->
     <string name="link_dialog_title_insert">Insert link</string>
+    <!-- Shared library: UI – EditorLink: Label for visible link text field (display text) in OutlinedTextField -->
     <string name="link_field_text">Text</string>
+    <!-- Shared library: UI – EditorLink: Label for URL destination field. Includes "(URL)" hint – keep parentheses, translate URL if appropriate -->
     <string name="link_field_url">Link to (URL)</string>
+    <!-- Shared library: UI – EditorLink: Save button when editing existing link, replaces Add. Verb, keep short -->
     <string name="link_action_save">Save</string>
+    <!-- Shared library: UI – EditorLink: Add button when inserting new link. Verb, keep short -->
     <string name="link_action_add">Add</string>
+    <!-- Shared library: UI – EditorLink: Button to remove hyperlink but keep text, shown only when editing existing link. Verb -->
     <string name="link_action_unlink">Unlink</string>
+    <!-- Shared library: UI – EditorLink: Button to open linked URL in browser via LocalUriHandler. Verb -->
     <string name="link_action_open">Open</string>
+    <!-- Shared library: UI – EditorLink / TimePickerDialog / DatePickerDialog / BackupButtons: Generic cancel/dismiss button, reused as single cancel string across modules. Keep short verb -->
     <string name="link_action_cancel">Cancel</string>
-
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- MarkdownEditor -->
-    <string name="heading">Heading %1$s</string>
-
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- AchievementNotification -->
+    <!-- Shared library: UI – MarkdownEditor: Toolbar heading dropdown item. %1$s = level number 1-3. Shows in heading selector -->
+    <string name="heading">Heading <xliff:g id="level" example="2">%1$s</xliff:g></string>
+    <!-- Shared library: UI – AchievementNotification: Banner title shown when achievement unlocked, auto-dismiss 8s swipeable card above achievement name -->
     <string name="achievement_unlocked">Achievement Unlocked!</string>
-
-    <!-- Content descriptions (accessibility) -->
+    <!-- Shared library: UI – EditorFormatter: Accessibility content description for link toolbar icon button, not visible text. Active when cursor on link -->
     <string name="cd_link">Link</string>
 </resources>

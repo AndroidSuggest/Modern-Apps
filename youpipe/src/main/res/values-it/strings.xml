@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">YouPipe</string>
     <string name="title_history">Cronologia</string>
@@ -33,23 +32,18 @@
     <string name="channel_info">%1$s iscritti</string>
     <string name="video_stat_format">%1$s visualizzazioni | %2$s</string>
     <string name="label_description">Descrizione</string>
-    <string name="label_loading_subscriptions">Caricamento iscrizioni più recenti</string>
     <string name="title_settings">Impostazioni</string>
     <string name="label_sponsorblock">Categorie di SponsorBlock</string>
-    <string name="label_sponsorblock_description">Seleziona le parti dall\'elenco sottostante per saltarle nei video</string>
     <string name="label_backup_restore">Backup e ripristino</string>
     <string name="label_restore_youpipe">Ripristina da YouPipe</string>
     <string name="label_import_newpipe">Importa iscrizioni NewPipe</string>
     <string name="label_import_youtube">Importa da YouTube (Takeout)</string>
     <string name="label_export_youpipe">Esporta iscrizioni</string>
-    <string name="video_quality_codec">%1$s (%2$s)</string>
     <string name="video_quality_fps_codec">%1$s (%2$dfps) %3$s</string>
-    <string name="audio_bitrate_codec">%1$dkbps (%2$s)</string>
     <string name="empty_recommendations">Guarda alcuni video per ricevere suggerimenti personalizzati</string>
     <string name="label_dearrow">Abilita DeArrow</string>
     <string name="label_dearrow_description">Sostituisci titoli e miniature clickbait con alternative della community</string>
     <string name="recommendation_reason">Perché: %1$s</string>
-    <string name="action_more_options">Altre opzioni</string>
     <string name="action_not_interested">Non interessato</string>
     <string name="action_more_like_this">Altri simili</string>
     <string name="action_pin_channel">Fissa canale</string>
@@ -86,7 +80,6 @@
     <string name="action_unblock">Sblocca</string>
     <string name="label_youtube_content">Contenuti YouTube</string>
     <string name="label_youtube_language">Lingua contenuti</string>
-    <string name="label_youtube_language_description">Lingua per titoli dei video, descrizioni, commenti e risultati di ricerca</string>
     <string name="label_system_default">Predefinita di sistema</string>
     <string name="label_hide_live">Nascondi live/durata sconosciuta</string>
     <string name="preset_mostly_subscriptions">Soprattutto iscrizioni</string>

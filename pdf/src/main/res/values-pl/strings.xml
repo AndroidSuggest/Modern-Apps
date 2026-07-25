@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
     <string name="search_label">Znajdź</string>
@@ -12,10 +11,7 @@
     <string name="share_pdf">Udostępnij plik PDF</string>
     <string name="crop_image">Przytnij zdjęcie</string>
     <string name="continue_label">Kontynuuj</string>
-    <string name="unsupported_version">Ta aplikacja wymaga Android 15 lub najnowszej wersji usług Google Play. Jeśli nie możesz spełnić żadnego z tych warunków, twoje urządzenie niestety nie jest obsługiwane.</string>
     <string name="pdf_save">Zapisz</string>
-    <string name="pdf_save_as_copy">Zapisz kopię</string>
     <string name="auto_detect">Automatyczne wykrywanie</string>
-    <string name="safe_pdf_viewer_title">Przeglądarka PDF (bezpieczna)</string>
     <string name="safe_pdf_error">Tego pliku PDF nie można otworzyć za pomocą bezpiecznej przeglądarki. Możliwe, że jest uszkodzony lub korzysta z nieobsługiwanych funkcji.</string>
 </resources>

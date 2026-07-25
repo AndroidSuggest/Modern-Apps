@@ -1,3 +1,4 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- Shared library: OCR text recognition - App name placeholder, required by manifest, not user-visible -->
     <string name="app_name">App</string>
 </resources>

@@ -1,6 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="settings">设置</string>
     <string name="app_name">Find Family</string>
     <string name="notification_channel_location_tracking_name">位置追踪</string>
     <string name="notification_channel_location_tracking_desc">用于 FindFamily 后台位置更新</string>
@@ -56,8 +54,6 @@
     <string name="time_in_hours">%1$d 小时后</string>
     <string name="time_in_days">%1$d 天后</string>
     <string name="change_connected_contact">更改已连接的联系人</string>
-    <string name="history_button">历史记录</string>
-    <string name="hide_button">实时</string>
     <string name="waypoint_name_blank_error">名称不能为空</string>
     <string name="waypoint_range_error">范围必须为数字</string>
     <string name="waypoint_range_suffix">米</string>
@@ -83,14 +79,12 @@
     <string name="notification_channel_uwb_request_desc">有人正在使用附近查找（UWB）来定位您</string>
     <string name="notification_uwb_request_title">有人正在查找您</string>
     <string name="notification_uwb_request_text">%1$s 正在使用附近查找（UWB）。点按即可查看距离和方向。</string>
-    <string name="uwb_action_find_precision">附近查找（UWB）</string>
     <string name="uwb_unknown_peer_name">某人</string>
     <string name="uwb_status_starting">正在设置附近查找（UWB）…</string>
     <string name="uwb_status_waiting">正在等待对方设备…</string>
     <string name="uwb_status_peer_disconnected">与对方设备失去连接。请靠近一些。</string>
     <string name="uwb_status_unsupported">此设备不支持附近查找（UWB）。</string>
     <string name="uwb_status_failed">附近查找（UWB）失败。</string>
-    <string name="uwb_direction_unavailable_hint">请移动您的手机以寻找方向信号</string>
     <string name="permission_approximate_only_explanation">FindFamily 仅支持确切（精确）位置。您目前仅授予了大致位置 — 请升级到确切位置以继续。</string>
     <string name="permission_reopen_upgrade_prompt">升级到确切位置</string>
     <string name="permission_upgrade_dialog_title">需要确切位置</string>
@@ -99,8 +93,6 @@
     <string name="permission_upgrade_dialog_dismiss">以后再说</string>
     <string name="share_your_location">与此人分享您的位置</string>
     <string name="history_title">历史记录：%1$s</string>
-    <string name="history_show_content_desc">查看位置历史记录</string>
-    <string name="history_hide_content_desc">返回实时位置</string>
     <string name="history_step_minus_5m">-5分钟</string>
     <string name="history_step_minus_1m">-1分钟</string>
     <string name="history_step_minus_10s">-10秒</string>

@@ -1,62 +1,74 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher and system Accounts settings -->
     <string name="app_name">EverySync</string>
 
-    <!-- Accounts list -->
+    <!-- AccountsScreen: TopAppBar title for accounts list home screen -->
     <string name="accounts_title">EverySync</string>
+    <!-- AccountsScreen empty state / AccountDetail fallback: Message when no accounts added yet. Includes + hint -->
     <string name="no_accounts">No accounts yet. Tap + to add one.</string>
-    <string name="add_account">Add account</string>
+    <!-- AccountDetailScreen: Button to trigger immediate sync for this account. Verb phrase -->
     <string name="sync_now">Sync now</string>
+    <!-- AccountsScreen: Row status showing sync currently in progress -->
     <string name="syncing">Syncing…</string>
-    <string name="last_synced">Last synced: %1$s</string>
+    <!-- AccountsScreen: Row showing last sync time. %1$s = formatted date/time -->
+    <string name="last_synced">Last synced: <xliff:g id="date" example="Today 10:30 AM">%1$s</xliff:g></string>
+    <!-- AccountsScreen: Row status when account never synced before -->
     <string name="never_synced">Never synced</string>
-    <string name="settings">Settings</string>
 
-    <!-- Add account -->
+    <!-- AddAccountScreen: TopAppBar title for provider chooser screen -->
     <string name="add_account_title">Add account</string>
-    <string name="choose_provider">Choose a provider</string>
-    <string name="provider_google">Google</string>
-    <string name="provider_icloud">Apple / iCloud</string>
-    <string name="provider_caldav">CalDAV server</string>
-    <string name="provider_carddav">CardDAV server</string>
-    <string name="provider_google_health">Google Health</string>
+    <!-- AddAccountScreen: Supporting label for providers using Health Connect integration -->
     <string name="provider_via_health_connect">via Health Connect</string>
 
-    <!-- DAV login -->
-    <string name="dav_login_title">%1$s login</string>
+    <!-- DavLoginScreen: Dialog title for DAV login. %1$s = provider display name e.g. iCloud -->
+    <string name="dav_login_title"><xliff:g id="provider" example="iCloud">%1$s</xliff:g> login</string>
+    <!-- DavLoginScreen: Text field label for CalDAV/CardDAV server URL. Noun phrase -->
     <string name="dav_base_url">Server URL</string>
+    <!-- DavLoginScreen: Text field label for DAV username or email. Noun phrase -->
     <string name="dav_username">Username / email</string>
+    <!-- DavLoginScreen: Text field label for DAV password hinting app-specific. Noun phrase -->
     <string name="dav_password">Password (app-specific)</string>
+    <!-- Generic verb. Confirm button to log in to DAV server -->
     <string name="login">Log in</string>
 
-    <!-- iCloud app-specific password guidance -->
+    <!-- DavLoginScreen iCloud variant: Long explanatory text guiding user to create app-specific password at account.apple.com -->
     <string name="icloud_app_password_steps">iCloud needs an app-specific password (not your Apple ID password):\n\n1. Sign in at account.apple.com\n2. Open Sign-In &amp; Security → App-Specific Passwords\n3. Create one and name it \"EverySync\"\n4. Enter your Apple ID email and that password below</string>
+    <!-- DavLoginScreen iCloud: Button that opens account.apple.com to create app-specific password -->
     <string name="icloud_create_password">Create app-specific password</string>
+    <!-- DavLoginScreen iCloud variant: Label for Apple ID email field. Noun phrase -->
     <string name="apple_id_email">Apple ID email</string>
+    <!-- DavLoginScreen iCloud variant: Label for app-specific password field -->
     <string name="app_specific_password">App-specific password</string>
+    <!-- Generic verb. Dismiss login dialog -->
     <string name="cancel">Cancel</string>
 
-    <!-- Account detail -->
-    <string name="account_detail_title">Account</string>
+    <!-- AccountDetailScreen: Toggle label for contacts sync capability. Verb phrase -->
     <string name="sync_contacts">Sync contacts</string>
+    <!-- AccountDetailScreen: Toggle label for calendar sync capability. Verb phrase -->
     <string name="sync_calendar">Sync calendars</string>
+    <!-- AccountDetailScreen: Toggle label for health data sync capability. Verb phrase -->
     <string name="sync_health">Sync health</string>
-    <string name="sync_interval">Sync interval</string>
+    <!-- AccountDetailScreen: Destructive button to remove account from app. Verb phrase -->
     <string name="remove_account">Remove account</string>
-    <string name="collections">Collections</string>
 
-    <!-- Settings -->
+    <!-- SettingsScreen: TopAppBar title for global settings -->
     <string name="settings_title">Settings</string>
+    <!-- SettingsScreen: Label for global sync interval in minutes field -->
     <string name="global_interval">Sync interval (minutes)</string>
+    <!-- SettingsScreen: Switch label to restrict syncing to Wi-Fi only -->
     <string name="wifi_only">Sync on Wi-Fi only</string>
+    <!-- SettingsScreen: Section header for conflict resolution policy radios -->
     <string name="conflict_policy">Conflict resolution</string>
+    <!-- SettingsScreen conflict option: Last writer wins strategy. Phrase -->
     <string name="conflict_lww">Last writer wins</string>
+    <!-- SettingsScreen conflict option: Prefer data from server when conflict. Verb phrase -->
     <string name="conflict_remote">Prefer server</string>
+    <!-- SettingsScreen conflict option: Prefer local device data when conflict. Verb phrase -->
     <string name="conflict_local">Prefer device</string>
 
-    <!-- Permissions -->
-    <string name="grant_permissions">Grant permissions</string>
+    <!-- AccountsScreen PermissionsChecker: Rationale text explaining why contacts/calendar permission needed -->
     <string name="need_permissions">EverySync needs contacts and calendar access to sync your accounts.</string>
-    <string name="grant_health_permissions">Grant Health Connect access</string>
 
+    <!-- PermissionsRationaleActivity: Full privacy policy text shown in Health Connect rationale activity -->
     <string name="everysync_privacy_policy">EverySync syncs contacts, calendars and health data between your cloud accounts and this device. Data is only stored on this device and the servers you configure.</string>
 </resources>

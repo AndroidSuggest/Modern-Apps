@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">YouPipe</string>
     <string name="title_history">历史记录</string>
@@ -33,23 +32,18 @@
     <string name="channel_info">%1$s 位订阅者</string>
     <string name="video_stat_format">%1$s 次观看 | %2$s</string>
     <string name="label_description">描述</string>
-    <string name="label_loading_subscriptions">正在加载最新订阅</string>
     <string name="title_settings">设置</string>
     <string name="label_sponsorblock">SponsorBlock 类别</string>
-    <string name="label_sponsorblock_description">从下面的列表中选择在视频中跳过的部分</string>
     <string name="label_backup_restore">备份和恢复</string>
     <string name="label_restore_youpipe">从 YouPipe 恢复</string>
     <string name="label_import_newpipe">导入 NewPipe 订阅</string>
     <string name="label_import_youtube">从 YouTube (Takeout) 导入</string>
     <string name="label_export_youpipe">导出订阅</string>
-    <string name="video_quality_codec">%1$s（%2$s）</string>
     <string name="video_quality_fps_codec">%1$s（%2$dfps）%3$s</string>
-    <string name="audio_bitrate_codec">%1$dkbps（%2$s）</string>
     <string name="empty_recommendations">观看一些视频以获得个性化推荐</string>
     <string name="label_dearrow">启用 DeArrow</string>
     <string name="label_dearrow_description">用社区提交的替代内容替换标题党标题和缩略图</string>
     <string name="recommendation_reason">原因：%1$s</string>
-    <string name="action_more_options">更多选项</string>
     <string name="action_not_interested">不感兴趣</string>
     <string name="action_more_like_this">更多类似内容</string>
     <string name="action_pin_channel">固定频道</string>
@@ -92,7 +86,6 @@
     <string name="action_unmute">取消屏蔽</string>
     <string name="label_youtube_content">YouTube 内容</string>
     <string name="label_youtube_language">内容语言</string>
-    <string name="label_youtube_language_description">视频标题、描述、评论和搜索结果的语言</string>
     <string name="label_system_default">系统默认</string>
     <string name="video_quality">%1$s</string>
     <string name="audio_bitrate">%1$dkbps</string>

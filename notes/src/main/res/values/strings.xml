@@ -1,20 +1,21 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Notes</string>
-    <string name="search">Search</string>
+    <!-- NotePage: Placeholder hint for note title field. Noun. -->
     <string name="title">Title</string>
-    <string name="content">Content</string>
+    <!-- NotePage: Block type label for ink drawing. Noun. -->
     <string name="drawing">Drawing</string>
+    <!-- NotePage: Button to add an image block. Verb phrase. -->
     <string name="add_image">Add image</string>
+    <!-- NotePage: Button to add a drawing/ink block. Verb phrase. -->
     <string name="add_drawing">Add drawing</string>
+    <!-- ExternalNoteScreen: Toast after external file saved -->
     <string name="external_saved">Saved to file</string>
+    <!-- ExternalNoteScreen: Error toast when file could not be saved, read-only -->
     <string name="external_save_failed">Couldn\'t save (file may be read-only)</string>
+    <!-- ExternalNoteScreen: Error toast when file could not be opened -->
     <string name="external_read_failed">Couldn\'t open file</string>
-    <string name="move_up">Move up</string>
-    <string name="move_down">Move down</string>
-    <string name="shrink">Shrink</string>
-    <string name="enlarge">Enlarge</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- NotePage -->
+    <!-- NotePage: Clipboard label for note content. Noun, lowercase intentional. -->
     <string name="note">note</string>
 </resources>

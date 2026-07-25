@@ -1,14 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Note</string>
-    <string name="search">Cerca</string>
     <string name="title">Titolo</string>
-    <string name="content">Contenuto</string>
     <string name="drawing">Disegno</string>
     <string name="add_image">Aggiungi immagine</string>
     <string name="add_drawing">Aggiungi disegno</string>
-    <string name="move_up">Sposta su</string>
-    <string name="move_down">Sposta giù</string>
-    <string name="shrink">Riduci</string>
-    <string name="enlarge">Ingrandisci</string>
-</resources>
+    </resources>

@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kontakty</string>
     <string name="ok">OK</string>
@@ -6,15 +5,11 @@
     <string name="cancel">Anuluj</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
     <string name="contact_photo_description">Zdjęcie %1$s</string>
-    <string name="favorite">Ulubione</string>
     <string name="share_contact">Udostępnij kontakt</string>
     <string name="about_name">O %1$s</string>
     <string name="birthday">Urodziny</string>
     <string name="note">Notatka</string>
-    <string name="action">Akcja</string>
     <string name="favorites">Ulubione</string>
-    <string name="user_profile">Profil użytkownika</string>
-    <string name="profiles">Profile</string>
     <string name="export_contacts">Eksportuj wszystkie kontakty</string>
     <string name="on_device">Na urządzeniu</string>
     <string name="add_contact">Dodaj kontakt</string>
@@ -26,8 +21,6 @@
     <string name="nickname">Pseudonim</string>
     <string name="company">Firma</string>
     <string name="account">Konto</string>
-    <string name="choose_account">Wybór konta</string>
-    <string name="remove_birthday">Usuń urodziny</string>
     <string name="dates">Daty</string>
     <string name="phone">Telefon</string>
     <string name="email">Email</string>
@@ -58,10 +51,8 @@
     <string name="account_display_format">%1$s (%2$s)</string>
     <string name="add_address">Dodaj adres</string>
     <string name="add_phone">Dodaj telefon</string>
-    <string name="remove_date">Usuń datę</string>
     <string name="delete_contact_name_confirm">Czy na pewno chcesz usunąć „%1$s”? Tej czynności nie można cofnąć.</string>
     <string name="add_email">Dodaj email</string>
-    <string name="full_name_format">%1$s %2$s</string>
     <string name="calendar_sync">Synchronizacja kalendarza</string>
     <string name="sync_contacts_calendar">Pokaż urodziny w kalendarzu</string>
     <string name="contacts_calendar_name">Kontakty</string>
@@ -73,7 +64,6 @@
     <string name="selected_count">%1$d wybrano</string>
     <string name="show_account_labels">Pokaż konta kontaktów</string>
     <string name="display">Wyświetl</string>
-    <string name="search">Szukaj</string>
     <string name="search_contacts">Szukaj kontakty</string>
     <string name="include_year">Uwzględnij rok</string>
     <string name="contacts">Kontakty</string>
@@ -81,7 +71,6 @@
     <string name="select_group_hint">Wybierz grupę, aby wyświetlić kontakty</string>
     <string name="add_to_group">Dodaj do grupy</string>
     <string name="add_group">Dodaj grupę</string>
-    <string name="group_name">Nazwa grupy</string>
     <string name="enter_group_name">Wprowadź nazwę grupy</string>
     <string name="delete_group_title">Usuń grupę</string>
     <string name="delete_group_confirm">Czy na pewno chcesz usunąć tę grupę? Kontakty nie zostaną usunięte.</string>
@@ -90,11 +79,6 @@
     <string name="whatsapp">WhatsApp</string>
     <string name="telegram">Telegram</string>
     <string name="google_meet">Google Meet</string>
-    <string name="import_button">Importuj</string>
-    <string name="remove_from_group">Usuń z grupy</string>
-    <string name="copied_to_clipboard">Skopiowano do schowka</string>
-    <string name="select_account_to_import">Wybierz konto, do którego chcesz zaimportować:</string>
-    <string name="create_new_account">+ Utwórz nowe konto</string>
     <string name="no_groups_found">Nie znaleziono grup. Utwórz grupę w zakładce Grupy.</string>
     <string name="contacts_count">%1$d kontaktów</string>
     <string name="done">Zrobione</string>

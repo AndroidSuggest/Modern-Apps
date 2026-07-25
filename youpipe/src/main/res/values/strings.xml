@@ -1,123 +1,225 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name: launcher label. Proper noun YouPipe -->
     <string name="app_name">YouPipe</string>
-    <string name="title_history">History</string>
+
+    <!-- Search bar placeholder hint. Noun, also tab label for search -->
     <string name="label_search">Search</string>
-    <string name="subscribers_count">%1$s subscribers</string>
-    <string name="title_create_subscription_category">Create subscription category</string>
-    <string name="title_update_subscription_category">Update subscription category</string>
-    <string name="label_category_name">Category name</string>
-    <string name="label_select_subscriptions">Select subscriptions:</string>
-    <string name="action_create">Create</string>
-    <string name="action_update">Update</string>
-    <string name="video_load_error">Video load error - Youtube may have blocked anonymous watch access from this IP</string>
-    <string name="action_go_back">Go Back</string>
-    <string name="label_comments">Comments</string>
-    <string name="label_related_videos">Related Videos</string>
-    <string name="label_description">Description</string>
-    <string name="title_subscriptions">Subscriptions</string>
-    <string name="label_groups">Groups:</string>
-    <string name="label_all_subscriptions">All Subscriptions</string>
-    <string name="label_channels">Channels:</string>
-    <string name="video_info_format">%1$s | %2$s views | %3$s</string>
-    <string name="time_ago_just_now">Just now</string>
-    <string name="time_ago_minutes">%1$d minutes ago</string>
-    <string name="time_ago_hours">%1$d hours ago</string>
-    <string name="time_ago_days">%1$d days ago</string>
-    <string name="time_ago_months">%1$d months ago</string>
-    <string name="time_ago_years">%1$d years ago</string>
-    <string name="count_k_format">%1$sK</string>
-    <string name="count_m_format">%1$sM</string>
-    <string name="count_b_format">%1$sB</string>
-    <string name="action_subscribe">Subscribe</string>
-    <string name="action_unsubscribe">Unsubscribe</string>
-    <string name="channel_info">%1$s subscribers</string>
-    <string name="video_stat_format">%1$s views | %2$s</string>
-    <string name="label_loading_subscriptions">Loading most recent subscriptions</string>
-    <string name="title_settings">Settings</string>
-    <string name="label_sponsorblock">SponsorBlock Categories</string>
-    <string name="label_sponsorblock_description">Select parts from list below to skip them in videos</string>
-    <string name="label_dearrow">Enable DeArrow</string>
-    <string name="label_dearrow_description">Replace clickbait titles and thumbnails with community-submitted alternatives</string>
-    <string name="label_youtube_content">YouTube Content</string>
-    <string name="label_youtube_language">Content language</string>
-    <string name="label_youtube_language_description">Language for video titles, descriptions, comments, and search results</string>
-    <string name="label_system_default">System default</string>
-    <string name="label_backup_restore">Backup &amp; Restore</string>
-    <string name="label_restore_youpipe">Restore from YouPipe</string>
-    <string name="label_import_newpipe">Import NewPipe subscriptions</string>
-    <string name="label_import_youtube">Import from YouTube (Takeout)</string>
-    <string name="label_export_youpipe">Export Subscriptions</string>
-    <string name="video_quality_codec">%1$s (%2$s)</string>
-    <string name="video_quality">%1$s</string>
-    <string name="video_quality_fps_codec">%1$s (%2$dfps) %3$s</string>
-    <string name="audio_bitrate_codec">%1$dkbps (%2$s)</string>
-    <string name="audio_bitrate">%1$dkbps</string>
+    <!-- Video item: subscriber count under channel name. %1$s = formatted count e.g. 12K. Keep word subscribers lower case -->
+    <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> subscribers</string>
+    <!-- Empty state when recommendations empty, prompts user to watch videos to get personalized feed -->
     <string name="empty_recommendations">Watch some videos to get personalized recommendations</string>
-    <string name="recommendation_reason">Why: %1$s</string>
-    <string name="action_more_options">More options</string>
-    <string name="action_not_interested">Not interested</string>
-    <string name="action_more_like_this">More like this</string>
-    <string name="action_pin_channel">Pin channel</string>
-    <string name="action_block_channel">Block channel</string>
+    <!-- Video item details: channel | views | time. %1$s = channel name, %2$s = view count e.g. 1.2M views, %3$s = time ago e.g. 2 days ago. Keep pipe separators -->
+    <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> views | <xliff:g id="time" example="2 days ago">%3$s</xliff:g></string>
+    <!-- Recommendation explanation line: why this video suggested. %1$s = reason e.g. watched similar -->
+    <string name="recommendation_reason">Why: <xliff:g id="reason" example="watched similar">%1$s</xliff:g></string>
+    <!-- Section header for recommendations feed. Noun plural -->
     <string name="label_recommendations">Recommendations</string>
+
+    <!-- Time ago: just now (<1 minute). Phrase -->
+    <string name="time_ago_just_now">Just now</string>
+    <!-- Time ago: minutes. %1$d = number of minutes -->
+    <string name="time_ago_minutes"><xliff:g id="minutes" example="5">%1$d</xliff:g> minutes ago</string>
+    <!-- Time ago: hours. %1$d = number of hours -->
+    <string name="time_ago_hours"><xliff:g id="hours" example="3">%1$d</xliff:g> hours ago</string>
+    <!-- Time ago: days. %1$d = number of days -->
+    <string name="time_ago_days"><xliff:g id="days" example="2">%1$d</xliff:g> days ago</string>
+    <!-- Time ago: months. %1$d = number of months -->
+    <string name="time_ago_months"><xliff:g id="months" example="6">%1$d</xliff:g> months ago</string>
+    <!-- Time ago: years. %1$d = number of years -->
+    <string name="time_ago_years"><xliff:g id="years" example="1">%1$d</xliff:g> years ago</string>
+
+    <!-- Short count: thousands. %1$s = number like 12.3, suffix K for thousand. Keep K uppercase -->
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>K</string>
+    <!-- Short count: millions. %1$s = number, suffix M -->
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>M</string>
+    <!-- Short count: billions. %1$s = number, suffix B -->
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>B</string>
+
+    <!-- Video load error dialog text explaining YouTube may have blocked anonymous watch from IP -->
+    <string name="video_load_error">Video load error - Youtube may have blocked anonymous watch access from this IP</string>
+    <!-- Button: go back from error dialog. Verb phrase -->
+    <string name="action_go_back">Go Back</string>
+    <!-- Tab label: comments section under video. Noun plural -->
+    <string name="label_comments">Comments</string>
+    <!-- Tab label: related videos pager tab. Noun phrase -->
+    <string name="label_related_videos">Related Videos</string>
+    <!-- Tab label: video description tab. Noun -->
+    <string name="label_description">Description</string>
+    <!-- Download dialog: title for download options sheet. Noun phrase -->
+    <string name="download_options">Download Options</string>
+    <!-- Button: start download. Verb -->
+    <string name="download">Download</string>
+    <!-- Label: video resolution section in download dialog. Noun -->
+    <string name="resolution">Resolution</string>
+    <!-- Label: language selection for audio/captions. Noun -->
+    <string name="language">Language</string>
+    <!-- Menu item: captions off. Adjective/state -->
+    <string name="off">Off</string>
+    <!-- Menu label: chapter marker in video. Noun -->
+    <string name="chapter">Chapter</string>
+    <!-- Button: closed captions toggle. Abbreviation CC -->
+    <string name="cc">CC</string>
+    <!-- Video stats format: views | time ago for channel list items. %1$s = views e.g. 1M, %2$s = time ago e.g. 3 days ago -->
+    <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> views | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
+    <!-- Quality with fps and codec. %1$s = quality, %2$d = fps e.g. 60, %3$s = codec -->
+    <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g> (<xliff:g id="fps" example="60">%2$d</xliff:g>fps) <xliff:g id="codec" example="avc">%3$s</xliff:g></string>
+
+    <!-- Button: subscribe to channel. Verb -->
+    <string name="action_subscribe">Subscribe</string>
+    <!-- Button: unsubscribe from channel. Verb with prefix Un -->
+    <string name="action_unsubscribe">Unsubscribe</string>
+    <!-- Channel header subtitle. %1$s = formatted subscriber count e.g. 1.2M. Same as subscribers_count but used on channel header -->
+    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> subscribers</string>
+
+    <!-- TopAppBar title for subscriptions feed. Noun plural -->
+    <string name="title_subscriptions">Subscriptions</string>
+    <!-- Section header: groups of subscriptions created by user. Noun plural, Title Case -->
+    <string name="label_groups">Groups:</string>
+    <!-- Section header: all subscriptions feed. Noun phrase -->
+    <string name="label_all_subscriptions">All Subscriptions</string>
+    <!-- Section header: channels list in subscription groups. Noun plural -->
+    <string name="label_channels">Channels:</string>
+    <!-- Loading row text when fetching recent subscriptions. Sentence present participle -->
+    <string name="loading_recent_subscriptions">Loading recent subscriptions</string>
+
+    <!-- Dialog title: create new subscription category. Verb phrase Title Case -->
+    <string name="title_create_subscription_category">Create subscription category</string>
+    <!-- Dialog title: update existing subscription category. Verb phrase -->
+    <string name="title_update_subscription_category">Update subscription category</string>
+    <!-- Field label: category name input. Noun phrase -->
+    <string name="label_category_name">Category name</string>
+    <!-- Field label: multi-select subscriptions to include in category. Verb phrase with colon -->
+    <string name="label_select_subscriptions">Select subscriptions:</string>
+    <!-- Button: create category. Verb -->
+    <string name="action_create">Create</string>
+    <!-- Button: update category. Verb -->
+    <string name="action_update">Update</string>
+
+    <!-- TopAppBar title for watch history. Noun -->
+    <string name="title_history">History</string>
+    <!-- Selection mode badge: number selected (lowercase s in this variant). %1$s = count e.g. 3 -->
+    <string name="selected"><xliff:g id="count" example="3">%1$s</xliff:g> selected</string>
+    <!-- Dialog title: clear watch history confirmation. Verb phrase -->
+    <string name="clear_history">Clear History</string>
+    <!-- Confirmation body text for clearing all watch history -->
+    <string name="are_you_sure_you_want_to_clear_all_watch">Are you sure you want to clear all watch history?</string>
+    <!-- Generic clear action for history. Verb -->
+    <string name="clear">Clear</string>
+    <!-- Generic cancel button in dialogs. Verb -->
+    <string name="cancel">Cancel</string>
+
+    <!-- TopAppBar title for offline downloads list (when not selecting). Noun plural -->
+    <string name="downloads">Downloads</string>
+    <!-- Selection badge: number selected with capital S (DownloadsPage variant). %1$s = count -->
+    <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Selected</string>
+
+    <!-- TopAppBar title for settings screen. Noun plural -->
+    <string name="title_settings">Settings</string>
+
+    <!-- Section header: recommendation system settings. Noun plural -->
+    <string name="label_recommendations">Recommendations</string>
+    <!-- Slider label: Familiar vs Discovery trade-off for feed. Noun ↔ Noun with arrow symbol -->
     <string name="label_dial_discovery">Familiar ↔ Discovery</string>
+    <!-- Slider label: Evergreen vs Fresh content recency. Adjective ↔ Adjective -->
     <string name="label_dial_fresh">Evergreen ↔ Fresh</string>
+    <!-- Slider label: Focused vs Diverse topic spread. Adjective ↔ Adjective -->
     <string name="label_dial_diverse">Focused ↔ Diverse</string>
+    <!-- Section subheader: source toggles for recommendation feed -->
     <string name="label_rec_sources">Sources</string>
+    <!-- Section subheader: content filter switches (hide shorts etc) -->
     <string name="label_rec_content_filters">Content filters</string>
+    <!-- Source toggle: related to watch history. Noun phrase -->
     <string name="label_source_related">Related to your history</string>
+    <!-- Source toggle: trending videos. Noun -->
     <string name="label_source_trending">Trending</string>
+    <!-- Source toggle: feed from user subscriptions. Phrase -->
     <string name="label_source_subscription">Your subscriptions</string>
+    <!-- Source toggle: top videos from top inferred channels. Noun phrase -->
     <string name="label_source_top_channel">Top channels</string>
+    <!-- Source toggle: search-based recommendations. Noun phrase -->
     <string name="label_source_search">Search-based</string>
+    <!-- Filter toggle: hide YouTube Shorts short-form videos. Verb phrase -->
     <string name="label_hide_shorts">Hide Shorts</string>
+    <!-- Filter toggle: hide live or unknown duration videos. Verb phrase -->
     <string name="label_hide_live">Hide live/unknown length</string>
+    <!-- Field label: minimum video length in seconds filter input. Noun phrase with unit -->
     <string name="label_min_duration">Min length (seconds)</string>
+    <!-- Field label: maximum video length filter input -->
     <string name="label_max_duration">Max length (seconds)</string>
+    <!-- Button/link to manage inferred interests (channels/topics/blocked). Verb phrase -->
     <string name="label_manage_interests">Manage interests</string>
+    <!-- Button: reset recommendation algorithm history and learned interests. Verb phrase -->
     <string name="action_reset_algorithm">Reset algorithm</string>
+    <!-- Preset: favor discovery of new content. Verb phrase -->
     <string name="preset_discover_more">Discover more</string>
+    <!-- Preset: balanced feed. Adjective -->
     <string name="preset_balanced">Balanced</string>
+    <!-- Preset: primarily subscription content. Noun phrase -->
     <string name="preset_mostly_subscriptions">Mostly subscriptions</string>
+    <!-- Preset: deeper dives into single topics. Noun phrase -->
     <string name="preset_deep_dives">Deep dives</string>
+    <!-- Action: not interested removes interest. Phrase negation -->
+    <string name="action_not_interested">Not interested</string>
+    <!-- Action: more like this boosts same channel/topic. Phrase -->
+    <string name="action_more_like_this">More like this</string>
+    <!-- Action: pin channel to favorites. Verb phrase -->
+    <string name="action_pin_channel">Pin channel</string>
+    <!-- Action: block channel hide completely. Verb phrase -->
+    <string name="action_block_channel">Block channel</string>
+
+    <!-- TopAppBar title: manage inferred interests and blocks. Verb phrase -->
     <string name="title_manage_interests">Manage interests</string>
+    <!-- Section header: channels inferred from watch history. Noun phrase -->
     <string name="label_your_channels">Your channels</string>
+    <!-- Section header: topics inferred from history. Noun phrase -->
     <string name="label_your_topics">Your topics</string>
+    <!-- Section header: blocked channels list. Noun phrase -->
     <string name="label_blocked_channels">Blocked channels</string>
+    <!-- Section header: muted keywords list. Noun phrase -->
     <string name="label_muted_keywords">Muted keywords</string>
+    <!-- Empty state when no channels inferred yet -->
     <string name="label_no_channels">No inferred channels yet</string>
+    <!-- Empty state when no topics inferred yet -->
     <string name="label_no_topics">No inferred topics yet</string>
+    <!-- Empty state when no blocked channels -->
     <string name="label_no_blocked_channels">No blocked channels</string>
+    <!-- Empty state when no muted keywords -->
     <string name="label_no_muted_keywords">No muted keywords</string>
+    <!-- Badge: pinned channel indicator. Verb past participle -->
     <string name="label_pinned">Pinned</string>
+    <!-- Button: pin channel/topic. Verb -->
     <string name="action_pin">Pin</string>
+    <!-- Button: unpin previously pinned. Verb with Un prefix -->
     <string name="action_unpin">Unpin</string>
+    <!-- Button: remove interest/channel. Verb -->
     <string name="action_remove">Remove</string>
+    <!-- Button: unblock channel. Verb -->
     <string name="action_unblock">Unblock</string>
+    <!-- Button: unmute keyword. Verb -->
     <string name="action_unmute">Unmute</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- HistoryPage -->
-    <string name="clear">Clear</string>
-    <string name="selected">%1$s selected</string>
-    <string name="cancel">Cancel</string>
-    <string name="clear_history">Clear History</string>
-    <string name="are_you_sure_you_want_to_clear_all_watch">Are you sure you want to clear all watch history?</string>
-    <!-- SubscriptionsPage -->
-    <string name="loading_recent_subscriptions">Loading recent subscriptions</string>
-    <!-- VideoPage -->
-    <string name="download_options">Download Options</string>
-    <string name="download">Download</string>
-    <string name="resolution">Resolution</string>
-    <string name="language">Language</string>
-    <!-- VideoPlayer -->
-    <string name="off">Off</string>
-    <string name="chapter">Chapter</string>
+    <!-- Section header: SponsorBlock categories selection. Brand name + Categories proper noun -->
+    <string name="label_sponsorblock">SponsorBlock Categories</string>
+    <!-- Toggle: enable DeArrow replacement of clickbait titles/thumbs. Brand name DeArrow, switch label -->
+    <string name="label_dearrow">Enable DeArrow</string>
+    <!-- Description: replace clickbait titles and thumbnails with community-submitted alternatives -->
+    <string name="label_dearrow_description">Replace clickbait titles and thumbnails with community-submitted alternatives</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- DownloadedVideosPage -->
-    <string name="selected_1">%1$s Selected</string>
-    <string name="downloads">Downloads</string>
-    <!-- VideoPlayer -->
-    <string name="cc">CC</string>
+    <!-- Section header: YouTube content preferences. Noun phrase -->
+    <string name="label_youtube_content">YouTube Content</string>
+    <!-- Label: content language selector for video titles, descriptions, comments, search. Noun phrase -->
+    <string name="label_youtube_language">Content language</string>
+    <!-- Option: system default language entry in dropdown. Noun phrase -->
+    <string name="label_system_default">System default</string>
+
+    <!-- Section header: backup and restore functionality. Noun phrase with ampersand -->
+    <string name="label_backup_restore">Backup &amp; Restore</string>
+    <!-- Button: restore subscriptions from YouPipe backup file. Verb phrase -->
+    <string name="label_restore_youpipe">Restore from YouPipe</string>
+    <!-- Button: import subscriptions from NewPipe app export format. Verb phrase -->
+    <string name="label_import_newpipe">Import NewPipe subscriptions</string>
+    <!-- Button: import from YouTube Takeout zip. Verb phrase, Takeout is Google product name -->
+    <string name="label_import_youtube">Import from YouTube (Takeout)</string>
+    <!-- Button: export current subscriptions to file. Verb phrase -->
+    <string name="label_export_youpipe">Export Subscriptions</string>
 </resources>

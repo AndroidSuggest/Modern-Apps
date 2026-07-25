@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="contact_photo">Foto</string>
     <string name="save">Speichern</string>
@@ -7,21 +6,17 @@
     <string name="account_name">Kontaktlisten Name</string>
     <string name="remove_email">E-Mail löschen</string>
     <string name="on_device">Auf dem Gerät</string>
-    <string name="favorite">Favorit</string>
     <string name="remove_address">Adresse löschen</string>
     <string name="edit_contact">Kontakt Bearbeiten</string>
     <string name="change_picture">Ändern</string>
     <string name="company">Firma</string>
-    <string name="choose_account">Account auswählen</string>
     <string name="contact_photo_description">%1$s Foto</string>
-    <string name="profiles">Profile</string>
     <string name="contact_not_found">Kontakt nicht gefunden</string>
     <string name="birthday">Geburtstag</string>
     <string name="email">E-Mail</string>
     <string name="import_contacts">Kontakte Importieren</string>
     <string name="action_video">Video</string>
     <string name="add_picture">Foto hinzifügen</string>
-    <string name="user_profile">Nutzerprofil</string>
     <string name="remove_phone">Telefonnummer löschen</string>
     <string name="nickname">Spitzname</string>
     <string name="delete_contact_confirm">Sind Sie sicher, dass Sie diesen Kontakt Löschen möchtest? Es kann nicht rückgängig gemacht werden.</string>
@@ -35,7 +30,6 @@
     <string name="visible_accounts">Angezeigte Accounts</string>
     <string name="addresses">Adressen</string>
     <string name="enter_account_name">Name für eine neue lokales Kontaktliste:</string>
-    <string name="remove_birthday">Geburtstag löschen</string>
     <string name="last_name">Nachname</string>
     <string name="share_contact">Kontakt teilen</string>
     <string name="favorites">Favoriten</string>
@@ -43,7 +37,6 @@
     <string name="add_address">Adresse hinzufüge</string>
     <string name="add_phone">Telefonnummer hinzufügen</string>
     <string name="remove_picture">Löschen</string>
-    <string name="remove_date">Datum löschen</string>
     <string name="delete_contact_name_confirm">Sind Sie sicher, dass Sie \"%1$s\" löschen möchtest? Das kann nicht rückgängig gemacht werden.</string>
     <string name="first_name">Vorname</string>
     <string name="add_contacts_account">Kontaktaccount hinzufügen</string>
@@ -57,13 +50,9 @@
     <string name="add">Hinzufügen</string>
     <string name="action_message">Nachricht</string>
     <string name="grant_contacts_permission">Bitte erlaube die Kontaktberechtigung</string>
-    <string name="search">Suchen</string>
-    <string name="import_button">Importieren</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
     <string name="note">Notiz</string>
-    <string name="action">Aktion</string>
     <string name="account_display_format">%1$s (%2$s)</string>
-    <string name="full_name_format">%1$s %2$s</string>
     <string name="calendar_sync">Kalendersynchronisation</string>
     <string name="sync_contacts_calendar">Geburtstage in Kalender anzeigen</string>
     <string name="contacts_calendar_name">Kontakte</string>
@@ -85,14 +74,9 @@
     <string name="select_group_hint">Gruppe auswählen um Kontakte anzuschauen</string>
     <string name="add_to_group">Zu Gruppe hinzufügen</string>
     <string name="add_group">Gruppe hinzufügen</string>
-    <string name="group_name">Gruppenname</string>
     <string name="enter_group_name">Gruppenname eingeben</string>
     <string name="delete_group_title">Gruppe löschen</string>
     <string name="delete_group_confirm">Sind Sie sich sicher, dass sie diese Gruppe löschen wollen? Die Kontakte werden nicht gelöscht.</string>
-    <string name="remove_from_group">Aus Gruppe entfernen</string>
-    <string name="copied_to_clipboard">In Zwischenablage kopiert</string>
-    <string name="select_account_to_import">Konto zu dem importiert werden soll auswählen:</string>
-    <string name="create_new_account">+ Neues Konto erstellen</string>
     <string name="no_groups_found">Keine Gruppen gefunden. Erstelle eine im Gruppen-Tab.</string>
     <string name="contacts_count">%1$d Kontakte</string>
     <string name="done">Fertig</string>

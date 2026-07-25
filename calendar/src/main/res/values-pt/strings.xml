@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cancel">Cancelar</string>
     <string name="delete">Apagar</string>
@@ -56,10 +55,5 @@
     <string name="open_location_in_navigation">Abrir a localização</string>
     <string name="delete_this_event">Apagar este evento</string>
     <string name="delete_all_events">Apagar todos os eventos</string>
-    <string name="new_local_calendar_title">Novo Calendário Local</string>
-    <string name="calendar_name_label">Nome Do Calendário</string>
-    <string name="loading_events">Carregando eventos…</string>
-    <string name="import_events_title">Importar Eventos</string>
     <string name="create_new_calendar">+ Criar novo calendário</string>
-    <string name="import_button">Importar</string>
-</resources>
+    </resources>

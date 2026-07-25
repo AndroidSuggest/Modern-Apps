@@ -1,40 +1,54 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- MainActivity / Manifest / HomeScreen TopAppBar: App name. Noun, proper -->
     <string name="app_name">Solitaire</string>
+    <!-- MainActivity: Game mode name Klondike. Noun, proper variant name -->
     <string name="klondike">Klondike</string>
+    <!-- MainActivity: Game mode name Spider (8 suits). Noun, proper -->
     <string name="spider">Spider</string>
+    <!-- MainActivity: Game mode name FreeCell. Noun, proper -->
     <string name="freecell">FreeCell</string>
+    <!-- MainActivity: Game mode name Pyramid (pair to 13). Noun, proper -->
     <string name="pyramid">Pyramid</string>
+    <!-- HomeScreen / GameConfigDialog / WinOverlay: Primary CTA button to start new game. Verb phrase -->
     <string name="new_game">New Game</string>
+    <!-- HomeScreen: Button when active saved game exists to resume. Verb -->
     <string name="continue_game">Continue</string>
+    <!-- GameActionBar: Button to abandon current game (records loss). Verb phrase -->
     <string name="give_up">Give Up</string>
+    <!-- GameActionBar: Button to undo last move if history not empty and not won. Verb -->
     <string name="undo">Undo</string>
-    <string name="restart">Restart</string>
+    <!-- GameScreen TopAppBar / WinOverlay: Label for move counter HUD. Noun -->
     <string name="moves">Moves</string>
+    <!-- WinOverlay: Label for elapsed time shown in win dialog, e.g. Time: 02:34. Noun -->
     <string name="time">Time</string>
+    <!-- MainActivity: Klondike draw mode option 1 card. Noun phrase -->
     <string name="draw_one">Draw 1</string>
+    <!-- MainActivity: Klondike draw mode option 3 cards. Noun phrase -->
     <string name="draw_three">Draw 3</string>
-    <string name="games_played">Games Played</string>
-    <string name="games_won">Games Won</string>
-    <string name="win_streak">Win Streak</string>
-    <string name="best_time">Best Time</string>
+    <!-- WinOverlay: Title when player wins, celebratory, large bold primary colored. Declarative -->
     <string name="congratulations">Congratulations!</string>
-    <string name="you_won">You Won!</string>
+    <!-- MainActivity: Generic dismiss/back button for select-mode and config dialogs and win overlay secondary. Verb -->
     <string name="back">Back</string>
+    <!-- MainActivity: Title of initial mode-picker AlertDialog listing GameMode.entries. Verb phrase -->
     <string name="select_mode">Select Mode</string>
+    <!-- MainActivity: Pyramid mode option original single pass through stock. Noun/adjective -->
     <string name="mode_original">Original</string>
+    <!-- MainActivity: Mode option relaxed unlimited redeals. Klondike and Pyramid. Adjective -->
     <string name="mode_relaxed">Relaxed</string>
+    <!-- MainActivity: Spider difficulty 1 suit (easiest). Adjective -->
     <string name="difficulty_easy">Easy</string>
+    <!-- MainActivity: Spider difficulty 2 suits. Adjective -->
     <string name="difficulty_medium">Medium</string>
+    <!-- MainActivity: Spider difficulty 4 suits and Klondike Hard 0 redeals. Adjective hardest -->
     <string name="difficulty_hard">Hard</string>
+    <!-- MainActivity: Klondike regular difficulty 2 redeals (3 passes). Adjective -->
     <string name="difficulty_regular">Regular</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- MainActivity -->
+    <!-- MainActivity: Button to auto-complete Klondike when all tableau faceDown empty and not won. Verb phrase CTA -->
     <string name="auto_complete">Auto Complete</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- MainActivity -->
+    <!-- HomeScreen: Label under won/played ratio on per-mode stat card. Verb past -->
     <string name="won">won</string>
-    <!-- SpiderBoard -->
-    <string name="completed_8">Completed: %1$s/8</string>
+    <!-- SpiderBoard: Top bar progress indicator for completed suits. %1$s = completed suits count string e.g. 2, always out of 8 -->
+    <string name="completed_8">Completed: <xliff:g id="completed" example="2">%1$s</xliff:g>/8</string>
 </resources>

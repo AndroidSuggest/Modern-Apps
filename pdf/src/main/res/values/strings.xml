@@ -1,66 +1,105 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">PDF</string>
+
+    <!-- MainActivity: Verb. Button to search text inside current PDF -->
     <string name="search_label">Find</string>
+    <!-- MainActivity: Button to open system file picker for PDFs -->
     <string name="open_pdf">Open PDF</string>
-    <string name="safe_pdf_viewer_title">PDF Viewer (safe)</string>
+    <!-- MainActivity: Error dialog text when safe viewer cannot render file -->
     <string name="safe_pdf_error">This PDF could not be opened by the safe viewer. It may be damaged or use unsupported features.</string>
+    <!-- MainActivity: Button to create PDF from camera capture -->
     <string name="capture_pdf">Capture PDF</string>
+    <!-- MainActivity: Toolbar title for camera capture flow -->
     <string name="capture_pdf_title">Capture PDF</string>
+    <!-- MainActivity: Button to request android.permission.CAMERA -->
     <string name="request_camera_permission">Request Camera Permission</string>
+    <!-- MainActivity: Button to pick image from gallery for PDF creation -->
     <string name="upload_image">Upload Image</string>
+    <!-- Toast: PDF written to storage successfully -->
     <string name="pdf_saved">PDF saved successfully</string>
+    <!-- Toast: generic error while saving -->
     <string name="pdf_save_error">Error saving PDF</string>
+    <!-- Button: share PDF via system share sheet -->
     <string name="share_pdf">Share PDF</string>
+    <!-- Button: save current document, overwrites -->
     <string name="pdf_save">Save</string>
-    <string name="pdf_save_as_copy">Save as copy</string>
+    <!-- Button: enter crop UI for scanned page -->
     <string name="crop_image">Crop Image</string>
+    <!-- Generic verb. Button to continue to next step in scan flow -->
     <string name="continue_label">Continue</string>
+    <!-- Toggle: auto-detect document edges in camera -->
     <string name="auto_detect">Auto Detect</string>
-    <string name="unsupported_version">This app requires either Android 15 or Google Play Services to be fully updated. If you are unable to do either of these, your device is unfortunately unsupported.</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- CapturePdfScreen -->
+    <!-- CapturePdfScreen: Toast when PDF creation fails -->
     <string name="failed_to_save_pdf">Failed to save PDF</string>
+    <!-- CapturePdfScreen: Checkbox label to run OCR and make PDF text searchable -->
     <string name="searchable_ocr">Searchable (OCR)</string>
-    <!-- CutGlueScreen -->
-    <string name="append_image">Append image</string>
-    <string name="append_pdf">Append PDF</string>
-    <string name="cut_glue">Cut &amp; Glue</string>
-    <!-- MainActivity -->
-    <string name="pdf_cut_and_glue">PDF cut and glue</string>
-    <!-- SafePdfViewerScreen -->
-    <string name="note_text">Note text</string>
-    <string name="red">Red</string>
-    <string name="opacity">Opacity %1$s%</string>
-    <string name="encrypt_with_password">Encrypt with password</string>
-    <string name="open">Open</string>
-    <string name="sticky_note">Sticky note</string>
-    <string name="add">Add</string>
-    <string name="copied">Copied</string>
-    <string name="green">Green</string>
-    <string name="incorrect_password">Incorrect password</string>
-    <string name="password_required">Password required</string>
-    <string name="color">Color</string>
-    <string name="cancel">Cancel</string>
-    <string name="save_encrypted">Save encrypted</string>
-    <string name="blue">Blue</string>
-    <string name="style">Style</string>
-    <string name="save_as_u2026">Save as\u2026</string>
-    <string name="aa">Aa</string>
-    <string name="callout">Callout</string>
-    <string name="password">Password</string>
-    <string name="text">text</string>
-    <string name="line_width">Line width %1$s</string>
-    <string name="done">Done</string>
 
-    <!-- Migrated hardcoded UI strings (auto) v2 -->
-    <!-- CutGlueScreen -->
+    <!-- Button: append image as new page -->
+    <string name="append_image">Append image</string>
+    <!-- Button: append another PDF as pages -->
+    <string name="append_pdf">Append PDF</string>
+    <!-- Feature name displayed as screen title -->
+    <string name="cut_glue">Cut &amp; Glue</string>
+    <!-- MainActivity: accessibility / short feature description -->
+    <string name="pdf_cut_and_glue">PDF cut and glue</string>
+    <!-- CutGlueScreen: Empty state hint, + refers to FAB button -->
     <string name="tap_to_append_a_pdf_or_image">Tap + to append a PDF or image</string>
-    <!-- SafePdfViewerScreen -->
+
+    <!-- Placeholder in sticky-note text field -->
+    <string name="note_text">Note text</string>
+    <!-- Color picker: red color name -->
+    <string name="red">Red</string>
+    <!-- Color picker: green color name -->
+    <string name="green">Green</string>
+    <!-- Color picker: blue color name -->
+    <string name="blue">Blue</string>
+    <!-- Section header for color picker -->
+    <string name="color">Color</string>
+    <!-- Slider label. %1$s = opacity value 0-100 -->
+    <string name="opacity">Opacity <xliff:g id="value" example="75">%1$s</xliff:g>%</string>
+    <!-- Checkbox/button to encrypt output PDF with password -->
+    <string name="encrypt_with_password">Encrypt with password</string>
+    <!-- Button: open encrypted PDF after entering password. Verb. -->
+    <string name="open">Open</string>
+    <!-- Annotation type: yellow sticky note -->
+    <string name="sticky_note">Sticky note</string>
+    <!-- Button: add annotation to document -->
+    <string name="add">Add</string>
+    <!-- Toast: text copied to clipboard -->
+    <string name="copied">Copied</string>
+    <!-- Error shown after wrong password entered -->
+    <string name="incorrect_password">Incorrect password</string>
+    <!-- Dialog title/prompt asking for password -->
+    <string name="password_required">Password required</string>
+    <!-- Generic dismiss button. Verb. -->
+    <string name="cancel">Cancel</string>
+    <!-- Button: save PDF with password encryption applied -->
+    <string name="save_encrypted">Save encrypted</string>
+    <!-- Section header: annotation appearance style -->
+    <string name="style">Style</string>
+    <!-- Menu item: Save as… with ellipsis -->
+    <string name="save_as_u2026">Save as\u2026</string>
+    <!-- Text formatting button icon label. Shows 'Aa', represents font style. Keep short if possible, do not translate if 'Aa' is universal in your language -->
+    <string name="aa">Aa</string>
+    <!-- Annotation type: callout text box with arrow -->
+    <string name="callout">Callout</string>
+    <!-- EditText hint: enter password -->
+    <string name="password">Password</string>
+    <!-- Default content for new free-text annotation. Lowercase intentional -->
+    <string name="text">text</string>
+    <!-- Slider label. %1$s = line width number, e.g. 2 -->
+    <string name="line_width">Line width <xliff:g id="width" example="2">%1$s</xliff:g></string>
+    <!-- Generic completion button -->
+    <string name="done">Done</string>
+    <!-- Tab title: PDF outline / bookmarks -->
     <string name="outline">Outline</string>
+    <!-- Button: add signature annotation -->
     <string name="sign">Sign</string>
 
-    <!-- Toast conditional -->
+    <!-- Toast after signature saved -->
     <string name="signed_and_saved">Signed &amp; saved</string>
+    <!-- Toast when signing failed -->
     <string name="signing_failed">Signing failed</string>
 </resources>

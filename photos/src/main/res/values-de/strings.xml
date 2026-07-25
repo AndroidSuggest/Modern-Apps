@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="month_year_format">%1$s %2$d</string>
     <string name="close">Schließen</string>
@@ -6,34 +5,18 @@
     <string name="title_edit_photo">Foto bearbeiten</string>
     <string name="action_save">Speichern</string>
     <string name="action_save_as_copy">Als Kopie speichern</string>
-    <string name="action_undo">Rückgängig machen</string>
     <string name="label_gallery">Gallerie</string>
     <string name="label_map">Karte</string>
     <string name="label_trash">Papierkorb</string>
     <string name="label_secure_folder">Sicherer Ordner</string>
-    <string name="action_move_to_secure">In Sicheren Ordner verschieben</string>
-    <string name="action_restore_from_secure">Aus Sicherem Ordner zurückholen</string>
-    <string name="secure_folder_auth_title">Sicheren Ordner entsperren</string>
-    <string name="secure_folder_auth_subtitle">Autentifizieren um auf sichere Fotos zuzugreifen</string>
     <string name="items_selected">%1$d ausgewählt</string>
     <string name="taken_on">Aufgenommen am: %1$s</string>
     <string name="location">Ort: %1$s</string>
     <string name="resolution">Auflösung: %1$d x %2$d</string>
     <string name="detecting">Erkenne…</string>
-    <string name="date_format">%1$d %2$s %3$d</string>
     <string name="grant_image_video_permissions">Erlaube Bild/Video Berechtigung</string>
     <string name="grant_storage_permission">Erlaube Speicher Berechtigung</string>
-    <string name="search_photos">Suche Fotos…</string>
-    <string name="indexing_photos">Indexe Fotos</string>
-    <string name="image_understanding_title">Experimentelles Bildverständniss</string>
-    <string name="image_understanding_description">Dieses .... benötigt die OpenAssistant app installiert und wird die lokalen Modelle um die Bilder auf dem Gerät zu verarbeiten.</string>
     <string name="openassistant_not_found">OpenAssistant App ist nicht installiert. Bitte installieren Sie sie um dieses ... zu nutzen.</string>
-    <string name="disable_ocr">KI indexen ausschalten</string>
-    <string name="indexing_progress_details">%1$d von %2$d Fotos verarbeitet</string>
     <string name="search_placeholder">Suche Fotos…</string>
-    <string name="enable_ai_search_title">KI Suche einschalten</string>
-    <string name="enable_ai_search_description">KI Modell herunterladen um Fotos nach Inhalt und Text zu suchen</string>
-    <string name="enable_ai_search_button">Einschalten</string>
-    <string name="model_downloading_title">Lade KI Modell herunter</string>
     <string name="model_downloading_description">Das KI Modell wird herungergeladen, dies könne je nach Verbindung einige Minuten dauern.</string>
 </resources>

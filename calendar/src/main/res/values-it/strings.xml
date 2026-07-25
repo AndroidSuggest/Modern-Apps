@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Calendario</string>
     <string name="ok">OK</string>
@@ -56,13 +55,7 @@
     <string name="open_location_in_navigation">Apri posizione</string>
     <string name="delete_this_event">Elimina questo evento</string>
     <string name="delete_all_events">Elimina tutti gli eventi</string>
-    <string name="new_local_calendar_title">Nuovo calendario locale</string>
-    <string name="calendar_name_label">Nome calendario</string>
-    <string name="loading_events">Caricamento eventi…</string>
-    <string name="import_events_title">Importa eventi</string>
-    <string name="select_calendar_to_import">Seleziona il calendario in cui importare:</string>
     <string name="create_new_calendar">+ Crea nuovo calendario</string>
-    <string name="import_button">Importa</string>
     <string name="default_layout">Layout predefinito</string>
     <string name="add_reminder">Aggiungi promemoria</string>
     <string name="calendar_widget_description">Un riepilogo dei prossimi eventi — tocca per aprire il Calendario</string>

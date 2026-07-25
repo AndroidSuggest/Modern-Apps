@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cancel">Скасувати</string>
     <string name="close">Закрити</string>
@@ -34,9 +33,5 @@
     <string name="open_location_in_navigation">Відкрити місцезнаходження</string>
     <string name="delete_this_event">Видалити цю подію</string>
     <string name="delete_all_events">Видалити всі події</string>
-    <string name="new_local_calendar_title">Новий локальний календар</string>
-    <string name="calendar_name_label">Назва календаря</string>
-    <string name="loading_events">Завантаження подій…</string>
     <string name="create_new_calendar">+ Створити новий календар</string>
-    <string name="import_button">Імпортувати</string>
-</resources>
+    </resources>

@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_history">Ajalugu</string>
     <string name="label_search">Otsi</string>
@@ -33,23 +32,18 @@
     <string name="channel_info">%1$s tellijat</string>
     <string name="video_stat_format">%1$s vaatamist • %2$s</string>
     <string name="label_description">Kirjeldus</string>
-    <string name="label_loading_subscriptions">Viimased tellimused on laadimisel</string>
     <string name="title_settings">Seadistused</string>
     <string name="label_sponsorblock">SponsorBlocki kategooriad</string>
-    <string name="label_sponsorblock_description">Vali järgnevast loendist lõikude liigid, mida sa tahad videotes vahele jätta</string>
     <string name="label_backup_restore">Varundus ja taastamine</string>
     <string name="label_restore_youpipe">Taasta YouPipe\'i varukoopiast</string>
     <string name="label_import_newpipe">Impordi NewPipe\'i tellimused</string>
     <string name="label_import_youtube">Impordi YouTube\'ist (Takeout-liidestus)</string>
     <string name="label_export_youpipe">Ekspordi tellimused</string>
-    <string name="video_quality_codec">%1$s (%2$s)</string>
     <string name="video_quality_fps_codec">%1$s (%2$d kaadrit sekundis) %3$s</string>
-    <string name="audio_bitrate_codec">%1$d kbps (%2$s)</string>
     <string name="empty_recommendations">Kui tahad näha sulle mõeldud soovitusi, siis vaata natuke videoid</string>
     <string name="label_dearrow">Pisipiltide kuvamiseks kasuta DeArrow teenust</string>
     <string name="label_dearrow_description">Asenda liiga klikialtid pealkirjad ja pisipildid kogukonna loodud alterantiivisega</string>
     <string name="recommendation_reason">Põhjus: %1$s</string>
-    <string name="action_more_options">Lisavalikud</string>
     <string name="action_not_interested">See ei huvita mind</string>
     <string name="action_more_like_this">Tahan veel sellist sisu</string>
     <string name="action_pin_channel">Tõsta kanal esile</string>
@@ -92,8 +86,5 @@
     <string name="action_unmute">Lõpeta summutamine</string>
     <string name="label_youtube_content">YouTube\'i sisu</string>
     <string name="label_youtube_language">Sisu keel</string>
-    <string name="label_youtube_language_description">Videote pealkirjade, kirjelduste, kommentaaride ja otsingutulemuste keel</string>
     <string name="label_system_default">Süsteemi vaikeseadistus</string>
-    <string name="video_quality">%1$s</string>
-    <string name="audio_bitrate">%1$d kbps</string>
-</resources>
+    </resources>

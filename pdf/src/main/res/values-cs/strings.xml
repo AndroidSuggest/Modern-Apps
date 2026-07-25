@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
     <string name="search_label">Najít</string>
@@ -8,13 +7,10 @@
     <string name="share_pdf">Sdílet PDF</string>
     <string name="crop_image">Oříznout obrázek</string>
     <string name="continue_label">Pokračovat</string>
-    <string name="safe_pdf_viewer_title">Prohlížeč PDF (bezpečný)</string>
     <string name="capture_pdf">Zachytit PDF</string>
     <string name="capture_pdf_title">Zachytit PDF</string>
     <string name="request_camera_permission">Vyžádat oprávnění ke kameře\"</string>
     <string name="pdf_save_error">Chyba při ukládání PDF</string>
     <string name="pdf_save">Uložit</string>
-    <string name="pdf_save_as_copy">Uložit jako kopii</string>
     <string name="auto_detect">Automaticky detekovat</string>
-    <string name="unsupported_version">Tato aplikace vyžaduje buď Android 15, nebo plně aktualizované Služby Google Play. Pokud nemůžete splnit ani jednu z těchto podmínek, vaše zařízení bohužel není podporováno.</string>
-</resources>
+    </resources>

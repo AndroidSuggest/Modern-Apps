@@ -1,25 +1,20 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="label_alarm">Alarme</string>
     <string name="label_clock">Relógio</string>
     <string name="label_timer">Temporizador</string>
     <string name="label_stopwatch">Cronómetro</string>
     <string name="header_total">Total</string>
-    <string name="field_minutes">Minutos</string>
-    <string name="field_seconds">Segundos</string>
     <string name="button_cancel">Cancelar</string>
     <string name="button_save">Gravar</string>
     <string name="time_am">AM</string>
     <string name="time_pm">PM</string>
     <string name="app_name">Relógio</string>
-    <string name="no_alarms">Não há alarmes definidos</string>
     <string name="set_an_alarm">Definir um alarme</string>
     <string name="button_stop">PARAR</string>
     <string name="alarm_notification_wake_up">Acordar!</string>
     <string name="alarm_ringing_notification_title">O alarme está a tocar</string>
     <string name="channel_alarms_name">Alarmes</string>
     <string name="header_split">Dividir</string>
-    <string name="set_a_timer">Criar um temporizador</string>
     <string name="timer_finished_title">Temporizador Completo</string>
     <string name="timer_finished_text">%1$s acabou!</string>
     <string name="label_new_timer">Novo Temporizador</string>

@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
     <string name="search_label">Suchen</string>
@@ -12,5 +11,4 @@
     <string name="share_pdf">PDF teilen</string>
     <string name="crop_image">Bild zuschneiden</string>
     <string name="continue_label">Weiter</string>
-    <string name="unsupported_version">Diese App benötigt Android 15 oder Google Play Services um voll aktualisiert zu werden. Wenn das nicht möglich ist, ist ihr Gerät leider nicht unterstützt.</string>
-</resources>
+    </resources>

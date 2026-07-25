@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Échecs</string>
     <string name="start_new_game">Commencer une nouvelle partie</string>
@@ -13,7 +12,6 @@
     <string name="two_player_local">Mode local à 2 joueurs</string>
     <string name="human_vs_ai">Humain vs IA</string>
     <string name="promote_pawn">Promotion du pion</string>
-    <string name="checkmate_wins">Échec et mat ! %1$s remporte la partie.</string>
     <string name="check">Échec !</string>
     <string name="white_wins">Échec et mat ! Les blancs gagnent.</string>
     <string name="black_wins">Échec et mat ! Les Noirs gagnent.</string>
@@ -32,17 +30,14 @@
     <string name="tab_play">Jouer</string>
     <string name="tab_learn">Apprendre</string>
     <string name="learn_lets_go">C\'est parti !</string>
-    <string name="learn_level">Niveau %1$d/%2$d</string>
     <string name="learn_next">Suivant</string>
     <string name="learn_retry">Réessayer</string>
     <string name="learn_completed">Bravo !</string>
     <string name="learn_failed">Pas tout à fait… Réessayez.</string>
-    <string name="learn_stage_complete">Étape terminée !</string>
     <string name="learn_stage_complete_n">Étape %1$d terminée</string>
     <string name="learn_your_score">Votre score : %1$d</string>
     <string name="learn_next_stage">Suivant : %1$s</string>
     <string name="learn_back_to_menu">Retour au menu</string>
-    <string name="learn_back_to_lessons">Retour aux leçons</string>
     <string name="learn_progress">%1$d/%2$d</string>
     <string name="puzzle_your_move">À vous de jouer : trouvez le meilleur coup.</string>
     <string name="puzzle_white_to_move">C\'est aux tour des Blancs de jouer.</string>
@@ -52,7 +47,6 @@
     <string name="puzzle_next">Puzzle suivant</string>
     <string name="puzzle_retry">Réessayer</string>
     <string name="puzzle_show_solution">Afficher la solution</string>
-    <string name="puzzle_difficulty">Difficulté</string>
     <string name="puzzle_difficulty_easy">Facile</string>
     <string name="puzzle_difficulty_medium">Moyen</string>
     <string name="puzzle_difficulty_hard">Difficile</string>

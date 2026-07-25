@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Šachy</string>
     <string name="start_new_game">Zahájit novou partii</string>
@@ -15,7 +14,6 @@
     <string name="human_vs_ai">Člověk vs AI</string>
     <string name="promote_pawn">Povýšit pěšáka</string>
     <string name="check">Šach!</string>
-    <string name="checkmate_wins">Šachmat! %1$s vítězí.</string>
     <string name="white_wins">Šachmat! Bílý vítězí.</string>
     <string name="black_wins">Šachmat! Černý vítězí.</string>
     <string name="stalemate">Pat! Je to remíza.</string>
@@ -37,19 +35,16 @@
     <string name="tab_learn">Výuka</string>
     <string name="learn_stage_number">Úroveň %1$d: %2$s</string>
     <string name="learn_lets_go">Jdeme na to!</string>
-    <string name="learn_level">Level %1$d/%2$d</string>
     <string name="learn_next">Další</string>
     <string name="learn_retry">Zkusit znovu</string>
     <string name="learn_completed">Skvěle!</string>
     <string name="learn_failed">Ne docela, zkuste to znovu.</string>
-    <string name="learn_stage_complete">Úroveň dokončena!</string>
     <string name="learn_stage_complete_n">Úroveň %1$d dokončena</string>
     <string name="learn_your_score">Vaše skóre: %1$d</string>
     <string name="learn_next_stage">Další: %1$s</string>
     <string name="learn_back_to_menu">Zpět do menu</string>
     <string name="learn_progress">%1$d/%2$d</string>
     <string name="puzzle_rating">Hodnocení %1$d</string>
-    <string name="learn_back_to_lessons">Zpět do výuky</string>
     <string name="puzzle_your_move">Hrajete - najděte nejlepší tah.</string>
     <string name="puzzle_white_to_move">Na tahu bílý.</string>
     <string name="puzzle_black_to_move">Na tahu černý.</string>
@@ -58,7 +53,6 @@
     <string name="puzzle_next">Další úloha</string>
     <string name="puzzle_retry">Zkusit znovu</string>
     <string name="puzzle_show_solution">Ukázat řešení</string>
-    <string name="puzzle_difficulty">Obtížnost</string>
     <string name="puzzle_difficulty_easy">Jednoduchá</string>
     <string name="puzzle_difficulty_medium">Střední</string>
     <string name="puzzle_difficulty_hard">Těžká</string>

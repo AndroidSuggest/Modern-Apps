@@ -1,11 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="close">Zavřít</string>
     <string name="month_year_format">%1$s %2$d</string>
     <string name="title_edit_photo">Upravit fotku</string>
     <string name="action_save">Uložit</string>
     <string name="action_save_as_copy">Uložit jako kopii</string>
-    <string name="action_undo">Vrátit zpět</string>
     <string name="label_gallery">Galerie</string>
     <string name="label_map">Mapa</string>
     <string name="label_trash">Koš</string>
@@ -13,33 +11,17 @@
     <string name="photo_widget_description">Měnící se fotka z vaší galerie - klepnutím zamýcháte</string>
     <string name="label_people">Lidé</string>
     <string name="label_secure_folder">Zabezpečná složka</string>
-    <string name="action_move_to_secure">Přesunout do zabezpečené složky</string>
-    <string name="action_restore_from_secure">Obnovit ze zabezpečené složky</string>
-    <string name="secure_folder_auth_title">Odemknout zabezpečenou složku</string>
-    <string name="secure_folder_auth_subtitle">Ověřte totožnost pro získání přístupu k vašim zabezpečeným foktám</string>
     <string name="items_selected">%1$d vybráno</string>
     <string name="taken_on">Vyfoceno: %1$s</string>
     <string name="location">Místo: %1$s</string>
     <string name="resolution">Rozlišení: %1$d x %2$d</string>
     <string name="view_360">Zobrazit 360°</string>
     <string name="detecting">Detekuji…</string>
-    <string name="date_format">%1$d %2$s %3$d</string>
     <string name="grant_image_video_permissions">Udělit přístup k fotkám/videím</string>
     <string name="grant_storage_permission">Udělit přístup k souborům</string>
-    <string name="search_photos">Hledat fotky…</string>
-    <string name="indexing_photos">Indexování fotek</string>
-    <string name="image_understanding_title">Experimentální rozpoznávání obrazu</string>
-    <string name="image_understanding_description">Tato funkce vyžaduje nainstalovanou aplikaci OpenAsistent a k zpracování obrázků na zařízení použije její lokální modely.</string>
     <string name="openassistant_not_found">Aplikace OpenAsistent není nainstalována. Pro povolení této funkce ji prosím nainstalujte.</string>
     <string name="openassistant_needs_update">Aktualizujte aplikaci OpenAsistent, abyste povolili AI vyhledávání fotek.</string>
-    <string name="enable_feature">Povolit funkci</string>
-    <string name="disable_ocr">Vypnout AI indexování</string>
-    <string name="indexing_progress_details">Zpracováné %1$d z %2$d fotek</string>
     <string name="search_placeholder">Hledat fokty…</string>
-    <string name="enable_ai_search_title">Povolit AI hledání</string>
-    <string name="enable_ai_search_description">Stáhněte AI model k hledání fotek podle obsahu a textu</string>
-    <string name="enable_ai_search_button">Povolit</string>
-    <string name="model_downloading_title">Stahování AI modelu</string>
     <string name="model_downloading_description">AI model se stahuje. Může to trvat pár minut, záleží na vašem připojení.</string>
     <string name="people_empty">Nenalezeni žádní lidé. Skenováni probíha v pozadí - zkontroluje po indexaci vašich fotek.</string>
     <string name="people_scanning">Seskupování obličejů... lidé se zde budou zobrazovat, jak budou nalezeni.</string>

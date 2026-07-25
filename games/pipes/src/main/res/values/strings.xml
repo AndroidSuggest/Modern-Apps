@@ -1,15 +1,28 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- MainActivity / Manifest: App name displayed in launcher. Noun, proper -->
     <string name="app_name">Pipes</string>
+    <!-- PackScreen: TopAppBar title for pack selection screen. Noun phrase, entry point showing level packs grid -->
     <string name="pack_selector">Pack Select</string>
+    <!-- LevelScreen: TopAppBar title for level grid inside a pack. Noun phrase -->
     <string name="level_selector">Level Select</string>
+    <!-- GameScreen PuzzleInfoBox: Title of info box showing current level number with prev/next navigation. Noun -->
     <string name="level">Level</string>
+    <!-- GameScreen MovesInfoBox: Title of info box showing move counter and best/optimal. Noun -->
     <string name="moves">Moves</string>
+    <!-- GameScreen: Button to undo last move (pop history stack). Verb -->
     <string name="undo">Undo</string>
+    <!-- GameScreen: Button to reset current level to initial state. Verb -->
     <string name="restart">Restart</string>
+    <!-- GameScreen PuzzleInfoBox: Accessibility content description for back arrow to previous level. Noun phrase -->
     <string name="previous_level">Previous Level</string>
+    <!-- GameScreen PuzzleInfoBox: Accessibility content description for forward arrow to next level. Noun phrase -->
     <string name="next_level">Next Level</string>
+    <!-- GameScreen PuzzleInfoBox: Red badge below level number when level already completed (stats present). Adjective/status -->
     <string name="completed">Completed</string>
+    <!-- SettingsScreen: TopAppBar title. Noun -->
     <string name="settings">Settings</string>
+    <!-- SettingsScreen: Toggle label for colorblind accessibility mode. Noun phrase -->
     <string name="colorblind_mode">Colorblind mode</string>
+    <!-- SettingsScreen: Subtitle explaining colorblind mode labels each flow with letter A-Z. Sentence -->
     <string name="colorblind_mode_desc">Label each flow with a letter (A–Z)</string>
 </resources>

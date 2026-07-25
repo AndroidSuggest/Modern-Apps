@@ -1,24 +1,46 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher and system settings -->
     <string name="app_name">Files</string>
+    <!-- HomeDirectoryPage: Dialog title asking user to grant notification permission -->
     <string name="enable_notifications">Enable Notifications?</string>
+    <!-- HomeDirectoryPage: Dialog body explaining why notifications are needed. Noun, rationale -->
     <string name="notification_permission_rationale">Turning on notifications will allow you to see progress on background actions like zipping and unzipping files.</string>
+    <!-- Generic verb. Button to enable notifications / grant permission -->
     <string name="enable">Enable</string>
+    <!-- Generic verb. Button to skip notification opt-in -->
     <string name="skip">Skip</string>
+    <!-- HomeDirectoryPage: Button to open system settings to grant MANAGE_ALL_FILES permission -->
     <string name="grant_all_files_access">Grant All Files Access</string>
+    <!-- Archive dialog title. Noun phrase, appears when user selects files to zip -->
     <string name="archive_selection">Archive Selection</string>
+    <!-- Archive dialog: TextField label for output zip file name -->
     <string name="zip_file_name_label">Zip file name</string>
+    <!-- Snackbar: archiving background work has started. Verb phrase -->
     <string name="archiving_started">Archiving started…</string>
+    <!-- Generic verb. Confirm button in archive dialog to start zipping -->
     <string name="archive">Archive</string>
+    <!-- Generic verb. Dismiss dialog without action -->
     <string name="cancel">Cancel</string>
-    <string name="unzipping_started_to">Unzipping started to %1$s</string>
-    <string name="move_failed">Move failed: %1$s</string>
-    <string name="could_not_open_zip">Could not open zip: %1$s</string>
+    <!-- Snackbar after unzip enqueued. %1$s = destination folder name -->
+    <string name="unzipping_started_to">Unzipping started to <xliff:g id="dest_name" example="Downloads">%1$s</xliff:g></string>
+    <!-- Snackbar error when move/rename fails. %1$s = error message from exception -->
+    <string name="move_failed">Move failed: <xliff:g id="error" example="Permission denied">%1$s</xliff:g></string>
+    <!-- Snackbar error when zip file cannot be opened. %1$s = error details -->
+    <string name="could_not_open_zip">Could not open zip: <xliff:g id="error" example="Invalid format">%1$s</xliff:g></string>
+    <!-- Snackbar when no app can handle ACTION_VIEW intent for a file -->
     <string name="no_app_found_to_open_file">No app found to open this file</string>
+    <!-- Snackbar/info when user tries to open file while browsing inside zip (read-only mode) -->
     <string name="zip_browse_only">Viewing files inside zip is limited to browsing</string>
+    <!-- TextEditorActivity: Fallback title when file name is unknown. Noun -->
     <string name="file_fallback">File</string>
+    <!-- Notification channel name for unzip foreground service -->
     <string name="unzip_channel_name">Unzip Operations</string>
+    <!-- Foreground notification title while unzipping in progress -->
     <string name="unzipping">Unzipping…</string>
+    <!-- Notification channel name for zip foreground service -->
     <string name="zip_channel_name">Zip Operations</string>
+    <!-- Foreground notification title while archiving/zip in progress -->
     <string name="archiving">Archiving…</string>
+    <!-- Snackbar: incoming shared files saved to current directory successfully -->
     <string name="files_saved">Files saved successfully</string>
 </resources>

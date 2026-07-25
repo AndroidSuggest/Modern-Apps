@@ -1,139 +1,219 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Maps</string>
 
-    <!-- Turn-by-turn spoken navigation (TTS) -->
-    <string name="tts_in_distance">In %1$s, %2$s</string>
-    <string name="tts_in_meters">In %1$d meters, %2$s</string>
-    <string name="tts_now">Now, %1$s</string>
+    <!-- TTS spoken: Announces next maneuver with distance. %1$s=distance string e.g. "1 kilometer", %2$s=maneuver instruction -->
+    <string name="tts_in_distance">In <xliff:g id="distance" example="1 kilometer">%1$s</xliff:g>, <xliff:g id="instruction" example="Turn left onto Main St">%2$s</xliff:g></string>
+    <!-- TTS spoken: Announces next maneuver within meters. %1$d=meters threshold e.g. 300, %2$s=instruction -->
+    <string name="tts_in_meters">In <xliff:g id="meters" example="300">%1$d</xliff:g> meters, <xliff:g id="instruction" example="Turn right">%2$s</xliff:g></string>
+    <!-- TTS spoken: Immediate instruction. %1$s=maneuver text -->
+    <string name="tts_now">Now, <xliff:g id="instruction" example="Turn left">%1$s</xliff:g></string>
+    <!-- TTS distance plural: spoken distance in kilometers. %1$d=kilometer count -->
     <plurals name="tts_kilometers">
-        <item quantity="one">%1$d kilometer</item>
-        <item quantity="other">%1$d kilometers</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> kilometer</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> kilometers</item>
     </plurals>
 
-    <!-- BottomSheetContent -->
+    <!-- BottomSheet: Current location label. Noun. -->
     <string name="your_location">Your location</string>
-    <string name="walk_duration_distance">Walk %1$s (%2$s km)</string>
-    <string name="transfer">Transfer</string>
+    <!-- BottomSheet: Error when routing fails -->
     <string name="no_route_found">No route found</string>
+    <!-- BottomSheet: Loading state while route is calculated -->
     <string name="generating_route">Generating Route…</string>
-    <string name="distance_km">%1$s km</string>
+    <!-- BottomSheet: Distance badge. %1$s=distance value e.g. "2.5" -->
+    <string name="distance_km"><xliff:g id="distance" example="2.5">%1$s</xliff:g> km</string>
 
-    <!-- SearchPage -->
+    <!-- SearchPage: Hint in search box for places and addresses -->
     <string name="search_nearby">Search places &amp; addresses…</string>
+    <!-- SearchPage: Empty state when search yields nothing in viewport -->
     <string name="no_results_found">No results found in this area</string>
+    <!-- SearchPage: Helper text prompting user to type -->
     <string name="type_to_search">Type at least 2 characters to search</string>
+    <!-- SearchPage: Fallback name when OSM amenity has no name. Noun. -->
     <string name="unnamed_amenity">Unnamed Amenity</string>
-    <string name="coordinates">Coordinates: %1$s, %2$s</string>
+    <!-- SearchPage: Displays lat/lon. %1$s=latitude e.g. "37.7749", %2$s=longitude e.g. "-122.4194" -->
+    <string name="coordinates">Coordinates: <xliff:g id="latitude" example="37.7749">%1$s</xliff:g>, <xliff:g id="longitude" example="-122.4194">%2$s</xliff:g></string>
 
-    <!-- DownloadedMapsPage -->
+    <!-- DownloadedMapsPage: Title for offline maps list -->
     <string name="downloaded_maps">Downloaded Maps</string>
+    <!-- DownloadedMapsPage: Dialog title for downloading zone -->
     <string name="download_offline_map_title">Download Offline Map?</string>
-    <string name="download_offline_map_text">You are viewing Zone %1$d. Would you like to download the high-detail offline map and enable navigation in this area?</string>
+    <!-- DownloadedMapsPage: Dialog body prompting download. %1$d=zone number e.g. 5 -->
+    <string name="download_offline_map_text">You are viewing Zone <xliff:g id="zone" example="5">%1$d</xliff:g>. Would you like to download the high-detail offline map and enable navigation in this area?</string>
+    <!-- Button: Verb. Download action -->
     <string name="download">Download</string>
+    <!-- Button: Generic cancel. Verb. -->
     <string name="cancel">Cancel</string>
+    <!-- DownloadedMapsPage: Dialog title for deleting offline map -->
     <string name="delete_offline_map_title">Delete Offline Map?</string>
-    <string name="delete_offline_map_text">Are you sure you want to delete or cancel the download for Zone %1$d?</string>
+    <!-- DownloadedMapsPage: Confirmation for deleting zone. %1$d=zone number -->
+    <string name="delete_offline_map_text">Are you sure you want to delete or cancel the download for Zone <xliff:g id="zone" example="5">%1$d</xliff:g>?</string>
+    <!-- Button: Verb. Delete action -->
     <string name="delete">Delete</string>
-    <string name="download_progress">%1$d%%</string>
+    <!-- DownloadedMapsPage: Download progress percent. %1$d=0-100 -->
+    <string name="download_progress"><xliff:g id="progress" example="50">%1$d</xliff:g>%%</string>
 
-    <!-- RestaurantBottomSheet -->
-    <string name="reviews_summary">%1$s stars | %2$s reviews</string>
+    <!-- Place detail: Rating summary. %1$s=stars e.g. "4.5", %2$s=review count e.g. "128" -->
+    <string name="reviews_summary"><xliff:g id="rating" example="4.5">%1$s</xliff:g> stars | <xliff:g id="review_count" example="128">%2$s</xliff:g> reviews</string>
+    <!-- Button: Get directions. Noun/Verb. -->
     <string name="directions">Directions</string>
+    <!-- Button: Add selected place as stop on route -->
     <string name="add_stop_to_route">Add Stop to Route</string>
+    <!-- Label: Place is currently open. Adjective. -->
     <string name="open_status">Open</string>
+    <!-- Label: Place is closed. Adjective. -->
     <string name="closed_status">Closed</string>
-    <string name="closes_at">Closes %1$s</string>
-    <string name="opens_at">Opens %1$s</string>
+    <!-- Label: Closing time. %1$s=time e.g. "9 PM" -->
+    <string name="closes_at">Closes <xliff:g id="time" example="9 PM">%1$s</xliff:g></string>
+    <!-- Label: Opening time. %1$s=time e.g. "9 AM" -->
+    <string name="opens_at">Opens <xliff:g id="time" example="9 AM">%1$s</xliff:g></string>
+    <!-- Label: Section header for menu -->
     <string name="menu_label">Menu</string>
 
-    <!-- MapPage -->
+    <!-- MapPage: Placeholder for map search bar -->
     <string name="search_placeholder">Search…</string>
-    <string name="reorder">Reorder</string>
-    <string name="download_offline_map_text_overview">You are viewing Zone %1$d. Would you like to download the high-detail offline map to see more than just the overview?</string>
+    <!-- MapPage: Overview mode offline prompt. %1$d=zone number -->
+    <string name="download_offline_map_text_overview">You are viewing Zone <xliff:g id="zone" example="5">%1$d</xliff:g>. Would you like to download the high-detail offline map to see more than just the overview?</string>
 
-    <!-- Saved places (Home / Work) -->
+    <!-- Saved place label. Noun. Home location -->
     <string name="saved_place_home">Home</string>
+    <!-- Saved place label. Noun. Work location -->
     <string name="saved_place_work">Work</string>
+    <!-- Button: Create Home saved place. Verb. -->
     <string name="set_home">Set home</string>
+    <!-- Button: Create Work saved place. Verb. -->
     <string name="set_work">Set work</string>
+    <!-- Button: Save selected place as Home -->
     <string name="save_as_home">Save as Home</string>
+    <!-- Button: Save selected place as Work -->
     <string name="save_as_work">Save as Work</string>
+    <!-- Button: Remove Home saved place -->
     <string name="remove_from_home">Remove from Home</string>
+    <!-- Button: Remove Work saved place -->
     <string name="remove_from_work">Remove from Work</string>
 
-    <!-- MainActivity -->
+    <!-- MainActivity: Status text while amenity DB downloads -->
     <string name="downloading_amenity_database">Downloading Amenity Database…</string>
+    <!-- MainActivity: Status text while navigation tiling metadata downloads -->
     <string name="downloading_navigation_metadata">Downloading Navigation Tiling Metadata…</string>
+    <!-- MainActivity: Status text while road data downloads -->
     <string name="downloading_road_data">Downloading Road Data…</string>
+    <!-- MainActivity: Button to request location permission -->
     <string name="grant_location_permission">Grant Location Permission</string>
 
-    <!-- Navigation Maneuvers -->
-    <string name="maneuver_depart">Head toward %1$s</string>
+    <!-- Maneuver: Depart initial road. %1$s=road/street name -->
+    <string name="maneuver_depart">Head toward <xliff:g id="road_name" example="Main Street">%1$s</xliff:g></string>
+    <!-- Maneuver: Depart without road name. Generic start -->
     <string name="maneuver_depart_unnamed">Head toward destination</string>
-    <string name="maneuver_straight">Continue on %1$s</string>
+    <!-- Maneuver: Continue straight on named road. %1$s=road name -->
+    <string name="maneuver_straight">Continue on <xliff:g id="road_name" example="Market St">%1$s</xliff:g></string>
+    <!-- Maneuver: Continue straight unnamed -->
     <string name="maneuver_straight_unnamed">Continue straight</string>
-    <string name="maneuver_turn_left">Turn left onto %1$s</string>
+    <!-- Maneuver: Left turn onto named road. %1$s=road name -->
+    <string name="maneuver_turn_left">Turn left onto <xliff:g id="road_name" example="1st Ave">%1$s</xliff:g></string>
+    <!-- Maneuver: Left turn unnamed -->
     <string name="maneuver_turn_left_unnamed">Turn left</string>
-    <string name="maneuver_turn_right">Turn right onto %1$s</string>
+    <!-- Maneuver: Right turn onto named road. %1$s=road name -->
+    <string name="maneuver_turn_right">Turn right onto <xliff:g id="road_name" example="Broadway">%1$s</xliff:g></string>
+    <!-- Maneuver: Right turn unnamed -->
     <string name="maneuver_turn_right_unnamed">Turn right</string>
-    <string name="maneuver_turn_slight_left">Turn slight left onto %1$s</string>
-    <string name="maneuver_turn_slight_left_unnamed">Turn slight left</string>
-    <string name="maneuver_turn_slight_right">Turn slight right onto %1$s</string>
-    <string name="maneuver_turn_slight_right_unnamed">Turn slight right</string>
-    <string name="maneuver_turn_sharp_left">Turn sharp left onto %1$s</string>
-    <string name="maneuver_turn_sharp_left_unnamed">Turn sharp left</string>
-    <string name="maneuver_turn_sharp_right">Turn sharp right onto %1$s</string>
-    <string name="maneuver_turn_sharp_right_unnamed">Turn sharp right</string>
-    <string name="maneuver_uturn">Make a U-turn onto %1$s</string>
+    <!-- Maneuver: Slight left onto named road. %1$s=road name -->
+    <string name="maneuver_turn_slight_left">Turn slight left onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Slight right onto named road. %1$s=road name -->
+    <string name="maneuver_turn_slight_right">Turn slight right onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Sharp left onto named road. %1$s=road name -->
+    <string name="maneuver_turn_sharp_left">Turn sharp left onto <xliff:g id="road_name" example="Alpine Rd">%1$s</xliff:g></string>
+    <!-- Maneuver: Sharp right onto named road. %1$s=road name -->
+    <string name="maneuver_turn_sharp_right">Turn sharp right onto <xliff:g id="road_name" example="Alpine Rd">%1$s</xliff:g></string>
+    <!-- Maneuver: U-turn onto named road. %1$s=road name -->
+    <string name="maneuver_uturn">Make a U-turn onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: U-turn unnamed -->
     <string name="maneuver_uturn_unnamed">Make a U-turn</string>
-    <string name="maneuver_merge">Merge onto %1$s</string>
+    <!-- Maneuver: Merge onto named road. %1$s=road name -->
+    <string name="maneuver_merge">Merge onto <xliff:g id="road_name" example="I-80">%1$s</xliff:g></string>
+    <!-- Maneuver: Merge unnamed -->
     <string name="maneuver_merge_unnamed">Merge</string>
-    <string name="maneuver_ramp_left">Take the ramp on the left toward %1$s</string>
+    <!-- Maneuver: Take left ramp toward destination. %1$s=road name/destination -->
+    <string name="maneuver_ramp_left">Take the ramp on the left toward <xliff:g id="road_name" example="Hwy 101">%1$s</xliff:g></string>
+    <!-- Maneuver: Take left ramp unnamed -->
     <string name="maneuver_ramp_left_unnamed">Take the ramp on the left</string>
-    <string name="maneuver_ramp_right">Take the ramp on the right toward %1$s</string>
+    <!-- Maneuver: Take right ramp toward destination. %1$s=road name -->
+    <string name="maneuver_ramp_right">Take the ramp on the right toward <xliff:g id="road_name" example="Hwy 101">%1$s</xliff:g></string>
+    <!-- Maneuver: Take right ramp unnamed -->
     <string name="maneuver_ramp_right_unnamed">Take the ramp on the right</string>
-    <string name="maneuver_fork_left">Keep left toward %1$s</string>
+    <!-- Maneuver: Fork keep left toward destination. %1$s=road name -->
+    <string name="maneuver_fork_left">Keep left toward <xliff:g id="road_name" example="Downtown">%1$s</xliff:g></string>
+    <!-- Maneuver: Fork keep left unnamed -->
     <string name="maneuver_fork_left_unnamed">Keep left</string>
-    <string name="maneuver_fork_right">Keep right toward %1$s</string>
+    <!-- Maneuver: Fork keep right toward destination. %1$s=road name -->
+    <string name="maneuver_fork_right">Keep right toward <xliff:g id="road_name" example="Airport">%1$s</xliff:g></string>
+    <!-- Maneuver: Fork keep right unnamed -->
     <string name="maneuver_fork_right_unnamed">Keep right</string>
-    <string name="maneuver_roundabout">At the roundabout, continue onto %1$s</string>
+    <!-- Maneuver: Roundabout onto named road. %1$s=road name -->
+    <string name="maneuver_roundabout">At the roundabout, continue onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Roundabout unnamed -->
     <string name="maneuver_roundabout_unnamed">At the roundabout, continue</string>
-    <string name="maneuver_unspecified">Continue onto %1$s</string>
-    <string name="maneuver_unspecified_unnamed">Continue</string>
-    <string name="maneuver_wait">Wait %1$s for %2$s</string>
-    <string name="maneuver_wait_at">Wait %1$s for %2$s at %3$s</string>
-    <string name="maneuver_ride_transit">Ride %1$s from %2$s to %3$s (%4$d stops)</string>
+    <!-- Maneuver: Generic unspecified named. %1$s=road name -->
+    <string name="maneuver_unspecified">Continue onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Transit wait step. %1$s=wait duration e.g. "5 min", %2$s=transit line/road name -->
+    <string name="maneuver_wait">Wait <xliff:g id="wait_duration" example="5 min">%1$s</xliff:g> for <xliff:g id="line_name" example="N-Judah">%2$s</xliff:g></string>
+    <!-- Maneuver: Transit wait at stop. %1$s=duration, %2$s=line, %3$s=stop name/code -->
+    <string name="maneuver_wait_at">Wait <xliff:g id="wait_duration" example="5 min">%1$s</xliff:g> for <xliff:g id="line_name" example="N-Judah">%2$s</xliff:g> at <xliff:g id="stop_name" example="Market St">%3$s</xliff:g></string>
+    <!-- Maneuver: Transit ride. %1$s=line name e.g. "N-Judah", %2$s=from stop, %3$s=to stop, %4$d=stop count -->
+    <string name="maneuver_ride_transit">Ride <xliff:g id="line_name" example="N-Judah">%1$s</xliff:g> from <xliff:g id="from_stop" example="Downtown">%2$s</xliff:g> to <xliff:g id="to_stop" example="Ocean Beach">%3$s</xliff:g> (<xliff:g id="stop_count" example="3">%4$d</xliff:g> stops)</string>
 
-    <!-- Travel Modes -->
+    <!-- Travel mode: Walking. Noun. -->
     <string name="travel_mode_walk">Walk</string>
+    <!-- Travel mode: Bicycling. Noun. -->
     <string name="travel_mode_bicycle">Bicycle</string>
+    <!-- Travel mode: Driving. Noun/Verb. -->
     <string name="travel_mode_drive">Drive</string>
+    <!-- Travel mode: Public transit. Noun. -->
     <string name="travel_mode_transit">Transit</string>
 
-    <!-- Navigation Service / Notification -->
+    <!-- Notification channel name for foreground nav service -->
     <string name="nav_channel_name">Navigation</string>
+    <!-- Notification channel description -->
     <string name="nav_channel_desc">Live turn-by-turn navigation</string>
+    <!-- Fallback destination text when no name. Noun fragment, lower case -->
     <string name="nav_default_destination">your destination</string>
-    <string name="nav_destination_format">To %1$s</string>
+    <!-- Notification title destination format. %1$s=place name -->
+    <string name="nav_destination_format">To <xliff:g id="destination" example="Central Park">%1$s</xliff:g></string>
+    <!-- Nav status: idle ready -->
     <string name="nav_status_idle">Ready to navigate</string>
+    <!-- Nav status: starting navigation -->
     <string name="nav_status_starting">Starting navigation…</string>
+    <!-- Nav status: recalculating after off-route -->
     <string name="nav_status_recalculating">Recalculating route…</string>
+    <!-- Nav status: arrived -->
     <string name="nav_status_arrived">You have arrived</string>
+    <!-- Nav status: failed/stopped -->
     <string name="nav_status_failed">Navigation stopped</string>
+    <!-- Button: End navigation. Verb. -->
     <string name="nav_action_end">End</string>
+    <!-- Button: Recenter map on user location. Verb. -->
     <string name="nav_action_recenter">Recenter</string>
+    <!-- Button: Start navigation for selected mode. Verb. -->
     <string name="nav_action_start">Start Navigation</string>
-    <string name="nav_drive_content_format">%1$s · ETA %2$s</string>
-    <string name="nav_walk_title_format">Walking to %1$s</string>
-    <string name="nav_bike_title_format">Biking to %1$s</string>
-    <string name="nav_transit_title_default">Transit to %1$s</string>
-    <string name="nav_progress_content_format">%1$d%% · %2$s left · ETA %3$s</string>
+    <!-- Notification content for drive. %1$s=distance/duration, %2$s=ETA time -->
+    <string name="nav_drive_content_format"><xliff:g id="distance_or_duration" example="2.3 km">%1$s</xliff:g> · ETA <xliff:g id="eta" example="10:30 AM">%2$s</xliff:g></string>
+    <!-- Notification title walking. %1$s=destination -->
+    <string name="nav_walk_title_format">Walking to <xliff:g id="destination" example="Central Park">%1$s</xliff:g></string>
+    <!-- Notification title biking. %1$s=destination -->
+    <string name="nav_bike_title_format">Biking to <xliff:g id="destination" example="Golden Gate">%1$s</xliff:g></string>
+    <!-- Notification title transit. %1$s=destination -->
+    <string name="nav_transit_title_default">Transit to <xliff:g id="destination" example="Downtown">%1$s</xliff:g></string>
+    <!-- Notification progress line. %1$d=percent 0-100, %2$s=remaining distance/time, %3$s=ETA -->
+    <string name="nav_progress_content_format"><xliff:g id="progress" example="60">%1$d</xliff:g>%% · <xliff:g id="remaining" example="2.1 km">%2$s</xliff:g> left · ETA <xliff:g id="eta" example="10:30 AM">%3$s</xliff:g></string>
+    <!-- Notification big title when arrived -->
     <string name="nav_arrived_title">You have arrived</string>
+    <!-- Button: Dismiss arrival notification. Verb. -->
     <string name="nav_arrived_dismiss">Dismiss</string>
+    <!-- Nav banner: Off route warning -->
     <string name="nav_off_route">Off route — recalculating…</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- NavigationOverlay -->
-    <string name="then">Then: %1$s</string>
-    <string name="min">%1$s min · %2$s</string>
+    <!-- NavigationOverlay: Next maneuver preview. %1$s=next instruction -->
+    <string name="then">Then: <xliff:g id="next_instruction" example="Turn left onto Main St">%1$s</xliff:g></string>
+    <!-- NavigationOverlay: Route summary. %1$s=duration e.g. "12", %2$s=distance e.g. "1.2 km" -->
+    <string name="min"><xliff:g id="minutes" example="12">%1$s</xliff:g> min · <xliff:g id="distance" example="1.2 km">%2$s</xliff:g></string>
 </resources>

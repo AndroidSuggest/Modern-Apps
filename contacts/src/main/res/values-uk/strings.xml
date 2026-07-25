@@ -1,8 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cancel">Скасувати</string>
     <string name="delete">Видалити</string>
-    <string name="search">Пошук</string>
     <string name="settings">Параметри</string>
-    <string name="import_button">Імпортувати</string>
-</resources>
+    </resources>

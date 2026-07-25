@@ -1,68 +1,86 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Music</string>
 
-    <!-- Bottom navigation labels -->
+    <!-- Bottom nav: Home tab. Noun. -->
     <string name="nav_home">Home</string>
+    <!-- Bottom nav: Albums tab. Noun. -->
     <string name="nav_albums">Albums</string>
+    <!-- Bottom nav: Artists tab. Noun. -->
     <string name="nav_artists">Artists</string>
+    <!-- Bottom nav: Playlists tab. Noun. -->
     <string name="nav_playlists">Playlists</string>
 
-    <!-- List page titles -->
+    <!-- Title for main Music list screen -->
     <string name="page_title_music">Music</string>
+    <!-- Title for Playlists list screen -->
     <string name="page_title_playlists">Playlists</string>
 
-    <!-- Now Playing screen -->
-    <string name="now_playing">Now Playing</string>
-    <string name="go_to_source">Go to %1$s</string>
+    <!-- NowPlaying: Button to navigate to source. %1$s=source name e.g. "All Songs", "My Mix" -->
+    <string name="go_to_source">Go to <xliff:g id="source" example="All Songs">%1$s</xliff:g></string>
+    <!-- NowPlaying: Fallback title when track metadata missing -->
     <string name="unknown_title">Unknown Title</string>
+    <!-- NowPlaying: Fallback artist when metadata missing -->
     <string name="unknown_artist">Unknown Artist</string>
-    <string name="content_desc_repeat">Repeat</string>
-    <string name="content_desc_shuffle">Shuffle</string>
+    <!-- NowPlaying: Shown when track has no embedded lyrics -->
     <string name="no_lyrics_available">No lyrics available</string>
-    <string name="show_lyrics_on_lock_screen">Show lyrics on lock screen</string>
 
-    <!-- Detail screen overlines / section headers -->
+    <!-- Detail screen: Overline label for album type. Noun. -->
     <string name="label_album">Album</string>
-    <string name="album_info_format">%1$s\n%2$s • %3$d songs • %4$s</string>
+    <!-- Detail screen: Album info line. %1$s=artist e.g. "Beatles", %2$s=year e.g. "1970", %3$d=song count e.g. 10, %4$s=duration e.g. "42:30" -->
+    <string name="album_info_format"><xliff:g id="artist" example="The Beatles">%1$s</xliff:g>\n<xliff:g id="year" example="1970">%2$s</xliff:g> • <xliff:g id="song_count" example="10">%3$d</xliff:g> songs • <xliff:g id="duration" example="42:30">%4$s</xliff:g></string>
+    <!-- Detail screen: Overline label for artist type. Noun. -->
     <string name="label_artist">Artist</string>
-    <string name="artist_info_format">%1$d songs • %2$s</string>
+    <!-- Detail screen: Artist info summary. %1$d=song count e.g. 25, %2$s=duration e.g. "1h 42m" -->
+    <string name="artist_info_format"><xliff:g id="song_count" example="25">%1$d</xliff:g> songs • <xliff:g id="duration" example="1h 42m">%2$s</xliff:g></string>
+    <!-- Detail screen: Overline label for playlist type. Noun. -->
     <string name="label_playlist">Playlist</string>
-    <string name="num_songs_format">%1$d songs</string>
+    <!-- Detail screen: Song count label. %1$d=number of songs -->
+    <string name="num_songs_format"><xliff:g id="count" example="10">%1$d</xliff:g> songs</string>
+    <!-- Button: Play action. Verb. -->
     <string name="label_play">Play</string>
+    <!-- Button: Shuffle play. Verb. -->
     <string name="label_shuffle">Shuffle</string>
+    <!-- Section header: Songs list. Noun. -->
     <string name="label_songs">Songs</string>
+    <!-- Section header: Albums list. Noun. -->
     <string name="label_albums">Albums</string>
 
-    <!-- Dialogs -->
+    <!-- Dialog title: Add current song to playlist -->
     <string name="dialog_add_to_playlist">Add to Playlist</string>
+    <!-- Button: Generic OK confirmation. -->
     <string name="dialog_ok">OK</string>
+    <!-- Button: Generic cancel. Verb. -->
     <string name="dialog_cancel">Cancel</string>
+    <!-- Dialog title: Rename playlist -->
     <string name="dialog_rename_playlist">Rename Playlist</string>
+    <!-- Button: Rename action. Verb. -->
     <string name="dialog_rename">Rename</string>
+    <!-- Dialog title: Delete playlist confirmation -->
     <string name="dialog_delete_playlist">Delete Playlist</string>
-    <string name="dialog_delete_playlist_confirm">Delete \"%1$s\"? This cannot be undone.</string>
+    <!-- Dialog message: Confirm delete playlist. %1$s=playlist name e.g. "My Mix" -->
+    <string name="dialog_delete_playlist_confirm">Delete \"<xliff:g id="playlist_name" example="My Mix">%1$s</xliff:g>\"? This cannot be undone.</string>
+    <!-- Button: Delete action. Verb. Destructive. -->
     <string name="dialog_delete">Delete</string>
-    <string name="menu_delete_playlist">Delete playlist</string>
 
-    <!-- Playlist -->
+    <!-- Button/List item: Create new empty playlist -->
     <string name="new_playlist">New Playlist</string>
+    <!-- Dialog title: Create playlist -->
     <string name="dialog_create_playlist">Create Playlist</string>
+    <!-- Button: Create action. Verb. -->
     <string name="dialog_create">Create</string>
+    <!-- TextField hint: Input playlist name -->
     <string name="playlist_name_hint">Playlist name</string>
 
-    <!-- Permissions -->
+    <!-- Button: Request audio media permission on Android 13+ -->
     <string name="grant_audio_permissions">Grant Audio Media Permissions</string>
+    <!-- Button: Request storage permission on Android versions before 13. Verb phrase. -->
     <string name="grant_storage_permissions">Grant Storage Permissions</string>
 
-    <!-- Content descriptions -->
+    <!-- Content description: Album art image -->
     <string name="content_desc_album_art">Album Art</string>
+    <!-- Content description: Grid of album arts -->
     <string name="content_desc_album_art_grid">Album Art Grid</string>
-    <string name="content_desc_add_to_playlist">Add to playlist</string>
 
-    <!-- Database / metadata -->
-    <string name="various_artists">Various Artists</string>
 
-    <!-- Notification button display names -->
-    <string name="notification_shuffle">Shuffle</string>
-    <string name="notification_repeat">Repeat</string>
 </resources>

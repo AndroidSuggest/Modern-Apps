@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Orologio</string>
     <string name="label_alarm">Sveglia</string>
@@ -6,7 +5,6 @@
     <string name="label_timer">Timer</string>
     <string name="label_stopwatch">Cronometro</string>
     <string name="grant_notifications_permission">Concedi autorizzazione notifiche</string>
-    <string name="no_alarms">Ancora nessuna sveglia</string>
     <string name="set_an_alarm">Imposta una sveglia</string>
     <string name="button_stop">INTERROMPI</string>
     <string name="button_snooze">POSTICIPA (5 MIN)</string>
@@ -26,14 +24,10 @@
     <string name="header_total">Totale</string>
     <string name="stopwatch_time_format">%1$d:%2$02d</string>
     <string name="button_add_minute">+ 1:00</string>
-    <string name="set_a_timer">Imposta un timer</string>
     <string name="timer_finished_title">Timer scaduto</string>
     <string name="timer_finished_text">%1$s è terminato!</string>
     <string name="label_new_timer">Nuovo timer</string>
     <string name="field_label">Etichetta</string>
-    <string name="field_hours">Ore</string>
-    <string name="field_minutes">Minuti</string>
-    <string name="field_seconds">Secondi</string>
     <string name="button_cancel">Annulla</string>
     <string name="button_save">Salva</string>
     <string name="select_cities_title">Seleziona città</string>

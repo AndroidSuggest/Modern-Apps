@@ -1,192 +1,304 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Calendar</string>
 
-    <!-- Calendar layout labels (CalendarLayout enum) -->
+    <!-- Calendar layout picker: long display names for calendar view modes -->
+    <!-- Main calendar: Agenda view showing list of upcoming events -->
     <string name="layout_agenda">Agenda</string>
+    <!-- Main calendar: Day view showing single day hourly grid -->
     <string name="layout_day">Day</string>
+    <!-- Main calendar: Work Week view Mon-Fri -->
     <string name="layout_work_week">Work Week</string>
+    <!-- Main calendar: Full Week view Mon-Sun -->
     <string name="layout_full_week">Full Week</string>
+    <!-- Main calendar: Month view grid -->
     <string name="layout_month">Month</string>
+    <!-- Main calendar: Summary of work week events -->
     <string name="layout_work_week_summary">Work Week Summary</string>
+    <!-- Main calendar: Summary of full week events -->
     <string name="layout_full_week_summary">Full Week Summary</string>
+    <!-- Layout picker: short single-letter abbreviation for Agenda (keep very short) -->
     <string name="layout_short_agenda">A</string>
+    <!-- Layout picker: short abbreviation for Day -->
     <string name="layout_short_day">D</string>
+    <!-- Layout picker: short abbreviation for Work Week 5 days -->
     <string name="layout_short_work_week">W5</string>
+    <!-- Layout picker: short abbreviation for Full Week 7 days -->
     <string name="layout_short_full_week">W7</string>
+    <!-- Layout picker: short abbreviation for Month -->
     <string name="layout_short_month">M</string>
+    <!-- Layout picker: short abbreviation for Work Week Summary (5-day summary) -->
     <string name="layout_short_work_week_summary">W5S</string>
+    <!-- Layout picker: short abbreviation for Full Week Summary (7-day summary) -->
     <string name="layout_short_full_week_summary">W7S</string>
 
-    <!-- Theme mode labels (ThemeMode enum) -->
+    <!-- Theme settings: ThemeMode enum labels -->
+    <!-- Settings: follow system light/dark theme -->
     <string name="theme_system_default">System default</string>
+    <!-- Settings: light theme option -->
     <string name="theme_light">Light</string>
+    <!-- Settings: dark theme option -->
     <string name="theme_dark">Dark</string>
+    <!-- Widget: content description for app widget in widget picker -->
     <string name="calendar_widget_description">Upcoming events at a glance — tap to open Calendar</string>
 
-    <!-- Common actions -->
+    <!-- Common actions: generic buttons used across dialogs -->
+    <!-- Generic confirmation button. Keep short. -->
     <string name="ok">OK</string>
+    <!-- Generic cancel/dismiss button. Verb. -->
     <string name="cancel">Cancel</string>
+    <!-- Generic close button. Verb. Dismisses dialog/sheet -->
     <string name="close">Close</string>
+    <!-- Generic delete action. Verb. Removes item -->
     <string name="delete">Delete</string>
+    <!-- Generic rename action. Verb. -->
     <string name="rename">Rename</string>
+    <!-- Generic create action. Verb. Creates new item -->
     <string name="create">Create</string>
+    <!-- Generic remove action. Verb. -->
     <string name="remove">Remove</string>
+    <!-- Event details: button to add a reminder/notification for event -->
     <string name="add_reminder">Add reminder</string>
+    <!-- Toolbar: search events. Verb. -->
     <string name="search">Search</string>
 
-    <!-- Event display -->
+    <!-- Event display: titles and date formatting -->
+    <!-- Shown when event has empty title -->
     <string name="no_title">(No title)</string>
+    <!-- Error when event id not found in provider -->
     <string name="event_not_found">Event not found</string>
-    <string name="month_year_format">%1$s %2$d</string>
-    <string name="date_range_format">%1$s - %2$s</string>
-    <string name="date_time_range_format">%1$s • %2$s - %3$s</string>
-    <string name="full_date_time_range_format">%1$s, %2$s - %3$s, %4$s</string>
+    <!-- Header showing month and year. %1$s = month name, %2$d = year number -->
+    <string name="month_year_format"><xliff:g id="month_name" example="January">%1$s</xliff:g> <xliff:g id="year" example="2025">%2$d</xliff:g></string>
+    <!-- Displays a range of dates, e.g. Jan 1 - Jan 2. %1$s = start date, %2$s = end date -->
+    <string name="date_range_format"><xliff:g id="start_date" example="Jan 1">%1$s</xliff:g> - <xliff:g id="end_date" example="Jan 2">%2$s</xliff:g></string>
+    <!-- Displays same-day range with time. %1$s = date, %2$s = start time, %3$s = end time -->
+    <string name="date_time_range_format"><xliff:g id="date" example="Jan 1">%1$s</xliff:g> • <xliff:g id="start_time" example="9:00 AM">%2$s</xliff:g> - <xliff:g id="end_time" example="10:00 AM">%3$s</xliff:g></string>
+    <!-- Displays full range across days with times. %1$s = start date, %2$s = start time, %3$s = end date, %4$s = end time -->
+    <string name="full_date_time_range_format"><xliff:g id="start_date" example="Jan 1">%1$s</xliff:g>, <xliff:g id="start_time" example="9:00 AM">%2$s</xliff:g> - <xliff:g id="end_date" example="Jan 2">%3$s</xliff:g>, <xliff:g id="end_time" example="10:00 AM">%4$s</xliff:g></string>
 
-    <!-- Hour labels in calendar grid -->
+    <!-- Hour labels in calendar day/week grid -->
+    <!-- Grid label for midnight hour -->
     <string name="twelve_am">12 AM</string>
-    <string name="hour_am">%1$d AM</string>
+    <!-- Grid label for AM hours. %1$d = hour number 1-11 -->
+    <string name="hour_am"><xliff:g id="hour" example="9">%1$d</xliff:g> AM</string>
+    <!-- Grid label for noon hour -->
     <string name="twelve_pm">12 PM</string>
-    <string name="hour_pm">%1$d PM</string>
+    <!-- Grid label for PM hours. %1$d = hour number 1-11 -->
+    <string name="hour_pm"><xliff:g id="hour" example="3">%1$d</xliff:g> PM</string>
 
     <!-- Edit event screen -->
+    <!-- Text field label for event title -->
     <string name="label_title">Title</string>
+    <!-- Text field label for event description/details -->
     <string name="label_description">Description</string>
+    <!-- Text field label for event location -->
     <string name="label_location">Location</string>
+    <!-- Button to choose which calendar to save event to -->
     <string name="select_calendar">Select calendar</string>
+    <!-- Toggle for all-day event (no specific time) -->
     <string name="all_day">All-day</string>
+    <!-- Recurrence: event does not repeat -->
     <string name="does_not_repeat">Does not repeat</string>
+    <!-- Recurrence section label: shows repeat rule summary. Noun/verb -->
     <string name="repeats">Repeats</string>
 
     <!-- Settings screen -->
+    <!-- Settings: top bar title and bottom nav label. Noun. -->
     <string name="settings">Settings</string>
+    <!-- Account label when calendar has no account -->
     <string name="no_account">(No account)</string>
-    <string name="calendar_id_label">ID: %1$d</string>
+    <!-- Settings: shows calendar database ID. %1$d = numeric calendar ID -->
+    <string name="calendar_id_label">ID: <xliff:g id="calendar_id" example="1">%1$d</xliff:g></string>
 
     <!-- Calendar picker dialog -->
+    <!-- Dialog title to pick a calendar from list -->
     <string name="choose_calendar">Choose calendar</string>
+    <!-- Label for local on-device account, no cloud sync -->
     <string name="local_account">(Local)</string>
 
     <!-- Date picker dialog -->
+    <!-- Menu action to jump to specific date. Verb. -->
     <string name="go_to_date">Go to date</string>
 
-    <!-- Recurrence dialog -->
+    <!-- Recurrence dialog: RRULE editor -->
+    <!-- Dialog title and option for repetition. Verb/Noun. -->
     <string name="repeat">Repeat</string>
+    <!-- Label meaning every N interval. Part of 'Every 2 weeks' -->
     <string name="every">Every</string>
-    <string name="dropdown_freq_format">%1$s ▼</string>
+    <!-- Dropdown showing selected frequency, ▼ indicates dropdown. %1$s = frequency like Weekly -->
+    <string name="dropdown_freq_format"><xliff:g id="frequency" example="Weekly">%1$s</xliff:g> ▼</string>
+    <!-- Label for weekday selection in weekly repeat -->
     <string name="on_days_of_week">On days of week</string>
+    <!-- Preposition for date rules, e.g. 'On day 15' -->
     <string name="on_label">On</string>
-    <string name="month_option_day_of_month">On day %1$d of the month</string>
-    <string name="month_option_nth_weekday">On the %1$s %2$s</string>
-    <string name="month_option_last_weekday">On the last %1$s</string>
-    <string name="year_option_month_day">On %1$s %2$d</string>
-    <string name="year_option_week">On week %1$d of the year on %2$s</string>
-    <string name="year_option_day_of_year">On day %1$d of the year</string>
+    <!-- Monthly recurrence: on specific day of month. %1$d = day number 1-31 -->
+    <string name="month_option_day_of_month">On day <xliff:g id="day" example="15">%1$d</xliff:g> of the month</string>
+    <!-- Monthly recurrence: on nth weekday, e.g. On the second Monday. %1$s = ordinal like first/second, %2$s = weekday -->
+    <string name="month_option_nth_weekday">On the <xliff:g id="ordinal" example="second">%1$s</xliff:g> <xliff:g id="weekday" example="Monday">%2$s</xliff:g></string>
+    <!-- Monthly recurrence: on last weekday of month, e.g. On the last Friday. %1$s = weekday name -->
+    <string name="month_option_last_weekday">On the last <xliff:g id="weekday" example="Friday">%1$s</xliff:g></string>
+    <!-- Yearly recurrence: on month and day. %1$s = month name, %2$d = day number -->
+    <string name="year_option_month_day">On <xliff:g id="month" example="March">%1$s</xliff:g> <xliff:g id="day" example="15">%2$d</xliff:g></string>
+    <!-- Yearly: on specific week of year. %1$d = week number, %2$s = weekday -->
+    <string name="year_option_week">On week <xliff:g id="week_num" example="12">%1$d</xliff:g> of the year on <xliff:g id="weekday" example="Monday">%2$s</xliff:g></string>
+    <!-- Yearly: on specific day of year. %1$d = day of year 1-365 -->
+    <string name="year_option_day_of_year">On day <xliff:g id="day_of_year" example="100">%1$d</xliff:g> of the year</string>
+    <!-- Recurrence end options header. Noun/Verb. -->
     <string name="end">End</string>
+    <!-- Recurrence never ends -->
     <string name="never">Never</string>
+    <!-- Recurrence ends after count. Noun, number of occurrences -->
     <string name="count">Count</string>
+    <!-- Recurrence ends on date. Preposition. -->
     <string name="until">Until</string>
-    <string name="until_date">Until: %1$s</string>
+    <!-- Shows selected until date. %1$s = formatted date -->
+    <string name="until_date">Until: <xliff:g id="date" example="Dec 31, 2025">%1$s</xliff:g></string>
 
     <!-- Add calendar dialog -->
+    <!-- Dialog title for creating new local calendar -->
     <string name="new_local_calendar">New local calendar</string>
+    <!-- Text field label for calendar name input -->
     <string name="calendar_name">Calendar name</string>
+    <!-- Label for color picker section -->
     <string name="choose_color">Choose color:</string>
 
     <!-- Change color dialog -->
+    <!-- Dialog title for changing calendar color -->
     <string name="change_color_for">Change color for this calendar</string>
+    <!-- Button to confirm color change. Verb. -->
     <string name="change_color">Change color</string>
 
-    <!-- Delete calendar dialog -->
+    <!-- Delete calendar flow -->
+    <!-- Dialog title to delete calendar. Verb phrase. -->
     <string name="delete_calendar">Delete calendar</string>
+    <!-- Confirmation message when deleting calendar with events -->
     <string name="delete_calendar_confirm">Are you sure you want to delete this calendar? This will remove all events in the calendar.</string>
-    <string name="delete_calendar_name_confirm">Are you sure you want to delete \"%1$s\"? This will remove all events in the calendar.</string>
+    <!-- Confirmation with calendar name. %1$s = calendar name -->
+    <string name="delete_calendar_name_confirm">Are you sure you want to delete \"<xliff:g id="calendar_name" example="Work">%1$s</xliff:g>\"? This will remove all events in the calendar.</string>
 
     <!-- Rename calendar dialog -->
+    <!-- Dialog title to rename calendar -->
     <string name="rename_calendar">Rename calendar</string>
+    <!-- Text field label for new calendar name -->
     <string name="new_name">New name</string>
+    <!-- Empty state when no calendars exist, prompts user to create -->
     <string name="create_a_calendar">Create a calendar</string>
 
-    <!-- Timezone picker dialog -->
+    <!-- Timezone picker -->
+    <!-- Dialog title to choose timezone -->
     <string name="choose_timezone">Choose timezone</string>
 
-    <!-- Location row -->
+    <!-- Event details: location row action -->
+    <!-- Button to open event location in navigation/maps app. Verb. -->
     <string name="open_location_in_navigation">Open location</string>
 
-    <!-- Delete event dialog -->
+    <!-- Delete event dialog: when editing recurring event, choose single vs all -->
+    <!-- Option to delete only this occurrence of recurring event -->
     <string name="delete_this_event">Delete this event</string>
+    <!-- Option to delete all occurrences of recurring event -->
     <string name="delete_all_events">Delete all events</string>
 
-    <!-- Import ICS dialog -->
-    <string name="new_local_calendar_title">New Local Calendar</string>
-    <string name="calendar_name_label">Calendar Name</string>
-    <string name="loading_events">Loading events…</string>
-    <string name="import_events_title">Import Events</string>
-    <string name="select_calendar_to_import">Select calendar to import to:</string>
+    <!-- Import ICS dialog: import events from .ics file -->
+    <!-- Dropdown option to create new calendar for import. + indicates add new -->
     <string name="create_new_calendar">+ Create new calendar</string>
-    <string name="import_button">Import</string>
+    <!-- Settings: row to open file picker for .ics import -->
     <string name="import_ics_file">Import .ics file</string>
+    <!-- Settings: row label for ICS import feature -->
     <string name="import_events">Import events</string>
+    <!-- Import flow: option to import into existing calendar -->
     <string name="import_to_existing_calendar">Import to existing calendar</string>
+    <!-- Import flow: option to create new calendar for imported events -->
     <string name="create_new_calendar_option">Create new calendar</string>
+    <!-- Empty state when ICS file contains no parsable events -->
     <string name="no_events_found">No events found</string>
-    <string name="import_summary">%1$d events ready to import</string>
+    <!-- Summary showing number of events parsed and ready. %1$d = event count -->
+    <string name="import_summary"><xliff:g id="count" example="5">%1$d</xliff:g> events ready to import</string>
 
-    <!-- Settings screen -->
+    <!-- Settings: default layout preference -->
+    <!-- Label for default calendar layout preference -->
     <string name="default_layout">Default Layout</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- HolidayCalendarsScreen -->
+    <!-- Holiday calendars and permissions -->
+    <!-- HolidayCalendarsScreen: search field hint for filtering countries -->
     <string name="search_countries">Search countries</string>
+    <!-- Language picker dialog title for holiday calendar language -->
     <string name="choose_language">Choose language</string>
+    <!-- Generic add button. Verb. Adds selected item -->
     <string name="add">Add</string>
+    <!-- Settings: row title for managing holiday calendars -->
     <string name="holiday_calendars">Holiday calendars</string>
-    <!-- MainActivity -->
+    <!-- Permission screen: shown when calendar permission not granted -->
     <string name="please_grant_calendar_permission">Please grant calendar permission</string>
-    <!-- SettingsScreen -->
+    <!-- Settings: row to import events from .ics files -->
     <string name="import_events_from_ics_files">Import events from .ics files</string>
+    <!-- Settings: theme preference row label -->
     <string name="theme">Theme</string>
+    <!-- Settings: description for adding public holiday calendars by country -->
     <string name="add_public_holidays_for_countries">Add public holidays for countries</string>
 
-    <!-- Reminder labels (EditEventScreen.reminderLabel) -->
+    <!-- Reminder labels: shown in EditEventScreen for notification time choices -->
+    <!-- Reminder option: notify exactly at event start time -->
     <string name="reminder_at_time_of_event">At time of event</string>
+    <!-- Reminder time: days before. Plurals for day count -->
     <plurals name="reminder_days_before">
-        <item quantity="one">%1$d day before</item>
-        <item quantity="other">%1$d days before</item>
+        <!-- %1$d = number of days. One day before event -->
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> day before</item>
+        <!-- %1$d = number of days -->
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> days before</item>
     </plurals>
+    <!-- Reminder time: hours before event -->
     <plurals name="reminder_hours_before">
-        <item quantity="one">%1$d hour before</item>
-        <item quantity="other">%1$d hours before</item>
+        <!-- %1$d = hour count, singular -->
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> hour before</item>
+        <!-- %1$d = hour count plural -->
+        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> hours before</item>
     </plurals>
+    <!-- Reminder time: minutes before event -->
     <plurals name="reminder_minutes_before">
-        <item quantity="one">%1$d minute before</item>
-        <item quantity="other">%1$d minutes before</item>
+        <!-- %1$d = minute count singular -->
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> minute before</item>
+        <!-- %1$d = minute count plural -->
+        <item quantity="other"><xliff:g id="count" example="15">%1$d</xliff:g> minutes before</item>
     </plurals>
 
-    <!-- Recurrence summary (RRule.describe) -->
+    <!-- Recurrence summary descriptions (RRule.describe): human-readable repeat rule -->
+    <!-- Recurrence summary: event repeats daily -->
     <string name="rrule_daily">Daily</string>
+    <!-- Recurrence summary: every N days -->
     <plurals name="rrule_every_days">
-        <item quantity="one">Every %1$d day</item>
-        <item quantity="other">Every %1$d days</item>
+        <!-- Every one day -->
+        <item quantity="one">Every <xliff:g id="count" example="1">%1$d</xliff:g> day</item>
+        <!-- Every multiple days, %1$d = number -->
+        <item quantity="other">Every <xliff:g id="count" example="3">%1$d</xliff:g> days</item>
     </plurals>
+    <!-- Recurrence summary: weekly -->
     <string name="rrule_weekly">Weekly</string>
+    <!-- Recurrence summary: every N weeks -->
     <plurals name="rrule_every_weeks">
-        <item quantity="one">Every %1$d week</item>
-        <item quantity="other">Every %1$d weeks</item>
+        <item quantity="one">Every <xliff:g id="count" example="1">%1$d</xliff:g> week</item>
+        <item quantity="other">Every <xliff:g id="count" example="2">%1$d</xliff:g> weeks</item>
     </plurals>
+    <!-- Recurrence summary: monthly -->
     <string name="rrule_monthly">Monthly</string>
+    <!-- Recurrence summary: every N months -->
     <plurals name="rrule_every_months">
-        <item quantity="one">Every %1$d month</item>
-        <item quantity="other">Every %1$d months</item>
+        <item quantity="one">Every <xliff:g id="count" example="1">%1$d</xliff:g> month</item>
+        <item quantity="other">Every <xliff:g id="count" example="6">%1$d</xliff:g> months</item>
     </plurals>
+    <!-- Recurrence summary: yearly -->
     <string name="rrule_yearly">Yearly</string>
+    <!-- Recurrence summary: every N years -->
     <plurals name="rrule_every_years">
-        <item quantity="one">Every %1$d year</item>
-        <item quantity="other">Every %1$d years</item>
+        <item quantity="one">Every <xliff:g id="count" example="1">%1$d</xliff:g> year</item>
+        <item quantity="other">Every <xliff:g id="count" example="2">%1$d</xliff:g> years</item>
     </plurals>
-    <string name="rrule_on_days">%1$s on %2$s</string>
+    <!-- Recurrence combined: base frequency on specific days, e.g. Weekly on Mon, Wed. %1$s = frequency, %2$s = days list -->
+    <string name="rrule_on_days"><xliff:g id="frequency" example="Weekly">%1$s</xliff:g> on <xliff:g id="days" example="Mon, Wed">%2$s</xliff:g></string>
+    <!-- Recurrence suffix: ends after N occurrences -->
     <plurals name="rrule_count_suffix">
-        <item quantity="one">, %1$d time</item>
-        <item quantity="other">, %1$d times</item>
+        <item quantity="one">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
+        <item quantity="other">, <xliff:g id="count" example="5">%1$d</xliff:g> times</item>
     </plurals>
-    <string name="rrule_until_suffix">, Until %1$s</string>
+    <!-- Recurrence suffix: ends on specific date. %1$s = formatted end date -->
+    <string name="rrule_until_suffix">, Until <xliff:g id="date" example="Dec 31, 2025">%1$s</xliff:g></string>
 </resources>

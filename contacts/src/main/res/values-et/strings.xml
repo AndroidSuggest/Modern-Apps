@@ -1,18 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kontaktid</string>
     <string name="contact_not_found">Kontakti ei leidu</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
     <string name="contact_photo_description">Foto: %1$s</string>
-    <string name="favorite">Lemmik</string>
     <string name="share_contact">Jaga kontakti</string>
     <string name="about_name">Teave: %1$s</string>
     <string name="birthday">Sünnipäev</string>
     <string name="note">Märge</string>
-    <string name="action">Tegevus</string>
     <string name="favorites">Lemmikud</string>
-    <string name="user_profile">Kasutajaprofiil</string>
-    <string name="profiles">Profiilid</string>
     <string name="export_contacts">Ekspordi kõik kontaktid</string>
     <string name="on_device">Seadmes</string>
     <string name="add_contact">Lisa kontakt</string>
@@ -24,8 +19,6 @@
     <string name="nickname">Hüüdnimi</string>
     <string name="company">Äriühing</string>
     <string name="account">Kasutajakonto</string>
-    <string name="choose_account">Vali kasutajakonto</string>
-    <string name="remove_birthday">Eemalda sünnipäev</string>
     <string name="dates">Kuupäevad</string>
     <string name="phone">Telefon</string>
     <string name="email">E-posti aadress</string>
@@ -58,10 +51,8 @@
     <string name="account_display_format">%1$s (%2$s)</string>
     <string name="add_address">Lisa aadress</string>
     <string name="add_phone">Lisa telefon</string>
-    <string name="remove_date">Eemalda kuupäev</string>
     <string name="delete_contact_name_confirm">Kas sa oled kindel, et soovid „%1$s“ kontakti kustutada? Seda tegevust ei saa tagasi pöörata.</string>
     <string name="add_email">Lisa e-posti aadress</string>
-    <string name="full_name_format">%1$s %2$s</string>
     <string name="calendar_sync">Kalendri sünkroonimine</string>
     <string name="sync_contacts_calendar">Näita kalendris sünnipäevi</string>
     <string name="contacts_calendar_name">Kontaktid</string>
@@ -73,7 +64,6 @@
     <string name="selected_count">%1$d on valitud</string>
     <string name="display">Ekraanivaade</string>
     <string name="show_account_labels">Näita kontakti kasutajakontosid</string>
-    <string name="search">Otsi</string>
     <string name="search_contacts">Otsi kontaktide hulgast</string>
     <string name="include_year">Kaasa aasta</string>
     <string name="system_default">Süsteemi vaikeseadistus</string>
@@ -86,15 +76,9 @@
     <string name="select_group_hint">Kontaktide vaatamiseks vali grupp</string>
     <string name="add_to_group">Lisa gruppi</string>
     <string name="add_group">Lisa grupp</string>
-    <string name="group_name">Grupi nimi</string>
     <string name="enter_group_name">Sisesta grupi nimi</string>
     <string name="delete_group_title">Kustuta grupp</string>
     <string name="delete_group_confirm">Kas oled kindel, et soovid selle grupi kustutada? Kontaktid jäävad sel puhul alles.</string>
-    <string name="remove_from_group">Eemalda grupist</string>
-    <string name="copied_to_clipboard">Kopeerisin lõikelauale</string>
-    <string name="select_account_to_import">Vali kasutajakonto, kuhu tahad importida:</string>
-    <string name="create_new_account">+ Loo uus kasutajakonto</string>
-    <string name="import_button">Impordi</string>
     <string name="no_groups_found">Ühtegi gruppi ei leidu. Saad mõne luua gruppide vahekaardilt.</string>
     <string name="contacts_count">%1$d kontakti</string>
     <string name="done">Valmis</string>

@@ -1,108 +1,139 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- DashboardScreen / launcher: App name. Noun, proper, displayed in TopAppBar -->
     <string name="app_name">GameHub</string>
+    <!-- MainActivity: Bottom nav content description for Home dashboard. Noun -->
     <string name="tab_dashboard">Home</string>
+    <!-- MainActivity / GamesListScreen: Tab title and content description for Games list. Noun -->
     <string name="tab_games">Games</string>
-    <string name="tab_achievements">Achievements</string>
-    <string name="tab_profile">Profile</string>
+    <!-- ActivityFeedScreen / GameDetailScreen: Tab title for activity feed section. Noun -->
     <string name="tab_activity">Activity</string>
+    <!-- SettingsScreen: TopAppBar title for Settings. Noun -->
     <string name="tab_settings">Settings</string>
-    <string name="no_games">No games registered yet. Play a game to see it here.</string>
-    <string name="search_hint">Search</string>
+    <!-- ProfileScreen / MainActivity: Title for Profile screen. Noun -->
     <string name="profile_title">Profile</string>
-    <string name="edit_name">Edit name</string>
+    <!-- ProfileScreen / SettingsScreen: Button to save edited profile or dialog. Verb -->
     <string name="save">Save</string>
+    <!-- ProfileScreen / SettingsScreen / dialog: Cancel button for edit dialogs. Verb -->
     <string name="cancel">Cancel</string>
-    <string name="level">Level %1$d</string>
-    <string name="xp_label">%1$d XP</string>
-    <string name="xp_progress">%1$d / %2$d XP to next level</string>
-    <string name="total_playtime">Playtime</string>
-    <string name="total_sessions">Sessions</string>
-    <string name="total_achievements">Achievements</string>
+    <!-- StreakIndicator: Content description for streak icon. Noun -->
     <string name="streak">Streak</string>
+    <!-- DashboardScreen: Section header for continue playing recent games list. Verb phrase -->
     <string name="continue_playing">Continue playing</string>
+    <!-- DashboardScreen: Section header for recent activity list. Noun phrase -->
     <string name="recent_activity">Recent activity</string>
-    <string name="playtime_per_game">Playtime per game</string>
-    <string name="cross_game_stats">Cross-game stats</string>
+    <!-- GamesListScreen: Sort dropdown option by last played time. Noun phrase -->
     <string name="sort_last_played">Last played</string>
+    <!-- GamesListScreen: Sort dropdown option by most played time. Noun phrase -->
     <string name="sort_most_played">Most played</string>
+    <!-- GamesListScreen: Sort dropdown option alphabetically by name. Noun -->
     <string name="sort_name">Name</string>
+    <!-- GamesListScreen: Sort dropdown option by completion percentage. Noun -->
     <string name="sort_completion">Completion</string>
+    <!-- AchievementsScreen: Filter chip for all achievements. Adjective -->
     <string name="filter_all">All</string>
+    <!-- AchievementsScreen: Filter chip for locked achievements. Adjective -->
     <string name="filter_locked">Locked</string>
+    <!-- AchievementsScreen: Filter chip for unlocked achievements. Adjective -->
     <string name="filter_unlocked">Unlocked</string>
-    <string name="filter_secret">Secret</string>
+    <!-- GameCard / GameDetailScreen: Badge/label indicating game SDK registered and installed. Adjective -->
     <string name="installed">Installed</string>
+    <!-- GameCard / GameDetailScreen: Label when game not registered/installed. Adjective phrase -->
     <string name="not_installed">Not installed</string>
-    <string name="play">Play</string>
+    <!-- MainActivity: Content description for achievements tab. Noun -->
     <string name="achievements_for">Achievements</string>
-    <string name="no_achievements">No achievements yet</string>
-    <string name="no_activity">No activity yet</string>
+    <!-- ProfileScreen: Label for avatar picker field. Noun -->
     <string name="avatar">Avatar</string>
-    <string name="choose_avatar">Choose avatar</string>
-    <string name="total_xp">Total XP</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- AchievementsScreen -->
-    <string name="achievements_1">Achievements (%1$s)</string>
+    <!-- AchievementsScreen: Title showing filtered count. %1$s = filtered achievements count as string, e.g. 12. Noun with count -->
+    <string name="achievements_1">Achievements (<xliff:g id="count" example="12">%1$s</xliff:g>)</string>
+    <!-- AchievementsScreen: Filter chip for all games aggregated view. Noun phrase -->
     <string name="all_games">All games</string>
+    <!-- AchievementsScreen: Empty state when filter yields no results. Sentence -->
     <string name="no_matching_achievements">No matching achievements</string>
-    <!-- ActivityFeedScreen -->
+    <!-- ActivityFeedScreen: Empty feed message with call to action to play games. Sentence with dash -->
     <string name="no_activity_yet_start_playing_games_to_s">No activity yet — start playing games to see your feed!</string>
-    <!-- DashboardScreen -->
+    <!-- DashboardScreen: Button to see all items in section (recent activity, continue playing). Verb phrase -->
     <string name="see_all">See all</string>
+    <!-- DashboardScreen: Empty activity card message. Sentence with dash -->
     <string name="no_activity_yet_play_a_game">No activity yet — play a game!</string>
-    <!-- GameCard -->
-    <string name="playtime_sessions">Playtime: %1$s • %2$s sessions</string>
-    <string name="achievements_2">Achievements: %1$s/%2$s</string>
-    <!-- GameDetailScreen -->
+    <!-- GameCard: Playtime and sessions summary. %1$s = formatted playtime e.g. 2h 15m, %2$s = session count e.g. 5. Noun phrase with bullet -->
+    <string name="playtime_sessions">Playtime: <xliff:g id="playtime" example="2h 15m">%1$s</xliff:g> • <xliff:g id="sessions" example="5">%2$s</xliff:g> sessions</string>
+    <!-- GameCard: Achievements progress. %1$s = unlocked count e.g. 3, %2$s = total count e.g. 10. Noun with fraction -->
+    <string name="achievements_2">Achievements: <xliff:g id="unlocked" example="3">%1$s</xliff:g>/<xliff:g id="total" example="10">%2$s</xliff:g></string>
+    <!-- GameDetailScreen: Game not found null state. Sentence -->
     <string name="game_not_found">Game not found</string>
-    <string name="achievements">Achievements %1$s/%2$s</string>
+    <!-- GameDetailScreen: Section header for achievements with progress. %1$s = unlocked e.g. 3, %2$s = total e.g. 10. Noun -->
+    <string name="achievements">Achievements <xliff:g id="unlocked" example="3">%1$s</xliff:g>/<xliff:g id="total" example="10">%2$s</xliff:g></string>
+    <!-- GameDetailScreen: Section header for recent play sessions. Noun phrase -->
     <string name="recent_sessions">Recent Sessions</string>
-    <!-- ProfileScreen -->
-    <string name="level_1">Level %1$s</string>
+    <!-- ProfileScreen: Level display string version. %1$s = level int as string e.g. 5. Noun with number -->
+    <string name="level_1">Level <xliff:g id="level" example="5">%1$s</xliff:g></string>
+    <!-- ProfileScreen: Section header for stats cards. Noun -->
     <string name="stats">Stats</string>
+    <!-- ProfileScreen: Section header for level table showing progression. Noun phrase -->
     <string name="level_table">Level table</string>
-    <string name="level_2">Level %1$s — %2$s%3$s</string>
-    <string name="xp">%1$s XP</string>
+    <!-- ProfileScreen: Row in level table. %1$s = level number e.g. 5, %2$s = level title e.g. Beginner, %3$s = optional marker like (you) or empty. Noun phrase with title -->
+    <string name="level_2">Level <xliff:g id="level" example="5">%1$s</xliff:g> — <xliff:g id="title" example="Beginner">%2$s</xliff:g><xliff:g id="you_marker" example=" (you)">%3$s</xliff:g></string>
+    <!-- ProfileScreen / XpProgressBar: XP display. %1$s = XP or level XP amount e.g. 1500 or 500. Noun -->
+    <string name="xp"><xliff:g id="xp_amount" example="1500">%1$s</xliff:g> XP</string>
+    <!-- ProfileScreen: Button / section to edit profile name and avatar. Verb phrase -->
     <string name="edit_profile">Edit profile</string>
+    <!-- ProfileScreen: Text field label for display name input. Noun phrase -->
     <string name="display_name">Display name</string>
-    <!-- SettingsScreen -->
+    <!-- SettingsScreen: Section header for backup and restore options. Noun phrase -->
     <string name="backup_restore">Backup &amp; Restore</string>
+    <!-- SettingsScreen: Section header for data management. Noun -->
     <string name="data">Data</string>
+    <!-- SettingsScreen: Explanation for clear hub cache button. Sentence, warns cached data removed and games will re-sync -->
     <string name="clear_hub_cache_removes_all_cached_game">Clear hub cache — removes all cached game data. Games will re-sync on next launch.</string>
+    <!-- SettingsScreen: Button to clear cache. Verb phrase -->
     <string name="clear_cache">Clear cache</string>
+    <!-- SettingsScreen: Section header for about GameHub description. Noun phrase -->
     <string name="about_gamehub">About GameHub</string>
+    <!-- SettingsScreen: Long description of GameHub purpose - aggregates achievements/playtime/activity via SDK mirrored cache, no leaderboards. Sentence -->
     <string name="gamehub_aggregates_achievements_playtime">GameHub aggregates achievements, playtime, and activity across all registered games. Games remain source of truth — hub keeps a mirrored cache pushed via SDK. No leaderboards for now.</string>
+    <!-- Settings: Package name. Noun -->
     <string name="package_com_vayunmathur_games_hub">Package: com.vayunmathur.games.hub</string>
+    <!-- SettingsScreen: Confirmation dialog title for clear cache action. Verb phrase question -->
     <string name="clear_cache_1">Clear cache?</string>
+    <!-- SettingsScreen: Confirmation dialog body warning deletion of all cached games/achievements/sessions/activity. Sentence -->
     <string name="this_will_delete_all_cached_games_achiev">This will delete all cached games, achievements, sessions, and activity. Games will re-register on next launch.</string>
+    <!-- SettingsScreen / dialog: Confirm button to clear. Verb -->
     <string name="clear">Clear</string>
-    <!-- StreakIndicator -->
-    <string name="day_streak">%1$s day streak 🔥</string>
-    <string name="longest_days">Longest: %1$s days</string>
+    <!-- StreakIndicator: Text showing current streak with emoji. %1$s = streak days count as string e.g. 5. Noun phrase celebratory -->
+    <string name="day_streak"><xliff:g id="streak_days" example="5">%1$s</xliff:g> day streak 🔥</string>
+    <!-- StreakIndicator: Longest streak display. %1$s = longest days count as string e.g. 12. Noun phrase -->
+    <string name="longest_days">Longest: <xliff:g id="days" example="12">%1$s</xliff:g> days</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- AchievementRow -->
-    <string name="xp_1">+%1$s XP</string>
+    <!-- AchievementRow: Badge showing XP reward for achievement. %1$s = XP amount as string e.g. 50. Noun phrase -->
+    <string name="xp_1">+<xliff:g id="xp" example="50">%1$s</xliff:g> XP</string>
+    <!-- AchievementRow: Hint for secret achievement hidden. Imperative sentence encouraging play -->
     <string name="keep_playing_to_reveal">Keep playing to reveal</string>
+    <!-- AchievementRow / GameDetailScreen: Label when achievement/session completed. Adjective/verb status -->
     <string name="completed">Completed!</string>
-    <!-- DashboardScreen -->
+    <!-- DashboardScreen: Fallback display name when profile null. Noun generic player -->
     <string name="player">Player</string>
-    <!-- GameDetailScreen -->
-    <string name="play_1">Play %1$s</string>
+    <!-- GameDetailScreen: Play button including game name. %1$s = game display name e.g. Solitaire. Verb phrase CTA -->
+    <string name="play_1">Play <xliff:g id="game_name" example="Solitaire">%1$s</xliff:g></string>
+    <!-- GameDetailScreen: Badge for session currently in progress (no end time). Adjective phrase -->
     <string name="in_progress">In progress</string>
-    <!-- GamesListScreen -->
+    <!-- GamesListScreen: Empty state when search query matches no games. Sentence -->
     <string name="no_matching_games">No matching games</string>
+    <!-- GamesListScreen: Empty hub message with line break. Two sentences: no games registered + instruction. Noun phrase with explanation -->
     <string name="no_games_registered_yet_nplay_a_game_to">No games registered yet.\nPlay a game to see it here.</string>
-    <!-- ProfileScreen -->
+    <!-- ProfileScreen: Suffix when showing own level in table. Includes leading space, e.g. (you). Pronoun marker -->
     <string name="you"> (you)</string>
-    <!-- XpProgressBar -->
-    <string name="level_3">Level %1$s • %2$s</string>
-    <string name="xp_to_l">%1$s XP to L%2$s</string>
-    <string name="xp_total">%1$s XP total</string>
-    <string name="next_xp">Next: %1$s XP</string>
+    <!-- XpProgressBar: Level header with title. %1$s = level number as string e.g. 5, %2$s = level title e.g. Adventurer. Noun phrase -->
+    <string name="level_3">Level <xliff:g id="level" example="5">%1$s</xliff:g> • <xliff:g id="title" example="Adventurer">%2$s</xliff:g></string>
+    <!-- XpProgressBar: Progress to next level. %1$s = XP needed as string e.g. 200, %2$s = next level number as string e.g. 6. Noun phrase -->
+    <string name="xp_to_l"><xliff:g id="needed_xp" example="200">%1$s</xliff:g> XP to L<xliff:g id="next_level" example="6">%2$s</xliff:g></string>
+    <!-- XpProgressBar: Total XP display. %1$s = total XP as string e.g. 1500. Noun phrase -->
+    <string name="xp_total"><xliff:g id="total_xp" example="1500">%1$s</xliff:g> XP total</string>
+    <!-- XpProgressBar: Next level XP requirement. %1$s = XP amount for next level as string e.g. 2000. Noun phrase -->
+    <string name="next_xp">Next: <xliff:g id="xp_needed" example="2000">%1$s</xliff:g> XP</string>
 
-    <!-- Content descriptions (accessibility) -->
+    <!-- ProfileScreen: Content description (accessibility) for edit profile icon. Verb -->
     <string name="cd_edit">Edit</string>
+    <!-- GamesListScreen: Content description for sort dropdown button. Verb -->
     <string name="cd_sort">Sort</string>
 </resources>

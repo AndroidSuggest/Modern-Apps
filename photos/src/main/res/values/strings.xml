@@ -1,277 +1,468 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name: launcher label and widget owner title -->
     <string name="app_name">Photos</string>
+    <!-- Glance widget description shown in widget picker. Full sentence describing rotating photo widget -->
     <string name="photo_widget_description">A rotating photo from your gallery — tap to shuffle</string>
-    <string name="title_edit_photo">Edit Photo</string>
-    <string name="action_save">Save</string>
-    <string name="action_save_as_copy">Save as Copy</string>
-    <string name="action_undo">Undo</string>
-    <string name="label_gallery">Gallery</string>
-    <string name="label_map">Map</string>
-    <string name="label_people">People</string>
-    <string name="label_trash">Trash</string>
-    <string name="label_secure_folder">Secure Folder</string>
-    <string name="action_move_to_secure">Move to Secure Folder</string>
-    <string name="action_restore_from_secure">Restore from Secure Folder</string>
-    <string name="secure_folder_auth_title">Unlock Secure Folder</string>
-    <string name="secure_folder_auth_subtitle">Authenticate to access your secure photos</string>
-    <string name="items_selected">%1$d selected</string>
-    <string name="month_year_format">%1$s %2$d</string>
-    <string name="taken_on">Taken on: %1$s</string>
-    <string name="location">Location: %1$s</string>
-    <string name="resolution">Resolution: %1$d x %2$d</string>
-    <string name="view_360">View 360°</string>
-    <string name="view_panorama">View panorama</string>
-    <string name="detecting">Detecting&#8230;</string>
-    <string name="date_format">%1$d %2$s %3$d</string>
-    <string name="grant_image_video_permissions">Grant Image/Video Permissions</string>
-    <string name="grant_storage_permission">Grant Storage Permission</string>
-    <string name="search_photos">Search photos&#8230;</string>
-    <string name="indexing_photos">Indexing Photos</string>
-    <string name="image_understanding_title">Experimental Image Understanding</string>
-    <string name="image_understanding_description">This feature requires the OpenAssistant app to be installed and will use its local models to process images on-device.</string>
-    <string name="openassistant_not_found">OpenAssistant app is not installed. Please install it to enable this feature.</string>
-    <string name="openassistant_needs_update">Update the OpenAssistant app to enable AI photo search.</string>
-    <string name="enable_feature">Enable Feature</string>
-    <string name="disable_ocr">Disable AI Indexing</string>
-    <string name="indexing_progress_details">%1$d of %2$d photos processed</string>
-    <string name="close">Close</string>
-    <string name="search_placeholder">Search photos…</string>
-    <string name="enable_ai_search_title">Enable AI Search</string>
-    <string name="enable_ai_search_description">Download AI model to search photos by content and text</string>
-    <string name="enable_ai_search_button">Enable</string>
-    <string name="model_downloading_title">Downloading AI Model</string>
-    <string name="model_downloading_description">The AI model is being downloaded. This may take a few minutes depending on your connection.</string>
-    <!-- On-device face grouping (always on, unsupervised, unnamed) -->
-    <string name="people_empty">No people found yet. Scanning happens in the background — check back after your photos have been indexed.</string>
-    <string name="people_scanning">Grouping faces… people will appear here as they are found.</string>
-    <string name="face_indexing_progress">Indexing %1$d / %2$d</string>
-    <string name="people_model_missing">Face grouping needs a MobileFaceNet model. Add a permissively-licensed mobilefacenet.tflite to photos/src/main/assets (see FaceRecognizer).</string>
-    <string name="people_photo_count">%1$d photos</string>
-    <plurals name="people_in_photo">
-        <item quantity="one">%1$d person</item>
-        <item quantity="other">%1$d people</item>
-    </plurals>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- DrawingSettingsPage -->
-    <string name="opacity">Opacity</string>
-    <string name="thickness">Thickness</string>
-    <string name="color">Color</string>
-    <string name="done">Done</string>
-    <!-- EditPhotoPage -->
-    <string name="reset_all">Reset All</string>
-    <string name="export_as_webp">Export as WebP</string>
-    <string name="rotate_90">Rotate 90°</string>
-    <string name="tolerance">Tolerance</string>
-    <string name="rotate">Rotate</string>
-    <string name="drag_corners_to_distort">Drag corners to distort.</string>
-    <string name="edit_text">Edit Text</string>
-    <string name="tap_the_image_to_pick_a_color">Tap the image to pick a color.</string>
-    <string name="font">Font</string>
-    <string name="cancel">Cancel</string>
-    <string name="edge_softness">Edge softness</string>
-    <string name="reset">Reset</string>
-    <string name="draw">Draw</string>
-    <string name="recent">Recent</string>
-    <string name="export_as_png">Export as PNG</string>
-    <string name="aspect_ratio">Aspect ratio</string>
-    <string name="combine">Combine</string>
-    <string name="apply">Apply</string>
-    <string name="tap_to_add_points">Tap to add points (%1$s)</string>
-    <!-- GalleryPage -->
-    <string name="of_photos_processed">%1$d%% of photos processed</string>
-    <string name="photos_indexed_for_visual_search">%1$d / %2$d photos indexed for visual search</string>
-    <string name="photos_indexed_for_text_search">%1$d / %2$d photos indexed for text search</string>
-    <!-- HealingPanel -->
-    <string name="brush_size">Brush Size</string>
-    <!-- MainActivity -->
+    <!-- Permission prompt button to grant READ_MEDIA_IMAGES/VIDEO. Verb phrase -->
+    <string name="grant_image_video_permissions">Grant Image/Video Permissions</string>
+    <!-- Button to request storage permission. Shown on Android versions below 13. Verb phrase -->
+    <string name="grant_storage_permission">Grant Storage Permission</string>
+    <!-- Title when Media Management permission required to delete/move -->
+    <string name="media_management_permission_required">Media Management Permission Required</string>
+    <!-- Explanatory body when canManageMedia false, tells user to grant Allow media management in Settings -->
+    <string name="this_app_needs_permission_to_manage_medi">This app needs permission to manage media files to function properly. Please grant \'Allow media management\' permission in Settings.</string>
+    <!-- Button to open system Settings from permission blocker screen. Verb phrase -->
     <string name="open_settings">Open Settings</string>
-    <!-- SecureFolderPage -->
+
+    <!-- Navigation label: Gallery tab. Noun -->
+    <string name="label_gallery">Gallery</string>
+    <!-- Navigation label: Map tab. Noun -->
+    <string name="label_map">Map</string>
+    <!-- Navigation label: People face-grouping tab. Noun plural -->
+    <string name="label_people">People</string>
+    <!-- Navigation label: Trash tab. Noun -->
+    <string name="label_trash">Trash</string>
+    <!-- Navigation label: Secure Folder tab. Noun phrase -->
+    <string name="label_secure_folder">Secure Folder</string>
+
+    <!-- Empty state centered text when Secure Folder has no photos -->
     <string name="secure_folder_is_empty">Secure Folder is empty</string>
-    <!-- SelectiveEditPanel -->
-    <string name="show_mask">Show Mask</string>
-    <!-- TrashPage -->
+    <!-- Empty state centered text when Trash has no photos -->
     <string name="trash_is_empty">Trash is empty</string>
 
-    <!-- Migrated hardcoded UI strings (auto) v2 -->
-    <!-- AdvancedPanels -->
-    <string name="colors_inverted_toggle_the_layer_s_visib">Colors inverted. Toggle the layer\'s visibility or delete the Invert layer to undo.</string>
-    <!-- HealingPanel -->
-    <string name="set_source_point">Set Source Point</string>
-    <!-- MainActivity -->
-    <string name="media_management_permission_required">Media Management Permission Required</string>
-    <string name="this_app_needs_permission_to_manage_medi">This app needs permission to manage media files to function properly. Please grant \'Allow media management\' permission in Settings.</string>
-    <!-- SelectiveEditPanel -->
-    <string name="add_mask">Add Mask</string>
+    <!-- Generic selection count badge in TopAppBar of Gallery, SecureFolder, Trash. %1$d = number selected -->
+    <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> selected</string>
+    <!-- Gallery grouping header: month + year. %1$s = month name e.g. January, %2$d = year e.g. 2024 -->
+    <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2024">%2$d</xliff:g></string>
+    <!-- Search bar placeholder hint. Noun phrase with ellipsis -->
+    <string name="search_placeholder">Search photos…</string>
+    <!-- Gallery progress when query empty: percent of photos processed. %1$d = percent 0-100, %% literal percent sign -->
+    <string name="of_photos_processed"><xliff:g id="percent" example="45">%1$d</xliff:g>%% of photos processed</string>
+    <!-- Gallery progress: visual search embedding index progress. %1$d = done, %2$d = total -->
+    <string name="photos_indexed_for_visual_search"><xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> photos indexed for visual search</string>
+    <!-- Gallery progress: text search OCR index progress. %1$d = done, %2$d = total -->
+    <string name="photos_indexed_for_text_search"><xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> photos indexed for text search</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- PhotoPage -->
+    <!-- ListItem shown when user searches but OpenAssistant not installed -->
+    <string name="openassistant_not_found">OpenAssistant app is not installed. Please install it to enable this feature.</string>
+    <!-- ListItem shown when OpenAssistant installed but too old for AI photo search -->
+    <string name="openassistant_needs_update">Update the OpenAssistant app to enable AI photo search.</string>
+    <!-- Generic close button for search sheet. Verb -->
+    <string name="close">Close</string>
+    <!-- Description while AI model downloading, explains may take minutes -->
+    <string name="model_downloading_description">The AI model is being downloaded. This may take a few minutes depending on your connection.</string>
+
+    <!-- Empty state: no faces found yet, scanning happens in background background explanation -->
+    <string name="people_empty">No people found yet. Scanning happens in the background — check back after your photos have been indexed.</string>
+    <!-- Subtitle while face grouping still running. Sentence with ellipsis -->
+    <string name="people_scanning">Grouping faces… people will appear here as they are found.</string>
+    <!-- Linear progress text for face indexing. %1$d = processed, %2$d = total -->
+    <string name="face_indexing_progress">Indexing <xliff:g id="processed" example="20">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
+    <!-- Error when mobilefacenet.tflite model missing, instructions to add asset with FaceRecognizer reference -->
+    <string name="people_model_missing">Face grouping needs a MobileFaceNet model. Add a permissively-licensed mobilefacenet.tflite to photos/src/main/assets (see FaceRecognizer).</string>
+    <!-- Subtitle per person grid cell showing photo count. %1$d = count -->
+    <string name="people_photo_count"><xliff:g id="count" example="12">%1$d</xliff:g> photos</string>
+    <!-- Photo detail badge: number of people in this photo. Plural handling. %1$d = count -->
+    <plurals name="people_in_photo">
+        <!-- Singular: one person in photo -->
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> person</item>
+        <!-- Plural: multiple people in photo -->
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> people</item>
+    </plurals>
+
+    <!-- Metadata row: capture date label. %1$s = formatted date e.g. Jan 5 2024 -->
+    <string name="taken_on">Taken on: <xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
+    <!-- Metadata row: reverse geocoded location. %1$s = place name -->
+    <string name="location">Location: <xliff:g id="place" example="Paris, France">%1$s</xliff:g></string>
+    <!-- Metadata row: image resolution. %1$d = width e.g. 4000, %2$d = height e.g. 3000, keep 'x' separator -->
+    <string name="resolution">Resolution: <xliff:g id="width" example="4000">%1$d</xliff:g> x <xliff:g id="height" example="3000">%2$d</xliff:g></string>
+    <!-- Metadata overlay placeholder while reverse geocoding pending. Verb present participle -->
+    <string name="detecting">Detecting&#8230;</string>
+    <!-- Button to open 360 degree photo viewer. Verb phrase with degree symbol -->
+    <string name="view_360">View 360°</string>
+    <!-- Button to open panorama viewer. Verb phrase -->
+    <string name="view_panorama">View panorama</string>
+    <!-- Fallback label when panorama type detected but no specific kind -->
     <string name="panorama">Panorama</string>
 
-    <!-- Migrated wrapper composable labels (auto) -->
+    <!-- TopAppBar title for photo editor screen. Verb phrase -->
+    <string name="title_edit_photo">Edit Photo</string>
+    <!-- Menu item: save, overwrites original. Verb -->
+    <string name="action_save">Save</string>
+    <!-- Menu item: save as copy, keeps original. Verb phrase -->
+    <string name="action_save_as_copy">Save as Copy</string>
+    <!-- Reset all adjustments to default. Verb phrase -->
+    <string name="reset_all">Reset All</string>
+    <!-- Reset current tool to default. Verb -->
+    <string name="reset">Reset</string>
+    <!-- Export menu: export current image as WebP format. Verb phrase -->
+    <string name="export_as_webp">Export as WebP</string>
+    <!-- Export menu: export as PNG format. Verb phrase -->
+    <string name="export_as_png">Export as PNG</string>
+    <!-- Completion button to confirm and exit tool. Verb -->
+    <string name="done">Done</string>
+    <!-- Cancel current edit operation. Verb -->
+    <string name="cancel">Cancel</string>
+    <!-- Apply current transformation/adjustment baking it in. Verb -->
+    <string name="apply">Apply</string>
+
+    <!-- Slider label: opacity of brush stroke. Noun -->
+    <string name="opacity">Opacity</string>
+    <!-- Slider label: thickness of brush/line. Noun -->
+    <string name="thickness">Thickness</string>
+    <!-- Section header: color picker. Noun -->
+    <string name="color">Color</string>
+    <!-- Freehand drawing tool. Verb -->
+    <string name="draw">Draw</string>
+    <!-- Recent colors section header. Adjective -->
+    <string name="recent">Recent</string>
+
+    <!-- Label for aspect ratio lock dropdown. Noun phrase -->
+    <string name="aspect_ratio">Aspect ratio</string>
+    <!-- Tooltip: drag corners to distort free transform. Sentence instruction -->
+    <string name="drag_corners_to_distort">Drag corners to distort.</string>
+    <!-- Button: rotate image 90 degrees. Verb phrase with symbol -->
+    <string name="rotate_90">Rotate 90°</string>
+    <!-- Tool name: rotate / straighten. Verb -->
+    <string name="rotate">Rotate</string>
+    <!-- Hint for selection combine mode: how to add points. %1$s = current mode e.g. New. Keep colon -->
+    <string name="tap_to_add_points">Tap to add points (<xliff:g id="mode" example="New">%1$s</xliff:g>)</string>
+    <!-- Slider/tool: edge softness/feather of selection. Noun phrase -->
+    <string name="edge_softness">Edge softness</string>
+    <!-- Combine mode for selections: boolean combination. Verb -->
+    <string name="combine">Combine</string>
+
+    <!-- Tool: fill flood with color. Noun/verb ambiguous, used as tool name noun -->
+    <string name="tolerance">Tolerance</string>
+    <!-- Dialog title: edit text content for text layer -->
+    <string name="edit_text">Edit Text</string>
+    <!-- Info text: instruction to tap image to pick color with eyedropper -->
+    <string name="tap_the_image_to_pick_a_color">Tap the image to pick a color.</string>
+    <!-- Tool: font selection for text layer. Noun -->
+    <string name="font">Font</string>
+
+    <!-- Slider label: brush size for healing. Noun phrase -->
+    <string name="brush_size">Brush Size</string>
+    <!-- Switch label: set clone source point for healing/clone tool -->
+    <string name="set_source_point">Set Source Point</string>
+
+    <!-- Toggle: show mask overlay. Verb phrase -->
+    <string name="show_mask">Show Mask</string>
+    <!-- Button: add new mask to active layer. Verb phrase -->
+    <string name="add_mask">Add Mask</string>
+
+    <!-- Explanatory text after inverting colors: how to undo via layer visibility toggle -->
+    <string name="colors_inverted_toggle_the_layer_s_visib">Colors inverted. Toggle the layer\'s visibility or delete the Invert layer to undo.</string>
+
+    <!-- Info hint for draw tools row: explains freehand, highlight, erase, tap for text, tap again to change color/size -->
     <string name="draw_freehand_highlight_erase_or_tap_to">Draw freehand, highlight, erase, or tap to add text. Tap a tool again to change its color and size.</string>
+    <!-- Info hint for crop aspect ratio lock: explains Free vs fixed width:height shape -->
     <string name="locks_the_crop_to_a_fixed_width_height_s">Locks the crop to a fixed width:height shape. \"Free\" lets you crop to any size.</string>
+    <!-- Info hint for crop rotate handle: drag round handle above crop box to tilt and straighten -->
     <string name="drag_the_round_handle_above_the_crop_box">Drag the round handle above the crop box to tilt and straighten the photo.</string>
+    <!-- Info hint for free transform: drag corner handles to scale/rotate/skew/distort active layer, Apply bakes it in -->
     <string name="drag_the_four_corner_handles_to_scale_ro">Drag the four corner handles to scale, rotate, skew, or distort the active layer. Apply bakes it in.</string>
+    <!-- Info hint for selection combine mode: New replaces selection, Add/Subtract/Intersect combine next shape -->
     <string name="new_replaces_the_selection_add_subtract">New replaces the selection. Add/Subtract/Intersect combine the next shape with the current selection.</string>
+    <!-- Info hint for magic wand tolerance: how close in color pixel must be to tapped spot, higher selects more -->
     <string name="how_close_in_color_a_pixel_must_be_to_th">How close in color a pixel must be to the tapped spot to be selected. Higher = selects more.</string>
+    <!-- Info hint for edge softness/feather: blurs selection edge so edits fade gradually, 0 = hard crisp edge -->
     <string name="blurs_the_selection_s_edge_so_edits_fade">Blurs the selection\'s edge so edits fade in gradually. 0 = a hard, crisp edge.</string>
+    <!-- Info hint for healing tool: fills selected area from surrounding pixels to remove object, works best on simple backgrounds -->
     <string name="fills_the_selected_area_from_surrounding">Fills the selected area from surrounding pixels to remove an object. Works best on simple backgrounds.</string>
+
+    <!-- Slider: strength/intensity of effect. Noun -->
     <string name="strength">Strength</string>
+    <!-- Slider: size generic. Noun -->
     <string name="size">Size</string>
+    <!-- Tool parameter: brush type. Noun -->
     <string name="brush">Brush</string>
+    <!-- LevelsPanel: black point in. Noun phrase -->
     <string name="in_black">In Black</string>
+    <!-- LevelsPanel: white point in. Noun phrase -->
     <string name="in_white">In White</string>
+    <!-- LevelsPanel: gamma midtone. Noun -->
     <string name="gamma">Gamma</string>
+    <!-- LevelsPanel: black point out. Noun phrase -->
     <string name="out_black">Out Black</string>
+    <!-- LevelsPanel: white point out. Noun phrase -->
     <string name="out_white">Out White</string>
+    <!-- ColorBalancePanel: red-cyan shift. Color pair -->
     <string name="red_cyan">Red-Cyan</string>
+    <!-- ColorBalancePanel: green-magenta shift. Color pair, mag short for magenta -->
     <string name="green_mag">Green-Mag</string>
+    <!-- ColorBalancePanel: blue-yellow shift. Color pair -->
     <string name="blue_yellow">Blue-Yellow</string>
+    <!-- BlackWhitePanel: reds preset. Noun plural color -->
     <string name="reds">Reds</string>
+    <!-- BlackWhitePanel: yellows preset. Noun plural -->
     <string name="yellows">Yellows</string>
+    <!-- BlackWhitePanel: greens preset. Noun plural -->
     <string name="greens">Greens</string>
+    <!-- BlackWhitePanel: cyans preset. Noun plural -->
     <string name="cyans">Cyans</string>
+    <!-- BlackWhitePanel: blues preset. Noun plural -->
     <string name="blues">Blues</string>
+    <!-- BlackWhitePanel: magentas preset. Noun plural -->
     <string name="magentas">Magentas</string>
+    <!-- Filter/blur sliders: amount of effect. Noun -->
     <string name="amount">Amount</string>
+    <!-- Blur slider: radius of blur. Noun -->
     <string name="radius">Radius</string>
+    <!-- Motion blur slider: length of blur. Noun -->
     <string name="length">Length</string>
+    <!-- Angular control: angle of effect in degrees. Noun -->
     <string name="angle">Angle</string>
+    <!-- Vibrance adjustment: boosts muted colors protecting skin. Noun -->
     <string name="vibrance">Vibrance</string>
+    <!-- Tool name: levels histogram adjustment. Noun plural -->
     <string name="levels">Levels</string>
+    <!-- Curve/level single point label. Noun -->
     <string name="level">Level</string>
+    <!-- Filter grain density slider. Noun -->
     <string name="density">Density</string>
+    <!-- Color label: cyan. Noun/adjective color -->
     <string name="cyan">Cyan</string>
+    <!-- Color label: magenta. Noun color -->
     <string name="magenta">Magenta</string>
+    <!-- Color label: yellow. Noun color -->
     <string name="yellow">Yellow</string>
 
-    <!-- HSL color range names -->
+    <!-- HSL range: reds. Noun color -->
     <string name="color_red">Red</string>
+    <!-- HSL range: orange. Noun color -->
     <string name="color_orange">Orange</string>
+    <!-- HSL range: green. Noun color -->
     <string name="color_green">Green</string>
+    <!-- HSL range: blue. Noun color -->
     <string name="color_blue">Blue</string>
+    <!-- HSL range: purple. Noun color -->
     <string name="color_purple">Purple</string>
 
-    <!-- Layer blend modes -->
+    <!-- Blend mode: normal (default). Adjective -->
     <string name="blend_normal">Normal</string>
+    <!-- Blend mode: multiply darkens. Verb -->
     <string name="blend_multiply">Multiply</string>
+    <!-- Blend mode: screen lightens. Noun/verb -->
     <string name="blend_screen">Screen</string>
+    <!-- Blend mode: overlay contrast. Noun/verb -->
     <string name="blend_overlay">Overlay</string>
+    <!-- Blend mode: darken picks darker. Verb -->
     <string name="blend_darken">Darken</string>
+    <!-- Blend mode: lighten picks lighter. Verb -->
     <string name="blend_lighten">Lighten</string>
+    <!-- Blend mode: color dodge brightens. Noun phrase -->
     <string name="blend_color_dodge">Color Dodge</string>
+    <!-- Blend mode: color burn darkens. Noun phrase -->
     <string name="blend_color_burn">Color Burn</string>
+    <!-- Blend mode: hard light strong contrast. Noun phrase -->
     <string name="blend_hard_light">Hard Light</string>
+    <!-- Blend mode: soft light gentle contrast. Noun phrase -->
     <string name="blend_soft_light">Soft Light</string>
+    <!-- Blend mode: difference inverts. Noun -->
     <string name="blend_difference">Difference</string>
+    <!-- Blend mode: exclusion similar to difference. Noun -->
     <string name="blend_exclusion">Exclusion</string>
+    <!-- Blend mode: hue preserves hue of top layer. Noun -->
     <string name="blend_hue">Hue</string>
+    <!-- Blend mode: saturation preserves saturation. Noun -->
     <string name="blend_saturation">Saturation</string>
+    <!-- Blend mode: luminosity preserves brightness. Noun -->
     <string name="blend_luminosity">Luminosity</string>
 
-    <!-- Tool categories -->
+    <!-- Category: Adjust light &amp; color. Verb -->
     <string name="tool_cat_adjust">Adjust</string>
+    <!-- Category: Filters effects, blur, presets. Noun plural -->
     <string name="tool_cat_filters">Filters</string>
+    <!-- Category: Retouch fix and clean up. Verb/noun -->
     <string name="tool_cat_retouch">Retouch</string>
+    <!-- Category: Select area to limit edits. Verb -->
     <string name="tool_cat_select">Select</string>
+    <!-- Category: Crop, straighten, rotate. Verb/noun but labeled Crop in UI currently -->
     <string name="tool_cat_transform">Crop</string>
+    <!-- Category: Draw, highlight, text. Verb -->
     <string name="tool_cat_draw">Draw</string>
+    <!-- Category: Paint fill, gradients, shapes. Verb/noun -->
     <string name="tool_cat_paint">Paint</string>
+    <!-- Category: Manage layers and masks. Noun plural -->
     <string name="tool_cat_layers">Layers</string>
+    <!-- Category description: tune light and color, shown in ⓘ info popup -->
     <string name="tool_cat_desc_adjust">Tune light and color.</string>
+    <!-- Category description: effects, blur, and presets -->
     <string name="tool_cat_desc_filters">Effects, blur, and presets.</string>
+    <!-- Category description: fix and clean up areas -->
     <string name="tool_cat_desc_retouch">Fix and clean up areas.</string>
+    <!-- Category description: pick an area to limit edits -->
     <string name="tool_cat_desc_select">Pick an area to limit edits.</string>
+    <!-- Category description: crop, straighten, and rotate -->
     <string name="tool_cat_desc_transform">Crop, straighten, and rotate.</string>
+    <!-- Category description: draw, highlight, and add text -->
     <string name="tool_cat_desc_draw">Draw, highlight, and add text.</string>
+    <!-- Category description: fill, gradients, and shapes -->
     <string name="tool_cat_desc_paint">Fill, gradients, and shapes.</string>
+    <!-- Category description: manage layers and masks -->
     <string name="tool_cat_desc_layers">Manage layers and masks.</string>
 
-    <!-- Selection sub-tools -->
+    <!-- Selection tool: Rectangle shape. Noun -->
     <string name="sel_tool_rectangle">Rectangle</string>
+    <!-- Selection tool: Ellipse oval shape. Noun -->
     <string name="sel_tool_ellipse">Ellipse</string>
+    <!-- Selection tool: freehand lasso. Noun -->
     <string name="sel_tool_lasso">Lasso</string>
+    <!-- Selection tool: polygon multi-click. Noun -->
     <string name="sel_tool_polygon">Polygon</string>
+    <!-- Selection tool: magic wand color-based. Noun phrase -->
     <string name="sel_tool_wand">Magic Wand</string>
 
-    <!-- Adjustment types -->
+    <!-- Adjustment: brightness slider. Noun -->
     <string name="adj_brightness">Brightness</string>
+    <!-- Adjustment: contrast slider. Noun -->
     <string name="adj_contrast">Contrast</string>
+    <!-- Adjustment: saturation color intensity. Noun -->
     <string name="adj_saturation">Saturation</string>
+    <!-- Adjustment: warmth color temperature. Noun -->
     <string name="adj_warmth">Warmth</string>
+    <!-- Adjustment: exposure light. Noun -->
     <string name="adj_exposure">Exposure</string>
+    <!-- Adjustment: highlights bright areas. Noun plural -->
     <string name="adj_highlights">Highlights</string>
+    <!-- Adjustment: shadows dark areas. Noun plural -->
     <string name="adj_shadows">Shadows</string>
+    <!-- Adjustment: sharpness detail. Noun -->
     <string name="adj_sharpness">Sharpness</string>
+    <!-- Adjustment: vignette dark corners. Noun -->
     <string name="adj_vignette">Vignette</string>
+    <!-- Adjustment: grain film grain. Noun -->
     <string name="adj_grain">Grain</string>
+    <!-- Adjustment: fade washed-out look. Noun/verb -->
     <string name="adj_fade">Fade</string>
+    <!-- Adjustment: tint hue shift. Noun -->
     <string name="adj_tint">Tint</string>
 
-    <!-- Editor tool entries -->
+    <!-- Tool: light adjustments summary (brightness/contrast etc). Noun -->
     <string name="tool_light">Light</string>
+    <!-- Tool: preset looks one-tap filter. Noun plural -->
     <string name="tool_presets">Presets</string>
+    <!-- Tool: curves brightness/contrast with curve graph. Noun plural -->
     <string name="tool_curves">Curves</string>
+    <!-- Tool: HSL hue saturation lightness per color. Acronym -->
     <string name="tool_hsl">HSL</string>
+    <!-- Tool: color balance shift in shadows/midtones/highlights. Noun -->
     <string name="tool_balance">Balance</string>
+    <!-- Tool: channel mixer blend R/G/B channels. Noun -->
     <string name="tool_mixer">Mixer</string>
+    <!-- Tool: black &amp; white conversion. Abbreviation B&amp;W. Keep &amp; -->
     <string name="tool_bw">B&amp;W</string>
+    <!-- Tool: gradient map dark-to-light onto color gradient. Noun -->
     <string name="tool_gradient">Gradient</string>
+    <!-- Tool: photo filter warming/cooling wash. Noun phrase -->
     <string name="tool_photo_filter">Photo Filter</string>
+    <!-- Tool: selective color tune CMYK within one color range. Noun phrase -->
     <string name="tool_selective_color">Selective Color</string>
+    <!-- Tool: posterize reduce tonal levels. Verb -->
     <string name="tool_posterize">Posterize</string>
+    <!-- Tool: threshold pure black and white at cutoff. Noun -->
     <string name="tool_threshold">Threshold</string>
+    <!-- Tool: invert colors photo negative. Verb -->
     <string name="tool_invert">Invert</string>
+    <!-- Tool: lens blur background depth-of-field. Noun phrase -->
     <string name="tool_lens_blur">Lens Blur</string>
+    <!-- Tool: selective adjustment paint onto specific spots. Adjective -->
     <string name="tool_selective">Selective</string>
+    <!-- Tool: filters category generic label. Noun plural -->
     <string name="tool_filters">Filters</string>
+    <!-- Tool: liquify push and warp pixels. Verb, Photoshop-style name -->
     <string name="tool_liquify">Liquify</string>
+    <!-- Tool: heal remove blemishes by copying nearby. Verb -->
     <string name="tool_heal">Heal</string>
+    <!-- Tool: red-eye removal tap each eye. Noun phrase -->
     <string name="tool_red_eye">Red-Eye</string>
+    <!-- Tool: dodge (lighten) and burn (darken) brush. Noun phrase -->
     <string name="tool_dodge_burn">Dodge/Burn</string>
+    <!-- Tool: smudge drag to smear pixels like wet paint. Verb -->
     <string name="tool_smudge">Smudge</string>
+    <!-- Tool: marquee rectangular/elliptical selection (old name for rectangle). Noun -->
     <string name="tool_marquee">Marquee</string>
+    <!-- Tool: crop and rotate together. Noun phrase -->
     <string name="tool_crop_rotate">Crop &amp; Rotate</string>
+    <!-- Tool: free transform scale/rotate/skew/distort layer. Noun -->
     <string name="tool_transform">Transform</string>
+    <!-- Tool: mask brush paint on layer mask hide/reveal. Noun phrase -->
     <string name="tool_mask_brush">Mask Brush</string>
+    <!-- Tool: flood fill area with color. Noun/verb -->
     <string name="tool_fill">Fill</string>
+    <!-- Tool: line shape draw. Noun -->
     <string name="tool_line">Line</string>
+    <!-- Tool: eyedropper pick color from image. Noun -->
     <string name="tool_eyedropper">Eyedropper</string>
 
-    <!-- Editor mode descriptions -->
+    <!-- Empty description when no mode active -->
     <string name="editor_desc_none"></string>
+    <!-- Desc: fine-tune light and color with sliders -->
     <string name="editor_desc_adjust">Fine-tune light and color with sliders.</string>
+    <!-- Desc: apply a one-tap preset look -->
     <string name="editor_desc_filters">Apply a one-tap preset look.</string>
+    <!-- Desc: reshape brightness and contrast with a curve -->
     <string name="editor_desc_curves">Reshape brightness and contrast with a curve.</string>
+    <!-- Desc: adjust hue, saturation, and lightness per color -->
     <string name="editor_desc_hsl">Adjust hue, saturation, and lightness per color.</string>
+    <!-- Desc: set black point, white point, and midtones (Levels tool) -->
     <string name="editor_desc_levels">Set the black point, white point, and midtones.</string>
+    <!-- Desc: shift colors in shadows, midtones, and highlights (Color Balance) -->
     <string name="editor_desc_color_balance">Shift colors in shadows, midtones, and highlights.</string>
+    <!-- Desc: blend the red, green, and blue channels (Channel Mixer) -->
     <string name="editor_desc_channel_mixer">Blend the red, green, and blue channels.</string>
+    <!-- Desc: convert to black &amp; white and control how colors map (B&amp;W) -->
     <string name="editor_desc_black_white">Convert to black &amp; white and control how colors map.</string>
+    <!-- Desc: map dark-to-light tones onto a color gradient -->
     <string name="editor_desc_gradient_map">Map dark-to-light tones onto a color gradient.</string>
+    <!-- Desc: boost muted colors while protecting vivid and skin tones (Vibrance) -->
     <string name="editor_desc_vibrance">Boost muted colors while protecting already-vivid ones and skin tones.</string>
+    <!-- Desc: apply warming or cooling color wash (Photo Filter) -->
     <string name="editor_desc_photo_filter">Apply a warming or cooling color wash.</string>
+    <!-- Desc: fine-tune cyan/magenta/yellow within one color range (Selective Color) -->
     <string name="editor_desc_selective_color">Fine-tune cyan/magenta/yellow within one color range.</string>
+    <!-- Desc: reduce number of tonal levels for flat graphic look (Posterize) -->
     <string name="editor_desc_posterize">Reduce the number of tonal levels for a flat, graphic look.</string>
+    <!-- Desc: convert to pure black and white at brightness cutoff (Threshold) -->
     <string name="editor_desc_threshold">Convert to pure black and white at a brightness cutoff.</string>
+    <!-- Desc: invert all colors photo negative (Invert) -->
     <string name="editor_desc_invert">Invert all colors (photo negative).</string>
+    <!-- Desc: blur background for depth-of-field look (Lens Blur) -->
     <string name="editor_desc_lens_blur">Blur the background for a depth-of-field look.</string>
+    <!-- Desc: paint an adjustment onto specific spots (Selective) -->
     <string name="editor_desc_selective">Paint an adjustment onto specific spots.</string>
+    <!-- Desc: apply baked-in photo filter to pixels (Filters FX) -->
     <string name="editor_desc_filter_fx">Apply a baked-in photo filter to the pixels.</string>
+    <!-- Desc: push and warp pixels around (Liquify) -->
     <string name="editor_desc_liquify">Push and warp pixels around.</string>
+    <!-- Desc: remove blemishes by copying nearby pixels (Healing) -->
     <string name="editor_desc_healing">Remove blemishes by copying nearby pixels.</string>
+    <!-- Desc: tap each eye to remove red-eye -->
     <string name="editor_desc_red_eye">Tap each eye to remove red-eye.</string>
+    <!-- Desc: brush to lighten (dodge) or darken (burn) -->
     <string name="editor_desc_dodge_burn">Brush to lighten (dodge) or darken (burn).</string>
+    <!-- Desc: drag to smear pixels like wet paint (Smudge) -->
     <string name="editor_desc_smudge">Drag to smear pixels like wet paint.</string>
+    <!-- Desc: draw an area, edits then apply only inside it (Selection) -->
     <string name="editor_desc_selection">Draw an area; edits then apply only inside it.</string>
+    <!-- Desc: crop, straighten, and rotate the photo -->
     <string name="editor_desc_crop">Crop, straighten, and rotate the photo.</string>
+    <!-- Desc: scale, rotate, skew, or distort layer by dragging its corners; flip it (Free Transform) -->
     <string name="editor_desc_free_transform">Scale, rotate, skew, or distort the layer by dragging its corners; flip it.</string>
+    <!-- Desc: stack, blend, and mask layers -->
     <string name="editor_desc_layers">Stack, blend, and mask layers.</string>
+    <!-- Desc: brush on active layer mask to hide or reveal parts -->
     <string name="editor_desc_mask_paint">Brush on the active layer\'s mask: hide or reveal parts of it.</string>
+    <!-- Desc: tap to flood-fill an area with chosen color -->
     <string name="editor_desc_fill">Tap to flood-fill an area with the chosen color.</string>
+    <!-- Desc: drag to draw a color-to-transparent gradient -->
     <string name="editor_desc_gradient_tool">Drag to draw a color-to-transparent gradient.</string>
+    <!-- Desc: drag to draw a filled rectangle (Shape tool) -->
     <string name="editor_desc_shape_rect">Drag to draw a filled rectangle.</string>
+    <!-- Desc: drag to draw a filled ellipse -->
     <string name="editor_desc_shape_ellipse">Drag to draw a filled ellipse.</string>
+    <!-- Desc: drag to draw a line -->
     <string name="editor_desc_shape_line">Drag to draw a line.</string>
 </resources>

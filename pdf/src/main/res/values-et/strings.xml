@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
     <string name="search_label">Otsi</string>
@@ -10,11 +9,8 @@
     <string name="pdf_saved">PDF-faili salvestamine õnnestus</string>
     <string name="pdf_save_error">PDF-faili salvestamisel tekkis viga</string>
     <string name="share_pdf">Jaga PDF-faili</string>
-    <string name="unsupported_version">See rakendus eeldab, et sinu nutiseadmes kas on vähemalt Androidi versioon 15 või Google Play teenused oma uuendatud kujul. Kui kumbki pole võimalik, siis sinu nutiseade pole hetkel toetatud.</string>
     <string name="crop_image">Kadreeri pilti</string>
     <string name="continue_label">Jätka</string>
     <string name="auto_detect">Tuvasta automatselt</string>
     <string name="pdf_save">Salvesta</string>
-    <string name="pdf_save_as_copy">Salvesta koopiana</string>
-    <string name="safe_pdf_viewer_title">PDF-failide kuvaja (ohutult)</string>
-</resources>
+    </resources>

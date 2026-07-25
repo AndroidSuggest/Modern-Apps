@@ -1,11 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kell</string>
     <string name="label_alarm">Äratus</string>
     <string name="label_clock">Kell</string>
     <string name="label_timer">Taimer</string>
     <string name="label_stopwatch">Stopper</string>
-    <string name="no_alarms">Sa pole lisanud äratusi</string>
     <string name="button_stop">LÕPETA</string>
     <string name="button_snooze">LÜKKA EDASI (5 MIN)</string>
     <string name="alarm_notification_wake_up">Äratus!</string>
@@ -28,8 +26,6 @@
     <string name="timer_finished_text">%1$s - taimer on lõpetanud!</string>
     <string name="label_new_timer">Uus taimer</string>
     <string name="field_label">Silt</string>
-    <string name="field_minutes">Minutid</string>
-    <string name="field_seconds">Sekundid</string>
     <string name="button_cancel">Katkesta</string>
     <string name="button_save">Salvesta</string>
     <string name="select_cities_title">Vali linnad</string>
@@ -38,8 +34,6 @@
     <string name="time_pm">pl (PM)</string>
     <string name="grant_notifications_permission">Anna õigused teavituste saatmiseks</string>
     <string name="set_an_alarm">Seadista äratus</string>
-    <string name="set_a_timer">Seadista taimer</string>
-    <string name="field_hours">Tunnid</string>
     <string name="analog_clock_widget_label">Sihverplaadiga kell</string>
     <string name="analog_clock_widget_description">Material You kujunduskeelega sihverplaadiga kell - avamiseks klõpsa</string>
     <string name="channel_stopwatch_name">Stopper</string>

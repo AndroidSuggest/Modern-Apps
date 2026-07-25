@@ -1,10 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="notification_channel_battery_name">Akku Alarm</string>
     <string name="notification_channel_location_tracking_name">Standortverfolgung</string>
     <string name="app_name">Find Family</string>
     <string name="notification_channel_location_tracking_desc">Wird genutzt um FindFamily Ortung auch im Hintergrund durchzuführen</string>
-    <string name="settings">Einstellungen</string>
     <string name="notification_channel_battery_desc">Benachrichtigen wenn Familienmitglied niedrigen Akkustand hat</string>
     <string name="notification_channel_entry_exit_name">Ankünfte und Abfahrten</string>
     <string name="notification_channel_entry_exit_desc">Benachrichtigung wenn Familienmitglieder an gespeicherten Orten ankommen oder sie verlassen</string>
@@ -46,8 +44,6 @@
     <string name="time_in_hours">in %1$d Stunden</string>
     <string name="time_in_days">in %1$d Tagen</string>
     <string name="change_connected_contact">Verbundenen Kontakt ändern</string>
-    <string name="history_button">Verlauf</string>
-    <string name="hide_button">Verstecken</string>
     <string name="waypoint_name_blank_error">Name kann nicht leer sein</string>
     <string name="waypoint_range_error">Durchmesser muss eine Zahl sein</string>
     <string name="waypoint_range_suffix">Meter</string>
@@ -83,12 +79,10 @@
     <string name="notification_channel_uwb_request_desc">Jemand nutzt Find Nearby (UWB) um Sie zu finden</string>
     <string name="notification_uwb_request_title">Jemand findet Sie</string>
     <string name="notification_uwb_request_text">%1$s nutzt Find Nearby (UWB). Tippen Sie um Distanz und Richtung zu sehen.</string>
-    <string name="uwb_action_find_precision">Find Nearby (UWB)</string>
     <string name="uwb_unknown_peer_name">Jemand</string>
     <string name="uwb_status_starting">Find Nearby (UWB) wird eingerichtet.…</string>
     <string name="uwb_status_waiting">Warte auf anderes Gerät…</string>
     <string name="uwb_status_peer_disconnected">Anderes Gerät verloren. Nähern Sie sich an.</string>
     <string name="uwb_status_unsupported">Find Nearby (UWB) ist auf diesem Gerät nicht unterstützt.</string>
     <string name="uwb_status_failed">Find Nearby (UWB) ist fehlgeschlagen.</string>
-    <string name="uwb_direction_unavailable_hint">Bewegen sie ihr Handy um ein Richtungssignal zu finden</string>
-</resources>
+    </resources>

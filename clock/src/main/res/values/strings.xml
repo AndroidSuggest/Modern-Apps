@@ -1,93 +1,136 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Clock</string>
 
-    <!-- Navigation / page labels (reused across top bars, nav bar, and notifications) -->
+    <!-- Navigation / Page labels: bottom nav + top bar titles -->
+    <!-- Bottom nav + TopAppBar title for Alarms screen. Noun. -->
     <string name="label_alarm">Alarm</string>
+    <!-- Bottom nav + TopAppBar title for World Clock screen. Noun. -->
     <string name="label_clock">Clock</string>
+    <!-- Bottom nav + TopAppBar title for Timer screen. Noun. Also fallback timer name -->
     <string name="label_timer">Timer</string>
+    <!-- Bottom nav + TopAppBar title for Stopwatch screen. Noun. -->
     <string name="label_stopwatch">Stopwatch</string>
 
-    <!-- AlarmPage -->
-    <string name="no_alarms">No alarms set</string>
+    <!-- AlarmPage: empty state -->
+    <!-- Empty state CTA button to create first alarm. Verb. -->
     <string name="set_an_alarm">Set an alarm</string>
 
-    <!-- AlarmActivity -->
+    <!-- AlarmActivity: full-screen ringing UI -->
+    <!-- Button to dismiss ringing alarm. Verb, keep all caps as per design -->
     <string name="button_stop">STOP</string>
+    <!-- Button to snooze alarm for 5 minutes. Verb + duration, keep all caps -->
     <string name="button_snooze">SNOOZE (5 MIN)</string>
 
-    <!-- AlarmReceiver / AlarmSoundService notifications -->
+    <!-- AlarmReceiver / AlarmSoundService: notifications shown when alarm triggers -->
+    <!-- Alarm notification content text: wake up prompt -->
     <string name="alarm_notification_wake_up">Wake up!</string>
+    <!-- Foreground service notification title while alarm is ringing -->
     <string name="alarm_ringing_notification_title">Alarm is Ringing</string>
 
-    <!-- Notification channels (MainActivity) -->
+    <!-- Notification channels: visible in system notification settings -->
+    <!-- System channel name for ongoing timers countdown notification -->
     <string name="channel_ongoing_timers_name">Ongoing Timers</string>
+    <!-- System channel description for ongoing timers -->
     <string name="channel_ongoing_timers_description">Ongoing countdowns</string>
+    <!-- System channel name for timer finished alerts -->
     <string name="channel_completed_timers_name">Completed Timers</string>
+    <!-- System channel description for finished timers alerts -->
     <string name="channel_completed_timers_description">Alerts when timers finish</string>
+    <!-- System channel name for alarm notifications -->
     <string name="channel_alarms_name">Alarms</string>
+    <!-- System channel description for alarm notifications, bypasses DND -->
     <string name="channel_alarms_description">Notifications for scheduled alarms</string>
+    <!-- System channel name for stopwatch -->
     <string name="channel_stopwatch_name">Stopwatch</string>
+    <!-- System channel description for stopwatch notification -->
     <string name="channel_stopwatch_description">Stopwatch controls</string>
 
-    <!-- StopwatchPage column headers -->
+    <!-- StopwatchPage: lap table headers and time formatting -->
+    <!-- Column header for lap list -->
     <string name="header_laps">Laps</string>
-    <string name="lap_number_format"># %1$d</string>
-    <string name="duration_ms_format">%1$d.%2$02d</string>
-    <string name="duration_m_s_ms_format">%1$d:%2$02d.%3$02d</string>
+    <!-- Lap row: lap number with # prefix. %1$d = lap index number -->
+    <string name="lap_number_format"># <xliff:g id="lap_number" example="1">%1$d</xliff:g></string>
+    <!-- Time format: seconds + centiseconds, e.g. 12.34. %1$d = seconds, %2$d = centiseconds zero-padded 2 digits -->
+    <string name="duration_ms_format"><xliff:g id="seconds" example="12">%1$d</xliff:g>.<xliff:g id="centiseconds" example="34">%2$02d</xliff:g></string>
+    <!-- Time format: minutes:seconds.centiseconds, e.g. 1:23.45. %1$d = minutes, %2$d = seconds, %3$d = centiseconds -->
+    <string name="duration_m_s_ms_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="23">%2$02d</xliff:g>.<xliff:g id="centiseconds" example="45">%3$02d</xliff:g></string>
+    <!-- Lap table column header: split/lap time -->
     <string name="header_split">Split</string>
+    <!-- Lap table column header: total/elapsed time -->
     <string name="header_total">Total</string>
-    <string name="stopwatch_time_format">%1$d:%2$02d</string>
+    <!-- Main stopwatch display format M:SS. %1$d = minutes, %2$d = seconds zero-padded -->
+    <string name="stopwatch_time_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="05">%2$02d</xliff:g></string>
 
-    <!-- TimerPage -->
+    <!-- TimerPage: keypad and timer cards -->
+    <!-- TimerCard: button to add 1 minute to running timer. Keep format + 1:00 -->
     <string name="button_add_minute">+ 1:00</string>
-    <string name="set_a_timer">Set a timer</string>
 
-    <!-- TimerReceiver notifications -->
+    <!-- TimerReceiver: notification when timer finishes -->
+    <!-- Title for timer finished notification -->
     <string name="timer_finished_title">Timer Finished</string>
-    <string name="timer_finished_text">%1$s has ended!</string>
+    <!-- Body for timer finished notification. %1$s = timer label/name -->
+    <string name="timer_finished_text"><xliff:g id="timer_name" example="Tea">%1$s</xliff:g> has ended!</string>
 
-    <!-- Timer notification actions -->
+    <!-- Notification actions: buttons on timer/stopwatch notifications -->
+    <!-- Action to pause timer/stopwatch. Verb. -->
     <string name="action_pause">Pause</string>
+    <!-- Action to resume paused timer/stopwatch. Verb. -->
     <string name="action_resume">Resume</string>
+    <!-- Action to cancel/remove timer. Verb. -->
     <string name="action_cancel">Cancel</string>
+    <!-- Action to reset timer/stopwatch to zero. Verb. -->
     <string name="action_reset">Reset</string>
 
-    <!-- Stopwatch notification actions -->
+    <!-- Stopwatch notification specific actions -->
+    <!-- Action to record a lap in stopwatch notification. Verb/Noun. -->
     <string name="action_lap">Lap</string>
+    <!-- Action to stop stopwatch from notification. Verb. -->
     <string name="action_stop">Stop</string>
 
-    <!-- NewTimerDialog -->
+    <!-- NewTimerDialog: create new timer -->
+    <!-- Dialog title: create new timer -->
     <string name="label_new_timer">New Timer</string>
+    <!-- Text field label for timer name/label input. Noun. -->
     <string name="field_label">Label</string>
-    <string name="field_hours">Hours</string>
-    <string name="field_minutes">Minutes</string>
-    <string name="field_seconds">Seconds</string>
+    <!-- Generic cancel button. Verb. Dismisses dialog -->
     <string name="button_cancel">Cancel</string>
+    <!-- Generic save button. Verb. Saves timer/alarm -->
     <string name="button_save">Save</string>
 
-    <!-- SelectTimeZonesDialog -->
+    <!-- SelectTimeZonesDialog: world clock city picker -->
+    <!-- Dialog title: select cities for world clock -->
     <string name="select_cities_title">Select Cities</string>
+    <!-- Search field hint inside timezone/city picker -->
     <string name="search_city_hint">Search city or region…</string>
 
-    <!-- Time indicators (ClockPage) -->
+    <!-- Time indicators: AM/PM suffix in ClockPage -->
+    <!-- Morning time indicator -->
     <string name="time_am">AM</string>
+    <!-- Afternoon/evening time indicator -->
     <string name="time_pm">PM</string>
+    <!-- MainActivity: permission onboarding button to grant notification permission -->
     <string name="grant_notifications_permission">Grant Notifications Permission</string>
 
+    <!-- App widgets -->
+    <!-- Widget picker label for analog clock widget -->
     <string name="analog_clock_widget_label">Analog Clock</string>
+    <!-- Widget picker description for analog clock widget, shown in widget gallery -->
     <string name="analog_clock_widget_description">Material You analog clock — tap to open the clock</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
     <!-- AlarmSettingsPage -->
+    <!-- TopAppBar title for alarm settings screen -->
     <string name="alarm_settings">Alarm settings</string>
-
-    <!-- Migrated hardcoded UI strings (auto) v3 -->
-    <!-- AlarmSettingsPage -->
+    <!-- Section header: defaults applied when creating new alarms -->
     <string name="defaults_for_new_alarms">Defaults for new alarms</string>
 
-    <!-- AlarmSettingsPage (variable-stored labels) -->
+    <!-- AlarmSettingsPage: volume and ringtone dropdown options -->
+    <!-- Dropdown option: gradual volume increase disabled -->
     <string name="gradual_off">Off</string>
+    <!-- Ringtone picker option: use system default alarm sound -->
     <string name="ringtone_default">Default</string>
+    <!-- Ringtone picker option: no sound -->
     <string name="ringtone_silent">Silent</string>
+    <!-- Ringtone picker option: custom sound file selected -->
     <string name="ringtone_custom">Custom</string>
 </resources>

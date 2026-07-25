@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">确定</string>
     <string name="app_name">Calendar</string>
@@ -54,14 +53,8 @@
     <string name="create_a_calendar">创建日历</string>
     <string name="choose_timezone">选择时区</string>
     <string name="open_location_in_navigation">打开位置</string>
-    <string name="import_button">导入</string>
     <string name="delete_this_event">删除此活动</string>
     <string name="delete_all_events">删除所有活动</string>
-    <string name="new_local_calendar_title">新本地日历</string>
-    <string name="calendar_name_label">日历名称</string>
-    <string name="loading_events">正在加载活动…</string>
-    <string name="import_events_title">导入活动</string>
-    <string name="select_calendar_to_import">选择要导入到的日历：</string>
     <string name="create_new_calendar">+ 创建新日历</string>
     <string name="default_layout">默认布局</string>
     <string name="add_reminder">添加提醒</string>

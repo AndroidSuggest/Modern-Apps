@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Scacchi</string>
     <string name="start_new_game">Nuova partita</string>
@@ -15,7 +14,6 @@
     <string name="human_vs_ai">Umano vs AI</string>
     <string name="promote_pawn">Promuovi pedone</string>
     <string name="check">Scacco!</string>
-    <string name="checkmate_wins">Scacco matto! %1$s vince.</string>
     <string name="white_wins">Scacco matto! Vince il Bianco.</string>
     <string name="black_wins">Scacco matto! Vince il Nero.</string>
     <string name="piece_white_king">Re Bianco</string>
@@ -37,17 +35,14 @@
     <string name="tab_learn">Impara</string>
     <string name="learn_stage_number">Fase %1$d: %2$s</string>
     <string name="learn_lets_go">Cominciamo!</string>
-    <string name="learn_level">Livello %1$d/%2$d</string>
     <string name="learn_next">Prossimo</string>
     <string name="learn_retry">Riprova</string>
     <string name="learn_completed">Ben fatto!</string>
     <string name="learn_failed">Non proprio, riprova.</string>
-    <string name="learn_stage_complete">Fase completata!</string>
     <string name="learn_stage_complete_n">Fase %1$d completa</string>
     <string name="learn_your_score">Il tuo punteggio: %1$d</string>
     <string name="learn_next_stage">Prossimo: %1$s</string>
     <string name="learn_back_to_menu">Torna al menu</string>
-    <string name="learn_back_to_lessons">Torna alle Lezioni</string>
     <string name="learn_progress">%1$d/%2$d</string>
     <string name="puzzle_your_move">Tocca a te — trova la mossa migliore.</string>
     <string name="puzzle_white_to_move">Muove il bianco.</string>
@@ -57,7 +52,6 @@
     <string name="puzzle_next">Prossimo rompicapo</string>
     <string name="puzzle_retry">Riprova</string>
     <string name="puzzle_show_solution">Mostra soluzione</string>
-    <string name="puzzle_difficulty">Difficoltà</string>
     <string name="puzzle_difficulty_easy">Facile</string>
     <string name="puzzle_difficulty_medium">Media</string>
     <string name="puzzle_difficulty_hard">Difficile</string>

@@ -1,14 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="search">Hledat</string>
     <string name="app_name">Poznámky</string>
     <string name="title">Titulek</string>
-    <string name="content">Obsah</string>
     <string name="drawing">Kresba</string>
     <string name="add_image">Přidat obrázek</string>
     <string name="add_drawing">Přidat kresbu</string>
-    <string name="move_up">Přesunout nahoru</string>
-    <string name="move_down">Přesunout dolů</string>
-    <string name="shrink">Zmenšit</string>
-    <string name="enlarge">Zvetšit</string>
-</resources>
+    </resources>

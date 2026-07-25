@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="label_stopwatch">Stopky</string>
     <string name="app_name">Hodiny</string>
@@ -15,18 +14,14 @@
     <string name="header_split">Rozdělit</string>
     <string name="header_total">Celkem</string>
     <string name="button_add_minute">+ 1:00</string>
-    <string name="set_a_timer">Nastavit časovač</string>
     <string name="label_new_timer">Nový časovač</string>
     <string name="field_label">Název</string>
-    <string name="field_hours">Hodiny</string>
-    <string name="field_minutes">Minuty</string>
     <string name="button_cancel">Zrušit</string>
     <string name="button_save">Uložit</string>
     <string name="select_cities_title">Vyberte města</string>
     <string name="search_city_hint">Hledat město nebo oblast…</string>
     <string name="time_am">dop.</string>
     <string name="time_pm">odp.</string>
-    <string name="no_alarms">Žádné nastavené budíky</string>
     <string name="alarm_notification_wake_up">Probuď se!</string>
     <string name="alarm_ringing_notification_title">Budík zvoní</string>
     <string name="channel_completed_timers_name">Dokončené časovače</string>
@@ -36,7 +31,6 @@
     <string name="duration_m_s_ms_format">%1$d:%2$02d.%3$02d</string>
     <string name="stopwatch_time_format">%1$d:%2$02d</string>
     <string name="timer_finished_title">Časovač dokončen</string>
-    <string name="field_seconds">Sekundy</string>
     <string name="grant_notifications_permission">Udělit oprávnění k oznámením</string>
     <string name="channel_completed_timers_description">Upozornění po dokončení časovačů</string>
     <string name="timer_finished_text">%1$s skončil!</string>

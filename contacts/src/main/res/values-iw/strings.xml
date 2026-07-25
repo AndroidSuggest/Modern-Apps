@@ -1,19 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">אישור</string>
     <string name="cancel">ביטול</string>
     <string name="delete">מחיקה</string>
-    <string name="search">חיפוש</string>
     <string name="settings">הגדרות</string>
-    <string name="import_button">ייבוא</string>
     <string name="app_name">אנשי קשר</string>
     <string name="contact_not_found">איש הקשר לא נמצא</string>
-    <string name="favorite">מועדף</string>
     <string name="share_contact">שיתוף איש קשר</string>
     <string name="about_name">על %1$s</string>
     <string name="birthday">יום הולדת</string>
     <string name="note">הערה</string>
-    <string name="action">פעולה</string>
     <string name="favorites">מועדפים</string>
     <string name="export_contacts">ייצוא כל אנשי הקשר</string>
     <string name="on_device">במכשיר</string>
@@ -27,8 +22,6 @@
     <string name="nickname">כינוי</string>
     <string name="company">חברה</string>
     <string name="account">חשבון</string>
-    <string name="choose_account">בחירת חשבון</string>
-    <string name="remove_birthday">הסרת יום הולדת</string>
     <string name="add_phone">הוספת מספר טלפון</string>
     <string name="remove_phone">הסרת מספר טלפון</string>
     <string name="add_email">הוספת דוא״ל</string>
@@ -36,7 +29,6 @@
     <string name="add_address">הוספת כתובת</string>
     <string name="remove_address">הסרת כתובת</string>
     <string name="add_date">הוספת תאריך</string>
-    <string name="remove_date">הסרת תאריך</string>
     <string name="dates">תאריכים</string>
     <string name="phone">מספר טלפון</string>
     <string name="email">דוא״ל</string>

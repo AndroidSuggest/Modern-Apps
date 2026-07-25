@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Počasí</string>
     <string name="weather_widget_description">Aktuální čas, datum a počasí na první pohled - klepnutím zobrazíte předpověď</string>
@@ -7,10 +6,6 @@
     <string name="city_name_hint">Název města</string>
     <string name="weather_title">Počasí</string>
     <string name="add_location">Přidat místo</string>
-    <string name="open_map">Otevřít mapu</string>
-    <string name="weather_map_title">Mapa počasí</string>
-    <string name="map_measure">Měřit</string>
     <string name="map_time">Čas</string>
-    <string name="map_back">Zpět</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
 </resources>

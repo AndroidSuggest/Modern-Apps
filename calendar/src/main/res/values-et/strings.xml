@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings">Seadistused</string>
     <string name="cancel">Katkesta</string>
@@ -54,14 +53,8 @@
     <string name="choose_timezone">Vali ajavöönd</string>
     <string name="delete_calendar_name_confirm">Kas oled kindel, et soovid „%1$s“ kalendri kustutada? Järgnevaga kaovad kõik antud kalendris leiduvad sündmused.</string>
     <string name="open_location_in_navigation">Ava asukoht</string>
-    <string name="import_button">Impordi</string>
     <string name="delete_this_event">Kustuta see sündmus</string>
     <string name="delete_all_events">Kustuta kõik sündmused</string>
-    <string name="new_local_calendar_title">Uus kohalik kalender</string>
-    <string name="calendar_name_label">Kalendri nimi</string>
-    <string name="loading_events">Laadin sündmusi…</string>
-    <string name="import_events_title">Impordi sündmusi</string>
-    <string name="select_calendar_to_import">Vali kalender, kuhu tahad importida:</string>
     <string name="create_new_calendar">+ Loo uus kalender</string>
     <string name="default_layout">Vaikimisi paigutus</string>
     <string name="add_reminder">Lisa meeldetuletus</string>

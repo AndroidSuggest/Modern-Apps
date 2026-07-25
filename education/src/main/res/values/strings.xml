@@ -1,137 +1,197 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
     <string name="app_name">Education</string>
 
+    <!-- HomePage StreakChip: plural for streak day count. %1$d = number of days -->
     <plurals name="day_count">
-        <item quantity="one">%1$d day</item>
-        <item quantity="other">%1$d days</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> day</item>
+        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> days</item>
     </plurals>
+    <!-- ParentPage progress: plural for skill count with stars. %1$d = number of skills -->
     <plurals name="skill_stars_earned">
-        <item quantity="one">%1$d skill with stars earned</item>
-        <item quantity="other">%1$d skills with stars earned</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> skill with stars earned</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> skills with stars earned</item>
     </plurals>
+    <!-- ParentPage DailyGoalRow: plural for daily goal label. %1$d = number of activities -->
     <plurals name="daily_goal_activities">
-        <item quantity="one">Daily goal: %1$d activity</item>
-        <item quantity="other">Daily goal: %1$d activities</item>
+        <item quantity="one">Daily goal: <xliff:g id="count" example="1">%1$d</xliff:g> activity</item>
+        <item quantity="other">Daily goal: <xliff:g id="count" example="3">%1$d</xliff:g> activities</item>
     </plurals>
+    <!-- UnitPage lesson row suffix: plural for video count. %1$d = number of videos -->
     <plurals name="video_count">
-        <item quantity="one">%1$d video</item>
-        <item quantity="other">%1$d videos</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> video</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> videos</item>
     </plurals>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- Common -->
-    <!-- ExplorerHomePage -->
+    <!-- ExplorerHomePage: Search field label to filter topics/courses -->
     <string name="find_a_topic">Find a topic</string>
-    <!-- K2RewardPage -->
+    <!-- K2RewardPage: Celebratory button with house emoji to return to K2 home. Noun -->
     <string name="home_1">🏠  Home</string>
-    <!-- LessonPage -->
+    <!-- LessonPage: Section header above video list. Verb -->
     <string name="watch">Watch</string>
-    <!-- ParentGatePage -->
+    <!-- ParentGatePage: Dialog title for PIN gate protecting parent settings -->
     <string name="grown_ups_only">Grown-ups only</string>
+    <!-- ParentGatePage: Text field label for parent PIN entry. Noun acronym -->
     <string name="pin">PIN</string>
+    <!-- ParentGatePage: Error shown under PIN field when wrong PIN entered -->
     <string name="incorrect_pin">Incorrect PIN</string>
+    <!-- Generic verb. Dismiss dialog -->
     <string name="cancel">Cancel</string>
+    <!-- Generic verb. Submit PIN -->
     <string name="enter">Enter</string>
-    <!-- ParentPage -->
+    <!-- ParentPage: TopAppBar title for parent settings screen -->
     <string name="parent_settings">Parent settings</string>
+    <!-- Generic noun. Field label for learner name -->
     <string name="name">Name</string>
+    <!-- Generic OK confirmation. Button label -->
     <string name="ok">OK</string>
+    <!-- ParentPage: Dropdown label for grade selection. Noun -->
     <string name="grade">Grade</string>
+    <!-- ParentPage: Label for band override dropdown to force K2/Explorer/Scholar shell. Noun -->
     <string name="band_override">Band override</string>
+    <!-- ParentPage: Dropdown option for automatic band selection based on grade -->
     <string name="automatic_by_grade">Automatic (by grade)</string>
+    <!-- ParentPage Security: Label for new PIN field -->
     <string name="new_pin">New PIN</string>
-    <!-- QuizPage -->
+    <!-- QuizPage: Text button to reveal next hint for question. Verb phrase -->
     <string name="show_a_hint">Show a hint</string>
+    <!-- QuizPage: Button to check submitted answer. Verb -->
     <string name="check">Check</string>
+    <!-- QuizPage: Button to go to next question. Navigation verb -->
     <string name="next">Next</string>
+    <!-- QuizPage: Button on last question to finish and grade exercise. Verb -->
     <string name="finish">Finish</string>
+    <!-- QuizPage: Label for generic free-text or numeric answer input. Noun -->
     <string name="answer">Answer</string>
-    <!-- ResultsPage -->
+    <!-- ResultsPage: TopAppBar title after grading. Noun -->
     <string name="results">Results</string>
+    <!-- ResultsPage: Button to continue learning from results. Verb phrase encouraging -->
     <string name="keep_going">Keep going</string>
+    <!-- Generic noun. Button to return to Scholar Home. Distinct from home_1 which has emoji for K2 -->
     <string name="home">Home</string>
-    <!-- VideoPlayerPage -->
+    <!-- VideoPlayerPage: Error message when video cannot be loaded -->
     <string name="couldn_t_load_this_video">Couldn\'t load this video.</string>
+    <!-- VideoPlayerPage: Button to open video in YouTube app as fallback. Verb phrase -->
     <string name="open_in_youtube">Open in YouTube</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- BadgesPage -->
+    <!-- BadgesPage K2 variant: Title for K2 children where badges are called stickers. Child-friendly -->
     <string name="my_stickers">My Stickers</string>
+    <!-- BadgesPage Scholar/Explorer: Title for achievements list. Noun plural -->
     <string name="badges">Badges</string>
-    <!-- CoursePage -->
+    <!-- CoursePage: Fallback TopAppBar title when course not found. Noun -->
     <string name="course">Course</string>
-    <string name="lessons">%1$s lessons</string>
+    <!-- CoursePage unit card: Subtitle showing number of lessons in unit. %1$s = count e.g. 5 -->
+    <string name="lessons"><xliff:g id="count" example="5">%1$s</xliff:g> lessons</string>
+    <!-- CoursePage: Button/title for course challenge that ends the course. Noun phrase -->
     <string name="course_challenge">Course challenge</string>
-    <!-- ExplorerCoursePage -->
+    <!-- ExplorerCoursePage: Fallback TopAppBar when topic/course not found. Noun -->
     <string name="topic">Topic</string>
+    <!-- ExplorerCoursePage: Playful fallback label for course challenge on Explorer band. Noun phrase -->
     <string name="big_challenge">Big challenge!</string>
+    <!-- ExplorerCoursePage PathNode: Label marking first unmastered unit as starting point. Verb phrase -->
     <string name="start_here">Start here</string>
-    <!-- ExplorerHomePage -->
+    <!-- ExplorerHomePage: Fallback TopAppBar title when learner name blank. Verb -->
     <string name="explore">Explore</string>
-    <string name="hi">Hi, %1$s! 👋</string>
+    <!-- ExplorerHomePage: Greeting with learner name and waving emoji. %1$s = learner name. Keep emoji -->
+    <string name="hi">Hi, <xliff:g id="name" example="Alex">%1$s</xliff:g>! 👋</string>
+    <!-- ExplorerHomePage: Card label for continue CTA showing unmastered unit. Verb phrase -->
     <string name="jump_back_in">Jump back in</string>
+    <!-- ExplorerHomePage: Empty state when no courses visible after filter -->
     <string name="nothing_here_yet_ask_a_grown_up_to_add_l">Nothing here yet — ask a grown-up to add lessons.</string>
-    <string name="topics">%1$s topics</string>
-    <!-- HomePage -->
+    <!-- ExplorerHomePage CourseCard: Subtitle showing topic count. %1$s = number of units/topics -->
+    <string name="topics"><xliff:g id="count" example="8">%1$s</xliff:g> topics</string>
+    <!-- HomePage Scholar: Fallback TopAppBar title when learner name blank. Verb -->
     <string name="learn">Learn</string>
-    <string name="hi_1">Hi, %1$s</string>
-    <string name="units">%1$s units</string>
+    <!-- HomePage Scholar: Greeting without emoji, more mature tone. %1$s = learner name. Distinct from hi -->
+    <string name="hi_1">Hi, <xliff:g id="name" example="Alex">%1$s</xliff:g></string>
+    <!-- HomePage Scholar course card: Subtitle showing unit count. %1$s = number e.g. 4 -->
+    <string name="units"><xliff:g id="count" example="4">%1$s</xliff:g> units</string>
+    <!-- HomePage: Empty state when no content packs installed -->
     <string name="no_content_packs_are_installed_yet">No content packs are installed yet.</string>
-    <!-- K2HomePage -->
+    <!-- K2HomePage: Celebration message when all lessons done. Shown when nextLesson null -->
     <string name="all_done_great_job">All done! Great job!</string>
-    <!-- K2QuizPage -->
+    <!-- K2QuizPage: Celebration overlay after correct answer before auto-advance -->
     <string name="great_job">Great job!</string>
-    <!-- K2RewardPage -->
+    <!-- K2RewardPage: Headline praise at end of K2 lesson flow -->
     <string name="you_did_it">You did it!</string>
-    <!-- LessonPage -->
+    <!-- LessonPage/K2LessonPage: Fallback title when lesson not found. Noun -->
     <string name="lesson">Lesson</string>
+    <!-- LessonPage: CTA button to start exercise after videos. Verb phrase -->
     <string name="start_exercise">Start exercise</string>
-    <!-- ParentGatePage -->
+    <!-- ParentGatePage: Explanatory subtitle under grown-ups only title -->
     <string name="enter_the_parent_pin_to_manage_settings">Enter the parent PIN to manage settings and deadlines.</string>
-    <!-- ParentPage -->
-    <string name="active_band">Active band: %1$s</string>
+    <!-- ParentPage: Label showing resolved band after override. %1$s = band name e.g. Scholar -->
+    <string name="active_band">Active band: <xliff:g id="band" example="Scholar">%1$s</xliff:g></string>
+    <!-- ParentPage Deadlines header: Explanation that target date shows as gentle reminder in child app -->
     <string name="set_a_target_date_for_a_unit_it_shows_in">Set a target date for a unit. It shows in your child\'s app as a gentle reminder.</string>
-    <string name="due">Due %1$s</string>
+    <!-- ParentPage deadline row: Label for due date. %1$s = formatted date -->
+    <string name="due">Due <xliff:g id="date" example="May 20">%1$s</xliff:g></string>
+    <!-- ParentPage deadline row: Button to set initial due date. Verb phrase -->
     <string name="set_date">Set date</string>
+    <!-- Generic verb. Button to change existing value (deadline or PIN). -->
     <string name="change">Change</string>
+    <!-- Generic confirmation that value was saved. Short status -->
     <string name="saved">Saved</string>
+    <!-- Generic verb. Button to save changes -->
     <string name="save">Save</string>
-    <!-- QuizPage -->
+    <!-- QuizPage: TopAppBar fallback title when exercise title blank. Noun, practice mode -->
     <string name="practice">Practice</string>
-    <string name="question_of">Question %1$s of %2$s</string>
+    <!-- QuizPage: Progress header counting questions. %1$s = current index, %2$s = total -->
+    <string name="question_of">Question <xliff:g id="current" example="2">%1$s</xliff:g> of <xliff:g id="total" example="10">%2$s</xliff:g></string>
+    <!-- QuizPage FeedbackCard: Title when answer correct. Exclamation -->
     <string name="correct_1">Correct!</string>
+    <!-- QuizPage FeedbackCard: Title when answer incorrect. Gentle correction -->
     <string name="not_quite">Not quite.</string>
-    <string name="answer_1">Answer (%1$s)</string>
+    <!-- QuizPage NumericInput: Label with unit in parentheses. %1$s = unit e.g. cm -->
+    <string name="answer_1">Answer (<xliff:g id="unit" example="cm">%1$s</xliff:g>)</string>
+    <!-- QuizPage MatchingQuestion: Placeholder for right-side selector until chosen -->
     <string name="choose">Choose…</string>
-    <!-- ResultsPage -->
-    <string name="correct">%1$s / %2$s correct</string>
-    <!-- UnitPage -->
+    <!-- ResultsPage score: Summary line showing score. %1$s = correct count, %2$s = total -->
+    <string name="correct"><xliff:g id="correct" example="7">%1$s</xliff:g> / <xliff:g id="total" example="10">%2$s</xliff:g> correct</string>
+    <!-- UnitPage: Fallback title when unit not found. Noun -->
     <string name="unit">Unit</string>
+    <!-- UnitPage lesson row: Suffix appended when lesson has exercise after videos. Noun with dot separator -->
     <string name="exercise"> · exercise</string>
+    <!-- UnitPage: Button/fallback for unit-final quiz challenge. Noun phrase -->
     <string name="unit_quiz">Unit quiz</string>
-    <!-- VideoPlayerPage -->
+    <!-- VideoPlayerPage: Subtitle under video error, suggesting to open in YouTube -->
     <string name="check_your_connection_or_open_it_in_yout">Check your connection, or open it in YouTube.</string>
 
-    <!-- Migrated wrapper composable labels (auto) -->
+    <!-- HomePage Scholar: Section header for deadline chips when units due soon. Adjective phrase -->
     <string name="due_soon">Due soon</string>
+    <!-- CoursePage: Message when Scholar course content unavailable -->
     <string name="this_course_is_unavailable">This course is unavailable.</string>
+    <!-- ParentPage: Section header for learner name/grade settings. Noun -->
     <string name="learner">Learner</string>
+    <!-- ParentPage: Section header for streak/stars progress. Noun -->
     <string name="progress">Progress</string>
+    <!-- ParentPage: Section header for per-unit deadline list. Noun phrase -->
     <string name="module_deadlines">Module deadlines</string>
+    <!-- ParentPage: Section header for PIN/security settings. Noun -->
     <string name="security">Security</string>
+    <!-- K2 MissingContent: Button/label to go back when K2 lesson/quiz unavailable. Verb phrase -->
     <string name="let_s_go_back">Let\'s go back.</string>
+    <!-- UnitPage: Message when Scholar unit content unavailable -->
     <string name="this_unit_is_unavailable">This unit is unavailable.</string>
+    <!-- ExplorerCoursePage: Message when Explorer topic unavailable -->
     <string name="this_topic_is_unavailable">This topic is unavailable.</string>
+    <!-- LessonPage: Message when lesson content unavailable -->
     <string name="this_lesson_is_unavailable">This lesson is unavailable.</string>
+    <!-- QuizPage: Message when exercise has no questions yet -->
     <string name="this_exercise_has_no_questions_yet">This exercise has no questions yet.</string>
 
-    <!-- Subject names -->
+    <!-- ContentModel Subject.displayNameRes: Subject name Math. Noun proper -->
     <string name="subject_math">Math</string>
+    <!-- ContentModel: Subject name Science. Noun -->
     <string name="subject_science">Science</string>
+    <!-- ContentModel: Subject name Reading &amp; Language Arts. Noun -->
     <string name="subject_reading">Reading &amp; Language Arts</string>
+    <!-- ContentModel: Subject name Social Studies. Noun -->
     <string name="subject_social_studies">Social Studies</string>
+    <!-- ContentModel: Subject name Computing. Noun -->
     <string name="subject_computing">Computing</string>
-    <!-- Grade labels -->
+    <!-- Grade label: Kindergarten special case. Noun -->
     <string name="grade_kindergarten">Kindergarten</string>
-    <string name="grade_number">Grade %1$d</string>
+    <!-- Grade label: Grade with number. %1$d = grade number e.g. 3 -->
+    <string name="grade_number">Grade <xliff:g id="number" example="3">%1$d</xliff:g></string>
 </resources>

@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="channel_info">%1$s abonnés</string>
     <string name="action_unpin">Désépingler</string>
@@ -13,7 +12,7 @@
     <string name="subscribers_count">%1$s abonnés</string>
     <string name="video_quality_codec">%1$s (%2$s)</string>
     <string name="label_sponsorblock_description">Sélectionnez les passages dans la liste ci-dessous pour les ignorer dans les vidéos</string>
-    <string name="recommendation_reason">Raison : %1$s</string>
+    <string name="recommendation_reason">Pourquoi : %1$s</string>
     <string name="audio_bitrate_codec">%1$dkbps (%2$s)</string>
     <string name="label_system_default">Paramètres par défaut du système</string>
     <string name="action_block_channel">Bloquer la chaîne</string>
@@ -26,10 +25,8 @@
     <string name="label_dial_diverse">Ciblé ↔ Diversifié</string>
     <string name="label_comments">Commentaires</string>
     <string name="label_select_subscriptions">Sélectionnez les abonnements :</string>
-    <string name="action_more_options">Plus d\'options</string>
     <string name="label_sponsorblock">Catégories de SponsorBlock</string>
     <string name="count_b_format">%1$sB</string>
-    <string name="label_youtube_language_description">Langue des titres, descriptions, commentaires et résultats de recherche des vidéos</string>
     <string name="time_ago_days">Il y a %1$d jours</string>
     <string name="label_pinned">Épinglé</string>
     <string name="label_blocked_channels">Chaînes bloquées</string>
@@ -48,7 +45,6 @@
     <string name="time_ago_just_now">À l\'instant</string>
     <string name="label_source_related">En lien avec votre historique</string>
     <string name="time_ago_years">Il y a %1$d ans</string>
-    <string name="label_loading_subscriptions">Chargement des abonnements les plus récents</string>
     <string name="label_rec_content_filters">Filtres de contenu</string>
     <string name="label_category_name">Nom de la catégorie</string>
     <string name="preset_balanced">Équilibré</string>

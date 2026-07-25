@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">לוח שנה</string>
     <string name="ok">אישור</string>
@@ -40,10 +39,5 @@
     <string name="new_name">שם חדש</string>
     <string name="create_a_calendar">יצירת לוח שנה</string>
     <string name="delete_all_events">מחיקת כל האירועים</string>
-    <string name="new_local_calendar_title">לוח שנה מקומי חדש</string>
-    <string name="calendar_name_label">שם לוח שנה</string>
-    <string name="loading_events">האירועים נטענים…</string>
-    <string name="import_events_title">ייבוא אירועים</string>
-    <string name="import_button">ייבוא</string>
     <string name="default_layout">פריסת ברירת מחדל</string>
 </resources>

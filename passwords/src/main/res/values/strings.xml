@@ -1,51 +1,83 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name: launcher label and Passkey Credential Manager create-entry title -->
     <string name="app_name">Passwords</string>
-    <string name="autofill_service_description">Provide autofill suggestions for saved passwords</string>
+
+    <!-- Field label. Noun. Display name of the saved credential -->
     <string name="label_name">Name</string>
+    <!-- Field label. Noun. Username or email associated with credential -->
     <string name="label_user_id_email">User ID / Email</string>
+    <!-- Field label. Noun. The secret password itself -->
     <string name="label_password">Password</string>
+    <!-- Field label. Noun. TOTP = Time-based One-Time Password. Keep acronym, input is base32 secret -->
     <string name="label_totp_secret">TOTP Secret</string>
+    <!-- TextField hint/label for adding a website URL chip. Verb phrase, Title Case, action to add -->
     <string name="label_add_website">Add website</string>
-    <string name="title_settings">Settings</string>
-    <string name="import_csv_warning">Importing a CSV will bring plaintext credentials into this app. Please delete the export after importing.</string>
-    <string name="import_passwords">Import Passwords</string>
-    <string name="section_password">Password</string>
-    <string name="section_totp">TOTP</string>
-    <string name="totp_not_configured">(not configured)</string>
-    <string name="totp_refreshes_in">Refreshes in %1$d s</string>
-    <string name="section_websites">Websites</string>
-    <string name="websites_none">(none)</string>
-    <string name="section_passkeys">Passkeys</string>
-    <string name="passkey_detail_title">Passkey</string>
-    <string name="passkey_rp_id">Relying Party ID</string>
-    <string name="passkey_rp_name">Relying Party</string>
-    <string name="passkey_user_name">User Name</string>
-    <string name="passkey_user_display_name">Display Name</string>
-    <string name="passkey_credential_id">Credential ID</string>
-    <string name="passkey_created">Created</string>
-    <string name="passkey_last_used">Last Used</string>
-    <string name="unlock_database">Unlock Passwords</string>
-
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- CableActivity -->
-    <string name="cancel">Cancel</string>
-
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- PasswordEditPage -->
+    <!-- TopAppBar title when creating new entry. Verb phrase, Title Case -->
     <string name="add_password">Add Password</string>
+    <!-- TopAppBar title when editing existing entry. Verb phrase -->
     <string name="edit_password">Edit Password</string>
+    <!-- Button inside password field to hide contents. Verb, Title Case -->
     <string name="hide">Hide</string>
+    <!-- Button inside password field to reveal contents. Verb, Title Case -->
     <string name="show">Show</string>
-    <!-- PasswordPage -->
+
+    <!-- Section header for password field card. Noun. Also fallback display name when entry name blank -->
+    <string name="section_password">Password</string>
+    <!-- Section header for TOTP code block. Noun, acronym TOTP -->
+    <string name="section_totp">TOTP</string>
+    <!-- Placeholder shown when TOTP secret is empty. Parentheses intentional, lower case -->
+    <string name="totp_not_configured">(not configured)</string>
+    <!-- TOTP countdown label. %1$d = seconds remaining until code rotates, e.g. 15. Keep %1$d and 's' for seconds -->
+    <string name="totp_refreshes_in">Refreshes in <xliff:g id="seconds" example="15">%1$d</xliff:g> s</string>
+    <!-- Section header for associated websites list. Noun plural -->
+    <string name="section_websites">Websites</string>
+    <!-- Empty state when no websites attached to credential. Parentheses intentional -->
+    <string name="websites_none">(none)</string>
+    <!-- List fallback when password entry has no name. Parentheses -->
     <string name="no_name">(no name)</string>
+    <!-- Detail header fallback when userId is blank. Parentheses -->
     <string name="no_user">(no user)</string>
 
-    <!-- Import sources -->
+    <!-- TopAppBar fallback title for passkey detail when RP name blank. Noun -->
+    <string name="passkey_detail_title">Passkey</string>
+    <!-- Detail row label. Relying Party ID = domain e.g. example.com. Keep ID capitalization -->
+    <string name="passkey_rp_id">Relying Party ID</string>
+    <!-- Detail row label. Relying Party display name -->
+    <string name="passkey_rp_name">Relying Party</string>
+    <!-- Detail row label. Username bound to passkey -->
+    <string name="passkey_user_name">User Name</string>
+    <!-- Detail row label. Display name of user for this passkey -->
+    <string name="passkey_user_display_name">Display Name</string>
+    <!-- Detail row label. Long credential ID (base64url truncated in UI) -->
+    <string name="passkey_credential_id">Credential ID</string>
+    <!-- Detail row label. Timestamp when passkey was created. Noun -->
+    <string name="passkey_created">Created</string>
+    <!-- Detail row label. Timestamp when passkey was last used -->
+    <string name="passkey_last_used">Last Used</string>
+    <!-- Biometric/auth prompt action label shown when database needs unlocking (PasskeyCredentialService pending intent). Verb phrase -->
+    <string name="unlock_database">Unlock Passwords</string>
+
+    <!-- TopAppBar title for settings screen. Noun plural -->
+    <string name="title_settings">Settings</string>
+    <!-- Warning text above import button about CSV being plaintext -->
+    <string name="import_csv_warning">Importing a CSV will bring plaintext credentials into this app. Please delete the export after importing.</string>
+    <!-- Button that opens dropdown of import sources. Verb phrase -->
+    <string name="import_passwords">Import Passwords</string>
+    <!-- Import source: Bitwarden brand name. Noun -->
     <string name="import_source_bitwarden">Bitwarden</string>
+    <!-- Import source: Google Chrome brand name -->
     <string name="import_source_chrome">Google Chrome</string>
+    <!-- Import source: Firefox brand name -->
     <string name="import_source_firefox">Firefox</string>
+    <!-- Import source: LastPass brand name -->
     <string name="import_source_lastpass">LastPass</string>
+    <!-- Import source: 1Password brand name, includes number -->
     <string name="import_source_one_password">1Password</string>
+    <!-- Import source: Dashlane brand name -->
     <string name="import_source_dashlane">Dashlane</string>
+    <!-- Import source: Apple Passwords product name -->
     <string name="import_source_apple">Apple Passwords</string>
+
+    <!-- Biometric prompt negative button text. Verb -->
+    <string name="cancel">Cancel</string>
 </resources>

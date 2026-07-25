@@ -1,159 +1,241 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- MainActivity / launcher: App name. Noun, proper name -->
     <string name="app_name">Find Family</string>
 
-    <!-- Notification channels -->
+    <!-- LocationTrackingService: Notification channel name for foreground location tracking. Noun -->
     <string name="notification_channel_location_tracking_name">Location Tracking</string>
+    <!-- LocationTrackingService: Notification channel description for location tracking. Explains background updates -->
     <string name="notification_channel_location_tracking_desc">Used for FindFamily background location updates</string>
+    <!-- LocationTrackingService: Notification channel name for low-battery alerts. Noun -->
     <string name="notification_channel_battery_name">Battery Alerts</string>
+    <!-- LocationTrackingService: Notification channel description for battery alerts. Sentence -->
     <string name="notification_channel_battery_desc">Alerts when a family member has low battery</string>
+    <!-- LocationTrackingService: Notification channel name for geofence entry/exit. Noun phrase -->
     <string name="notification_channel_entry_exit_name">Arrivals &amp; Departures</string>
+    <!-- LocationTrackingService: Notification channel description for waypoint entry/exit events -->
     <string name="notification_channel_entry_exit_desc">Notifications for when family members enter or leave waypoints</string>
 
-    <!-- Foreground service notification -->
+    <!-- LocationTrackingService: Foreground service notification title when tracking is active. Noun phrase -->
     <string name="notification_tracking_title">FindFamily is active</string>
+    <!-- LocationTrackingService: Foreground service notification body. Sentence explaining sharing state -->
     <string name="notification_tracking_text">Sharing location with your selected contacts</string>
 
-    <!-- Dynamic notifications -->
-    <string name="notification_low_battery">%1$s has low battery</string>
-    <string name="notification_entered_waypoint">%1$s has entered %2$s</string>
-    <string name="notification_exited_waypoint">%1$s has exited %2$s</string>
+    <!-- LocationTrackingService: Dynamic notification body for low battery. %1$s = contact display name, e.g. Alice -->
+    <string name="notification_low_battery"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> has low battery</string>
+    <!-- LocationTrackingService: Dynamic notification when contact enters waypoint. %1$s = person name (Alice), %2$s = waypoint name (Home) -->
+    <string name="notification_entered_waypoint"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> has entered <xliff:g id="waypoint_name" example="Home">%2$s</xliff:g></string>
+    <!-- LocationTrackingService: Dynamic notification when contact exits waypoint. %1$s = person name, %2$s = waypoint name -->
+    <string name="notification_exited_waypoint"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> has exited <xliff:g id="waypoint_name" example="Home">%2$s</xliff:g></string>
 
-    <!-- Permission screen -->
+    <!-- Permission screen: Shown after fine location granted. Status label with emoji -->
     <string name="permission_fine_location_granted">✅ Fine Location Granted</string>
+    <!-- Permission screen: Button to request ACCESS_FINE_LOCATION. Verb phrase, step 1 -->
     <string name="permission_grant_fine_location">1. Grant Fine Location</string>
+    <!-- Permission screen: Status label after background location granted. Noun phrase -->
     <string name="permission_background_granted">✅ Background Granted</string>
+    <!-- Permission screen: Button to enable background 'Allow all the time'. Verb phrase, step 2 -->
     <string name="permission_enable_all_the_time">2. Enable \'Allow all the time\'</string>
+    <!-- Permission screen: Explanation for background permission rationale. Sentence -->
     <string name="permission_background_explanation">To enable background tracking, please select \'Allow all the time\' in the next screen.</string>
+    <!-- Permission screen: Message when user granted only approximate location. Sentence, requires upgrade -->
     <string name="permission_approximate_only_explanation">FindFamily only works with precise (fine) location. You granted approximate location only — please upgrade to precise location to continue.</string>
+    <!-- Permission screen: Button to reopen upgrade prompt for precise location. Verb phrase -->
     <string name="permission_reopen_upgrade_prompt">Upgrade to precise location</string>
+    <!-- Permission upgrade dialog: Title. Noun phrase -->
     <string name="permission_upgrade_dialog_title">Precise location required</string>
+    <!-- Permission upgrade dialog: Body message explaining why precise location needed. Sentence -->
     <string name="permission_upgrade_dialog_message">FindFamily needs precise (fine) location to share your exact position. Please allow precise location.</string>
+    <!-- Permission upgrade dialog: Confirm button. Verb phrase -->
     <string name="permission_upgrade_dialog_confirm">Allow precise location</string>
+    <!-- Permission upgrade dialog: Dismiss button. Verb phrase -->
     <string name="permission_upgrade_dialog_dismiss">Not now</string>
 
-    <!-- MainPage FAB menu -->
+    <!-- MainPage FAB menu: Option to add a person/contact. Noun -->
     <string name="fab_person">Person</string>
+    <!-- MainPage FAB menu: Option to add a saved place/waypoint. Noun -->
     <string name="fab_location">Location</string>
+    <!-- MainPage FAB menu: Option to create temporary share link. Noun -->
     <string name="fab_link">Link</string>
 
-    <!-- MainPage section headers -->
+    <!-- MainPage: Section header for pending location-sharing requests list. Noun phrase -->
     <string name="section_location_sharing_requests">Location Sharing Requests</string>
+    <!-- MainPage: Section header for temporary links grid. Noun phrase -->
     <string name="section_temporary_links">Temporary Links</string>
+    <!-- MainPage: Section header for saved waypoints/places. Noun phrase -->
     <string name="section_saved_places">Saved Places</string>
 
-    <!-- MainPage cards -->
-    <string name="request_from">Request from %1$s</string>
-    <string name="expires">Expires %1$s</string>
+    <!-- MainPage: AwaitingRequestCard header. %1$s = encoded sender ID in Base26, e.g. ABC123 -->
+    <string name="request_from">Request from <xliff:g id="sender_id" example="ABC123">%1$s</xliff:g></string>
+    <!-- MainPage: TemporaryLinkCard expiry label. %1$s = relative future time string, e.g. in 5 minutes / very soon -->
+    <string name="expires">Expires <xliff:g id="relative_time" example="in 5 minutes">%1$s</xliff:g></string>
+    <!-- MainPage: WaypointCard empty state when no one is inside waypoint. Noun phrase, sentence fragment -->
     <string name="nobody_here">nobody is currently here</string>
-    <string name="user_is_here">%1$s is currently here</string>
-    <string name="users_are_here">%1$s are currently here</string>
+    <!-- MainPage: WaypointCard when single user inside. %1$s = person name, e.g. Alice. Sentence -->
+    <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> is currently here</string>
+    <!-- MainPage: WaypointCard when multiple users inside. %1$s = comma-separated names, e.g. Alice, Bob. Sentence -->
+    <string name="users_are_here"><xliff:g id="person_names" example="Alice, Bob">%1$s</xliff:g> are currently here</string>
+    <!-- MainPage: UserCard last-updated fallback when no location data. Adverb -->
     <string name="last_updated_never">Never</string>
+    <!-- MainPage: UserCard since label when last entry just happened (<60s). Adverbial phrase -->
     <string name="since_just_now">Since just now</string>
-    <string name="since_minutes_ago">Since %1$d minutes ago</string>
-    <string name="since_time_date">Since %1$s %2$s</string>
+    <!-- MainPage: UserCard since label for minutes. %1$d = minutes count, e.g. 5 -->
+    <string name="since_minutes_ago">Since <xliff:g id="minutes" example="5">%1$d</xliff:g> minutes ago</string>
+    <!-- MainPage: UserCard since label with formatted time and date. %1$s = time e.g. 3:45 PM, %2$s = date e.g. today/yesterday/Jun 4 -->
+    <string name="since_time_date">Since <xliff:g id="time" example="3:45 PM">%1$s</xliff:g> <xliff:g id="date" example="today">%2$s</xliff:g></string>
+    <!-- MainPage: Date token for today. Noun, used inside since_time_date -->
     <string name="today">today</string>
+    <!-- MainPage: Date token for yesterday. Noun, used inside since_time_date -->
     <string name="yesterday">yesterday</string>
-    <string name="user_card_status">Updated %1$s\nAt %2$s\n%3$s</string>
-    <string name="battery_percentage">%1$d%%</string>
+    <!-- MainPage: UserCard multiline status block. %1$s = last updated relative time (just now/minutes ago), %2$s = location name, %3$s = since string -->
+    <string name="user_card_status">Updated <xliff:g id="last_updated" example="5 minutes ago">%1$s</xliff:g>\nAt <xliff:g id="location_name" example="Home">%2$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%3$s</xliff:g></string>
+    <!-- MainPage: BatteryBar percentage label. %1$d = battery level 0-100, e.g. 85 -->
+    <string name="battery_percentage"><xliff:g id="battery_level" example="85">%1$d</xliff:g>%%</string>
 
-    <!-- timestring helper -->
+    <!-- MainPage: timestring helper for just now. Adverbial phrase, past -->
     <string name="time_just_now">just now</string>
-    <string name="time_minutes_ago">%1$d minutes ago</string>
-    <string name="time_hours_ago">%1$d hours ago</string>
-    <string name="time_days_ago">%1$d days ago</string>
+    <!-- MainPage: timestring past minutes. %1$d = count, e.g. 5 -->
+    <string name="time_minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g> minutes ago</string>
+    <!-- MainPage: timestring past hours. %1$d = hours count, e.g. 2 -->
+    <string name="time_hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g> hours ago</string>
+    <!-- MainPage: timestring past days. %1$d = days count, e.g. 3 -->
+    <string name="time_days_ago"><xliff:g id="days" example="3">%1$d</xliff:g> days ago</string>
+    <!-- MainPage: timestring future very soon. Adverb phrase for expiry -->
     <string name="time_very_soon">very soon</string>
-    <string name="time_in_minutes">in %1$d minutes</string>
-    <string name="time_in_hours">in %1$d hours</string>
-    <string name="time_in_days">in %1$d days</string>
+    <!-- MainPage: timestring future minutes. %1$d = minutes, e.g. 5 -->
+    <string name="time_in_minutes">in <xliff:g id="minutes" example="5">%1$d</xliff:g> minutes</string>
+    <!-- MainPage: timestring future hours. %1$d = hours count -->
+    <string name="time_in_hours">in <xliff:g id="hours" example="2">%1$d</xliff:g> hours</string>
+    <!-- MainPage: timestring future days. %1$d = days count -->
+    <string name="time_in_days">in <xliff:g id="days" example="3">%1$d</xliff:g> days</string>
 
-    <!-- UserPage -->
+    <!-- UserPage: Toggle description to share location. Verb phrase -->
     <string name="share_your_location">Share your location with this person</string>
+    <!-- UserPage: Button to change linked contact entry. Verb phrase -->
     <string name="change_connected_contact">Change connected contact</string>
-    <string name="history_button">History</string>
-    <string name="history_title">History: %1$s</string>
-    <string name="hide_button">Live</string>
-    <string name="history_show_content_desc">View location history</string>
-    <string name="history_hide_content_desc">Back to live location</string>
+    <!-- MainPage TopAppBar: Title when in history mode. %1$s = selected user name, e.g. Alice -->
+    <string name="history_title">History: <xliff:g id="person_name" example="Alice">%1$s</xliff:g></string>
+    <!-- HistoryScrubber: Button label to step back 5 minutes. Verb with duration -->
     <string name="history_step_minus_5m">-5m</string>
+    <!-- HistoryScrubber: Button label to step back 1 minute -->
     <string name="history_step_minus_1m">-1m</string>
+    <!-- HistoryScrubber: Button label to step back 10 seconds -->
     <string name="history_step_minus_10s">-10s</string>
+    <!-- HistoryScrubber: Button label to step forward 10 seconds -->
     <string name="history_step_plus_10s">+10s</string>
+    <!-- HistoryScrubber: Button label to step forward 1 minute -->
     <string name="history_step_plus_1m">+1m</string>
+    <!-- HistoryScrubber: Button label to step forward 5 minutes -->
     <string name="history_step_plus_5m">+5m</string>
 
-    <!-- WaypointEditPage -->
+    <!-- WaypointEditPage: Validation error when waypoint name empty. Sentence -->
     <string name="waypoint_name_blank_error">Name cannot be blank</string>
+    <!-- WaypointEditPage: Validation error when range not numeric. Sentence -->
     <string name="waypoint_range_error">Range must be a number</string>
+    <!-- WaypointEditPage: Unit suffix for geofence radius input. Noun, plural -->
     <string name="waypoint_range_suffix">meters</string>
 
-    <!-- AddLinkDialog -->
+    <!-- AddLinkDialog: Title for share via link dialog. Noun phrase -->
     <string name="add_link_title">Share via link</string>
+    <!-- AddLinkDialog: Text field label for link label. Noun phrase -->
     <string name="add_link_label">Link Label (to differentiate links)</string>
+    <!-- AddLinkDialog: Label for expiry dropdown. Noun phrase -->
     <string name="expiry_time_label">Expiry Time</string>
+    <!-- AddLinkDialog: Primary button to create temporary link. Verb phrase -->
     <string name="create_temporary_link">Create Temporary Link</string>
+    <!-- AddLinkDialog: Dropdown option for 15 minutes expiry. Duration noun -->
     <string name="expiry_15_minutes">15 minutes</string>
+    <!-- AddLinkDialog: Dropdown option for 30 minutes -->
     <string name="expiry_30_minutes">30 minutes</string>
+    <!-- AddLinkDialog: Dropdown option for 1 hour -->
     <string name="expiry_1_hour">1 hour</string>
+    <!-- AddLinkDialog: Dropdown option for 2 hours -->
     <string name="expiry_2_hours">2 hours</string>
+    <!-- AddLinkDialog: Dropdown option for 4 hours -->
     <string name="expiry_4_hours">4 hours</string>
+    <!-- AddLinkDialog: Dropdown option for 6 hours -->
     <string name="expiry_6_hours">6 hours</string>
+    <!-- AddLinkDialog: Dropdown option for 12 hours -->
     <string name="expiry_12_hours">12 hours</string>
+    <!-- AddLinkDialog: Dropdown option for 1 day -->
     <string name="expiry_1_day">1 day</string>
+    <!-- AddLinkDialog: Dropdown option for 2 days -->
     <string name="expiry_2_days">2 days</string>
+    <!-- AddLinkDialog: Dropdown option for 1 week -->
     <string name="expiry_1_week">1 week</string>
 
-    <!-- AddPersonDialog -->
+    <!-- AddPersonDialog: Title to add person via FindFamily ID. Verb phrase -->
     <string name="add_person_title">Add Person</string>
+    <!-- AddPersonDialog: Label showing your own FindFamily ID. Noun phrase -->
     <string name="your_findfamily_id">Your FindFamily ID</string>
+    <!-- AddPersonDialog: Input label for contact's FindFamily ID. Noun phrase -->
     <string name="contact_findfamily_id">Contact\'s FindFamily ID</string>
+    <!-- AddPersonDialog: Status when someone requested your location. Sentence -->
     <string name="status_awaiting_request">This person has requested your location</string>
+    <!-- AddPersonDialog: Status error when trying to share with self. Sentence -->
     <string name="status_cannot_share_self">Cannot share your location with yourself</string>
+    <!-- AddPersonDialog: Status when already sharing location with this person. Sentence -->
     <string name="status_already_sharing">Already sharing location with this person</string>
+    <!-- AddPersonDialog: Status when request already sent. Sentence -->
     <string name="status_already_requested">Already requested to share with this person</string>
+    <!-- AddPersonDialog: Text field label for custom contact name. Noun phrase -->
     <string name="contact_name_label">Contact\'s Name</string>
+    <!-- AddPersonDialog: Button to accept incoming location request. Verb phrase -->
     <string name="accept_location_request">Accept Location Request</string>
+    <!-- AddPersonDialog: Button to send location sharing request. Verb phrase -->
     <string name="request_location">Request Location</string>
 
-    <!-- Platform -->
+    <!-- Platform: Label for clipboard data when copying ID. Generic noun -->
     <string name="clipboard_label">text</string>
 
-    <!-- MapView -->
+    <!-- MapView / ViewModel: Label for self user when no name set. Noun, pronoun -->
     <string name="me_label">Me</string>
 
-    <!-- Missing features screen -->
+    <!-- Missing features screen: Title when device lacks required features. Noun phrase -->
     <string name="missing_features_title">Required Features Disabled</string>
+    <!-- Missing features screen: Explanation that Network Location and Geocoder are required. Sentence -->
     <string name="missing_features_explanation">FindFamily requires Network Location and a Geocoder to function correctly. You must enable them to continue.</string>
 
-    <!-- Settings -->
-    <string name="settings">Settings</string>
 
-    <!-- UWB Find Nearby -->
+    <!-- UWB Find Nearby: Notification channel name for UWB ranging requests. Noun phrase -->
     <string name="notification_channel_uwb_request_name">Find Nearby (UWB) Requests</string>
+    <!-- UWB Find Nearby: Notification channel description for UWB. Sentence -->
     <string name="notification_channel_uwb_request_desc">Someone is using Find Nearby (UWB) to locate you</string>
+    <!-- UWB Find Nearby: Notification title when someone is ranging you. Sentence -->
     <string name="notification_uwb_request_title">Someone is finding you</string>
-    <string name="notification_uwb_request_text">%1$s is using Find Nearby (UWB). Tap to see distance and direction.</string>
-    <string name="uwb_action_find_precision">Find Nearby (UWB)</string>
+    <!-- UWB Find Nearby: Notification body. %1$s = sender display name, e.g. Alice or fallback Someone -->
+    <string name="notification_uwb_request_text"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> is using Find Nearby (UWB). Tap to see distance and direction.</string>
+    <!-- UWB Find Nearby: Fallback name when peer unknown. Noun, generic -->
     <string name="uwb_unknown_peer_name">Someone</string>
+    <!-- UwbRangingScreen: Status when UWB session initializing. Sentence, progressive -->
     <string name="uwb_status_starting">Setting up Find Nearby (UWB)…</string>
+    <!-- UwbRangingScreen: Status when waiting for other device. Sentence -->
     <string name="uwb_status_waiting">Waiting for the other device…</string>
+    <!-- UwbRangingScreen: Status when peer disconnected. Instruction sentence -->
     <string name="uwb_status_peer_disconnected">Lost the other device. Move closer.</string>
+    <!-- UwbRangingScreen: Status when device lacks UWB hardware. Sentence -->
     <string name="uwb_status_unsupported">Find Nearby (UWB) isn\'t supported on this device.</string>
+    <!-- UwbRangingScreen: Generic failure status. Sentence -->
     <string name="uwb_status_failed">Find Nearby (UWB) failed.</string>
-    <string name="uwb_direction_unavailable_hint">Move your phone around to find a direction signal</string>
 
-    <!-- Migrated hardcoded UI strings (auto) -->
-    <!-- SecurityCodeDialog -->
+    <!-- SecurityCodeDialog: Title. Noun phrase -->
     <string name="security_code">Security code</string>
-    <string name="compare_this_code_with_on_their_device_i">Compare this code with %1$s on their device. If the numbers match on both phones, your connection is verified end-to-end — no one is intercepting it.</string>
+    <!-- SecurityCodeDialog: Instruction comparing safety number. %1$s = contact name, e.g. Bob. Sentence with E2E explanation -->
+    <string name="compare_this_code_with_on_their_device_i">Compare this code with <xliff:g id="person_name" example="Bob">%1$s</xliff:g> on their device. If the numbers match on both phones, your connection is verified end-to-end — no one is intercepting it.</string>
+    <!-- SecurityCodeDialog: Loading placeholder while computing safety number. Verb, progressive -->
     <string name="computing">Computing…</string>
-    <string name="couldn_t_compute_yet_s_key_isn_t_availab">Couldn\'t compute yet — %1$s\'s key isn\'t available. Make sure you\'re both connected, then try again.</string>
+    <!-- SecurityCodeDialog: Error when other party key not available. %1$s = person name. Sentence -->
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab">Couldn\'t compute yet — <xliff:g id="person_name" example="Bob">%1$s</xliff:g>\'s key isn\'t available. Make sure you\'re both connected, then try again.</string>
+    <!-- SecurityCodeDialog / generic: Done button. Verb -->
     <string name="done">Done</string>
 
-    <!-- Migrated inner Text constants v3 (auto) -->
-    <!-- UwbRangingScreen -->
+    <!-- UwbRangingScreen: Fallback for unknown direction/distance. Noun/adjective -->
     <string name="unknown">Unknown</string>
+    <!-- UwbRangingScreen: Debug overlay prefix for distance value. Abbreviation noun, keep short, includes trailing space -->
     <string name="dist">dist: </string>
+    <!-- UwbRangingScreen: Debug overlay prefix for azimuth value. Abbreviation noun with leading spaces -->
     <string name="az">   az: </string>
+    <!-- UwbRangingScreen: Debug overlay prefix for elevation value. Abbreviation noun with leading spaces -->
     <string name="el">   el: </string>
+    <!-- UwbRangingScreen: Hint when azimuth null. Instruction sentence -->
     <string name="point_the_back_of_your_phone_toward_your">Point the back of your phone toward your contact</string>
 </resources>

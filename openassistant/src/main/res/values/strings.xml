@@ -1,19 +1,38 @@
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name: launcher label and foreground service title fallback -->
     <string name="app_name">OpenAssistant</string>
+
+    <!-- Chat input placeholder hint. Noun, ellipsis intentional -->
     <string name="recording">Recording&#8230;</string>
+    <!-- Chat input: placeholder when empty, prompts user to type. Noun/ellipsis -->
     <string name="message_placeholder">Message&#8230;</string>
+    <!-- ChatBubble: label for user message that contains audio. Noun phrase, two words, Title Case -->
     <string name="voice_message">Voice Message</string>
-    <string name="mic_error_format">Mic error: %1$s</string>
+    <!-- ChatScreen: Snackbar error when microphone permission granted but recorder fails to start. %1$s = underlying error message -->
+    <string name="mic_error_format">Mic error: <xliff:g id="error" example="Permission denied">%1$s</xliff:g></string>
+    <!-- ChatScreen: TopAppBar title when no active conversation, also default title for newly created conversation -->
     <string name="new_conversation">New Conversation</string>
+    <!-- AndroidManifest: Permission description shown in system Settings > Apps > Permissions for custom inference permission -->
     <string name="perm_desc_inference">Allows other apps to access the on-device AI inference service for extracting structured data.</string>
-    <string name="error_prefix">Error: %1$s</string>
+    <!-- Notification channel name for foreground AI inference service. Noun phrase -->
     <string name="inference_service">Inference Service</string>
+    <!-- Foreground notification content while AI is working. Shown in notification shade -->
     <string name="processing_ai_inference">Processing AI inference...</string>
+    <!-- Chat error: prefix for AI failure inserted as assistant message. %1$s = error detail, keep "Error:" prefix -->
+    <string name="error_prefix">Error: <xliff:g id="error" example="Timeout">%1$s</xliff:g></string>
+    <!-- InferenceService: Error returned via ResultReceiver when intent request has waited >45s in queue and is dropped -->
     <string name="error_request_expired">Request expired in queue</string>
+    <!-- InferenceService: Error when intent inference exceeds timeout inside runIntentInferenceLoop -->
     <string name="error_inference_timeout">Inference timed out</string>
+    <!-- InferenceService: Generic fallback when AI engine throws unexpected exception -->
     <string name="error_ai_engine_failed">AI engine failed</string>
+    <!-- InferenceService: Validation failure when LLM output is not valid JSON matching expected schema after retries -->
     <string name="error_ai_json_schema_mismatch">AI failed to return valid JSON matching the schema.</string>
+
+    <!-- Screen title for settings. Noun -->
     <string name="settings_title">Settings</string>
+    <!-- Section header in Settings for long-term memory list. Noun, plural -->
     <string name="memories">Memories</string>
+    <!-- Empty state in Settings when no long-term memories have been saved yet -->
     <string name="no_memories_yet">No memories yet.</string>
 </resources>
