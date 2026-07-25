@@ -1,11 +1,11 @@
-E SPEED
-R P    
-A A R  
-SPREAD 
-E E P E
-   SEER
-D   S A
-RESEED 
-A P E  
-P A D  
-E R    
+ H       
+ O       
+HIGH     
+  R H    
+  O I BIG
+BRING O  
+O N H R H
+N   BINGO
+G   O   B
+  BORING 
+    N    

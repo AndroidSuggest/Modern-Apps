@@ -44,26 +44,26 @@ import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.Waypoint
 import com.vayunmathur.findfamily.data.radians
-import com.vayunmathur.findfamily.data.toPosition
+import com.vayunmathur.findfamily.data.toGeoPoint
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
 import com.vayunmathur.library.ui.invisibleClickable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.CameraPosition
 import com.vayunmathur.library.map.CameraState
+import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.RasterMap
 import com.vayunmathur.library.map.TileSource
-import org.maplibre.spatialk.geojson.Position
 import kotlin.io.encoding.Base64
 import kotlin.math.abs
 import kotlin.math.cos
 
 val camera = CameraState(CameraPosition())
 
-data class SelectedUser(val user: User, val isShowingPresent: Boolean, val historicalPosition: Position?)
+data class SelectedUser(val user: User, val isShowingPresent: Boolean, val historicalPosition: GeoPoint?)
 data class SelectedWaypoint(val waypoint: Waypoint, val range: Double, val onMoveWaypoint: (Coord) -> Unit)
 
-private fun Position.toCoord() = Coord(latitude, longitude)
+private fun GeoPoint.toCoord() = Coord(latitude, longitude)
 
 @Composable
 fun MapView(
@@ -133,13 +133,13 @@ fun MapView(
                                 draggedCoord ?: waypoint.coord
                             } else waypoint.coord
                             val center =
-                                camera.projection!!.screenLocationFromPosition(coord.toPosition())
+                                camera.projection!!.screenLocationFromPosition(coord.toGeoPoint())
                             if (center !in size.toDpSize()) continue
                             val circumferenceAtLatitude =
                                 40_075_000 * cos(radians(waypoint.coord.lat))
                             val radiusInDegrees = 360 * radiusMeters / circumferenceAtLatitude
                             val edgePoint = camera.projection!!.screenLocationFromPosition(
-                                Position(coord.lon + radiusInDegrees, coord.lat)
+                                GeoPoint(coord.lon + radiusInDegrees, coord.lat)
                             )
                             val radiusPx = abs((center.x - edgePoint.x).toPx())
                             drawCircleWithBorder(
@@ -153,7 +153,7 @@ fun MapView(
                 }
                 for (user in users) {
                     if (selectedUser != null && user.id != selectedUser.user.id) continue
-                    val position = userPositions[user.id]?.coord?.toPosition() ?: continue
+                    val position = userPositions[user.id]?.coord?.toGeoPoint() ?: continue
                     val center =
                         camera.projection!!.screenLocationFromPosition(position) - DpOffset(
                             35.dp,

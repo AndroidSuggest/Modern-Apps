@@ -42,7 +42,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.maplibre.spatialk.geojson.Position
+import com.vayunmathur.library.map.GeoPoint
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -180,13 +180,13 @@ class FindFamilyViewModel(
     private val _isShowingPresent = MutableStateFlow(true)
     val isShowingPresent: StateFlow<Boolean> = _isShowingPresent.asStateFlow()
 
-    private val _historicalPosition = MutableStateFlow<Position?>(null)
-    val historicalPosition: StateFlow<Position?> = _historicalPosition.asStateFlow()
+    private val _historicalPosition = MutableStateFlow<GeoPoint?>(null)
+    val historicalPosition: StateFlow<GeoPoint?> = _historicalPosition.asStateFlow()
 
     fun setSelectedUserId(id: Long?) { _selectedUserId.value = id }
     fun setSelectedWaypointId(id: Long?) { _selectedWaypointId.value = id }
     fun setShowingPresent(value: Boolean) { _isShowingPresent.value = value }
-    fun setHistoricalPosition(position: Position?) { _historicalPosition.value = position }
+    fun setHistoricalPosition(position: GeoPoint?) { _historicalPosition.value = position }
 
     fun selectUser(userId: Long) {
         _selectedUserId.value = userId

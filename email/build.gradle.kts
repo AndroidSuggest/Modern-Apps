@@ -45,9 +45,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.jakarta.activation.api)
     implementation(libs.jakarta.mail)
-    implementation(libs.jakarta.activation)
     implementation(libs.androidx.browser)
     implementation(libs.kotlinx.serialization.json)
     // Room

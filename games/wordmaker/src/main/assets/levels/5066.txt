@@ -1,10 +1,11 @@
-   HILL   
-    S   H 
-    L H E 
- SIDEHILL 
- I    L L 
- D  SELL L
-HELI  S  I
-I     IDLE
-D     D   
-E  SHIELD 
+  L       
+BEE       
+  E   REEL
+LARD    L 
+A  E B  D 
+D BARRELED
+   R E  R 
+  L  A    
+ BEARD    
+  A       
+  DRAB    

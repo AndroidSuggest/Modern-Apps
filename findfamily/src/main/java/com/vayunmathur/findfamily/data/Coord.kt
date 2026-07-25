@@ -1,14 +1,17 @@
 package com.vayunmathur.findfamily.data
 
 import android.location.Location
+import com.vayunmathur.library.map.GeoPoint
 import kotlinx.serialization.Serializable
-import org.maplibre.spatialk.geojson.Position
 import kotlin.math.PI
 
 @Serializable
 data class Coord(val lat: Double, val lon: Double)
 
-fun Coord.toPosition() = Position(lon, lat)
+fun Coord.toGeoPoint() = GeoPoint(lon, lat)
+
+/** @deprecated Use [toGeoPoint] — kept for transitional compat. */
+fun Coord.toPosition() = toGeoPoint()
 
 fun radians(degrees: Double) = degrees * PI / 180
 

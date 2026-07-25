@@ -23,7 +23,6 @@ configure<com.android.build.api.dsl.LibraryExtension> {
 
 dependencies {
     // AndroidX Core & Lifecycle
-    implementation(libs.okio)
     implementation(libs.kotlinx.datetime)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

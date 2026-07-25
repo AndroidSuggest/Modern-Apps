@@ -1,10 +1,10 @@
-E     ICON 
-N      A   
-DIM    N  C
-  INCOME  O
-AID    DAMN
-  OCEAN   E
-  C        
- DEMON     
-  A        
-  NAME     
+      T   
+   MITE M 
+M   T N I 
+AIM E   N 
+N AMMONITE
+  N   O   
+ MEAT T   
+    E     
+  NEAT    
+    M     

@@ -1,11 +1,10 @@
-     ZAP   
-      I    
-      DIE  
-  SPICE    
-  I  A     
-P Z  P E   
-ICED SEPIA 
-E D  I I   
-D    Z CAPE
- ASIDE     
-     D     
+     F F  
+     I O  
+REGION R  
+E    G E I
+I FOREWING
+G R  R G N
+N O W INFO
+  GRIN   R
+    N FINE
+ RING     

@@ -1,9 +1,9 @@
-  PRIG  
-   A    
-G  P NAP
-A  P I A
-PARING R
-   N R  
-PING AIR
-A I    A
-N P    P
+       K
+       I
+LIB  BUN
+  U  U  
+ BLUING 
+  K  K  
+ LING   
+  N     
+  GLIB  

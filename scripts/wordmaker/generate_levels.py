@@ -273,12 +273,37 @@ if __name__ == "__main__":
     # Load bad words
     try:
         with open(os.path.join(script_dir, "bad-words.txt"), "r") as f:
-            bad_words = set([w.strip().upper() for w in f.readlines() if w.strip()])
+            raw_bad = [w.strip().upper() for w in f.readlines() if w.strip()]
+            bad_words = set(raw_bad)
+            # 3-letter bad words are mostly innocent substrings (ASS in CLASS, TIT in TITLE, etc)
+            # Common-sense: only allow len>=4 for substring blocking, except a small
+            # denylist of 3-letter slurs that are almost never innocent substrings.
+            # Exact matches are always blocked (any length).
+            COMMON_SENSE_INNOCENT_3 = {"ASS", "TIT", "SEX", "CUM"}  # very common in innocent words
+            # FAG, BBW, XXX are unambiguous enough to block as substrings too
+            bad_substrings = []
+            for b in raw_bad:
+                if not b.isalpha():
+                    continue
+                if len(b) >= 4:
+                    bad_substrings.append(b)
+                elif len(b) == 3 and b not in COMMON_SENSE_INNOCENT_3:
+                    bad_substrings.append(b)
     except FileNotFoundError:
         bad_words = set()
-    
-    # Filter out bad words
-    words = [w for w in words if w not in bad_words]
+        bad_substrings = []
+
+    def contains_bad_substring(word: str) -> bool:
+        # Exact match always blocked (includes 3-letter)
+        if word in bad_words:
+            return True
+        for bad in bad_substrings:
+            if bad in word:
+                return True
+        return False
+
+    # Filter out bad words (exact + substring with common-sense)
+    words = [w for w in words if not contains_bad_substring(w)]
     
     generator = LevelGenerator(words)
     

@@ -232,18 +232,56 @@ class CompetitiveLevelGenerator(private val words: List<String>) {
          * frequency order preserved, bad words removed).
          */
         fun fromAssets(context: Context): CompetitiveLevelGenerator {
-            val bad = runCatching {
+            val badExact = runCatching {
                 context.assets.open("wordgen/bad-words.txt").bufferedReader().useLines { lines ->
                     lines.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toHashSet()
                 }
             }.getOrDefault(hashSetOf())
+
+            // Good Christian family filtering:
+            // - Exact matches always blocked (DAMN, HELL, FRIGGING, NIGGAH, ASS, etc)
+            // - Substring blocked for severe slurs len>=4 (NIGGAH contains NIGGA) but NOT for
+            //   swear-adjacent euphemisms where innocent embedding is common:
+            //   FRIG in REFRIGERATOR, HELL in SHELL, CRAP in SCRAP, HECK in CHECK, etc.
+            // - 3-letter innocent substrings ASS/TIT/SEX/CUM allowed as substring (CLASS, TITLE)
+            // Must apply to vertical words as well as horizontal during generation.
+            val christianExactOnly = setOf(
+                "FRIGGING","FRIGGIN","FRIGGED","FRIG","FRIKKIN","FRIKKING","FRICKING","FRICKIN","FRICK",
+                "FECKING","FECKIN","FECK","FREAKING","FREAKIN",
+                "DAMN","DAMNED","DAMNING","DAMNABLY","DAMNDEST","DAMMIT","GODDAMN","GODDAMNED","GODDAM",
+                "HELL","HELLS","HELLISH",
+                "CRAP","CRAPPY","CRAPPER",
+                "PISS","PISSED","PISSER","PISSING","PISSY",
+                "DARN","DARNED","DARNDEST","DANG","DANGED",
+                "HECK","HECKLE","HECKLING","HECKLED","HECKLER",
+                "BLOODY","BLOODILY"
+            )
+            val innocent3 = setOf("ASS", "TIT", "SEX", "CUM")
+            val badSubstrings = badExact.filter { word ->
+                val alpha = word.all { c -> c in 'A'..'Z' }
+                if (!alpha) return@filter false
+                if (word in christianExactOnly) return@filter false // exact-only
+                when {
+                    word.length >= 4 -> true
+                    word.length == 3 && word !in innocent3 -> true
+                    else -> false
+                }
+            }
+
+            fun isBadWord(w: String): Boolean {
+                if (w in badExact) return true
+                for (b in badSubstrings) {
+                    if (b in w) return true
+                }
+                return false
+            }
 
             val seen = HashSet<String>()
             val words = ArrayList<String>()
             context.assets.open("wordgen/common_words_list.txt").bufferedReader().useLines { lines ->
                 for (raw in lines) {
                     val w = raw.trim().uppercase()
-                    if (w.isNotEmpty() && w.all { it in 'A'..'Z' } && w !in seen && w !in bad) {
+                    if (w.isNotEmpty() && w.all { it in 'A'..'Z' } && w !in seen && !isBadWord(w)) {
                         seen.add(w)
                         words.add(w)
                     }

@@ -1,9 +1,10 @@
-S     CAPE
-P C E A   
-I A P SIDE
-CAPSIZE   
-E S C     
-D I       
-  Z       
-PIED      
-  D       
+    SENSE  
+    W      
+   NEWSDESK
+    D K  K 
+ KNEE E DEN
+W E   W  W 
+E E  KEEN  
+END   D    
+           
+      NEWS 

@@ -88,14 +88,15 @@ import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.TemporaryLink
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.Waypoint
-import com.vayunmathur.findfamily.data.toPosition
+import com.vayunmathur.findfamily.data.toGeoPoint
 import com.vayunmathur.findfamily.ui.dialogs.encodeBase26
 import com.vayunmathur.findfamily.ui.dialogs.SecurityCodeDialog
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
 import com.vayunmathur.findfamily.util.Networking
 import com.vayunmathur.findfamily.util.Platform
 import com.vayunmathur.library.ui.BackupButtons
-import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconCopy
 import com.vayunmathur.library.ui.IconDelete
@@ -501,8 +502,8 @@ fun MainPage(
     // Map animation logic
     LaunchedEffect(selectedUserId, isShowingPresent, historicalPosition) {
         if (selectedUserId != null) {
-            val targetPosition = if (isShowingPresent) {
-                userPositions[selectedUserId!!]?.coord?.toPosition()
+    val targetPosition = if (isShowingPresent) {
+                userPositions[selectedUserId!!]?.coord?.toGeoPoint()
             } else {
                 historicalPosition
             }
@@ -520,7 +521,7 @@ fun MainPage(
     LaunchedEffect(selectedWaypointId) {
         if (selectedWaypointId != null && selectedWaypointId != 0L) {
             val waypoint = waypoints.find { it.id == selectedWaypointId }
-            waypoint?.coord?.toPosition()?.let {
+            waypoint?.coord?.toGeoPoint()?.let {
                 camera.animateTo(
                     camera.position.copy(
                         target = it,
@@ -554,7 +555,7 @@ fun BoxScope.HistoryScrubber(
     backStack: NavBackStack<Route>,
     ffViewModel: FindFamilyViewModel,
     userid: Long,
-    setHistoricalPosition: (org.maplibre.spatialk.geojson.Position) -> Unit
+    setHistoricalPosition: (GeoPoint) -> Unit
 ) {
     val state = rememberHistoryScrubberState(
         initialInstant = Clock.System.now(),
@@ -586,7 +587,7 @@ fun BoxScope.HistoryScrubber(
     LaunchedEffect(state.instant, locs) {
         if (locs.isNotEmpty()) {
             val closest = locs.minBy { (it.timestamp - state.instant).absoluteValue }
-            setHistoricalPosition(closest.coord.toPosition())
+            setHistoricalPosition(closest.coord.toGeoPoint())
         }
     }
 }
