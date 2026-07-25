@@ -64,8 +64,10 @@ use crate::*;
             .filter(|p| matches!(p, Prim::Fill { .. }))
             .collect();
         assert_eq!(fills.len(), 1, "expected one filled rectangle");
-        if let Prim::Fill { argb, pts, .. } = fills[0] {
+        if let Prim::Fill { argb, contours, .. } = fills[0] {
             assert_eq!(*argb, 0xFFFF0000, "fill should be red");
+            assert_eq!(contours.len(), 1, "rectangle is a single contour");
+            let pts = &contours[0];
             assert!(pts.len() >= 4, "rectangle should have >=4 points");
             assert_eq!(pts[0], (100.0, 100.0));
         }
@@ -85,6 +87,24 @@ use crate::*;
         }
         if let Prim::Text { text, .. } = texts[1] {
             assert_eq!(text, "i");
+        }
+    }
+
+    /// A path with an inner subpath (a hole, e.g. a glyph counter) must emit a
+    /// SINGLE fill primitive carrying both contours, so the winding rule cuts the
+    /// hole out instead of filling it in as a second solid polygon.
+    #[test]
+    fn fill_with_hole_is_single_multicontour_prim() {
+        let mut prims: Vec<Prim> = Vec::new();
+        let outer = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        let hole = vec![(3.0, 3.0), (7.0, 3.0), (7.0, 7.0), (3.0, 7.0)];
+        emit_fill(&mut prims, &[outer, hole], 0xFF000000, false, 1.0, BlendMode::Normal);
+        assert_eq!(prims.len(), 1, "a path with a hole is one fill primitive");
+        match &prims[0] {
+            Prim::Fill { contours, .. } => {
+                assert_eq!(contours.len(), 2, "outer + hole contours preserved");
+            }
+            _ => panic!("expected a Fill primitive"),
         }
     }
 

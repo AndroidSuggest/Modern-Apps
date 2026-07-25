@@ -1,7 +1,7 @@
 use crate::*;
 
     const WIRE_MAGIC: u32 = 0x50444657; // 'PDFW'
-    const WIRE_VERSION: u32 = 5;
+    const WIRE_VERSION: u32 = 6;
     #[allow(dead_code)]
     const WIRE_VERSION_V2: u32 = 2;
     const TAG_TEXT: u8 = 1;
@@ -22,13 +22,13 @@ use crate::*;
     const PATHOP_CUBIC: u8 = 2;
     const PATHOP_CLOSE: u8 = 3;
 
-    /// Serialize a page into a compact little-endian buffer v5:
+    /// Serialize a page into a compact little-endian buffer v6:
     ///
     /// ```text
-    /// header: u32 MAGIC=0x50444657, u32 VERSION=5, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+    /// header: u32 MAGIC=0x50444657, u32 VERSION=6, f32 pageWidth, f32 pageHeight, u32 primitiveCount
     /// per primitive: u8 tag, then payload
     ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5)
-    ///   2 Fill:   u32 argb, u8 evenOdd, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
+    ///   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
     ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
     ///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
     ///   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [u8 kind, coords]...  (path-ops section is v4)
@@ -73,11 +73,15 @@ use crate::*;
                     buf.push(*render_mode); // v4
                     buf.push(*blend as u8); // v5
                 }
-                Prim::Fill { argb, even_odd, pts, blend } => {
+                Prim::Fill { argb, even_odd, contours, blend } => {
                     buf.push(TAG_FILL);
                     buf.extend_from_slice(&argb.to_le_bytes());
                     buf.push(if *even_odd { 1 } else { 0 });
-                    write_points(&mut buf, pts);
+                    let nc = contours.len().min(u16::MAX as usize);
+                    buf.extend_from_slice(&(nc as u16).to_le_bytes()); // v6
+                    for c in &contours[..nc] {
+                        write_points(&mut buf, c);
+                    }
                     buf.push(*blend as u8); // v5
                 }
                 Prim::Stroke { argb, width, dash, dash_phase, cap, join, miter, pts, blend } => {
@@ -243,7 +247,10 @@ use crate::*;
                     Prim::Fill {
                         argb: 0xFFAABBCC,
                         even_odd: true,
-                        pts: vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+                        contours: vec![
+                            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+                            vec![(0.25, 0.25), (0.5, 0.25), (0.5, 0.5)],
+                        ],
                         blend: BlendMode::Screen,
                     },
                     Prim::Stroke {
@@ -299,7 +306,10 @@ use crate::*;
             assert_eq!(r.u8(), TAG_FILL);
             assert_eq!(r.u32(), 0xFFAABBCC);
             assert_eq!(r.u8(), 1); // even-odd
-            assert_eq!(r.u16(), 3);
+            assert_eq!(r.u16(), 2); // nContours (v6)
+            assert_eq!(r.u16(), 3); // contour 0 nPts
+            r.pos += 3 * 8;
+            assert_eq!(r.u16(), 3); // contour 1 nPts
             r.pos += 3 * 8;
             assert_eq!(r.u8(), BlendMode::Screen as u8); // blend (v5)
 

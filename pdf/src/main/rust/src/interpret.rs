@@ -694,7 +694,7 @@ pub(crate) fn interpret_content(
             }
             "CS" => {
                 if let Some(cs_name) = o.first() {
-                    if let Some(kind) = parse_cs_kind(doc, Some(cs_name), &colorspaces) {
+                    if let Some(kind) = parse_named_cs(doc, cs_name, resources, &colorspaces) {
                         gs.stroke_cs = kind;
                     }
                     gs.stroke_pattern = None;
@@ -702,7 +702,7 @@ pub(crate) fn interpret_content(
             }
             "cs" => {
                 if let Some(cs_name) = o.first() {
-                    if let Some(kind) = parse_cs_kind(doc, Some(cs_name), &colorspaces) {
+                    if let Some(kind) = parse_named_cs(doc, cs_name, resources, &colorspaces) {
                         gs.non_stroke_cs = kind;
                     }
                     gs.fill_pattern = None;

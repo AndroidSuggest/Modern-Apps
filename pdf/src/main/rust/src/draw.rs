@@ -61,15 +61,16 @@ pub(crate) fn emit_stroke(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], g
 
 pub(crate) fn emit_fill(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], argb: u32, even_odd: bool, alpha_fill: f64, blend: BlendMode) {
     let argb = apply_alpha_to_argb(argb, alpha_fill);
-    for sp in subpaths {
-        if sp.len() >= 3 {
-            prims.push(Prim::Fill {
-                argb,
-                even_odd,
-                pts: sp.iter().map(|&(x, y)| (x as f32, y as f32)).collect(),
-                blend,
-            });
-        }
+    // All subpaths of the path form ONE fill region so interior contours (glyph
+    // counters / holes) are cut out by the winding rule, instead of being filled
+    // in as separate solid polygons.
+    let contours: Vec<Vec<(f32, f32)>> = subpaths
+        .iter()
+        .filter(|sp| sp.len() >= 3)
+        .map(|sp| sp.iter().map(|&(x, y)| (x as f32, y as f32)).collect())
+        .collect();
+    if !contours.is_empty() {
+        prims.push(Prim::Fill { argb, even_odd, contours, blend });
     }
 }
 

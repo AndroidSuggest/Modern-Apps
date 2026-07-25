@@ -83,16 +83,20 @@ pub(crate) fn parse_cs_kind(doc: &Document, cs_obj: Option<&Object>, cs_resource
     let obj = cs_obj?;
     // If Name, check if it's a resource reference
     if let Object::Name(name) = obj {
-        // Check resources
+        // A named colorspace from the resource dictionary. The resolved object is
+        // normally an Array (e.g. [/ICCBased ...], [/Separation ...]); it may also
+        // be an indirect reference to one. (The previous `get_dictionary` check
+        // rejected arrays outright, silently dropping the colorspace to gray.)
         if let Some(&id) = cs_resources.get(name) {
-            if let Ok(d) = doc.get_dictionary(id) {
-                // Should be an array?
-                // For simplicity, try to parse from dict that may contain colorspace array? Actually colorspace resource can be array directly stored as indirect object
-                // So we need to get object id's object
-                if let Ok(Object::Array(arr)) = doc.get_object(id) {
-                    return parse_cs_array(doc, &arr, cs_resources);
+            if let Ok(resolved) = doc.get_object(id) {
+                match resolved {
+                    Object::Array(arr) => return parse_cs_array(doc, arr, cs_resources),
+                    // Guard against a name that resolves to itself.
+                    Object::Name(n2) if n2 != name => {
+                        return parse_cs_kind(doc, Some(resolved), cs_resources);
+                    }
+                    _ => {}
                 }
-                // fallback: try array from dict? Not
             }
         }
         // Builtin names
@@ -112,6 +116,39 @@ pub(crate) fn parse_cs_kind(doc: &Document, cs_obj: Option<&Object>, cs_resource
         return parse_cs_kind(doc, Some(deref_obj), cs_resources);
     }
     None
+}
+
+/// Resolve a colorspace operand for the `cs`/`CS` operators. Named entries in
+/// the page `/Resources /ColorSpace` dict are honored whether they are stored as
+/// a direct array (e.g. `/Cs0 [/ICCBased 5 0 R]`) or an indirect reference — the
+/// pre-built id map only captures the reference form, so a direct array would
+/// otherwise fall through to the DeviceGray default and render colors as gray.
+pub(crate) fn parse_named_cs(
+    doc: &Document,
+    cs_obj: &Object,
+    resources: Option<&lopdf::Dictionary>,
+    cs_resources: &HashMap<Vec<u8>, ObjectId>,
+) -> Option<CsKind> {
+    if let Object::Name(name) = cs_obj {
+        // Device builtins take precedence and never live in the resource dict.
+        match name.as_slice() {
+            b"DeviceRGB" | b"RGB" => return Some(CsKind::DeviceRGB),
+            b"DeviceCMYK" | b"CMYK" => return Some(CsKind::DeviceCMYK),
+            b"DeviceGray" | b"Gray" | b"G" => return Some(CsKind::DeviceGray),
+            b"Pattern" => return Some(CsKind::Pattern),
+            _ => {}
+        }
+        if let Some(res) = resources {
+            if let Some(Object::Dictionary(csd)) = res.get(b"ColorSpace").ok().and_then(|o| deref(doc, o)) {
+                if let Ok(entry) = csd.get(name) {
+                    if let Some(k) = parse_cs_kind(doc, Some(entry), cs_resources) {
+                        return Some(k);
+                    }
+                }
+            }
+        }
+    }
+    parse_cs_kind(doc, Some(cs_obj), cs_resources)
 }
 
 pub(crate) fn parse_cs_array(doc: &Document, arr: &[Object], cs_resources: &HashMap<Vec<u8>, ObjectId>) -> Option<CsKind> {
@@ -533,5 +570,48 @@ mod tests {
         let half = eval_cs_to_rgb(&doc, &cs, &[0.5], &res).unwrap();
         let r = (half >> 16) & 0xFF;
         assert!(r > 100 && r < 160, "half tint red channel ~128, got {r}");
+    }
+
+    // A named ICCBased colorspace stored as an INDIRECT array in the resource id
+    // map must resolve to RGB — not collapse to DeviceGray (the old
+    // get_dictionary check rejected arrays, turning colors gray).
+    #[test]
+    fn named_iccbased_array_resolves_to_rgb_not_gray() {
+        use lopdf::{dictionary, Object, Stream};
+        let mut doc = Document::with_version("1.7");
+        let icc_id = doc.add_object(Stream::new(dictionary! { "N" => 3 }, vec![0u8; 4]));
+        let cs_id = doc.add_object(Object::Array(vec![
+            Object::Name(b"ICCBased".to_vec()),
+            Object::Reference(icc_id),
+        ]));
+        let mut res = HashMap::new();
+        res.insert(b"CS0".to_vec(), cs_id);
+        let kind = parse_cs_kind(&doc, Some(&Object::Name(b"CS0".to_vec())), &res)
+            .expect("named ICCBased should resolve");
+        let argb = eval_cs_to_rgb(&doc, &kind, &[0.0, 1.0, 0.0], &res).unwrap();
+        assert_eq!(argb & 0x00FF_FFFF, 0x0000_FF00, "ICCBased/RGB green must stay green");
+    }
+
+    // A named colorspace stored as a DIRECT array (not an indirect reference) is
+    // not in the pre-built id map, so it must be resolved via the raw resource
+    // ColorSpace dict by parse_named_cs.
+    #[test]
+    fn direct_array_colorspace_resolves_via_resources() {
+        use lopdf::{dictionary, Object, Stream};
+        let mut doc = Document::with_version("1.7");
+        let icc_id = doc.add_object(Stream::new(dictionary! { "N" => 3 }, vec![0u8; 4]));
+        let resources = dictionary! {
+            "ColorSpace" => dictionary! {
+                "CS0" => Object::Array(vec![
+                    Object::Name(b"ICCBased".to_vec()),
+                    Object::Reference(icc_id),
+                ])
+            }
+        };
+        let empty = HashMap::new();
+        let kind = parse_named_cs(&doc, &Object::Name(b"CS0".to_vec()), Some(&resources), &empty)
+            .expect("direct-array colorspace should resolve");
+        let argb = eval_cs_to_rgb(&doc, &kind, &[1.0, 0.0, 0.0], &empty).unwrap();
+        assert_eq!(argb & 0x00FF_FFFF, 0x00FF_0000, "direct-array ICCBased red must stay red");
     }
 }

@@ -22,7 +22,10 @@ pub(crate) enum Prim {
     Fill {
         argb: u32,
         even_odd: bool,
-        pts: Vec<(f32, f32)>,
+        /// One or more closed contours making up a single fill region. Interior
+        /// contours (glyph counters / holes) are cut out by the even-odd or
+        /// nonzero winding rule when all contours are filled as one path.
+        contours: Vec<Vec<(f32, f32)>>,
         /// Blend mode (from the graphics-state `/BM`). Serialized in v5.
         blend: BlendMode,
     },
