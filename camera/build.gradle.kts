@@ -130,5 +130,5 @@ dependencies {
     implementation(libs.zxing.core)
     // On-device portrait segmentation via ncnn (Tencent, BSD-3, CPU-only). Forked
     // and published as an AAR through JitPack, same pattern as Stockfish-Library.
-    implementation("com.github.vayun-mathur:ncnn-android:1.0.0")
+    implementation("com.github.vayun-mathur:ncnn-android:1.1.0")
 }
