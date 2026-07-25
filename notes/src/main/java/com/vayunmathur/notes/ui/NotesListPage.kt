@@ -48,6 +48,7 @@ import com.vayunmathur.notes.data.Note
 import com.vayunmathur.notes.data.noteDbConfigs
 import com.vayunmathur.notes.util.NotesViewModel
 import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.draggableHandle
 import com.vayunmathur.library.ui.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -200,6 +201,7 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
         ) {
             items(localData, key = { it.id }) { note ->
                 ReorderableItem(reorderState, key = note.id) { isDragging ->
+                    val itemIndex = localData.indexOf(note)
                     val elevation by animateDpAsState(if (isDragging) 4.dp else 0.dp)
                     val isSelected = note.id in selectedIds
                     Surface(Modifier.animateItem(), shadowElevation = elevation) {
@@ -228,6 +230,9 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
                                     if (localData.size > 1 && selectedIds.size < localData.size && (!isSelectionMode || isContiguous)) {
                                         IconButton(
                                             modifier = Modifier.draggableHandle(
+                                                reorderState = reorderState,
+                                                key = note.id,
+                                                index = itemIndex,
                                                 onDragStarted = {
                                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                                                 },

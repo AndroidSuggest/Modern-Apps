@@ -1,4 +1,5 @@
 package com.vayunmathur.music.util
+import com.vayunmathur.music.R
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap

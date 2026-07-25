@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.library.ui.*

@@ -34,10 +34,10 @@ object ModelUrls {
     const val SIGLIP_TOKENIZER_URL = "${MIRROR_BASE}siglip2_tokenizer.model"
 
     // SHA-256 integrity checks (verified against the files uploaded to the mirror).
-    const val GEMMA_SHA256: String? = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
-    const val SIGLIP_VISION_SHA256: String? = "a1959f7bd3993a607e48839f6d01e25b876fe76afda301b028b78eef68aabd95"
-    const val SIGLIP_TEXT_SHA256: String? = "3a0603d3a00c05a80a6ded4743c16aaac7b1e62cdcc7e362e7ce418659b96400"
-    const val SIGLIP_TOKENIZER_SHA256: String? = "61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2"
+    const val GEMMA_SHA256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c"
+    const val SIGLIP_VISION_SHA256 = "a1959f7bd3993a607e48839f6d01e25b876fe76afda301b028b78eef68aabd95"
+    const val SIGLIP_TEXT_SHA256 = "3a0603d3a00c05a80a6ded4743c16aaac7b1e62cdcc7e362e7ce418659b96400"
+    const val SIGLIP_TOKENIZER_SHA256 = "61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2"
 
     val GEMMA = ModelDownloadItem(GEMMA_URL, GEMMA_FILE, "Model", GEMMA_SHA256)
     val SIGLIP_VISION = ModelDownloadItem(SIGLIP_VISION_URL, SIGLIP_VISION_FILE, "Vision Model", SIGLIP_VISION_SHA256)

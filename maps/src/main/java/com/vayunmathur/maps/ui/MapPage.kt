@@ -100,6 +100,7 @@ import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.util.ClickResult
 import org.maplibre.spatialk.geojson.Position
 import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.draggableHandle
 import com.vayunmathur.library.ui.rememberReorderableLazyListState
 import java.io.File
 import com.vayunmathur.maps.R as MapsR
@@ -415,7 +416,7 @@ fun MapPage(backStack: NavBackStack<Route>, viewModel: SelectedFeatureViewModel,
                                                     IconClose()
                                                 }
                                             }
-                                            IconDragHandle(Modifier.draggableHandle(state, key = itemKey, index = idx))
+                                            IconDragHandle(Modifier.draggableHandle(state, key = item?.position?.toString() ?: "", index = idx))
                                         }
                                     }, colors = ListItemDefaults.colors(Color.Transparent))
                                 }

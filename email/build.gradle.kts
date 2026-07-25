@@ -45,7 +45,6 @@ android {
 }
 
 dependencies {
-    implementation(libs.jakarta.mail.api)
     implementation(libs.jakarta.activation.api)
     implementation(libs.jakarta.mail)
     implementation(libs.jakarta.activation)

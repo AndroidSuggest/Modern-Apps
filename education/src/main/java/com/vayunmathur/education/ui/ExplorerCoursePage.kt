@@ -1,4 +1,5 @@
 package com.vayunmathur.education.ui
+import com.vayunmathur.education.R
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

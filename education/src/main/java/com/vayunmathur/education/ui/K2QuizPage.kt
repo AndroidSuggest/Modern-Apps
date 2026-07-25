@@ -1,4 +1,5 @@
 package com.vayunmathur.education.ui
+import com.vayunmathur.education.R
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn

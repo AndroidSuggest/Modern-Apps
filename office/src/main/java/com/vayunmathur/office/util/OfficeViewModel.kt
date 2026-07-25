@@ -2812,9 +2812,9 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                         syncDoc(currentDocId!!, currentDocKey!!)
                     }
                 }
-                launch(Dispatchers.Main) { Toast.makeText(getApplication(), getApplication().getString(R.string.saved), Toast.LENGTH_SHORT).show() }
+                launch(Dispatchers.Main) { Toast.makeText(getApplication<Application>(), getApplication<Application>().getString(R.string.saved), Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
-                launch(Dispatchers.Main) { Toast.makeText(getApplication(), getApplication().getString(R.string.save_failed, e.message), Toast.LENGTH_SHORT).show() }
+                launch(Dispatchers.Main) { Toast.makeText(getApplication<Application>(), getApplication<Application>().getString(R.string.save_failed, e.message), Toast.LENGTH_SHORT).show() }
             } finally {
                 _isSaving.value = false
             }

@@ -1,4 +1,5 @@
 package com.vayunmathur.travel.ui
+import com.vayunmathur.travel.R
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

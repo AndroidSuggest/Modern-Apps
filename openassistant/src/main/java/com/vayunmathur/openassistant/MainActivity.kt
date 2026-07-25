@@ -19,6 +19,7 @@ import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 import com.vayunmathur.openassistant.data.AppDatabase
+import com.vayunmathur.openassistant.data.ConversationDao
 import com.vayunmathur.openassistant.data.MemoryDao
 import com.vayunmathur.openassistant.data.MessageDao
 import com.vayunmathur.openassistant.ui.LiteRTChatUi

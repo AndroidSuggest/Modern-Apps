@@ -1,4 +1,5 @@
 package com.vayunmathur.travel.ui
+import com.vayunmathur.travel.R
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

@@ -1,4 +1,5 @@
 package com.vayunmathur.messages
+import com.vayunmathur.messages.R
 
 import android.Manifest
 import android.content.Intent

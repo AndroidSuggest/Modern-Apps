@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.domain.projection.ViewState
 import com.vayunmathur.astronomy.ui.AstronomyViewModel

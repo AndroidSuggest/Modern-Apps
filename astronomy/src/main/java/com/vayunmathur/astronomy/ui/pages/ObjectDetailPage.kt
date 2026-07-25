@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.domain.engine.TimeEngine
 import com.vayunmathur.astronomy.domain.engine.toDeg
@@ -53,9 +54,9 @@ fun ObjectDetailPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewMod
                     else if (rs.isNeverUp) Text(stringResource(R.string.never_rises_at_this_location))
                     else if (rs.isCircumpolar) Text(stringResource(R.string.circumpolar_never_sets))
                     else {
-                        Text(stringResource(R.string.rise_1, rs.riseJd?.let { jdToLocal(it))--"}")
-                        Text(stringResource(R.string.transit_1, rs.transitJd?.let { jdToLocal(it))--"}")
-                        Text(stringResource(R.string.set_1, rs.setJd?.let { jdToLocal(it))--"}")
+                        Text(stringResource(R.string.rise_1, rs.riseJd?.let { jdToLocal(it) } ?: "—"))
+                        Text(stringResource(R.string.transit_1, rs.transitJd?.let { jdToLocal(it) } ?: "—"))
+                        Text(stringResource(R.string.set_1, rs.setJd?.let { jdToLocal(it) } ?: "—"))
                     }
                 }
             }

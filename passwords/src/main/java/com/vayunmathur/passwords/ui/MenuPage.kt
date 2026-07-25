@@ -1,4 +1,5 @@
 package com.vayunmathur.passwords.ui
+import com.vayunmathur.passwords.R
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box

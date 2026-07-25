@@ -300,7 +300,7 @@
     <string name="word_count_bar_1">Word count bar</string>
     <string name="hide">Hide</string>
     <string name="replace_1">Replace</string>
-    <string name="case">☑ Case</string>
+    <string name="case_on">☑ Case</string>
     <string name="case_1">☐ Case</string>
     <string name="word">☑ Word</string>
     <string name="word_1">☐ Word</string>

@@ -1,4 +1,5 @@
 package com.vayunmathur.messages.ui.setup
+import com.vayunmathur.messages.R
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement

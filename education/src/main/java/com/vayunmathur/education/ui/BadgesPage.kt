@@ -1,4 +1,5 @@
 package com.vayunmathur.education.ui
+import com.vayunmathur.education.R
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

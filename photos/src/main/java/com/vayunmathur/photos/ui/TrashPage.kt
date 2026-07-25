@@ -1,4 +1,5 @@
 package com.vayunmathur.photos.ui
+import com.vayunmathur.photos.R
 
 import android.app.Activity
 import android.provider.MediaStore

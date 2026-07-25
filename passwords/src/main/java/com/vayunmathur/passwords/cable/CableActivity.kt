@@ -11,7 +11,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.compose.ui.res.stringResource
 import com.vayunmathur.passwords.R
 
 /**
@@ -76,7 +75,7 @@ class CableActivity : FragmentActivity() {
                 .setTitle("Sign in on your other device?")
                 .setSubtitle("Verify to approve this passkey sign-in")
                 .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                .setNegativeButtonText(stringResource(R.string.cancel))
+                .setNegativeButtonText(getString(R.string.cancel))
                 .build()
         )
     }

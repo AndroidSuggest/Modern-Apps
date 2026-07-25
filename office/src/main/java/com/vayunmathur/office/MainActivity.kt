@@ -909,7 +909,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                         TextButton(onClick = { val n = viewModel.replaceInDocument(searchQuery, replaceText, true, matchCase, wholeWord); if (n > 0) searchQuery = "" }) { Text(stringResource(R.string.all)) }
                                     }
                                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        TextButton(onClick = { matchCase = !matchCase }) { Text(if (matchCase) stringResource(R.string.case) else stringResource(R.string.case_1)) }
+                                        TextButton(onClick = { matchCase = !matchCase }) { Text(if (matchCase) stringResource(R.string.case_on) else stringResource(R.string.case_1)) }
                                         TextButton(onClick = { wholeWord = !wholeWord }) { Text(if (wholeWord) stringResource(R.string.word) else stringResource(R.string.word_1)) }
                                     }
                                 }
@@ -988,8 +988,9 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         modifier = Modifier.align(Alignment.TopCenter).zIndex(1f).fillMaxWidth()
                     ) {
+                        val typingLabel = stringResource(R.string.typing)
                         Text(
-                            presence.joinToString(", ") { it.name + (it.loc?.let { l -> " · $l" } ?: "") + if (it.typing) stringResource(R.string.typing) else "" }
+                            presence.joinToString(", ") { it.name + (it.loc?.let { l -> " · $l" } ?: "") + if (it.typing) typingLabel else "" }
                                 .let { stringResource(R.string.online_1, it) },
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)

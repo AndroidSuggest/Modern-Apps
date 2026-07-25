@@ -205,7 +205,7 @@ fun NotePage(
                                 // (TransactionTooLargeException), so for large notes copy a
                                 // URI to the exported .md instead of the raw text.
                                 if (markdown.length < 100_000) {
-                                    ClipData.newPlainText(stringResource(R.string.note), markdown)
+                                    ClipData.newPlainText(context.getString(R.string.note), markdown)
                                 } else {
                                     val uri = markdownCacheUri(context, note, markdown)
                                     ClipData.newUri(context.contentResolver, "note", uri)
