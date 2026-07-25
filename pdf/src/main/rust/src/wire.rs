@@ -1,7 +1,7 @@
 use crate::*;
 
     const WIRE_MAGIC: u32 = 0x50444657; // 'PDFW'
-    const WIRE_VERSION: u32 = 6;
+    const WIRE_VERSION: u32 = 7;
     #[allow(dead_code)]
     const WIRE_VERSION_V2: u32 = 2;
     const TAG_TEXT: u8 = 1;
@@ -27,7 +27,7 @@ use crate::*;
     /// ```text
     /// header: u32 MAGIC=0x50444657, u32 VERSION=6, f32 pageWidth, f32 pageHeight, u32 primitiveCount
     /// per primitive: u8 tag, then payload
-    ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5)
+    ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7)
     ///   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
     ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
     ///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
@@ -51,7 +51,7 @@ use crate::*;
         buf.extend_from_slice(&(page.prims.len() as u32).to_le_bytes());
         for prim in &page.prims {
             match prim {
-                Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance: _, render_mode, blend } => {
+                Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance, render_mode, blend } => {
                     buf.push(TAG_TEXT);
                     buf.extend_from_slice(&x.to_le_bytes());
                     buf.extend_from_slice(&y.to_le_bytes());
@@ -72,6 +72,7 @@ use crate::*;
                     }
                     buf.push(*render_mode); // v4
                     buf.push(*blend as u8); // v5
+                    buf.extend_from_slice(&advance.to_le_bytes()); // v7: device-space glyph advance
                 }
                 Prim::Fill { argb, even_odd, contours, blend } => {
                     buf.push(TAG_FILL);
@@ -302,6 +303,7 @@ use crate::*;
             assert!((r.f32() - 0.5).abs() < 1e-6);
             assert_eq!(r.u8(), 0); // render_mode (v4)
             assert_eq!(r.u8(), BlendMode::Multiply as u8); // blend (v5)
+            assert!((r.f32() - 12.0).abs() < 1e-6); // advance (v7)
 
             assert_eq!(r.u8(), TAG_FILL);
             assert_eq!(r.u32(), 0xFFAABBCC);

@@ -62,6 +62,24 @@ use crate::*;
         bytes_or_null(&env, save_encrypted(handle as i64, u.as_bytes(), o.as_bytes()))
     }
 
+    /// `PdfNative.signCms(byte[], String) -> byte[]`. Detached CMS/PKCS#7
+    /// signature (fresh self-signed RSA-2048, SHA-256 with RSA) over `content`,
+    /// or null on failure. Replaces the Bouncy Castle path on the Kotlin side.
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_signCms<'local>(
+        mut env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        content: JByteArray<'local>,
+        name: JString<'local>,
+    ) -> jbyteArray {
+        let data = match env.convert_byte_array(&content) {
+            Ok(b) => b,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        let nm = jstr(&mut env, &name);
+        bytes_or_null(&env, crate::signing::sign_cms(&data, &nm))
+    }
+
     /// `PdfNative.getPageCount(long) -> int`.
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_getPageCount<'local>(
@@ -588,6 +606,18 @@ use crate::*;
         on: jboolean,
     ) -> jboolean {
         set_checkbox(handle as i64, widget_id, on != 0) as jboolean
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setChoiceField<'local>(
+        mut env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        handle: jlong,
+        widget_id: jlong,
+        value: JString<'local>,
+    ) -> jboolean {
+        let v = jstr(&mut env, &value);
+        set_choice_field(handle as i64, widget_id, &v) as jboolean
     }
 
     /// `PdfNative.saveDocument(long) -> byte[]`. Serialized modified PDF.

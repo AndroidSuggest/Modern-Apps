@@ -22,7 +22,16 @@ openjp2 = "0.6"
 md-5 = "0.10"
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
-sha2 = "0.10"
+sha2 = { version = "0.10", features = ["oid"] }
+
+# Detached CMS/PKCS#7 signing (replaces Bouncy Castle on the Kotlin side).
+rsa = { version = "0.9", features = ["sha2"] }
+rand = "0.8"
+x509-cert = { version = "0.2", features = ["builder"] }
+cms = { version = "0.2", features = ["builder"] }
+der = { version = "0.7", features = ["alloc", "oid"] }
+spki = "0.7"
+const-oid = { version = "0.9", features = ["db"] }
 
 [profile.release]
 opt-level = 3

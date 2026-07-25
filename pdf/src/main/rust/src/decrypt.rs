@@ -178,15 +178,21 @@ pub(crate) enum EncryptAlgo {
     Aes256,
 }
 
-/// A small md5-based pseudo-random byte source seeded from `seed` plus wall-clock
-/// entropy. Adequate for generating salts/IVs in this offline viewer.
+/// Cryptographically-secure random bytes for salts/IVs, sourced from the OS
+/// CSPRNG. Falls back to md5-based mixing (seed + wall clock) only if the OS
+/// RNG is unavailable, preserving the no-panic invariant.
 fn rand_bytes(n: usize, seed: &[u8]) -> Vec<u8> {
+    use rand::RngCore;
+    let mut out = vec![0u8; n];
+    if rand::rngs::OsRng.try_fill_bytes(&mut out).is_ok() {
+        return out;
+    }
     use md5::{Digest, Md5};
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let mut out = Vec::with_capacity(n);
+    out.clear();
     let mut ctr: u64 = 0;
     while out.len() < n {
         let mut m = Md5::new();

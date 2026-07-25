@@ -67,10 +67,14 @@ pub(crate) fn render_annotation(doc: &Document, dict: &lopdf::Dictionary, base: 
     };
 
     // Resolve the normal appearance: /AP /N is either a stream or a subdictionary
-    // of appearance states selected by /AS.
+    // of appearance states selected by /AS. When absent, synthesize a basic
+    // appearance for common markup/shape annotation types.
     let ap = match dict.get(b"AP").ok().and_then(|o| deref(doc, o)) {
         Some(Object::Dictionary(d)) => d,
-        _ => return,
+        _ => {
+            synthesize_annotation_appearance(doc, dict, rect, base, prims);
+            return;
+        }
     };
     let normal = match ap.get(b"N").ok().and_then(|o| deref(doc, o)) {
         Some(Object::Stream(s)) => s,
@@ -125,6 +129,148 @@ pub(crate) fn render_annotation(doc: &Document, dict: &lopdf::Dictionary, base: 
             scale_prim_alpha(p, ca);
         }
     }
+}
+
+/// Read an annotation color array (`/C`, `/IC`) as ARGB, or `None` when the
+/// array is empty (meaning "no color" / transparent) or absent.
+fn markup_color(dict: &lopdf::Dictionary, key: &[u8]) -> Option<u32> {
+    let arr = dict.get(key).ok()?.as_array().ok()?;
+    let c: Vec<f64> = arr.iter().filter_map(num).collect();
+    match c.len() {
+        1 => Some(gray_to_argb(c[0])),
+        3 => Some(rgb_to_argb(c[0], c[1], c[2])),
+        4 => Some(cmyk_to_argb(c[0], c[1], c[2], c[3])),
+        _ => None,
+    }
+}
+
+/// Border width from `/BS /W` (preferred) or the legacy `/Border` array [_,_,W].
+fn annot_border_width(doc: &Document, dict: &lopdf::Dictionary) -> f64 {
+    if let Some(w) = dict.get(b"BS").ok().and_then(|o| deref(doc, o))
+        .and_then(|o| o.as_dict().ok())
+        .and_then(|bs| bs.get(b"W").ok()).and_then(num) {
+        return w;
+    }
+    if let Some(Object::Array(b)) = dict.get(b"Border").ok().and_then(|o| deref(doc, o)) {
+        if let Some(w) = b.get(2).and_then(num) { return w; }
+    }
+    1.0
+}
+
+/// Synthesize a basic appearance for common annotation types that lack an `/AP`
+/// stream, emitting primitives directly (Square/Circle/Line/Ink and the text
+/// markup types via `/QuadPoints`). Unknown types are skipped.
+pub(crate) fn synthesize_annotation_appearance(
+    doc: &Document,
+    dict: &lopdf::Dictionary,
+    rect: [f64; 4],
+    base: &Mat,
+    prims: &mut Vec<Prim>,
+) {
+    let subtype = match dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) {
+        Some(s) => s.to_vec(),
+        None => return,
+    };
+    let ca = dict.get(b"CA").ok().and_then(num).unwrap_or(1.0).clamp(0.0, 1.0);
+    let stroke = markup_color(dict, b"C");
+    let fill = markup_color(dict, b"IC");
+    let bw = annot_border_width(doc, dict);
+    let dev = |x: f64, y: f64| -> (f64, f64) { transform(base, x, y) };
+    // Device half-width for strokes (approx via base scale).
+    let scale = ((base[0]*base[0]+base[1]*base[1]).sqrt() + (base[2]*base[2]+base[3]*base[3]).sqrt()) / 2.0;
+
+    let mut gs = GraphicsState::default();
+    gs.ctm = *base;
+    gs.line_width = bw.max(0.5);
+    gs.alpha_fill = ca;
+    gs.alpha_stroke = ca;
+
+    // QuadPoints (text markup): 8 numbers per quad.
+    let quads: Vec<[(f64,f64);4]> = dict.get(b"QuadPoints").ok()
+        .and_then(|o| deref(doc, o)).and_then(|o| o.as_array().ok())
+        .map(|a| {
+            let v: Vec<f64> = a.iter().filter_map(num).collect();
+            v.chunks_exact(8).map(|q| [(q[0],q[1]),(q[2],q[3]),(q[4],q[5]),(q[6],q[7])]).collect()
+        }).unwrap_or_default();
+
+    match subtype.as_slice() {
+        b"Square" => {
+            let poly = vec![dev(rect[0],rect[1]), dev(rect[2],rect[1]), dev(rect[2],rect[3]), dev(rect[0],rect[3])];
+            if let Some(f) = fill { emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(f, ca), false, 1.0, BlendMode::Normal); }
+            if let Some(s) = stroke {
+                let mut ring = poly.clone(); ring.push(poly[0]);
+                let mut sgs = gs.clone(); sgs.stroke = s;
+                emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
+            }
+        }
+        b"Circle" => {
+            // Approximate the inscribed ellipse with a polygon.
+            let (cx, cy) = ((rect[0]+rect[2])/2.0, (rect[1]+rect[3])/2.0);
+            let (rx, ry) = ((rect[2]-rect[0]).abs()/2.0, (rect[3]-rect[1]).abs()/2.0);
+            let poly: Vec<(f64,f64)> = (0..48).map(|i| {
+                let t = i as f64 / 48.0 * std::f64::consts::TAU;
+                dev(cx + rx*t.cos(), cy + ry*t.sin())
+            }).collect();
+            if let Some(f) = fill { emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(f, ca), false, 1.0, BlendMode::Normal); }
+            if let Some(s) = stroke {
+                let mut ring = poly.clone(); ring.push(poly[0]);
+                let mut sgs = gs.clone(); sgs.stroke = s;
+                emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
+            }
+        }
+        b"Line" => {
+            if let Some(Object::Array(l)) = dict.get(b"L").ok().and_then(|o| deref(doc, o)) {
+                let n: Vec<f64> = l.iter().filter_map(num).collect();
+                if n.len() >= 4 {
+                    let seg = vec![dev(n[0],n[1]), dev(n[2],n[3])];
+                    let mut sgs = gs.clone(); sgs.stroke = stroke.unwrap_or(0xFF00_0000);
+                    emit_stroke(prims, std::slice::from_ref(&seg), &sgs);
+                }
+            }
+        }
+        b"Ink" => {
+            if let Some(Object::Array(paths)) = dict.get(b"InkList").ok().and_then(|o| deref(doc, o)) {
+                let mut sgs = gs.clone(); sgs.stroke = stroke.unwrap_or(0xFF00_0000);
+                for p in paths {
+                    let n: Vec<f64> = p.as_array().map(|a| a.iter().filter_map(num).collect()).unwrap_or_default();
+                    let pts: Vec<(f64,f64)> = n.chunks_exact(2).map(|c| dev(c[0], c[1])).collect();
+                    if pts.len() >= 2 { emit_stroke(prims, std::slice::from_ref(&pts), &sgs); }
+                }
+            }
+        }
+        b"Highlight" => {
+            let color = stroke.unwrap_or(0xFFFF_FF00); // default yellow
+            for q in &quads {
+                let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
+                // QuadPoint ordering varies; use the convex bbox to be safe.
+                let bx = bbox_of(&poly);
+                let rectp = vec![(bx[0],bx[1]),(bx[2],bx[1]),(bx[2],bx[3]),(bx[0],bx[3])];
+                emit_fill(prims, std::slice::from_ref(&rectp), apply_alpha_to_argb(color, ca), false, 1.0, BlendMode::Multiply);
+            }
+        }
+        b"Underline" | b"StrikeOut" => {
+            let color = stroke.unwrap_or(0xFF00_0000);
+            let mut sgs = gs.clone(); sgs.stroke = color;
+            sgs.line_width = (bw.max(1.0)) / scale.max(1e-6); // ~1px device
+            for q in &quads {
+                let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
+                let bx = bbox_of(&poly);
+                let y = if subtype == b"StrikeOut" { (bx[1]+bx[3])/2.0 } else { bx[3].max(bx[1]) };
+                let seg = vec![(bx[0], y), (bx[2], y)];
+                emit_stroke(prims, std::slice::from_ref(&seg), &sgs);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Device-space bounding box [x0,y0,x1,y1] of a polygon.
+fn bbox_of(poly: &[(f64,f64)]) -> [f64;4] {
+    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    for &(x,y) in poly {
+        b[0]=b[0].min(x); b[1]=b[1].min(y); b[2]=b[2].max(x); b[3]=b[3].max(y);
+    }
+    b
 }
 
 // ---------------------------------------------------------------------------

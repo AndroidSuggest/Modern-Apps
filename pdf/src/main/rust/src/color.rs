@@ -28,8 +28,8 @@ pub(crate) enum CsKind {
     Lab { white: [f64;3], range: [[f64;2];2], black: Option<[f64;3]> },
     Separation { name: Vec<u8>, alt: Box<CsKind>, tint_fn: Option<PdfFunction> },
     DeviceN { names: Vec<Vec<u8>>, alt: Box<CsKind>, tint_fn: Option<PdfFunction> },
-    Pattern,
-    Indexed { base: Box<CsKind>, lookup: Vec<u8>, base_ncomp: u8 },
+    Pattern { base: Option<Box<CsKind>> },
+    Indexed { base: Box<CsKind>, lookup: Vec<u8>, base_ncomp: u8, hival: u16 },
     ICCBased { n: u8, alt: Option<Box<CsKind>> },
     CalRGB { white: [f64;3], gamma: [f64;3], matrix: [[f64;3];3] },
     CalGray { white: [f64;3], gamma: f64, black: Option<[f64;3]> },
@@ -104,7 +104,7 @@ pub(crate) fn parse_cs_kind(doc: &Document, cs_obj: Option<&Object>, cs_resource
             b"DeviceRGB" | b"RGB" => Some(CsKind::DeviceRGB),
             b"DeviceCMYK" | b"CMYK" => Some(CsKind::DeviceCMYK),
             b"DeviceGray" | b"Gray" | b"G" => Some(CsKind::DeviceGray),
-            b"Pattern" => Some(CsKind::Pattern),
+            b"Pattern" => Some(CsKind::Pattern { base: None }),
             _ => None,
         }
     }
@@ -135,7 +135,7 @@ pub(crate) fn parse_named_cs(
             b"DeviceRGB" | b"RGB" => return Some(CsKind::DeviceRGB),
             b"DeviceCMYK" | b"CMYK" => return Some(CsKind::DeviceCMYK),
             b"DeviceGray" | b"Gray" | b"G" => return Some(CsKind::DeviceGray),
-            b"Pattern" => return Some(CsKind::Pattern),
+            b"Pattern" => return Some(CsKind::Pattern { base: None }),
             _ => {}
         }
         if let Some(res) = resources {
@@ -158,7 +158,10 @@ pub(crate) fn parse_cs_array(doc: &Document, arr: &[Object], cs_resources: &Hash
         b"DeviceRGB" | b"RGB" => Some(CsKind::DeviceRGB),
         b"DeviceCMYK" | b"CMYK" => Some(CsKind::DeviceCMYK),
         b"DeviceGray" | b"G" | b"Gray" => Some(CsKind::DeviceGray),
-        b"Pattern" => Some(CsKind::Pattern),
+        b"Pattern" => Some(CsKind::Pattern {
+            // [ /Pattern baseColorSpace ] for uncolored (PaintType 2) patterns.
+            base: arr.get(1).and_then(|o| parse_cs_kind(doc, Some(o), cs_resources)).map(Box::new),
+        }),
         b"CalRGB" => {
             // [ /CalRGB dict ]
             let dict = arr.get(1).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok());
@@ -209,12 +212,14 @@ pub(crate) fn parse_cs_array(doc: &Document, arr: &[Object], cs_resources: &Hash
             // [ /Indexed base hival lookup ]
             let base = arr.get(1).and_then(|o| parse_cs_kind(doc, Some(o), cs_resources)).unwrap_or(CsKind::DeviceRGB);
             let base_n = cs_kind_ncomp(&base);
+            let hival = arr.get(2).and_then(|o| deref(doc, o)).as_ref().and_then(|o| o.as_i64().ok())
+                .unwrap_or(255).clamp(0, 65535) as u16;
             let lookup = match arr.get(3).and_then(|o| deref(doc, o)) {
                 Some(Object::String(s,_)) => s.clone(),
                 Some(Object::Stream(s)) => { s.decompressed_content().unwrap_or_else(|_| s.content.clone()) },
                 _ => Vec::new(),
             };
-            Some(CsKind::Indexed { base: Box::new(base), lookup, base_ncomp: base_n })
+            Some(CsKind::Indexed { base: Box::new(base), lookup, base_ncomp: base_n, hival })
         }
         b"Separation" => {
             // [ /Separation name alt tintTransform ]
@@ -245,7 +250,7 @@ pub(crate) fn cs_kind_ncomp(kind: &CsKind) -> u8 {
         CsKind::Indexed { base_ncomp, .. } => *base_ncomp,
         CsKind::Separation { .. } => 1,
         CsKind::DeviceN { names, .. } => names.len() as u8,
-        CsKind::Pattern => 0,
+        CsKind::Pattern { .. } => 0,
     }
 }
 
@@ -395,8 +400,8 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
                 _ => None,
             }
         }
-        CsKind::Indexed { base, lookup, base_ncomp } => {
-            let idx = (comps.get(0).copied().unwrap_or(0.0) as usize).clamp(0, 255);
+        CsKind::Indexed { base, lookup, base_ncomp, hival } => {
+            let idx = (comps.get(0).copied().unwrap_or(0.0) as usize).clamp(0, *hival as usize);
             let off = idx * *base_ncomp as usize;
             if off + *base_ncomp as usize <= lookup.len() {
                 let slice = &lookup[off..off+*base_ncomp as usize];
@@ -423,10 +428,13 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
                 let alt_comps = tf.eval(comps);
                 eval_cs_to_rgb(doc, alt, &alt_comps, cs_resources)
             } else {
-                Some(gray_to_argb(1.0 - comps.get(0).copied().unwrap_or(0.0)))
+                // No tint transform: treat each colorant as an independent subtractive
+                // ink so all components contribute (0 tint = white, full tint = darker).
+                let light: f64 = comps.iter().map(|c| 1.0 - c.clamp(0.0, 1.0)).product();
+                Some(gray_to_argb(light))
             }
         }
-        CsKind::Pattern => {
+        CsKind::Pattern { .. } => {
             // Pattern color handling: SCN may include base color, we already evaluated base if comps present
             // For pattern-only, we have no color - return None to keep current
             None
@@ -613,5 +621,57 @@ mod tests {
             .expect("direct-array colorspace should resolve");
         let argb = eval_cs_to_rgb(&doc, &kind, &[1.0, 0.0, 0.0], &empty).unwrap();
         assert_eq!(argb & 0x00FF_FFFF, 0x00FF_0000, "direct-array ICCBased red must stay red");
+    }
+
+    // Indexed index must clamp to hival, not a hard-coded 255. With hival=1 an
+    // out-of-range index (5) should clamp to entry 1, not read past the table.
+    #[test]
+    fn indexed_clamps_to_hival() {
+        let doc = Document::with_version("1.7");
+        // Two-entry palette over DeviceRGB: [black, white].
+        let cs = CsKind::Indexed {
+            base: Box::new(CsKind::DeviceRGB),
+            lookup: vec![0, 0, 0, 255, 255, 255],
+            base_ncomp: 3,
+            hival: 1,
+        };
+        let res = HashMap::new();
+        let over = eval_cs_to_rgb(&doc, &cs, &[5.0], &res).unwrap();
+        assert_eq!(over & 0x00FF_FFFF, 0x00FF_FFFF, "index 5 clamps to hival=1 (white)");
+    }
+
+    // DeviceN without a tint transform must consider all components, not just the
+    // first: two fully-inked colorants should be darker than one.
+    #[test]
+    fn devicen_without_tint_uses_all_components() {
+        let doc = Document::with_version("1.7");
+        let cs = CsKind::DeviceN {
+            names: vec![b"A".to_vec(), b"B".to_vec()],
+            alt: Box::new(CsKind::DeviceGray),
+            tint_fn: None,
+        };
+        let res = HashMap::new();
+        let one = eval_cs_to_rgb(&doc, &cs, &[0.5, 0.0], &res).unwrap() & 0xFF;
+        let both = eval_cs_to_rgb(&doc, &cs, &[0.5, 0.5], &res).unwrap() & 0xFF;
+        assert!(both < one, "two inks ({both}) must be darker than one ({one})");
+    }
+
+    // An uncolored Pattern colorspace [/Pattern base] must record its base space
+    // so SCN operands resolve in it rather than by arity guessing.
+    #[test]
+    fn pattern_records_base_colorspace() {
+        let doc = Document::with_version("1.7");
+        let arr = vec![
+            Object::Name(b"Pattern".to_vec()),
+            Object::Name(b"DeviceCMYK".to_vec()),
+        ];
+        let empty = HashMap::new();
+        let kind = parse_cs_array(&doc, &arr, &empty).expect("pattern cs");
+        match kind {
+            CsKind::Pattern { base: Some(b) } => {
+                assert!(matches!(*b, CsKind::DeviceCMYK), "base must be DeviceCMYK");
+            }
+            _ => panic!("expected Pattern with base colorspace"),
+        }
     }
 }

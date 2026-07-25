@@ -49,6 +49,19 @@ impl BlendMode {
     }
 }
 
+/// Active ExtGState soft mask. The mask group is rendered at the CTM in effect
+/// when the mask was set (per ISO 32000 11.6.5.2), optionally over a `/BC`
+/// backdrop color. `/TR` transfer functions are not applied (documented).
+#[derive(Clone)]
+pub(crate) struct SoftMask {
+    pub(crate) group_id: ObjectId,
+    /// 0 = alpha, 1 = luminosity.
+    pub(crate) mask_type: u8,
+    pub(crate) ctm: Mat,
+    /// `/BC` backdrop color components (in the group's colorspace), if given.
+    pub(crate) backdrop: Option<Vec<f64>>,
+}
+
 #[derive(Clone)]
 pub(crate) struct GraphicsState {
     pub(crate) ctm: Mat,
@@ -82,9 +95,12 @@ pub(crate) struct GraphicsState {
     /// Active fill/stroke pattern (object id) when the colorspace is `/Pattern`.
     pub(crate) fill_pattern: Option<ObjectId>,
     pub(crate) stroke_pattern: Option<ObjectId>,
-    /// Active ExtGState soft mask: (`/G` group stream id, mask type where
-    /// 0 = alpha, 1 = luminosity). `None` when `/SMask` is `/None`.
-    pub(crate) soft_mask: Option<(ObjectId, u8)>,
+    /// Active ExtGState soft mask, or `None` when `/SMask` is `/None`.
+    pub(crate) soft_mask: Option<SoftMask>,
+    /// Overprint state: `/OP` (stroking), `/op` (nonstroking), `/OPM` (mode).
+    pub(crate) overprint_stroke: bool,
+    pub(crate) overprint_fill: bool,
+    pub(crate) overprint_mode: u8,
 }
 
 impl Default for GraphicsState {
@@ -115,6 +131,9 @@ impl Default for GraphicsState {
             fill_pattern: None,
             stroke_pattern: None,
             soft_mask: None,
+            overprint_stroke: false,
+            overprint_fill: false,
+            overprint_mode: 0,
         }
     }
 }

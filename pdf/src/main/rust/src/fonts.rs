@@ -453,6 +453,17 @@ use std::io::Cursor;
                     }
                 }
             }
+            10 => {
+                // Trimmed array (like format 6 but 32-bit code space).
+                let first = u32b(b, off + 12);
+                let count = u32b(b, off + 16) as usize;
+                for i in 0..count.min(0x20000) {
+                    let g = u16b(b, off + 20 + i * 2);
+                    if g != 0 {
+                        out.push((first + i as u32, g));
+                    }
+                }
+            }
             12 => {
                 let ngroups = u32b(b, off + 12) as usize;
                 for i in 0..ngroups {
@@ -465,6 +476,23 @@ use std::io::Cursor;
                     }
                     for c in sc..=ec {
                         out.push((c, (sg + (c - sc)) as u16));
+                    }
+                }
+            }
+            13 => {
+                // Many-to-one range mappings: every code in a group maps to the
+                // same glyph (used for e.g. "last resort" fonts).
+                let ngroups = u32b(b, off + 12) as usize;
+                for i in 0..ngroups {
+                    let g = off + 16 + i * 12;
+                    let sc = u32b(b, g);
+                    let ec = u32b(b, g + 4);
+                    let gid = u32b(b, g + 8) as u16;
+                    if sc > ec || ec - sc > 65535 || gid == 0 {
+                        continue;
+                    }
+                    for c in sc..=ec {
+                        out.push((c, gid));
                     }
                 }
             }
@@ -524,6 +552,47 @@ use std::io::Cursor;
             }
         }
         result
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::parse_subtable;
+
+        fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+        fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+
+        #[test]
+        fn format13_maps_range_to_single_glyph() {
+            let mut b = Vec::new();
+            b.extend_from_slice(&be16(13));      // format
+            b.extend_from_slice(&be16(0));       // reserved
+            b.extend_from_slice(&be32(0));       // length
+            b.extend_from_slice(&be32(0));       // language
+            b.extend_from_slice(&be32(1));       // nGroups
+            b.extend_from_slice(&be32(0x41));    // startChar
+            b.extend_from_slice(&be32(0x43));    // endChar
+            b.extend_from_slice(&be32(5));       // glyphID
+            let pairs = parse_subtable(&b, 0);
+            assert!(pairs.contains(&(0x41, 5)));
+            assert!(pairs.contains(&(0x42, 5)));
+            assert!(pairs.contains(&(0x43, 5)));
+        }
+
+        #[test]
+        fn format10_trimmed_array() {
+            let mut b = Vec::new();
+            b.extend_from_slice(&be16(10));      // format
+            b.extend_from_slice(&be16(0));       // reserved
+            b.extend_from_slice(&be32(0));       // length
+            b.extend_from_slice(&be32(0));       // language
+            b.extend_from_slice(&be32(0x41));    // startCharCode
+            b.extend_from_slice(&be32(2));       // numChars
+            b.extend_from_slice(&be16(7));       // glyph for 0x41
+            b.extend_from_slice(&be16(8));       // glyph for 0x42
+            let pairs = parse_subtable(&b, 0);
+            assert!(pairs.contains(&(0x41, 7)));
+            assert!(pairs.contains(&(0x42, 8)));
+        }
     }
 }
 

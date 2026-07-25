@@ -394,7 +394,9 @@ fn parse_type6_7(
         };
 
         // 12 boundary control points (p1..p12) and 4 corner colors for this patch.
+        // Type 7 additionally has 4 interior control points (p13..p16).
         let mut pts: Vec<(f64, f64)> = Vec::with_capacity(12);
+        let mut interior: Vec<(f64, f64)> = Vec::with_capacity(4);
         let mut cols: Vec<Vec<f64>> = Vec::with_capacity(4);
 
         if flag == 0 || prev_pts.len() < 12 || prev_cols.len() < 4 {
@@ -410,7 +412,10 @@ fn parse_type6_7(
             if !ok || all.len() < 12 {
                 break;
             }
-            pts = all[0..12].to_vec(); // boundary points (tensor interior ignored)
+            pts = all[0..12].to_vec(); // p1..p12 boundary points
+            if shading_type == 7 && all.len() >= 16 {
+                interior = all[12..16].to_vec(); // p13..p16 tensor interior
+            }
             let mut cok = true;
             for _ in 0..4 {
                 match read_color(&mut br) {
@@ -438,7 +443,11 @@ fn parse_type6_7(
             if !ok {
                 break;
             }
-            // Boundary = shared edge (4) + next 8 new boundary points.
+            // Boundary = shared edge (4) + next 8 new boundary points; for tensor
+            // the final 4 new points are the interior control points.
+            if shading_type == 7 && new_pts.len() >= 12 {
+                interior = new_pts[8..12].to_vec();
+            }
             pts.extend_from_slice(&shared_pts);
             pts.extend(new_pts.into_iter().take(8));
             if pts.len() < 12 {
@@ -464,9 +473,40 @@ fn parse_type6_7(
         let c11 = cols.get(2).cloned().unwrap_or_default();
         let c10 = cols.get(3).cloned().unwrap_or_default();
 
-        // Subdivide the Coons surface on an N×N grid.
+        // Subdivide the patch surface on an N×N grid. Coons (Type 6) uses the
+        // bilinearly-blended boundary surface; tensor (Type 7) uses the full
+        // bicubic Bézier defined by the 12 boundary + 4 interior control points.
         const N: usize = 8;
+        // Build the 4×4 tensor control grid P[i][j] from the PDF point ordering.
+        let tensor_grid: Option<[[(f64, f64); 4]; 4]> = if shading_type == 7 && interior.len() == 4 {
+            let mut p = [[(0.0, 0.0); 4]; 4];
+            p[0][0] = pts[0];  p[0][1] = pts[1];  p[0][2] = pts[2];  p[0][3] = pts[3];
+            p[1][3] = pts[4];  p[2][3] = pts[5];  p[3][3] = pts[6];  p[3][2] = pts[7];
+            p[3][1] = pts[8];  p[3][0] = pts[9];  p[2][0] = pts[10]; p[1][0] = pts[11];
+            p[1][1] = interior[0]; p[1][2] = interior[1]; p[2][2] = interior[2]; p[2][1] = interior[3];
+            Some(p)
+        } else {
+            None
+        };
+        let bern = |t: f64| -> [f64; 4] {
+            let mt = 1.0 - t;
+            [mt*mt*mt, 3.0*t*mt*mt, 3.0*t*t*mt, t*t*t]
+        };
         let surf = |u: f64, v: f64| -> (f64, f64) {
+            if let Some(p) = tensor_grid {
+                let bu = bern(u);
+                let bv = bern(v);
+                let mut sx = 0.0;
+                let mut sy = 0.0;
+                for i in 0..4 {
+                    for j in 0..4 {
+                        let w = bu[i] * bv[j];
+                        sx += w * p[i][j].0;
+                        sy += w * p[i][j].1;
+                    }
+                }
+                return (sx, sy);
+            }
             let left = bezier(e_left, v);
             let right = {
                 // u=1 edge from C10(v=0) to C11(v=1): reverse e_right (C11->C10)
@@ -655,5 +695,41 @@ mod tests {
         assert_eq!(br.read(3), Some(0b101));
         assert_eq!(br.read(5), Some(0b00000));
         assert_eq!(br.read(2), Some(0b11));
+    }
+
+    // A Type 7 tensor patch whose interior control points are displaced must
+    // produce a different surface than the equivalent Type 6 Coons patch (which
+    // has no interior points). This guards against silently dropping p13..p16.
+    fn tensor_patch_bytes(interior: [(u8, u8); 4]) -> Vec<u8> {
+        // 12 boundary points forming a [0,100] square, then 4 interior points.
+        let boundary: [(u8, u8); 12] = [
+            (0, 0), (0, 33), (0, 66), (0, 100),
+            (33, 100), (66, 100), (100, 100),
+            (100, 66), (100, 33), (100, 0),
+            (66, 0), (33, 0),
+        ];
+        let mut out = vec![0u8]; // flag = 0 (full patch), 8-bit
+        for (x, y) in boundary { out.push(x); out.push(y); }
+        for (x, y) in interior { out.push(x); out.push(y); }
+        out.extend_from_slice(&[0, 0, 0, 0]); // 4 single-component colors
+        out
+    }
+
+    #[test]
+    fn tensor_interior_changes_surface() {
+        // Coord decode maps 0..255 -> 0..255 (identity); one color component.
+        let decode = [0.0, 255.0, 0.0, 255.0, 0.0, 1.0];
+        // Flat/interpolated interior vs interior pulled hard to the corners.
+        let flat = tensor_patch_bytes([(33, 33), (33, 66), (66, 66), (66, 33)]);
+        let bulged = tensor_patch_bytes([(0, 0), (0, 100), (100, 100), (100, 0)]);
+        let a = parse_type6_7(&flat, 7, 8, 8, 8, 1, &decode);
+        let b = parse_type6_7(&bulged, 7, 8, 8, 8, 1, &decode);
+        assert!(!a.is_empty() && !b.is_empty(), "both patches should tessellate");
+        let verts = |tris: &[(Vertex, Vertex, Vertex)]| -> Vec<(i64, i64)> {
+            tris.iter().flat_map(|(p, q, r)| {
+                [p, q, r].map(|v| ((v.x * 100.0) as i64, (v.y * 100.0) as i64))
+            }).collect()
+        };
+        assert_ne!(verts(&a), verts(&b), "displaced interior must alter geometry");
     }
 }

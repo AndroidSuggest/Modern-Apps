@@ -365,6 +365,37 @@ pub(crate) fn set_checkbox(handle: i64, widget_id: i64, on: bool) -> bool {
         })
         .unwrap_or_else(|| b"Yes".to_vec());
 
+    // Radio buttons: the widget belongs to a parent field with several kid
+    // widgets that must be mutually exclusive. Setting one on clears the others
+    // and records the chosen export value on the parent /V.
+    let parent = doc.get_dictionary(id).ok()
+        .and_then(|d| d.get(b"Parent").ok())
+        .and_then(|o| o.as_reference().ok());
+    let sibling_ids: Vec<ObjectId> = parent
+        .and_then(|pid| doc.get_dictionary(pid).ok())
+        .and_then(|pd| pd.get(b"Kids").ok())
+        .and_then(|o| deref(doc, o))
+        .and_then(|o| o.as_array().ok())
+        .map(|kids| kids.iter().filter_map(|k| k.as_reference().ok()).collect())
+        .unwrap_or_default();
+
+    if let Some(pid) = parent {
+        if sibling_ids.len() > 1 {
+            // Radio group: set each kid's /AS, and the parent /V.
+            for kid in &sibling_ids {
+                let state = if *kid == id && on { on_state.clone() } else { b"Off".to_vec() };
+                if let Ok(kd) = doc.get_dictionary_mut(*kid) {
+                    kd.set("AS", Object::Name(state));
+                }
+            }
+            if let Ok(pd) = doc.get_dictionary_mut(pid) {
+                if on { pd.set("V", Object::Name(on_state.clone())); }
+                else { pd.set("V", Object::Name(b"Off".to_vec())); }
+            }
+            return true;
+        }
+    }
+
     let state = if on { on_state } else { b"Off".to_vec() };
     if let Ok(dict) = doc.get_dictionary_mut(id) {
         dict.set("AS", Object::Name(state.clone()));
@@ -373,6 +404,64 @@ pub(crate) fn set_checkbox(handle: i64, widget_id: i64, on: bool) -> bool {
     } else {
         false
     }
+}
+
+/// Set a Choice (`/Ch`) field's value: records `/V`, the matching `/Opt` index
+/// in `/I`, and builds a single-line text appearance showing the selection.
+pub(crate) fn set_choice_field(handle: i64, widget_id: i64, value: &str) -> bool {
+    let mut reg = registry().lock().unwrap();
+    let doc = match reg.get_mut(&handle) {
+        Some(d) => d,
+        None => return false,
+    };
+    let id = decode_id(widget_id);
+    let rect = doc
+        .get_dictionary(id)
+        .ok()
+        .and_then(|d| d.get(b"Rect").ok())
+        .and_then(|o| read_rect(doc, o))
+        .map(normalize_rect);
+    // Find the option index whose export/display value matches `value`.
+    let opt_index = field_attr(doc, id, b"Opt")
+        .and_then(|o| deref(doc, o))
+        .and_then(|o| o.as_array().ok())
+        .and_then(|opts| {
+            opts.iter().position(|o| {
+                let disp = match deref(doc, o).unwrap_or(o) {
+                    Object::String(s, _) => String::from_utf8_lossy(s).into_owned(),
+                    Object::Array(pair) => pair.last()
+                        .and_then(|d| d.as_str().ok())
+                        .map(|s| String::from_utf8_lossy(s).into_owned())
+                        .unwrap_or_default(),
+                    _ => String::new(),
+                };
+                disp == value
+            })
+        });
+
+    let ap_id = rect.map(|r| {
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        let size = (h - 4.0).clamp(6.0, 14.0);
+        let content = build_text_appearance(value, w, h, size, 0, false, false, 0);
+        make_appearance(doc, w, h, content, helvetica_resources())
+    });
+
+    if let Ok(dict) = doc.get_dictionary_mut(id) {
+        dict.set("V", Object::string_literal(value));
+        match opt_index {
+            Some(i) => { dict.set("I", Object::Array(vec![Object::Integer(i as i64)])); }
+            None => { dict.remove(b"I"); }
+        }
+        if let Some(ap_id) = ap_id {
+            let mut ap = Dictionary::new();
+            ap.set("N", Object::Reference(ap_id));
+            dict.set("AP", Object::Dictionary(ap));
+        }
+    } else {
+        return false;
+    }
+    set_need_appearances(doc);
+    true
 }
 
 /// Extract the document's visible text (from rendered text primitives), one

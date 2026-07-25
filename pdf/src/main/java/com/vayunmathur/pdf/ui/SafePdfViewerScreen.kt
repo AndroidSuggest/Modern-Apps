@@ -1320,31 +1320,25 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
         for (prim in page.primitives) {
             if (prim !is PdfPrimitive.Text || prim.text.isEmpty()) continue
             tmpPaint.textSize = prim.size * scale
-            // Use actual unicode string measurement for width instead of size*0.5f approximation per plan 19
-            // Measure whole run then split proportionally using per-glyph advance if available
             val textStr = prim.text
+            // Rust emits one glyph per Text prim with `advance` = that glyph's
+            // true device-space advance (from /Widths|/W, Tc/Tw/Tz). Use it for
+            // both stepping and glyph width; fall back to measured width only for
+            // multi-char runs (the font-less fallback path).
             val measuredTotal = if (textStr.isNotEmpty()) tmpPaint.measureText(textStr) else prim.size * 0.5f
-            // Prefer prim.advance if >0 (from Rust accurate glyph advance via /Widths /W/Tz)
-            // prim.advance is per-glyph? In our Rust we emitted per-glyph advance as glyph_device_adv. For multi-char string (ligature) we have per-prim not per-char? We emitted per glyph but text may still be multi-char for ligatures -> we treat advance as total for that prim.
-            val totalAdvancePageSpace = prim.advance * textStr.length.coerceAtLeast(1) // Rust advance currently per glyph? For per-glyph emission, each prim has 1 char and advance=size, so multiply by len is ok
-            // For text selection, we compute per-glyph width via measured width divided by char count, but also consider Tz (h_scale) already in advance.
             val perGlyphMeasured = if (textStr.isNotEmpty()) measuredTotal / textStr.length else prim.size * 0.5f * scale
-            // Use max of measured and accurate Rust advance for fidelity
             var curPxPage = prim.origin.x
-            for ((idx, c) in textStr.withIndex()) {
-                // glyph origin
+            for (c in textStr) {
                 val px = curPxPage
-                // width of this glyph
-                val cwMeasured = perGlyphMeasured // canvas space already
+                val singleGlyph = textStr.length == 1
+                val cw = if (singleGlyph) prim.advance * scale else perGlyphMeasured
+                val stepPage = if (singleGlyph) prim.advance else perGlyphMeasured / scale
                 val left = px * scale
-                val right = left + cwMeasured
+                val right = left + cw
                 val baseline = ch - prim.origin.y * scale
                 val top = baseline - prim.size * scale
-                // ch as String for ligatures (though per-glyph emission has single char, but preserve ligature handling)
                 list.add(Triple(-prim.origin.y, px, SelGlyph(c.toString(), left, top, right, baseline)))
-                // Advance via Rust accurate advance (advance is per glyph? For per-glyph emission we have one glyph per prim, so its advance is the glyph's width)
-                // For multi-char prim (if we later emit runs), we should split advance evenly
-                curPxPage += prim.advance // page space advance
+                curPxPage += stepPage
             }
         }
         list.sortWith(compareBy({ it.first }, { it.second }))
@@ -1789,7 +1783,7 @@ private fun FormFieldOverlay(
                 DisposableEffect(field.id) {
                     onDispose {
                         if (text != field.value) {
-                            scope.launch { document.setTextField(index, field.id, text); onEdited() }
+                            scope.launch { document.setChoiceField(index, field.id, text); onEdited() }
                         }
                     }
                 }

@@ -42,6 +42,14 @@ pub(crate) fn emit_stroke(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], g
     };
     let dash_phase = (gs.dash_phase * scale) as f32;
     let argb = apply_alpha_to_argb(gs.stroke, gs.alpha_stroke);
+    // Overprint (stroking) is approximated as Multiply on an RGB compositor:
+    // white/zero-ink channels leave the backdrop unchanged, matching overprint's
+    // intent for the common case. Only applied when no explicit blend is set.
+    let blend = if gs.overprint_stroke && gs.blend_mode == BlendMode::Normal {
+        BlendMode::Multiply
+    } else {
+        gs.blend_mode
+    };
     for sp in subpaths {
         if sp.len() >= 2 {
             prims.push(Prim::Stroke {
@@ -53,7 +61,7 @@ pub(crate) fn emit_stroke(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], g
                 join: gs.line_join,
                 miter: gs.miter_limit as f32,
                 pts: sp.iter().map(|&(x, y)| (x as f32, y as f32)).collect(),
-                blend: gs.blend_mode,
+                blend,
             });
         }
     }
@@ -95,6 +103,9 @@ pub(crate) fn show_string(
     let th = gs.h_scale;
     let trm = mat_mul(text_matrix, &gs.ctm);
     let y_scale = (trm[2] * trm[2] + trm[3] * trm[3]).sqrt();
+    // Device-space horizontal scale, used to convert glyph advances (user space)
+    // into the device advance carried on the wire for text selection/search.
+    let x_scale = (trm[0] * trm[0] + trm[1] * trm[1]).sqrt();
     let size = (tfs * y_scale) as f32;
     // Modes 3 (invisible) and 7 (clip only) advance the pen but paint nothing.
     let drawable = gs.render_mode != 3 && gs.render_mode != 7;
@@ -159,7 +170,7 @@ pub(crate) fn show_string(
                 let rm = gs.render_mode as u8;
                 let base_adv = fi.width(code) * tfs;
                 let _ = base_adv;
-                let glyph_device_adv = glyph_advance_user as f32;
+                let glyph_device_adv = (glyph_advance_user * x_scale) as f32;
                 if prims.len() < MAX_PRIMITIVES {
                     if has_fill {
                         prims.push(Prim::Text {

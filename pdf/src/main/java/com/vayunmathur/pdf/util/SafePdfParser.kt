@@ -51,11 +51,12 @@ object SafePdfParser {
     private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 6
+    const val WIRE_VERSION: Int = 7
     private const val WIRE_VERSION_V2 = 2
     private const val WIRE_VERSION_V4 = 4
     private const val WIRE_VERSION_V5 = 5
     private const val WIRE_VERSION_V6 = 6
+    private const val WIRE_VERSION_V7 = 7
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -95,6 +96,7 @@ object SafePdfParser {
         val isV4 = wireVersion >= WIRE_VERSION_V4
         val isV5 = wireVersion >= WIRE_VERSION_V5
         val isV6 = wireVersion >= WIRE_VERSION_V6
+        val isV7 = wireVersion >= WIRE_VERSION_V7
         // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
         // forward-compat parsing as long as the tags are known.
         if (wireVersion !in 1..WIRE_VERSION) {
@@ -145,9 +147,15 @@ object SafePdfParser {
                         if (buf.remaining() < 1) throw IllegalArgumentException("Text v5 blend truncated")
                         BlendMode.fromCode(buf.get().toInt() and 0xFF)
                     } else BlendMode.Normal
-                    // For accurate search rect, use advance estimated from size*charCount but refined later with Paint.measureText in Kotlin UI.
                     val txt = String(strBytes, Charsets.UTF_8)
-                    val adv = size * 0.5f * txt.length.coerceAtLeast(1)
+                    // v7 carries the true device-space glyph advance; older wires
+                    // fall back to the size*0.5*len heuristic.
+                    val adv = if (isV7) {
+                        if (buf.remaining() < 4) throw IllegalArgumentException("Text v7 advance truncated")
+                        buf.float
+                    } else {
+                        size * 0.5f * txt.length.coerceAtLeast(1)
+                    }
                     primitives.add(
                         PdfPrimitive.Text(
                             origin = Offset(x, y),

@@ -248,6 +248,10 @@ pub fn parse_ccitt_params(doc: &Document, dict_opt: Option<&Dictionary>) -> Ccit
 }
 
 pub fn decode_ccitt(data: &[u8], w: u32, h: u32, params: &CcittParams) -> Option<Vec<u8>> {
+    // NOTE: `/EncodedByteAlign` and mixed 1-D/2-D G3 (K>0) are not honored — the
+    // `fax` crate decodes pure G3 (1-D) / G4 (2-D) from a continuous bitstream
+    // and exposes no per-row byte-alignment or K>0 mode switching hook. Pure
+    // G3/G4 (the common cases) decode correctly. See README limitations.
     let columns = if params.columns>0 { params.columns } else { w };
     let rows = if params.rows>0 { params.rows } else { h };
     let rows_us = rows as usize;
@@ -393,24 +397,68 @@ fn apply_predictor(data: Vec<u8>, parms: Option<&Dictionary>, doc: &Document) ->
     }
 }
 
-/// TIFF Predictor 2: horizontal differencing. Only the common 8-bit case is
-/// reversed exactly; other bit depths are returned unchanged.
+/// TIFF Predictor 2: horizontal differencing. Reverses the left-difference for
+/// 1/2/4/8/16-bit samples. Rows are byte-aligned; sub-byte samples are packed
+/// big-endian within each byte and 16-bit samples are big-endian.
 fn apply_tiff_predictor2(mut data: Vec<u8>, cols: usize, colors: usize, bpc: usize) -> Vec<u8> {
-    if bpc != 8 || cols == 0 || colors == 0 {
+    if cols == 0 || colors == 0 {
         return data;
     }
-    let row_bytes = cols * colors;
+    let samples_per_row = cols * colors;
+    let row_bits = samples_per_row * bpc;
+    let row_bytes = (row_bits + 7) / 8;
     if row_bytes == 0 {
         return data;
     }
     let rows = data.len() / row_bytes;
-    for r in 0..rows {
-        let base = r * row_bytes;
-        for i in colors..row_bytes {
-            let prev = data[base + i - colors];
-            let cur = data[base + i];
-            data[base + i] = cur.wrapping_add(prev);
+    match bpc {
+        8 => {
+            for r in 0..rows {
+                let base = r * row_bytes;
+                for i in colors..samples_per_row {
+                    let prev = data[base + i - colors];
+                    data[base + i] = data[base + i].wrapping_add(prev);
+                }
+            }
         }
+        16 => {
+            for r in 0..rows {
+                let base = r * row_bytes;
+                for i in colors..samples_per_row {
+                    let p = base + (i - colors) * 2;
+                    let c = base + i * 2;
+                    let prev = ((data[p] as u16) << 8) | data[p + 1] as u16;
+                    let cur = ((data[c] as u16) << 8) | data[c + 1] as u16;
+                    let val = cur.wrapping_add(prev);
+                    data[c] = (val >> 8) as u8;
+                    data[c + 1] = (val & 0xFF) as u8;
+                }
+            }
+        }
+        1 | 2 | 4 => {
+            let mask = ((1u32 << bpc) - 1) as u16;
+            for r in 0..rows {
+                let base = r * row_bytes;
+                // Unpack samples (MSB-first) for this row.
+                let mut samples = vec![0u16; samples_per_row];
+                for (s, slot) in samples.iter_mut().enumerate() {
+                    let bit = s * bpc;
+                    let byte = base + bit / 8;
+                    let shift = 8 - bpc - (bit % 8);
+                    *slot = ((data[byte] as u16) >> shift) & mask;
+                }
+                for i in colors..samples_per_row {
+                    samples[i] = samples[i].wrapping_add(samples[i - colors]) & mask;
+                }
+                for (s, val) in samples.iter().enumerate() {
+                    let bit = s * bpc;
+                    let byte = base + bit / 8;
+                    let shift = 8 - bpc - (bit % 8);
+                    data[byte] = (data[byte] & !((mask as u8) << shift)) | ((*val as u8) << shift);
+                }
+            }
+        }
+        _ => {}
     }
     data
 }
@@ -449,5 +497,27 @@ mod tests {
         let encoded = vec![10u8, 10, 10, 5, 0, 0];
         let out = apply_tiff_predictor2(encoded, 3, 1, 8);
         assert_eq!(out, vec![10, 20, 30, 5, 5, 5]);
+    }
+    #[test] fn tiff_predictor2_16bit() {
+        // One row, 2 columns, 1 color, 16bpc big-endian.
+        // Original samples [0x0102, 0x0305] -> diffs [0x0102, 0x0203].
+        let encoded = vec![0x01, 0x02, 0x02, 0x03];
+        let out = apply_tiff_predictor2(encoded, 2, 1, 16);
+        assert_eq!(out, vec![0x01, 0x02, 0x03, 0x05]);
+    }
+    #[test] fn tiff_predictor2_4bit() {
+        // One row, 4 columns, 1 color, 4bpc. Original nibbles [1,3,6,7].
+        // Diffs [1,2,3,1] -> packed 0x12, 0x31.
+        let encoded = vec![0x12, 0x31];
+        let out = apply_tiff_predictor2(encoded, 4, 1, 4);
+        assert_eq!(out, vec![0x13, 0x67]);
+    }
+    #[test] fn tiff_predictor2_1bit() {
+        // One row, 8 columns, 1 color, 1bpc. Original bits 1 0 1 1 0 0 1 0.
+        // Left diffs (xor-like add mod 2): b[0]=1; b[i]=orig[i]-orig[i-1] mod2
+        // orig=10110010 -> diffs: 1, 1, 1, 0, 1, 0, 1, 1 = 0b11101011 = 0xEB.
+        let encoded = vec![0xEBu8];
+        let out = apply_tiff_predictor2(encoded, 8, 1, 1);
+        assert_eq!(out, vec![0b10110010]);
     }
 }

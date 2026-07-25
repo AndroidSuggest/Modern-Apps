@@ -168,6 +168,11 @@ class SafePdfDocument private constructor(
             PdfNative.setCheckbox(handle, widgetId, on).also { invalidate(index) }
         }
 
+    suspend fun setChoiceField(index: Int, widgetId: Long, value: String): Boolean =
+        withContext(Dispatchers.IO) {
+            PdfNative.setChoiceField(handle, widgetId, value).also { invalidate(index) }
+        }
+
     /** Serialize the (possibly edited) document to PDF bytes. */
     suspend fun save(): ByteArray? = withContext(Dispatchers.IO) { PdfNative.saveDocument(handle) }
 

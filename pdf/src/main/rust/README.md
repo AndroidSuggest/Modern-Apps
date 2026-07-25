@@ -23,7 +23,7 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
 - **Text** with `/ToUnicode` decoding (1-byte simple fonts and 2-byte
   Identity-H / Type0), full base encodings (WinAnsi, **real MacRoman**, Standard,
   Symbol, ZapfDingbats), a comprehensive Adobe Glyph List, and embedded-program
-  encoding recovery: TrueType `cmap`, **Type 1 `/FontFile`** clear-text
+  encoding recovery: TrueType `cmap` (formats 0/4/6/10/12/13), **Type 1 `/FontFile`** clear-text
   `/Encoding` scan, and **CFF `/FontFile3`** charset+Encoding recovery
   (`cff.rs`). Text render modes 0–7 including the clip modes (4–7). Accurate
   glyph advance from `/Widths`/`/W`/`/DW` + `Tc`/`Tw`/`Th`.
@@ -38,15 +38,23 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
   function type, all N inputs), plus Lab, CalRGB/CalGray, ICCBased (alternate),
   and Indexed. **Raster image samples** are converted through the same
   colorspace machinery (with LUTs for single-component and indexed images), so
-  Separation/DeviceN/Lab/ICC images are colored correctly.
+  Separation/DeviceN/Lab/ICC images are colored correctly. Image transparency
+  covers `/SMask` (soft mask, with `/Matte` un-premultiplication), explicit
+  stencil `/Mask` images, and color-key masking compared against pre-conversion
+  samples (correct for CMYK/DeviceN, not just RGB). CMYK/YCCK JPEGs (including
+  Adobe APP14 inverted CMYK) are decoded in Rust; JPX honors its enumerated
+  color space (gray/RGB/YCC/CMYK + alpha).
 - **Shadings** (`images.rs` + `shading.rs`): Type 1 (function-based), Type 2
   axial, Type 3 radial (all using `PdfFunction`), and real mesh shadings —
   Type 4 free-form Gouraud (flag-driven triangle strips), Type 5 lattice
   (`/VerticesPerRow`), and Type 6/7 Coons/tensor patches subdivided from their
-  actual boundary Bézier curves. Radial (Type 3) shadings solve the true
+  actual boundary Bézier curves — Type 7 uses the full bicubic tensor surface
+  from its 4 interior control points. Radial (Type 3) shadings solve the true
   circle-family parameter per pixel (honoring `/Extend` and non-negative radii),
   rather than approximating them as axial. A byte-accurate `BitReader` handles
-  arbitrary `BitsPerCoordinate/Component/Flag`.
+  arbitrary `BitsPerCoordinate/Component/Flag`. Axial/radial/function shadings
+  are rasterized at a resolution derived from their device footprint (sharp when
+  zoomed) and, when they lack a `/BBox`, cover the current clip extent.
 - **Patterns** (`interpret.rs`): PatternType 2 (shading) patterns are rasterized
   with the pattern `/Matrix` and clipped to the fill region; PatternType 1
   (tiling) patterns replay their content stream tiled across the fill bbox
@@ -55,9 +63,10 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
   **strokes** too: the stroked path is converted to outline quads and the
   pattern is painted within each segment (`paint_pattern_stroke`).
 - **Filters** (`filters.rs`): ASCIIHex, ASCII85, RunLength, LZW and Flate, both
-  now with PNG (Predictor 10–15) **and TIFF (Predictor 2)** support; CCITT
-  G3/G4; JBIG2 and DCT/JPX passthrough. Decode failures for JPX/CCITT/DCT no
-  longer fall through to reinterpreting encoded bytes as raw samples.
+  now with PNG (Predictor 10–15) **and TIFF (Predictor 2, all of 1/2/4/8/16-bit)**
+  support; CCITT G3 (1-D) / G4 (2-D); JBIG2 and DCT/JPX passthrough. Decode
+  failures for JPX/CCITT/DCT no longer fall through to reinterpreting encoded
+  bytes as raw samples.
 - **Encryption** (`crypto.rs` + `decrypt.rs`): open and save with the Standard
   security handler — RC4-128 and **AES-128 (V4/R4)** and **AES-256 (V5/R6)**.
   `save_encrypted` defaults to AES-128.
@@ -73,11 +82,17 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
   (API 29+) / Compose `BlendMode`, with a Porter-Duff fallback for the separable
   modes on older devices).
 - **ExtGState soft masks** (`/SMask`): luminosity and alpha soft masks set via
-  `gs` are applied around the following Form XObject. Rust brackets the masked
-  content and the `/G` group content with SoftMaskPush/Content/Pop; Kotlin
-  composites them with nested `saveLayer`s — a `DST_IN` mask layer, plus a
+  `gs` apply to all subsequent drawing while active — fills, strokes, text,
+  images, shadings, and Form XObjects — not only forms. Rust brackets each
+  masked draw with SoftMaskPush/Content/Pop, rendering the `/G` group at the CTM
+  in effect when the mask was set; a `/BC` backdrop (luminosity masks) is painted
+  as a backdrop rectangle so uncovered areas take the backdrop luminance. Kotlin
+  composites with nested `saveLayer`s — a `DST_IN` mask layer, plus a
   luminance→alpha `ColorMatrix` layer for luminosity masks. `/SMask /None`
-  clears the mask.
+  clears the mask. (`/TR` transfer functions are not applied — see limitations.)
+- **Overprint** (`/OP`, `/op`, `/OPM`): overprint state is tracked and
+  approximated on the RGB compositor as a Multiply blend (white/zero-ink
+  channels leave the backdrop unchanged), applied when no explicit `/BM` is set.
 - **Kotlin drawing**: bezier clips via `cubicTo`; text-clip modes accumulate
   glyph outlines (`Paint.getTextPath`) and intersect them into the clip at the
   `TextClipApply` marker; blend modes use `Paint.blendMode` on API 29+ and fall
@@ -87,7 +102,13 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
   exact.
 - **Annotations / forms**: `subtype_code` covers the full ISO 32000 annotation
   subtype set; text-field appearance regeneration honors `/Q` alignment,
-  multiline wrapping and comb (`/MaxLen`) fields, alongside checkboxes.
+  multiline wrapping and comb (`/MaxLen`) fields, alongside checkboxes,
+  **radio-button groups** (setting one clears its siblings and updates the parent
+  `/V`) and **Choice fields** (records `/V` + the matched `/Opt` index in `/I`
+  with a regenerated appearance). Annotations that ship without an `/AP` stream
+  get a **synthesized appearance** for the common types — Square, Circle, Line,
+  Ink, Highlight, Underline and StrikeOut (via `/QuadPoints`, `/C`, `/IC`,
+  `/BS`).
 
 ## Genuinely unsupported (documented, not silently skipped)
 
@@ -98,10 +119,35 @@ UTF-8 text, so Kotlin never touches the raw PDF bytes.
   text runs drawn with system fonts, so embedded Type 1/CFF programs are parsed
   only for code→Unicode recovery, not redrawn as vector outlines. (Text-clip
   modes therefore clip with the system-font outlines via `Paint.getTextPath`.)
+- **Exotic font code→Unicode paths**: TrueType `cmap` subtable formats 0/4/6/10/
+  12/13 are parsed; formats 2 (CJK high-byte), 8 (mixed 16/32), and 14 (variation
+  selectors) are not. Type0 fonts assume an Identity-H/V CMap (2-byte codes);
+  named/embedded non-Identity CMaps and `/CIDToGIDMap` are not applied (embedded
+  glyphs are not rendered and text is recovered via `/ToUnicode`). Vertical
+  writing mode (`WMode 1`, `/W2`, `/DW2`) is not supported — glyphs lay out
+  horizontally. These affect only exotic embedded fonts lacking `/ToUnicode`.
 - **Non-separable blend modes on API < 29** (Hue/Saturation/Color/Luminosity,
   and Overlay/ColorDodge/…): no native pre-29 support; they fall back to Normal.
 - **Knockout transparency groups**: not expressible with Canvas layers;
   approximated as non-knockout.
+- **Soft-mask `/TR` transfer functions**: the mask luminance/alpha is used
+  directly; a `/TR` remapping function is not applied (rare; usually Identity).
+- **Overprint compositing**: approximated as Multiply on the RGB compositor
+  rather than true per-colorant ink overprinting (there are no device
+  separations to overprint onto in an RGB viewer).
+- **Incremental save / detached-signature verification**: `save_to` always
+  rewrites the whole document (no `/Prev` xref append), so cryptographic
+  signature *verification* and byte-range-preserving incremental updates are not
+  implemented. Signing scaffolding (`prepare_signature`) and detached CMS
+  creation exist, but existing signatures are not validated on open.
+- **True redaction**: `/Redact` handling removes a text-show operator only when
+  its origin falls inside the redaction rect and otherwise covers the area with
+  an opaque box. Partial-overlap text, images and vector art are *covered*, not
+  removed from the content stream — do not rely on it to scrub sensitive data.
+- **CCITTFax `/EncodedByteAlign` and mixed 1-D/2-D G3 (`K > 0`)**: the `fax`
+  crate decodes pure G3 (1-D) and G4 (2-D) from a continuous bitstream and does
+  not expose per-row byte alignment or K>0 mode switching, so these two CCITT
+  options are not honored. Pure G3/G4 (the common cases) decode correctly.
 
 ## Prerequisites (local + CI)
 

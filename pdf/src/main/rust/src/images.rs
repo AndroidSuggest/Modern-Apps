@@ -133,24 +133,76 @@ pub(crate) mod jp2 {
             v.clamp(0, 255) as u8
         };
 
+        // Decide how to interpret components. Prefer the JP2 enumerated color
+        // space; fall back to component count when unspecified/unknown.
+        #[derive(PartialEq)]
+        enum Interp { Gray, Rgb, Ycc, Cmyk }
+        let interp = match img.color_space {
+            OPJ_CLRSPC_GRAY => Interp::Gray,
+            OPJ_CLRSPC_CMYK => Interp::Cmyk,
+            OPJ_CLRSPC_SYCC | OPJ_CLRSPC_EYCC => Interp::Ycc,
+            OPJ_CLRSPC_SRGB => Interp::Rgb,
+            // Unknown/unspecified: infer from channel count.
+            _ => match n {
+                1 => Interp::Gray,
+                4 => Interp::Cmyk,
+                _ => Interp::Rgb,
+            },
+        };
+        // Alpha comes from a trailing extra channel for gray/rgb layouts.
+        let has_alpha = matches!(interp, Interp::Gray if n >= 2)
+            || matches!(interp, Interp::Rgb | Interp::Ycc if n >= 4);
+
         let mut rgba = vec![0u8; w * h * 4];
         for y in 0..h {
             for x in 0..w {
                 let idx = (y * w + x) * 4;
-                let (r, g, b) = if n >= 3 {
-                    (
+                let (r, g, b) = match interp {
+                    Interp::Gray => {
+                        let v = sample(&comps[0], x, y);
+                        (v, v, v)
+                    }
+                    Interp::Rgb => (
                         sample(&comps[0], x, y),
-                        sample(&comps[1], x, y),
-                        sample(&comps[2], x, y),
-                    )
-                } else {
-                    let v = sample(&comps[0], x, y);
-                    (v, v, v)
+                        sample(comps.get(1).unwrap_or(&comps[0]), x, y),
+                        sample(comps.get(2).unwrap_or(&comps[0]), x, y),
+                    ),
+                    Interp::Ycc if n >= 3 => {
+                        let yy = sample(&comps[0], x, y) as f32;
+                        let cb = sample(&comps[1], x, y) as f32 - 128.0;
+                        let cr = sample(&comps[2], x, y) as f32 - 128.0;
+                        let r = (yy + 1.402 * cr).round().clamp(0.0, 255.0) as u8;
+                        let g = (yy - 0.344136 * cb - 0.714136 * cr).round().clamp(0.0, 255.0) as u8;
+                        let b = (yy + 1.772 * cb).round().clamp(0.0, 255.0) as u8;
+                        (r, g, b)
+                    }
+                    Interp::Ycc => {
+                        let v = sample(&comps[0], x, y);
+                        (v, v, v)
+                    }
+                    Interp::Cmyk if n >= 4 => {
+                        let c = sample(&comps[0], x, y) as f32 / 255.0;
+                        let m = sample(&comps[1], x, y) as f32 / 255.0;
+                        let ye = sample(&comps[2], x, y) as f32 / 255.0;
+                        let k = sample(&comps[3], x, y) as f32 / 255.0;
+                        let r = ((1.0 - c) * (1.0 - k) * 255.0).round() as u8;
+                        let g = ((1.0 - m) * (1.0 - k) * 255.0).round() as u8;
+                        let b = ((1.0 - ye) * (1.0 - k) * 255.0).round() as u8;
+                        (r, g, b)
+                    }
+                    Interp::Cmyk => {
+                        let v = sample(&comps[0], x, y);
+                        (v, v, v)
+                    }
                 };
                 rgba[idx] = r;
                 rgba[idx + 1] = g;
                 rgba[idx + 2] = b;
-                rgba[idx + 3] = 255;
+                rgba[idx + 3] = if has_alpha {
+                    sample(&comps[n - 1], x, y)
+                } else {
+                    255
+                };
             }
         }
         Some((w as u32, h as u32, rgba))
@@ -251,7 +303,7 @@ pub(crate) fn ocg_is_visible_alias(doc: &Document, id: ObjectId) -> Option<bool>
 /// `comps_to_rgb` device path which is equivalent for plain RGB/Gray/CMYK).
 fn cs_needs_eval(k: &CsKind) -> bool {
     match k {
-        CsKind::DeviceGray | CsKind::DeviceRGB | CsKind::DeviceCMYK | CsKind::Pattern => false,
+        CsKind::DeviceGray | CsKind::DeviceRGB | CsKind::DeviceCMYK | CsKind::Pattern { .. } => false,
         CsKind::ICCBased { alt, .. } => alt.as_ref().map(|a| cs_needs_eval(a)).unwrap_or(false),
         CsKind::Lab { .. }
         | CsKind::Separation { .. }
@@ -336,7 +388,7 @@ fn image_samples_to_rgba(
     };
 
     // Indexed: build a palette LUT over the base colorspace.
-    if let CsKind::Indexed { base, lookup, base_ncomp } = &kind {
+    if let CsKind::Indexed { base, lookup, base_ncomp, .. } = &kind {
         let bn = *base_ncomp as usize;
         let maxidx = if bpc >= 8 { 255usize } else { (1usize << bpc) - 1 };
         let hival = if bn > 0 { (lookup.len() / bn).saturating_sub(1) } else { 0 };
@@ -606,6 +658,13 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
             if let Some((jw,jh,mut rgba)) = decode_jpeg_rgba(&jpeg_bytes) {
                 let smask = read_smask(doc, dict, jw, jh);
                 apply_smask(&mut rgba, &smask);
+                if smask.is_some() { if let Some(matte) = read_matte(doc, dict) { apply_matte(&mut rgba, matte); } }
+                if let Some(mask_alpha) = read_explicit_mask(doc, dict, jw, jh) {
+                    for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
+                        let mv = mask_alpha.get(i).copied().unwrap_or(255) as u16;
+                        px[3] = ((px[3] as u16 * mv) / 255) as u8;
+                    }
+                }
                 if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
                 return Some(ImageData { w: jw, h: jh, format: 0, data: rgba });
             }
@@ -618,11 +677,26 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
                 }
                 let smask = read_smask(doc, dict, jw, jh);
                 apply_smask(&mut rgba, &smask);
+                if let Some(mask_alpha) = read_explicit_mask(doc, dict, jw, jh) {
+                    for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
+                        let mv = mask_alpha.get(i).copied().unwrap_or(255) as u16;
+                        px[3] = ((px[3] as u16 * mv) / 255) as u8;
+                    }
+                }
                 if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
                 return Some(ImageData{ w: jw, h: jh, format: 0, data: rgba });
             }
         }
         if !smask_present && !mask_present {
+            // Android's bitmap decoder cannot handle CMYK/YCCK JPEGs, so decode
+            // those (and any Adobe-marked JPEG) in Rust; RGB/gray pass through.
+            let cmyk = jpeg_num_components(&jpeg_bytes) == Some(4)
+                || jpeg_adobe_transform(&jpeg_bytes).is_some();
+            if cmyk {
+                if let Some((jw, jh, rgba)) = decode_jpeg_rgba(&jpeg_bytes) {
+                    return Some(ImageData { w: jw, h: jh, format: 0, data: rgba });
+                }
+            }
             // efficient passthrough
             return Some(ImageData { w, h, format: 1, data: jpeg_bytes });
         }
@@ -636,7 +710,6 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
     let samples = stream_data(stream);
     let mut rgba = vec![0u8; (w * h * 4) as usize];
     let smask = read_smask(doc, dict, w, h);
-    let colorkey = read_color_key_mask(doc, dict);
 
     if image_mask {
         let invert = matches!(
@@ -682,7 +755,26 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
     let mut rgba = image_samples_to_rgba(doc, dict, cs_resources, &decoded_comps, w_us, h_us, ncomp as usize, bpc);
 
     apply_smask(&mut rgba, &smask);
-    apply_color_key_mask(&mut rgba, &colorkey);
+    // /Matte: base colors are premultiplied against a matte background; undo it
+    // using the SMask alpha we just applied.
+    if smask.is_some() {
+        if let Some(matte) = read_matte(doc, dict) {
+            apply_matte(&mut rgba, matte);
+        }
+    }
+    // Explicit stencil /Mask image (mutually exclusive with color-key /Mask).
+    if let Some(mask_alpha) = read_explicit_mask(doc, dict, w, h) {
+        for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
+            let mv = mask_alpha.get(i).copied().unwrap_or(255) as u16;
+            px[3] = ((px[3] as u16 * mv) / 255) as u8;
+        }
+    }
+    // Color-key masking is compared against the pre-conversion samples so it is
+    // correct for CMYK/DeviceN (not just DeviceRGB/Gray). Indexed images key on
+    // the index value, which `decoded_comps` already holds (ncomp==1).
+    if let Some(ranges_raw) = read_color_key_ranges_raw(doc, dict) {
+        apply_color_key_mask_samples(&mut rgba, &decoded_comps, ncomp as usize, &ranges_raw, bpc);
+    }
     Some(ImageData { w, h, format: 0, data: rgba })
 }
 
@@ -730,7 +822,9 @@ pub(crate) fn extract_inline_image(doc: &Document, stream: &lopdf::Stream, _fill
     let mut rgba = image_samples_to_rgba(doc, dict, cs_resources, &unpacked, w as usize, h as usize, ncomp as usize, bpc);
     let smask = read_smask(doc, dict, w, h);
     apply_smask(&mut rgba, &smask);
-    if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
+    if let Some(ranges_raw) = read_color_key_ranges_raw(doc, dict) {
+        apply_color_key_mask_samples(&mut rgba, &unpacked, ncomp as usize, &ranges_raw, bpc);
+    }
     Some(ImageData { w, h, format: 0, data: rgba })
 }
 
@@ -779,7 +873,15 @@ pub(crate) fn radial_shading_param(coords: &[f64], e0: bool, e1: bool, fx: f64, 
     best
 }
 
-pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: &Mat, cs_resources: &HashMap<Vec<u8>, ObjectId>, size: u32) -> Option<(Mat, u32, u32, Vec<u8>)> {
+/// Compute an effective raster resolution from a unit-square→device matrix so
+/// gradients stay sharp when the page is zoomed. Clamped to a sane range.
+pub(crate) fn shading_device_size(unit_to_device: &Mat) -> u32 {
+    let dev_w = (unit_to_device[0].powi(2) + unit_to_device[1].powi(2)).sqrt();
+    let dev_h = (unit_to_device[2].powi(2) + unit_to_device[3].powi(2)).sqrt();
+    (dev_w.max(dev_h).ceil() as u32).clamp(64, 1024)
+}
+
+pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: &Mat, cs_resources: &HashMap<Vec<u8>, ObjectId>, size: u32, clip_bbox_device: Option<[f64;4]>) -> Option<(Mat, u32, u32, Vec<u8>)> {
     // A shading may be a plain dictionary (Type 1-3) or a stream (Type 4-7,
     // whose mesh data lives in the stream body).
     let (dict, mesh_bytes): (&lopdf::Dictionary, Option<Vec<u8>>) = match shading_obj {
@@ -788,6 +890,15 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
         _ => return None,
     };
     let shading_type = dict.get(b"ShadingType").ok().and_then(num).unwrap_or(0.0) as i64;
+    // When the caller passes size==0, derive an effective resolution from the
+    // device footprint of the clip region (falls back to 256 if unknown).
+    let auto_size = || -> u32 {
+        match clip_bbox_device {
+            Some(b) => (((b[2]-b[0]).abs()).max((b[3]-b[1]).abs()).ceil() as u32).clamp(64, 1024),
+            None => 256,
+        }
+    };
+    let size = if size == 0 { auto_size() } else { size };
     if shading_type==4 || shading_type==5 || shading_type==6 || shading_type==7 {
         // Mesh shadings: pass the decoded stream body so real vertices/patches
         // can be parsed (falls back to /DataSource when the dict provides one).
@@ -804,7 +915,27 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
     let bg = dict.get(b"Background").ok().and_then(|o| deref(doc, o)).and_then(|o| o.as_array().ok())
         .map(|a| a.iter().filter_map(|o| deref(doc, o).and_then(num)).collect::<Vec<f64>>());
 
-    let bbox = dict.get(b"BBox").ok().and_then(|o| read_rect(doc, o)).unwrap_or([0.0,0.0,100.0,100.0]);
+    // /BBox bounds the shading in shading space. When absent, cover the current
+    // clip region instead of an arbitrary 100×100 box: map the device clip bbox
+    // back into shading space via the inverse CTM.
+    let bbox = dict.get(b"BBox").ok().and_then(|o| read_rect(doc, o)).unwrap_or_else(|| {
+        if let Some(cb) = clip_bbox_device {
+            let inv = mat_inverse(base_ctm);
+            let corners = [
+                transform(&inv, cb[0], cb[1]), transform(&inv, cb[2], cb[1]),
+                transform(&inv, cb[2], cb[3]), transform(&inv, cb[0], cb[3]),
+            ];
+            let xs = corners.iter().map(|p| p.0);
+            let ys = corners.iter().map(|p| p.1);
+            let x0 = xs.clone().fold(f64::INFINITY, f64::min);
+            let x1 = xs.fold(f64::NEG_INFINITY, f64::max);
+            let y0 = ys.clone().fold(f64::INFINITY, f64::min);
+            let y1 = ys.fold(f64::NEG_INFINITY, f64::max);
+            if x1 > x0 && y1 > y0 { [x0, y0, x1, y1] } else { [0.0,0.0,100.0,100.0] }
+        } else {
+            [0.0,0.0,100.0,100.0]
+        }
+    });
 
     let color_space_obj = dict.get(b"ColorSpace").ok().and_then(|o| parse_cs_kind(doc, Some(o), cs_resources));
     // If CS not present, try to infer from Function or Background etc.
@@ -1065,6 +1196,55 @@ pub(crate) fn read_color_key_mask(doc: &Document, dict: &lopdf::Dictionary) -> O
     Some(out)
 }
 
+/// Read a color-key `/Mask` array as raw per-component sample-value ranges
+/// (i.e. in the image's 0..2^bpc-1 units, one `(min,max)` per component). This
+/// is the form needed to mask against pre-conversion samples for CMYK/DeviceN.
+pub(crate) fn read_color_key_ranges_raw(doc: &Document, dict: &lopdf::Dictionary) -> Option<Vec<(u32,u32)>> {
+    let mask_obj = dict.get(b"Mask").ok().and_then(|o| deref(doc, o))?;
+    let arr = match mask_obj {
+        Object::Array(a) => a,
+        _ => return None,
+    };
+    if arr.is_empty() || arr.len()%2!=0 || arr.len()>20 { return None; }
+    let mut out = Vec::with_capacity(arr.len()/2);
+    for i in 0..arr.len()/2 {
+        let mn = num(&arr[i*2]).unwrap_or(0.0).max(0.0);
+        let mx = num(&arr[i*2+1]).unwrap_or(0.0).max(0.0);
+        out.push((mn.min(mx) as u32, mn.max(mx) as u32));
+    }
+    Some(out)
+}
+
+/// Apply color-key masking against pre-conversion samples. `comps` is
+/// `w*h*ncomp` bytes already scaled to 0..255 by [`unpack_samples_to_bytes`];
+/// `ranges_raw` holds one `(min,max)` per component in 0..2^bpc-1 units. A pixel
+/// whose every component falls inside its range becomes fully transparent. This
+/// masks correctly for CMYK/DeviceN, unlike the RGB-only post-conversion path.
+pub(crate) fn apply_color_key_mask_samples(
+    rgba: &mut [u8],
+    comps: &[u8],
+    ncomp: usize,
+    ranges_raw: &[(u32,u32)],
+    bpc: u32,
+) {
+    if ncomp == 0 || ranges_raw.len() != ncomp { return; }
+    let maxval = ((1u64 << bpc.clamp(1, 16)) - 1).max(1);
+    // Scale each raw range into the 0..255 sample domain, matching the unpacker.
+    let scaled: Vec<(u8,u8)> = ranges_raw.iter().map(|&(mn,mx)| {
+        let s = |v: u32| ((v as u64).min(maxval) * 255 / maxval) as u8;
+        (s(mn), s(mx))
+    }).collect();
+    let px = rgba.len() / 4;
+    for i in 0..px {
+        let mut inside = true;
+        for (c, &(mn, mx)) in scaled.iter().enumerate() {
+            let v = comps.get(i*ncomp + c).copied().unwrap_or(0);
+            if v < mn || v > mx { inside = false; break; }
+        }
+        if inside { rgba[i*4+3] = 0; }
+    }
+}
+
 pub(crate) fn decode_jpeg_rgba(data: &[u8]) -> Option<(u32,u32,Vec<u8>)> {
     let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(data));
     let pixels = decoder.decode().ok()?;
@@ -1094,17 +1274,24 @@ pub(crate) fn decode_jpeg_rgba(data: &[u8]) -> Option<(u32,u32,Vec<u8>)> {
             out
         }
         jpeg_decoder::PixelFormat::CMYK32 => {
-            // CMYK -> RGB
+            // CMYK -> RGB. Adobe (APP14) CMYK JPEGs store inverted samples, so
+            // when the Adobe marker is present the channels must be inverted
+            // before conversion or colors come out negated.
             if pixels.len() < (w*h*4) as usize { return None; }
+            let invert = jpeg_adobe_transform(data).is_some();
             let mut out = vec![0u8; (w*h*4) as usize];
             for i in 0..(w*h) as usize {
-                let c = pixels[i*4] as f64 /255.0;
-                let m = pixels[i*4+1] as f64 /255.0;
-                let y = pixels[i*4+2] as f64 /255.0;
-                let k = pixels[i*4+3] as f64 /255.0;
-                let r = ((1.0 - c)*(1.0 - k)*255.0) as u8;
-                let g = ((1.0 - m)*(1.0 - k)*255.0) as u8;
-                let b = ((1.0 - y)*(1.0 - k)*255.0) as u8;
+                let (mut c, mut m, mut y, mut k) = (
+                    pixels[i*4], pixels[i*4+1], pixels[i*4+2], pixels[i*4+3],
+                );
+                if invert { c = 255 - c; m = 255 - m; y = 255 - y; k = 255 - k; }
+                let cf = c as f64 /255.0;
+                let mf = m as f64 /255.0;
+                let yf = y as f64 /255.0;
+                let kf = k as f64 /255.0;
+                let r = ((1.0 - cf)*(1.0 - kf)*255.0) as u8;
+                let g = ((1.0 - mf)*(1.0 - kf)*255.0) as u8;
+                let b = ((1.0 - yf)*(1.0 - kf)*255.0) as u8;
                 out[i*4]=r; out[i*4+1]=g; out[i*4+2]=b; out[i*4+3]=255;
             }
             out
@@ -1112,6 +1299,66 @@ pub(crate) fn decode_jpeg_rgba(data: &[u8]) -> Option<(u32,u32,Vec<u8>)> {
         _ => { return None; }
     };
     Some((w,h,rgba))
+}
+
+/// Read the component count from a JPEG's SOF marker (1 = gray, 3 = YCbCr/RGB,
+/// 4 = CMYK/YCCK). Returns `None` if no SOF is found.
+pub(crate) fn jpeg_num_components(data: &[u8]) -> Option<u8> {
+    if data.len() < 2 || data[0] != 0xFF || data[1] != 0xD8 { return None; }
+    let mut i = 2;
+    while i + 1 < data.len() {
+        if data[i] != 0xFF { i += 1; continue; }
+        let marker = data[i + 1];
+        if marker == 0xFF { i += 1; continue; }
+        if marker == 0x01 || (0xD0..=0xD9).contains(&marker) { i += 2; continue; }
+        if marker == 0xDA { break; }
+        if i + 4 > data.len() { break; }
+        let len = ((data[i + 2] as usize) << 8) | data[i + 3] as usize;
+        if len < 2 { break; }
+        let seg_end = i + 2 + len;
+        if seg_end > data.len() { break; }
+        // SOF0..SOF15, excluding DHT(C4), JPG(C8), DAC(CC).
+        let is_sof = (0xC0..=0xCF).contains(&marker)
+            && marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
+        if is_sof {
+            // payload: precision(1) height(2) width(2) ncomp(1)
+            return data.get(i + 4 + 5).copied();
+        }
+        i = seg_end;
+    }
+    None
+}
+
+/// Scan JPEG markers for an APP14 "Adobe" segment, returning its transform flag
+/// (0 = unknown/CMYK, 1 = YCbCr, 2 = YCCK) if present. Its mere presence signals
+/// the Adobe inverted-CMYK convention. Returns `None` for non-Adobe JPEGs.
+pub(crate) fn jpeg_adobe_transform(data: &[u8]) -> Option<u8> {
+    if data.len() < 2 || data[0] != 0xFF || data[1] != 0xD8 { return None; }
+    let mut i = 2;
+    while i + 1 < data.len() {
+        if data[i] != 0xFF { i += 1; continue; }
+        let marker = data[i + 1];
+        // Padding fill bytes.
+        if marker == 0xFF { i += 1; continue; }
+        // Standalone markers (no length): TEM, RSTn, SOI, EOI.
+        if marker == 0x01 || (0xD0..=0xD9).contains(&marker) { i += 2; continue; }
+        // Start of scan: entropy-coded data follows; stop looking.
+        if marker == 0xDA { break; }
+        if i + 4 > data.len() { break; }
+        let len = ((data[i + 2] as usize) << 8) | data[i + 3] as usize;
+        if len < 2 { break; }
+        let seg_start = i + 4;
+        let seg_end = i + 2 + len;
+        if seg_end > data.len() { break; }
+        if marker == 0xEE {
+            let seg = &data[seg_start..seg_end];
+            if seg.len() >= 12 && &seg[0..5] == b"Adobe" {
+                return Some(seg[11]);
+            }
+        }
+        i = seg_end;
+    }
+    None
 }
 
 pub(crate) fn decode_jpeg_gray(data: &[u8]) -> Option<(u32,u32,Vec<u8>)> {
@@ -1232,6 +1479,86 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
     None
 }
 
+/// Decode an explicit stencil `/Mask` image (an `ImageMask` XObject) into a
+/// `w*h` 8-bit alpha buffer for the base image: mask sample 1 => masked
+/// (alpha 0), 0 => painted (alpha 255), honoring the mask's `/Decode`. Scaled to
+/// the base image's dimensions. Returns `None` for a color-key array `/Mask` or
+/// for masks using image codecs this path doesn't decode (CCITT/JBIG2/DCT/JPX).
+pub(crate) fn read_explicit_mask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u32) -> Option<Vec<u8>> {
+    let m = dict.get(b"Mask").ok().and_then(|o| deref(doc, o))?;
+    let s = match m { Object::Stream(s) => s, _ => return None };
+    if !matches!(s.dict.get(b"ImageMask").ok(), Some(Object::Boolean(true))) {
+        return None;
+    }
+    let sw = s.dict.get(b"Width").ok().and_then(num)? as usize;
+    let sh = s.dict.get(b"Height").ok().and_then(num)? as usize;
+    if sw == 0 || sh == 0 || sw > 20000 || sh > 20000 { return None; }
+    let filters = filter_names(doc, &s.dict);
+    if filters.iter().any(|f| {
+        f.eq_ignore_ascii_case("CCITTFaxDecode") || f.eq_ignore_ascii_case("CCF")
+            || f.eq_ignore_ascii_case("JBIG2Decode") || f.eq_ignore_ascii_case("DCTDecode")
+            || f.eq_ignore_ascii_case("JPXDecode")
+    }) {
+        return None;
+    }
+    // Default Decode is [0 1]; [1 0] inverts the stencil sense.
+    let invert = matches!(
+        s.dict.get(b"Decode").ok().and_then(|o| deref(doc, o)),
+        Some(Object::Array(a)) if a.first().and_then(num) == Some(1.0)
+    );
+    let data = stream_data(s);
+    let row_bytes = (sw + 7) / 8;
+    let (w_us, h_us) = (w as usize, h as usize);
+    let mut alpha = vec![255u8; w_us * h_us];
+    for y in 0..h_us {
+        for x in 0..w_us {
+            let sx = x * sw / w_us;
+            let sy = y * sh / h_us;
+            let byte = data.get(sy * row_bytes + sx / 8).copied().unwrap_or(0);
+            let mut bit = (byte >> (7 - (sx % 8))) & 1;
+            if invert { bit ^= 1; }
+            alpha[y * w_us + x] = if bit == 1 { 0 } else { 255 };
+        }
+    }
+    Some(alpha)
+}
+
+/// Read an SMask `/Matte` color as an RGB triple (0..1), if present. The matte
+/// is given in the base image's colorspace; components are interpreted by arity
+/// (gray/RGB/CMYK), which is sufficient for un-premultiplication.
+pub(crate) fn read_matte(doc: &Document, dict: &lopdf::Dictionary) -> Option<[f64; 3]> {
+    let sm = dict.get(b"SMask").ok().and_then(|o| deref(doc, o))?;
+    let smd = sm.as_dict().ok()?;
+    let arr = smd.get(b"Matte").ok().and_then(|o| deref(doc, o))?;
+    let comps: Vec<f64> = arr.as_array().ok()?.iter().filter_map(num).collect();
+    let rgb = match comps.len() {
+        1 => [comps[0], comps[0], comps[0]],
+        3 => [comps[0], comps[1], comps[2]],
+        4 => {
+            let (c, m, y, k) = (comps[0], comps[1], comps[2], comps[3]);
+            [(1.0 - c) * (1.0 - k), (1.0 - m) * (1.0 - k), (1.0 - y) * (1.0 - k)]
+        }
+        _ => return None,
+    };
+    Some(rgb)
+}
+
+/// Un-premultiply an RGBA buffer whose colors were premultiplied against a
+/// `/Matte` background, using the already-applied SMask alpha in `rgba`.
+/// `c = matte + (c' - matte) / alpha`.
+pub(crate) fn apply_matte(rgba: &mut [u8], matte: [f64; 3]) {
+    let m = [matte[0] * 255.0, matte[1] * 255.0, matte[2] * 255.0];
+    for px in rgba.chunks_exact_mut(4) {
+        let a = px[3] as f64 / 255.0;
+        if a <= 0.0 { continue; }
+        for ch in 0..3 {
+            let cp = px[ch] as f64;
+            let un = m[ch] + (cp - m[ch]) / a;
+            px[ch] = un.round().clamp(0.0, 255.0) as u8;
+        }
+    }
+}
+
 /// Decode an image's `/SMask` (soft mask) into a `w*h` 8-bit alpha buffer,
 /// now supporting DCT (JPEG) and JPX and low BPC.
 pub(crate) fn read_smask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u32) -> Option<Vec<u8>> {
@@ -1291,6 +1618,71 @@ pub(crate) fn read_smask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u3
         }
     }
     Some(alpha)
+}
+
+#[cfg(test)]
+mod mask_tests {
+    use super::*;
+
+    #[test]
+    fn adobe_app14_transform_detected() {
+        // SOI + APP14 "Adobe" (transform=2) + SOS.
+        let data = vec![
+            0xFF, 0xD8,
+            0xFF, 0xEE, 0x00, 0x0E, // APP14, len=14
+            b'A', b'd', b'o', b'b', b'e', 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0xFF, 0xDA,
+        ];
+        assert_eq!(jpeg_adobe_transform(&data), Some(2));
+        // A plain JPEG without the Adobe marker returns None.
+        let plain = vec![0xFF, 0xD8, 0xFF, 0xDA];
+        assert_eq!(jpeg_adobe_transform(&plain), None);
+    }
+
+    #[test]
+    fn sof_component_count_read() {
+        // SOI + SOF0 declaring 3 components, padded to the segment length.
+        let mut data = vec![
+            0xFF, 0xD8,
+            0xFF, 0xC0, 0x00, 0x11, // SOF0, len=17
+            0x08, 0x00, 0x01, 0x00, 0x01, 0x03, // prec, h, w, ncomp=3
+        ];
+        data.extend(std::iter::repeat(0u8).take(9)); // 3 component specs
+        assert_eq!(jpeg_num_components(&data), Some(3));
+    }
+
+    #[test]
+    fn color_key_masks_cmyk_in_range() {
+        // Two CMYK pixels: first inside the key range, second outside.
+        let mut rgba = vec![10u8, 20, 30, 255,  40, 50, 60, 255];
+        let comps = vec![5u8, 5, 5, 5,  200, 200, 200, 200];
+        let ranges = [(0u32, 10), (0, 10), (0, 10), (0, 10)];
+        apply_color_key_mask_samples(&mut rgba, &comps, 4, &ranges, 8);
+        assert_eq!(rgba[3], 0, "in-range CMYK pixel becomes transparent");
+        assert_eq!(rgba[7], 255, "out-of-range pixel stays opaque");
+    }
+
+    #[test]
+    fn matte_un_premultiplies() {
+        // Black matte: c = c' / alpha. c'=100, alpha=128/255 -> ~199.
+        let mut rgba = vec![100u8, 100, 100, 128];
+        apply_matte(&mut rgba, [0.0, 0.0, 0.0]);
+        assert!((198..=201).contains(&rgba[0]), "un-premult ~199, got {}", rgba[0]);
+        assert_eq!(rgba[3], 128, "alpha is preserved");
+    }
+
+    #[test]
+    fn device_size_scales_with_ctm() {
+        // Unit square scaled to 500 device px -> ~500 raster, clamped to [64,1024].
+        let big = super::shading_device_size(&[500.0, 0.0, 0.0, 400.0, 0.0, 0.0]);
+        assert_eq!(big, 500);
+        // A tiny footprint clamps up to the 64 minimum.
+        let small = super::shading_device_size(&[10.0, 0.0, 0.0, 10.0, 0.0, 0.0]);
+        assert_eq!(small, 64);
+        // A huge footprint clamps to the 1024 maximum.
+        let huge = super::shading_device_size(&[5000.0, 0.0, 0.0, 5000.0, 0.0, 0.0]);
+        assert_eq!(huge, 1024);
+    }
 }
 
 #[cfg(test)]

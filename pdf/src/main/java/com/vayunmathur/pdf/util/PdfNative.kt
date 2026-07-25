@@ -161,11 +161,16 @@ object PdfNative {
 
     external fun setCheckbox(handle: Long, widgetId: Long, on: Boolean): Boolean
 
+    external fun setChoiceField(handle: Long, widgetId: Long, value: String): Boolean
+
     /** Serialize the modified document to PDF bytes, or null on failure. */
     external fun saveDocument(handle: Long): ByteArray?
 
     /** Build a signature-ready PDF (placeholder /ByteRange + /Contents) for signing. */
     external fun prepareSignature(handle: Long, name: String, contentsBytes: Int): ByteArray?
+
+    /** Detached CMS/PKCS#7 signature (self-signed RSA-2048, SHA-256) over [content]. */
+    external fun signCms(content: ByteArray, name: String): ByteArray?
 
     /** Serialize with streams compressed + unused objects pruned, or null. */
     external fun saveCompressed(handle: Long): ByteArray?

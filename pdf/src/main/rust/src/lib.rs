@@ -30,6 +30,7 @@ pub(crate) use lopdf::content::Content;
 pub(crate) use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
 
 mod crypto;
+mod signing;
 mod filters;
 mod functions;
 pub(crate) use functions::*;
