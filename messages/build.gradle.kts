@@ -180,10 +180,9 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // Bouncy Castle — AES-IGE for MTProto encryption, X25519 for WhatsApp Noise
-    implementation(libs.bouncycastle)
-
-    // Signal protocol crypto (Double Ratchet, sealed sender, pre-keys, etc.)
+    // Signal protocol crypto (Double Ratchet, sealed sender, pre-keys, etc.).
+    // Also provides constant-time X25519 (org.signal.libsignal.protocol.ecc.Curve)
+    // used by the WhatsApp Noise handshake — no Bouncy Castle needed.
     implementation("org.signal:libsignal-android:0.86.5")
     // Classic pure-Java Signal protocol (X3DH) for the WhatsApp bridge. libsignal-android 0.86
     // removed X3DH (PQXDH-only), which WhatsApp companion sessions require. This artifact has no

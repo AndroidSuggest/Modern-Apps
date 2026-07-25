@@ -1,8 +1,7 @@
 package com.vayunmathur.passwords.cable
 
-import org.bouncycastle.crypto.digests.SHA256Digest
-import org.bouncycastle.crypto.generators.HKDFBytesGenerator
-import org.bouncycastle.crypto.params.HKDFParameters
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * caBLE v2 key derivations from the 16-byte QR secret.
@@ -34,12 +33,39 @@ object CableKeys {
     const val PSK_SIZE = 32
     const val NONCE_SIZE = 10        // BLE EID nonce
 
-    /** HKDF-SHA256 as used by caBLE. Empty/`null` salt = RFC 5869 zero salt (BoringSSL parity). */
+    private const val HMAC = "HmacSHA256"
+    private const val HASH_LEN = 32
+
+    /**
+     * HKDF-SHA256 (RFC 5869) as used by caBLE, on the platform [Mac] (Conscrypt) —
+     * no Bouncy Castle. Empty/`null` salt = RFC 5869 zero salt (BoringSSL parity).
+     */
     fun hkdf(ikm: ByteArray, salt: ByteArray?, info: ByteArray, length: Int): ByteArray {
-        val generator = HKDFBytesGenerator(SHA256Digest())
-        generator.init(HKDFParameters(ikm, salt, info))
-        return ByteArray(length).also { generator.generateBytes(it, 0, length) }
+        require(length <= 255 * HASH_LEN) { "HKDF length too large" }
+        // Extract.
+        val actualSalt = if (salt == null || salt.isEmpty()) ByteArray(HASH_LEN) else salt
+        val prk = hmac(actualSalt, ikm)
+        // Expand.
+        val out = ByteArray(length)
+        var t = ByteArray(0)
+        var pos = 0
+        var counter = 1
+        while (pos < length) {
+            val mac = Mac.getInstance(HMAC).apply { init(SecretKeySpec(prk, HMAC)) }
+            mac.update(t)
+            mac.update(info)
+            mac.update(counter.toByte())
+            t = mac.doFinal()
+            val n = minOf(t.size, length - pos)
+            System.arraycopy(t, 0, out, pos, n)
+            pos += n
+            counter++
+        }
+        return out
     }
+
+    private fun hmac(key: ByteArray, data: ByteArray): ByteArray =
+        Mac.getInstance(HMAC).apply { init(SecretKeySpec(key, HMAC)) }.doFinal(data)
 
     /** Chromium `Derive<N>(secret, salt, purpose)`. */
     fun derive(secret: ByteArray, salt: ByteArray?, purpose: Purpose, length: Int): ByteArray =

@@ -10,12 +10,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import org.bouncycastle.crypto.agreement.X25519Agreement
-import org.bouncycastle.crypto.params.X25519PrivateKeyParameters
-import org.bouncycastle.crypto.params.X25519PublicKeyParameters
-import org.bouncycastle.crypto.generators.HKDFBytesGenerator
-import org.bouncycastle.crypto.params.HKDFParameters
-import org.bouncycastle.crypto.digests.SHA256Digest
+import org.whispersystems.libsignal.ecc.Curve
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 
 /**
@@ -167,15 +162,8 @@ object WhatsAppProtocol {
         }
 
         private fun extractAndExpand(salt: ByteArray, data: ByteArray): Pair<ByteArray, ByteArray> {
-            val hkdf = HKDFBytesGenerator(SHA256Digest())
-            hkdf.init(HKDFParameters(data, salt, null))
-
-            val writeKey = ByteArray(32)
-            val readKey = ByteArray(32)
-            hkdf.generateBytes(writeKey, 0, 32)
-            hkdf.generateBytes(readKey, 0, 32)
-
-            return Pair(writeKey, readKey)
+            val out = hkdfSha256(data, salt, ByteArray(0), 64)
+            return Pair(out.copyOfRange(0, 32), out.copyOfRange(32, 64))
         }
 
         fun finish(): Pair<SecretKeySpec, SecretKeySpec> {
@@ -197,27 +185,38 @@ object WhatsAppProtocol {
 
     // -- Cryptography helpers --
 
+    // X25519 via libsignal (Rust, constant-time; already shipped as libsignal_jni.so).
+    // WhatsApp uses raw 32-byte keys; libsignal public keys carry a 0x05 DJB type prefix.
     fun x25519(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
-        val privParams = X25519PrivateKeyParameters(privateKey, 0)
-        val pubParams = X25519PublicKeyParameters(publicKey, 0)
-        val agreement = X25519Agreement()
-        agreement.init(privParams)
-        val sharedSecret = ByteArray(32)
-        agreement.calculateAgreement(pubParams, sharedSecret, 0)
-        return sharedSecret
+        val priv = Curve.decodePrivatePoint(privateKey)
+        val pub = Curve.decodePoint(byteArrayOf(0x05) + publicKey, 0)
+        return Curve.calculateAgreement(pub, priv)
     }
 
     fun generateX25519KeyPair(): Pair<ByteArray, ByteArray> {
-        val random = SecureRandom()
-        val privateKey = ByteArray(32)
-        random.nextBytes(privateKey)
-        privateKey[0] = (privateKey[0].toInt() and 248).toByte()
-        privateKey[31] = (privateKey[31].toInt() and 127).toByte()
-        privateKey[31] = (privateKey[31].toInt() or 64).toByte()
-
-        val privParams = X25519PrivateKeyParameters(privateKey, 0)
-        val publicKey = privParams.generatePublicKey().encoded
+        val kp = Curve.generateKeyPair()
+        val privateKey = kp.privateKey.serialize()               // 32-byte scalar
+        val publicKey = kp.publicKey.serialize().copyOfRange(1, 33) // strip 0x05 prefix -> raw 32
         return Pair(privateKey, publicKey)
+    }
+
+    /** HKDF-SHA256 (RFC 5869) on the platform Mac. null/empty salt = zero salt. */
+    private fun hkdfSha256(ikm: ByteArray, salt: ByteArray?, info: ByteArray, length: Int): ByteArray {
+        val actualSalt = if (salt == null || salt.isEmpty()) ByteArray(32) else salt
+        val prk = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(actualSalt, "HmacSHA256")) }.doFinal(ikm)
+        val out = ByteArray(length)
+        var t = ByteArray(0)
+        var pos = 0
+        var counter = 1
+        while (pos < length) {
+            val mac = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(prk, "HmacSHA256")) }
+            mac.update(t); mac.update(info); mac.update(counter.toByte())
+            t = mac.doFinal()
+            val n = minOf(t.size, length - pos)
+            System.arraycopy(t, 0, out, pos, n)
+            pos += n; counter++
+        }
+        return out
     }
 
     fun sha256(data: ByteArray): ByteArray {
@@ -238,10 +237,7 @@ object WhatsAppProtocol {
      * snapshotMac, patchMac. Ref whatsmeow appstate/keys.go expandAppStateKeys.
      */
     fun expandAppStateKeys(keyData: ByteArray): Array<ByteArray> {
-        val hkdf = HKDFBytesGenerator(SHA256Digest())
-        hkdf.init(HKDFParameters(keyData, null, "WhatsApp Mutation Keys".toByteArray(Charsets.UTF_8)))
-        val out = ByteArray(160)
-        hkdf.generateBytes(out, 0, 160)
+        val out = hkdfSha256(keyData, null, "WhatsApp Mutation Keys".toByteArray(Charsets.UTF_8), 160)
         return arrayOf(
             out.copyOfRange(0, 32),
             out.copyOfRange(32, 64),
@@ -275,10 +271,7 @@ object WhatsAppProtocol {
      * From whatsmeow/download.go getMediaKeys()
      */
     fun getMediaKeys(mediaKey: ByteArray, mediaType: String): MediaKeys {
-        val hkdf = HKDFBytesGenerator(SHA256Digest())
-        hkdf.init(HKDFParameters(mediaKey, null, mediaType.toByteArray(Charsets.UTF_8)))
-        val expanded = ByteArray(112)
-        hkdf.generateBytes(expanded, 0, 112)
+        val expanded = hkdfSha256(mediaKey, null, mediaType.toByteArray(Charsets.UTF_8), 112)
         return MediaKeys(
             iv = expanded.copyOfRange(0, 16),
             cipherKey = expanded.copyOfRange(16, 48),
@@ -1897,10 +1890,7 @@ object WhatsAppProtocol {
             creator.toByteArray(Charsets.UTF_8) +
             voter.toByteArray(Charsets.UTF_8) +
             "Poll Vote".toByteArray(Charsets.UTF_8)
-        val hkdf = HKDFBytesGenerator(SHA256Digest())
-        hkdf.init(HKDFParameters(pollSecret, null, info))
-        val key = ByteArray(32)
-        hkdf.generateBytes(key, 0, 32)
+        val key = hkdfSha256(pollSecret, null, info, 32)
         val aad = pollMessageId.toByteArray(Charsets.UTF_8) +
             byteArrayOf(0) +
             voter.toByteArray(Charsets.UTF_8)

@@ -1,20 +1,22 @@
 package com.vayunmathur.passwords.cable
 
-import org.bouncycastle.jce.ECNamedCurveTable
-import org.bouncycastle.jce.spec.ECNamedCurveSpec
 import java.math.BigInteger
+import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.interfaces.ECPublicKey
+import java.security.spec.ECFieldFp
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.ECParameterSpec
 import java.security.spec.ECPoint
 import java.security.spec.ECPublicKeySpec
 
 /**
  * P-256 (secp256r1 / prime256v1) helpers used by the caBLE Noise handshake and EID handling.
+ * Uses only the platform JCA (Conscrypt) — no Bouncy Castle.
  *
  * Point encodings follow X9.62: compressed = `02|03 || X` (33 bytes), uncompressed =
  * `04 || X || Y` (65 bytes). ECDH returns the 32-byte big-endian X coordinate of the shared
@@ -26,8 +28,13 @@ object P256 {
     const val COORD_SIZE = 32
     const val DH_OUTPUT_SIZE = 32
 
-    private val bcSpec = ECNamedCurveTable.getParameterSpec("secp256r1")
-    private val jcaSpec = ECNamedCurveSpec("secp256r1", bcSpec.curve, bcSpec.g, bcSpec.n, bcSpec.h)
+    // secp256r1 domain parameters, obtained from the platform (no BC).
+    private val ecSpec: ECParameterSpec = run {
+        val params = AlgorithmParameters.getInstance("EC")
+        params.init(ECGenParameterSpec("secp256r1"))
+        params.getParameterSpec(ECParameterSpec::class.java)
+    }
+    private val prime: BigInteger = (ecSpec.curve.field as ECFieldFp).p
 
     fun generateKeyPair(): KeyPair = KeyPairGenerator.getInstance("EC").run {
         initialize(ECGenParameterSpec("secp256r1"))
@@ -49,12 +56,35 @@ object P256 {
 
     /** Parses a 33-byte compressed or 65-byte uncompressed point into a [PublicKey]. */
     fun decodePoint(encoded: ByteArray): PublicKey {
-        val point = bcSpec.curve.decodePoint(encoded).normalize()
-        val ecPoint = ECPoint(
-            point.affineXCoord.toBigInteger(),
-            point.affineYCoord.toBigInteger(),
-        )
-        return KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(ecPoint, jcaSpec))
+        val ecPoint = when (encoded[0].toInt() and 0xFF) {
+            0x04 -> {
+                require(encoded.size == UNCOMPRESSED_SIZE) { "bad uncompressed point" }
+                ECPoint(
+                    BigInteger(1, encoded.copyOfRange(1, 1 + COORD_SIZE)),
+                    BigInteger(1, encoded.copyOfRange(1 + COORD_SIZE, UNCOMPRESSED_SIZE)),
+                )
+            }
+            0x02, 0x03 -> {
+                require(encoded.size == COMPRESSED_SIZE) { "bad compressed point" }
+                val x = BigInteger(1, encoded.copyOfRange(1, COMPRESSED_SIZE))
+                ECPoint(x, decompressY(x, wantOdd = (encoded[0].toInt() and 1) == 1))
+            }
+            else -> throw IllegalArgumentException("unsupported point encoding")
+        }
+        return KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(ecPoint, ecSpec))
+    }
+
+    /**
+     * Recover Y from a compressed point: y² = x³ + a·x + b (mod p). secp256r1's p ≡ 3 (mod 4),
+     * so y = (rhs)^((p+1)/4) mod p; flip parity to match the requested sign bit.
+     */
+    private fun decompressY(x: BigInteger, wantOdd: Boolean): BigInteger {
+        val a = ecSpec.curve.a
+        val b = ecSpec.curve.b
+        val rhs = (x.modPow(BigInteger.valueOf(3), prime) + a.multiply(x) + b).mod(prime)
+        var y = rhs.modPow((prime + BigInteger.ONE).shiftRight(2), prime)
+        if (y.testBit(0) != wantOdd) y = prime.subtract(y)
+        return y
     }
 
     /** Raw ECDH: returns the 32-byte big-endian X coordinate of `priv * pub`. */
