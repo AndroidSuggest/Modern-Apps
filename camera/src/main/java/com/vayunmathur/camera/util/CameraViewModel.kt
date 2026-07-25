@@ -36,6 +36,9 @@ import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.video.FileOutputOptions
@@ -262,6 +265,8 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     val roll = _roll.asStateFlow()
 
     private val sensorManager by lazy { app.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    // Dedicated single thread for portrait segmentation so main thread stays free for preview rendering.
+    private val bokehExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val levelListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             val x = event.values[0]
@@ -1236,6 +1241,151 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Portrait session: full-resolution ImageCapture (final image stays max-res) but capped
+     * ImageAnalysis (~0.8 MP, 1024x768) for smooth preview segmentation. This fixes the
+     * "No supported surface combination" bind failures that happened when portrait reused
+     * the max-res 3-stream photo path (Preview + max ImageCapture + max ImageAnalysis) for a
+     * model that only needs 256x256.
+     *
+     * Fallback ladder prioritizes keeping max-res capture:
+     * capped+max+UHD → capped+max+JPEG → capped+default+UHD → capped+default+JPEG → default+default
+     */
+    suspend fun setupPortraitSession(): Boolean {
+        return try {
+            val provider = ProcessCameraProvider.awaitInstance(app)
+            cameraProvider = provider
+            provider.unbindAll()
+
+            val selector = CameraSelector.Builder()
+                .requireLensFacing(_lensFacing.value)
+                .build()
+
+            val previewBuilder = Preview.Builder()
+            try {
+                androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
+                    .setSessionCaptureCallback(aeSnapshotCallback)
+            } catch (e: Exception) {
+                Log.w("PortraitSession", "Could not attach AE snapshot callback", e)
+            }
+            val preview = previewBuilder.build()
+            preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+
+            val owner = ManualLifecycleOwner()
+            owner.start()
+            sessionLifecycleOwner = owner
+
+            val ultraHdrSupported = try {
+                val cameraInfo = provider.getCameraInfo(selector)
+                ImageCapture.getImageCaptureCapabilities(cameraInfo)
+                    .supportedOutputFormats
+                    .contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+            } catch (e: Exception) {
+                Log.w("PortraitSession", "Could not query Ultra HDR support", e)
+                false
+            }
+
+            fun bind(
+                cappedAnalysis: Boolean,
+                maxResCapture: Boolean,
+                ultraHdr: Boolean
+            ): Camera {
+                // Capture: always try max-res first to keep final image full-res.
+                val captureSelectorBuilder = ResolutionSelector.Builder()
+                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                if (maxResCapture) {
+                    captureSelectorBuilder.setAllowedResolutionMode(
+                        ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
+                    )
+                }
+                val captureBuilder = ImageCapture.Builder()
+                    .setResolutionSelector(captureSelectorBuilder.build())
+                    .setFlashMode(getImageCaptureFlashMode())
+                    .setTargetRotation(targetRotation)
+                if (ultraHdr) {
+                    captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                }
+                val capture = captureBuilder.build()
+                imageCapture = capture
+
+                val analysisBuilder = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                if (cappedAnalysis) {
+                    analysisBuilder.setResolutionSelector(
+                        ResolutionSelector.Builder()
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    Size(1024, 768), // ~0.8MP sweet spot > 256 model input
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
+                                )
+                            )
+                            .build()
+                    )
+                } else if (maxResCapture) {
+                    analysisBuilder.setResolutionSelector(
+                        ResolutionSelector.Builder()
+                            .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                            .build()
+                    )
+                }
+                val analysis = analysisBuilder.build()
+                imageAnalysis = analysis
+                return provider.bindToLifecycle(owner, selector, preview, capture, analysis)
+            }
+
+            // Build attempt ladder; keep max-res capture attempts first per user request.
+            data class Attempt(val capped: Boolean, val maxRes: Boolean, val ultra: Boolean)
+            val attempts = mutableListOf<Attempt>()
+            if (ultraHdrSupported) {
+                attempts.add(Attempt(true, true, true))
+                attempts.add(Attempt(true, true, false))
+                attempts.add(Attempt(true, false, true))
+                attempts.add(Attempt(true, false, false))
+                attempts.add(Attempt(false, false, true))
+                attempts.add(Attempt(false, false, false))
+            } else {
+                attempts.add(Attempt(true, true, false))
+                attempts.add(Attempt(true, false, false))
+                attempts.add(Attempt(false, false, false))
+            }
+
+            var bound: Camera? = null
+            var lastError: Exception? = null
+            for ((capped, maxRes, ultra) in attempts) {
+                try {
+                    if (bound != null) provider.unbindAll()
+                    bound = bind(capped, maxRes, ultra)
+                    Log.d(
+                        "PortraitSession",
+                        "Portrait bind succeeded: capped=$capped maxRes=$maxRes ultra=$ultra"
+                    )
+                    break
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w(
+                        "PortraitSession",
+                        "Portrait bind failed (capped=$capped maxRes=$maxRes ultra=$ultra); trying next",
+                        e
+                    )
+                    provider.unbindAll()
+                }
+            }
+            boundCamera = bound ?: throw (lastError ?: IllegalStateException("Portrait session bind failed"))
+
+            boundCamera?.cameraInfo?.zoomState?.value?.let {
+                updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
+                _zoomRatio.value = it.zoomRatio
+            }
+            readManualControlRanges()
+            applyManualControls()
+            _photoSessionActive.value = true
+            true
+        } catch (e: Exception) {
+            Log.e("PortraitSession", "Failed to set up portrait session", e)
+            false
+        }
+    }
+
     /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
     private fun readManualControlRanges() {
         val cam = boundCamera ?: return
@@ -1572,6 +1722,18 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         currentAnalyzer = analyzer
         if (analyzer == null) analysis.clearAnalyzer()
         else analysis.setAnalyzer(ContextCompat.getMainExecutor(app), analyzer)
+    }
+
+    fun setImageAnalyzer(analyzer: ImageAnalysis.Analyzer?, executor: Executor) {
+        val analysis = imageAnalysis ?: return
+        currentAnalyzer = analyzer
+        if (analyzer == null) analysis.clearAnalyzer()
+        else analysis.setAnalyzer(executor, analyzer)
+    }
+
+    /** Convenience for portrait bokeh – always runs off the dedicated bokeh thread. */
+    fun setBokehAnalyzer(analyzer: ImageAnalysis.Analyzer?) {
+        setImageAnalyzer(analyzer, bokehExecutor)
     }
 
     private fun startRecordingTimer() {
@@ -2651,6 +2813,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         unregisterLevelSensor()
+        try { bokehExecutor.shutdown() } catch (_: Exception) {}
         super.onCleared()
     }
 }

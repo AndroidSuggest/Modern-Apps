@@ -210,7 +210,7 @@ private enum class CameraSetting {
 }
 
 /** Which camera pipeline drives the preview for the current mode. */
-private enum class SessionKind { PHOTO, PANORAMA, HIGH_SPEED, VIDEO }
+private enum class SessionKind { PHOTO, PORTRAIT, PANORAMA, HIGH_SPEED, VIDEO }
 
 private fun Modifier.selectedPill(
     selected: Boolean,
@@ -268,10 +268,12 @@ fun CameraScreen(
     val isSloMo = cameraMode == CameraMode.SLOW_MO
     val isVideoType = cameraMode == CameraMode.VIDEO || cameraMode == CameraMode.TIMELAPSE || cameraMode == CameraMode.CINEMATIC
     val isPanoType = cameraMode == CameraMode.PANORAMA || cameraMode == CameraMode.PHOTOSPHERE
+    val isPortrait = cameraMode == CameraMode.PORTRAIT
     val sessionKind = when {
         isSloMo -> SessionKind.HIGH_SPEED
         isVideoType -> SessionKind.VIDEO
         isPanoType -> SessionKind.PANORAMA
+        isPortrait -> SessionKind.PORTRAIT
         else -> SessionKind.PHOTO
     }
     val highSpeedActive by viewModel.highSpeedActive.collectAsState()
@@ -404,22 +406,43 @@ fun CameraScreen(
     // Owns the PORTRAIT bokeh segmenter so it is closed (and its mask recycled) on mode change.
     // Keyed on photoSessionActive (re-attach after a rebind) and lensFacing (front/back changes
     // the frame orientation/mirroring the analyzer must apply).
+    // Runs on dedicated bokeh executor so main thread stays free for preview rendering.
+    // Final capture ImageCapture is still max-res – only analysis is capped.
+    // Mask callback comes from bokeh thread; post recycle+set to main to avoid racing with
+    // the RenderEffect reading the previous Bitmap on the UI thread.
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     DisposableEffect(cameraMode, photoSessionActive, lensFacing) {
         val analyzer = if (cameraMode == CameraMode.PORTRAIT) {
             BokehAnalyzer(
                 context,
                 isFrontFacing = lensFacing == CameraSelector.LENS_FACING_FRONT
             ) { mask ->
-                maskBitmap?.recycle()
-                maskBitmap = mask
+                if (mask.isRecycled) return@BokehAnalyzer
+                mainHandler.post {
+                    // If mask was recycled while message queued, drop it
+                    if (mask.isRecycled) return@post
+                    val prev = maskBitmap
+                    if (prev != null && prev !== mask && !prev.isRecycled) {
+                        try { prev.recycle() } catch (_: Exception) {}
+                    }
+                    maskBitmap = mask
+                }
             }.also {
-                viewModel.setImageAnalyzer(it)
+                viewModel.setBokehAnalyzer(it)
             }
         } else null
         onDispose {
+            viewModel.setImageAnalyzer(null)
             analyzer?.close()
-            maskBitmap?.recycle()
-            maskBitmap = null
+            // Post recycle to avoid racing with graphicsLayer reading maskBitmap
+            mainHandler.post {
+                maskBitmap?.let { bmp ->
+                    if (!bmp.isRecycled) {
+                        try { bmp.recycle() } catch (_: Exception) {}
+                    }
+                }
+                maskBitmap = null
+            }
         }
     }
 
@@ -435,6 +458,7 @@ fun CameraScreen(
                 SessionKind.HIGH_SPEED -> viewModel.setupHighSpeedSession()
                 SessionKind.VIDEO -> viewModel.setupVideoSession()
                 SessionKind.PANORAMA -> viewModel.setupPanoramaSession()
+                SessionKind.PORTRAIT -> viewModel.setupPortraitSession()
                 SessionKind.PHOTO ->
                     if (useNightPreview) viewModel.setupNightPreviewSession()
                     else viewModel.setupPhotoSession()
@@ -547,43 +571,54 @@ fun CameraScreen(
                         .then(
                             run {
                                 val hasColorAdj = warmth != 0f || shadows != 0f
-                                val hasBokeh = cameraMode == CameraMode.PORTRAIT && maskBitmap != null
+                                // Snapshot mask bitmap at this composition point – don't !! inside graphicsLayer
+                                // or a race with DisposableEffect onDispose (null + recycle) causes NPE at 567.
+                                val currentMask = maskBitmap?.takeIf {
+                                    !it.isRecycled && it.width > 0 && it.height > 0
+                                }
+                                val hasBokeh = cameraMode == CameraMode.PORTRAIT && currentMask != null
                                 if (hasBokeh || hasColorAdj) {
                                     Modifier.graphicsLayer {
                                         var effect: RenderEffect? = null
 
                                         if (hasBokeh) {
-                                            val mask = maskBitmap!!
-                                            val shader = bokehShader.value
-                                            val maskShader = BitmapShader(mask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-                                            val matrix = Matrix()
-                                            matrix.setScale(size.width / mask.width, size.height / mask.height)
-                                            maskShader.setLocalMatrix(matrix)
-                                                shader.setInputShader("alphaMask", maskShader)
-                                                shader.setFloatUniform("blurScale", 0.4f + blurStrength * 1.4f)
-                                                effect = RenderEffect.createRuntimeShaderEffect(shader, "cameraInput")
-                                            }
-
-                                            if (hasColorAdj) {
-                                                val colorEffect = RenderEffect.createColorFilterEffect(
-                                                    ColorMatrixColorFilter(
-                                                        buildColorAdjustmentMatrix(warmth, shadows)
-                                                    )
-                                                )
-                                                effect = if (effect != null) {
-                                                    RenderEffect.createChainEffect(colorEffect, effect)
-                                                } else {
-                                                    colorEffect
+                                            val localMask = currentMask
+                                            if (localMask != null && !localMask.isRecycled && size.width > 0 && size.height > 0) {
+                                                try {
+                                                    val shader = bokehShader.value
+                                                    val maskShader = BitmapShader(localMask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                                                    val matrix = Matrix()
+                                                    matrix.setScale(size.width / localMask.width, size.height / localMask.height)
+                                                    maskShader.setLocalMatrix(matrix)
+                                                    shader.setInputShader("alphaMask", maskShader)
+                                                    shader.setFloatUniform("blurScale", 0.4f + blurStrength * 1.4f)
+                                                    effect = RenderEffect.createRuntimeShaderEffect(shader, "cameraInput")
+                                                } catch (_: Exception) {
+                                                    // Mask may be recycled between snapshot and render – skip bokeh this frame
                                                 }
                                             }
-
-                                            renderEffect = effect?.asComposeRenderEffect()
                                         }
-                                    } else {
-                                        Modifier.graphicsLayer { renderEffect = null }
+
+                                        if (hasColorAdj) {
+                                            val colorEffect = RenderEffect.createColorFilterEffect(
+                                                ColorMatrixColorFilter(
+                                                    buildColorAdjustmentMatrix(warmth, shadows)
+                                                )
+                                            )
+                                            effect = if (effect != null) {
+                                                RenderEffect.createChainEffect(colorEffect, effect)
+                                            } else {
+                                                colorEffect
+                                            }
+                                        }
+
+                                        renderEffect = effect?.asComposeRenderEffect()
                                     }
+                                } else {
+                                    Modifier.graphicsLayer { renderEffect = null }
                                 }
-                            )
+                            }
+                        )
                             .pointerInput(activeSetting) {
                                 fun meteringPoint(tapOffset: Offset) = surfaceRequest?.let { request ->
                                     val transformed = with(coordinateTransformer) { tapOffset.transform() }
