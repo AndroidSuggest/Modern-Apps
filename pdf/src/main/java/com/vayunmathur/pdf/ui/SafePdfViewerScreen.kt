@@ -54,7 +54,6 @@ import com.vayunmathur.library.ui.SmallFloatingActionButton
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.ui.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -606,10 +605,6 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         }
     }
 
-    // Force light theme for PDF content - PDF pages must always render on white/light background
-    // regardless of system dark mode, since Rust draw.rs emits transparent canvas relying on white Box.
-    DynamicTheme(darkTheme = false) {
-
     // Inline text-editing session (draws a live text field on the page).
     var textSession by remember { mutableStateOf<TextSession?>(null) }
     // Image-stamp target awaiting a picked image.
@@ -1103,7 +1098,6 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         )
     }
     }
-    } // DynamicTheme(darkTheme=false)
 }
 
 @Composable
