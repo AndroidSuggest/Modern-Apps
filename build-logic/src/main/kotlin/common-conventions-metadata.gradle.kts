@@ -3,6 +3,7 @@ import org.gradle.accessors.dm.LibrariesForLibs
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 // Wires up on-device app-store screenshot generation.
 //
@@ -143,4 +144,14 @@ afterEvaluate {
     metadataTask.configure {
         commandLine("bash", "-c", script)
     }
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
+// Reproducible builds: log SOURCE_DATE_EPOCH if present for verification
+System.getenv("SOURCE_DATE_EPOCH")?.let {
+    logger.lifecycle("Reproducible build: SOURCE_DATE_EPOCH=$it")
 }

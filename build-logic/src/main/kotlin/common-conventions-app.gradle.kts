@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -202,4 +204,14 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
         "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
         "androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi",
     )
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
+// Reproducible builds: log SOURCE_DATE_EPOCH if present for verification
+System.getenv("SOURCE_DATE_EPOCH")?.let {
+    logger.lifecycle("Reproducible build: SOURCE_DATE_EPOCH=$it")
 }

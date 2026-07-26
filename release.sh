@@ -30,6 +30,9 @@ fi
 VERSION_CODE=$(sed -n '1p' "$VERSION_FILE" | tr -d '\r' | xargs)
 VERSION_NAME=$(sed -n '2p' "$VERSION_FILE" | tr -d '\r' | xargs)
 
+export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
+echo "🕒 SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH for reproducible builds"
+
 echo "🚀 Preparing headless release $VERSION_NAME ($VERSION_CODE)..."
 
 # 1. Inject version into build.gradle.kts files
@@ -70,6 +73,10 @@ done
 
 # 3. Git Commit and Tag (Done BEFORE build so build sees committed state)
 echo "💾 Creating temporary commit and tag..."
+# Reproducible builds: make commit/tag timestamps deterministic using SOURCE_DATE_EPOCH
+# so the tag object doesn't embed wall-clock time and can be verified.
+export GIT_AUTHOR_DATE="@${SOURCE_DATE_EPOCH}"
+export GIT_COMMITTER_DATE="@${SOURCE_DATE_EPOCH}"
 git add .
 git commit -m "chore: prepare release $VERSION_NAME" || { echo "No changes to commit"; exit 1; }
 git tag -a "$VERSION_NAME" -m "Release $VERSION_NAME"

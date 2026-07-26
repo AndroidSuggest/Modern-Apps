@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -114,4 +116,14 @@ dependencies {
 
     // Kotlin Serialization
     implementation(libs.kotlinx.serialization.json)
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
+// Reproducible builds: log SOURCE_DATE_EPOCH if present for verification
+System.getenv("SOURCE_DATE_EPOCH")?.let {
+    logger.lifecycle("Reproducible build: SOURCE_DATE_EPOCH=$it")
 }

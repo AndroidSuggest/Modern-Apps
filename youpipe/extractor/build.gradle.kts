@@ -1,4 +1,5 @@
 import org.gradle.api.JavaVersion
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     `java-library`
@@ -10,11 +11,18 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
 // Protobuf files would uselessly end up in the JAR otherwise, see
 // https://github.com/google/protobuf-gradle-plugin/issues/390
 tasks.jar {
     exclude("**/*.proto")
     includeEmptyDirs = false
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 dependencies {

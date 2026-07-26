@@ -12,10 +12,16 @@
 //   implementation(project(path = ":whatsapp-signal", configuration = "shaded"))
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     `java-library`
     id("com.gradleup.shadow") version "9.0.0"
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 dependencies {
@@ -26,6 +32,8 @@ dependencies {
 
 tasks.named<ShadowJar>("shadowJar") {
     archiveClassifier.set("shaded")
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
     // Relocate the bundled protobuf so it can't clash with the app's
     // protobuf 4.x on the :messages classpath. libsignal's own generated
     // classes are rewritten to the relocated package by Shadow.

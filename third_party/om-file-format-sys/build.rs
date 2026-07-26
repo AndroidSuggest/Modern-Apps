@@ -70,6 +70,10 @@ fn configure_build_flags(build: &mut cc::Build, config: &BuildConfig, compiler: 
             }
         }
     }
+
+    // Reproducible builds: disallow __DATE__, __TIME__, __TIMESTAMP__ to avoid embedding build timestamps.
+    build.flag_if_supported("-Wdate-time");
+    build.flag_if_supported("-Werror=date-time");
 }
 
 fn generate_bindings(submodule: &str, sysroot: &Option<String>) {

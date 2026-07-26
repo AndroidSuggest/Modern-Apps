@@ -83,10 +83,15 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
                 "RUSTFLAGS",
                 "--remap-path-prefix=$cargoHome=/cargo --remap-path-prefix=$rustSrc=/$remapLabel",
             )
-            environment("CFLAGS", "-ffile-prefix-map=$cargoHome=/cargo -ffile-prefix-map=$rustSrc=/$remapLabel")
-            environment("CXXFLAGS", "-ffile-prefix-map=$cargoHome=/cargo -ffile-prefix-map=$rustSrc=/$remapLabel")
-            environment("CPPFLAGS", "-ffile-prefix-map=$cargoHome=/cargo -ffile-prefix-map=$rustSrc=/$remapLabel")
+            environment("CFLAGS", "-ffile-prefix-map=$cargoHome=/cargo -ffile-prefix-map=$rustSrc=/$remapLabel -Wdate-time -Werror=date-time")
+            environment("CXXFLAGS", "-ffile-prefix-map=$cargoHome=/cargo -ffile-prefix-map=$rustSrc=/$remapLabel -Wdate-time -Werror=date-time")
+            environment("CPPFLAGS", "-ffile-prefix-map=$cargoHome=/cargo -ffile-prefix-map=$rustSrc=/$remapLabel -Wdate-time -Werror=date-time")
             environment("ZERO_AR_DATE", "1")
+            // Reproducible builds: respect SOURCE_DATE_EPOCH if set (exported by release.sh / CI)
+            // https://reproducible-builds.org/docs/source-date-epoch/
+            System.getenv("SOURCE_DATE_EPOCH")?.takeIf { it.isNotBlank() }?.let {
+                environment("SOURCE_DATE_EPOCH", it)
+            }
             environment("CARGO_INCREMENTAL", "0")
 
             commandLine("$cargoBin/cargo", "build", "--locked", "--release", "--target", triple)
