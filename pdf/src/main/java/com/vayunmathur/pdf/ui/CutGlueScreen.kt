@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
+import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.Icon
@@ -74,6 +75,8 @@ import androidx.compose.ui.res.stringResource
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CutGlueScreen(onBack: () -> Unit) {
+    // Force light theme for PDF thumbnails - same reason as SafePdfViewerScreen
+    DynamicTheme(darkTheme = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     androidx.activity.compose.BackHandler { onBack() }
@@ -204,6 +207,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
             }
         }
     }
+    } // DynamicTheme
 }
 
 @Composable
