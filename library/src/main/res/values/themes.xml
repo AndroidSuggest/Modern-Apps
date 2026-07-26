@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.General" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.General" parent="android:Theme.Material.Light.NoActionBar">
         <!-- Preserve IME state across configuration changes (e.g. rotation) so a
              leading search field doesn't auto-focus and raise the keyboard. -->
         <item name="android:windowSoftInputMode">stateUnchanged</item>

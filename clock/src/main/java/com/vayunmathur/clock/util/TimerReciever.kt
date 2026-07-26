@@ -35,9 +35,32 @@ class TimerReceiver : BroadcastReceiver() {
                 nm.notify(id.hashCode(), notification)
 
                 val db = context.buildDatabase<ClockDatabase>(useDeviceProtectedStorage = true)
-                db.timerDao().delete(
-                    Timer(true, name, Clock.System.now(), Duration.ZERO, Duration.ZERO, id)
-                )
+                // Persistence: keep timer visible after completion instead of deleting.
+                try {
+                    val existing = db.timerDao().get(id)
+                    val completed = existing.copy(
+                        isRunning = false,
+                        remainingLength = Duration.ZERO,
+                        remainingStartTime = Clock.System.now(),
+                    )
+                    db.timerDao().upsert(completed)
+                } catch (_: Exception) {
+                    // Fallback: upsert a minimal completed timer if get fails
+                    val completedFallback = Timer(
+                        isRunning = false,
+                        name = name,
+                        remainingStartTime = Clock.System.now(),
+                        remainingLength = Duration.ZERO,
+                        totalLength = Duration.ZERO,
+                        id = id,
+                    )
+                    // Try to preserve totalLength from name-based heuristic: keep ZERO if unknown
+                    try {
+                        db.timerDao().upsert(completedFallback)
+                    } catch (_: Exception) {
+                        // Best-effort: if even fallback fails, keep original delete behavior skipped
+                    }
+                }
             } catch (_: Exception) {
             } finally {
                 pendingResult.finish()

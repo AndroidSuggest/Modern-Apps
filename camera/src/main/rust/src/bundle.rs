@@ -11,10 +11,13 @@ use crate::matching::MatchInfo;
 use nalgebra::{DMatrix, DVector, Matrix3, Vector3};
 use rayon::prelude::*;
 
-const CONF_THRESH: f64 = 1.0;
-const MAX_ITERS: usize = 40;
-const STEP: f64 = 1e-4;
-const CONVERGE_REL: f64 = 1e-3;
+/// BundleAdjusterRay conf_thresh matches stitch.rs CONF_THRESH – must be 0.3 not 1.0,
+/// otherwise bundle drops all edges while biggest_component keeps them.
+pub const BUNDLE_CONF_THRESH: f64 = 0.3;
+/// OpenCV BundleAdjuster base TermCriteria EPS+COUNT 1000 DBL_EPSILON
+const MAX_ITERS: usize = 1000;
+const STEP: f64 = 1e-3; // matches OpenCV calcJacobian step 1e-3
+const CONVERGE_REL: f64 = f64::EPSILON; // DBL_EPSILON per OpenCV TermCriteria
 
 struct Edge {
     i: usize,
@@ -96,7 +99,7 @@ pub fn bundle_adjust(cams: &mut Vec<CameraParams>, matches: &[MatchInfo]) {
     }
     let edges: Vec<Edge> = matches
         .iter()
-        .filter(|m| m.confidence > CONF_THRESH && !m.inliers.is_empty())
+        .filter(|m| m.confidence > BUNDLE_CONF_THRESH && !m.inliers.is_empty())
         .map(|m| Edge { i: m.src, j: m.dst, corr: m.inliers.clone() })
         .collect();
     if edges.is_empty() {

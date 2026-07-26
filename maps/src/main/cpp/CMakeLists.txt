@@ -21,22 +21,10 @@ endif()
 find_library(log-lib log)
 find_library(z-lib z)
 
-# SQLite3 is not standard in Android NDK sysroot.
-# Recommended approach is to bundle sqlite3.c/h (amalgamation).
-find_library(sqlite-lib sqlite3)
-
-if(sqlite-lib)
-    target_link_libraries(offlinerouter ${log-lib} ${sqlite-lib} ${z-lib})
-else()
-    # Check if sqlite3.c is bundled in the source directory
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sqlite3.c")
-        # Update the library to include sqlite3.c
-        set_target_properties(offlinerouter PROPERTIES SOURCES "native-lib.cpp;sqlite3.c")
-        target_link_libraries(offlinerouter ${log-lib} ${z-lib})
-    else()
-        message(FATAL_ERROR "sqlite3 library not found in NDK and sqlite3.c is missing. "
-                "Please download the SQLite amalgamation (sqlite3.c and sqlite3.h) "
-                "from https://www.sqlite.org/download.html and place them in "
-                "${CMAKE_CURRENT_SOURCE_DIR}")
-    endif()
-endif()
+# Android SQLite removed: maps offline router now memory-only.
+# Previously bundled sqlite3.c (9MB) for traffic_cache.mbtiles MBTiles cache.
+# Android's system libsqlite.so is private (not NDK-stable), and Room
+# (amenities.db) already uses Android SQLite via androidx.sqlite.
+# Traffic cache was just an optimization that invalidated tiles on every
+# update (DELETE FROM tiles), so in-memory cache + NetworkClient is sufficient.
+target_link_libraries(offlinerouter ${log-lib} ${z-lib})

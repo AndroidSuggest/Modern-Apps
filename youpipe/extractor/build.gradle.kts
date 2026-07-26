@@ -24,8 +24,9 @@ dependencies {
     implementation(libs.protobuf.javalite)
     implementation(libs.rhino)
     implementation(libs.rhino.engine)
-    implementation(libs.bouncycastle)
     implementation(libs.brotli.dec)
+
+    testImplementation("junit:junit:4.13.2")
 }
 
 protobuf {

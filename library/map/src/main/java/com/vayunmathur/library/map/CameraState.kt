@@ -12,7 +12,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import org.maplibre.spatialk.geojson.Position
 import kotlin.math.log2
 
 /**
@@ -21,7 +20,7 @@ import kotlin.math.log2
  * overlays and image quad stay correct.
  */
 data class CameraPosition(
-    val target: Position = Position(0.0, 0.0),
+    val target: GeoPoint = GeoPoint(0.0, 0.0),
     val zoom: Double = 0.0,
 )
 
@@ -71,7 +70,7 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         Animatable(0f).animateTo(1f, tween(durationMs)) {
             val t = value.toDouble()
             position = CameraPosition(
-                target = Position(
+                target = GeoPoint(
                     lerp(start.target.longitude, target.target.longitude, t),
                     lerp(start.target.latitude, target.target.latitude, t),
                 ),

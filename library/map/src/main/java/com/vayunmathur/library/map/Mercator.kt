@@ -1,6 +1,5 @@
 package com.vayunmathur.library.map
 
-import org.maplibre.spatialk.geojson.Position
 import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.ln
@@ -35,11 +34,11 @@ internal object Mercator {
     }
 
     /** Inverse of [project]: world px at [zoom] back to lon/lat degrees. */
-    fun unproject(x: Double, y: Double, zoom: Double): Position {
+    fun unproject(x: Double, y: Double, zoom: Double): GeoPoint {
         val ws = worldSize(zoom)
         val longitude = x / ws * 360.0 - 180.0
         val n = PI - 2 * PI * y / ws
         val latitude = atan(sinh(n)) * 180.0 / PI
-        return Position(longitude, latitude)
+        return GeoPoint(longitude, latitude)
     }
 }

@@ -162,9 +162,10 @@ dependencies {
     implementation(libs.zxing.core)
 
     // Ktor (transitive from :library:network is implementation-scoped
-    // so we need to declare directly).
+    // so we need to declare directly). TODO: remove after :messages migrates to :library:network
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    implementation(libs.okio) // isolated: MetaMqtt/WhatsApp uses okio.ByteString – keep until migrated
 
     // Coil — loads device-contact photo URIs (content://) into the
     // conversation-row avatars in InboxScreen / ConversationScreen.

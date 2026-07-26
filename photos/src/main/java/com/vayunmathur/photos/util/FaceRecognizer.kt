@@ -90,8 +90,8 @@ object FaceRecognizer {
         if (initFailed) return false
         return try {
             val app = context.applicationContext
-            detector = FaceDetector(app)
-            embedder = FaceEmbedder(app)
+            detector = FaceDetector(app, "scrfd_500m_kps-opt2.param", "scrfd_500m_kps-opt2.bin")
+            embedder = FaceEmbedder(app, "w600k_mbf.ncnn.param", "w600k_mbf.ncnn.bin")
             true
         } catch (e: Throwable) {
             Log.e(TAG, "Face models unavailable", e)

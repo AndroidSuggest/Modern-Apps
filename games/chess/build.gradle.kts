@@ -19,5 +19,5 @@ android {
 dependencies {
     implementation(project(":sdk:games"))
     implementation(libs.stockfish.library)
-    testImplementation(libs.junit)
+
 }

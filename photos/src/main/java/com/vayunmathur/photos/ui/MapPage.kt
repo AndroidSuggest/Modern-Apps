@@ -43,10 +43,10 @@ import com.vayunmathur.photos.util.GalleryViewModel
 import com.vayunmathur.photos.util.ImageLoader
 import com.vayunmathur.photos.util.PhotoMapViewModel
 import kotlinx.coroutines.delay
+import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.RasterMap
 import com.vayunmathur.library.map.TileSource
 import com.vayunmathur.library.map.rememberCameraState
-import org.maplibre.spatialk.geojson.Position
 
 // Helper class to hold cluster data
 data class MapCluster(
@@ -85,7 +85,7 @@ fun MapPage(
             val projection = cameraState.projection ?: continue
             val rawLocations = positions.map { (gps, photo) ->
                 val dpOffset = projection.screenLocationFromPosition(
-                    Position(gps.second, gps.first)
+                    GeoPoint(gps.second, gps.first)
                 )
                 dpOffset to photo
             }.filter { (dpOffset, _) ->
@@ -122,7 +122,7 @@ fun MapPage(
                             val long = cluster.coverPhoto.long
                             val nc = if (lat != null && long != null) {
                                 val newOffset = projection.screenLocationFromPosition(
-                                    Position(long, lat)
+                                    GeoPoint(long, lat)
                                 )
                                 cluster.copy(position = newOffset)
                             } else {

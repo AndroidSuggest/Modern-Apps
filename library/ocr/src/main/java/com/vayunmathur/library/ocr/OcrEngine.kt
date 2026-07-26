@@ -12,11 +12,13 @@ import kotlinx.coroutines.withContext
 /**
  * Shared on-device OCR engine using Baidu **PP-OCRv5 mobile** running on
  * **ncnn** (Tencent, BSD-3, CPU-only — no Google Play Services, no ML Kit). The
- * detection (DBNet) + recognition (CTC, full ~18k-char dictionary covering
- * Latin/CJK/digits/symbols) pipeline and its models live entirely inside the
- * `com.github.vayun-mathur:ncnn-android` AAR, which also bundles OpenCV for the
- * detection post-processing. Both the Photos and PDF apps depend on this one
- * module so they share the engine.
+ * detection (DBNet) + recognition (CTC) pipeline runs entirely inside the
+ * `com.github.vayun-mathur:ncnn-android` AAR (native, OpenCV-free — DB
+ * post-processing is a hand-rolled connected-components pass). The recognizer
+ * uses the **latin** PP-OCRv5 model (836-char dict covering 47 Latin-script
+ * languages; no CJK) for a much smaller footprint. The det + rec model files are
+ * supplied by this module's assets and their paths passed to [PpOcr]. Both the
+ * Photos and PDF apps depend on this one module so they share the engine.
  *
  * The whole detect+recognize pass runs natively in one call; this class adapts
  * the result to the [OcrResult]/[TextBox] shape consumers expect and orders the
@@ -97,7 +99,11 @@ class OcrEngine(private val context: Context) {
         if (initTried) return false
         initTried = true
         return try {
-            ocr = PpOcr(context)
+            ocr = PpOcr(
+                context,
+                "PP_OCRv5_mobile_det.ncnn.param", "PP_OCRv5_mobile_det.ncnn.bin",
+                "latin_PP_OCRv5_mobile_rec.ncnn.param", "latin_PP_OCRv5_mobile_rec.ncnn.bin",
+            )
             true
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to initialise ncnn PP-OCRv5", e)

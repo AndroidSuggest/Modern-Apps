@@ -13,10 +13,9 @@ android {
         applicationId = "com.vayunmathur.photos"
     }
     androidResources {
-        // Face (SCRFD), embedding (MobileFaceNet), segmentation (U²-Net) and OCR
-        // all come from the generalist ncnn-android AAR; photos does not use the
-        // portrait (erdnet) model, so strip it from this APK.
-        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:erdnet.*"
+        // ncnn model files (face/segmentation here, OCR via :library:ocr) are
+        // bundled in this app's assets and their paths passed to the wrappers;
+        // the AAR ships none.
     }
     packaging {
         jniLibs {

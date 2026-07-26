@@ -413,7 +413,7 @@ fun VideoDetails(
 fun DescriptionSection(description: String) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            Text(text = description, style = MaterialTheme.typography.bodyMedium)
+            LinkifiedText(text = description, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -452,7 +452,7 @@ fun CommentItem(c: Comment) {
             }
         }
     }) {
-        Text(c.text)
+        LinkifiedText(c.text)
     }
 }
 

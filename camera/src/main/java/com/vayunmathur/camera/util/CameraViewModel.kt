@@ -2797,8 +2797,19 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         isFinishingPano = true
         panoramaEngine.stopSweep()
         viewModelScope.launch {
-            panoramaEngine.stitch()?.let { (jpeg, info) ->
-                panoramaEngine.saveToMediaStore(jpeg, info)
+            val result = panoramaEngine.stitch()
+            if (result == null) {
+                android.util.Log.e("CameraViewModel", "Panorama stitch failed – no output (check registration)")
+            } else {
+                val (jpeg, info) = result
+                android.util.Log.i("CameraViewModel", "Panorama stitched ${jpeg.size} bytes, saving")
+                val uri = panoramaEngine.saveToMediaStore(jpeg, info)
+                if (uri != null) {
+                    android.util.Log.i("CameraViewModel", "Panorama saved uri=$uri")
+                    setLastCaptureUri(uri)
+                } else {
+                    android.util.Log.e("CameraViewModel", "Panorama MediaStore save returned null")
+                }
             }
             panoramaEngine.reset()
             isFinishingPano = false

@@ -53,5 +53,4 @@ dependencies {
     // ktor client (custom WebDAV methods + JSON)
     implementation(project(":library:network"))
 
-    testImplementation(libs.junit)
 }

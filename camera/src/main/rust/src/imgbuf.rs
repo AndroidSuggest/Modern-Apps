@@ -114,6 +114,100 @@ impl Gray {
     pub fn at(&self, x: usize, y: usize) -> u8 {
         self.px[y * self.w + x]
     }
+
+    pub fn resized(&self, nw: usize, nh: usize) -> Gray {
+        let nw = nw.max(1);
+        let nh = nh.max(1);
+        let mut out = Gray::new(nw, nh);
+        let sx = self.w as f32 / nw as f32;
+        let sy = self.h as f32 / nh as f32;
+        for y in 0..nh {
+            let fy = ((y as f32 + 0.5) * sy - 0.5).max(0.0);
+            let y0 = fy.floor() as usize;
+            let y1 = (y0 + 1).min(self.h - 1);
+            let ay = fy - y0 as f32;
+            for x in 0..nw {
+                let fx = ((x as f32 + 0.5) * sx - 0.5).max(0.0);
+                let x0 = fx.floor() as usize;
+                let x1 = (x0 + 1).min(self.w - 1);
+                let ax = fx - x0 as f32;
+                let c00 = self.px[y0 * self.w + x0] as f32;
+                let c10 = self.px[y0 * self.w + x1] as f32;
+                let c01 = self.px[y1 * self.w + x0] as f32;
+                let c11 = self.px[y1 * self.w + x1] as f32;
+                let top = c00 * (1.0 - ax) + c10 * ax;
+                let bot = c01 * (1.0 - ax) + c11 * ax;
+                out.px[y * nw + x] = (top * (1.0 - ay) + bot * ay).round().clamp(0.0, 255.0) as u8;
+            }
+        }
+        out
+    }
+
+    /// Cheap 3x3 Gaussian blur (approx: center 4, edge 2, corner 1) for pyramid.
+    pub fn gaussian_blur_3x3(&self) -> Gray {
+        let (w, h) = (self.w, self.h);
+        if w < 3 || h < 3 {
+            return self.clone();
+        }
+        let mut out = Gray::new(w, h);
+        // Keep borders unchanged
+        for y in 0..h {
+            for x in 0..w {
+                if x == 0 || y == 0 || x + 1 == w || y + 1 == h {
+                    out.px[y * w + x] = self.px[y * w + x];
+                    continue;
+                }
+                let mut acc: u32 = 0;
+                // 1 2 1 / 2 4 2 / 1 2 1  (sum 16)
+                let cx = x;
+                let cy = y;
+                acc += self.px[(cy - 1) * w + (cx - 1)] as u32;
+                acc += self.px[(cy - 1) * w + cx] as u32 * 2;
+                acc += self.px[(cy - 1) * w + (cx + 1)] as u32;
+                acc += self.px[cy * w + (cx - 1)] as u32 * 2;
+                acc += self.px[cy * w + cx] as u32 * 4;
+                acc += self.px[cy * w + (cx + 1)] as u32 * 2;
+                acc += self.px[(cy + 1) * w + (cx - 1)] as u32;
+                acc += self.px[(cy + 1) * w + cx] as u32 * 2;
+                acc += self.px[(cy + 1) * w + (cx + 1)] as u32;
+                out.px[y * w + x] = (acc / 16) as u8;
+            }
+        }
+        out
+    }
+}
+
+#[inline]
+fn harris_response(g: &Gray, x: usize, y: usize) -> f32 {
+    // 7x7 window Sobel approx Ix,Iy then Harris H = det(M) - K*trace^2  K=0.04
+    // M = [ Ix2 IxIy ; IxIy Iy2 ] summed over window
+    let mut ix2: i32 = 0;
+    let mut iy2: i32 = 0;
+    let mut ixy: i32 = 0;
+    let r = 3;
+    for dy in -(r as i32)..=(r as i32) {
+        for dx in -(r as i32)..=(r as i32) {
+            let xx = (x as i32 + dx).clamp(1, g.w as i32 - 2) as usize;
+            let yy = (y as i32 + dy).clamp(1, g.h as i32 - 2) as usize;
+            let xm = if xx > 0 { xx - 1 } else { xx };
+            let xp = if xx + 1 < g.w { xx + 1 } else { xx };
+            let ym = if yy > 0 { yy - 1 } else { yy };
+            let yp = if yy + 1 < g.h { yy + 1 } else { yy };
+            let dxv = g.px[yy * g.w + xp] as i32 - g.px[yy * g.w + xm] as i32;
+            let dyv = g.px[yp * g.w + xx] as i32 - g.px[ym * g.w + xx] as i32;
+            ix2 += dxv * dxv;
+            iy2 += dyv * dyv;
+            ixy += dxv * dyv;
+        }
+    }
+    let det = ix2 as f64 * iy2 as f64 - ixy as f64 * ixy as f64;
+    let trace = ix2 as f64 + iy2 as f64;
+    (det - 0.04 * trace * trace) as f32
+}
+
+/// Compute Harris scores for a list of points
+pub fn harris_scores(g: &Gray, pts: &[(i32, i32)]) -> Vec<f32> {
+    pts.iter().map(|&(x, y)| harris_response(g, x as usize, y as usize)).collect()
 }
 
 /// Rec.601 luma from an RGBA image.

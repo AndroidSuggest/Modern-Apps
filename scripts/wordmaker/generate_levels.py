@@ -270,21 +270,40 @@ if __name__ == "__main__":
                 words.append(w)
                 seen.add(w)
     
-    # Load bad words
+    # Load bad words with "good Christian family" filtering:
+    # - Exact matches always blocked (any length, e.g. DAMN, HELL, FRIGGING, NIGGAH, ASS, SEX)
+    # - Substring blocked for severe slurs len>=4 (NIGGAH contains NIGGA, COONSKIN contains COON)
+    #   but NOT for swear-adjacent euphemisms where innocent embedding is common:
+    #   FRIG in REFRIGERATOR, HELL in SHELL, CRAP in SCRAP, DARN/DANG in DANGER, HECK in CHECK, etc.
+    #   Those Christian words are exact-only.
+    # - For 3-letter, only unambiguous blocked as substrings (FAG, BBW, XXX), while
+    #   ASS/TIT/SEX/CUM allowed as substring because CLASS, TITLE, CUMIN are innocent.
     try:
         with open(os.path.join(script_dir, "bad-words.txt"), "r") as f:
             raw_bad = [w.strip().upper() for w in f.readlines() if w.strip()]
             bad_words = set(raw_bad)
-            # 3-letter bad words are mostly innocent substrings (ASS in CLASS, TIT in TITLE, etc)
-            # Common-sense: only allow len>=4 for substring blocking, except a small
-            # denylist of 3-letter slurs that are almost never innocent substrings.
-            # Exact matches are always blocked (any length).
-            COMMON_SENSE_INNOCENT_3 = {"ASS", "TIT", "SEX", "CUM"}  # very common in innocent words
-            # FAG, BBW, XXX are unambiguous enough to block as substrings too
+
+            # Words that should be blocked ONLY as exact matches, not as substrings,
+            # because they appear inside innocent words (HELL in SHELL, FRIG in REFRIGERATOR, etc)
+            CHRISTIAN_EXACT_ONLY = {
+                "FRIGGING","FRIGGIN","FRIGGED","FRIG","FRIKKIN","FRIKKING","FRICKING","FRICKIN","FRICK",
+                "FECKING","FECKIN","FECK","FREAKING","FREAKIN",
+                "DAMN","DAMNED","DAMNING","DAMNABLY","DAMNDEST","DAMMIT","GODDAMN","GODDAMNED","GODDAM",
+                "HELL","HELLS","HELLISH",
+                "CRAP","CRAPPY","CRAPPER",
+                "PISS","PISSED","PISSER","PISSING","PISSY",
+                "DARN","DARNED","DARNDEST","DANG","DANGED",
+                "HECK","HECKLE","HECKLING","HECKLED","HECKLER",
+                "BLOODY","BLOODILY",
+            }
+            COMMON_SENSE_INNOCENT_3 = {"ASS", "TIT", "SEX", "CUM"}
+
             bad_substrings = []
             for b in raw_bad:
                 if not b.isalpha():
                     continue
+                if b in CHRISTIAN_EXACT_ONLY:
+                    continue  # exact-only
                 if len(b) >= 4:
                     bad_substrings.append(b)
                 elif len(b) == 3 and b not in COMMON_SENSE_INNOCENT_3:
@@ -294,7 +313,6 @@ if __name__ == "__main__":
         bad_substrings = []
 
     def contains_bad_substring(word: str) -> bool:
-        # Exact match always blocked (includes 3-letter)
         if word in bad_words:
             return True
         for bad in bad_substrings:
@@ -302,7 +320,6 @@ if __name__ == "__main__":
                 return True
         return False
 
-    # Filter out bad words (exact + substring with common-sense)
     words = [w for w in words if not contains_bad_substring(w)]
     
     generator = LevelGenerator(words)

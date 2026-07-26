@@ -8,6 +8,7 @@ dependencies {
     // (notes, photos) reference androidx.ink types (Stroke, Brush, ...) directly.
     api(libs.androidx.ink.authoring)
     api(libs.androidx.ink.brush)
+    api(libs.androidx.ink.geometry)
     api(libs.androidx.ink.strokes)
     api(libs.androidx.ink.rendering)
 }

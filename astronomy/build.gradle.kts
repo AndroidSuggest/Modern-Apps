@@ -29,6 +29,5 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
 
     // Unit tests for Phase 7 (JVM, no Android)
-    testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.4.0")
 }

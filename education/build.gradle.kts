@@ -24,5 +24,4 @@ dependencies {
     implementation(libs.androidx.media3.ui.compose.material3)
     implementation(project(":library:network"))
 
-    testImplementation(libs.junit)
 }

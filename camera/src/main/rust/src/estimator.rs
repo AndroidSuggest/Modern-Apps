@@ -1,6 +1,7 @@
 //! HomographyBasedEstimator (motion_estimators.cpp): estimate a shared focal
 //! from pairwise homographies, then chain per-image rotations along a maximum
-//! spanning tree of match confidences rooted at the central image.
+//! spanning tree of matches weighted by num_inliers (GraphEdge weight) rooted
+//! at the central image, matching OpenCV's findMaxSpanningTree + walkBreadthFirst.
 
 use crate::camera::CameraParams;
 use crate::matching::MatchInfo;
@@ -15,12 +16,13 @@ pub fn estimate_cameras(n: usize, w: usize, h: usize, matches: &[MatchInfo]) -> 
     let k = k_matrix(focal, ppx, ppy);
     let k_inv = k.try_inverse().unwrap_or_else(Matrix3::identity);
 
-    // adjacency: node -> Vec<(neighbor, confidence, H_node->neighbor)>
-    let mut adj: Vec<Vec<(usize, f64, Matrix3<f64>)>> = vec![Vec::new(); n];
+    // adjacency: node -> Vec<(neighbor, num_inliers, confidence, H_node->neighbor)>
+    // Weight for MST is num_inliers (GraphEdge), confidence as tie-breaker – per plan
+    let mut adj: Vec<Vec<(usize, usize, f64, Matrix3<f64>)>> = vec![Vec::new(); n];
     for m in matches {
-        adj[m.src].push((m.dst, m.confidence, m.h));
+        adj[m.src].push((m.dst, m.num_inliers, m.confidence, m.h));
         if let Some(hinv) = m.h.try_inverse() {
-            adj[m.dst].push((m.src, m.confidence, hinv));
+            adj[m.dst].push((m.src, m.num_inliers, m.confidence, hinv));
         }
     }
 
@@ -28,30 +30,36 @@ pub fn estimate_cameras(n: usize, w: usize, h: usize, matches: &[MatchInfo]) -> 
         .map(|_| CameraParams { focal, aspect: 1.0, ppx, ppy, r: Matrix3::identity() })
         .collect();
 
-    // Prim's maximum spanning tree from the central node.
+    // OpenCV: span_tree_centers[0] is walkBreadthFirst root – effectively n/2 for linear panos.
     let root = n / 2;
     let mut in_tree = vec![false; n];
     in_tree[root] = true;
     cams[root].r = Matrix3::identity();
     let mut added = 1;
     while added < n {
-        // find the highest-confidence edge from a tree node to a non-tree node
-        let mut best: Option<(usize, usize, Matrix3<f64>, f64)> = None; // (u, v, H_u->v, conf)
+        // find the highest-num_inliers edge from a tree node to a non-tree node
+        let mut best: Option<(usize, usize, Matrix3<f64>, usize, f64)> = None; // (u, v, H_u->v, num_inliers, conf)
         for u in 0..n {
             if !in_tree[u] {
                 continue;
             }
-            for &(v, conf, huv) in &adj[u] {
+            for &(v, num_inl, conf, huv) in &adj[u] {
                 if in_tree[v] {
                     continue;
                 }
-                if best.map_or(true, |(_, _, _, bc)| conf > bc) {
-                    best = Some((u, v, huv, conf));
+                let better = match best {
+                    None => true,
+                    Some((_, _, _, best_n, best_c)) => {
+                        num_inl > best_n || (num_inl == best_n && conf > best_c)
+                    }
+                };
+                if better {
+                    best = Some((u, v, huv, num_inl, conf));
                 }
             }
         }
         match best {
-            Some((u, v, huv, _)) => {
+            Some((u, v, huv, _, _)) => {
                 // OpenCV CalcRotation: R = K_from^-1 * H_{from->to}^-1 * K_to;
                 //                      cameras[to].R = cameras[from].R * R
                 let rel = huv

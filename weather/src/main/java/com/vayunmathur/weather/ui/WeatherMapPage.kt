@@ -77,8 +77,8 @@ import com.vayunmathur.library.map.OrnamentOptions
 import com.vayunmathur.library.map.RasterMap
 import com.vayunmathur.library.map.TileSource
 import com.vayunmathur.library.map.rememberCameraState
-import org.maplibre.spatialk.geojson.BoundingBox
-import org.maplibre.spatialk.geojson.Position
+import com.vayunmathur.library.map.GeoBounds
+import com.vayunmathur.library.map.GeoPoint
 
 /**
  * Full-screen map that shades an area by a chosen weather [metric], decoded
@@ -105,12 +105,12 @@ private data class DecodedRegion(
     val values: FloatArray,
     val width: Int,
     val height: Int,
-    val bbox: BoundingBox,
+    val bbox: GeoBounds,
 )
 
 /** Snapshot of the inputs that drive a decode; used to debounce scrubbing. */
 private data class DecodeRequest(
-    val bbox: BoundingBox?,
+    val bbox: GeoBounds?,
     val metric: WeatherMetric,
     val timeIndex: Int,
     val meta: OmMapMetadata?,
@@ -143,15 +143,15 @@ fun WeatherMapPage(
 
     // north-up, no tilt so the axis-aligned image quad stays correct.
     val camera = rememberCameraState(
-        CameraPosition(target = Position(longitude, latitude), zoom = 7.0),
+        CameraPosition(target = GeoPoint(longitude, latitude), zoom = 7.0),
     )
 
     var metadata by remember { mutableStateOf<OmMapMetadata?>(null) }
     var timeIndex by remember { mutableStateOf(0) }
     var userScrubbed by remember { mutableStateOf(false) }
-    var visibleBbox by remember { mutableStateOf<BoundingBox?>(null) }
+    var visibleBbox by remember { mutableStateOf<GeoBounds?>(null) }
     var overlay by remember { mutableStateOf<ImageBitmap?>(null) }
-    var overlayBounds by remember { mutableStateOf<BoundingBox?>(null) }
+    var overlayBounds by remember { mutableStateOf<GeoBounds?>(null) }
     var loading by remember { mutableStateOf(false) }
     // The viewer's own zone: the primary time label is always shown in it.
     val userZone = remember { TimeZone.currentSystemDefault() }
@@ -450,7 +450,7 @@ private fun Legend(metric: WeatherMetric, minLabel: String, maxLabel: String) {
 }
 
 /** Overlay raster size for [bbox], longest side [RASTER_MAX_DIM], aspect-matched. */
-private fun rasterSize(bbox: BoundingBox): Pair<Int, Int> {
+private fun rasterSize(bbox: GeoBounds): Pair<Int, Int> {
     val lonSpan = abs(bbox.east - bbox.west).coerceAtLeast(1e-6)
     val latSpan = abs(bbox.north - bbox.south).coerceAtLeast(1e-6)
     return if (lonSpan >= latSpan) {
@@ -461,7 +461,7 @@ private fun rasterSize(bbox: BoundingBox): Pair<Int, Int> {
 }
 
 /** Cache key: metric variable + valid time + bounds rounded to ~0.1°. */
-private fun cacheKey(bbox: BoundingBox, variable: String, validTime: String): String {
+private fun cacheKey(bbox: GeoBounds, variable: String, validTime: String): String {
     fun r(v: Double) = (v * 10).roundToInt()
     return "$variable@$validTime:${r(bbox.north)},${r(bbox.south)},${r(bbox.east)},${r(bbox.west)}"
 }

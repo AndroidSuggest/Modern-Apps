@@ -30,7 +30,7 @@ class BokehAnalyzer(
     private var pixelBuffer: IntArray? = null
     private var lastSegmentMs: Long = 0L
     @Volatile private var closed = false
-    private val segmenter = PortraitSegmenter(context)
+    private val segmenter = PortraitSegmenter(context, "erdnet.param", "erdnet.bin")
 
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {

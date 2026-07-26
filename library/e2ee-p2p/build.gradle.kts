@@ -8,11 +8,21 @@ android {
     namespace = "com.vayunmathur.e2ee"
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// Native post-quantum crypto (Rust: fips203 ML-KEM-768 + fips204 ML-DSA-65).
+// See library/e2ee-p2p/src/main/rust/. Replaces Bouncy Castle; keys cross as DER,
+// byte-compatible with the previously-deployed BC encoding.
+rustNativeLib("e2ee_pqc", "e2ee-pqc")
+
 dependencies {
     implementation(libs.cryptography.core)
     implementation(libs.cryptography.provider.jdk)
-    // BouncyCastle for post-quantum crypto (ML-KEM / ML-DSA), used by the Office app only.
-    implementation(libs.bouncycastle)
 
-    testImplementation(libs.junit)
 }

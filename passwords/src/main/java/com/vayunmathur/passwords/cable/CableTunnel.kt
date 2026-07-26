@@ -1,82 +1,77 @@
 package com.vayunmathur.passwords.cable
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
-import io.ktor.client.plugins.websocket.WebSockets
-import io.ktor.client.plugins.websocket.webSocketSession
-import io.ktor.client.request.header
-import io.ktor.client.request.url
-import io.ktor.http.HttpHeaders
-import io.ktor.websocket.Frame
-import io.ktor.websocket.close
-import io.ktor.websocket.readBytes
 import android.util.Log
+import com.vayunmathur.library.network.WebSocketClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import java.io.IOException
 
 /**
- * WebSocket client for a caBLE v2 tunnel server. In the QR flow this app is the authenticator,
- * so it opens the "new" endpoint, learns a routing id, and then relays raw binary frames (the Noise
- * handshake messages, then the encrypted CTAP traffic) to/from the browser via the tunnel.
- *
- * Endpoints (Chromium `tunnelserver`):
- *  - authenticator: `wss://<domain>/cable/new/<hex(tunnelId)>`
- *  - browser:       `wss://<domain>/cable/connect/<hex(routingId)>/<hex(tunnelId)>`
- *
- * WebSocket subprotocol is [SUBPROTOCOL] (`fido.cable`).
- *
- * Verified against Chromium (2024): the "new" URL path, the `fido.cable` subprotocol, and the
- * routing-id response header ([ROUTING_ID_HEADER]) all match `tunnelserver::GetNewTunnelURL`,
- * `kCableWebSocketProtocol`, and `kCableRoutingIdHeader`. (Live tunnel-server behaviour still can't
- * be exercised offline.)
+ * WebSocket client for a caBLE v2 tunnel server – migrated to Android-only
+ * [WebSocketClient] (no Ktor).
  */
 class CableTunnel private constructor(
-    private val client: HttpClient,
-    private val session: DefaultClientWebSocketSession,
-    /** Server-assigned routing id (typically 3 bytes) to embed in the BLE EID, or null. */
+    private val wsClient: WebSocketClient,
+    private val frameChannel: Channel<WebSocketClient.WsFrame>,
     val routingId: ByteArray?,
+    private val collectorJob: kotlinx.coroutines.Job?,
 ) {
-    /** Sends one binary tunnel frame. */
     suspend fun send(data: ByteArray) {
-        session.send(Frame.Binary(true, data))
+        wsClient.send(data)
     }
 
-    /** Receives the next binary tunnel frame, skipping control frames. */
     suspend fun receive(): ByteArray {
         while (true) {
-            when (val frame = session.incoming.receive()) {
-                is Frame.Binary -> return frame.readBytes()
-                is Frame.Close -> throw IOException("Tunnel closed by server")
-                else -> Unit // ping/pong/text: ignore
+            val frame = frameChannel.receive()
+            when (frame) {
+                is WebSocketClient.WsFrame.Binary -> return frame.bytes
+                is WebSocketClient.WsFrame.Close -> throw IOException("Tunnel closed by server (${frame.code} ${frame.reason})")
+                else -> Unit // ping/pong/text ignored
             }
         }
     }
 
     suspend fun close() {
-        runCatching { session.close() }
-        client.close()
+        collectorJob?.cancel()
+        try { wsClient.close() } catch (_: Exception) {}
     }
 
     companion object {
         const val SUBPROTOCOL = "fido.cable"
         const val ROUTING_ID_HEADER = "X-caBLE-Routing-ID"
 
-        /** Opens the authenticator "new" tunnel and captures the routing id. */
         suspend fun connectNew(domain: String, tunnelId: ByteArray): CableTunnel {
-            val client = HttpClient(CIO) { install(WebSockets) }
             val url = "wss://$domain/cable/new/${hex(tunnelId)}"
             Log.d(TAG, "Opening tunnel: $url")
-            val session = client.webSocketSession {
-                url(url)
-                header(HttpHeaders.SecWebSocketProtocol, SUBPROTOCOL)
-            }
-            val response = session.call.response
-            Log.d(TAG, "Tunnel status=${response.status}; headers: " +
-                response.headers.entries().joinToString(", ") { "${it.key}=${it.value}" })
-            val routingHex = response.headers[ROUTING_ID_HEADER]
+
+            // Capture routing-id header from handshake
+            val client = WebSocketClient.connect(
+                urlStr = url,
+                headers = mapOf("Sec-WebSocket-Protocol" to SUBPROTOCOL),
+                captureResponseHeaders = listOf(ROUTING_ID_HEADER)
+            )
+
+            Log.d(TAG, "Tunnel response headers: ${client.responseHeaders.entries.joinToString { "${it.key}=${it.value}" }}")
+            val routingHex = client.capturedHeaders[ROUTING_ID_HEADER]
+                ?: client.responseHeaders.entries.firstOrNull { it.key.equals(ROUTING_ID_HEADER, ignoreCase = true) }?.value?.firstOrNull()
             val routingId = routingHex?.let { runCatching { unhex(it) }.getOrNull() }
             Log.d(TAG, "routingId header=$routingHex parsed=${routingId?.let { hex(it) }}")
-            return CableTunnel(client, session, routingId)
+
+            // Bridge incoming flow into a Channel for receive() synchronous-style
+            val channel = Channel<WebSocketClient.WsFrame>(Channel.UNLIMITED)
+            val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    client.incomingFlow().collect { f -> channel.trySend(f) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    channel.close()
+                }
+            }
+
+            return CableTunnel(client, channel, routingId, job)
         }
 
         private const val TAG = "CableTunnel"

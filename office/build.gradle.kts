@@ -19,11 +19,7 @@ android {
 dependencies {
     implementation(project(":library:network"))
     implementation(project(":library:e2ee-p2p"))
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
-    implementation(libs.ktor.client.websockets)
 
-    testImplementation(libs.junit)
     // Provides a real XmlPullParser implementation for JVM unit tests (Android's is a stub).
     testImplementation(libs.kxml2)
 }

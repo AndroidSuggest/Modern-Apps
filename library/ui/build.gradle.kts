@@ -14,5 +14,4 @@ dependencies {
     // Used only internally (editor toolbars); not re-exported to apps.
     implementation("androidx.compose.material:material-icons-extended")
 
-    testImplementation(libs.junit)
 }

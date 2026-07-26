@@ -3,8 +3,8 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.ktor.client.okhttp)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
+    // Android-only networking – HttpURLConnection + own WS, no OkHttp/Ktor.
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.brotli.dec) // manual br decoding – keep catalog entry
+    implementation(libs.kotlinx.coroutines.android)
 }

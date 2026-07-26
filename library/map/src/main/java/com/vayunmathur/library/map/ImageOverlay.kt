@@ -1,7 +1,6 @@
 package com.vayunmathur.library.map
 
 import androidx.compose.ui.graphics.ImageBitmap
-import org.maplibre.spatialk.geojson.BoundingBox
 
 /**
  * A georeferenced translucent image drawn over the basemap. Because the map is
@@ -11,6 +10,6 @@ import org.maplibre.spatialk.geojson.BoundingBox
  */
 data class ImageOverlay(
     val bitmap: ImageBitmap,
-    val bounds: BoundingBox,
+    val bounds: GeoBounds,
     val opacity: Float = 1f,
 )

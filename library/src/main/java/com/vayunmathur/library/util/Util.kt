@@ -6,8 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
-import okio.Source
-import okio.buffer
 import kotlin.math.pow
 import kotlin.math.round
 import kotlin.time.Clock
@@ -18,8 +16,8 @@ fun Double.round(decimals: Int): Double {
     return round(this * 10.0.pow(decimals)) / (10.0.pow(decimals))
 }
 
-fun Source.readLines(): List<String> =
-    buffer().run { generateSequence { readUtf8Line() }.toList() }
+fun java.io.InputStream.readLines(): List<String> =
+    bufferedReader().readLines()
 
 inline fun <reified T: ComponentActivity> Context.findActivity(): T? {
     var context = this

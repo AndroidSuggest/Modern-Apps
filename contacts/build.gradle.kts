@@ -25,6 +25,7 @@ metadataScreenshots {
 dependencies {
 
     // External Libraries
+    implementation(libs.okio) // isolated: VCF export/import, FileSystem – not networking
     implementation(libs.libphonenumber)
     implementation(libs.androidx.work.runtime.ktx)
 }

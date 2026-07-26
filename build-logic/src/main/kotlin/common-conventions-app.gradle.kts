@@ -92,6 +92,12 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         versionCode = appVersionCode
         versionName = appVersionName
         targetSdk = 37
+        // Only arm64-v8a — all physical devices + Apple Silicon emulator are arm64.
+        // AGP otherwise configures buildCMakeDebug for armeabi-v7a/x86/x86_64 which
+        // wastes time and broke when offline router's sqlite3.c was removed.
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     signingConfigs {
@@ -124,8 +130,8 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"), proguardFile.absolutePath,
             )
-
-            // This applies ONLY to your release APK/Bundle
+        }
+        debug {
             ndk {
                 abiFilters.add("arm64-v8a")
             }
@@ -135,6 +141,10 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
             isMinifyEnabled = false
             isShrinkResources = false
             matchingFallbacks += listOf("release")
+            ndk {
+                abiFilters.clear()
+                abiFilters.add("arm64-v8a")
+            }
         }
     }
 
@@ -173,6 +183,8 @@ dependencies {
 
     implementation(project(":library"))
     implementation(project(":library:ui"))
+
+    testImplementation(libs.junit)
 }
 
 fun DependencyHandlerScope.justSoItShowsAsUsedSomewhere() {

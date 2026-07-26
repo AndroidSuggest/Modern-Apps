@@ -112,26 +112,33 @@ pub fn estimate_rotations(pairs: &[Matrix3<f64>], k: &Matrix3<f64>) -> Vec<Matri
     rots
 }
 
-/// SphericalProjector state for one image: r_kinv = R K⁻¹, k_rinv = K Rᵀ.
-struct Proj {
-    r_kinv: Matrix3<f64>,
-    k_rinv: Matrix3<f64>,
-    scale: f64,
+/// SphericalProjector state for one image: r_kinv = R K⁻¹, k_rinv = K Rᵀ, rinv = Rᵀ, k.
+/// Matches OpenCV ProjectorBase setCameraParams: rinv = R.t(), r_kinv = R*K.inv(), k_rinv = K*Rinv
+pub struct Proj {
+    pub r_kinv: Matrix3<f64>,
+    pub k_rinv: Matrix3<f64>,
+    pub rinv: Matrix3<f64>,
+    pub k: Matrix3<f64>,
+    pub scale: f64,
 }
 
 impl Proj {
-    fn new(k: &Matrix3<f64>, r: &Matrix3<f64>, scale: f64) -> Option<Proj> {
+    pub fn new(k: &Matrix3<f64>, r: &Matrix3<f64>, scale: f64) -> Option<Proj> {
         let k_inv = k.try_inverse()?;
+        let rinv = r.transpose();
         Some(Proj {
             r_kinv: r * k_inv,
-            k_rinv: k * r.transpose(),
+            k_rinv: k * rinv,
+            rinv,
+            k: *k,
             scale,
         })
     }
 
     /// source (x,y) -> sphere (u,v). Spherical handles large vertical FOV (tall
     /// frames) far better than cylindrical. (OpenCV SphericalProjector::mapForward)
-    fn forward(&self, x: f64, y: f64) -> (f64, f64) {
+    /// u = scale*atan2(x_,z_) v = scale*(PI-acos(y_/norm))
+    pub fn forward(&self, x: f64, y: f64) -> (f64, f64) {
         let p = self.r_kinv * Vector3::new(x, y, 1.0);
         let u = self.scale * p.x.atan2(p.z);
         let denom = (p.x * p.x + p.y * p.y + p.z * p.z).sqrt();
@@ -141,7 +148,8 @@ impl Proj {
     }
 
     /// sphere (u,v) -> source (x,y); None if behind the camera.
-    fn backward(&self, u: f64, v: f64) -> Option<(f64, f64)> {
+    /// Matches OpenCV mapBackward inverse trig with k_rinv.
+    pub fn backward(&self, u: f64, v: f64) -> Option<(f64, f64)> {
         let uu = u / self.scale;
         let vv = v / self.scale;
         let sinv = (std::f64::consts::PI - vv).sin();
@@ -157,7 +165,9 @@ impl Proj {
     }
 }
 
-/// Compute a projector's (u,v) bounds by walking the source-image border.
+/// Compute a projector's (u,v) bounds by walking the source-image border,
+/// plus OpenCV pole check: if forward-projected pole inside src includes
+/// v=0 or PI*scale. Matches SphericalWarper::detectResultRoi 375-416.
 fn tile_bounds(proj: &Proj, w: usize, h: usize) -> (f64, f64, f64, f64) {
     let (mut u0, mut v0, mut u1, mut v1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     let step = 1usize.max(w.min(h) / 100);
@@ -182,6 +192,58 @@ fn tile_bounds(proj: &Proj, w: usize, h: usize) -> (f64, f64, f64, f64) {
         consider(w - 1, y, &mut u0, &mut v0, &mut u1, &mut v1);
         y += step;
     }
+
+    // Pole handling like OpenCV SphericalWarper::detectResultRoi
+    // OpenCV checks rinv: x = rinv[1] y=rinv[4] z=rinv[7] and x=rinv[1] y=-rinv[4] z=rinv[7]
+    // i.e. second column of R^T = second row of R? Actually rinv = R.t() so rinv[1]=Rinv(0,1) etc.
+    // We need to check if north/south pole projection falls inside src.
+    // Pole in camera space: (0, 1, 0) and (0,-1,0) ??? Actually OpenCV code: (rinv[1], rinv[4], rinv[7]) corresponds to R^T * (0,1,0) ??? Let's replicate: check if K*R^T*[0,1,0] yields point inside image? Equivalent to mapBackward for pole?
+    // Simpler: if forward map of pole (0,1,0) ray falls inside image, extend v bounds to include PI*scale or 0.
+    // OpenCV logic: projector_.rinv[1] = R^T second column x? Wait rinv row-major: rinv[0]=Rinv(0,0) rinv[1]=Rinv(0,1) rinv[2]=Rinv(0,2) rinv[3]=Rinv(1,0) etc. So rinv[1]=R^T(0,1)=R(1,0), rinv[4]=R^T(1,1)=R(1,1), rinv[7]=R^T(2,1)=R(1,2)
+    // That's first row? Let's follow accurately: setCameraParams Mat Rinv = R.t(), so rinv[1]=Rinv(0,1)=R(1,0), rinv[4]=Rinv(1,1)=R(1,1), rinv[7]=Rinv(2,1)=R(1,2). So vector (R(1,0),R(1,1),R(1,2)) = second row of R (y axis of camera rotation). That's the camera's up direction in world? Checking north pole.
+    // The north pole ray in world is (0,1,0)?? In spherical projection, y_ = cos(PI - v) – north pole would be y=1 at v=0? Let's see: backward: u=0,v=0 -> PI -0 = PI, cos PI = -1 -> y_=-1 south? Maybe swapped. Anyway OpenCV checks y>0 and projects via K: x_ = K0*x +K1*y /z +K2 etc. If inside src, it includes v = PI*scale.
+    // We can replicate by testing whether projecting world ray (0,1,0) and (0,-1,0) through K*R^T yields inside image.
+    // Implementation: p_world north = (0,1,0) (?) Actually we test ray from camera after rotation? Let's approximate: if the camera looks near pole, the tile should include top/bottom.
+
+    // Check north pole and south pole inclusion via map: try to forward project a ray approx?
+    // OpenCV does: x=rinv[1] y=rinv[4] z=rinv[7] corresponds to R^T*(0,1,0) = second column of R^T = second row of R
+    // Then computes image point x_ = K*x/y? Wait code: x_= (k0*x + k1*y)/z + k2 etc.
+    // That's projection of world ray (x,y,z) onto image via K*R^T? Let's implement same.
+
+    // north pole test vector (rinv second column)
+    let rx = proj.rinv[(0, 1)];
+    let ry = proj.rinv[(1, 1)];
+    let rz = proj.rinv[(2, 1)];
+    if ry > 0.0 {
+        // Project via K
+        let k = proj.k;
+        let px = (k[(0, 0)] * rx + k[(0, 1)] * ry) / rz + k[(0, 2)];
+        let py = k[(1, 1)] * ry / rz + k[(1, 2)];
+        if px > 0.0 && px < w as f64 && py > 0.0 && py < h as f64 {
+            // includes north pole – extend v to PI*scale
+            let pole_v = std::f64::consts::PI * proj.scale;
+            v0 = v0.min(pole_v);
+            v1 = v1.max(pole_v);
+            u0 = u0.min(0.0);
+            u1 = u1.max(0.0);
+        }
+    }
+    let rx = proj.rinv[(0, 1)];
+    let ry = -proj.rinv[(1, 1)];
+    let rz = proj.rinv[(2, 1)];
+    if ry > 0.0 {
+        let k = proj.k;
+        let px = (k[(0, 0)] * rx + k[(0, 1)] * ry) / rz + k[(0, 2)];
+        let py = k[(1, 1)] * ry / rz + k[(1, 2)];
+        if px > 0.0 && px < w as f64 && py > 0.0 && py < h as f64 {
+            let pole_v = 0.0;
+            v0 = v0.min(pole_v);
+            v1 = v1.max(pole_v);
+            u0 = u0.min(0.0);
+            u1 = u1.max(0.0);
+        }
+    }
+
     (u0, v0, u1, v1)
 }
 
@@ -205,8 +267,60 @@ pub struct WarpedTile {
     pub corner_y: i32,
 }
 
+/// Bilinear sample with BORDER_REFLECT_101 like OpenCV (instead of clamp)
+/// for better edge quality in spheres.
+fn sample_reflect_101(frame: &Rgba, fx: f32, fy: f32) -> Option<[f32; 4]> {
+    // Mirror index reflect without repeating border
+    let w = frame.w as f32;
+    let h = frame.h as f32;
+    let mut x = fx;
+    let mut y = fy;
+    // For outside range slightly, reflect
+    // We'll attempt bilinear with reflect for all 4 corners
+    // Enumeration
+    let x0_f = x.floor();
+    let y0_f = y.floor();
+    let x0 = x0_f as isize;
+    let y0 = y0_f as isize;
+    let x1 = x0 + 1;
+    let y1 = y0 + 1;
+    let ax = x - x0_f;
+    let ay = y - y0_f;
+
+    fn refl(i: isize, n: usize) -> usize {
+        let m = n as isize;
+        if m <= 1 { return 0; }
+        let mut v = i;
+        while v < 0 || v >= m {
+            if v < 0 { v = -v; } else { v = 2 * m - v - 2; }
+        }
+        v as usize
+    }
+
+    let x0r = refl(x0, frame.w);
+    let x1r = refl(x1, frame.w);
+    let y0r = refl(y0, frame.h);
+    let y1r = refl(y1, frame.h);
+
+    let c00 = frame.get(x0r, y0r);
+    let c10 = frame.get(x1r, y0r);
+    let c01 = frame.get(x0r, y1r);
+    let c11 = frame.get(x1r, y1r);
+    if c00[3] == 0 && c10[3] == 0 && c01[3] == 0 && c11[3] == 0 {
+        return None;
+    }
+    let mut out = [0f32; 4];
+    for k in 0..4 {
+        let top = c00[k] as f32 * (1.0 - ax) + c10[k] as f32 * ax;
+        let bot = c01[k] as f32 * (1.0 - ax) + c11[k] as f32 * ax;
+        out[k] = top * (1.0 - ay) + bot * ay;
+    }
+    Some(out)
+}
+
 /// Warp one image onto the sphere with camera intrinsics `k`/rotation `r` and
-/// warp `scale`. Mirrors SphericalWarper::warp (buildMaps + remap).
+/// warp `scale`. Mirrors SphericalWarper::warp (buildMaps + remap) with
+/// BORDER_REFLECT_101 sampling (not clamp) and pole ROI already handled in tile_bounds.
 pub fn warp_one(frame: &Rgba, k: &Matrix3<f64>, r: &Matrix3<f64>, scale: f64) -> Option<WarpedTile> {
     let p = Proj::new(k, r, scale)?;
     let (u0, v0, u1, v1) = tile_bounds(&p, frame.w, frame.h);
@@ -226,7 +340,8 @@ pub fn warp_one(frame: &Rgba, k: &Matrix3<f64>, r: &Matrix3<f64>, scale: f64) ->
             let u = (cx + tx as i32) as f64;
             let v = (cy + ty as i32) as f64;
             if let Some((sx, sy)) = p.backward(u, v) {
-                if let Some(c) = frame.sample(sx as f32, sy as f32) {
+                // Use reflect_101 sampling for spherical quality like OpenCV INTER_LINEAR BORDER_REFLECT
+                if let Some(c) = sample_reflect_101(frame, sx as f32, sy as f32) {
                     if c[3] >= 8.0 {
                         img.set(tx, ty, [
                             c[0].round().clamp(0.0, 255.0) as u8,

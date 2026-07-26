@@ -18,6 +18,18 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// Native KDBX (KeePass) read/write (Rust `keepass` crate). See passwords/src/main/rust/.
+// Replaces keepassjava2 + Bouncy Castle; existing .kdbx vaults stay interoperable.
+rustNativeLib("passwords_kdbx", "passwords-kdbx")
+
 dependencies {
     implementation(project(":library:biometric"))
     implementRoom(libs)
@@ -26,11 +38,10 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.credentials.lib)
     implementation(libs.androidx.autofill)
-    implementation(libs.keepassjava2.dom)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
-    implementation(libs.ktor.client.websockets)
+    // Own WebSocketClient via :library:network – no Ktor
+    implementation(project(":library:network"))
 
-    testImplementation(libs.junit)
+    // Test-only crypto reference for the caBLE parity test (CryptoParityTest).
+    // Not shipped in the APK; unrelated to the KDBX/keepass path.
     testImplementation(libs.bouncycastle)
 }

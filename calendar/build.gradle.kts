@@ -20,5 +20,4 @@ metadataScreenshots {
 dependencies {
     implementation(project(":library:widgets"))
 
-    testImplementation(libs.junit)
 }

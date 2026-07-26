@@ -299,8 +299,8 @@
     <string name="add_a_customer">Add a customer</string>
     <!-- Form field label: create customer submit. Verb phrase -->
     <string name="create_customer">Create customer</string>
-    <!-- Field label: optional phone for customer form. Noun with (optional) -->
-    <string name="phone_optional">Phone (optional)</string>
+    <!-- Field label: optional phone for customer form (duplicate of passengers form; reuse above id). Noun with (optional) -->
+    <!-- string name="phone_optional" defined above — removed duplicate -->
     <!-- Button: add a frequent flyer number. Verb phrase -->
     <string name="add_a_number">Add a number</string>
     <!-- Field label: account number for FF -->

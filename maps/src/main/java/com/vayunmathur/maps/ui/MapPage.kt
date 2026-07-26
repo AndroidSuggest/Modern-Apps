@@ -63,13 +63,12 @@ import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconWork
 import com.vayunmathur.library.util.NavBackStack
-import com.vayunmathur.library.util.readLines
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.AmenityDatabase
 import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.parse
-import com.vayunmathur.maps.ensurePmtilesReady
+import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.MapsZonesViewModel
 import com.vayunmathur.maps.util.OfflineRouter
 import com.vayunmathur.maps.util.RouteService
@@ -88,7 +87,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import okio.source
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.map.GestureOptions
@@ -142,13 +140,14 @@ fun MapPage(backStack: NavBackStack<Route>, viewModel: SelectedFeatureViewModel,
     }
 
     val hybridUrl = remember(activeZone) {
-        if (activeZone == null) return@remember ""
+        if (activeZone == null) return@remember MapTileCache.BASEMAP_PMTILES_URL
 
         val localFile = File(context.getExternalFilesDir(null), "zone_$activeZone.pmtiles")
         if (zonesViewModel.getZoneStatus(activeZone) == ZoneDownloadManager.ZoneStatus.FINISHED) {
             "pmtiles://file://${localFile.absolutePath}"
         } else {
-            ""
+            // No offline zone downloaded here — stream this area live.
+            MapTileCache.BASEMAP_PMTILES_URL
         }
     }
 
@@ -159,10 +158,10 @@ fun MapPage(backStack: NavBackStack<Route>, viewModel: SelectedFeatureViewModel,
     // patch step is light enough to stay on the same coroutine.
     LaunchedEffect(hybridUrl) {
         val updatedStyle = withContext<String>(Dispatchers.IO) {
-            val rawStyle = context.assets.open("style.json").source().readLines().joinToString("\n")
+            val rawStyle = context.assets.open("style.json").bufferedReader().readText()
             patchStyleForHybrid(
                 rawStyle,
-                ensurePmtilesReady(context),
+                MapTileCache.BASEMAP_PMTILES_URL,
                 hybridUrl
             )
         }

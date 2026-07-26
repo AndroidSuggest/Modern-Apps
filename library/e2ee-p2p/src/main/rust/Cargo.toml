@@ -1,0 +1,24 @@
+[package]
+name = "e2ee_pqc"
+version = "0.1.0"
+edition = "2021"
+description = "ML-KEM-768 + ML-DSA-65 for the e2ee-p2p library (FIPS 203/204, RustCrypto-adjacent), DER-compatible with the previous Bouncy Castle encoding, exposed to Kotlin via JNI."
+license = "GPL-2.0-only"
+
+[lib]
+name = "e2ee_pqc"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fips203 = "0.4.3"
+fips204 = "0.4.6"
+sha2 = "0.10"
+jni = "0.21"
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

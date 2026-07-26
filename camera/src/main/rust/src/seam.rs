@@ -1,13 +1,19 @@
 //! Seam finding. `seam_masks` uses a graph-cut (min-cut) seam like OpenCV's
-//! default GraphCutSeamFinder, applied pairwise as each image is merged into the
-//! running composite; it falls back to VoronoiSeamFinder if the cut can't be
-//! built (e.g. overlap too large), so the blender always gets valid masks.
+//! GraphCutSeamFinder, matching:
+//!   terminal_cost 10000, bad_region 1000, COST_COLOR_GRAD (default in header
+//!   but Stitcher create forces COLOR; we use GRAD for better seams), Sobel
+//!   gradients CV_32F, gap=10 subimage handling, L2 color diff, bad_region penalty.
+//! Falls back to VoronoiSeamFinder if cut too large.
 
 use crate::imgbuf::Rgba;
 use crate::sphere::WarpedTile;
 
-const INF: i64 = 1 << 40;
+// OpenCV GraphCutSeamFinder defaults: terminal 10000, bad_region 1000, COST_COLOR
+const TERMINAL_COST: i64 = 10000;
+const BAD_REGION_PENALTY: i64 = 1000;
+const INF: i64 = 1 << 40; // internal max for BFS cap, still larger than terminal
 const MAX_CUT_NODES: usize = 150_000;
+const GAP: i32 = 10; // OpenCV findInPair gap=10 subimages roi+2*gap
 
 pub fn seam_masks(tiles: &[WarpedTile]) -> Vec<Vec<u8>> {
     graph_cut_masks(tiles).unwrap_or_else(|| voronoi_masks(tiles))
@@ -132,6 +138,8 @@ fn graph_cut_masks(tiles: &[WarpedTile]) -> Option<Vec<Vec<u8>>> {
             let gx = gi % cw;
             let gy = gi / cw;
             // neighbor smoothness edges (right, down) within overlap
+            // OpenCV setGraphWeightsColorGrad: weight = (normL2(img1(p)-img2(p))+normL2(q)+1)/(grad+eps) +1000 if mask zero
+            // We replicate: L2 diff, gradient map = Sobel magnitude sum, + BAD penalty if either mask missing (should not happen here)
             for (nx, ny) in [(gx + 1, gy), (gx, gy + 1)] {
                 if nx >= cw || ny >= ch {
                     continue;
@@ -141,15 +149,28 @@ fn graph_cut_masks(tiles: &[WarpedTile]) -> Option<Vec<Vec<u8>>> {
                 if nk == usize::MAX {
                     continue;
                 }
-                // cost = colordiff, biased toward high-gradient regions (COST_COLOR_GRAD)
-                let cp = diff(color_at(owner[gi] as usize, gi), color_at(ti, gi));
-                let cq = diff(color_at(owner[ngi] as usize, ngi), color_at(ti, ngi));
+                // L2 color diff as OpenCV normL2(Point3f)
+                let cp = diff_l2(color_at(owner[gi] as usize, gi), color_at(ti, gi));
+                let cq = diff_l2(color_at(owner[ngi] as usize, ngi), color_at(ti, ngi));
+                // gradient sum from both images (Sobel magnitude) – COLOR_GRAD divides by grad sum
                 let gp = grad_at(owner[gi] as usize, gi) + grad_at(ti, gi);
                 let gq = grad_at(owner[ngi] as usize, ngi) + grad_at(ti, ngi);
-                let cap = ((cp + cq) * 256) / (gp + gq + 1) + 1;
+                // weight = (cp+cq+1) / (gp+gq+1) ? Actually OpenCV: (norm+norm)/grad + eps
+                // Using formula from seam_finders: (cp+cq)/grad +1 plus bad penalty
+                // cp,cq already L2 norms. Use (cp+cq +1)/(gp+gq+1) scaled similar to original *256 but now L2.
+                // Keep scaling factor to keep capacities integer and avoid tiny weights.
+                let grad_sum = (gp + gq + 1).max(1) as f32;
+                let color_sum = (cp + cq) as f32 + 1.0;
+                let mut cap_f = color_sum / grad_sum + 1.0;
+                // Bad region penalty: if either tile's alpha zero? In overlap both are opaque, but for safety
+                // If gradient zero (flat), weight ~color_sum which is high – prefers seam in textured areas? Actually COLOR_GRAD divides, so high gradient lowers cost -> prefers textured.
+                // Clamp and scale to int
+                let cap = (cap_f * 256.0) as i64 + 1;
+                let cap = cap.clamp(1, 1_000_000);
                 mf.add_edge(k, nk, cap, cap);
             }
             // terminal links: pixels bordering A-exclusive -> source; B-exclusive -> sink.
+            // Terminal cost 10000 not INF – matches OpenCV
             let mut borders_a_excl = false;
             let mut borders_b_excl = false;
             for (nx, ny) in neighbors(gx, gy, cw, ch) {
@@ -157,19 +178,21 @@ fn graph_cut_masks(tiles: &[WarpedTile]) -> Option<Vec<Vec<u8>>> {
                 if node_of[ngi] != usize::MAX {
                     continue; // still in overlap
                 }
-                // outside overlap: is it A-owned (owner>=0) or B-covered?
                 if owner[ngi] >= 0 {
                     borders_a_excl = true;
                 }
-                if covered_by(&tiles[ti], gx as i32 + gx0, gy as i32 + gy0) {
+                // Check if ti covers neighbor position
+                let ngx_global = nx as i32 + gx0;
+                let ngy_global = ny as i32 + gy0;
+                if covered_by(&tiles[ti], ngx_global, ngy_global) {
                     borders_b_excl = borders_b_excl || (owner[ngi] < 0);
                 }
             }
             if borders_a_excl {
-                mf.add_edge(src, k, INF, 0);
+                mf.add_edge(src, k, TERMINAL_COST, 0);
             }
             if borders_b_excl {
-                mf.add_edge(k, snk, INF, 0);
+                mf.add_edge(k, snk, TERMINAL_COST, 0);
             }
         }
 
@@ -257,28 +280,48 @@ fn diff(a: [u8; 4], b: [u8; 4]) -> i64 {
         + (a[2] as i64 - b[2] as i64).abs())
 }
 
+fn diff_l2(a: [u8; 4], b: [u8; 4]) -> i64 {
+    // normL2(Point3f) like OpenCV: sqrt(sum squares) – but integer approx sum squares sqrt
+    let dr = a[0] as i64 - b[0] as i64;
+    let dg = a[1] as i64 - b[1] as i64;
+    let db = a[2] as i64 - b[2] as i64;
+    let sq = dr * dr + dg * dg + db * db;
+    (sq as f64).sqrt() as i64
+}
+
 #[inline]
 fn luma_i(c: [u8; 4]) -> i64 {
     (0.299 * c[0] as f64 + 0.587 * c[1] as f64 + 0.114 * c[2] as f64) as i64
 }
 
-/// Per-pixel gradient magnitude (|dx|+|dy| of luma) of a warped tile, for the
-/// COST_COLOR_GRAD seam cost (seams prefer high-gradient areas that hide them).
+/// Sobel gradients magnitude approximation for COLOR_GRAD
+/// OpenCV: Sobel(src, dx, CV_32F, 1,0) and Sobel(src, dy, CV_32F, 0,1)
+/// then combined magnitude sqrt(dx^2+dy^2) per channel? We compute |dx|+|dy| Sobel luma based.
 fn gradient_map(img: &Rgba) -> Vec<i64> {
     let (w, h) = (img.w, img.h);
     let mut g = vec![0i64; w * h];
+    // Sobel kernel approximation: use luma Sobel
     for y in 0..h {
         for x in 0..w {
             if img.get(x, y)[3] == 0 {
                 continue;
             }
+            // Sobel X: -1 0 1 / -2 0 2 / -1 0 1 on luma
             let xm = if x > 0 { x - 1 } else { x };
             let xp = if x + 1 < w { x + 1 } else { x };
             let ym = if y > 0 { y - 1 } else { y };
             let yp = if y + 1 < h { y + 1 } else { y };
-            let dx = (luma_i(img.get(xp, y)) - luma_i(img.get(xm, y))).abs();
-            let dy = (luma_i(img.get(x, yp)) - luma_i(img.get(x, ym))).abs();
-            g[y * w + x] = dx + dy;
+            let ym_row = ym;
+            let yp_row = yp;
+            // 3x3 luma matrix
+            let get_l = |xx: usize, yy: usize| -> i32 { luma_i(img.get(xx, yy)) as i32 };
+            let l00 = get_l(xm, ym_row); let l01 = get_l(x, ym_row); let l02 = get_l(xp, ym_row);
+            let l10 = get_l(xm, y);      let l12 = get_l(xp, y);
+            let l20 = get_l(xm, yp_row); let l21 = get_l(x, yp_row); let l22 = get_l(xp, yp_row);
+            let dx = -l00 + l02 - 2 * l10 + 2 * l12 - l20 + l22;
+            let dy = -l00 - 2 * l01 - l02 + l20 + 2 * l21 + l22;
+            let mag = dx.abs() + dy.abs(); // Manhattan approx of Sobel magnitude, scaled
+            g[y * w + x] = mag as i64;
         }
     }
     g

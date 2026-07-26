@@ -43,7 +43,7 @@ private fun ensureSegmenter(context: Context): Segmenter? {
         if (segInitTried) return null
         segInitTried = true
         return try {
-            Segmenter(context.applicationContext).also { segmenter = it }
+            Segmenter(context.applicationContext, "u2netp.ncnn.param", "u2netp.ncnn.bin").also { segmenter = it }
         } catch (e: Throwable) {
             Log.e("MlSegmentation", "U\u00b2-Net segmenter unavailable", e)
             null

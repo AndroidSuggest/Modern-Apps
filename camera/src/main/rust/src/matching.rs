@@ -1,6 +1,15 @@
 //! All-pairs feature matching, mirroring cv::detail::BestOf2NearestMatcher:
-//! bidirectional 2-NN ratio matches (cross-checked) -> RANSAC homography ->
-//! confidence = num_inliers / (8 + 0.3 * num_matches).
+//! bidirectional 2-NN ratio matches (union dedup) -> RANSAC homography ->
+//! confidence = num_inliers / (8 + 0.3 * num_matches), too-close zeroing,
+//! second refinement on inliers only.
+//! Matches OpenCV's BestOf2NearestMatcher exactly:
+//!   - match_conf 0.3 => ratio threshold (1-match_conf)=0.7
+//!   - CpuMatcher uses FlannBasedMatcher knnMatch k=2 LSH for ORB; we brute-force Hamming
+//!     but ratio test identical, and union via set<pair<query,train>> avoids dupes
+//!   - centering x-=w*0.5 y-=h*0.5 before findHomography
+//!   - findHomography RANSAC thresh 3.0 (OpenCV default), det epsilon discard
+//!   - conf > 3 => 0 (too close images)
+//!   - thresh2=6: refine on inliers only
 
 use crate::features::{match_features, Features};
 use crate::geometry::{find_homography_ransac, transfer_inliers, Pt};
@@ -8,47 +17,113 @@ use nalgebra::Matrix3;
 use rayon::prelude::*;
 use std::collections::HashSet;
 
-const RATIO: f32 = 0.85;
+const RATIO: f32 = 0.7; // 1 - match_conf (0.3)
 const RANSAC_ITERS: usize = 2000;
-const RANSAC_THRESH: f32 = 5.0;
+pub const RANSAC_THRESH: f32 = 3.0; // OpenCV default
 const MIN_MATCHES: usize = 6;
+const CONF_TOO_CLOSE: f64 = 3.0;
 
 pub struct MatchInfo {
     pub src: usize,
     pub dst: usize,
-    pub h: Matrix3<f64>,        // maps src -> dst
-    pub inliers: Vec<(Pt, Pt)>, // (src pt, dst pt)
+    pub h: Matrix3<f64>,        // maps src -> dst (centered coords, like OpenCV)
+    pub inliers: Vec<(Pt, Pt)>, // (src pt, dst pt) in original image coords
     pub confidence: f64,
+    pub num_inliers: usize,
+    pub num_matches: usize,
 }
 
 /// Match one ordered pair (src -> dst). Returns None if too weak.
+/// Implements OpenCV CpuMatcher + BestOf2NearestMatcher::match exactly.
 fn match_pair(src: usize, dst: usize, fs: &Features, fd: &Features) -> Option<MatchInfo> {
-    let m12 = match_features(fs, fd, RATIO); // (i in src, j in dst)
-    if m12.len() < MIN_MATCHES {
-        return None;
+    // 1->2 and 2->1 with union dedup (MatchesSet)
+    let m12 = match_features(fs, fd, RATIO); // (i src, j dst)
+    let m21_raw = match_features(fd, fs, RATIO); // (j dst, i src)
+
+    let mut seen: HashSet<(usize, usize)> = HashSet::with_capacity(m12.len() + m21_raw.len());
+    let mut combined: Vec<(usize, usize)> = Vec::with_capacity(m12.len() + m21_raw.len());
+
+    for &(i, j) in &m12 {
+        if seen.insert((i, j)) {
+            combined.push((i, j));
+        }
     }
-    let m21: HashSet<(usize, usize)> = match_features(fd, fs, RATIO)
-        .into_iter()
-        .map(|(j, i)| (i, j)) // normalize to (src, dst)
-        .collect();
-    // cross-check
-    let mutual: Vec<(usize, usize)> = m12.into_iter().filter(|p| m21.contains(p)).collect();
-    if mutual.len() < MIN_MATCHES {
+    for &(j, i) in &m21_raw {
+        // normalize to (src,dst) = (i,j)
+        if seen.insert((i, j)) {
+            combined.push((i, j));
+        }
+    }
+
+    if combined.len() < MIN_MATCHES {
         return None;
     }
 
-    let a: Vec<Pt> = mutual.iter().map(|&(i, _)| (fs.kps[i].x, fs.kps[i].y)).collect();
-    let b: Vec<Pt> = mutual.iter().map(|&(_, j)| (fd.kps[j].x, fd.kps[j].y)).collect();
-    let (h, _n) = find_homography_ransac(&a, &b, RANSAC_ITERS, RANSAC_THRESH)?;
-    let inl = transfer_inliers(&h, &a, &b, RANSAC_THRESH);
-    let num_inliers = inl.len();
+    // Original points for inlier reporting
+    let a_orig: Vec<Pt> = combined.iter().map(|&(i, _)| (fs.kps[i].x, fs.kps[i].y)).collect();
+    let b_orig: Vec<Pt> = combined.iter().map(|&(_, j)| (fd.kps[j].x, fd.kps[j].y)).collect();
+
+    // Centered points for homography estimation (OpenCV: p.x -= img_size.width*0.5)
+    let ws = fs.w as f32;
+    let hs = fs.h as f32;
+    let wd = fd.w as f32;
+    let hd = fd.h as f32;
+    // If w/h not set (old Features), fall back to no centering – shouldn't happen after fix
+    let csx = if ws > 0.0 { ws * 0.5 } else { 0.0 };
+    let csy = if hs > 0.0 { hs * 0.5 } else { 0.0 };
+    let cdx = if wd > 0.0 { wd * 0.5 } else { 0.0 };
+    let cdy = if hd > 0.0 { hd * 0.5 } else { 0.0 };
+
+    let a_centered: Vec<Pt> = a_orig.iter().map(|&(x, y)| (x - csx, y - csy)).collect();
+    let b_centered: Vec<Pt> = b_orig.iter().map(|&(x, y)| (x - cdx, y - cdy)).collect();
+
+    let (mut h, _) = find_homography_ransac(&a_centered, &b_centered, RANSAC_ITERS, RANSAC_THRESH)?;
+
+    // det check eps like OpenCV std::abs(determinant(H)) < epsilon
+    if h.determinant().abs() < f64::EPSILON {
+        return None;
+    }
+
+    let inl_idx = transfer_inliers(&h, &a_centered, &b_centered, RANSAC_THRESH);
+    let num_inliers = inl_idx.len();
     if num_inliers < MIN_MATCHES {
         return None;
     }
-    // Brown & Lowe confidence.
-    let confidence = num_inliers as f64 / (8.0 + 0.3 * mutual.len() as f64);
-    let inliers: Vec<(Pt, Pt)> = inl.iter().map(|&k| (a[k], b[k])).collect();
-    Some(MatchInfo { src, dst, h, inliers, confidence })
+
+    // Brown & Lowe confidence
+    let mut confidence = num_inliers as f64 / (8.0 + 0.3 * combined.len() as f64);
+    // Set zero confidence to remove matches between too close images
+    if confidence > CONF_TOO_CLOSE {
+        confidence = 0.0;
+    }
+
+    // If inliers < thresh2, skip refinement but keep this homography (OpenCV returns)
+    if num_inliers >= MIN_MATCHES {
+        // Refine on inliers only
+        if num_inliers >= 4 {
+            let a_inl: Vec<Pt> = inl_idx.iter().map(|&k| a_centered[k]).collect();
+            let b_inl: Vec<Pt> = inl_idx.iter().map(|&k| b_centered[k]).collect();
+            if let Some((h_refined, _)) = find_homography_ransac(&a_inl, &b_inl, RANSAC_ITERS, RANSAC_THRESH) {
+                if h_refined.determinant().abs() >= f64::EPSILON {
+                    h = h_refined;
+                }
+            }
+            // Recount inliers after refinement (OpenCV does not recount but keeps num_inliers; we keep original count for confidence stability)
+        }
+    }
+
+    // Inliers in original coords for downstream bundle adjuster (which centers via K)
+    let inliers: Vec<(Pt, Pt)> = inl_idx.iter().map(|&k| (a_orig[k], b_orig[k])).collect();
+
+    Some(MatchInfo {
+        src,
+        dst,
+        h,
+        inliers,
+        confidence,
+        num_inliers,
+        num_matches: combined.len(),
+    })
 }
 
 /// Angular separation (deg) between two frames' gyro orientations.

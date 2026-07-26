@@ -119,12 +119,20 @@
     <string name="maneuver_turn_right_unnamed">Turn right</string>
     <!-- Maneuver: Slight left onto named road. %1$s=road name -->
     <string name="maneuver_turn_slight_left">Turn slight left onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Slight left unnamed -->
+    <string name="maneuver_turn_slight_left_unnamed">Turn slight left</string>
     <!-- Maneuver: Slight right onto named road. %1$s=road name -->
     <string name="maneuver_turn_slight_right">Turn slight right onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Slight right unnamed -->
+    <string name="maneuver_turn_slight_right_unnamed">Turn slight right</string>
     <!-- Maneuver: Sharp left onto named road. %1$s=road name -->
     <string name="maneuver_turn_sharp_left">Turn sharp left onto <xliff:g id="road_name" example="Alpine Rd">%1$s</xliff:g></string>
+    <!-- Maneuver: Sharp left unnamed -->
+    <string name="maneuver_turn_sharp_left_unnamed">Turn sharp left</string>
     <!-- Maneuver: Sharp right onto named road. %1$s=road name -->
     <string name="maneuver_turn_sharp_right">Turn sharp right onto <xliff:g id="road_name" example="Alpine Rd">%1$s</xliff:g></string>
+    <!-- Maneuver: Sharp right unnamed -->
+    <string name="maneuver_turn_sharp_right_unnamed">Turn sharp right</string>
     <!-- Maneuver: U-turn onto named road. %1$s=road name -->
     <string name="maneuver_uturn">Make a U-turn onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
     <!-- Maneuver: U-turn unnamed -->
@@ -155,6 +163,8 @@
     <string name="maneuver_roundabout_unnamed">At the roundabout, continue</string>
     <!-- Maneuver: Generic unspecified named. %1$s=road name -->
     <string name="maneuver_unspecified">Continue onto <xliff:g id="road_name" example="Main St">%1$s</xliff:g></string>
+    <!-- Maneuver: Generic unspecified unnamed -->
+    <string name="maneuver_unspecified_unnamed">Continue</string>
     <!-- Maneuver: Transit wait step. %1$s=wait duration e.g. "5 min", %2$s=transit line/road name -->
     <string name="maneuver_wait">Wait <xliff:g id="wait_duration" example="5 min">%1$s</xliff:g> for <xliff:g id="line_name" example="N-Judah">%2$s</xliff:g></string>
     <!-- Maneuver: Transit wait at stop. %1$s=duration, %2$s=line, %3$s=stop name/code -->

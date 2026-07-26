@@ -1,0 +1,23 @@
+[package]
+name = "passwords_kdbx"
+version = "0.1.0"
+edition = "2021"
+description = "KDBX (KeePass) read/write for the passwords app via the Rust `keepass` crate, exposed to Kotlin over JNI. Replaces keepassjava2 + Bouncy Castle while preserving .kdbx interop."
+license = "MIT"
+
+[lib]
+name = "passwords_kdbx"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+keepass = { version = "0.13", default-features = false, features = ["save_kdbx4"] }
+jni = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

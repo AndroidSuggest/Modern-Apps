@@ -2,19 +2,23 @@
 <!--
   Maps-specific backup/transfer rules. The shared library rules include
   `external` storage, but for this module that domain holds tens to hundreds
-  of megabytes of downloaded offline data (zone_*.pmtiles map tiles, plus the
-  single global routing files nodes.bin, edges.bin, transit_voyages.bin,
-  transit_attributes.bin, amenities.db, metadata.bin, road_names.bin,
-  intermediate.bin, world_z0-6.pmtiles).
+  of megabytes of downloaded offline data (zone_*.pmtiles map tiles, the
+  streamed-basemap disk cache under tilecache/, plus the single global routing
+  files nodes.bin, edges.bin, transit_voyages.bin, transit_attributes.bin,
+  amenities.db, metadata.bin, road_names.bin, intermediate.bin).
 
   Cloud Auto Backup has a 25 MB quota; including these files would blow past
   it on the first sync and silently disable backup for the whole app. They're
-  re-downloadable from data.vayunmathur.com on demand, so we exclude them.
+  re-downloadable from data.vayunmathur.com (or re-streamed from protomaps) on
+  demand, so we exclude them.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="root" path="." />
         <include domain="file" path="." />
+        <!-- tilecache/ falls back to internal files when there's no external
+             storage; keep it out of the cloud-backup quota either way. -->
+        <exclude domain="file" path="tilecache" />
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />
         <!-- external: deliberately excluded — see comment above. -->

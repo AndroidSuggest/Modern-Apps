@@ -1,14 +1,12 @@
 package com.vayunmathur.maps
 
 import android.Manifest
-import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -27,44 +25,26 @@ import com.vayunmathur.maps.data.buildAmenityDatabase
 import com.vayunmathur.maps.ui.DownloadedMapsPage
 import com.vayunmathur.maps.ui.MapPage
 import com.vayunmathur.maps.ui.SearchPage
+import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.MapsZonesViewModel
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import org.maplibre.android.log.Logger
 import java.io.File
-
-/**
- * Copies the bundled `world_z0-6.pmtiles` asset into [Context.filesDir] on
- * first launch and returns the `pmtiles://` URL the map style references.
- *
- * MUST be called off the main thread — the pmtiles file is ~tens of MB and
- * copying it synchronously in `onCreate` previously caused an ANR on first
- * launch / after a clean install.
- */
-fun ensurePmtilesReady(context: Context): String {
-    val fileName = "world_z0-6.pmtiles"
-    val outFile = File(context.filesDir, fileName)
-
-    if (!outFile.exists()) {
-        context.assets.open(fileName).use { input ->
-            outFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-    }
-    return "pmtiles://file://${outFile.absolutePath}"
-}
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Route MapLibre's HTTP (incl. the streamed pmtiles range requests)
+        // through our disk-caching client. Must happen before the map loads.
+        MapTileCache.install(this)
+        // Reclaim the ~44 MB bundled basemap copied into filesDir by older
+        // builds; the basemap now streams live and is cached on demand.
+        File(filesDir, "world_z0-6.pmtiles").delete()
         val ds = DataStoreUtils.getInstance(this)
         Logger.setVerbosity(Logger.INFO)
 //
@@ -78,15 +58,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                // Copy the bundled pmtiles asset off the main thread on first
-                // launch (~tens of MB). Until it's ready we show whatever the
-                // download-checker decides; afterwards the map style URL is
-                // available via Application-level state (existing callers
-                // re-invoke ensurePmtilesReady but it's a fast no-op once the
-                // file is on disk).
-                LaunchedEffect(Unit) {
-                    withContext(Dispatchers.IO) { ensurePmtilesReady(this@MainActivity) }
-                }
                 InitialDownloadChecker(ds, listOf(
                     Triple("https://data.vayunmathur.com/amenities.db", "amenities.db", getString(R.string.downloading_amenity_database)),
                     Triple("https://data.vayunmathur.com/metadata.bin", "metadata.bin", getString(R.string.downloading_navigation_metadata)),

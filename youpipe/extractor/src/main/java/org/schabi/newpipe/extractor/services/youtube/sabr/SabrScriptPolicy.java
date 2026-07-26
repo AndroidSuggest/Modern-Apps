@@ -1,8 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr;
 
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
-import org.bouncycastle.crypto.signers.Ed25519Signer;
-
 import javax.annotation.Nonnull;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -78,13 +75,10 @@ public final class SabrScriptPolicy {
                                                   @Nonnull final byte[] rawKey,
                                                   final long nowMs,
                                                   final long minimumRevision) {
-        if (rawKey.length != Ed25519PublicKeyParameters.KEY_SIZE) {
+        if (rawKey.length != 32) {
             throw new IllegalArgumentException("Invalid Ed25519 public key");
         }
-        final Ed25519Signer verifier = new Ed25519Signer();
-        verifier.init(false, new Ed25519PublicKeyParameters(rawKey));
-        verifier.update(payload, 0, payload.length);
-        if (!verifier.verifySignature(signature)) {
+        if (!Ed25519Verify.verify(signature, payload, rawKey)) {
             throw new IllegalArgumentException("Invalid SABR JavaScript policy signature");
         }
         return parse(payload, nowMs, minimumRevision);

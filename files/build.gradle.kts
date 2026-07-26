@@ -14,5 +14,6 @@ android {
 }
 
 dependencies {
+    implementation(libs.okio) // isolated: zip/unzip workers, FileSystem facade – not networking
     implementation(libs.androidx.work.runtime.ktx)
 }

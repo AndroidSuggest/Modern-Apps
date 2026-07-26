@@ -18,10 +18,15 @@ use crate::warp::mean_luma;
 use crate::wave::wave_correct_horizontal;
 use rayon::prelude::*;
 
-const MAX_FEATURES: usize = 3000;
-const FAST_THRESHOLD: i32 = 12;
-const CONF_THRESH: f64 = 1.0;
-const MATCH_MAX_ANGLE: f32 = 55.0; // match frames within this gyro separation (deg)
+const MAX_FEATURES: usize = 3000; // keep upper bound but distributed via pyramid, ORB default 500 but we keep 3000 for quality
+const FAST_THRESHOLD: i32 = 20; // ORB default 20, was 12 – matches OpenCV
+// OpenCV default BEST_OF_2_NEAREST_MATCHER_CONFIDENCE=0.3; 1.0 was too strict for
+// sparse 3-4 frame sweeps at 30° — kept largest component dropped to 1 image,
+// causing "estimate returned null" and no save.
+// Unified BUNDLE_CONF_THRESH same as CONF_THRESH per plan
+pub const CONF_THRESH: f64 = 0.3;
+pub const BUNDLE_CONF_THRESH: f64 = 0.3;
+const MATCH_MAX_ANGLE: f32 = 55.0; // match frames within this gyro separation (deg) – custom optimization for mobile sphere grid
 const REG_MEGAPIXELS: f64 = 0.6; // registration resolution (like OpenCV's registr_resol_)
 const COMPOSE_MAX_PIXELS: f64 = 8_000_000.0; // cap output canvas area (bounds warp+blend cost/memory)
 const SEAM_MAX_PIXELS: f64 = 100_000.0; // seam/exposure canvas area (OpenCV seam_est_resol_ = 0.1 MP)

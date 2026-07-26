@@ -386,11 +386,17 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         return Pair(jpeg, info)
     }
 
-    fun saveToMediaStore(jpeg: ByteArray, info: PanoInfo) {
+    fun saveToMediaStore(jpeg: ByteArray, info: PanoInfo): android.net.Uri? {
         val prefix = if (sphereMode) "SPHERE" else "PANO"
         val contentValues = MediaStoreSaver.imageValues("${prefix}_${MediaStoreSaver.timestamp()}.jpg")
         val tagged = PanoXmp.injectXmp(jpeg, PanoXmp.buildGPanoXmp(info))
-        MediaStoreSaver.saveJpegBytes(context.contentResolver, contentValues, tagged)
+        return MediaStoreSaver.saveJpegBytes(context.contentResolver, contentValues, tagged).also { uri ->
+            if (uri == null) {
+                android.util.Log.e("PanoramaEngine", "MediaStore save failed for $prefix")
+            } else {
+                android.util.Log.i("PanoramaEngine", "Saved $prefix to $uri ${tagged.size} bytes")
+            }
+        }
     }
 
     fun reset() {

@@ -10,8 +10,8 @@
 #include <set>
 #include <map>
 #include <android/log.h>
-#include "sqlite3.h"
 #include <zlib.h>
+// sqlite3.c removed – maps router now memory-only. Android SQLite via Room (amenities.db) and in-memory g_traffic_by_square for traffic overlay. See CMakeLists.txt.
 
 #include "scratchpad.h"
 #include "radix_heap.h"
@@ -101,7 +101,7 @@ static std::map<int, std::vector<double>> g_traffic_by_square;
 static std::vector<uint32_t> g_requested_squares; // Packed (lat_idx << 16 | lon_idx)
 static std::set<std::string> g_present_feeds;
 static std::mutex g_traffic_mutex;
-static sqlite3* g_db = nullptr;
+// g_db removed – sqlite3.c amalgamation (9MB) dropped. traffic_cache.mbtiles persistence removed; traffic now memory-only via NetworkClient + g_traffic_by_square.
 
 // --- UTILS ---
 
@@ -219,30 +219,9 @@ inline LatLon get_pt_at(const EdgeCoords& ec, uint32_t idx) {
     }
 }
 
-static void load_traffic_from_db(int packed_square) {
-    if (!g_db) return;
-    sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(g_db, "SELECT edge_id, speed FROM raw_traffic WHERE square_id = ?;", -1, &stmt, nullptr);
-    sqlite3_bind_int(stmt, 1, packed_square);
-    auto& segments = g_traffic_by_square[packed_square];
-    segments.clear();
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        uint64_t edge_id = (uint64_t)sqlite3_column_int64(stmt, 0);
-        uint8_t speed = (uint8_t)sqlite3_column_int(stmt, 1);
-        if (g_edges && edge_id < g_edge_count) {
-            g_traffic.set_speed(edge_id, speed);
-            const Edge& edge = g_edges[edge_id];
-            const NodeMaster& node_u = g_nodes[find_node_idx_for_edge(edge_id)];
-            if (edge.target < g_node_count) {
-                const NodeMaster& node_v = g_nodes[edge.target];
-                double ratio = (edge.speed_limit > 0) ? (double)speed / edge.speed_limit : 1.0;
-                segments.push_back(node_u.lat_e7 * 1e-7); segments.push_back(node_u.lon_e7 * 1e-7);
-                segments.push_back(node_v.lat_e7 * 1e-7); segments.push_back(node_v.lon_e7 * 1e-7);
-                segments.push_back(ratio);
-            }
-        }
-    }
-    sqlite3_finalize(stmt);
+static void load_traffic_from_db(int /*packed_square*/) {
+    // No-op: sqlite3.c removed. Previously loaded raw_traffic from traffic_cache.mbtiles.
+    // Now traffic is memory-only (fetched via NetworkClient in OfflineRouter.kt -> updateTrafficNative).
 }
 
 // --- MVT ENCODING UTILS ---
@@ -1089,17 +1068,8 @@ Java_com_vayunmathur_maps_util_OfflineRouter_init(JNIEnv* env, jobject thiz, jst
             g_edge_time_multipliers[m][r] = (uint64_t)((100.0 / (speed_m_s * 1000.0)) * 4294967296.0);
         }
     }
-
-    std::string db_path = base + "traffic_cache.mbtiles";
-    if (sqlite3_open(db_path.c_str(), &g_db) == SQLITE_OK) {
-        sqlite3_exec(g_db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
-        sqlite3_exec(g_db, "CREATE TABLE IF NOT EXISTS metadata (name TEXT, value TEXT, PRIMARY KEY(name));", nullptr, nullptr, nullptr);
-        sqlite3_exec(g_db, "CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB, PRIMARY KEY(zoom_level, tile_column, tile_row));", nullptr, nullptr, nullptr);
-        sqlite3_exec(g_db, "CREATE TABLE IF NOT EXISTS raw_traffic (square_id INTEGER, edge_id INTEGER, speed INTEGER, PRIMARY KEY(square_id, edge_id));", nullptr, nullptr, nullptr);
-        sqlite3_exec(g_db, "INSERT OR IGNORE INTO metadata VALUES ('name', 'Traffic');", nullptr, nullptr, nullptr);
-        sqlite3_exec(g_db, "INSERT OR IGNORE INTO metadata VALUES ('format', 'pbf');", nullptr, nullptr, nullptr);
-    }
-
+    // sqlite3.c removed (9MB) – maps now memory-only, no traffic_cache.mbtiles
+    // Android SQLite remains via Room for amenities.db (androidx.sqlite)
     env->ReleaseStringUTFChars(base_path, path_raw); return true;
 }
 
@@ -1121,24 +1091,7 @@ Java_com_vayunmathur_maps_util_OfflineRouter_updateTrafficNative(JNIEnv* env, jo
     jsize len = env->GetArrayLength(edge_ids); jlong* ids_ptr = env->GetLongArrayElements(edge_ids, nullptr);
     jbyte* speeds_ptr = env->GetByteArrayElements(speeds, nullptr);
     std::lock_guard<std::mutex> lock(g_traffic_mutex);
-
-    if (g_db) {
-        sqlite3_exec(g_db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(g_db, "INSERT OR REPLACE INTO raw_traffic (square_id, edge_id, speed) VALUES (?, ?, ?);", -1, &stmt, nullptr);
-        for (jsize i = 0; i < len; i++) {
-            sqlite3_bind_int(stmt, 1, packed_square);
-            sqlite3_bind_int64(stmt, 2, (sqlite3_int64)ids_ptr[i]);
-            sqlite3_bind_int(stmt, 3, (uint8_t)speeds_ptr[i]);
-            sqlite3_step(stmt);
-            sqlite3_reset(stmt);
-        }
-        sqlite3_finalize(stmt);
-        sqlite3_exec(g_db, "DELETE FROM tiles;", nullptr, nullptr, nullptr); // Simple invalidation
-        sqlite3_exec(g_db, "COMMIT;", nullptr, nullptr, nullptr);
-    }
-
-    auto& segments = g_traffic_by_square[packed_square];
+auto& segments = g_traffic_by_square[packed_square];
     segments.clear();
     for (jsize i = 0; i < len; i++) {
         uint64_t edge_id = (uint64_t)ids_ptr[i]; uint8_t speed = (uint8_t)speeds_ptr[i];
@@ -1183,24 +1136,8 @@ Java_com_vayunmathur_maps_util_OfflineRouter_getTrafficSegmentsNative(JNIEnv* en
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_vayunmathur_maps_util_OfflineRouter_getTrafficTileNative(JNIEnv* env, jobject thiz, jint z, jint x, jint y) {
     std::lock_guard<std::mutex> lock(g_traffic_mutex);
-
     int tms_y = (1 << z) - 1 - y;
-    if (g_db) {
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(g_db, "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?;", -1, &stmt, nullptr);
-        sqlite3_bind_int(stmt, 1, z);
-        sqlite3_bind_int(stmt, 2, x);
-        sqlite3_bind_int(stmt, 3, tms_y);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            const void* blob = sqlite3_column_blob(stmt, 0);
-            int size = sqlite3_column_bytes(stmt, 0);
-            jbyteArray res = env->NewByteArray(size);
-            env->SetByteArrayRegion(res, 0, size, (jbyte*)blob);
-            sqlite3_finalize(stmt);
-            return res;
-        }
-        sqlite3_finalize(stmt);
-    }
+    (void)tms_y; // previously used for MBTiles row flip, now tiles generated on-the-fly
 
     double n = std::pow(2.0, z);
     double lon_min = (double)x / n * 360.0 - 180.0;
@@ -1266,15 +1203,7 @@ Java_com_vayunmathur_maps_util_OfflineRouter_getTrafficTileNative(JNIEnv* env, j
     std::vector<uint8_t> tile_buf;
     write_tag(tile_buf, 3, 2); write_varint(tile_buf, layer_buf.size());
     tile_buf.insert(tile_buf.end(), layer_buf.begin(), layer_buf.end());
-
     std::vector<uint8_t> compressed = compress_gzip(tile_buf);
-    if (g_db && !compressed.empty()) {
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(g_db, "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);", -1, &stmt, nullptr);
-        sqlite3_bind_int(stmt, 1, z); sqlite3_bind_int(stmt, 2, x); sqlite3_bind_int(stmt, 3, tms_y);
-        sqlite3_bind_blob(stmt, 4, compressed.data(), compressed.size(), SQLITE_TRANSIENT);
-        sqlite3_step(stmt); sqlite3_finalize(stmt);
-    }
 
     // If gzip somehow failed, we MUST NOT return the raw tile because the
     // HTTP wrapper in Kotlin unconditionally tags the body

@@ -8,8 +8,8 @@ dependencies {
     // Tile fetching + memory/disk cache.
     implementation(libs.coil.compose)
 
-    // Pure-Kotlin coordinate types (Position / BoundingBox) shared with the apps.
-    api(libs.spatialk.geojson)
+    // Own GeoPoint/GeoBounds – no spatialk exposure for non-maplibre apps.
+    // :maps gets spatialk transitively via maplibre-compose where required.
+    // spatialk dependency fully removed from :library:map after migration.
 
-    testImplementation(libs.junit)
 }

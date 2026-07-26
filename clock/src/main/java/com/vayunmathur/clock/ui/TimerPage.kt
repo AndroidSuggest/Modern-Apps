@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.AssistChip
+import com.vayunmathur.library.ui.AssistChipDefaults
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -33,6 +35,7 @@ import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.FloatingActionButtonDefaults
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
@@ -64,6 +67,7 @@ import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconPause
 import com.vayunmathur.library.ui.IconPlay
+import com.vayunmathur.library.ui.IconRestartAlt
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.NavBackStack
 import kotlin.time.Clock
@@ -103,8 +107,8 @@ fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
         if (showKeypad) {
             TimerKeypadContent(
                 paddingValues = paddingValues,
-                onStart = { duration ->
-                    val timer = Timer(true, "", Clock.System.now(), duration, duration)
+                onStart = { duration, name ->
+                    val timer = Timer(true, name, Clock.System.now(), duration, duration)
                     clockViewModel.upsert(timer) {
                         sendTimerNotification(context, timer.copy(id = it), true)
                     }
@@ -134,11 +138,12 @@ fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
 @Composable
 fun TimerKeypadContent(
     paddingValues: PaddingValues,
-    onStart: (Duration) -> Unit,
+    onStart: (Duration, String) -> Unit,
     onCancel: () -> Unit,
     showCancel: Boolean
 ) {
     var input by remember { mutableStateOf("") }
+    var timerName by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -164,6 +169,15 @@ fun TimerKeypadContent(
             Spacer(Modifier.width(8.dp))
             TimeUnitDisplay(s, "s", input.isNotEmpty())
         }
+
+        // Timer name field (Requirement 1)
+        OutlinedTextField(
+            value = timerName,
+            onValueChange = { timerName = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Timer name (optional)") },
+            singleLine = true
+        )
 
         // Keypad
         val appendDigits: (String) -> Unit = { input = (input + it).takeLast(6).trimStart('0') }
@@ -202,7 +216,7 @@ fun TimerKeypadContent(
             }
 
             IconButton(
-                onClick = { if (duration.inWholeSeconds > 0) onStart(duration) },
+                onClick = { if (duration.inWholeSeconds > 0) onStart(duration, timerName) },
                 enabled = duration.inWholeSeconds > 0,
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -270,6 +284,15 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
         clockViewModel.timerRemaining(timer, now)
     }
 
+    val isCompleted = realRemainingTime == Duration.ZERO && !timer.isRunning
+    val stateLabel = when {
+        isCompleted -> "Completed"
+        timer.isRunning -> "Running"
+        else -> "Paused"
+    }
+    val isPristine = timer.isRunning && realRemainingTime == timer.totalLength
+    val showReset = !isPristine
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
@@ -286,12 +309,35 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = timer.name.ifBlank { stringResource(R.string.label_timer) },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = timer.name.ifBlank { stringResource(R.string.label_timer) },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    val chipColors = when {
+                        isCompleted -> AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            labelColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        timer.isRunning -> AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        else -> AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(stateLabel) },
+                        colors = chipColors
+                    )
+                }
                 IconButton(onClick = {
                     sendTimerNotification(context, timer, false)
                     clockViewModel.delete(timer)
@@ -305,7 +351,7 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
                 val colorScheme = MaterialTheme.colorScheme
                 val inactiveColor = colorScheme.outlineVariant
-                val activeColor = colorScheme.primary
+                val activeColor = if (isCompleted) colorScheme.outlineVariant.copy(alpha = 0.3f) else colorScheme.primary
                 val strokeWidth = 8.dp
 
                 Canvas(Modifier.fillMaxSize()) {
@@ -327,7 +373,11 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
                 Text(
                     text = formatTimerDuration(realRemainingTime),
                     style = MaterialTheme.typography.displayMedium,
-                    color = if (timer.isRunning) colorScheme.primary else colorScheme.onSurface
+                    color = when {
+                        isCompleted -> colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        timer.isRunning -> colorScheme.primary
+                        else -> colorScheme.onSurface
+                    }
                 )
             }
 
@@ -338,41 +388,89 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                FilledTonalButton(
-                    onClick = {
-                        val newLength = timer.remainingLength + 1.minutes
-                        val updatedTimer = timer.copy(
-                            remainingLength = newLength,
-                            totalLength = timer.totalLength + 1.minutes
-                        )
-                        clockViewModel.upsert(updatedTimer)
-                        if (timer.isRunning) {
-                            sendTimerNotification(context, updatedTimer, true)
+                if (!isCompleted) {
+                    FilledTonalButton(
+                        onClick = {
+                            val newLength = timer.remainingLength + 1.minutes
+                            val updatedTimer = timer.copy(
+                                remainingLength = newLength,
+                                totalLength = timer.totalLength + 1.minutes
+                            )
+                            clockViewModel.upsert(updatedTimer)
+                            if (timer.isRunning) {
+                                sendTimerNotification(context, updatedTimer, true)
+                            }
                         }
+                    ) {
+                        Text(stringResource(R.string.button_add_minute))
                     }
-                ) {
-                    Text(stringResource(R.string.button_add_minute))
+                    if (showReset) Spacer(Modifier.width(8.dp))
                 }
 
-                Spacer(Modifier.width(16.dp))
+                if (showReset) {
+                    FilledTonalButton(
+                        onClick = {
+                            val resetTimer = timer.copy(
+                                isRunning = false,
+                                remainingLength = timer.totalLength,
+                                remainingStartTime = Clock.System.now()
+                            )
+                            clockViewModel.upsert(resetTimer)
+                            sendTimerNotification(context, timer, false)
+                        }
+                    ) {
+                        IconRestartAlt()
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.action_reset))
+                    }
+                    Spacer(Modifier.width(16.dp))
+                } else if (!isCompleted) {
+                    Spacer(Modifier.width(16.dp))
+                } else {
+                    Spacer(Modifier.width(16.dp))
+                }
 
                 FloatingActionButton(
                     onClick = {
-                        if (timer.isRunning) {
-                            clockViewModel.upsert(timer.stopped())
-                            sendTimerNotification(context, timer, false)
-                        } else {
-                            val startedTimer = timer.started()
-                            clockViewModel.upsert(startedTimer)
-                            sendTimerNotification(context, startedTimer, true)
+                        when {
+                            isCompleted -> {
+                                val restarted = timer.copy(
+                                    isRunning = true,
+                                    remainingLength = timer.totalLength,
+                                    remainingStartTime = Clock.System.now()
+                                )
+                                clockViewModel.upsert(restarted)
+                                sendTimerNotification(context, restarted, true)
+                            }
+                            timer.isRunning -> {
+                                clockViewModel.upsert(timer.stopped())
+                                sendTimerNotification(context, timer, false)
+                            }
+                            else -> {
+                                val startedTimer = timer.started()
+                                clockViewModel.upsert(startedTimer)
+                                sendTimerNotification(context, startedTimer, true)
+                            }
                         }
                     },
-                    containerColor = if (timer.isRunning) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = if (timer.isRunning) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = when {
+                        isCompleted -> MaterialTheme.colorScheme.primaryContainer
+                        timer.isRunning -> MaterialTheme.colorScheme.tertiaryContainer
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    },
+                    contentColor = when {
+                        isCompleted -> MaterialTheme.colorScheme.onPrimaryContainer
+                        timer.isRunning -> MaterialTheme.colorScheme.onTertiaryContainer
+                        else -> MaterialTheme.colorScheme.onPrimaryContainer
+                    },
                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
                     modifier = Modifier.size(56.dp)
                 ) {
-                    if (timer.isRunning) IconPause() else IconPlay()
+                    when {
+                        isCompleted -> IconRestartAlt()
+                        timer.isRunning -> IconPause()
+                        else -> IconPlay()
+                    }
                 }
             }
         }

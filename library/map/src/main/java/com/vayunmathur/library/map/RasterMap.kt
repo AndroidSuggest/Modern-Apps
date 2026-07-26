@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
-import org.maplibre.spatialk.geojson.Position
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -62,7 +61,7 @@ fun RasterMap(
     zoomRange: ClosedFloatingPointRange<Float> = 0f..20f,
     options: MapOptions = MapOptions(),
     imageOverlay: ImageOverlay? = null,
-    onMapClick: (Position) -> Unit = {},
+    onMapClick: (GeoPoint) -> Unit = {},
     onFrame: () -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
@@ -186,8 +185,8 @@ private fun DrawScope.drawTile(
 private fun DrawScope.drawOverlay(overlay: ImageOverlay, cameraState: CameraState) {
     val proj = cameraState.projection ?: return
     val bbox = overlay.bounds
-    val nw = proj.screenLocationFromPosition(Position(bbox.west, bbox.north))
-    val se = proj.screenLocationFromPosition(Position(bbox.east, bbox.south))
+    val nw = proj.screenLocationFromPosition(GeoPoint(bbox.west, bbox.north))
+    val se = proj.screenLocationFromPosition(GeoPoint(bbox.east, bbox.south))
     val left = nw.x.toPx().roundToInt()
     val top = nw.y.toPx().roundToInt()
     val right = se.x.toPx().roundToInt()

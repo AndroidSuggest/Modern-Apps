@@ -117,7 +117,6 @@
     <string name="title_settings">Settings</string>
 
     <!-- Section header: recommendation system settings. Noun plural -->
-    <string name="label_recommendations">Recommendations</string>
     <!-- Slider label: Familiar vs Discovery trade-off for feed. Noun ↔ Noun with arrow symbol -->
     <string name="label_dial_discovery">Familiar ↔ Discovery</string>
     <!-- Slider label: Evergreen vs Fresh content recency. Adjective ↔ Adjective -->

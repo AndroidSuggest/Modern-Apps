@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
+import java.io.DataInputStream
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -37,7 +38,7 @@ import kotlin.time.Instant
  * ViewModel for the Clock app.
  *
  * Owns:
- *  - city → timezone map (loaded once from assets/cities.csv off the main thread)
+ *  - city → timezone map (loaded once from assets/cities.bin off the main thread)
  *  - a shared 100ms wall-clock tick (paused while no UI subscribes)
  *  - stopwatch run state, lap list, and derived counting time
  *  - inbound AlarmClock.ACTION_* intent dispatch (set alarm / set timer / show alarms)
@@ -303,15 +304,9 @@ class ClockViewModel(
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             val map = try {
-                ctx.assets.open("cities.csv").bufferedReader().readLines().drop(1)
-                    .map { parseCsvLine(it) }
-                    .filter {
-                        val pop = it.getOrNull(14)?.toDoubleOrNull()
-                        pop != null && pop > 100_000
-                    }
-                    .associate { it[1] to it[15] }
+                ctx.assets.open("cities.bin").use { parseCitiesBin(it) }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load cities.csv", e)
+                Log.e(TAG, "Failed to load cities.bin", e)
                 emptyMap()
             }
             _cities.value = map
@@ -319,37 +314,36 @@ class ClockViewModel(
     }
 
     /**
-     * Parse a single CSV line into its fields, honoring RFC 4180 quoting:
-     * quoted fields may contain commas, and a doubled quote ("") inside a
-     * quoted field is an escaped quote.
+     * Parse the packed cities.bin asset into a name → timezone map.
+     *
+     * Format (all integers big-endian, see scripts/generate_cities_bin.py):
+     *   magic "CTB1" | tzCount:i32 | tz[]{ len:u8, utf8 } |
+     *   cityCount:i32 | city[]{ nameLen:u16, utf8, tzIndex:u16 }
+     *
+     * City records are stored in source order, so duplicate names resolve to
+     * the last occurrence — identical to the previous CSV `associate` logic.
      */
-    private fun parseCsvLine(line: String): List<String> {
-        val fields = mutableListOf<String>()
-        val current = StringBuilder()
-        var inQuotes = false
-        var i = 0
-        while (i < line.length) {
-            val c = line[i]
-            when {
-                inQuotes -> when {
-                    c == '"' && i + 1 < line.length && line[i + 1] == '"' -> {
-                        current.append('"')
-                        i++
-                    }
-                    c == '"' -> inQuotes = false
-                    else -> current.append(c)
-                }
-                c == '"' -> inQuotes = true
-                c == ',' -> {
-                    fields.add(current.toString())
-                    current.setLength(0)
-                }
-                else -> current.append(c)
-            }
-            i++
+    private fun parseCitiesBin(input: java.io.InputStream): Map<String, String> {
+        val data = DataInputStream(input.buffered())
+        val magic = ByteArray(4).also { data.readFully(it) }
+        require(String(magic, Charsets.US_ASCII) == "CTB1") { "bad cities.bin magic" }
+
+        val tzCount = data.readInt()
+        val timezones = Array(tzCount) {
+            val bytes = ByteArray(data.readUnsignedByte())
+            data.readFully(bytes)
+            String(bytes, Charsets.UTF_8)
         }
-        fields.add(current.toString())
-        return fields
+
+        val cityCount = data.readInt()
+        val map = LinkedHashMap<String, String>(cityCount)
+        repeat(cityCount) {
+            val name = ByteArray(data.readUnsignedShort())
+            data.readFully(name)
+            val tzIndex = data.readUnsignedShort()
+            map[String(name, Charsets.UTF_8)] = timezones[tzIndex]
+        }
+        return map
     }
 
     companion object {

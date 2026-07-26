@@ -1,6 +1,5 @@
 package com.vayunmathur.contacts.util
 import android.provider.ContactsContract
-import com.vayunmathur.library.util.readLines
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
@@ -97,10 +96,16 @@ object VcfUtils {
     // New: parse vCard stream into a list of Contact objects without saving them to the Contacts provider.
     fun parseContacts(inputStream: Source): List<Contact> {
         val contactsToSave = mutableListOf<Contact>()
-        val reader = inputStream.buffer()
-
         // Read and unfold folded lines (lines starting with space or tab continue previous)
-        val rawLines = reader.readLines()
+        // Use okio BufferedSource readUtf8Line loop – library/util readLines now for InputStream only
+        val rawLines = inputStream.buffer().let { buf ->
+            buildList {
+                while (true) {
+                    val l = buf.readUtf8Line() ?: break
+                    add(l)
+                }
+            }
+        }
         val unfolded = mutableListOf<String>()
         var bufferLine: String? = null
         for (ln in rawLines) {

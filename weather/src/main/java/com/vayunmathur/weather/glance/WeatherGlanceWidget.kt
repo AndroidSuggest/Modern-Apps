@@ -2,22 +2,19 @@ package com.vayunmathur.weather.glance
 
 import android.content.Context
 import android.content.Intent
-import android.provider.AlarmClock
+import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
-import androidx.glance.ImageProvider
 import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
-import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
+import androidx.glance.appwidget.AndroidRemoteViews
 import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -28,20 +25,16 @@ import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
-import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import android.widget.RemoteViews
-import androidx.glance.appwidget.AndroidRemoteViews
-import com.vayunmathur.weather.R
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.util.localizedMonthNames
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import com.vayunmathur.weather.MainActivity
+import com.vayunmathur.weather.R
 import com.vayunmathur.weather.data.WeatherDatabase
 import com.vayunmathur.weather.data.weatherJson
 import com.vayunmathur.weather.network.ForecastResponse
@@ -117,41 +110,6 @@ class WeatherGlanceWidget : GlanceAppWidget() {
 
 }
 
-private val PARAM_PACKAGE = ActionParameters.Key<String>("package")
-private val PARAM_CLASS = ActionParameters.Key<String>("class")
-private val PARAM_FALLBACK = ActionParameters.Key<String>("fallback")
-
-/**
- * Launches the preferred sibling app ([PARAM_PACKAGE]/[PARAM_CLASS]) and, if it
- * isn't installed/visible, falls back to a system intent ([PARAM_FALLBACK]).
- * Using a try/catch around `startActivity` here is robust without a `<queries>`
- * manifest entry, which `Intent.resolveActivity` would otherwise require on
- * modern Android (it returns null for unqueryable packages).
- */
-class LaunchAppAction : ActionCallback {
-    override suspend fun onAction(
-        context: Context,
-        glanceId: GlanceId,
-        parameters: ActionParameters,
-    ) {
-        val pkg = parameters[PARAM_PACKAGE]
-        val cls = parameters[PARAM_CLASS]
-        val explicit = Intent().apply {
-            if (pkg != null && cls != null) setClassName(pkg, cls)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val fallback = when (parameters[PARAM_FALLBACK]) {
-            "calendar" -> Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_APP_CALENDAR) }
-            else -> Intent(AlarmClock.ACTION_SHOW_ALARMS)
-        }.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-        try {
-            context.startActivity(explicit)
-        } catch (e: Exception) {
-            runCatching { context.startActivity(fallback) }
-        }
-    }
-}
-
 @Composable
 private fun Content(weather: WidgetWeather?) {
     val context = LocalContext.current
@@ -171,28 +129,31 @@ private fun Content(weather: WidgetWeather?) {
             horizontalAlignment = Alignment.Start,
         ) {
             Box(
-                modifier = GlanceModifier
-                    .clickable(
-                        actionRunCallback<LaunchAppAction>(
-                            actionParametersOf(
-                                PARAM_PACKAGE to "com.vayunmathur.clock",
-                                PARAM_CLASS to "com.vayunmathur.clock.MainActivity",
-                                PARAM_FALLBACK to "alarms",
+                modifier = GlanceModifier.clickable(
+                    actionStartActivity(
+                        Intent().apply {
+                            setClassName(
+                                "com.vayunmathur.clock",
+                                "com.vayunmathur.clock.MainActivity",
                             )
-                        )
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
                     ),
+                ),
             ) { TimeBlock(context) }
             Box(
                 modifier = GlanceModifier
                     .padding(top = 2.dp)
                     .clickable(
-                        actionRunCallback<LaunchAppAction>(
-                            actionParametersOf(
-                                PARAM_PACKAGE to "com.vayunmathur.calendar",
-                                PARAM_CLASS to "com.vayunmathur.calendar.MainActivity",
-                                PARAM_FALLBACK to "calendar",
-                            )
-                        )
+                        actionStartActivity(
+                            Intent().apply {
+                                setClassName(
+                                    "com.vayunmathur.calendar",
+                                    "com.vayunmathur.calendar.MainActivity",
+                                )
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            },
+                        ),
                     ),
             ) { DateBlock(now) }
         }
@@ -200,9 +161,13 @@ private fun Content(weather: WidgetWeather?) {
         Box(
             modifier = GlanceModifier.defaultWeight().fillMaxHeight()
                 .padding(start = 8.dp)
-                .clickable(actionStartActivity(Intent(LocalContext.current, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })),
+                .clickable(
+                    actionStartActivity(
+                        Intent(LocalContext.current, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
+                    ),
+                ),
             contentAlignment = Alignment.CenterEnd,
         ) { WeatherBlock(weather) }
     }
