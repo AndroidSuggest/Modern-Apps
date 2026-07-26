@@ -1,8 +1,20 @@
 import org.gradle.api.Project
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
 import org.gradle.api.tasks.Exec
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.kotlin.dsl.register
 import java.util.Properties
+
+/**
+ * Shared build service that caps concurrent cargoBuild executions to 1.
+ * This prevents parallel invocations of `rustup toolchain install` triggered
+ * implicitly by cargo when rust-toolchain.toml pins 1.97.0, which is not
+ * concurrency-safe and produces "Directory not empty (os error 39)",
+ * "cargo not applicable", "failed to install component bin/rust-gdb" errors.
+ * Pattern mirrors MetadataScreenshotLock in common-conventions-metadata.gradle.kts.
+ */
+abstract class RustToolchainLock : BuildService<BuildServiceParameters.None>
 
 /**
  * Registers the per-ABI cargo cross-compile of a Rust cdylib (arm64-v8a only)
@@ -19,6 +31,14 @@ import java.util.Properties
  *                   (defaults to [crate]).
  */
 fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
+    // Serialize cargoBuild across all Rust modules to avoid concurrent rustup installs.
+    val rustLock = gradle.sharedServices.registerIfAbsent(
+        "rustToolchainLock",
+        RustToolchainLock::class.java
+    ) {
+        maxParallelUsages.set(1)
+    }
+
     val ndkVersionForRust = "29.0.14206865"
     val androidApiLevel = 31
 
@@ -46,6 +66,7 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
 
     val perAbi = rustAbis.map { (abiDir, triple) ->
         tasks.register<Exec>("cargoBuild_${abiDir.replace('-', '_')}") {
+            usesService(rustLock)
             description = "Cross-compiles lib$crate for $abiDir."
             workingDir = file("src/main/rust")
 

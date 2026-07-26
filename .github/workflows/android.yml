@@ -203,8 +203,18 @@ jobs:
           git commit -m "chore: prepare release $VERSION_NAME" || echo "No changes to commit"
           git tag "$VERSION_NAME"
 
-      - name: Install Android Rust Target
-        run: rustup target add aarch64-linux-android
+      - name: Install Rust Toolchain 1.97.0
+        run: |
+          set -e
+          TOOLCHAIN=$(grep -h 'channel =' pdf/src/main/rust/rust-toolchain.toml | head -1 | cut -d'"' -f2)
+          TOOLCHAIN=${TOOLCHAIN:-1.97.0}
+          echo "Installing Rust toolchain $TOOLCHAIN + aarch64-linux-android"
+          rustup toolchain install $TOOLCHAIN --no-self-update --profile minimal
+          rustup target add aarch64-linux-android --toolchain $TOOLCHAIN
+          rustup default $TOOLCHAIN
+          rustc --version
+          cargo --version
+          rustup target list --installed --toolchain $TOOLCHAIN
 
       - name: Build and Sign APKs
         run: |
