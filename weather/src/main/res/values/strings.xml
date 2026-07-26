@@ -110,4 +110,9 @@
     <string name="summary_slight_chance_rain">A slight chance of rain.</string>
     <!-- Warning: noticeable wind today -->
     <string name="summary_winds_noticeable">Winds will be noticeable today.</string>
+
+    <!-- Widget: empty state dash when no weather cached yet. Symbol, not translatable content but kept in strings.xml per lint -->
+    <string name="weather_no_data">—</string>
+    <!-- Widget: temperature format for glance widget. %1$d = rounded Celsius temperature integer -->
+    <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
 </resources>

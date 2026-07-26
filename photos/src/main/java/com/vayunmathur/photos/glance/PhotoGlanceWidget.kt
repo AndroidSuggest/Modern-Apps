@@ -4,24 +4,33 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.provideContent
+import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.padding
+import androidx.glance.text.FontWeight
+import androidx.glance.text.Text
+import androidx.glance.text.TextStyle
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.photos.R
@@ -51,19 +60,46 @@ class PhotoGlanceWidget : GlanceAppWidget() {
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        provideContent {
-            DynamicThemeGlance(context) {
-                Box(
-                    modifier = GlanceModifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        provider = ImageProvider(R.drawable.widget_preview_photo),
-                        contentDescription = null,
+        try {
+            provideContent {
+                DynamicThemeGlance(context) {
+                    Box(
                         modifier = GlanceModifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            provider = ImageProvider(R.drawable.widget_preview_photo),
+                            contentDescription = null,
+                            modifier = GlanceModifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
+            }
+        } catch (e: Throwable) {
+            Log.e("PhotoWidget", "providePreview failed", e)
+            // Fallback: avoid system_accent colors that may not resolve in preview host on API 37
+            try {
+                provideContent {
+                    DynamicThemeGlance(context) {
+                        Box(
+                            modifier = GlanceModifier.fillMaxSize()
+                                .background(GlanceTheme.colors.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Photos",
+                                style = TextStyle(
+                                    color = GlanceTheme.colors.onSurface,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // last resort – don't crash setWidgetPreviews
             }
         }
     }

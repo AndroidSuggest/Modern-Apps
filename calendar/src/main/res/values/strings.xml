@@ -301,4 +301,17 @@
     </plurals>
     <!-- Recurrence suffix: ends on specific date. %1$s = formatted end date -->
     <string name="rrule_until_suffix">, Until <xliff:g id="date" example="Dec 31, 2025">%1$s</xliff:g></string>
+
+    <!-- Widget preview sample event 1: title for Glance preview in widget picker. Noun phrase -->
+    <string name="widget_preview_event_1_title">Team standup</string>
+    <!-- Widget preview sample event 1: time range for preview event -->
+    <string name="widget_preview_event_1_time">9:00 – 9:30 AM</string>
+    <!-- Widget preview sample event 2: title -->
+    <string name="widget_preview_event_2_title">Lunch with Sam</string>
+    <!-- Widget preview sample event 2: time range -->
+    <string name="widget_preview_event_2_time">12:30 – 1:30 PM</string>
+    <!-- Widget preview sample event 3: title -->
+    <string name="widget_preview_event_3_title">Design review</string>
+    <!-- Widget preview sample event 3: time range -->
+    <string name="widget_preview_event_3_time">3:00 – 4:00 PM</string>
 </resources>

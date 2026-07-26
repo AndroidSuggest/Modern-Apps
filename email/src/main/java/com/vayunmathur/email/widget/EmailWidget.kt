@@ -3,11 +3,13 @@ package com.vayunmathur.email.widget
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.*
+import androidx.glance.LocalContext
 import androidx.glance.action.*
 import androidx.glance.appwidget.*
 import androidx.glance.appwidget.action.actionStartActivity
@@ -28,7 +30,6 @@ import com.vayunmathur.email.data.EmailDatabase
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.ui.res.stringResource
 import com.vayunmathur.email.R
 
 class EmailWidget : GlanceAppWidget() {
@@ -38,55 +39,72 @@ class EmailWidget : GlanceAppWidget() {
         val messages = withContext(Dispatchers.IO) {
             try {
                 EmailDatabase.getInstance(context).emailDao().getRecentUnifiedMessages()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                Log.e("EmailWidget", "DB fail", e)
                 emptyList()
             }
         }
 
-        provideContent {
-            DynamicThemeGlance(context) {
-                EmailWidgetContent(messages)
+        try {
+            provideContent {
+                DynamicThemeGlance(context) {
+                    EmailWidgetContent(messages)
+                }
             }
+        } catch (e: Throwable) {
+            Log.e("EmailWidget", "provideContent failed", e)
         }
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        val sample = listOf(
-            EmailMessage(
-                accountEmail = "alex@example.com", folderName = "INBOX", id = 1,
-                subject = "Lunch tomorrow?", from = "Alex Johnson <alex@example.com>",
-                date = "Jul 6", body = "Are we still on for noon at the usual place?",
-            ),
-            EmailMessage(
-                accountEmail = "priya@work.com", folderName = "INBOX", id = 2,
-                subject = "Q3 report is ready", from = "Priya Patel <priya@work.com>",
-                date = "Jul 5", body = "I've attached the final numbers for review.",
-            ),
-            EmailMessage(
-                accountEmail = "news@digest.com", folderName = "INBOX", id = 3,
-                subject = "Your weekly digest", from = "Tech Weekly <news@digest.com>",
-                date = "Jul 5", body = "Top stories and updates from this week.",
-            ),
-        )
-        provideContent {
-            DynamicThemeGlance(context) {
-                EmailWidgetContent(sample)
+        try {
+            val sample = listOf(
+                EmailMessage(
+                    accountEmail = "alex@example.com", folderName = "INBOX", id = 1,
+                    subject = "Lunch tomorrow?", from = "Alex Johnson <alex@example.com>",
+                    date = "Jul 6", body = "Are we still on for noon at the usual place?",
+                ),
+                EmailMessage(
+                    accountEmail = "priya@work.com", folderName = "INBOX", id = 2,
+                    subject = "Q3 report is ready", from = "Priya Patel <priya@work.com>",
+                    date = "Jul 5", body = "I've attached the final numbers for review.",
+                ),
+                EmailMessage(
+                    accountEmail = "news@digest.com", folderName = "INBOX", id = 3,
+                    subject = "Your weekly digest", from = "Tech Weekly <news@digest.com>",
+                    date = "Jul 5", body = "Top stories and updates from this week.",
+                ),
+            )
+            provideContent {
+                DynamicThemeGlance(context) {
+                    EmailWidgetContent(sample)
+                }
             }
+        } catch (t: Throwable) {
+            Log.e("EmailWidget", "providePreview failed", t)
+            try {
+                provideContent {
+                    Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Email")
+                    }
+                }
+            } catch (_: Throwable) {}
         }
     }
 
     @SuppressLint("RestrictedApi")
     @Composable
     private fun EmailWidgetContent(messages: List<EmailMessage>) {
+        val ctx = LocalContext.current
         Scaffold(
             titleBar = {
                 TitleBar(
                     startIcon = ImageProvider(com.vayunmathur.library.R.drawable.outline_inbox_24),
-                    title = "Unified Inbox",
+                    title = ctx.getString(R.string.unified_inbox),
                     actions = {
                         CircleIconButton(
                             imageProvider = ImageProvider(com.vayunmathur.library.R.drawable.edit_24px),
-                            contentDescription = stringResource(R.string.compose),
+                            contentDescription = ctx.getString(R.string.compose),
                             onClick = actionStartActivity(Intent(LocalContext.current, MainActivity::class.java).apply {
                                 putExtra("compose", true)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -104,7 +122,7 @@ class EmailWidget : GlanceAppWidget() {
         ) {
             if (messages.isEmpty()) {
                 Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = stringResource(R.string.no_recent_emails), style = TextStyle(color = GlanceTheme.colors.onBackground))
+                    Text(text = ctx.getString(R.string.no_recent_emails), style = TextStyle(color = GlanceTheme.colors.onBackground))
                 }
             } else {
                 LazyColumn(modifier = GlanceModifier.fillMaxSize().background(GlanceTheme.colors.surface)) {

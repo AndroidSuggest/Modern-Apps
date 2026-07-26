@@ -3,6 +3,7 @@ package com.vayunmathur.weather.glance
 import android.content.Context
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import com.vayunmathur.library.widgets.scheduleHourlyUpdate
+import com.vayunmathur.library.widgets.updateWidgetPreviews
 import com.vayunmathur.weather.data.WeatherRefreshWorker
 
 class WeatherGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
@@ -12,5 +13,6 @@ class WeatherGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
         super.onEnabled(context)
         context.scheduleHourlyUpdate(WeatherGlanceWidget::class)
         WeatherRefreshWorker.scheduleHourlyRefresh(context)
+        context.updateWidgetPreviews(WeatherGlanceWidgetReceiver::class)
     }
 }

@@ -2,6 +2,7 @@ package com.vayunmathur.calendar.glance
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,7 @@ import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -56,6 +58,7 @@ import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.serialization.json.Json
+import androidx.glance.LocalContext
 import kotlin.time.Clock
 
 class CalendarGlanceWidget : GlanceAppWidget() {
@@ -86,9 +89,30 @@ class CalendarGlanceWidget : GlanceAppWidget() {
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        provideContent {
-            DynamicThemeGlance(context) {
-                CalendarPreviewContent()
+        try {
+            provideContent {
+                DynamicThemeGlance(context) {
+                    CalendarPreviewContent()
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e("CalendarWidget", "providePreview failed", e)
+            try {
+                provideContent {
+                    DynamicThemeGlance(context) {
+                        androidx.glance.layout.Box(
+                            modifier = GlanceModifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Calendar",
+                                style = defaultTextStyle.copy(color = GlanceTheme.colors.onBackground)
+                            )
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // last resort: avoid crashing the preview host
             }
         }
     }
@@ -105,14 +129,27 @@ private fun CalendarPreviewContent() {
         day(Padding.NONE)
     }
     val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+    val context = LocalContext.current
 
     Scaffold(titleBar = {
         TitleBar(ImageProvider(R.drawable.calendar_today_24px), today.format(dateFormatS))
     }) {
         Column(GlanceModifier.fillMaxSize()) {
-            CalendarPreviewEvent("Team standup", "9:00 – 9:30 AM", 0xFF4285F4.toInt())
-            CalendarPreviewEvent("Lunch with Sam", "12:30 – 1:30 PM", 0xFF34A853.toInt())
-            CalendarPreviewEvent("Design review", "3:00 – 4:00 PM", 0xFFEA4335.toInt())
+            CalendarPreviewEvent(
+                context.getString(R.string.widget_preview_event_1_title),
+                context.getString(R.string.widget_preview_event_1_time),
+                0xFF4285F4.toInt()
+            )
+            CalendarPreviewEvent(
+                context.getString(R.string.widget_preview_event_2_title),
+                context.getString(R.string.widget_preview_event_2_time),
+                0xFF34A853.toInt()
+            )
+            CalendarPreviewEvent(
+                context.getString(R.string.widget_preview_event_3_title),
+                context.getString(R.string.widget_preview_event_3_time),
+                0xFFEA4335.toInt()
+            )
         }
     }
 }

@@ -2,6 +2,7 @@ package com.vayunmathur.weather.glance
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -29,6 +30,7 @@ import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextDefaults.defaultTextStyle
 import androidx.glance.text.TextStyle
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.util.localizedMonthNames
@@ -75,9 +77,35 @@ class WeatherGlanceWidget : GlanceAppWidget() {
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
-        provideContent {
-            DynamicThemeGlance(context) {
-                Content(WidgetWeather(temperatureCelsius = 22.0, weatherCode = 1, isDay = true))
+        try {
+            provideContent {
+                DynamicThemeGlance(context) {
+                    WeatherPreviewContent()
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e("WeatherWidget", "providePreview failed", e)
+            try {
+                provideContent {
+                    DynamicThemeGlance(context) {
+                        Box(
+                            modifier = GlanceModifier.fillMaxSize().background(GlanceTheme.colors.surface)
+                                .cornerRadius(20.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "22°",
+                                style = TextStyle(
+                                    color = GlanceTheme.colors.onSurface,
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // prevent crash of preview host on API 35+
             }
         }
     }
@@ -173,6 +201,50 @@ private fun Content(weather: WidgetWeather?) {
     }
 }
 
+/** Preview-safe content – avoids AndroidRemoteViews/TextClock which crashes setWidgetPreviews on API 35+ */
+@Composable
+private fun WeatherPreviewContent() {
+    // Static sample, no RemoteViews, no system attribute resolution.
+    val previewWeather = WidgetWeather(temperatureCelsius = 22.0, weatherCode = 1, isDay = true)
+    Row(
+        modifier = GlanceModifier
+            .fillMaxSize()
+            .background(GlanceTheme.colors.surface)
+            .cornerRadius(20.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Text(
+                text = "9:41",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+            )
+            Text(
+                text = "Jul 6",
+                modifier = GlanceModifier.padding(top = 2.dp),
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+            )
+        }
+        Box(
+            modifier = GlanceModifier.defaultWeight().fillMaxHeight()
+                .padding(start = 8.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) { WeatherBlock(previewWeather) }
+    }
+}
+
 @Composable
 private fun TimeBlock(context: Context) {
     val remoteViews = RemoteViews(context.packageName, R.layout.widget_text_clock)
@@ -196,9 +268,10 @@ private fun DateBlock(now: LocalDateTime) {
 
 @Composable
 private fun WeatherBlock(weather: WidgetWeather?) {
+    val context = LocalContext.current
     if (weather == null) {
         Text(
-            text = "—",
+            text = context.getString(R.string.weather_no_data),
             style = TextStyle(
                 color = GlanceTheme.colors.onSurface,
                 fontSize = 36.sp,
@@ -208,7 +281,6 @@ private fun WeatherBlock(weather: WidgetWeather?) {
         return
     }
     val condition = weatherConditionForCode(weather.weatherCode)
-    val context = LocalContext.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(
             provider = ImageProvider(condition.iconRes(weather.isDay)),
@@ -216,7 +288,8 @@ private fun WeatherBlock(weather: WidgetWeather?) {
             modifier = GlanceModifier.size(44.dp),
         )
         Text(
-            text = "  ${weather.temperatureCelsius.roundToInt()}°",
+            text = context.getString(R.string.weather_temp_format, weather.temperatureCelsius.roundToInt()),
+            modifier = GlanceModifier.padding(start = 8.dp),
             style = TextStyle(
                 color = GlanceTheme.colors.onSurface,
                 fontSize = 36.sp,

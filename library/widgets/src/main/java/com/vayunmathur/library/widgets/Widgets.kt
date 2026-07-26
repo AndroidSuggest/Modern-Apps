@@ -2,6 +2,7 @@ package com.vayunmathur.library.widgets
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -32,22 +33,29 @@ class GenericWidgetWorker(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        val className = inputData.getString(ARG_WIDGET_CLASS) ?: return Result.failure()
+        val className = inputData.getString(ARG_WIDGET_CLASS)
+        if (className == null) {
+            Log.e(TAG, "Missing widget class name in input data")
+            return Result.failure()
+        }
 
-        try {
+        return try {
             // Use reflection to get the GlanceAppWidget instance
             val kClass = Class.forName(className).kotlin
             val widget = kClass.java.getDeclaredConstructor().newInstance() as GlanceAppWidget
 
             widget.updateAll(context)
-            return Result.success()
-        } catch (e: Exception) {
-            return Result.failure()
+            Log.d(TAG, "Successfully updated widget: $className")
+            Result.success()
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to update widget: $className", t)
+            Result.failure()
         }
     }
 
     companion object {
         const val ARG_WIDGET_CLASS = "widget_class_name"
+        private const val TAG = "GenericWidgetWorker"
     }
 }
 
@@ -101,20 +109,31 @@ class WidgetPreviewWorker(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return Result.success()
-        val className = inputData.getString(ARG_RECEIVER_CLASS) ?: return Result.failure()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            Log.d(TAG, "Previews require API 35+, current API is ${Build.VERSION.SDK_INT}, skipping")
+            return Result.success()
+        }
+        val className = inputData.getString(ARG_RECEIVER_CLASS)
+        if (className == null) {
+            Log.e(TAG, "Missing receiver class name in input data")
+            return Result.failure()
+        }
         return try {
             @Suppress("UNCHECKED_CAST")
             val receiverClass = Class.forName(className).kotlin as KClass<out GlanceAppWidgetReceiver>
+            Log.d(TAG, "Setting widget previews for $className (SDK=${Build.VERSION.SDK_INT})")
             GlanceAppWidgetManager(applicationContext).setWidgetPreviews(receiverClass)
+            Log.d(TAG, "Successfully set widget previews for $className")
             Result.success()
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to set widget previews for $className", t)
             Result.failure()
         }
     }
 
     companion object {
         const val ARG_RECEIVER_CLASS = "receiver_class_name"
+        private const val TAG = "WidgetPreviewWorker"
     }
 }
 
@@ -122,10 +141,18 @@ class WidgetPreviewWorker(
  * Registers composable previews for [receiverClass] with the system widget picker.
  * Safe and cheap to call on every app launch: it dedups within a session and the
  * platform rate-limits repeated registrations. No-op below Android 15.
+ *
+ * Uses REPLACE policy so that if a previous attempt failed (e.g. app not fully
+ * installed, crash during preview generation), the next call will retry and
+ * regenerate the preview instead of being stuck blank.
  */
 fun <T : GlanceAppWidgetReceiver> Context.updateWidgetPreviews(receiverClass: KClass<T>) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        Log.d("WidgetPreview", "Skipping preview update on API ${Build.VERSION.SDK_INT}: $receiverClass")
+        return
+    }
     val className = receiverClass.qualifiedName ?: return
+    Log.d("WidgetPreview", "Enqueueing preview update for $className")
 
     val inputData = workDataOf(WidgetPreviewWorker.ARG_RECEIVER_CLASS to className)
 
@@ -135,7 +162,7 @@ fun <T : GlanceAppWidgetReceiver> Context.updateWidgetPreviews(receiverClass: KC
 
     WorkManager.getInstance(this).enqueueUniqueWork(
         "${className}_preview",
-        ExistingWorkPolicy.KEEP,
+        ExistingWorkPolicy.REPLACE,
         request
     )
 }
