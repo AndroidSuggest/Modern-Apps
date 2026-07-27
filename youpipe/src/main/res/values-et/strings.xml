@@ -88,19 +88,4 @@
     <string name="label_youtube_content">YouTube\'i sisu</string>
     <string name="label_youtube_language">Sisu keel</string>
     <string name="label_system_default">Süsteemi vaikeseadistus</string>
-    <string name="cc"></string>
-    <string name="loading_recent_subscriptions"></string>
-    <string name="download_options"></string>
-    <string name="clear"></string>
-    <string name="clear_history"></string>
-    <string name="downloads"></string>
-    <string name="off"></string>
-    <string name="selected"></string>
-    <string name="selected_1"></string>
-    <string name="download"></string>
-    <string name="cancel"></string>
-    <string name="language"></string>
-    <string name="chapter"></string>
-    <string name="are_you_sure_you_want_to_clear_all_watch"></string>
-    <string name="resolution"></string>
 </resources>
