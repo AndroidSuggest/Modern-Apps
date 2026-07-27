@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Find Family</string>
     <string name="notification_channel_location_tracking_name">Śledzenie lokalizacji</string>
@@ -85,4 +86,5 @@
     <string name="uwb_status_peer_disconnected">Zgubiłem drugie urządzenie. Podejdź bliżej.</string>
     <string name="uwb_status_unsupported">Funkcja Znajdź w pobliżu (UWB) nie jest obsługiwana na tym urządzeniu.</string>
     <string name="uwb_status_failed">Nie udało się znaleźć w pobliżu (UWB).</string>
-    </resources>
+    <string name="share_your_location"></string>
+</resources>
