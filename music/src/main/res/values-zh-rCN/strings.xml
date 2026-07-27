@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Music</string>
     <string name="nav_home">首页</string>
@@ -36,4 +37,4 @@
     <string name="dialog_create_playlist">创建播放列表</string>
     <string name="dialog_create">创建</string>
     <string name="playlist_name_hint">播放列表名称</string>
-    </resources>
+</resources>
