@@ -37,4 +37,18 @@
     <string name="timer_finished_text">%1$s skončil!</string>
     <string name="analog_clock_widget_label">Analogové hodiny</string>
     <string name="analog_clock_widget_description">Material You aanalogové hodiny - klepnutím otevřete hodiny</string>
+    <string name="action_reset"></string>
+    <string name="action_resume"></string>
+    <string name="ringtone_custom"></string>
+    <string name="ringtone_silent"></string>
+    <string name="action_stop"></string>
+    <string name="ringtone_default"></string>
+    <string name="channel_stopwatch_name"></string>
+    <string name="action_pause"></string>
+    <string name="action_lap"></string>
+    <string name="defaults_for_new_alarms"></string>
+    <string name="gradual_off"></string>
+    <string name="channel_stopwatch_description"></string>
+    <string name="action_cancel"></string>
+    <string name="alarm_settings"></string>
 </resources>
