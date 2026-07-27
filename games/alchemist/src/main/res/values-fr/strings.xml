@@ -12,9 +12,4 @@
     <string name="alchemy_icon_content_description">Icône Alchimie %1$d</string>
     <string name="item_details">Détails de l\'objet</string>
     <string name="locked">+ %1$d recettes verrouillées.</string>
-    <string name="id"></string>
-    <string name="cd_final_item"></string>
-    <string name="item_discovered"></string>
-    <string name="items_discovered"></string>
-    <string name="cd_delete"></string>
 </resources>

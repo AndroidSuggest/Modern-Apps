@@ -12,9 +12,4 @@
     <string name="collection">Kogumik</string>
     <string name="discovered_counter">Tuvastatud %1$d / %2$d</string>
     <string name="hide_maxed_elements">Peida täielikult täidetud elemendid</string>
-    <string name="id"></string>
-    <string name="cd_final_item"></string>
-    <string name="item_discovered"></string>
-    <string name="items_discovered"></string>
-    <string name="cd_delete"></string>
 </resources>
