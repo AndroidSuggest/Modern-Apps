@@ -193,7 +193,7 @@ fun VideoPage(
     }
 
     if(isFullscreen) {
-        LockScreenOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+        LockScreenOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE)
     }
 
 
