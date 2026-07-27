@@ -100,4 +100,14 @@
     <string name="uwb_status_peer_disconnected">Druhé zařízení bylo ztraceno. Přibližte se.</string>
     <string name="uwb_status_unsupported">Najít v okolí (UWB) není na tomto zažízení podporováno.</string>
     <string name="uwb_status_failed">Najít v okolí (UWB) selhalo.</string>
+    <string name="point_the_back_of_your_phone_toward_your"></string>
+    <string name="compare_this_code_with_on_their_device_i"></string>
+    <string name="dist"></string>
+    <string name="unknown"></string>
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab"></string>
+    <string name="security_code"></string>
+    <string name="el"></string>
+    <string name="az"></string>
+    <string name="computing"></string>
+    <string name="done"></string>
 </resources>
