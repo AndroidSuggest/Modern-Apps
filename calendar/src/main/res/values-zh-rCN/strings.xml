@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">确定</string>
     <string name="app_name">Calendar</string>
@@ -72,4 +73,60 @@
     <string name="create_new_calendar_option">创建新日历</string>
     <string name="no_events_found">未找到活动</string>
     <string name="import_summary">%1$d 个活动已准备好导入</string>
+    <plurals name="rrule_every_months">
+        <item quantity="other">每 %1$d 个月</item>
+    </plurals>
+    <string name="theme_light">浅色</string>
+    <plurals name="reminder_hours_before">
+        <item quantity="other">提前 %1$d 小时</item>
+    </plurals>
+    <string name="layout_full_week_summary">完整周摘要</string>
+    <string name="import_events_from_ics_files">从 .ics 文件导入活动</string>
+    <plurals name="rrule_count_suffix">
+        <item quantity="other">，%1$d 次</item>
+    </plurals>
+    <string name="theme_dark">深色</string>
+    <string name="theme_system_default">系统默认</string>
+    <string name="rrule_weekly">每周</string>
+    <string name="layout_short_month">M</string>
+    <string name="layout_work_week">工作周视图</string>
+    <plurals name="rrule_every_weeks">
+        <item quantity="other">每 %1$d 周</item>
+    </plurals>
+    <string name="theme">主题</string>
+    <string name="layout_agenda">日程视图</string>
+    <plurals name="reminder_minutes_before">
+        <item quantity="other">提前 %1$d 分钟</item>
+    </plurals>
+    <plurals name="rrule_every_days">
+        <item quantity="other">每 %1$d 天</item>
+    </plurals>
+    <string name="layout_work_week_summary">工作周摘要</string>
+    <string name="search_countries">搜索国家/地区</string>
+    <string name="layout_short_agenda">A</string>
+    <string name="please_grant_calendar_permission">请授予日历权限</string>
+    <string name="rrule_yearly">每年</string>
+    <string name="layout_day">日视图</string>
+    <string name="layout_full_week">完整周视图</string>
+    <string name="rrule_until_suffix">，直到 %1$s</string>
+    <string name="reminder_at_time_of_event">活动发生时</string>
+    <string name="layout_short_work_week">W5</string>
+    <string name="rrule_on_days">在 %2$s 的 %1$s</string>
+    <string name="layout_short_work_week_summary">W5S</string>
+    <string name="layout_month">月视图</string>
+    <string name="rrule_daily">每日</string>
+    <string name="add_public_holidays_for_countries">为国家/地区添加公共节假日</string>
+    <plurals name="rrule_every_years">
+        <item quantity="other">每 %1$d 年</item>
+    </plurals>
+    <string name="layout_short_full_week">W7</string>
+    <string name="rrule_monthly">每月</string>
+    <string name="layout_short_full_week_summary">W7S</string>
+    <string name="choose_language">选择语言</string>
+    <plurals name="reminder_days_before">
+        <item quantity="other">提前 %1$d 天</item>
+    </plurals>
+    <string name="add">添加</string>
+    <string name="layout_short_day">D</string>
+    <string name="holiday_calendars">节假日日历</string>
 </resources>
