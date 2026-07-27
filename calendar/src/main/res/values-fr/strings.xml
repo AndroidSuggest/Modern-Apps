@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Calendrier</string>
     <string name="ok">Ok</string>
@@ -7,7 +8,7 @@
     <string name="close">Fermer</string>
     <string name="rename">Renommer</string>
     <string name="create">Créer</string>
-    <string name="remove">Supprimer</string>
+    <string name="remove">Retirer</string>
     <string name="search">Rechercher</string>
     <string name="no_title">(Sans titre)</string>
     <string name="event_not_found">Événement non trouvé</string>
@@ -32,10 +33,10 @@
     <string name="dropdown_freq_format">%1$s ▼</string>
     <string name="never">Jamais</string>
     <string name="until">Jusqu\'à</string>
-    <string name="until_date">Jusqu\'à : %1$s</string>
+    <string name="until_date">Jusqu\'à : %1$s</string>
     <string name="new_local_calendar">Nouveau calendrier local</string>
     <string name="calendar_name">Nom du calendrier</string>
-    <string name="choose_color">Choisir une couleur :</string>
+    <string name="choose_color">Choisir une couleur :</string>
     <string name="change_color_for">Modifier la couleur de ce calendrier</string>
     <string name="change_color">Modifier la couleur</string>
     <string name="delete_calendar">Supprimer le calendrier</string>
@@ -72,4 +73,76 @@
     <string name="create_new_calendar_option">Créer un nouveau calendrier</string>
     <string name="no_events_found">Aucun événement trouvé</string>
     <string name="import_summary">%1$d événements sont prêts à être importés</string>
+    <plurals name="rrule_every_months">
+        <item quantity="one">Tous les %1$d mois</item>
+        <item quantity="many">Tous les %1$d mois</item>
+        <item quantity="other">Tous les %1$d mois</item>
+    </plurals>
+    <string name="theme_light">Clair</string>
+    <plurals name="reminder_hours_before">
+        <item quantity="one">%1$d heure avant</item>
+        <item quantity="many">%1$d heures avant</item>
+        <item quantity="other">%1$d heures avant</item>
+    </plurals>
+    <string name="layout_full_week_summary">Résumé de la semaine complète</string>
+    <string name="import_events_from_ics_files">Importer des événements depuis des fichiers .ics</string>
+    <plurals name="rrule_count_suffix">
+        <item quantity="one">, %1$d fois</item>
+        <item quantity="many">, %1$d fois</item>
+        <item quantity="other">, %1$d fois</item>
+    </plurals>
+    <string name="theme_dark">Sombre</string>
+    <string name="theme_system_default">Par défaut du système</string>
+    <string name="rrule_weekly">Chaque semaine</string>
+    <string name="layout_short_month">M</string>
+    <string name="layout_work_week">Semaine de travail</string>
+    <plurals name="rrule_every_weeks">
+        <item quantity="one">Toutes les %1$d semaine</item>
+        <item quantity="many">Toutes les %1$d semaines</item>
+        <item quantity="other">Toutes les %1$d semaines</item>
+    </plurals>
+    <string name="theme">Thème</string>
+    <string name="layout_agenda">Agenda</string>
+    <plurals name="reminder_minutes_before">
+        <item quantity="one">%1$d minute avant</item>
+        <item quantity="many">%1$d minutes avant</item>
+        <item quantity="other">%1$d minutes avant</item>
+    </plurals>
+    <plurals name="rrule_every_days">
+        <item quantity="one">Tous les %1$d jour</item>
+        <item quantity="many">Tous les %1$d jours</item>
+        <item quantity="other">Tous les %1$d jours</item>
+    </plurals>
+    <string name="layout_work_week_summary">Résumé de la semaine de travail</string>
+    <string name="search_countries">Rechercher des pays</string>
+    <string name="layout_short_agenda">A</string>
+    <string name="please_grant_calendar_permission">Veuillez autoriser l’accès au calendrier</string>
+    <string name="rrule_yearly">Chaque année</string>
+    <string name="layout_day">Jour</string>
+    <string name="layout_full_week">Semaine complète</string>
+    <string name="rrule_until_suffix">, jusqu’au %1$s</string>
+    <string name="reminder_at_time_of_event">Au moment de l’événement</string>
+    <string name="layout_short_work_week">S5</string>
+    <string name="rrule_on_days">%1$s le %2$s</string>
+    <string name="layout_short_work_week_summary">S5R</string>
+    <string name="layout_month">Mois</string>
+    <string name="rrule_daily">Chaque jour</string>
+    <string name="add_public_holidays_for_countries">Ajouter les jours fériés par pays</string>
+    <plurals name="rrule_every_years">
+        <item quantity="one">Tous les %1$d an</item>
+        <item quantity="many">Tous les %1$d ans</item>
+        <item quantity="other">Tous les %1$d ans</item>
+    </plurals>
+    <string name="layout_short_full_week">S7</string>
+    <string name="rrule_monthly">Chaque mois</string>
+    <string name="layout_short_full_week_summary">S7R</string>
+    <string name="choose_language">Choisir une langue</string>
+    <plurals name="reminder_days_before">
+        <item quantity="one">%1$d jour avant</item>
+        <item quantity="many">%1$d jours avant</item>
+        <item quantity="other">%1$d jours avant</item>
+    </plurals>
+    <string name="add">Ajouter</string>
+    <string name="layout_short_day">J</string>
+    <string name="holiday_calendars">Calendriers des jours fériés</string>
 </resources>
