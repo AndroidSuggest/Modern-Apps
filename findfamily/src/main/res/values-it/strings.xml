@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Trova Famiglia</string>
     <string name="notification_channel_location_tracking_desc">Utilizzate per gli aggiornamenti della posizione in background di FindFamily</string>
