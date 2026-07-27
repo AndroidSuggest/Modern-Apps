@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="close">关闭</string>
     <string name="app_name">Word Maker</string>
@@ -22,4 +23,8 @@
     <string name="competitive_time_limit">每关 %1$d 秒</string>
     <string name="competitive_solved">通关！+%1$d 分</string>
     <string name="competitive_timed_out">时间到！%1$d 分</string>
+    <string name="cd_hint">提示</string>
+    <string name="cd_shuffle">随机排序</string>
+    <string name="cd_submit">提交</string>
+    <string name="cd_backspace">退格键</string>
 </resources>
