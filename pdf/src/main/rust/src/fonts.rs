@@ -1,5 +1,15 @@
 use crate::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FontStyle {
+    pub(crate) bold: bool,
+    pub(crate) italic: bool,
+}
+
+impl Default for FontStyle {
+    fn default() -> Self { Self { bold: false, italic: false } }
+}
+
 pub(crate) struct FontInfo {
     /// Type0 (Identity-H) fonts use 2-byte codes; simple fonts use 1 byte.
     pub(crate) two_byte: bool,
@@ -17,6 +27,10 @@ pub(crate) struct FontInfo {
     pub(crate) default_width: f64,
     /// Type 3 font data (glyph CharProc content streams), if this is a Type 3 font.
     pub(crate) t3: Option<Type3Font>,
+    /// Synthetic font style recovered from BaseFont name + FontDescriptor.
+    pub(crate) style: FontStyle,
+    /// Descriptive base font name for fallback shaping (optional).
+    pub(crate) base_font: String,
 }
 
 /// Type 3 font: glyphs are content streams drawn in glyph space, mapped to text
@@ -36,7 +50,12 @@ impl FontInfo {
             let mut i = 0;
             while i + 1 < bytes.len() {
                 let code = ((bytes[i] as u32) << 8) | bytes[i + 1] as u32;
-                f(code, false);
+                // For Identity-H, space is often 0x0020; we still need word_spacing.
+                // is_space here means unicode space check after decoding would be better,
+                // but we approximate by code == 0x20 or ToUnicode maps to ' '.
+                let is_space = code == 32 ||
+                    self.to_unicode.as_ref().and_then(|m| m.get(&code)).map(|s| s == " ").unwrap_or(false);
+                f(code, is_space);
                 i += 2;
             }
         } else {
@@ -154,6 +173,66 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         m
     };
 
+    // --- Font style detection for bold/italic synthesis ---
+    let base_font_name = font.get(b"BaseFont").ok().and_then(|o| o.as_name().ok())
+        .map(|n| String::from_utf8_lossy(n).to_string())
+        .or_else(|| {
+            // Try descendant for Type0
+            font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o))
+                .and_then(|o| match o { Object::Array(a) => a.first(), _ => None })
+                .and_then(|o| deref(doc, o))
+                .and_then(|o| o.as_dict().ok())
+                .and_then(|d| d.get(b"BaseFont").ok())
+                .and_then(|o| o.as_name().ok())
+                .map(|n| String::from_utf8_lossy(n).to_string())
+        })
+        .unwrap_or_default();
+
+    let fd = font.get(b"FontDescriptor").ok().and_then(|o| deref(doc, o))
+        .and_then(|o| o.as_dict().ok()).cloned()
+        .or_else(|| {
+            // For Type0, try descendant's FontDescriptor
+            font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o))
+                .and_then(|o| match o { Object::Array(a) => a.first(), _ => None })
+                .and_then(|o| deref(doc, o))
+                .and_then(|o| o.as_dict().ok())
+                .and_then(|d| d.get(b"FontDescriptor").ok())
+                .and_then(|o| deref(doc, o))
+                .and_then(|o| o.as_dict().ok())
+                .cloned()
+        });
+
+    let mut bold = false;
+    let mut italic = false;
+    let lower = base_font_name.to_lowercase();
+    if lower.contains("bold") || lower.contains("black") || lower.contains("heavy") {
+        bold = true;
+    }
+    if lower.contains("italic") || lower.contains("oblique") || lower.contains("slanted") {
+        italic = true;
+    }
+    if let Some(ref desc) = fd {
+        if let Some(flags) = desc.get(b"Flags").ok().and_then(num) {
+            let f = flags as i64;
+            // Bit 18 (1<<18 = 262144) = Italic per PDF spec 9.8.2
+            if f & (1<<18) != 0 || f & 64 != 0 { italic = true; } // 64 is common non-spec but some generators
+            // There is no bold flag but some files use bit 6? Actually force bold is 18? We'll rely on StemV/Weight
+        }
+        if let Some(angle) = desc.get(b"ItalicAngle").ok().and_then(num) {
+            if angle.abs() > 0.5 { italic = true; }
+        }
+        if let Some(weight) = desc.get(b"FontWeight").ok().and_then(num) {
+            if weight >= 600.0 { bold = true; }
+        } else if let Some(name) = desc.get(b"FontWeight").ok().and_then(|o| o.as_name().ok()) {
+            if String::from_utf8_lossy(name).to_lowercase().contains("bold") { bold = true; }
+        }
+        if let Some(stemv) = desc.get(b"StemV").ok().and_then(num) {
+            if stemv.abs() > 140.0 { bold = true; }
+        }
+        if desc.get(b"FontName").ok().and_then(|o| o.as_name().ok())
+            .map(|n| String::from_utf8_lossy(n).to_lowercase().contains("bold")).unwrap_or(false) { bold = true; }
+    }
+
     FontInfo {
         two_byte,
         to_unicode,
@@ -162,6 +241,8 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         widths,
         default_width,
         t3,
+        style: FontStyle { bold, italic },
+        base_font: base_font_name,
     }
 }
 

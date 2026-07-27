@@ -2,6 +2,7 @@ use crate::*;
 
 /// Drawing primitives in PDF page space (origin bottom-left). Kotlin performs
 /// the Y-flip and fit-to-width scale. Extended v3 adds GroupPush/Pop and blend.
+/// v8 adds font style flags for bold/italic synthesis.
 pub(crate) enum Prim {
     Text {
         x: f32,
@@ -18,6 +19,12 @@ pub(crate) enum Prim {
         render_mode: u8,
         /// Blend mode (from the graphics-state `/BM`). Serialized in v5.
         blend: BlendMode,
+        /// Font style flags recovered from BaseFont / FontDescriptor (v8).
+        is_bold: bool,
+        is_italic: bool,
+        /// PDF text rise (Ts) and horizontal scale (Tz fraction) for verif; used for
+        /// spacing / synthetic slant debugging (not strictly needed on wire but helps).
+        h_scale: f32,
     },
     Fill {
         argb: u32,

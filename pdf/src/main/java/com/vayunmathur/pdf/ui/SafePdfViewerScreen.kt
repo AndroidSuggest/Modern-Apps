@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -953,6 +954,13 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 .padding(innerPadding)
                 .fillMaxSize()
                 .onSizeChanged { viewportSize = it }
+                .graphicsLayer {
+                    scaleX = zoom
+                    scaleY = zoom
+                    translationX = pan.x
+                    translationY = pan.y
+                }
+                .transformable(transformState, enabled = !editMode || tool == EditTool.SELECT),
         ) {
             when (val state = loadState) {
                 LoadState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -962,15 +970,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 )
                 is LoadState.Loaded -> LazyColumn(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = zoom
-                            scaleY = zoom
-                            translationX = pan.x
-                            translationY = pan.y
-                        }
-                        .transformable(transformState, enabled = !editMode || tool == EditTool.SELECT),
+                    Modifier.fillMaxSize(),
                     state = listState,
                 ) {
                     items((0 until pageCount).toList()) { index ->
@@ -1271,7 +1271,8 @@ private fun NonEditOverlay(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    // Clickable link boxes.
+    // Text selection underneath so link Boxes get hit-test priority.
+    TextSelectionLayer(page = page, ch = ch, scale = scale)
     for (link in links) {
         val leftDp = with(density) { (link.x0 * scale).toDp() }
         val topDp = with(density) { (ch - link.y1 * scale).toDp() }
@@ -1294,10 +1295,6 @@ private fun NonEditOverlay(
                 },
         )
     }
-
-    // Glyph-level text selection with draggable handles. Always available in
-    // regular view — long-press a page to start selecting (see TextSelectionLayer).
-    TextSelectionLayer(page = page, ch = ch, scale = scale)
 }
 
 /** A single selectable glyph in reading order, with its on-screen rect - stores String for ligatures fi etc. */
@@ -1314,17 +1311,35 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
     val clipboard = androidx.compose.ui.platform.LocalClipboard.current
     val scope = rememberCoroutineScope()
     // Build ordered glyphs once per page/scale using accurate advance + Tz handling (Phase 7).
-    val glyphs = remember(page, scale, ch) {
+    // v8: include bold/italic for accurate measured width so spacing/melting is correct.
+    // pointerInput is keyed only on page identity to avoid cancelling gesture on scale change.
+    val glyphs = remember(page, ch, scale) {
         val list = ArrayList<Triple<Float, Float, SelGlyph>>() // (orderY, orderX, glyph)
-        val tmpPaint = android.graphics.Paint()
+        val tmpPaint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            isLinearText = true
+        }
         for (prim in page.primitives) {
             if (prim !is PdfPrimitive.Text || prim.text.isEmpty()) continue
+            val tfStyle = when {
+                prim.isBold && prim.isItalic -> android.graphics.Typeface.BOLD_ITALIC
+                prim.isBold -> android.graphics.Typeface.BOLD
+                prim.isItalic -> android.graphics.Typeface.ITALIC
+                else -> android.graphics.Typeface.NORMAL
+            }
+            tmpPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, tfStyle)
+            tmpPaint.isFakeBoldText = prim.isBold
+            tmpPaint.textSkewX = if (prim.isItalic) -0.25f else 0f
+            tmpPaint.textScaleX = prim.hScale.coerceIn(0.2f, 4f)
             tmpPaint.textSize = prim.size * scale
             val textStr = prim.text
             // Rust emits one glyph per Text prim with `advance` = that glyph's
             // true device-space advance (from /Widths|/W, Tc/Tw/Tz). Use it for
             // both stepping and glyph width; fall back to measured width only for
             // multi-char runs (the font-less fallback path).
+            // For styled text, measure with the same bold/italic paint so per-glyph
+            // measured fallback matches visual, avoiding overlap "melting".
             val measuredTotal = if (textStr.isNotEmpty()) tmpPaint.measureText(textStr) else prim.size * 0.5f
             val perGlyphMeasured = if (textStr.isNotEmpty()) measuredTotal / textStr.length else prim.size * 0.5f * scale
             var curPxPage = prim.origin.x
@@ -1361,15 +1376,17 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
         return best
     }
 
+    val latestGlyphs by rememberUpdatedState(glyphs)
+
     Canvas(
-        Modifier.fillMaxSize().pointerInput(glyphs) {
+        Modifier.fillMaxSize().pointerInput(page) {
             detectDragGesturesAfterLongPress(
                 onDragStart = { pos ->
+                    val g = latestGlyphs
                     val r = range
-                    // Grab an existing handle if the touch is near one, else start fresh.
-                    if (r != null) {
-                        val startG = glyphs[r.first]
-                        val endG = glyphs[r.last]
+                    if (r != null && r.first in g.indices && r.last in g.indices) {
+                        val startG = g[r.first]
+                        val endG = g[r.last]
                         val dStart = kotlin.math.hypot(startG.left - pos.x, startG.bottom - pos.y)
                         val dEnd = kotlin.math.hypot(endG.right - pos.x, endG.bottom - pos.y)
                         if (minOf(dStart, dEnd) < 60f) {
@@ -1383,15 +1400,18 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
                 },
                 onDrag = { change, _ ->
                     change.consume()
+                    val g = latestGlyphs
+                    if (g.isEmpty()) return@detectDragGesturesAfterLongPress
                     val i = nearest(change.position)
                     val r = range ?: (i..i)
                     range = if (dragEnd) minOf(r.first, i)..maxOf(r.first, i)
                     else minOf(i, r.last)..maxOf(i, r.last)
                 },
                 onDragEnd = {
+                    val g = latestGlyphs
                     val r = range
-                    if (r != null) {
-                        val text = glyphs.subList(r.first, r.last + 1).joinToString("") { it.ch }
+                    if (r != null && g.isNotEmpty() && r.first in g.indices && r.last in g.indices) {
+                        val text = g.subList(r.first, r.last + 1).joinToString("") { it.ch }
                         if (text.isNotBlank()) {
                             scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText(context.getString(R.string.text), text))) }
                             android.widget.Toast.makeText(context, context.getString(R.string.copied), android.widget.Toast.LENGTH_SHORT).show()
@@ -1453,32 +1473,59 @@ private fun EditOverlay(
     // Accumulated move delta for the selected annotation (screen space).
     var moveDelta by remember { mutableStateOf(Offset.Zero) }
 
+    // Keep annotation data stable for the gesture coroutine via updated states, so
+    // the gesture is NOT cancelled when selected or annotations identity changes
+    // (previously pointerInput(tool, selected, annotations) caused annotation drag
+    // to cancel immediately after selecting at touchSlop threshold).
+    val latestAnnotations by rememberUpdatedState(annotations)
+    val latestSelected by rememberUpdatedState(selected)
+    val latestToPage by rememberUpdatedState(toPage)
+    val latestOnSelect by rememberUpdatedState(onSelect)
+    val latestOnStartText by rememberUpdatedState(onStartText)
+    val latestOnRequestImage by rememberUpdatedState(onRequestImage)
+    val latestOnRequestNote by rememberUpdatedState(onRequestNote)
+    val latestOnRequestCallout by rememberUpdatedState(onRequestCallout)
+    val latestOnAddPolyPoint by rememberUpdatedState(onAddPolyPoint)
+    val latestOnCreated by rememberUpdatedState(onCreated)
+    val latestOnEdited by rememberUpdatedState(onEdited)
+    val latestOnMoved by rememberUpdatedState(onMoved)
+    val latestDocument by rememberUpdatedState(document)
+    val latestScope by rememberUpdatedState(scope)
+    val latestScale by rememberUpdatedState(scale)
+    val latestShape by rememberUpdatedState(shape)
+    val latestMarkup by rememberUpdatedState(markup)
+    val latestColor by rememberUpdatedState(color)
+    val latestStroke by rememberUpdatedState(strokeWidth)
+    val currentTool by rememberUpdatedState(tool)
+
     fun annotAt(screen: Offset): SafeAnnotation? {
-        val p = toPage(screen)
-        return annotations.lastOrNull { p.x in it.x0..it.x1 && p.y in it.y0..it.y1 }
+        val p = latestToPage(screen)
+        return latestAnnotations.lastOrNull { p.x in it.x0..it.x1 && p.y in it.y0..it.y1 }
     }
 
-    val gestures = Modifier.pointerInput(tool, selected, annotations) {
+    val gestures = Modifier.pointerInput(currentTool, index) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val start = down.position
-            // With Select, only capture the gesture when it starts on an annotation
-            // (a move). On empty space we leave it unconsumed so the list scrolls.
-            val selectMove = tool == EditTool.SELECT && annotAt(start) != null
+            val hitAtDown = annotAt(start)
+            val selectMove = currentTool == EditTool.SELECT && hitAtDown != null
             val blockScroll =
-                tool == EditTool.HIGHLIGHT || tool == EditTool.MARKUP || tool == EditTool.SHAPE ||
-                    tool == EditTool.LINE || tool == EditTool.CALLOUT || tool == EditTool.REDACT ||
-                    tool == EditTool.DRAW || selectMove
-            if (blockScroll) {
+                currentTool == EditTool.HIGHLIGHT || currentTool == EditTool.MARKUP || currentTool == EditTool.SHAPE ||
+                    currentTool == EditTool.LINE || currentTool == EditTool.CALLOUT || currentTool == EditTool.REDACT ||
+                    currentTool == EditTool.DRAW || selectMove
+            // SELECT defers consume until dragging to allow pinch-zoom over annotation
+            if (blockScroll && currentTool != EditTool.SELECT) {
                 down.consume()
-                dragStart = start
-                dragCurrent = start
-                if (tool == EditTool.DRAW) inkPoints = listOf(start)
             }
-            if (tool == EditTool.SELECT) moveDelta = Offset.Zero
+            dragStart = start
+            dragCurrent = start
+            if (currentTool == EditTool.DRAW) inkPoints = listOf(start)
+            if (currentTool == EditTool.SELECT) moveDelta = Offset.Zero
 
             var dragging = false
             var lastPos = start
+            var draggedId: Long? = hitAtDown?.id
+            var draggedInitRect: List<Float>? = hitAtDown?.let { listOf(it.x0, it.y0, it.x1, it.y1) }
             while (true) {
                 val event = awaitPointerEvent()
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -1486,13 +1533,17 @@ private fun EditOverlay(
                 val pos = change.position
                 if (!dragging && (pos - start).getDistance() > viewConfiguration.touchSlop) {
                     dragging = true
-                    if (selectMove) onSelect(annotAt(start)?.id)
+                    if (selectMove) {
+                        latestOnSelect(draggedId)
+                        change.consume()
+                        down.consume()
+                    }
                 }
                 if (dragging) {
                     // Don't consume Select drags on empty space, so they scroll.
-                    val consume = tool != EditTool.SELECT || selectMove
+                    val consume = currentTool != EditTool.SELECT || selectMove
                     if (consume) change.consume()
-                    when (tool) {
+                    when (currentTool) {
                         EditTool.HIGHLIGHT, EditTool.MARKUP, EditTool.SHAPE, EditTool.LINE, EditTool.CALLOUT, EditTool.REDACT -> dragCurrent = pos
                         EditTool.DRAW -> { dragCurrent = pos; inkPoints = inkPoints + pos }
                         EditTool.SELECT -> if (selectMove) moveDelta += (pos - lastPos)
@@ -1503,28 +1554,29 @@ private fun EditOverlay(
             }
 
             if (!dragging) {
-                when (tool) {
+                when (currentTool) {
                     EditTool.TEXT -> {
-                        val p = toPage(start)
-                        onStartText(
+                        val p = latestToPage(start)
+                        latestOnStartText(
                             TextSession(
                                 page = index,
                                 origin = p,
                                 size = 14f,
-                                color = color.toArgb(),
+                                color = latestColor.toArgb(),
                                 annotId = null,
                                 value = TextFieldValue("Text", TextRange(0, 4)),
                             )
                         )
                     }
-                    EditTool.IMAGE -> onRequestImage(toPage(start))
-                    EditTool.NOTE -> onRequestNote(toPage(start))
-                    EditTool.POLYLINE, EditTool.BEZIER -> onAddPolyPoint(toPage(start))
+                    EditTool.IMAGE -> latestOnRequestImage(latestToPage(start))
+                    EditTool.NOTE -> latestOnRequestNote(latestToPage(start))
+                    EditTool.POLYLINE, EditTool.BEZIER -> latestOnAddPolyPoint(latestToPage(start))
                     EditTool.SELECT -> {
                         val hit = annotAt(start)
-                        if (hit != null && hit.id == selected && hit.subtype == 1) {
+                        val sel = latestSelected
+                        if (hit != null && hit.id == sel && hit.subtype == 1) {
                             val sz = ((hit.y1 - hit.y0) / 1.3f).coerceIn(6f, 72f)
-                            onStartText(
+                            latestOnStartText(
                                 TextSession(
                                     page = index,
                                     origin = Offset(hit.x0, hit.y1),
@@ -1535,7 +1587,7 @@ private fun EditOverlay(
                                 )
                             )
                         } else {
-                            onSelect(hit?.id)
+                            latestOnSelect(hit?.id)
                         }
                     }
                     else -> {}
@@ -1543,78 +1595,81 @@ private fun EditOverlay(
             } else {
                 val s = dragStart
                 val e = dragCurrent
-                when (tool) {
+                val doc = latestDocument
+                val scp = latestScope
+                when (currentTool) {
                     EditTool.HIGHLIGHT -> if (s != null && e != null) {
-                        val a = toPage(s); val b = toPage(e)
-                        scope.launch {
-                            val id = document.addHighlight(index, a.x, a.y, b.x, b.y, color.toArgb())
-                            onCreated(id); onEdited()
+                        val a = latestToPage(s); val b = latestToPage(e)
+                        scp.launch {
+                            val id = doc.addHighlight(index, a.x, a.y, b.x, b.y, latestColor.toArgb())
+                            latestOnCreated(id); latestOnEdited()
                         }
                     }
                     EditTool.MARKUP -> if (s != null && e != null) {
-                        val a = toPage(s); val b = toPage(e)
-                        scope.launch {
-                            val id = if (markup == MarkupKind.HIGHLIGHT) {
-                                document.addHighlight(index, a.x, a.y, b.x, b.y, color.toArgb())
+                        val a = latestToPage(s); val b = latestToPage(e)
+                        scp.launch {
+                            val mk = latestMarkup
+                            val id = if (mk == MarkupKind.HIGHLIGHT) {
+                                doc.addHighlight(index, a.x, a.y, b.x, b.y, latestColor.toArgb())
                             } else {
-                                val kind = when (markup) {
+                                val kind = when (mk) {
                                     MarkupKind.STRIKEOUT -> 1
                                     MarkupKind.SQUIGGLY -> 2
                                     else -> 0
                                 }
-                                document.addTextMarkup(index, a.x, a.y, b.x, b.y, color.toArgb(), kind)
+                                doc.addTextMarkup(index, a.x, a.y, b.x, b.y, latestColor.toArgb(), kind)
                             }
-                            onCreated(id); onEdited()
+                            latestOnCreated(id); latestOnEdited()
                         }
                     }
                     EditTool.CALLOUT -> if (s != null && e != null) {
-                        onRequestCallout(toPage(s), toPage(e))
+                        latestOnRequestCallout(latestToPage(s), latestToPage(e))
                     }
                     EditTool.SHAPE -> if (s != null && e != null) {
                         val rect = Rect(minOf(s.x, e.x), minOf(s.y, e.y), maxOf(s.x, e.x), maxOf(s.y, e.y))
-                        val lineWidth = if (shape.isFill) 0f else strokeWidth
-                        when (shape.geom) {
+                        val shp = latestShape
+                        val lineWidth = if (shp.isFill) 0f else latestStroke
+                        when (shp.geom) {
                             ShapeGeom.RECT -> {
-                                val a = toPage(Offset(rect.left, rect.top)); val b = toPage(Offset(rect.right, rect.bottom))
-                                scope.launch {
-                                    val id = document.addRect(index, a.x, a.y, b.x, b.y, color.toArgb(), lineWidth, shape.isFill)
-                                    onCreated(id); onEdited()
+                                val a = latestToPage(Offset(rect.left, rect.top)); val b = latestToPage(Offset(rect.right, rect.bottom))
+                                scp.launch {
+                                    val id = doc.addRect(index, a.x, a.y, b.x, b.y, latestColor.toArgb(), lineWidth, shp.isFill)
+                                    latestOnCreated(id); latestOnEdited()
                                 }
                             }
                             ShapeGeom.OVAL -> {
-                                val a = toPage(Offset(rect.left, rect.top)); val b = toPage(Offset(rect.right, rect.bottom))
-                                scope.launch {
-                                    val id = document.addOval(index, a.x, a.y, b.x, b.y, color.toArgb(), lineWidth, shape.isFill)
-                                    onCreated(id); onEdited()
+                                val a = latestToPage(Offset(rect.left, rect.top)); val b = latestToPage(Offset(rect.right, rect.bottom))
+                                scp.launch {
+                                    val id = doc.addOval(index, a.x, a.y, b.x, b.y, latestColor.toArgb(), lineWidth, shp.isFill)
+                                    latestOnCreated(id); latestOnEdited()
                                 }
                             }
                             ShapeGeom.POLYGON -> {
-                                val unit = shape.unitPolygon()
+                                val unit = shp.unitPolygon()
                                 val flat = FloatArray(unit.size * 2)
                                 unit.forEachIndexed { i, u ->
-                                    val pp = toPage(mapUnit(u, rect)); flat[i * 2] = pp.x; flat[i * 2 + 1] = pp.y
+                                    val pp = latestToPage(mapUnit(u, rect)); flat[i * 2] = pp.x; flat[i * 2 + 1] = pp.y
                                 }
-                                scope.launch {
-                                    val id = document.addPoly(index, flat, color.toArgb(), lineWidth, shape.isFill, closed = true)
-                                    onCreated(id); onEdited()
+                                scp.launch {
+                                    val id = doc.addPoly(index, flat, latestColor.toArgb(), lineWidth, shp.isFill, closed = true)
+                                    latestOnCreated(id); latestOnEdited()
                                 }
                             }
                         }
                     }
                     EditTool.LINE -> if (s != null && e != null) {
-                        val a = toPage(s); val b = toPage(e)
-                        scope.launch {
-                            val id = document.addPoly(index, floatArrayOf(a.x, a.y, b.x, b.y), color.toArgb(), strokeWidth, fill = false, closed = false)
-                            onCreated(id); onEdited()
+                        val a = latestToPage(s); val b = latestToPage(e)
+                        scp.launch {
+                            val id = doc.addPoly(index, floatArrayOf(a.x, a.y, b.x, b.y), latestColor.toArgb(), latestStroke, fill = false, closed = false)
+                            latestOnCreated(id); latestOnEdited()
                         }
                     }
                     EditTool.REDACT -> if (s != null && e != null) {
-                        val a = toPage(Offset(minOf(s.x, e.x), minOf(s.y, e.y)))
-                        val b = toPage(Offset(maxOf(s.x, e.x), maxOf(s.y, e.y)))
-                        scope.launch {
-                            // Marked redaction box; "Apply redactions" removes the content beneath.
-                            val id = document.addRedaction(index, a.x, a.y, b.x, b.y)
-                            onCreated(id); onEdited()
+                        val a = latestToPage(Offset(minOf(s.x, e.x), minOf(s.y, e.y)))
+                        val b = latestToPage(Offset(maxOf(s.x, e.x), maxOf(s.y, e.y)))
+                        scp.launch {
+                            val id = doc.addRedaction(index, a.x, a.y, b.x, b.y)
+                            latestOnCreated(id); latestOnEdited()
                         }
                     }
                     EditTool.DRAW -> {
@@ -1622,27 +1677,39 @@ private fun EditOverlay(
                         if (pts.size >= 2) {
                             val flat = FloatArray(pts.size * 2)
                             pts.forEachIndexed { i, o ->
-                                val pp = toPage(o); flat[i * 2] = pp.x; flat[i * 2 + 1] = pp.y
+                                val pp = latestToPage(o); flat[i * 2] = pp.x; flat[i * 2 + 1] = pp.y
                             }
-                            scope.launch {
-                                val id = document.addInk(index, color.toArgb(), strokeWidth, flat)
-                                onCreated(id); onEdited()
+                            scp.launch {
+                                val id = doc.addInk(index, latestColor.toArgb(), latestStroke, flat)
+                                latestOnCreated(id); latestOnEdited()
                             }
                         }
                     }
                     EditTool.SELECT -> if (selectMove) {
-                        val id = selected
-                        val a = annotations.firstOrNull { it.id == id }
-                        if (id != null && a != null) {
-                            val dx = moveDelta.x / scale
-                            val dy = -moveDelta.y / scale
+                        val id = draggedId
+                        if (id != null) {
+                            val dx = moveDelta.x / latestScale
+                            val dy = -moveDelta.y / latestScale
                             if (dx != 0f || dy != 0f) {
-                                val oldR = listOf(a.x0, a.y0, a.x1, a.y1)
-                                val newR = listOf(a.x0 + dx, a.y0 + dy, a.x1 + dx, a.y1 + dy)
-                                scope.launch {
-                                    document.moveAnnotation(index, id, newR[0], newR[1], newR[2], newR[3])
-                                    onMoved(id, oldR, newR)
-                                    onEdited()
+                                val initR = draggedInitRect
+                                if (initR != null) {
+                                    val newR = listOf(initR[0] + dx, initR[1] + dy, initR[2] + dx, initR[3] + dy)
+                                    scp.launch {
+                                        doc.moveAnnotation(index, id, newR[0], newR[1], newR[2], newR[3])
+                                        latestOnMoved(id, initR, newR)
+                                        latestOnEdited()
+                                    }
+                                } else {
+                                    val a = latestAnnotations.firstOrNull { it.id == id }
+                                    if (a != null) {
+                                        val oldR = listOf(a.x0, a.y0, a.x1, a.y1)
+                                        val newR = listOf(a.x0 + dx, a.y0 + dy, a.x1 + dx, a.y1 + dy)
+                                        scp.launch {
+                                            doc.moveAnnotation(index, id, newR[0], newR[1], newR[2], newR[3])
+                                            latestOnMoved(id, oldR, newR)
+                                            latestOnEdited()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1652,14 +1719,14 @@ private fun EditOverlay(
             }
             dragStart = null
             dragCurrent = null
-            if (tool == EditTool.DRAW) inkPoints = emptyList()
+            if (currentTool == EditTool.DRAW) inkPoints = emptyList()
             moveDelta = Offset.Zero
         }
     }
 
     Canvas(Modifier.fillMaxSize().then(gestures)) {
         // Selection highlight.
-        val sel = annotations.firstOrNull { it.id == selected }
+        val sel = latestAnnotations.firstOrNull { it.id == latestSelected }
         if (sel != null) {
             val left = sel.x0 * scale + moveDelta.x
             val top = ch - sel.y1 * scale + moveDelta.y
@@ -2148,10 +2215,14 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
     val textPaint = android.graphics.Paint().apply {
         isAntiAlias = true
         isDither = true
+        isSubpixelText = true
+        isLinearText = true
     }
     val textStrokePaint = android.graphics.Paint().apply {
         isAntiAlias = true
         isDither = true
+        isSubpixelText = true
+        isLinearText = true
         style = android.graphics.Paint.Style.STROKE
     }
     val imagePaint = android.graphics.Paint().apply {
@@ -2277,6 +2348,31 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                 val rm = prim.renderMode
                 val isStrokeOnly = prim.strokeColor != null && prim.color == prim.strokeColor
 
+                // v8: font style synthesis from Rust — BaseFont / FontDescriptor bold/italic
+                // This fixes bolding/italics not being applied. We synthesize via Typeface
+                // + fakeBold/skew because PDF uses separate fonts for bold, which we don't
+                // rasterize as outlines. Also honor Tz (hScale) via Paint.textScaleX.
+                val tfStyle = when {
+                    prim.isBold && prim.isItalic -> android.graphics.Typeface.BOLD_ITALIC
+                    prim.isBold -> android.graphics.Typeface.BOLD
+                    prim.isItalic -> android.graphics.Typeface.ITALIC
+                    else -> android.graphics.Typeface.NORMAL
+                }
+                val tf = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, tfStyle)
+                textPaint.typeface = tf
+                textPaint.isFakeBoldText = prim.isBold
+                textPaint.textSkewX = if (prim.isItalic) -0.25f else 0f
+                textPaint.textScaleX = prim.hScale.coerceIn(0.2f, 4f)
+                textStrokePaint.typeface = tf
+                textStrokePaint.isFakeBoldText = prim.isBold
+                textStrokePaint.textSkewX = textPaint.textSkewX
+                textStrokePaint.textScaleX = textPaint.textScaleX
+                glyphPathPaint.typeface = tf
+                glyphPathPaint.textSize = ts
+                glyphPathPaint.textSkewX = textPaint.textSkewX
+                glyphPathPaint.textScaleX = textPaint.textScaleX
+                glyphPathPaint.isFakeBoldText = prim.isBold
+
                 // Paint the glyphs unless this is a clip-only run (Tr 7).
                 if (rm != 7) {
                     if (prim.strokeColor != null && prim.strokeWidth > 0f) {
@@ -2297,9 +2393,9 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                 }
 
                 // Accumulate glyph outlines for text-clip render modes (Tr 4-7),
-                // applied at the following TextClipApply marker.
+                // applied at the following TextClipApply marker. Use styled glyphPathPaint
+                // so clip matches bold/italic visual.
                 if (rm in 4..7) {
-                    glyphPathPaint.textSize = ts
                     tmpGlyphPath.reset()
                     glyphPathPaint.getTextPath(prim.text, 0, prim.text.length, origin.x, origin.y, tmpGlyphPath)
                     textClipPath.addPath(tmpGlyphPath)

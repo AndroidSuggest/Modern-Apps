@@ -130,6 +130,9 @@ pub(crate) fn show_string(
                         advance: size,
                         render_mode: gs.render_mode as u8,
                         blend: gs.blend_mode,
+                        is_bold: false,
+                        is_italic: false,
+                        h_scale: th as f32,
                     });
                 }
             }
@@ -171,6 +174,8 @@ pub(crate) fn show_string(
                 let base_adv = fi.width(code) * tfs;
                 let _ = base_adv;
                 let glyph_device_adv = (glyph_advance_user * x_scale) as f32;
+                let bold = fi.style.bold;
+                let italic = fi.style.italic;
                 if prims.len() < MAX_PRIMITIVES {
                     if has_fill {
                         prims.push(Prim::Text {
@@ -184,6 +189,9 @@ pub(crate) fn show_string(
                             stroke_width: if has_stroke { Some(device_stroke_w) } else { None },
                             render_mode: rm,
                             blend: gs.blend_mode,
+                            is_bold: bold,
+                            is_italic: italic,
+                            h_scale: th as f32,
                         });
                     } else if has_stroke {
                         prims.push(Prim::Text {
@@ -197,6 +205,9 @@ pub(crate) fn show_string(
                             stroke_width: Some(device_stroke_w),
                             render_mode: rm,
                             blend: gs.blend_mode,
+                            is_bold: bold,
+                            is_italic: italic,
+                            h_scale: th as f32,
                         });
                     } else if clip_only {
                         // Mode 7: no paint, but carry the glyph so Kotlin can add
@@ -212,6 +223,9 @@ pub(crate) fn show_string(
                             stroke_width: None,
                             render_mode: 7,
                             blend: gs.blend_mode,
+                            is_bold: bold,
+                            is_italic: italic,
+                            h_scale: th as f32,
                         });
                     }
                 }

@@ -27,6 +27,7 @@ sealed interface PdfPrimitive {
      * A run of text with its baseline origin, on-page size and color. Optional
      * stroke for Tr modes 1,2,5,6. [renderMode] is the PDF text render mode (Tr):
      * 0 fill, 1 stroke, 2 fill+stroke, 3 invisible, 4-6 = 0-2 plus clip, 7 clip.
+     * v8 adds isBold/isItalic/hScale recovered from font BaseFont/FontDescriptor.
      */
     data class Text(
         val origin: Offset,
@@ -38,6 +39,9 @@ sealed interface PdfPrimitive {
         val advance: Float = size * 0.5f * text.length,
         val renderMode: Int = 0,
         val blend: BlendMode = BlendMode.Normal,
+        val isBold: Boolean = false,
+        val isItalic: Boolean = false,
+        val hScale: Float = 1f,
     ) : PdfPrimitive
 
     /**

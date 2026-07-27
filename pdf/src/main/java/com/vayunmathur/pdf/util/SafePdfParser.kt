@@ -8,13 +8,13 @@ import java.nio.ByteOrder
  * Decodes the compact little-endian primitive buffer produced by the native
  * renderer ([PdfNative.renderPage]) into a [SafePdfPage].
  *
- * Wire format v6 (must stay in sync with `pdf/rust/src/wire.rs`):
+ * Wire format v8 (must stay in sync with `pdf/rust/src/wire.rs`):
  * ```
- * header: u32 MAGIC=0x50444657, u32 VERSION=6, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+ * header: u32 MAGIC=0x50444657, u32 VERSION=8, f32 pageWidth, f32 pageHeight, u32 primitiveCount
  *  Legacy v1 fallback: header is f32 W,H,u32 count (no magic)
- *  v2..v5 fallbacks: same layout with fewer trailing per-primitive fields
+ *  v2..v7 fallbacks: same layout with fewer trailing per-primitive fields
  * per primitive: u8 tag, then payload
- *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5)
+ *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8 bit0 bold bit1 italic), f32 hScale (v8)
  *   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
  *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
  *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes]
@@ -28,7 +28,7 @@ import java.nio.ByteOrder
  *   12 SoftMaskPop: empty (v5)
  * ```
  * Pure function -> unit-testable with no Android dependencies beyond [Offset].
- * Enforces count guards to avoid OOM: max 50k primitives.
+ * Enforces count guards to avoid OOM: max 50k primitives. v8 adds font style.
  */
 object SafePdfParser {
 
@@ -51,12 +51,13 @@ object SafePdfParser {
     private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 7
+    const val WIRE_VERSION: Int = 8
     private const val WIRE_VERSION_V2 = 2
     private const val WIRE_VERSION_V4 = 4
     private const val WIRE_VERSION_V5 = 5
     private const val WIRE_VERSION_V6 = 6
     private const val WIRE_VERSION_V7 = 7
+    private const val WIRE_VERSION_V8 = 8
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -97,6 +98,7 @@ object SafePdfParser {
         val isV5 = wireVersion >= WIRE_VERSION_V5
         val isV6 = wireVersion >= WIRE_VERSION_V6
         val isV7 = wireVersion >= WIRE_VERSION_V7
+        val isV8 = wireVersion >= WIRE_VERSION_V8
         // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
         // forward-compat parsing as long as the tags are known.
         if (wireVersion !in 1..WIRE_VERSION) {
@@ -156,6 +158,20 @@ object SafePdfParser {
                     } else {
                         size * 0.5f * txt.length.coerceAtLeast(1)
                     }
+                    val isBold: Boolean
+                    val isItalic: Boolean
+                    val hScale: Float
+                    if (isV8) {
+                        if (buf.remaining() < 5) throw IllegalArgumentException("Text v8 fontFlags truncated")
+                        val fontFlags = buf.get().toInt() and 0xFF
+                        isBold = fontFlags and 1 != 0
+                        isItalic = fontFlags and 2 != 0
+                        hScale = buf.float
+                    } else {
+                        isBold = false
+                        isItalic = false
+                        hScale = 1f
+                    }
                     primitives.add(
                         PdfPrimitive.Text(
                             origin = Offset(x, y),
@@ -167,6 +183,9 @@ object SafePdfParser {
                             advance = adv,
                             renderMode = renderMode,
                             blend = blend,
+                            isBold = isBold,
+                            isItalic = isItalic,
+                            hScale = hScale,
                         )
                     )
                 }

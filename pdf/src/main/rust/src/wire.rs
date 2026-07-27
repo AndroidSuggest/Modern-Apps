@@ -1,9 +1,11 @@
 use crate::*;
 
     const WIRE_MAGIC: u32 = 0x50444657; // 'PDFW'
-    const WIRE_VERSION: u32 = 7;
+    const WIRE_VERSION: u32 = 8;
     #[allow(dead_code)]
     const WIRE_VERSION_V2: u32 = 2;
+    const WIRE_VERSION_V7: u32 = 7;
+    const WIRE_VERSION_V8: u32 = 8;
     const TAG_TEXT: u8 = 1;
     const TAG_FILL: u8 = 2;
     const TAG_STROKE: u8 = 3;
@@ -22,12 +24,12 @@ use crate::*;
     const PATHOP_CUBIC: u8 = 2;
     const PATHOP_CLOSE: u8 = 3;
 
-    /// Serialize a page into a compact little-endian buffer v6:
+    /// Serialize a page into a compact little-endian buffer v8:
     ///
     /// ```text
-    /// header: u32 MAGIC=0x50444657, u32 VERSION=6, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+    /// header: u32 MAGIC=0x50444657, u32 VERSION=8, f32 pageWidth, f32 pageHeight, u32 primitiveCount
     /// per primitive: u8 tag, then payload
-    ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7)
+    ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8: bit0 bold bit1 italic), f32 hScale (v8)
     ///   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
     ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
     ///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
@@ -40,7 +42,7 @@ use crate::*;
     ///   10 SoftMaskPush: u8 maskType (0 alpha, 1 luminosity) (v5)
     ///   11 SoftMaskContent: empty (v5)
     ///   12 SoftMaskPop: empty (v5)
-    /// v1 legacy (no magic), v2/v3/v4 remain backward compatible for cached pages.
+    /// v1 legacy (no magic), v2..v7 remain backward compatible for cached pages.
     /// ```
     pub fn serialize(page: &PageData) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -51,7 +53,7 @@ use crate::*;
         buf.extend_from_slice(&(page.prims.len() as u32).to_le_bytes());
         for prim in &page.prims {
             match prim {
-                Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance, render_mode, blend } => {
+                Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance, render_mode, blend, is_bold, is_italic, h_scale } => {
                     buf.push(TAG_TEXT);
                     buf.extend_from_slice(&x.to_le_bytes());
                     buf.extend_from_slice(&y.to_le_bytes());
@@ -73,6 +75,11 @@ use crate::*;
                     buf.push(*render_mode); // v4
                     buf.push(*blend as u8); // v5
                     buf.extend_from_slice(&advance.to_le_bytes()); // v7: device-space glyph advance
+                    let mut font_flags = 0u8;
+                    if *is_bold { font_flags |= 1; }
+                    if *is_italic { font_flags |= 2; }
+                    buf.push(font_flags); // v8: bold/italic
+                    buf.extend_from_slice(&h_scale.to_le_bytes()); // v8
                 }
                 Prim::Fill { argb, even_odd, contours, blend } => {
                     buf.push(TAG_FILL);
@@ -244,6 +251,9 @@ use crate::*;
                         advance: 12.0,
                         render_mode: 0,
                         blend: BlendMode::Multiply,
+                        is_bold: true,
+                        is_italic: false,
+                        h_scale: 1.0,
                     },
                     Prim::Fill {
                         argb: 0xFFAABBCC,
@@ -304,6 +314,8 @@ use crate::*;
             assert_eq!(r.u8(), 0); // render_mode (v4)
             assert_eq!(r.u8(), BlendMode::Multiply as u8); // blend (v5)
             assert!((r.f32() - 12.0).abs() < 1e-6); // advance (v7)
+            assert_eq!(r.u8(), 1); // fontFlags bold (v8)
+            assert!((r.f32() - 1.0).abs() < 1e-6); // h_scale (v8)
 
             assert_eq!(r.u8(), TAG_FILL);
             assert_eq!(r.u32(), 0xFFAABBCC);

@@ -187,6 +187,8 @@ use crate::*;
             widths: HashMap::from([(0x41, 0.5), (0x42, 0.5)]),
             default_width: 0.5,
             t3: None,
+            style: FontStyle::default(),
+            base_font: String::new(),
         };
         let mut fonts = HashMap::new();
         fonts.insert(b"F1".to_vec(), fi);
@@ -229,6 +231,8 @@ use crate::*;
             widths: HashMap::new(),
             default_width: 0.5,
             t3: None,
+            style: FontStyle::default(),
+            base_font: String::new(),
         };
         let mut fonts = HashMap::new();
         fonts.insert(b"F1".to_vec(), fi);
