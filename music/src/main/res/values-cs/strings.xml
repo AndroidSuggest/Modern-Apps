@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Hudba</string>
     <string name="nav_albums">Alba</string>
@@ -36,4 +37,4 @@
     <string name="grant_audio_permissions">Povolit přístup k audiu a médiím</string>
     <string name="grant_storage_permissions">Povolit přístup k uložišti</string>
     <string name="content_desc_album_art_grid">Mřížka obalů alb</string>
-    </resources>
+</resources>
