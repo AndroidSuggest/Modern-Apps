@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">YouPipe</string>
     <string name="title_history">历史记录</string>
@@ -89,4 +90,19 @@
     <string name="label_system_default">系统默认</string>
     <string name="video_quality">%1$s</string>
     <string name="audio_bitrate">%1$dkbps</string>
+    <string name="cc">CC</string>
+    <string name="loading_recent_subscriptions">正在加载最近的订阅</string>
+    <string name="download_options">下载选项</string>
+    <string name="clear">清除</string>
+    <string name="clear_history">清除历史记录</string>
+    <string name="downloads">下载</string>
+    <string name="off">已关闭</string>
+    <string name="selected">已选择 %1$s 项</string>
+    <string name="selected_1">已选择 %1$s 项</string>
+    <string name="download">下载</string>
+    <string name="cancel">取消</string>
+    <string name="language">语言</string>
+    <string name="chapter">章节</string>
+    <string name="are_you_sure_you_want_to_clear_all_watch">确定要清除所有观看历史记录吗？</string>
+    <string name="resolution">分辨率</string>
 </resources>
