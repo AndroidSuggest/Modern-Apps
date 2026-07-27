@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kontaktid</string>
     <string name="contact_not_found">Kontakti ei leidu</string>
@@ -91,4 +92,6 @@
     <string name="no_name">(Nimi puudub)</string>
     <string name="add_number_to_contact">Lisa telefoninumber kontaktile</string>
     <string name="create_new_contact">Lisa uus kontakt</string>
+    <string name="crop_photo">Kadreeri fotot</string>
+    <string name="import_contacts_from_vcf_files">Impordi kontaktid .vcf failist</string>
 </resources>
