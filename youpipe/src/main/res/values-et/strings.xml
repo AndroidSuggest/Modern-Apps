@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_history">Ajalugu</string>
     <string name="label_search">Otsi</string>
@@ -87,4 +88,4 @@
     <string name="label_youtube_content">YouTube\'i sisu</string>
     <string name="label_youtube_language">Sisu keel</string>
     <string name="label_system_default">Süsteemi vaikeseadistus</string>
-    </resources>
+</resources>
