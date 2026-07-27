@@ -35,4 +35,90 @@
     <string name="never">Никогда</string>
     <string name="count">Счет</string>
     <string name="until">Пока</string>
+    <plurals name="rrule_every_months">
+    </plurals>
+    <string name="theme_light"></string>
+    <string name="until_date"></string>
+    <plurals name="reminder_hours_before">
+    </plurals>
+    <string name="month_option_day_of_month"></string>
+    <string name="delete_all_events"></string>
+    <string name="choose_color"></string>
+    <string name="full_date_time_range_format"></string>
+    <string name="layout_full_week_summary"></string>
+    <string name="import_events_from_ics_files"></string>
+    <plurals name="rrule_count_suffix">
+    </plurals>
+    <string name="theme_dark"></string>
+    <string name="date_range_format"></string>
+    <string name="theme_system_default"></string>
+    <string name="create_a_calendar"></string>
+    <string name="month_option_last_weekday"></string>
+    <string name="year_option_week"></string>
+    <string name="year_option_day_of_year"></string>
+    <string name="import_summary"></string>
+    <string name="rrule_weekly"></string>
+    <string name="hour_am"></string>
+    <string name="layout_short_month"></string>
+    <string name="layout_work_week"></string>
+    <plurals name="rrule_every_weeks">
+    </plurals>
+    <string name="create_new_calendar"></string>
+    <string name="no_events_found"></string>
+    <string name="theme"></string>
+    <string name="layout_agenda"></string>
+    <plurals name="reminder_minutes_before">
+    </plurals>
+    <plurals name="rrule_every_days">
+    </plurals>
+    <string name="new_local_calendar"></string>
+    <string name="layout_work_week_summary"></string>
+    <string name="search_countries"></string>
+    <string name="layout_short_agenda"></string>
+    <string name="calendar_name"></string>
+    <string name="please_grant_calendar_permission"></string>
+    <string name="dropdown_freq_format"></string>
+    <string name="import_ics_file"></string>
+    <string name="choose_timezone"></string>
+    <string name="rrule_yearly"></string>
+    <string name="layout_day"></string>
+    <string name="layout_full_week"></string>
+    <string name="rrule_until_suffix"></string>
+    <string name="rename_calendar"></string>
+    <string name="delete_calendar"></string>
+    <string name="new_name"></string>
+    <string name="import_events"></string>
+    <string name="date_time_range_format"></string>
+    <string name="reminder_at_time_of_event"></string>
+    <string name="layout_short_work_week"></string>
+    <string name="change_color_for"></string>
+    <string name="rrule_on_days"></string>
+    <string name="layout_short_work_week_summary"></string>
+    <string name="layout_month"></string>
+    <string name="rrule_daily"></string>
+    <string name="add_public_holidays_for_countries"></string>
+    <string name="calendar_id_label"></string>
+    <string name="hour_pm"></string>
+    <string name="delete_calendar_confirm"></string>
+    <plurals name="rrule_every_years">
+    </plurals>
+    <string name="delete_calendar_name_confirm"></string>
+    <string name="layout_short_full_week"></string>
+    <string name="rrule_monthly"></string>
+    <string name="create_new_calendar_option"></string>
+    <string name="month_year_format"></string>
+    <string name="month_option_nth_weekday"></string>
+    <string name="year_option_month_day"></string>
+    <string name="open_location_in_navigation"></string>
+    <string name="layout_short_full_week_summary"></string>
+    <string name="choose_language"></string>
+    <plurals name="reminder_days_before">
+    </plurals>
+    <string name="add"></string>
+    <string name="import_to_existing_calendar"></string>
+    <string name="default_layout"></string>
+    <string name="change_color"></string>
+    <string name="delete_this_event"></string>
+    <string name="layout_short_day"></string>
+    <string name="holiday_calendars"></string>
 </resources>
