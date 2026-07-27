@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ok">Ok</string>
+    <string name="ok">OK</string>
     <string name="cancel">Cancelar</string>
     <string name="delete">Borrar</string>
-    <string name="settings">Configuración de la pantalla</string>
+    <string name="settings">Configuración</string>
     <string name="delete_selected_contacts_title"></string>
     <string name="contact_photo"></string>
     <string name="no_groups_found"></string>
