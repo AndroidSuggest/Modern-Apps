@@ -75,6 +75,7 @@ import com.vayunmathur.photos.ui.PeoplePage
 import com.vayunmathur.photos.ui.PhotoPage
 import com.vayunmathur.photos.ui.SecureFolderPage
 import com.vayunmathur.photos.ui.TrashPage
+import com.vayunmathur.photos.ui.WallpaperPage
 import com.vayunmathur.photos.util.GalleryViewModel
 import com.vayunmathur.photos.util.GalleryViewModelFactory
 import com.vayunmathur.photos.util.ImageLoader
@@ -239,6 +240,9 @@ sealed interface Route: NavKey {
 
     @Serializable
     data object SecureFolder: Route
+
+    @Serializable
+    data class Wallpaper(val id: Long, val uri: String? = null) : Route
 }
 
 @Composable
@@ -282,7 +286,11 @@ fun Navigation(
         }
 
         entry<Route.PhotoPage> {
-            PhotoPage(galleryViewModel, photoMapViewModel, it.id, it.overridePhotosList, it.pendingUri)
+            PhotoPage(galleryViewModel, photoMapViewModel, it.id, it.overridePhotosList, it.pendingUri, backStack)
+        }
+
+        entry<Route.Wallpaper> {
+            WallpaperPage(backStack, it.id, it.uri)
         }
 
         entry<Route.Trash> {

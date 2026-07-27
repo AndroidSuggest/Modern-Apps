@@ -99,6 +99,11 @@ class DefaultConverters {
     @TypeConverter
     fun toInstant(value: Long) = Instant.fromEpochSeconds(value)
     @TypeConverter
+    fun fromInstantNullable(value: Instant?): Long? = value?.epochSeconds
+    @TypeConverter
+    fun toInstantNullable(value: Long?): Instant? = value?.let { Instant.fromEpochSeconds(it) }
+
+    @TypeConverter
     fun fromList(value: List<Long>?): String? {
         return value?.let { Json.encodeToString(it) }
     }
@@ -119,6 +124,10 @@ class DefaultConverters {
     fun fromDuration(value: Duration) = value.inWholeMilliseconds
     @TypeConverter
     fun toDuration(value: Long) = value.milliseconds
+    @TypeConverter
+    fun fromDurationNullable(value: Duration?): Long? = value?.inWholeMilliseconds
+    @TypeConverter
+    fun toDurationNullable(value: Long?): Duration? = value?.milliseconds
 
     @TypeConverter
     fun fromLocalTime(value: LocalTime) = value.toSecondOfDay()

@@ -397,6 +397,32 @@
     <!-- Tool: eyedropper pick color from image. Noun -->
     <string name="tool_eyedropper">Eyedropper</string>
 
+    <!-- Wallpaper setting screen -->
+    <!-- Title for wallpaper crop/preview screen. Verb phrase -->
+    <string name="set_as_wallpaper">Set as wallpaper</string>
+    <!-- Segment: home screen wallpaper target. Noun -->
+    <string name="wallpaper_home">Home</string>
+    <!-- Segment: lock screen wallpaper target. Noun phrase -->
+    <string name="wallpaper_lock">Lock</string>
+    <!-- Segment: both home and lock screens. Noun phrase -->
+    <string name="wallpaper_both">Both</string>
+    <!-- Toggle label: static (no parallax) wallpaper mode. Adjective -->
+    <string name="wallpaper_static">Static</string>
+    <!-- Toggle label: scrollable (parallax) wallpaper mode. Adjective -->
+    <string name="wallpaper_scrollable">Scrollable</string>
+    <!-- Description for scrollable wallpaper: wider image that moves with home screens. Sentence -->
+    <string name="wallpaper_scrollable_desc">Scrollable wallpapers are wider and move when you swipe between home screens</string>
+    <!-- Button: confirm and apply wallpaper. Verb phrase -->
+    <string name="set_wallpaper">Set wallpaper</string>
+    <!-- Loading text while wallpaper is being applied. Verb phrase with gerund -->
+    <string name="setting_wallpaper">Setting wallpaper…</string>
+    <!-- Success snackbar after wallpaper applied. Exclamation -->
+    <string name="wallpaper_set_success">Wallpaper applied!</string>
+    <!-- Failure snackbar when wallpaper setting failed. Sentence with error detail placeholder %1$s -->
+    <string name="wallpaper_set_failed">Failed to set wallpaper: <xliff:g id="error" example="IO error">%1$s</xliff:g></string>
+    <!-- Error when full-res image cannot be decoded for wallpaper. Sentence -->
+    <string name="wallpaper_load_failed">Failed to load image</string>
+
     <!-- Empty description when no mode active -->
     <string name="editor_desc_none"></string>
     <!-- Desc: fine-tune light and color with sliders -->

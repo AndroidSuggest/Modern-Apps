@@ -69,7 +69,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.vayunmathur.library.ui.IconEdit
 import com.vayunmathur.library.ui.IconShare
+import com.vayunmathur.library.ui.IconWallpaper
+import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.R
+import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.util.GalleryViewModel
 import com.vayunmathur.photos.util.PhotoMapViewModel
@@ -87,7 +90,7 @@ import kotlinx.datetime.toLocalDateTime
 data class ZoomState(val scale: Float = 1f, val offset: Offset = Offset.Zero)
 
 @Composable
-fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapViewModel, id: Long, overridePhotosList: List<Photo>?, pendingUri: String? = null) {
+fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapViewModel, id: Long, overridePhotosList: List<Photo>?, pendingUri: String? = null, backStack: NavBackStack<Route>? = null) {
     val photosAll by galleryViewModel.photos.collectAsState()
     val photos = overridePhotosList ?: photosAll.filter { !it.isTrashed }
     val context = LocalContext.current
@@ -168,6 +171,9 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
                                         putExtra("photo_id", photo.id)
                                     }
                             context.startActivity(intent)
+                        },
+                        onSetWallpaper = { p ->
+                            backStack?.add(Route.Wallpaper(p.id, p.uri))
                         }
                 )
             }
@@ -207,7 +213,8 @@ fun PhotoDetailView(
         onZoomUpdate: (ZoomState) -> Unit,
         onToggleMetadata: () -> Unit,
         refreshKey: Int = 0,
-        onEditPhoto: () -> Unit
+        onEditPhoto: () -> Unit,
+        onSetWallpaper: (Photo) -> Unit = {}
 ) {
     val countryNames by photoMapViewModel.countryNames.collectAsState()
     val countryName = countryNames[photo.id]
@@ -427,6 +434,9 @@ fun PhotoDetailView(
                         verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (photo.videoData == null) {
+                        IconButton(onClick = { onSetWallpaper(photo) }) {
+                            IconWallpaper(tint = Color.White)
+                        }
                         IconButton(onClick = onEditPhoto) { IconEdit(tint = Color.White) }
                     }
                     IconButton(

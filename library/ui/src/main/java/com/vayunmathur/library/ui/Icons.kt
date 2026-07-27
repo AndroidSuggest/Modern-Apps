@@ -189,6 +189,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.outlined.HighlightAlt
 import androidx.compose.material.icons.outlined.Inbox
@@ -1014,3 +1015,7 @@ fun IconShapeArrowFill(modifier: Modifier = Modifier, tint: Color = LocalContent
 @Composable
 fun IconShapeArrowOutline(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Outlined.ArrowRightAlt, "Arrow outline", modifier, tint)
+
+@Composable
+fun IconWallpaper(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Wallpaper, "Wallpaper", modifier, tint)
