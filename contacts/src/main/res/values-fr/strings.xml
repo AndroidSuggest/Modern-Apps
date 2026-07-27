@@ -36,7 +36,7 @@
     <string name="contact_photo">Photo du contact</string>
     <string name="add_picture">Ajouter une photo</string>
     <string name="change_picture">Modifier</string>
-    <string name="remove_picture">Supprimer</string>
+    <string name="remove_picture">Retirer</string>
     <string name="settings">Paramètres</string>
     <string name="visible_accounts">Comptes visibles</string>
     <string name="add_contacts_account">Ajouter un compte de contacts</string>
@@ -58,7 +58,7 @@
     <string name="backup_and_export">Sauvegarde et exportation</string>
     <string name="grant_calendar_permissions">Autoriser l\'accès au calendrier</string>
     <string name="delete_selected_contacts_title">Supprimer les contacts sélectionnés</string>
-    <string name="selected_count">%1$d sélectionnés</string>
+    <string name="selected_count">%1$d sélectionné(s)</string>
     <string name="display">Affichage</string>
     <string name="show_account_labels">Afficher les comptes de contact</string>
     <string name="delete_contact_confirm">Voulez-vous vraiment supprimer ce contact ? Cette action est irréversible.</string>
@@ -82,7 +82,7 @@
     <string name="delete_group_confirm">Voulez-vous vraiment supprimer ce groupe ? Les contacts du groupe ne seront pas supprimés.</string>
     <string name="no_groups_found">Aucun groupe trouvé. Créez-en un dans l\'onglet Groupes.</string>
     <string name="contacts_count">%1$d contacts</string>
-    <string name="done">Complété</string>
+    <string name="done">Terminer</string>
     <string name="select_account">Sélectionner un compte</string>
     <string name="import_vcf_file">Importer un fichier .vcf</string>
     <string name="import_to_existing_account">Importer vers un compte existant</string>
@@ -92,4 +92,6 @@
     <string name="add_number_to_contact">Ajouter un numéro à un contact</string>
     <string name="create_new_contact">Créer un nouveau contact</string>
     <string name="no_name">(Sans nom)</string>
+    <string name="crop_photo">Recadrer la photo</string>
+    <string name="import_contacts_from_vcf_files">Importer des contacts depuis des fichiers .vcf</string>
 </resources>
