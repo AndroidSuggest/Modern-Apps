@@ -114,6 +114,19 @@ fun HtmlText(
                 }
             }
             val htmlToLoad = if (cidMap.isEmpty()) html else rewrittenHtml
+            val richCss = """
+                h1,h2,h3 { margin:0.5em 0; font-weight:600; line-height:1.25; }
+                h1 { font-size:1.6em; }
+                h2 { font-size:1.35em; }
+                h3 { font-size:1.15em; }
+                blockquote { border-left:2px solid #ccc; margin:0 0 0 8px; padding-left:8px; color:#666; font-style:italic; }
+                code { font-family:monospace; background:rgba(0,0,0,0.06); padding:2px 4px; border-radius:3px; word-break:break-word; }
+                hr { border:none; border-top:1px solid #ccc; margin:12px 0; }
+                pre { background:#f5f5f5; padding:8px; overflow-x:auto; border-radius:4px; font-family:monospace; white-space:pre-wrap; }
+                ul, ol { margin:0.5em 0; padding-left:24px; }
+                li { margin:0.25em 0; }
+            """.trimIndent()
+
             if (isDark) {
                 val darkModeHtml = """
                     <html>
@@ -138,6 +151,11 @@ fun HtmlText(
                                 filter: invert(1) hue-rotate(180deg) brightness(0.9);
                                 height: auto;
                             }
+                            code {
+                                filter: invert(1) hue-rotate(180deg);
+                                background: rgba(255,255,255,0.12) !important;
+                            }
+                            $richCss
                             $quoteCss
                         </style>
                     </head>
@@ -166,6 +184,7 @@ fun HtmlText(
                             }
                             img, table { max-width: 100% !important; }
                             img { height: auto; }
+                            $richCss
                             $quoteCss
                         </style>
                     </head>

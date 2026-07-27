@@ -29,7 +29,12 @@ import androidx.compose.material.icons.filled.ArrowRightAlt
 import androidx.compose.material.icons.filled.ChangeHistory
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.FormatClear
+import androidx.compose.material.icons.filled.FormatColorFill
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Hexagon
@@ -46,6 +51,7 @@ import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.StrikethroughS
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.outlined.ArrowRightAlt
 import androidx.compose.material.icons.outlined.ChangeHistory
@@ -1019,3 +1025,32 @@ fun IconShapeArrowOutline(modifier: Modifier = Modifier, tint: Color = LocalCont
 @Composable
 fun IconWallpaper(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.Wallpaper, "Wallpaper", modifier, tint)
+
+// --- Email composer rich formatting ---
+@Composable
+fun IconFormatQuote(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.FormatQuote, "Blockquote", modifier, tint)
+
+@Composable
+fun IconFormatCode(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Code, "Code", modifier, tint)
+
+@Composable
+fun IconFormatHorizontalRule(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.HorizontalRule, "Horizontal rule", modifier, tint)
+
+@Composable
+fun IconFormatTitle(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Title, "Heading", modifier, tint)
+
+@Composable
+fun IconFormatClear(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.FormatClear, "Clear formatting", modifier, tint)
+
+@Composable
+fun IconFormatColorFill(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.FormatColorFill, "Highlight", modifier, tint)
+
+@Composable
+fun IconFormatSize(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.FormatSize, "Font size", modifier, tint)

@@ -1485,7 +1485,7 @@ fun ComposerScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            com.vayunmathur.library.ui.HtmlEditor(
+            com.vayunmathur.email.composer.EmailHtmlEditor(
                 controller = bodyController,
                 placeholder = stringResource(R.string.body_label),
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -1561,14 +1561,232 @@ private fun EmailComposerFormatToolbar(
     controller: com.vayunmathur.email.composer.EmailHtmlEditorController,
     onInsertImage: () -> Unit,
 ) {
+    var headingMenu by remember { mutableStateOf(false) }
+    var alignMenu by remember { mutableStateOf(false) }
+    var colorDialog by remember { mutableStateOf(0) } // 0 none, 1 fg, 2 bg
+    var sizeMenu by remember { mutableStateOf(false) }
+    var fontMenu by remember { mutableStateOf(false) }
+
+    val headingLevel = controller.getCurrentHeadingLevel()
+    val headingLabel = when (headingLevel) {
+        1 -> "H1"; 2 -> "H2"; 3 -> "H3"; else -> "Normal"
+    }
+    val alignCss = controller.getCurrentAlignment()
+    val blockquoteActive = controller.isBlockquoteActive()
+    val codeActive = controller.isInlineCodeActive()
+
     com.vayunmathur.library.ui.EditorBottomBar(modifier = Modifier, scrollable = true) {
+        // Heading dropdown
+        Box {
+            TextButton(onClick = { headingMenu = true }) {
+                Text(headingLabel)
+                IconArrowDropDown()
+            }
+            DropdownMenu(expanded = headingMenu, onDismissRequest = { headingMenu = false }) {
+                DropdownMenuItem(text = { Text("Normal") }, onClick = { headingMenu = false; controller.toggleHeading(null) })
+                DropdownMenuItem(text = { Text("Heading 1") }, onClick = { headingMenu = false; controller.toggleHeading(1) })
+                DropdownMenuItem(text = { Text("Heading 2") }, onClick = { headingMenu = false; controller.toggleHeading(2) })
+                DropdownMenuItem(text = { Text("Heading 3") }, onClick = { headingMenu = false; controller.toggleHeading(3) })
+            }
+        }
+
         com.vayunmathur.library.ui.EditorBaseButtons(formatter = controller)
-        // Extra image button – use library's image icon
+
+        HorizontalDivider(modifier = Modifier.height(24.dp).width(1.dp))
+
+        // Alignment dropdown
+        Box {
+            val alignIcon: @Composable () -> Unit = when (alignCss) {
+                "center" -> { { IconFormatAlignCenter() } }
+                "right" -> { { IconFormatAlignRight() } }
+                "justify" -> { { IconFormatAlignJustify() } }
+                else -> { { IconFormatAlignLeft() } }
+            }
+            com.vayunmathur.library.ui.FormatIconButton(
+                contentDescription = "Alignment",
+                active = alignCss != null,
+                onClick = { alignMenu = true },
+                icon = alignIcon,
+            )
+            DropdownMenu(expanded = alignMenu, onDismissRequest = { alignMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Left") }, leadingIcon = { IconFormatAlignLeft() },
+                    onClick = { alignMenu = false; controller.setAlignment(null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("Center") }, leadingIcon = { IconFormatAlignCenter() },
+                    onClick = { alignMenu = false; controller.setAlignment("center") }
+                )
+                DropdownMenuItem(
+                    text = { Text("Right") }, leadingIcon = { IconFormatAlignRight() },
+                    onClick = { alignMenu = false; controller.setAlignment("right") }
+                )
+                DropdownMenuItem(
+                    text = { Text("Justify") }, leadingIcon = { IconFormatAlignJustify() },
+                    onClick = { alignMenu = false; controller.setAlignment("justify") }
+                )
+            }
+        }
+
+        // Blockquote, code, hr, clear
+        com.vayunmathur.library.ui.FormatIconButton(
+            contentDescription = "Blockquote",
+            active = blockquoteActive,
+            onClick = { controller.toggleBlockquote() },
+        ) { IconFormatQuote() }
+
+        com.vayunmathur.library.ui.FormatIconButton(
+            contentDescription = "Inline code",
+            active = codeActive,
+            onClick = { controller.toggleInlineCode() },
+        ) { IconFormatCode() }
+
+        com.vayunmathur.library.ui.FormatIconButton(
+            contentDescription = "Horizontal rule",
+            onClick = { controller.insertHorizontalRule() },
+        ) { IconFormatHorizontalRule() }
+
+        HorizontalDivider(modifier = Modifier.height(24.dp).width(1.dp))
+
+        // Text color
+        com.vayunmathur.library.ui.FormatIconButton(
+            contentDescription = "Text color",
+            active = colorDialog == 1,
+            onClick = { colorDialog = 1 },
+        ) { IconFormatColorText() }
+
+        // Highlight / background
+        com.vayunmathur.library.ui.FormatIconButton(
+            contentDescription = "Highlight",
+            active = colorDialog == 2,
+            onClick = { colorDialog = 2 },
+        ) { IconFormatColorFill() }
+
+        // Font size dropdown
+        Box {
+            com.vayunmathur.library.ui.FormatIconButton(
+                contentDescription = "Font size",
+                onClick = { sizeMenu = true },
+            ) { IconFormatSize() }
+            DropdownMenu(expanded = sizeMenu, onDismissRequest = { sizeMenu = false }) {
+                DropdownMenuItem(text = { Text("Small") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(0.9f) })
+                DropdownMenuItem(text = { Text("Normal") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(null) })
+                DropdownMenuItem(text = { Text("Large") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(1.2f) })
+                DropdownMenuItem(text = { Text("Extra Large") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(1.4f) })
+            }
+        }
+
+        // Font family dropdown
+        Box {
+            com.vayunmathur.library.ui.FormatIconButton(
+                contentDescription = "Font family",
+                onClick = { fontMenu = true },
+            ) { IconFormatTitle() }
+            DropdownMenu(expanded = fontMenu, onDismissRequest = { fontMenu = false }) {
+                DropdownMenuItem(text = { Text("Default") }, onClick = { fontMenu = false; controller.setFontFamily(null) })
+                DropdownMenuItem(text = { Text("Sans") }, onClick = { fontMenu = false; controller.setFontFamily("sans-serif") })
+                DropdownMenuItem(text = { Text("Serif") }, onClick = { fontMenu = false; controller.setFontFamily("serif") })
+                DropdownMenuItem(text = { Text("Monospace") }, onClick = { fontMenu = false; controller.setFontFamily("monospace") })
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.height(24.dp).width(1.dp))
+
+        // Clear formatting
+        com.vayunmathur.library.ui.FormatIconButton(
+            contentDescription = "Clear formatting",
+            onClick = { controller.clearFormatting() },
+        ) { IconFormatClear() }
+
+        // Image button
         com.vayunmathur.library.ui.FormatIconButton(
             contentDescription = stringResource(R.string.cd_insert_image),
             onClick = onInsertImage,
         ) { com.vayunmathur.library.ui.IconImage() }
     }
+
+    // Color picker dialog
+    if (colorDialog != 0) {
+        val isForeground = colorDialog == 1
+        EmailColorPickerDialog(
+            title = if (isForeground) "Text color" else "Highlight",
+            onDismiss = { colorDialog = 0 },
+            onColorSelected = { colorInt ->
+                if (isForeground) {
+                    if (colorInt == null) controller.setTextColor(null) else controller.setTextColor(colorInt)
+                } else {
+                    if (colorInt == null) controller.setHighlight(null) else controller.setHighlight(colorInt)
+                }
+                colorDialog = 0
+            }
+        )
+    }
+}
+
+@Composable
+private fun EmailColorPickerDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onColorSelected: (Int?) -> Unit,
+) {
+    val palette = remember {
+        listOf(
+            null to "Default",
+            android.graphics.Color.BLACK to "Black",
+            android.graphics.Color.parseColor("#D32F2F") to "Red",
+            android.graphics.Color.parseColor("#1976D2") to "Blue",
+            android.graphics.Color.parseColor("#388E3C") to "Green",
+            android.graphics.Color.parseColor("#F57C00") to "Orange",
+            android.graphics.Color.parseColor("#7B1FA2") to "Purple",
+            android.graphics.Color.parseColor("#00796B") to "Teal",
+            android.graphics.Color.parseColor("#455A64") to "Gray",
+            android.graphics.Color.parseColor("#FFEB3B") to "Yellow",
+            android.graphics.Color.parseColor("#FFCDD2") to "Light Red",
+            android.graphics.Color.parseColor("#BBDEFB") to "Light Blue",
+            android.graphics.Color.parseColor("#C8E6C9") to "Light Green",
+            android.graphics.Color.parseColor("#FFF9C4") to "Light Yellow",
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // chunk into rows of 4
+                palette.chunked(4).forEach { rowItems ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        rowItems.forEach { (colorInt, label) ->
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(
+                                        color = if (colorInt == null) MaterialTheme.colorScheme.surfaceVariant
+                                        else Color(colorInt),
+                                        shape = androidx.compose.foundation.shape.CircleShape,
+                                    )
+                                    .clickable { onColorSelected(colorInt) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (colorInt == null) {
+                                    IconClose(modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
 }
 
 private fun copyInlineToCache(context: android.content.Context, uri: Uri, name: String): Uri? {

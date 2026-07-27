@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.text.Spanned
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.vayunmathur.library.ui.HtmlEditorController
@@ -12,7 +13,8 @@ import java.util.UUID
 
 /**
  * Email-specific controller extending the generic HtmlEditorController.
- * Adds inline image (CID) support for WYSIWYG composer.
+ * Adds inline image (CID) support for WYSIWYG composer, plus rich formatting
+ * (headings, alignment, blockquote, inline code, colors, font size/family, hr).
  */
 class EmailHtmlEditorController(
     initialHtml: String = "",
@@ -20,16 +22,38 @@ class EmailHtmlEditorController(
     initialHtml = initialHtml,
     htmlSerializer = { spanned -> serializeEmailHtml(spanned) },
 ) {
+    // Custom TagHandler to restore rich formatting when setHtml re-parses the raw HTML
+    val tagHandler = EmailHtmlTagHandler()
+
     // Observable list of inline images currently in the editor (for UI chips / size guard)
     val inlineImages: SnapshotStateList<InlineImage> = mutableStateListOf()
 
     /**
+     * Override factory-used html injection to include our TagHandler.
+     * HtmlEditor composable uses HtmlCompat.fromHtml directly with factory; we override the
+     * refresh path and expose html that preserves raw html, but for setHtml (draft reload)
+     * the AndroidView update block does fromHtml(html). To ensure rich tags parse, we must
+     * subclass the HtmlEditor composable handling – but a simpler path is to override setHtml
+     * to keep raw html and let the library HtmlEditor's factory be augmented in MainActivity.
+     * For now we expose a helper that MainActivity's custom HtmlEditor copy can use;
+     * however even without factory override, raw html is preserved via controller.html state
+     * (commitHtml) which is what gets sent. Draft reload via setHtml will re-parse – losing colors
+     * unless factory uses tagHandler. We provide the tagHandler for MainActivity to use.
+     */
+
+    override fun setTextColor(color: Int?) {
+        if (color == null) super.setTextColor(null)
+        else super.setTextColor(color)
+    }
+
+    override fun setHighlight(color: Int?) {
+        if (color == null) super.setHighlight(null)
+        else super.setHighlight(color)
+    }
+
+    /**
      * Insert an image from [sourceUri] into the editor at current cursor.
      * Returns the generated CID or null on failure.
-     *
-     * Generation:
-     *  - cid = "<uuid>@inline.local" without brackets stored, header will wrap <>.
-     *  - bitmap decoded scaled to max 1024w to keep .eml reasonable.
      */
     fun insertInlineImage(
         context: Context,
@@ -44,8 +68,6 @@ class EmailHtmlEditorController(
         val bitmap = decodeSampledBitmap(context, sourceUri, 1024) ?: return null
         val drawable = BitmapDrawable(context.resources, bitmap)
 
-        // Scale bounds: if bitmap wider than edit width, shrink proportionally.
-        // We cap at 1024 but also try to fit within ~80% of EditText width if available.
         val maxWidth = 1024
         var w = bitmap.width
         var h = bitmap.height
@@ -54,7 +76,6 @@ class EmailHtmlEditorController(
             w = maxWidth
             h = (h * ratio).toInt()
         }
-        // Optionally cap to EditText width if known
         val etWidth = edit.width
         if (etWidth > 0) {
             val available = (etWidth * 0.85f).toInt().coerceAtLeast(100)
@@ -68,19 +89,15 @@ class EmailHtmlEditorController(
 
         val span = CidImageSpan(cid, sourceUri, drawable, mimeType, fileName)
 
-        // Insert placeholder char at cursor
         val cursor = (edit.selectionStart.coerceAtLeast(0)).coerceAtMost(editable.length)
-        // Ensure we guard watcher
         updating = true
         try {
             editable.insert(cursor, "\uFFFC")
-            editable.setSpan(span, cursor, cursor + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            // Move cursor after inserted image
+            editable.setSpan(span, cursor, cursor + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             edit.setSelection((cursor + 1).coerceAtMost(editable.length))
         } finally {
             updating = false
         }
-        // Track
         inlineImages.add(
             InlineImage(
                 cid = cid,
@@ -89,7 +106,6 @@ class EmailHtmlEditorController(
                 fileName = fileName,
             )
         )
-        // Refresh html
         inlineCleanupOrphans()
         commitHtml(htmlSerializer(editable))
         return cid
@@ -122,10 +138,6 @@ class EmailHtmlEditorController(
         }
     }
 
-    /**
-     * Scan editable for orphan CidImageSpans that were deleted via backspace
-     * and drop them from [inlineImages] list.
-     */
     fun inlineCleanupOrphans() {
         val edit = editText ?: return
         val editable = edit.text ?: return
@@ -136,9 +148,7 @@ class EmailHtmlEditorController(
         }
     }
 
-    /** Build list ready for sending: maps tracked InlineImage -> InlineAttachment */
     fun toInlineAttachments(): List<InlineAttachment> {
-        // Deduplicate by cid, keep last uri
         return inlineImages.map {
             InlineAttachment(
                 cid = it.cid,
@@ -152,14 +162,12 @@ class EmailHtmlEditorController(
     companion object {
         private fun decodeSampledBitmap(context: Context, uri: Uri, reqWidth: Int): Bitmap? {
             return try {
-                // First decode with inJustDecodeBounds=true to get dimensions
                 val optsBounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     BitmapFactory.decodeStream(input, null, optsBounds)
                 }
                 val width = optsBounds.outWidth
                 if (width <= 0) {
-                    // Fallback direct decode
                     return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                 }
                 var sample = 1
