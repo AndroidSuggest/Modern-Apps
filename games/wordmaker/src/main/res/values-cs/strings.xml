@@ -9,18 +9,22 @@
     <string name="competitive_score">Skóre: %1$d</string>
     <string name="competitive_start">Začít</string>
     <string name="competitive_difficulty">Obtížnost</string>
-    <string name="competitive_time_limit">%1$d na jeden level</string>
+    <string name="competitive_time_limit">%1$d sekund na úroveň</string>
     <string name="competitive_solved">Vyřešeno! +%1$d bodů</string>
     <string name="competitive_timed_out">Čas vypršel! %1$d bodů</string>
     <string name="error_parse_level">Nepovedlo se zpracovat data úrovně.</string>
     <string name="level_number">Úroveň %1$d</string>
     <string name="next_level">Další úroveň</string>
     <string name="bonus_words">Bonusová slova</string>
-    <string name="tap_to_spell">Klepnutím hláskjute</string>
-    <string name="tap_to_spell_description">Místo táhnutí klepejte na písmena pro stavbu slov</string>
-    <string name="hint_confirmation">Jste si jist, že chcete použít nápovědu?</string>
+    <string name="tap_to_spell">Hláskovat klepnutím</string>
+    <string name="tap_to_spell_description">Pro stavbu slov na písmena klepejte namísto tažení</string>
+    <string name="hint_confirmation">Jste si jisti, že chcete použít nápovědu?</string>
     <string name="yes">Ano</string>
     <string name="no">Ne</string>
     <string name="mode_casual">Klidná hra</string>
     <string name="mode_competitive">Kompetetivní</string>
+    <string name="cd_hint">Nápověda</string>
+    <string name="cd_shuffle">Zamíchat</string>
+    <string name="cd_submit">Odeslat</string>
+    <string name="cd_backspace">Backspace</string>
 </resources>
