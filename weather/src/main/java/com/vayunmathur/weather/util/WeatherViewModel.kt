@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.glance.appwidget.updateAll
+import com.vayunmathur.weather.R
 import com.vayunmathur.weather.data.SavedLocation
 import com.vayunmathur.weather.data.WeatherDao
 import com.vayunmathur.weather.data.WeatherRefreshWorker
@@ -290,9 +291,11 @@ class WeatherViewModel(
     /** Replace (or insert) the single "current device" row with a fresh fix. */
     fun setCurrentLocation(name: String, latitude: Double, longitude: Double) {
         viewModelScope.launch {
+            val app = getApplication<Application>()
+            val defaultName = app.getString(R.string.current_location)
             dao.replaceCurrentDeviceLocation(
                 SavedLocation(
-                    name = name.ifBlank { "Current location" },
+                    name = name.ifBlank { defaultName },
                     country = "",
                     latitude = latitude,
                     longitude = longitude,

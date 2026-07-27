@@ -19,6 +19,8 @@
 
     <!-- Supporting text explaining automatic device location detection and adding to list -->
     <string name="detect_your_device_s_current_location_au">Detect your device\'s current location automatically and add it to your list</string>
+    <!-- Default label for device current location row. Noun phrase -->
+    <string name="current_location">Current location</string>
 
     <!-- Section header title for locations drawer sheet. Noun plural -->
     <string name="locations">Locations</string>
@@ -93,6 +95,94 @@
     <string name="metric_cloud_cover">Cloud cover</string>
     <!-- Metric: UV index value. Noun phrase, keep UV uppercase -->
     <string name="metric_uv_index">UV index</string>
+
+    <!-- Block title: sun. Noun -->
+    <string name="block_sun">Sun</string>
+    <!-- Block title: pollen. Noun -->
+    <string name="block_pollen">Pollen</string>
+    <!-- Block title: wind. Noun -->
+    <string name="block_wind">Wind</string>
+    <!-- Block title: air quality. Noun phrase -->
+    <string name="block_air_quality">Air quality</string>
+
+    <!-- Card header: hourly forecast. Noun phrase -->
+    <string name="hourly_forecast">Hourly forecast</string>
+    <!-- Card header: daily forecast. Noun phrase -->
+    <string name="daily_forecast">Daily forecast</string>
+    <!-- Label for current hour in hourly strip. Adverb -->
+    <string name="now">Now</string>
+    <!-- Label for today in daily strip. Noun -->
+    <string name="today">Today</string>
+    <!-- Abbreviation for today in hourly day label. Keep short (3 letters) -->
+    <string name="today_short">TDY</string>
+    <!-- Abbreviation for tomorrow in hourly day label. Keep short (3 letters) -->
+    <string name="tomorrow_short">TMR</string>
+
+    <!-- Level: none. Adjective/noun -->
+    <string name="level_none">None</string>
+    <!-- Level: low. Adjective -->
+    <string name="level_low">Low</string>
+    <!-- Level: medium. Adjective -->
+    <string name="level_medium">Medium</string>
+    <!-- Level: moderate. Adjective -->
+    <string name="level_moderate">Moderate</string>
+    <!-- Level: high. Adjective -->
+    <string name="level_high">High</string>
+    <!-- Level: very high. Adjective phrase -->
+    <string name="level_very_high">Very high</string>
+    <!-- Level: extreme. Adjective -->
+    <string name="level_extreme">Extreme</string>
+    <!-- Level: severe. Adjective -->
+    <string name="level_severe">Severe</string>
+
+    <!-- Cloud cover: clear -->
+    <string name="cloud_clear">Clear</string>
+    <!-- Cloud cover: mostly clear -->
+    <string name="cloud_mostly_clear">Mostly clear</string>
+    <!-- Cloud cover: partly cloudy -->
+    <string name="cloud_partly_cloudy">Partly cloudy</string>
+    <!-- Cloud cover: mostly cloudy -->
+    <string name="cloud_mostly_cloudy">Mostly cloudy</string>
+    <!-- Cloud cover: overcast -->
+    <string name="cloud_overcast">Overcast</string>
+
+    <!-- AQI level: good -->
+    <string name="aqi_good">Good</string>
+    <!-- AQI level: moderate (AQI). Keep consistent with level_moderate -->
+    <string name="aqi_moderate">Moderate</string>
+    <!-- AQI level: unhealthy for sensitive groups. Keep short -->
+    <string name="aqi_unhealthy_sensitive">Unhealthy (sensitive)</string>
+    <!-- AQI level: unhealthy -->
+    <string name="aqi_unhealthy">Unhealthy</string>
+    <!-- AQI level: very unhealthy -->
+    <string name="aqi_very_unhealthy">Very unhealthy</string>
+    <!-- AQI level: hazardous -->
+    <string name="aqi_hazardous">Hazardous</string>
+
+    <!-- Precipitation nowcast: raining now -->
+    <string name="precip_raining_now">Raining now</string>
+    <!-- Precipitation nowcast: no rain in next 2 hours -->
+    <string name="precip_no_rain_next_2h">No rain in the next 2 hours</string>
+    <!-- Precipitation nowcast: rain starting now -->
+    <string name="precip_rain_starting_now">Rain starting now</string>
+    <!-- Precipitation nowcast: rain expected in ~N minutes. %1$d = rounded minutes -->
+    <string name="precip_rain_in_min">Rain in ~<xliff:g id="minutes" example="15">%1$d</xliff:g> min</string>
+
+    <!-- Locations drawer: last updated template. %1$s = relative time e.g. "2h ago" -->
+    <string name="last_updated">Last updated <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
+    <!-- Placeholder when no fetch yet -->
+    <string name="no_data_yet">No data yet</string>
+    <!-- Relative time: just now -->
+    <string name="just_now">just now</string>
+    <!-- Relative time: minutes ago. %1$d = minutes -->
+    <string name="minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g>m ago</string>
+    <!-- Relative time: hours ago. %1$d = hours -->
+    <string name="hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g>h ago</string>
+    <!-- Relative time: days ago. %1$d = days -->
+    <string name="days_ago"><xliff:g id="days" example="3">%1$d</xliff:g>d ago</string>
+
+    <!-- Duration: hours and minutes. %1$d = hours, %2$d = minutes -->
+    <string name="duration_h_m"><xliff:g id="hours" example="11">%1$d</xliff:g>h <xliff:g id="minutes" example="30">%2$d</xliff:g>m</string>
 
     <!-- Card header for AI-generated daily summary. Noun -->
     <string name="summary_title">Summary</string>

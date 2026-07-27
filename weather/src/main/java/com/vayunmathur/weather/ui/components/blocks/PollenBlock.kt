@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.AirQualityCurrent
 
@@ -34,16 +35,17 @@ fun PollenBlock(air: AirQualityCurrent?) {
         worst < 200 -> 3
         else -> 4
     }
-    val label = when (level) {
-        0 -> "None"
-        1 -> "Low"
-        2 -> "Medium"
-        3 -> "High"
-        else -> "Severe"
+    val labelRes = when (level) {
+        0 -> R.string.level_none
+        1 -> R.string.level_low
+        2 -> R.string.level_medium
+        3 -> R.string.level_high
+        else -> R.string.level_severe
     }
+    val label = stringResource(labelRes)
     SquareBlock {
         Box(Modifier.align(Alignment.TopStart)) {
-            BlockHeader(icon = { m, c -> IconGrass(m, c) }, title = "Pollen")
+            BlockHeader(icon = { m, c -> IconGrass(m, c) }, title = stringResource(R.string.block_pollen))
         }
         Text(
             text = "$level/4",

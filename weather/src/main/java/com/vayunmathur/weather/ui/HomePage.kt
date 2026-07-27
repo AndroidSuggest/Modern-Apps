@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -231,11 +232,11 @@ private fun LocationPage(
                         onDaySelected = { viewModel.toggleDay(it) },
                     )
                 }
-                if (current != null && resolved != null) {
+            if (current != null && resolved != null) {
                     val sunriseEpoch = resolved.sunriseIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
                     val sunsetEpoch = resolved.sunsetIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
                     val nowcast = if (selected == null) {
-                        com.vayunmathur.weather.util.precipitationNowcast(forecast.minutely15, forecast.utcOffsetSeconds)
+                        com.vayunmathur.weather.util.precipitationNowcast(LocalContext.current, forecast.minutely15, forecast.utcOffsetSeconds)
                     } else {
                         null
                     }

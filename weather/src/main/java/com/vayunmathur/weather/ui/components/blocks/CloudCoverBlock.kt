@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.Current
 
@@ -20,18 +21,18 @@ import com.vayunmathur.weather.network.Current
 @Composable
 fun CloudCoverBlock(current: Current) {
     val pct = current.cloudCover.coerceIn(0, 100)
-    val label = when {
-        pct < 10 -> "Clear"
-        pct < 40 -> "Mostly clear"
-        pct < 70 -> "Partly cloudy"
-        pct < 90 -> "Mostly cloudy"
-        else -> "Overcast"
+    val labelRes = when {
+        pct < 10 -> R.string.cloud_clear
+        pct < 40 -> R.string.cloud_mostly_clear
+        pct < 70 -> R.string.cloud_partly_cloudy
+        pct < 90 -> R.string.cloud_mostly_cloudy
+        else -> R.string.cloud_overcast
     }
     CircularStatBlock {
         Box(Modifier.align(Alignment.TopCenter)) {
             BlockHeader(
                 icon = { m, c -> IconCloudy(m, c) },
-                title = "Cloud cover",
+                title = stringResource(R.string.metric_cloud_cover),
                 topPadding = 36.dp,
             )
         }
@@ -42,7 +43,7 @@ fun CloudCoverBlock(current: Current) {
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            text = label,
+            text = stringResource(labelRes),
             modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-26).dp),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

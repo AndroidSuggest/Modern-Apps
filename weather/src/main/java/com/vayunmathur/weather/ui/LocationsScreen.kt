@@ -1,6 +1,7 @@
 package com.vayunmathur.weather.ui
 
 import android.Manifest
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -97,7 +98,7 @@ internal fun rememberRequestDeviceLocation(
         scope.launch {
             val loc = LocationProvider.currentLocation(context)
             if (loc != null) {
-                viewModel.setCurrentLocation("Current location", loc.latitude, loc.longitude)
+                viewModel.setCurrentLocation(context.getString(R.string.current_location), loc.latitude, loc.longitude)
             } else {
                 Toast.makeText(context, context.getString(R.string.couldn_t_determine_location), Toast.LENGTH_SHORT).show()
             }
@@ -167,6 +168,7 @@ fun LocationsScreen(
     val (onAddCurrentLocation, deviceLocationLoading) = rememberRequestDeviceLocation(viewModel)
 
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     var localData by remember { mutableStateOf(locations) }
     var hasDragged by remember { mutableStateOf(false) }
@@ -248,8 +250,8 @@ fun LocationsScreen(
                         val state = forecasts[loc.id]
                         val description = state?.fetchedAtEpochMs
                             ?.takeIf { it > 0L }
-                            ?.let { "Last updated ${formatAgo(it, nowMs)}" }
-                            ?: "No data yet"
+                            ?.let { context.getString(R.string.last_updated, formatAgo(context, it, nowMs)) }
+                            ?: context.getString(R.string.no_data_yet)
                         LocationItem(
                             location = loc,
                             description = description,
@@ -324,13 +326,13 @@ fun LocationsScreen(
 }
 
 /** Format a "X ago" delta from [nowMs] to the given epoch ms. */
-private fun formatAgo(epochMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+private fun formatAgo(context: Context, epochMs: Long, nowMs: Long = System.currentTimeMillis()): String {
     val deltaSec = ((nowMs - epochMs) / 1000L).coerceAtLeast(0L)
     return when {
-        deltaSec < 60 -> "just now"
-        deltaSec < 3600 -> "${deltaSec / 60}m ago"
-        deltaSec < 86_400 -> "${deltaSec / 3600}h ago"
-        else -> "${deltaSec / 86_400}d ago"
+        deltaSec < 60 -> context.getString(R.string.just_now)
+        deltaSec < 3600 -> context.getString(R.string.minutes_ago, (deltaSec / 60).toInt())
+        deltaSec < 86_400 -> context.getString(R.string.hours_ago, (deltaSec / 3600).toInt())
+        else -> context.getString(R.string.days_ago, (deltaSec / 86_400).toInt())
     }
 }
 

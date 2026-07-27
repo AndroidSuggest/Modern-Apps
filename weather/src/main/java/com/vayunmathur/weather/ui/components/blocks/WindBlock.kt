@@ -43,7 +43,7 @@ fun WindBlock(current: Current, unit: WindUnit) {
         Box(Modifier.align(Alignment.TopCenter)) {
             BlockHeader(
                 icon = { m, c -> IconWind(m, c) },
-                title = "Wind",
+                title = stringResource(R.string.block_wind),
                 topPadding = 36.dp,
             )
         }

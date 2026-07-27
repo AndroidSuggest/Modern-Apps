@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.util.PressureUnit
@@ -65,7 +66,7 @@ fun PressureBlock(current: Current, pressureUnit: PressureUnit) {
         Box(Modifier.align(Alignment.TopCenter)) {
             BlockHeader(
                 icon = { m, c -> IconPressure(m, c) },
-                title = "Pressure",
+                title = stringResource(R.string.metric_pressure),
                 topPadding = 38.dp,
             )
         }

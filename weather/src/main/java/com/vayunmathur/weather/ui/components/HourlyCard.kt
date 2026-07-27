@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.Hourly
 import com.vayunmathur.weather.util.TemperatureUnit
@@ -35,6 +36,7 @@ import com.vayunmathur.weather.util.formatTemperatureCompact
 import com.vayunmathur.weather.util.parseLocalIsoToEpochSec
 import com.vayunmathur.weather.util.weatherConditionForCode
 import androidx.compose.ui.unit.sp
+import java.time.format.TextStyle
 import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
@@ -91,13 +93,13 @@ fun HourlyCard(
         shadowElevation = 2.dp,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            CardsHeader(text = "Hourly forecast", icon = { m, c -> IconSchedule(m, c) })
+            CardsHeader(text = stringResource(R.string.hourly_forecast), icon = { m, c -> IconSchedule(m, c) })
             LazyRow(state = listState) {
                 items(cells.size, key = { "${cells[it].epochSec}_$it" }) { index ->
                     val cell = cells[index]
                     if (index == 0) Spacer(Modifier.width(10.dp))
                     HourlyItem(
-                        time = if (index == 0) "Now" else formatStripHour(cell.epochSec, use24Hour),
+                        time = if (index == 0) stringResource(R.string.now) else formatStripHour(cell.epochSec, use24Hour),
                         dayLabel = formatDayLabel(cell.epochSec),
                         precipitationProbability = cell.precip,
                         temperature = cell.temperature,
@@ -184,14 +186,32 @@ private data class HourCell(
     val isDay: Boolean,
 )
 
+@Composable
 private fun formatDayLabel(epochSec: Long): String {
     val tz = TimeZone.currentSystemDefault()
     val date = Instant.fromEpochSeconds(epochSec).toLocalDateTime(tz).date
     val today = Clock.System.todayIn(tz)
     val tomorrow = today.plus(1, DateTimeUnit.DAY)
     return when (date) {
-        today -> "TDY"
-        tomorrow -> "TMR"
-        else -> date.dayOfWeek.name.take(3)
+        today -> stringResource(R.string.today_short)
+        tomorrow -> stringResource(R.string.tomorrow_short)
+        else -> {
+            val locale = java.util.Locale.getDefault()
+            try {
+                val isoNum = when (date.dayOfWeek) {
+                    kotlinx.datetime.DayOfWeek.MONDAY -> 1
+                    kotlinx.datetime.DayOfWeek.TUESDAY -> 2
+                    kotlinx.datetime.DayOfWeek.WEDNESDAY -> 3
+                    kotlinx.datetime.DayOfWeek.THURSDAY -> 4
+                    kotlinx.datetime.DayOfWeek.FRIDAY -> 5
+                    kotlinx.datetime.DayOfWeek.SATURDAY -> 6
+                    kotlinx.datetime.DayOfWeek.SUNDAY -> 7
+                }
+                val jDay = java.time.DayOfWeek.of(isoNum)
+                jDay.getDisplayName(TextStyle.SHORT, locale)
+            } catch (_: Exception) {
+                date.dayOfWeek.name.take(3)
+            }
+        }
     }
 }

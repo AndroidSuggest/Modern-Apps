@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.AirQualityCurrent
 
@@ -27,12 +28,12 @@ import com.vayunmathur.weather.network.AirQualityCurrent
 @Composable
 fun AirQualityBlock(air: AirQualityCurrent?) {
     val aqi = air?.usAqi
-    val level = aqiLevel(aqi)
+    val levelRes = aqiLevelRes(aqi)
     val progress = ((aqi ?: 0) / 500f).coerceIn(0f, 1f)
 
     SquareBlock {
         Box(Modifier.align(Alignment.TopStart)) {
-            BlockHeader(icon = { m, c -> IconWind(m, c) }, title = "Air quality")
+            BlockHeader(icon = { m, c -> IconWind(m, c) }, title = stringResource(R.string.block_air_quality))
         }
         Column(
             modifier = Modifier
@@ -54,7 +55,7 @@ fun AirQualityBlock(air: AirQualityCurrent?) {
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text = level,
+                text = levelRes?.let { stringResource(it) } ?: "—",
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.End,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -64,14 +65,14 @@ fun AirQualityBlock(air: AirQualityCurrent?) {
     }
 }
 
-private fun aqiLevel(aqi: Int?): String = when {
-    aqi == null -> "—"
-    aqi <= 50 -> "Good"
-    aqi <= 100 -> "Moderate"
-    aqi <= 150 -> "Unhealthy (sensitive)"
-    aqi <= 200 -> "Unhealthy"
-    aqi <= 300 -> "Very unhealthy"
-    else -> "Hazardous"
+private fun aqiLevelRes(aqi: Int?): Int? = when {
+    aqi == null -> null
+    aqi <= 50 -> R.string.aqi_good
+    aqi <= 100 -> R.string.aqi_moderate
+    aqi <= 150 -> R.string.aqi_unhealthy_sensitive
+    aqi <= 200 -> R.string.aqi_unhealthy
+    aqi <= 300 -> R.string.aqi_very_unhealthy
+    else -> R.string.aqi_hazardous
 }
 
 private fun aqiColor(aqi: Int?): Color = when {

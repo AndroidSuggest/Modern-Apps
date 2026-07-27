@@ -51,7 +51,7 @@ fun HumidityBlock(current: Current, tempUnit: TemperatureUnit) {
             colorFilter = ColorFilter.tint(tint),
         )
         Box(Modifier.align(Alignment.TopStart)) {
-            BlockHeader(icon = { m, c -> IconDrizzle(m, c) }, title = "Humidity")
+            BlockHeader(icon = { m, c -> IconDrizzle(m, c) }, title = stringResource(R.string.metric_humidity))
         }
         Text(
             text = "${humidity}%",

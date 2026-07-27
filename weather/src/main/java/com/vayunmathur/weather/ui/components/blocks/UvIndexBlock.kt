@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import kotlin.math.roundToInt
 
@@ -40,13 +41,13 @@ fun UvIndexBlock(uvIndex: Double?) {
         v < 11 -> 3     // Very high
         else -> 4       // Extreme
     }
-    val label = when (activeLevel) {
-        -1 -> "—"
-        0 -> "Low"
-        1 -> "Moderate"
-        2 -> "High"
-        3 -> "Very high"
-        else -> "Extreme"
+    val labelRes = when (activeLevel) {
+        -1 -> null
+        0 -> R.string.level_low
+        1 -> R.string.level_moderate
+        2 -> R.string.level_high
+        3 -> R.string.level_very_high
+        else -> R.string.level_extreme
     }
     val dotColors = listOf(
         Color(0xFF6DD58C), // Low — green
@@ -82,7 +83,7 @@ fun UvIndexBlock(uvIndex: Double?) {
         Box(Modifier.align(Alignment.TopCenter)) {
             BlockHeader(
                 icon = { m, c -> IconSunny(m, c) },
-                title = "UV index",
+                title = stringResource(R.string.metric_uv_index),
                 topPadding = 32.dp,
             )
         }
@@ -93,7 +94,7 @@ fun UvIndexBlock(uvIndex: Double?) {
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            text = label,
+            text = labelRes?.let { stringResource(it) } ?: "—",
             modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-35).dp),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

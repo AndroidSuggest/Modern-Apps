@@ -18,11 +18,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.Daily
 import com.vayunmathur.weather.util.TemperatureUnit
 import com.vayunmathur.weather.util.formatTemperatureCompact
 import com.vayunmathur.weather.util.weatherConditionForCode
+import java.time.format.TextStyle
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 
 /**
@@ -46,7 +50,7 @@ fun DailyCard(
         shadowElevation = 2.dp,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            CardsHeader(text = "Daily forecast", icon = { m, c -> IconCalendar(m, c) })
+            CardsHeader(text = stringResource(R.string.daily_forecast), icon = { m, c -> IconCalendar(m, c) })
             Spacer(Modifier.height(14.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(daily.time.size, key = { "${daily.time[it]}_$it" }) { index ->
@@ -59,7 +63,7 @@ fun DailyCard(
                     if (index == 0) Spacer(Modifier.width(16.dp))
 
                     DailyItem(
-                        weekday = if (index == 0) "Today" else dayLabel(date),
+                        weekday = if (index == 0) stringResource(R.string.today) else dayLabel(date),
                         maxTemp = hi,
                         minTemp = lo,
                         icon = weatherConditionForCode(code).iconContent(true),
@@ -131,8 +135,25 @@ private fun DailyItem(
     }
 }
 
+@Composable
 private fun dayLabel(dateStr: String?): String {
     if (dateStr == null) return "-"
     val date = runCatching { LocalDate.parse(dateStr) }.getOrNull() ?: return dateStr
-    return date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+    val locale = java.util.Locale.getDefault()
+    return try {
+        val isoNum = when (date.dayOfWeek) {
+            kotlinx.datetime.DayOfWeek.MONDAY -> 1
+            kotlinx.datetime.DayOfWeek.TUESDAY -> 2
+            kotlinx.datetime.DayOfWeek.WEDNESDAY -> 3
+            kotlinx.datetime.DayOfWeek.THURSDAY -> 4
+            kotlinx.datetime.DayOfWeek.FRIDAY -> 5
+            kotlinx.datetime.DayOfWeek.SATURDAY -> 6
+            kotlinx.datetime.DayOfWeek.SUNDAY -> 7
+        }
+        val jDay = java.time.DayOfWeek.of(isoNum)
+        jDay.getDisplayName(TextStyle.SHORT, locale)
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(locale) else it.toString() }
+    } catch (_: Exception) {
+        date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+    }
 }

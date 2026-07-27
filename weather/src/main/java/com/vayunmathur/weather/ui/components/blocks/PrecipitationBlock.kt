@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.util.mmToInches
 import java.util.Locale
@@ -37,7 +38,7 @@ fun PrecipitationBlock(
 
     SquareBlock {
         Box(Modifier.align(Alignment.TopStart)) {
-            BlockHeader(icon = { m, c -> IconRain(m, c) }, title = "Precipitation")
+            BlockHeader(icon = { m, c -> IconRain(m, c) }, title = stringResource(R.string.metric_precipitation))
         }
         Column(
             modifier = Modifier.align(Alignment.Center),

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.util.metersToMiles
@@ -40,7 +41,7 @@ fun VisibilityBlock(current: Current, useMiles: Boolean = false) {
         Box(Modifier.align(Alignment.TopCenter)) {
             BlockHeader(
                 icon = { m, c -> IconVisible(m, c) },
-                title = "Visibility",
+                title = stringResource(R.string.metric_visibility),
                 topPadding = 36.dp,
             )
         }

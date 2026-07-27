@@ -26,6 +26,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.weather.R
 import com.vayunmathur.weather.util.formatClockTime
 import kotlin.math.cos
 import kotlin.math.sin
@@ -40,7 +42,7 @@ import kotlin.math.sin
 fun SunBlock(sunriseEpochSec: Long?, sunsetEpochSec: Long?, use24Hour: Boolean, daylightDurationSec: Double? = null) {
     SquareBlock {
         Box(Modifier.align(Alignment.TopStart)) {
-            BlockHeader(icon = { m, c -> IconSunny(m, c) }, title = "Sun")
+            BlockHeader(icon = { m, c -> IconSunny(m, c) }, title = stringResource(R.string.block_sun))
         }
 
         val arcColor = MaterialTheme.colorScheme.tertiaryContainer
@@ -122,9 +124,10 @@ private fun RiseSetTimeRow(text: String, icon: @Composable (Modifier, Color) -> 
     }
 }
 
+@Composable
 private fun formatDuration(seconds: Double): String {
     val total = seconds.toLong()
     val h = total / 3600
     val m = (total % 3600) / 60
-    return "${h}h ${m}m"
+    return stringResource(R.string.duration_h_m, h.toInt(), m.toInt())
 }
