@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ilmaennustus</string>
     <string name="search_location">Otsi asukohta</string>
@@ -8,4 +9,46 @@
     <string name="map_time">Aeg</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
     <string name="weather_widget_description">Ilmateave ja kellaaeg ühe vaatena - klõpsa ja vaata ennustust</string>
+    <string name="add_a_city_or_use_your_current_location"></string>
+    <string name="locations"></string>
+    <string name="summary_winds_noticeable"></string>
+    <string name="not_enough_data_to_plot"></string>
+    <string name="detect_your_device_s_current_location_au"></string>
+    <string name="metric_wind_speed"></string>
+    <string name="summary_expect_conditions"></string>
+    <string name="metric_pressure"></string>
+    <string name="summary_showers_possible"></string>
+    <string name="max_min"></string>
+    <string name="condition_unknown"></string>
+    <string name="metric_humidity"></string>
+    <string name="summary_mixed_conditions"></string>
+    <string name="metric_uv_index"></string>
+    <string name="summary_high_low"></string>
+    <string name="condition_snow"></string>
+    <string name="delete"></string>
+    <string name="summary_slight_chance_rain"></string>
+    <string name="metric_visibility"></string>
+    <string name="metric_temperature"></string>
+    <string name="from_gusts"></string>
+    <string name="condition_clear"></string>
+    <string name="metric_feels_like"></string>
+    <string name="feels_like"></string>
+    <string name="use_current_location"></string>
+    <string name="condition_partly_cloudy"></string>
+    <string name="condition_rain"></string>
+    <string name="metric_precipitation"></string>
+    <string name="couldn_t_determine_location"></string>
+    <string name="metric_wind_gusts"></string>
+    <string name="condition_thunderstorm"></string>
+    <string name="metric_cloud_cover"></string>
+    <string name="no_matches"></string>
+    <string name="condition_fog"></string>
+    <string name="summary_rain_likely"></string>
+    <string name="condition_cloudy"></string>
+    <string name="dew_point"></string>
+    <string name="no_locations_yet"></string>
+    <string name="condition_drizzle"></string>
+    <string name="summary_title"></string>
+    <string name="location_permission_denied"></string>
+    <string name="locating"></string>
 </resources>
