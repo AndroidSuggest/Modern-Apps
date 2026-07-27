@@ -45,10 +45,4 @@
     <string name="action_reset">Resetuj</string>
     <string name="action_lap">Okrążenie</string>
     <string name="action_stop">Zatrzymaj</string>
-    <string name="ringtone_custom"></string>
-    <string name="ringtone_silent"></string>
-    <string name="ringtone_default"></string>
-    <string name="defaults_for_new_alarms"></string>
-    <string name="gradual_off"></string>
-    <string name="alarm_settings"></string>
 </resources>
