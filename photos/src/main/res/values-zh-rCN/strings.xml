@@ -220,4 +220,5 @@
     <string name="editor_desc_selective">在特定点上绘制调整。</string>
     <string name="done">完成</string>
     <string name="tool_line">线条</string>
+    <string name="editor_desc_none"></string>
 </resources>
