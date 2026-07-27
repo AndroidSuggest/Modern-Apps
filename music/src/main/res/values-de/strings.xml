@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="nav_playlists">Playlisten</string>
     <string name="nav_home">Home</string>
@@ -30,4 +31,4 @@
     <string name="grant_storage_permissions">Erlaube Speicher Berechtigung</string>
     <string name="content_desc_album_art">Album Cover</string>
     <string name="content_desc_album_art_grid">Album Cover Raster</string>
-    </resources>
+</resources>
