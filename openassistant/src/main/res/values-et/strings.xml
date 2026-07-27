@@ -14,4 +14,7 @@
     <string name="error_inference_timeout">Järeldamine aegus</string>
     <string name="error_ai_engine_failed">Tehisaru mootor ebaõnnestus</string>
     <string name="error_ai_json_schema_mismatch">Tehisaru vastuses polnud skeemale vastavat korrektset JSON-sisu.</string>
+    <string name="settings_title"></string>
+    <string name="memories"></string>
+    <string name="no_memories_yet"></string>
 </resources>
