@@ -35,7 +35,7 @@ object OfficeSync {
     private val initMutex = Mutex()
 
     private class DataStoreKeyStore(private val ds: DataStoreUtils) : E2eeKeyStore {
-        override fun getBytes(name: String): ByteArray? = ds.getByteArray(name)
+        override suspend fun getBytes(name: String): ByteArray? = ds.getByteArrayAwait(name)
         override suspend fun setBytes(name: String, value: ByteArray, onlyIfAbsent: Boolean) =
             ds.setByteArray(name, value, onlyIfAbsent)
     }
@@ -46,12 +46,13 @@ object OfficeSync {
             if (initialized) return@withLock true
             val ds = DataStoreUtils.getInstance(context)
             identity = PqcIdentity.loadOrCreate(DataStoreKeyStore(ds), "office")
-            var id = ds.getString("officeDeviceId")
+            // Use suspend hydration variant to avoid cold-start empty race.
+            var id = ds.getStringAwait("officeDeviceId")
             if (id == null) {
                 id = UUID.randomUUID().toString()
                 ds.setString("officeDeviceId", id, true)
             }
-            deviceId = ds.getString("officeDeviceId") ?: id
+            deviceId = ds.getStringAwait("officeDeviceId") ?: id
             val registered = register()
             if (registered) initialized = true
             registered

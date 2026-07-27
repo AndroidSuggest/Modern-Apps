@@ -18,7 +18,11 @@ class PqcIdentity internal constructor(
     fun sign(data: ByteArray): ByteArray = Pqc.signWith(dsaPrivate, data)
 
     companion object {
-        /** Loads the persisted PQC keypairs, generating + storing them on first use. */
+        /**
+         * Loads the persisted PQC keypairs, generating + storing them on first use.
+         * Fixed race: re-read final persisted values after `onlyIfAbsent` stores
+         * to avoid returning an ephemeral identity that would fail to decrypt.
+         */
         suspend fun loadOrCreate(store: E2eeKeyStore, prefix: String = "pqc"): PqcIdentity {
             val kemPub = store.getBytes("${prefix}KemPub")
             val kemPriv = store.getBytes("${prefix}KemPriv")
@@ -33,7 +37,12 @@ class PqcIdentity internal constructor(
             store.setBytes("${prefix}KemPriv", kemPrivNew, onlyIfAbsent = true)
             store.setBytes("${prefix}DsaPub", dsaPubNew, onlyIfAbsent = true)
             store.setBytes("${prefix}DsaPriv", dsaPrivNew, onlyIfAbsent = true)
-            return PqcIdentity(Pqc.bundle(kemPubNew, dsaPubNew), kemPrivNew, dsaPrivNew)
+            // Re-read final persisted (winner of concurrent race).
+            val finalKemPub = store.getBytes("${prefix}KemPub") ?: kemPubNew
+            val finalKemPriv = store.getBytes("${prefix}KemPriv") ?: kemPrivNew
+            val finalDsaPub = store.getBytes("${prefix}DsaPub") ?: dsaPubNew
+            val finalDsaPriv = store.getBytes("${prefix}DsaPriv") ?: dsaPrivNew
+            return PqcIdentity(Pqc.bundle(finalKemPub, finalDsaPub), finalKemPriv, finalDsaPriv)
         }
     }
 }

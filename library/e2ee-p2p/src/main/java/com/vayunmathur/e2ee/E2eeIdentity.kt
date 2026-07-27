@@ -40,6 +40,12 @@ class E2eeIdentity internal constructor(
         /**
          * Loads the persisted keypair, generating and storing a new one on first use. Uses the same
          * [E2eeKeyStore] keys across launches so a device keeps a stable identity.
+         *
+         * Fixed race: after attempting to store a newly-generated keypair with `onlyIfAbsent=true`
+         * we re-read the final persisted values. If another concurrent initializer won the race
+         * (fresh install with UI + service both starting), we return the winner's keys from disk
+         * instead of an ephemeral pair that would fail to decrypt peer ciphertexts
+         * (OAEP_DECODING_ERROR).
          */
         suspend fun loadOrCreate(
             store: E2eeKeyStore,
@@ -62,7 +68,18 @@ class E2eeIdentity internal constructor(
             val privPem = kp.privateKey.encodeToByteArray(RSA.PrivateKey.Format.PEM)
             store.setBytes(publicName, pubPem, onlyIfAbsent = true)
             store.setBytes(privateName, privPem, onlyIfAbsent = true)
-            return E2eeIdentity(pubPem, privPem, kp.publicKey, kp.privateKey)
+            // Re-read final persisted values to handle concurrent winners.
+            val finalPub = store.getBytes(publicName) ?: pubPem
+            val finalPriv = store.getBytes(privateName) ?: privPem
+            if (finalPub.contentEquals(pubPem) && finalPriv.contentEquals(privPem)) {
+                return E2eeIdentity(finalPub, finalPriv, kp.publicKey, kp.privateKey)
+            }
+            return E2eeIdentity(
+                finalPub,
+                finalPriv,
+                p.publicKeyDecoder(SHA512).decodeFromByteArray(RSA.PublicKey.Format.PEM, finalPub),
+                p.privateKeyDecoder(SHA512).decodeFromByteArray(RSA.PrivateKey.Format.PEM, finalPriv),
+            )
         }
     }
 }

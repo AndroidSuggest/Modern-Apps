@@ -7,7 +7,7 @@ package com.vayunmathur.e2ee
  */
 interface E2eeKeyStore {
     /** Returns the stored bytes for [name], or null if absent. */
-    fun getBytes(name: String): ByteArray?
+    suspend fun getBytes(name: String): ByteArray?
 
     /** Persists [value] under [name]. When [onlyIfAbsent], an existing value is not overwritten. */
     suspend fun setBytes(name: String, value: ByteArray, onlyIfAbsent: Boolean = false)

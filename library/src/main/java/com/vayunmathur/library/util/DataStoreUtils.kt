@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
@@ -40,6 +41,11 @@ class DataStoreUtils private constructor(context: Context) {
         return getWithFallback(byteArrayPreferencesKey(name))
     }
 
+    /** Suspend variant that awaits DataStore hydration (safe on cold start / service start). */
+    suspend fun getByteArrayAwait(name: String): ByteArray? {
+        return dataStore.data.first()[byteArrayPreferencesKey(name)]
+    }
+
     suspend fun setByteArray(name: String, value: ByteArray, onlyIfAbsent: Boolean = false) {
         dataStore.edit {
             if(onlyIfAbsent && it.contains(byteArrayPreferencesKey(name))) return@edit
@@ -49,6 +55,11 @@ class DataStoreUtils private constructor(context: Context) {
 
     fun getLong(name: String): Long? {
         return getWithFallback(longPreferencesKey(name))
+    }
+
+    /** Suspend variant that awaits DataStore hydration. */
+    suspend fun getLongAwait(name: String): Long? {
+        return dataStore.data.first()[longPreferencesKey(name)]
     }
 
     fun booleanFlow(name: String): Flow<Boolean> {
@@ -105,6 +116,11 @@ class DataStoreUtils private constructor(context: Context) {
 
     fun getString(string: String): String? {
         return getWithFallback(stringPreferencesKey(string))
+    }
+
+    /** Suspend variant that awaits DataStore hydration. */
+    suspend fun getStringAwait(name: String): String? {
+        return dataStore.data.first()[stringPreferencesKey(name)]
     }
 
     suspend fun setString(string: String, value: String, onlyIfAbsent: Boolean = false) {
