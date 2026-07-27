@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PDF</string>
     <string name="open_pdf">Ouvrir le PDF</string>
@@ -13,4 +14,39 @@
     <string name="continue_label">Continuer</string>
     <string name="crop_image">Recadrer l\'image</string>
     <string name="auto_detect">Détection automatique</string>
-    </resources>
+    <string name="note_text">Texte de la note</string>
+    <string name="safe_pdf_error">Ce PDF n’a pas pu être ouvert dans le lecteur sécurisé. Il est peut-être endommagé ou utilise des fonctionnalités non prises en charge.</string>
+    <string name="cut_glue">Découper et assembler</string>
+    <string name="password">Mot de passe</string>
+    <string name="encrypt_with_password">Chiffrer avec un mot de passe</string>
+    <string name="signed_and_saved">Signé et enregistré</string>
+    <string name="sign">Signer</string>
+    <string name="opacity">Opacité : %1$s %</string>
+    <string name="pdf_cut_and_glue">Découpage et assemblage de PDF</string>
+    <string name="save_as_u2026">Enregistrer sous…</string>
+    <string name="failed_to_save_pdf">Échec de l’enregistrement du PDF</string>
+    <string name="line_width">Épaisseur du trait : %1$s</string>
+    <string name="callout">Légende</string>
+    <string name="copied">Copié</string>
+    <string name="style">Style</string>
+    <string name="searchable_ocr">Avec recherche de texte (OCR)</string>
+    <string name="password_required">Mot de passe requis</string>
+    <string name="green">Vert</string>
+    <string name="signing_failed">Échec de la signature</string>
+    <string name="red">Rouge</string>
+    <string name="cancel">Annuler</string>
+    <string name="outline">Contour</string>
+    <string name="open">Ouvrir</string>
+    <string name="append_pdf">Ajouter un PDF à la suite</string>
+    <string name="append_image">Ajouter une image à la suite</string>
+    <string name="tap_to_append_a_pdf_or_image">Appuyez sur + pour ajouter un PDF ou une image à la suite</string>
+    <string name="text">texte</string>
+    <string name="incorrect_password">Mot de passe incorrect</string>
+    <string name="add">Ajouter</string>
+    <string name="save_encrypted">Enregistrer le PDF chiffré</string>
+    <string name="color">Couleur</string>
+    <string name="blue">Bleu</string>
+    <string name="sticky_note">Note autocollante</string>
+    <string name="aa">Aa</string>
+    <string name="done">Terminer</string>
+</resources>
