@@ -114,11 +114,15 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Encode + write atomically inside mutex — Alchemist-style single saver pattern,
+    // no race between encoding outside lock and writer inside lock.
     private fun saveAllCircuitsNow() {
-        val toSave = AllSavedCircuits(allCircuits.mapValues { it.value.toPersisted() })
-        val json = jsonLenient.encodeToString(toSave)
         viewModelScope.launch(Dispatchers.IO) {
-            persistMutex.withLock { ds.setString(KEY_CIRCUITS, json) }
+            persistMutex.withLock {
+                val toSave = AllSavedCircuits(allCircuits.mapValues { it.value.toPersisted() })
+                val json = jsonLenient.encodeToString(toSave)
+                ds.setString(KEY_CIRCUITS, json)
+            }
         }
     }
 
@@ -152,8 +156,10 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value
         val newId = "G_${UUID.randomUUID().toString().take(6)}"
         val cnt = state.circuit.gates.size
-        val px = (x ?: (80f + (cnt % 4) * 140f)).coerceIn(0f, 3000f)
-        val py = (y ?: (100f + (cnt / 4) * 110f)).coerceIn(0f, 3000f)
+        // Alchemist-style responsive placement: use window-relative defaults clamped to sane visible range
+        // instead of 0..3000 which places off-screen on small portrait
+        val px = (x ?: (80f + (cnt % 4) * 140f)).coerceIn(8f, 1200f)
+        val py = (y ?: (100f + (cnt / 4) * 110f)).coerceIn(8f, 2000f)
         val gate = PlacedChip(newId, chipId, x=px, y=py)
         val newCircuit = state.circuit.copy(gates=state.circuit.gates + gate)
         pushHistory(state.circuit)
@@ -180,10 +186,38 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
     private fun pushHistory(c: Circuit) {
         val lvl = _uiState.value.currentLevelId ?: return
         val stack = undoStacks.getOrPut(lvl) { mutableListOf() }
+        // Alchemist-style dedup: avoid filling undo stack with micro-moves (<1f jitter)
+        val prev = stack.lastOrNull()
+        if (prev != null && circuitsAreSameIgnoringJitter(prev, c)) return
         stack.add(c)
         if (stack.size > maxHistory) stack.removeAt(0)
         redoStacks[lvl]?.clear()
         _uiState.update { it.copy(canUndo=stack.isNotEmpty(), canRedo=false) }
+    }
+
+    private fun circuitsAreSameIgnoringJitter(a: Circuit, b: Circuit, thresh: Float = 1f): Boolean {
+        if (a.gates.size != b.gates.size) return false
+        if (a.wires.size != b.wires.size) return false
+        if (a.outputMappings.size != b.outputMappings.size) return false
+        for (i in a.gates.indices) {
+            val ga = a.gates[i]; val gb = b.gates[i]
+            if (ga.instanceId != gb.instanceId || ga.chipId != gb.chipId) return false
+            if (kotlin.math.abs(ga.x - gb.x) > thresh || kotlin.math.abs(ga.y - gb.y) > thresh) return false
+        }
+        if (a.wires != b.wires) return false
+        if (a.outputMappings != b.outputMappings) return false
+        // inputPositions/outputPositions with jitter tolerance
+        if (a.inputPositions.size != b.inputPositions.size) return false
+        for ((k, v) in a.inputPositions) {
+            val vb = b.inputPositions[k] ?: return false
+            if (kotlin.math.abs(v.x - vb.x) > thresh || kotlin.math.abs(v.y - vb.y) > thresh) return false
+        }
+        if (a.outputPositions.size != b.outputPositions.size) return false
+        for ((k, v) in a.outputPositions) {
+            val vb = b.outputPositions[k] ?: return false
+            if (kotlin.math.abs(v.x - vb.x) > thresh || kotlin.math.abs(v.y - vb.y) > thresh) return false
+        }
+        return true
     }
 
     fun undo() {
@@ -214,7 +248,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onGateMoved(instanceId: String, x: Float, y: Float) {
         val s = _uiState.value.circuit
-        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(0f,3000f), y=y.coerceIn(0f,3000f)) else it }
+        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(8f,1200f), y=y.coerceIn(8f,2000f)) else it }
         _uiState.update { it.copy(circuit=it.circuit.copy(gates=newGates)) }
     }
     fun onGateMoveFinished(instanceId: String, x: Float, y: Float) {
@@ -222,7 +256,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         // push history only if wasn't already pushed for this drag session
         if (undoStacks[_uiState.value.currentLevelId]?.lastOrNull() != prevCircuit) pushHistory(prevCircuit)
-        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(0f,3000f), y=y.coerceIn(0f,3000f)) else it }
+        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(8f,1200f), y=y.coerceIn(8f,2000f)) else it }
         val newCircuit = s.copy(gates=newGates)
         val lvl = _uiState.value.currentLevelId
         if (lvl!=null) allCircuits[lvl]=newCircuit
@@ -234,7 +268,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
     fun onInputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.inputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(0f,3000f), y.coerceIn(0f,3000f))
+        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
         _uiState.update { it.copy(circuit=s.copy(inputPositions=newMap)) }
     }
     fun onInputMoveFinished(idx: Int, x: Float, y: Float) {
@@ -242,7 +276,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         pushHistory(prevCircuit)
         val newMap = s.inputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(0f,3000f), y.coerceIn(0f,3000f))
+        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
         val newCircuit = s.copy(inputPositions=newMap)
         val lvl=_uiState.value.currentLevelId
         if(lvl!=null) allCircuits[lvl]=newCircuit
@@ -252,7 +286,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
     fun onOutputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.outputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(0f,3000f), y.coerceIn(0f,3000f))
+        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
         _uiState.update { it.copy(circuit=s.copy(outputPositions=newMap)) }
     }
     fun onOutputMoveFinished(idx: Int, x: Float, y: Float) {
@@ -260,7 +294,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         pushHistory(prevCircuit)
         val newMap = s.outputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(0f,3000f), y.coerceIn(0f,3000f))
+        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
         val newCircuit=s.copy(outputPositions=newMap)
         val lvl=_uiState.value.currentLevelId
         if(lvl!=null) allCircuits[lvl]=newCircuit

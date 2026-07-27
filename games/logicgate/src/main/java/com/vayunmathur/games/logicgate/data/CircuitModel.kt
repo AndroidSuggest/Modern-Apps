@@ -304,15 +304,28 @@ object CircuitEvaluator {
         return if (order.size == nodes.size) order else null
     }
 
+    // Shared sampling util — same sequence used by evaluator and TruthTableView (Phase 3 fix: seed alignment)
+    // Previously TruthTableView used seed 1 + %3 pattern vs evaluator seed 1234 — failingRows indices mismatched display
+    fun generateSampleVectors(totalInputBits: Int, limit: Int = 256, seed: Long = 1234L): List<List<Boolean>> {
+        return if (totalInputBits <= 10) {
+            (0 until (1 shl totalInputBits)).map { c -> List(totalInputBits) { i -> ((c shr i) and 1) == 1 } }.take(limit)
+        } else {
+            val rnd = java.util.Random(seed)
+            val vs = mutableListOf<List<Boolean>>()
+            vs.add(List(totalInputBits) { false })
+            vs.add(List(totalInputBits) { true })
+            vs.add(List(totalInputBits) { it % 2 == 0 })
+            while (vs.size < limit) vs.add(List(totalInputBits) { rnd.nextBoolean() })
+            vs
+        }
+    }
+
     fun generateTruthTable(target: ChipDef, inputBits: Int, outputBits: Int, limit: Int = 256): List<List<Boolean>> {
         val total = if (inputBits <= 10) (1 shl inputBits) else minOf(limit, 1 shl minOf(inputBits, 20))
         return if (inputBits <= 10) {
             (0 until total).map { c -> val inp = List(inputBits) { i -> ((c shr i) and 1) == 1 }; target.eval(inp).take(outputBits) }
         } else {
-            val rnd = java.util.Random(42)
-            val vecs = mutableListOf<List<Boolean>>()
-            vecs.add(List(inputBits) { false }); vecs.add(List(inputBits) { true }); vecs.add(List(inputBits) { it % 2 == 0 })
-            while (vecs.size < minOf(limit, total)) vecs.add(List(inputBits) { rnd.nextBoolean() })
+            val vecs = generateSampleVectors(inputBits, minOf(limit, total), 1234L)
             vecs.map { inp -> target.eval(inp).take(outputBits) }
         }
     }

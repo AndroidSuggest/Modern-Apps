@@ -2,27 +2,43 @@ package com.vayunmathur.games.logicgate.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
- * Viewport + clamping. World can be larger than screen; canvas responsive.
- * Fixes bug: hardcoded 920f output terminals off-screen portrait.
+ * Viewport + clamping — density-aware refactor from plan Phase 2+4.
+ * Fixes bug: hardcoded 12f px in clampGate, hardcoded 920f output off-screen portrait.
  */
 data class CanvasViewport(val offset: Offset = Offset.Zero, val scale: Float = 1f) {
   fun worldToScreen(p: Offset): Offset = (p - offset) * scale
   fun screenToWorld(p: Offset): Offset = p / scale + offset
 }
 
-fun clampGate(pos: Offset, w: Float, h: Float, canvasSize: Size): Offset {
+fun clampGate(
+  pos: Offset,
+  w: Float,
+  h: Float,
+  canvasSize: Size,
+  padding: Dp = 12.dp,
+  density: Density? = null
+): Offset {
   if (canvasSize.width <= 0f || canvasSize.height <= 0f) return Offset(pos.x.coerceAtLeast(0f), pos.y.coerceAtLeast(0f))
-  val half = 12f
-  val minX = half
-  val minY = half
-  val maxX = (canvasSize.width - w - half).coerceAtLeast(minX)
-  val maxY = (canvasSize.height - h - half).coerceAtLeast(minY)
+  val padPx = density?.let { with(it) { padding.toPx() } } ?: 12f
+  val minX = padPx
+  val minY = padPx
+  val maxX = (canvasSize.width - w - padPx).coerceAtLeast(minX)
+  val maxY = (canvasSize.height - h - padPx).coerceAtLeast(minY)
   return Offset(pos.x.coerceIn(minX, maxX), pos.y.coerceIn(minY, maxY))
 }
 
-fun clampTerm(center: Offset, pillW: Float, canvasSize: Size, padding: Float): Offset {
+fun clampTerm(
+  center: Offset,
+  pillW: Float,
+  canvasSize: Size,
+  padding: Float,
+  density: Density? = null
+): Offset {
   if (canvasSize.width <= 0f || canvasSize.height <= 0f) return center
   val half = pillW / 2f + padding
   val maxX = (canvasSize.width - half).coerceAtLeast(half)
@@ -33,7 +49,7 @@ fun clampTerm(center: Offset, pillW: Float, canvasSize: Size, padding: Float): O
 }
 
 /**
- * Responsive default positions for I/O terminals – fixes portrait off-screen bug.
+ * Responsive default positions for I/O terminals — fixes portrait off-screen bug.
  * Inputs left side, outputs right edge relative to current canvasSize.
  */
 fun defaultInputPos(idx: Int, canvasSize: Size, pillW: Float = 86f): Offset {
