@@ -8,4 +8,5 @@
     <string name="external_saved">Zapisano do pliku</string>
     <string name="external_save_failed">Nie można zapisać (plik może być tylko do odczytu)</string>
     <string name="external_read_failed">Nie można otworzyć pliku</string>
+    <string name="note"></string>
 </resources>
