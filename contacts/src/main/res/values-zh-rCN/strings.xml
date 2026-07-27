@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">确定</string>
     <string name="cancel">取消</string>
@@ -91,4 +92,6 @@
     <string name="no_name">（无名称）</string>
     <string name="add_number_to_contact">将号码添加到联系人</string>
     <string name="create_new_contact">创建新联系人</string>
+    <string name="crop_photo">裁剪照片</string>
+    <string name="import_contacts_from_vcf_files">从 .vcf 文件导入联系人</string>
 </resources>
