@@ -13,6 +13,10 @@ impl Default for FontStyle {
 pub(crate) struct FontInfo {
     /// Type0 (Identity-H) fonts use 2-byte codes; simple fonts use 1 byte.
     pub(crate) two_byte: bool,
+    pub(crate) wmode: u8,
+    pub(crate) vertical_metrics: HashMap<u32, (f64, f64)>,
+    pub(crate) default_vertical: (f64, f64),
+    pub(crate) cid_to_gid: Option<HashMap<u32, u16>>,
     /// `code -> unicode string` from the font's `/ToUnicode` CMap, if any.
     pub(crate) to_unicode: Option<HashMap<u32, String>>,
     /// `code -> unicode char` from the simple-font encoding (base + Differences),
@@ -42,6 +46,21 @@ pub(crate) struct Type3Font {
     pub(crate) resources: Option<Dictionary>,
 }
 
+fn is_space_codepoint(cp: u32, decoded_text: Option<&str>) -> bool {
+    // Core ASCII + NBSP + full-width ideographic space 0x3000 + other
+    // commonly-checked unicode spaces relevant for Tw detection.
+    matches!(
+        cp,
+        32 |       // ASCII space
+        0x00A0 |   // NBSP
+        0x2000..=0x200A | // En quad .. hair space
+        0x2002 | 0x2003 | // En/em space
+        0x2009 | 0x202F | // Thin/narrow NBSP
+        0x205F |          // Medium mathematical space
+        0x3000             // Ideographic space (CJK full-width)
+    ) || decoded_text.map(|s| s.chars().any(|c| c.is_whitespace())).unwrap_or(false)
+}
+
 impl FontInfo {
     /// Invoke `f(code, is_single_byte_space)` for each character code in the
     /// string, honoring this font's code width (1 or 2 bytes).
@@ -50,17 +69,24 @@ impl FontInfo {
             let mut i = 0;
             while i + 1 < bytes.len() {
                 let code = ((bytes[i] as u32) << 8) | bytes[i + 1] as u32;
-                // For Identity-H, space is often 0x0020; we still need word_spacing.
-                // is_space here means unicode space check after decoding would be better,
-                // but we approximate by code == 0x20 or ToUnicode maps to ' '.
-                let is_space = code == 32 ||
-                    self.to_unicode.as_ref().and_then(|m| m.get(&code)).map(|s| s == " ").unwrap_or(false);
+                // Word spacing (Tw) should apply to all unicode spaces, not just 0x20.
+                // Check full-width (0x3000), NBSP (0xA0), and ToUnicode == " " or
+                // any whitespace-like mapping.
+                let to_uni = self.to_unicode.as_ref().and_then(|m| m.get(&code));
+                let is_space = code == 32
+                    || code == 0x00A0
+                    || code == 0x3000
+                    || to_uni.map(|s| s == " " || s.chars().any(|c| c.is_whitespace())).unwrap_or(false);
                 f(code, is_space);
                 i += 2;
             }
         } else {
             for &b in bytes {
-                f(b as u32, b == 32);
+                let code = b as u32;
+                let is_space = code == 32
+                    || code == 0x00A0
+                    || self.encoding.get(&code).map(|c| c.is_whitespace()).unwrap_or(false);
+                f(code, is_space);
             }
         }
     }
@@ -124,6 +150,33 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         })
         .map(|data| cmap::parse(&data));
 
+    // WMode: 0 horizontal (default), 1 vertical. Detect from Type0 font dict and descendant.
+    let wmode: u8 = font.get(b"WMode").ok().and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(0) as u8;
+    let desc_wmode: u8 = font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::Array(a) => a.first(), _ => None }).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()).and_then(|d| d.get(b"WMode").ok()).and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(wmode as u8) as u8;
+    let effective_wmode = desc_wmode.max(wmode as u8);
+
+    // CIDToGIDMap
+    let cid_to_gid: Option<HashMap<u32, u16>> = {
+        font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::Array(a) => a.first(), _ => None }).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()).and_then(|df| {
+            match df.get(b"CIDToGIDMap").ok().and_then(|o| deref(doc, o)).or_else(|| df.get(b"CIDToGIDMap").ok()) {
+                Some(Object::Stream(s)) => {
+                    let data = stream_data(s);
+                    let mut map = HashMap::new();
+                    for (i, chunk) in data.chunks(2).enumerate() {
+                        if chunk.len() < 2 { break; }
+                        let gid = ((chunk[0] as u16) << 8) | chunk[1] as u16;
+                        if gid != 0 {
+                            map.insert(i as u32, gid);
+                        }
+                    }
+                    Some(map)
+                }
+                Some(Object::Name(n)) if n == b"Identity" => None, // identity = no remap
+                _ => None,
+            }
+        })
+    };
+
     // Type 3 glyph data (parsed before widths so the FontMatrix scale is known).
     let t3 = if is_type3 {
         type3::parse_type3_font(doc, font).map(|info| {
@@ -146,6 +199,45 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         type3_widths(doc, font, fm_scale)
     } else {
         simple_widths(doc, font)
+    };
+
+    // Vertical widths /W2 /DW2 for WMode=1 (best-effort: keep horizontal fallback for now, but record metrics)
+    let vert_desc = font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::Array(a) => a.first(), _ => None }).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()).cloned();
+    let (vert_map, default_vert): (HashMap<u32, (f64, f64)>, (f64, f64)) = {
+        let mut vm = HashMap::new();
+        let mut dw2 = (0.0, -1000.0); // default per spec approx
+        if let Some(ref df) = vert_desc {
+            if let Some(Object::Array(arr)) = df.get(b"DW2").ok().and_then(|o| deref(doc, o)) {
+                let v: Vec<f64> = arr.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).collect();
+                if v.len() >= 2 {
+                    dw2 = (v[0] / 1000.0, v[1] / 1000.0);
+                }
+            }
+            if let Some(Object::Array(w2)) = df.get(b"W2").ok().and_then(|o| deref(doc, o)) {
+                let mut i = 0;
+                while i + 2 < w2.len() {
+                    let c0 = match deref(doc, &w2[i]).and_then(num) { Some(v) => v as u32, None => break };
+                    let c1 = match deref(doc, &w2[i+1]).and_then(num) { Some(v) => v as u32, None => break };
+                    // w2 entries: c0 c1 w1 v1 v2 ...? spec: c0 c1 w1 v_h v_v OR c0 [w1 v_h v_v ...]
+                    // Simplified best-effort:
+                    if let Some(Object::Array(list)) = w2.get(i+2).and_then(|o| deref(doc, o)) {
+                        for (j, item) in list.iter().enumerate() {
+                            // Expect sequence of w, vx, vy triplets? Could be [w vx vy w vx vy...]
+                            // Best-effort placeholder
+                            if let Some(_w) = deref(doc, item).and_then(num) { vm.insert(c0 + j as u32, (dw2.0, _w / 1000.0)); }
+                        }
+                        i += 3;
+                    } else {
+                        let _w = w2.get(i+2).and_then(|o| deref(doc, o)).and_then(num).unwrap_or(-1000.0) / 1000.0;
+                        let vx = w2.get(i+3).and_then(|o| deref(doc, o)).and_then(num).unwrap_or(0.0) / 1000.0;
+                        let vy = w2.get(i+4).and_then(|o| deref(doc, o)).and_then(num).unwrap_or(0.0) / 1000.0;
+                        for cid in c0..=c1 { vm.insert(cid, (vx, vy)); }
+                        i += 5;
+                    }
+                }
+            }
+        }
+        (vm, dw2)
     };
 
     let encoding = if two_byte {
@@ -235,6 +327,10 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
 
     FontInfo {
         two_byte,
+        wmode: effective_wmode,
+        vertical_metrics: vert_map,
+        default_vertical: default_vert,
+        cid_to_gid,
         to_unicode,
         encoding,
         cmap_uni,
@@ -478,13 +574,96 @@ use std::io::Cursor;
     /// Parse a subtable at `off` into (code, glyphId) pairs.
     fn parse_subtable(b: &[u8], off: usize) -> Vec<(u32, u16)> {
         let mut out = Vec::new();
-        match u16b(b, off) {
+        let fmt = u16b(b, off);
+        match fmt {
             0 => {
                 // Byte encoding: 256 single-byte glyph ids.
                 for c in 0..256u32 {
                     let g = *b.get(off + 6 + c as usize).unwrap_or(&0) as u16;
                     if g != 0 {
                         out.push((c, g));
+                    }
+                }
+            }
+            2 => {
+                // Format 2 (CJK high-byte): sparse subHeaders + maps.
+                // Structure: [format,u16][length,u16][lang,u16][subHeaderKeys 256×u16][subHeaders][glyphIndexArray]
+                // Each subHeaderKey is idx*8 of subHeader, or 0 if single-byte. SubHeader: firstCode,reserved,entryCount,delta (i16),rangeOffset.
+                // Bounds-check heavily — exotic.
+                if b.len() < off + 6 || off + 6 > b.len() {
+                    return out;
+                }
+                let sub_keys_off = off + 6;
+                if sub_keys_off + 512 > b.len() {
+                    return out;
+                }
+                // Pre-calc max subHeader idx from keys
+                let mut max_key = 0usize;
+                for k in 0..256 {
+                    let v = u16b(b, sub_keys_off + k * 2) as usize;
+                    if v / 8 > max_key {
+                        max_key = v / 8;
+                    }
+                }
+                let sub_header_off = sub_keys_off + 512;
+                // GlyphIndexArray follows subHeaders: need to estimate
+                let ghi_off = sub_header_off + (max_key + 1) * 8;
+                if ghi_off > b.len() {
+                    return out;
+                }
+                for sbyte in 0u32..256 {
+                    let key_raw = u16b(b, sub_keys_off + sbyte as usize * 2) as usize;
+                    let sh_idx = key_raw / 8;
+                    if sh_idx == 0 {
+                        // Single-byte code maps via one entry
+                        let sh_off = sub_header_off + sh_idx * 8;
+                        if sh_off + 8 > b.len() {
+                            continue;
+                        }
+                        let first = u16b(b, sh_off) as u32;
+                        // Only attempt when high byte matches etc — best-effort
+                        // For format2, single-byte glyphs: range 0x00..0xFF
+                        if sbyte == first {
+                            let range_off = u16b(b, sh_off + 6) as usize;
+                            let glyph: u16 = if range_off == 0 {
+                                let delta = u16b(b, sh_off + 4) as i16;
+                                (sbyte as i16 + delta) as u16
+                            } else {
+                                let addr = ghi_off + range_off;
+                                u16b(b, addr)
+                            };
+                            if glyph != 0 {
+                                out.push((sbyte, glyph));
+                            }
+                        }
+                    }
+                }
+                // Two-byte sequence handling simplified: high byte groups
+                for hi in 0u32..256 {
+                    let key_raw = u16b(b, sub_keys_off + hi as usize * 2) as usize;
+                    let sh_idx = key_raw / 8;
+                    if sh_idx == 0 {
+                        continue;
+                    }
+                    let sh_off = sub_header_off + sh_idx * 8;
+                    if sh_off + 8 > b.len() {
+                        continue;
+                    }
+                    let first_code = u16b(b, sh_off) as u32;
+                    let entry_count = u16b(b, sh_off + 2) as u32;
+                    let delta = u16b(b, sh_off + 4) as i16;
+                    let range_off = u16b(b, sh_off + 6) as usize;
+                    for low in 0u32..entry_count.min(256) {
+                        let code = (hi << 8) | (first_code + low);
+                        let gid = if range_off == 0 {
+                            ((first_code + low) as i16 + delta) as u16
+                        } else {
+                            let addr = sub_header_off + sh_idx * 8 + 6 + range_off + (low as usize * 2);
+                            u16b(b, addr)
+                        };
+                        if gid != 0 {
+                            out.push((code, gid));
+                        }
                     }
                 }
             }
@@ -534,6 +713,39 @@ use std::io::Cursor;
                     }
                 }
             }
+            8 => {
+                // Format 8: mixed 16/32 coverage. Guarded best-effort.
+                // [format 8][reserved][length u32][lang u32][is32 array 8192 bytes][nGroups u32][groups...] groups are [start,end,gid]
+                if b.len() < off + 12 {
+                    return out;
+                }
+                let length = u32b(b, off + 2) as usize;
+                if off + length > b.len() || length < 8200 {
+                    return out;
+                }
+                // After is32 bitmap (8192 bytes) at off+12, nGroups at off+8204
+                let ngroups_off = off + 12 + 8192;
+                if ngroups_off + 4 > b.len() {
+                    return out;
+                }
+                let ngroups = u32b(b, ngroups_off) as usize;
+                let groups_off = ngroups_off + 4;
+                for g in 0..ngroups.min(100_000) {
+                    let go = groups_off + g * 12;
+                    if go + 12 > b.len() {
+                        break;
+                    }
+                    let sc = u32b(b, go);
+                    let ec = u32b(b, go + 4);
+                    let sg = u32b(b, go + 8) as u16;
+                    if sc > ec || ec - sc > 65535 || sg == 0 {
+                        continue;
+                    }
+                    for c in sc..=ec {
+                        out.push((c, (sg as u32 + (c - sc)) as u16));
+                    }
+                }
+            }
             10 => {
                 // Trimmed array (like format 6 but 32-bit code space).
                 let first = u32b(b, off + 12);
@@ -576,6 +788,48 @@ use std::io::Cursor;
                         out.push((c, gid));
                     }
                 }
+            }
+            14 => {
+                // Format 14: variation selectors — produces no direct code->gid mapping
+                // for basic text extraction; skip but parse best-effort: if present,
+                // treat first 3 tables? For extraction we ignore selectors and only
+                // map base unicode via defaultUVS -> uVS. The cmap recovery composes
+                // code->glyph and gid->uni anyway; variation tables provide alt uni for
+                // <base, selector>. We produce base uni mapping ignoring selector for now.
+                // Parse top [format 2byte][length 4][numVarSelectorRecords 4]
+                if b.len() < off + 10 {
+                    return out;
+                }
+                let num_recs = u32b(b, off + 6) as usize;
+                // Each record: varSelector 3 byte, defaultUVS off 4, nonDefault off 4.
+                // If defaultUVS non-zero, it contains ranges mapping base unicode -> selector maps to default glyph.
+                // This logic is complex, for robustness we only handle defaultUVS path to map base uni to default glyph
+                for i in 0..num_recs.min(1000) {
+                    let rec_off = off + 10 + i * 11;
+                    if rec_off + 11 > b.len() {
+                        break;
+                    }
+                    let default_off = u32b(b, rec_off + 3) as usize;
+                    if default_off != 0 {
+                        let base_rec = off + default_off;
+                        if base_rec + 4 > b.len() {
+                            continue;
+                        }
+                        let num_ranges = u32b(b, base_rec) as usize;
+                        for r in 0..num_ranges.min(10_000) {
+                            let ro = base_rec + 4 + r * 4;
+                            if ro + 4 > b.len() {
+                                break;
+                            }
+                            let start = (b[ro] as u32) << 16 | u16b(b, ro + 1) as u32;
+                            let addl = b[ro + 3] as u32;
+                            for u in start..=start + addl {
+                                out.push((u, 0)); // marker, will be filtered via uni mapping fallback?
+                            }
+                        }
+                    }
+                }
+                // No gid mapping for format 14; fallback to other subtable
             }
             _ => {}
         }

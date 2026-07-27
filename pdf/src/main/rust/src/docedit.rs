@@ -307,6 +307,20 @@ pub(crate) fn render_page(handle: i64, index: i32) -> Option<Vec<u8>> {
     let doc = reg.get(&handle)?;
     let pages = doc.get_pages();
     let page_id = *pages.get(&((index as u32) + 1))?;
+    // Content stream size guard (DoS mitigation per plan §18): reject absurdly large page contents before full interpretation.
+    if let Ok(dict) = doc.get_dictionary(page_id) {
+        if let Ok(cont) = dict.get(b"Contents") {
+            let estimate = match cont {
+                Object::Reference(_) => 0usize, // indirect — hard to estimate cheaply, allow
+                Object::Stream(s) => s.content.len(),
+                Object::Array(a) => a.len() * 4096, // rough
+                _ => 0,
+            };
+            if estimate > 25 * 1024 * 1024 { // 25MB single-page content cap
+                return None;
+            }
+        }
+    }
     let page = interpret_page(doc, page_id).ok()?;
     Some(wire::serialize(&page))
 }

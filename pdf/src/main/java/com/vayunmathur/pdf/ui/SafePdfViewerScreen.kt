@@ -2327,12 +2327,13 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                     2 -> androidx.compose.ui.graphics.StrokeJoin.Bevel
                     else -> androidx.compose.ui.graphics.StrokeJoin.Miter
                 }
+                // Miter limit is in line-width units per spec, not device pixels — do NOT scale by canvas scale (was a bug at 2104-2105).
                 drawPath(
                     path,
                     Color(prim.color),
                     style = Stroke(
                         width = (prim.width * scale).coerceAtLeast(1f),
-                        miter = prim.miter * scale,
+                        miter = prim.miter,
                         cap = cap,
                         join = join,
                         pathEffect = pathEffect,

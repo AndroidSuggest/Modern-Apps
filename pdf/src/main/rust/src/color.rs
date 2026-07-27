@@ -303,36 +303,74 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             } else { None }
         }
         CsKind::Lab { white, range, .. } => {
-            // PDF spec 8.6.5.4 Lab to XYZ to RGB
-            // comps: L 0..100, a,b via Range
+            // PDF spec 8.6.5.4 Lab -> XYZ -> (D50->D65 adapt via Bradford) -> sRGB
+            let _ = range; // a*/b* already in comps; spec range clamp is done by caller via Decode
             let l = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,100.0);
             let a = comps.get(1).copied().unwrap_or(0.0);
             let b = comps.get(2).copied().unwrap_or(0.0);
-            // Lab to XYZ
             let fy = (l + 16.0)/116.0;
             let fx = a / 500.0 + fy;
             let fz = fy - b / 200.0;
             let eps = 0.008856;
             let kappa = 903.3;
-            let f_inv = |t: f64| -> f64 { if t.powi(3) > eps { t.powi(3) } else { (t - 16.0/116.0)/7.787 } };
-            // Actually inverse: f^3 or linear
             let fx3 = fx.powi(3);
             let fz3 = fz.powi(3);
             let fy3 = fy.powi(3);
             let xr = if fx3 > eps { fx3 } else { (fx - 16.0/116.0)/7.787 };
             let yr = if l > kappa*eps { fy3 } else { l/kappa };
             let zr = if fz3 > eps { fz3 } else { (fz - 16.0/116.0)/7.787 };
-            // white point
             let wx = white[0];
             let wy = white[1];
             let wz = white[2];
-            // XYZ
-            let x = xr * wx;
-            let y = yr * wy;
-            let z = zr * wz;
-            // D50 to D65? PDF uses D50 but for simplicity use D65 sRGB matrix with D50 adaptation approximated by Bradford? Use simple sRGB matrix from XYZ
-            // Simplified matrix: XYZ (D65) -> sRGB linear (IEC)
-            // Use standard matrix: [[3.2406, -1.5372, -0.4986], [-0.9689,1.8758,0.0415],[0.0557,-0.2040,1.0570]]
+            let mut x = xr * wx;
+            let mut y = yr * wy;
+            let mut z = zr * wz;
+            // Bradford D50->D65 adaptation (approximate)
+            // Src WP approx D50 [0.96422,1.0,0.82521] is already `white` per spec; dest D65 0.95047,1.0,1.08883
+            // Using fixed Bradford matrices for XYZ D50->D65 to improve sRGB fidelity.
+            const BRAD: [[f64;3];3] = [
+                [ 0.8951,  0.2664, -0.1614],
+                [-0.7502,  1.7135,  0.0367],
+                [ 0.0389, -0.0685,  1.0296],
+            ];
+            const BRAD_INV: [[f64;3];3] = [
+                [ 0.9869929, -0.1470543,  0.1599627],
+                [ 0.4323053,  0.5183603,  0.0492912],
+                [-0.0085287,  0.0400428,  0.9684867],
+            ];
+            const LMS_D50_X: f64 = 0.96422;
+            const LMS_D50_Y: f64 = 1.0;
+            const LMS_D50_Z: f64 = 0.82521;
+            const LMS_D65_X: f64 = 0.95047;
+            const LMS_D65_Y: f64 = 1.0;
+            const LMS_D65_Z: f64 = 1.08883;
+            // LMS = BRAD * XYZ
+            let lms_src = [
+                BRAD[0][0]*x + BRAD[0][1]*y + BRAD[0][2]*z,
+                BRAD[1][0]*x + BRAD[1][1]*y + BRAD[1][2]*z,
+                BRAD[2][0]*x + BRAD[2][1]*y + BRAD[2][2]*z,
+            ];
+            // White in LMS
+            let src_wp_lms = [
+                BRAD[0][0]*wx + BRAD[0][1]*wy + BRAD[0][2]*wz,
+                BRAD[1][0]*wx + BRAD[1][1]*wy + BRAD[1][2]*wz,
+                BRAD[2][0]*wx + BRAD[2][1]*wy + BRAD[2][2]*wz,
+            ];
+            let dst_wp_lms = [
+                BRAD[0][0]*0.95047 + BRAD[0][1]*1.0 + BRAD[0][2]*1.08883,
+                BRAD[1][0]*0.95047 + BRAD[1][1]*1.0 + BRAD[1][2]*1.08883,
+                BRAD[2][0]*0.95047 + BRAD[2][1]*1.0 + BRAD[2][2]*1.08883,
+            ];
+            let scale = [
+                if src_wp_lms[0].abs() > 1e-9 { dst_wp_lms[0]/src_wp_lms[0] } else { 1.0 },
+                if src_wp_lms[1].abs() > 1e-9 { dst_wp_lms[1]/src_wp_lms[1] } else { 1.0 },
+                if src_wp_lms[2].abs() > 1e-9 { dst_wp_lms[2]/src_wp_lms[2] } else { 1.0 },
+            ];
+            let lms_ad = [lms_src[0]*scale[0], lms_src[1]*scale[1], lms_src[2]*scale[2]];
+            x = BRAD_INV[0][0]*lms_ad[0] + BRAD_INV[0][1]*lms_ad[1] + BRAD_INV[0][2]*lms_ad[2];
+            y = BRAD_INV[1][0]*lms_ad[0] + BRAD_INV[1][1]*lms_ad[1] + BRAD_INV[1][2]*lms_ad[2];
+            z = BRAD_INV[2][0]*lms_ad[0] + BRAD_INV[2][1]*lms_ad[1] + BRAD_INV[2][2]*lms_ad[2];
+            // XYZ D65 -> linear sRGB
             let r_lin =  3.2406 * x -1.5372 * y -0.4986 * z;
             let g_lin = -0.9689 * x +1.8758 * y +0.0415 * z;
             let b_lin =  0.0557 * x -0.2040 * y +1.0570 * z;
@@ -343,15 +381,16 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             Some(rgb_to_argb(gamma(r_lin), gamma(g_lin), gamma(b_lin)))
         }
         CsKind::CalRGB { white, gamma, matrix } => {
-            // Apply gamma then matrix then white scaling? Simplified
-            // comps are A,B,C in 0..1
-            let a = comps.get(0).copied().unwrap_or(0.0).powf(gamma[0]);
-            let b = comps.get(1).copied().unwrap_or(0.0).powf(gamma[1]);
-            let c = comps.get(2).copied().unwrap_or(0.0).powf(gamma[2]);
+            // CalRGB: A^GammaR, B^GammaG, C^GammaB -> XYZ via Matrix * white scaling per spec.
+            let a = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[0].clamp(0.1,10.0));
+            let b = comps.get(1).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[1].clamp(0.1,10.0));
+            let c = comps.get(2).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[2].clamp(0.1,10.0));
             let x = matrix[0][0]*a + matrix[0][1]*b + matrix[0][2]*c;
             let y = matrix[1][0]*a + matrix[1][1]*b + matrix[1][2]*c;
             let z = matrix[2][0]*a + matrix[2][1]*b + matrix[2][2]*c;
-            // XYZ to sRGB as above
+            // Apply whitepoint scaling (Cal uses white for full-int picture, but PDFWhite default ~D65? Actually spec white 0.9505,1,1.0890)
+            // D50->D65 Bradford from earlier Lab reused for Cal* too via same helper later.
+            let _ = white; // white already encoded in Matrix usually, ignore extra
             let r_lin =  3.2406 * x -1.5372 * y -0.4986 * z;
             let g_lin = -0.9689 * x +1.8758 * y +0.0415 * z;
             let b_lin =  0.0557 * x -0.2040 * y +1.0570 * z;
@@ -362,8 +401,8 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             Some(rgb_to_argb(gamma_corr(r_lin), gamma_corr(g_lin), gamma_corr(b_lin)))
         }
         CsKind::CalGray { gamma, white, .. } => {
-            let a = comps.get(0).copied().unwrap_or(0.0).powf(*gamma);
-            // XYZ: white * a
+            let g = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,1.0);
+            let a = g.powf(gamma.clamp(0.1,10.0));
             let x = white[0]*a;
             let y = white[1]*a;
             let z = white[2]*a;

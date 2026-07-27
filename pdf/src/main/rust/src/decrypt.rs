@@ -55,7 +55,11 @@ pub(crate) fn crypt_object(obj: &mut Object, apply: &dyn Fn(&[u8]) -> Vec<u8>) {
     }
 }
 
-/// First `/ID` element bytes from the trailer, or empty.
+/// First `/ID` element bytes from the trailer, or empty if absent.
+/// For decryption, an empty ID is tolerated (some generators omit it). The
+/// alternate hash fallback was breaking RC4/AES-128 round-trips because
+/// `encrypt_doc_bytes` must persist a concrete ID; `trailer_id0` must NOT
+/// synthesize a different value on each load. Missing ID returns empty.
 pub(crate) fn trailer_id0(doc: &Document) -> Vec<u8> {
     if let Ok(Object::Array(a)) = doc.trailer.get(b"ID") {
         if let Some(Object::String(s, _)) = a.first() {
@@ -63,6 +67,25 @@ pub(crate) fn trailer_id0(doc: &Document) -> Vec<u8> {
         }
     }
     Vec::new()
+}
+
+/// Ensure the document trailer has an `/ID` array (two entries), generating
+/// a random one if missing. Returns the first ID bytes for key derivation.
+pub(crate) fn ensure_trailer_id(doc: &mut Document, seed: &[u8]) -> Vec<u8> {
+    if let Ok(Object::Array(a)) = doc.trailer.get(b"ID") {
+        if let Some(Object::String(s, _)) = a.first() {
+            return s.clone();
+        }
+    }
+    let h = rand_bytes(16, seed);
+    doc.trailer.set(
+        "ID",
+        Object::Array(vec![
+            Object::String(h.clone(), lopdf::StringFormat::Hexadecimal),
+            Object::String(h.clone(), lopdf::StringFormat::Hexadecimal),
+        ]),
+    );
+    h
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -224,22 +247,7 @@ pub(crate) fn encrypt_doc_bytes(
 ) -> Option<Vec<u8>> {
     let mut doc = Document::load_mem(bytes).ok()?;
     // Ensure an /ID exists (used by RC4/AES-128 key derivation).
-    let id0 = {
-        let existing = trailer_id0(&doc);
-        if existing.is_empty() {
-            let h = rand_bytes(16, bytes);
-            doc.trailer.set(
-                "ID",
-                Object::Array(vec![
-                    Object::String(h.clone(), lopdf::StringFormat::Hexadecimal),
-                    Object::String(h.clone(), lopdf::StringFormat::Hexadecimal),
-                ]),
-            );
-            h
-        } else {
-            existing
-        }
-    };
+    let id0 = ensure_trailer_id(&mut doc, bytes);
     let owner = if owner_pw.is_empty() { user_pw } else { owner_pw };
     let p: i32 = -4; // allow all operations
 

@@ -1479,45 +1479,192 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
     None
 }
 
+/// Bilinear sample of a `sw*sh` 1-channel (0..255) buffer at fractional (sx,sy).
+fn bilinear_mask_sample(buf: &[u8], sw: usize, sh: usize, sx: f64, sy: f64) -> u8 {
+    if sw == 0 || sh == 0 {
+        return 0;
+    }
+    let x0 = sx.floor().clamp(0.0, (sw - 1) as f64) as usize;
+    let y0 = sy.floor().clamp(0.0, (sh - 1) as f64) as usize;
+    let x1 = (x0 + 1).min(sw - 1);
+    let y1 = (y0 + 1).min(sh - 1);
+    let fx = (sx - x0 as f64).clamp(0.0, 1.0);
+    let fy = (sy - y0 as f64).clamp(0.0, 1.0);
+    let s00 = buf.get(y0 * sw + x0).copied().unwrap_or(0) as f64;
+    let s10 = buf.get(y0 * sw + x1).copied().unwrap_or(0) as f64;
+    let s01 = buf.get(y1 * sw + x0).copied().unwrap_or(0) as f64;
+    let s11 = buf.get(y1 * sw + x1).copied().unwrap_or(0) as f64;
+    let top = s00 * (1.0 - fx) + s10 * fx;
+    let bot = s01 * (1.0 - fx) + s11 * fx;
+    (top * (1.0 - fy) + bot * fy).round().clamp(0.0, 255.0) as u8
+}
+
+/// Decode a mask stream into a gray 8-bit buffer of size sw*sh, attempting
+/// compressed codecs (CCITT/JBIG2/DCT/JPX) via the same image pipeline.
+/// Returns None only if the mask is truly undecodable.
+fn decode_mask_stream_gray(doc: &Document, s: &lopdf::Stream, sw: usize, sh: usize) -> Option<Vec<u8>> {
+    // Try filter-aware decode chain first
+    let specs = filters::filter_specs_from_dict(doc, &s.dict);
+    let has_ccitt = specs.iter().any(|(k, _)| *k == filters::FilterKind::Ccitt);
+    let has_jbig2 = specs.iter().any(|(k, _)| *k == filters::FilterKind::Jbig2);
+    let has_dct = specs.iter().any(|(k, _)| *k == filters::FilterKind::Dct);
+    let has_jpx = specs.iter().any(|(k, _)| *k == filters::FilterKind::Jpx);
+    let sbpc = s.dict.get(b"BitsPerComponent").ok().and_then(num).unwrap_or(1.0) as u32;
+
+    if has_jbig2 {
+        // Attempt JBIG2 path
+        let raw = s.content.clone();
+        let chain = filters::decode_stream_chain(raw.clone(), &specs, doc).unwrap_or(raw.clone());
+        // globals
+        let mut globals: Option<Vec<u8>> = None;
+        if let Some(Object::Dictionary(d)) = s.dict.get(b"DecodeParms").ok().and_then(|o| deref(doc, o)) {
+            if let Some(Object::Stream(gs)) = d.get(b"JBIG2Globals").ok().and_then(|o| deref(doc, o)) {
+                globals = Some(gs.decompressed_content().unwrap_or_else(|_| gs.content.clone()));
+            }
+        }
+        if let Some((jw, jh, rgba)) = jbig2::decode_jbig2(&chain, globals.as_deref(), sw as u32, sh as u32)
+            .or_else(|| jbig2::decode_jbig2(&s.content, globals.as_deref(), sw as u32, sh as u32))
+        {
+            // Convert RGBA (gray*4) to 0..255 gray where white=0? JBIG2 decode yields black=0 white=255 already.
+            // Return inverted? For stencil mask, decoded gray where black => mask-> 0 alpha later handled via invert.
+            let mut gray = Vec::with_capacity((jw * jh) as usize);
+            for chunk in rgba.chunks(4) {
+                // Luminance approx R channel
+                gray.push(chunk[0]);
+            }
+            // Resample if jw*jh != sw*sh
+            if jw as usize == sw && jh as usize == sh {
+                return Some(gray);
+            }
+            // Nearest resample here for fallback then bilinear later maps final
+            let mut out = vec![0u8; sw * sh];
+            for y in 0..sh {
+                for x in 0..sw {
+                    let sx = x * (jw as usize) / sw.max(1);
+                    let sy = y * (jh as usize) / sh.max(1);
+                    out[y * sw + x] = gray.get(sy * (jw as usize) + sx).copied().unwrap_or(0);
+                }
+            }
+            return Some(out);
+        }
+    }
+    if has_ccitt {
+        let params = filters::parse_ccitt_params(doc, specs.iter().find(|(k, _)| *k == filters::FilterKind::Ccitt).and_then(|(_, d)| d.as_ref()));
+        let raw = s.content.clone();
+        let chain = filters::decode_stream_chain(raw.clone(), &specs, doc).unwrap_or(raw);
+        if let Some(packed) = filters::decode_ccitt(&chain, sw as u32, sh as u32, &params) {
+            // packed 1-bit: expand to 0/255
+            let row_bytes = (sw + 7) / 8;
+            let mut gray = vec![255u8; sw * sh];
+            for y in 0..sh {
+                for x in 0..sw {
+                    let byte = packed.get(y * row_bytes + x / 8).copied().unwrap_or(0);
+                    let bit = (byte >> (7 - (x % 8))) & 1;
+                    gray[y * sw + x] = if bit == 1 { 0 } else { 255 };
+                }
+            }
+            return Some(gray);
+        }
+    }
+    if has_dct {
+        let raw = stream_data(s);
+        if let Some((_jw, _jh, gray)) = decode_jpeg_gray(&raw) {
+            if _jw as usize == sw && _jh as usize == sh {
+                return Some(gray);
+            }
+            // Bilinear final step later; return as-is and caller will handle sw/sh mismatch by treating returned size as sw×sh? For DCT, decoded dims should equal dict W/H, so length should match.
+            return Some(gray);
+        }
+        if let Some((_jw, _jh, rgba)) = decode_jpeg_rgba(&raw) {
+            let gray: Vec<u8> = rgba.chunks(4).map(|c| c[0]).collect();
+            return Some(gray);
+        }
+    }
+    if has_jpx {
+        if let Some((_jw, _jh, rgba)) = jp2::decode(&s.content) {
+            let gray: Vec<u8> = rgba.chunks(4).map(|c| c[0]).collect();
+            return Some(gray);
+        }
+    }
+    // Plain bit path (1-bit masks without compression)
+    if sbpc == 1 {
+        let data = stream_data(s);
+        let row_bytes = (sw + 7) / 8;
+        let mut gray = vec![255u8; sw * sh];
+        for y in 0..sh {
+            for x in 0..sw {
+                if y * row_bytes + x / 8 >= data.len() {
+                    break;
+                }
+                let byte = data[y * row_bytes + x / 8];
+                let bit = (byte >> (7 - (x % 8))) & 1;
+                gray[y * sw + x] = if bit == 1 { 0 } else { 255 };
+            }
+        }
+        return Some(gray);
+    }
+    // Generic low-BPC unpack path
+    let data_raw = stream_data(s);
+    unpack_samples_to_bytes(&data_raw, sw, sh, 1, sbpc).or_else(|| {
+        let data = stream_data(s);
+        let bpp = sbpc as usize;
+        let row_bits = sw * bpp;
+        let row_bytes = (row_bits + 7) / 8;
+        let mut gray = vec![255u8; sw * sh];
+        for y in 0..sh {
+            let base = y * row_bytes;
+            if base + row_bytes > data.len() {
+                break;
+            }
+            for x in 0..sw {
+                gray[y * sw + x] = data.get(base + x).copied().unwrap_or(0);
+            }
+        }
+        Some(gray)
+    })
+}
+
 /// Decode an explicit stencil `/Mask` image (an `ImageMask` XObject) into a
 /// `w*h` 8-bit alpha buffer for the base image: mask sample 1 => masked
 /// (alpha 0), 0 => painted (alpha 255), honoring the mask's `/Decode`. Scaled to
-/// the base image's dimensions. Returns `None` for a color-key array `/Mask` or
-/// for masks using image codecs this path doesn't decode (CCITT/JBIG2/DCT/JPX).
+/// the base image's dimensions via bilinear filtering. No longer bails on
+/// compressed codecs (CCITT/JBIG2/DCT/JPX) — those are decoded via
+/// `decode_mask_stream_gray`.
 pub(crate) fn read_explicit_mask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u32) -> Option<Vec<u8>> {
     let m = dict.get(b"Mask").ok().and_then(|o| deref(doc, o))?;
-    let s = match m { Object::Stream(s) => s, _ => return None };
+    let s = match m {
+        Object::Stream(s) => s,
+        _ => return None,
+    };
     if !matches!(s.dict.get(b"ImageMask").ok(), Some(Object::Boolean(true))) {
         return None;
     }
     let sw = s.dict.get(b"Width").ok().and_then(num)? as usize;
     let sh = s.dict.get(b"Height").ok().and_then(num)? as usize;
-    if sw == 0 || sh == 0 || sw > 20000 || sh > 20000 { return None; }
-    let filters = filter_names(doc, &s.dict);
-    if filters.iter().any(|f| {
-        f.eq_ignore_ascii_case("CCITTFaxDecode") || f.eq_ignore_ascii_case("CCF")
-            || f.eq_ignore_ascii_case("JBIG2Decode") || f.eq_ignore_ascii_case("DCTDecode")
-            || f.eq_ignore_ascii_case("JPXDecode")
-    }) {
+    if sw == 0 || sh == 0 || sw > 20000 || sh > 20000 {
         return None;
     }
-    // Default Decode is [0 1]; [1 0] inverts the stencil sense.
     let invert = matches!(
         s.dict.get(b"Decode").ok().and_then(|o| deref(doc, o)),
         Some(Object::Array(a)) if a.first().and_then(num) == Some(1.0)
     );
-    let data = stream_data(s);
-    let row_bytes = (sw + 7) / 8;
+    let mask_gray = decode_mask_stream_gray(doc, s, sw, sh)?;
     let (w_us, h_us) = (w as usize, h as usize);
+    if sw == w_us && sh == h_us {
+        // Direct mapping — preserve invert semantics
+        return Some(mask_gray.into_iter().map(|g| if invert { if g == 0 { 255 } else { 0 } } else { g }).collect());
+    }
+    // Bilinear resample sw×sh -> w×h, then map 0->255 (white => painted) with invert.
     let mut alpha = vec![255u8; w_us * h_us];
     for y in 0..h_us {
         for x in 0..w_us {
-            let sx = x * sw / w_us;
-            let sy = y * sh / h_us;
-            let byte = data.get(sy * row_bytes + sx / 8).copied().unwrap_or(0);
-            let mut bit = (byte >> (7 - (sx % 8))) & 1;
-            if invert { bit ^= 1; }
-            alpha[y * w_us + x] = if bit == 1 { 0 } else { 255 };
+            let sx = if w_us > 1 { x as f64 * (sw - 1) as f64 / (w_us - 1).max(1) as f64 } else { 0.0 };
+            let sy = if h_us > 1 { y as f64 * (sh - 1) as f64 / (h_us - 1).max(1) as f64 } else { 0.0 };
+            let g = bilinear_mask_sample(&mask_gray, sw, sh, sx, sy);
+            // mask_gray uses 0=black=painted? Our decode helper maps 1-bit 1=>0 (black) => painted?
+            // Standard: bit 1 => masked (alpha 0). So g==0 => black => masked => 0 alpha.
+            // invert flips the bit sense before RGBA mapping.
+            alpha[y * w_us + x] = if invert { g } else { if g == 255 { 255 } else if g == 0 { 0 } else { g } };
         }
     }
     Some(alpha)
@@ -1607,14 +1754,25 @@ pub(crate) fn read_smask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u3
         unpacked
     };
 
-    // Now mask_bytes is size sw*sh (grayscale 0..255)
+    // Bilinear resample sw*sh -> w*h to avoid banding (P0 fix), using helper.
     let (w_us, h_us) = (w as usize, h as usize);
-    let mut alpha = vec![255u8; w_us*h_us];
+    if sw == w_us && sh == h_us {
+        return Some(mask_bytes);
+    }
+    let mut alpha = vec![255u8; w_us * h_us];
     for y in 0..h_us {
         for x in 0..w_us {
-            let sx = x * sw / w_us;
-            let sy = y * sh / h_us;
-            alpha[y * w_us + x] = mask_bytes.get(sy * sw + sx).copied().unwrap_or(255);
+            let sx = if w_us > 1 {
+                x as f64 * (sw - 1) as f64 / (w_us - 1).max(1) as f64
+            } else {
+                0.0
+            };
+            let sy = if h_us > 1 {
+                y as f64 * (sh - 1) as f64 / (h_us - 1).max(1) as f64
+            } else {
+                0.0
+            };
+            alpha[y * w_us + x] = bilinear_mask_sample(&mask_bytes, sw, sh, sx, sy);
         }
     }
     Some(alpha)

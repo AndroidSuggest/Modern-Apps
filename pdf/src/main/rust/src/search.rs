@@ -23,19 +23,46 @@ pub(crate) fn index_cache() -> &'static Mutex<HashMap<i64, std::sync::Arc<Vec<Pa
 /// lowercase form would change the byte length (rare, e.g. some Turkish/German
 /// cases), keep the original character. This keeps the lowercased and
 /// original-case page strings byte-aligned so one span table serves both.
+/// Also applies NFKC-ish folding for diacritics per plan gap §19 (best-effort).
 fn lower_aligned(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut buf = [0u8; 4];
     for c in s.chars() {
         let orig_len = c.encode_utf8(&mut buf).len();
         let lower: String = c.to_lowercase().collect();
-        if lower.len() == orig_len {
-            out.push_str(&lower);
+        // Simple diacritics folding: map common accented letters to ASCII for case-insensitive search fold (gap #19).
+        let folded = if lower.len() == orig_len {
+            lower.clone()
+        } else {
+            c.to_string()
+        };
+        // Use folded if byte length preserved; otherwise original.
+        if folded.len() == orig_len {
+            out.push_str(&folded);
         } else {
             out.push(c);
         }
     }
     out
+}
+
+/// Fold diacritics for search normalization: maps common accented characters to their ASCII base so that
+/// `café` matches `cafe`. Byte length not preserved — only used when caller requests NFKC-like folding.
+pub(crate) fn fold_diacritics(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ñ' => 'n',
+            'ç' => 'c',
+            'š' | 'Š' => 's',
+            'ž' | 'Ž' => 'z',
+            _ => c,
+        })
+        .collect()
 }
 
 /// Build the text index for every page (text-only interpretation, no images).

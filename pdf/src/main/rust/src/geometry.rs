@@ -48,28 +48,55 @@ pub(crate) fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) ->
     None
 }
 
-/// Page MediaBox as `[x0, y0, x1, y1]`, defaulting to US Letter.
-pub(crate) fn media_box(doc: &Document, page_id: ObjectId) -> [f64; 4] {
-    let default = [0.0, 0.0, 612.0, 792.0];
-    let obj = match inherited(doc, page_id, b"MediaBox").and_then(|o| deref(doc, o)) {
-        Some(o) => o,
-        None => return default,
-    };
-    let arr = match obj.as_array() {
-        Ok(a) => a,
-        Err(_) => return default,
-    };
+/// Read a 4-element rectangle from an inherited page attribute, if present.
+fn inherited_rect(doc: &Document, page_id: ObjectId, key: &[u8]) -> Option<[f64; 4]> {
+    let obj = inherited(doc, page_id, key).and_then(|o| deref(doc, o))?;
+    let arr = obj.as_array().ok()?;
     if arr.len() != 4 {
-        return default;
+        return None;
     }
     let mut out = [0.0; 4];
     for (i, v) in arr.iter().enumerate() {
-        out[i] = match deref(doc, v).and_then(num) {
-            Some(n) => n,
-            None => return default,
-        };
+        out[i] = deref(doc, v).and_then(num)?;
     }
-    out
+    Some(out)
+}
+
+/// Page MediaBox as `[x0, y0, x1, y1]`, defaulting to US Letter.
+pub(crate) fn media_box(doc: &Document, page_id: ObjectId) -> [f64; 4] {
+    inherited_rect(doc, page_id, b"MediaBox").unwrap_or([0.0, 0.0, 612.0, 792.0])
+}
+
+/// `/UserUnit` inherited, default 1.0, clamped to valid range per spec.
+pub(crate) fn user_unit(doc: &Document, page_id: ObjectId) -> f64 {
+    let uu = inherited(doc, page_id, b"UserUnit")
+        .and_then(|o| deref(doc, o))
+        .and_then(num)
+        .unwrap_or(1.0);
+    uu.clamp(1.0, 75000.0)
+}
+
+/// Visible page rectangle: `CropBox` when present clipped to `MediaBox`,
+/// otherwise `MediaBox`. Both scaled by `UserUnit`.
+pub(crate) fn page_visible_box(doc: &Document, page_id: ObjectId) -> [f64; 4] {
+    let uu = user_unit(doc, page_id);
+    let mb = media_box(doc, page_id);
+    let mb_scaled = [mb[0] * uu, mb[1] * uu, mb[2] * uu, mb[3] * uu];
+    if let Some(cb) = inherited_rect(doc, page_id, b"CropBox") {
+        let cb_scaled = [cb[0] * uu, cb[1] * uu, cb[2] * uu, cb[3] * uu];
+        // Intersect cb_scaled with mb_scaled
+        let x0 = mb_scaled[0].min(mb_scaled[2]).max(cb_scaled[0].min(cb_scaled[2]));
+        let y0 = mb_scaled[1].min(mb_scaled[3]).max(cb_scaled[1].min(cb_scaled[3]));
+        let x1 = mb_scaled[0].max(mb_scaled[2]).min(cb_scaled[0].max(cb_scaled[2]));
+        let y1 = mb_scaled[1].max(mb_scaled[3]).min(cb_scaled[1].max(cb_scaled[3]));
+        if x1 > x0 && y1 > y0 {
+            [x0, y0, x1, y1]
+        } else {
+            mb_scaled
+        }
+    } else {
+        mb_scaled
+    }
 }
 
 /// Normalized page rotation in {0,90,180,270}, inherited via `/Parent`.
@@ -81,13 +108,14 @@ pub(crate) fn page_rotation(doc: &Document, page_id: ObjectId) -> i64 {
     (((r % 360) + 360) % 360 / 90) * 90
 }
 
-/// Matrix mapping raw page space (MediaBox origin, before rotation) into
+/// Matrix mapping raw page space (visible rect origin, before rotation) into
 /// displayed space: origin bottom-left, with dimensions swapped for 90/270.
+/// Visible rect is CropBox clipped to MediaBox, scaled by UserUnit.
 pub(crate) fn page_base_matrix(doc: &Document, page_id: ObjectId) -> Mat {
-    let mb = media_box(doc, page_id);
-    let w = (mb[2] - mb[0]).abs();
-    let h = (mb[3] - mb[1]).abs();
-    let t = translate(-mb[0].min(mb[2]), -mb[1].min(mb[3]));
+    let vb = page_visible_box(doc, page_id);
+    let w = (vb[2] - vb[0]).abs();
+    let h = (vb[3] - vb[1]).abs();
+    let t = translate(-vb[0].min(vb[2]), -vb[1].min(vb[3]));
     let r: Mat = match page_rotation(doc, page_id) {
         90 => [0.0, 1.0, -1.0, 0.0, h, 0.0],
         180 => [-1.0, 0.0, 0.0, -1.0, w, h],
@@ -97,11 +125,11 @@ pub(crate) fn page_base_matrix(doc: &Document, page_id: ObjectId) -> Mat {
     mat_mul(&t, &r)
 }
 
-/// Page dimensions as displayed (after `/Rotate`).
+/// Page dimensions as displayed (after `/Rotate`), using CropBox/MediaBox and UserUnit.
 pub(crate) fn page_display_size(doc: &Document, page_id: ObjectId) -> (f32, f32) {
-    let mb = media_box(doc, page_id);
-    let w = (mb[2] - mb[0]).abs() as f32;
-    let h = (mb[3] - mb[1]).abs() as f32;
+    let vb = page_visible_box(doc, page_id);
+    let w = (vb[2] - vb[0]).abs() as f32;
+    let h = (vb[3] - vb[1]).abs() as f32;
     match page_rotation(doc, page_id) {
         90 | 270 => (h, w),
         _ => (w, h),

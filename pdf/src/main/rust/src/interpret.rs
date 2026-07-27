@@ -25,6 +25,7 @@ pub(crate) fn shoelace_area(pts: &[(f64,f64)]) -> f64 {
 /// - simple dash array [2 1] -> phase 0
 /// Filters negative values (>=0 guard) and returns (dashes, phase).
 pub(crate) fn parse_dash_d_array(doc: &Document, arr: &[Object]) -> (Vec<f64>, f64) {
+    const MAX_DASH: usize = 64;
     if arr.is_empty() {
         return (Vec::new(), 0.0);
     }
@@ -32,7 +33,7 @@ pub(crate) fn parse_dash_d_array(doc: &Document, arr: &[Object]) -> (Vec<f64>, f
     if arr.len() == 2 {
         if let Some(inner) = arr[0].as_array().ok().or_else(|| deref(doc, &arr[0]).and_then(|o| o.as_array().ok())) {
             if let Some(phase) = deref(doc, &arr[1]).and_then(num).or_else(|| num(&arr[1])) {
-                let dashes: Vec<f64> = inner.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).filter(|v| *v >= 0.0).collect();
+                let dashes: Vec<f64> = inner.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).filter(|v| *v >= 0.0).take(MAX_DASH).collect();
                 return (dashes, phase);
             }
         }
@@ -64,16 +65,17 @@ pub(crate) fn parse_dash_d_array(doc: &Document, arr: &[Object]) -> (Vec<f64>, f
     // We'll implement lenient: if derefed_nums.len() >=2 and this function is called for ExtGState, interpret last as phase ONLY when arr is flat numbers (no nested arrays). That is, if arr.iter().all(|o| deref(doc,o).and_then(num).is_some() || num(o).is_some()) AND derefed_nums.len()>=2, then last=phase.
     // To avoid breaking pure dash without phase, we only apply flat-phase heuristic when derefed_nums.len()>=2 AND caller explicitly wants flat-phase support? Plan says treat phase as dash previously – bug. So fixing means we should for ExtGState D that is flat numbers, interpret correctly.
     // Implement:
+    const MAX_DASH_LOCAL: usize = 64;
     let all_nums = arr.iter().all(|o| {
         if let Some(Object::Array(_)) = deref(doc,o) { false } else { num(o).is_some() || deref(doc,o).and_then(num).is_some() }
     });
     if all_nums && derefed_nums.len() >= 2 {
         let phase = derefed_nums.last().copied().unwrap_or(0.0);
-        let dashes: Vec<f64> = derefed_nums[..derefed_nums.len()-1].iter().copied().filter(|v| *v >=0.0).collect();
+        let dashes: Vec<f64> = derefed_nums[..derefed_nums.len()-1].iter().copied().filter(|v| *v >=0.0).take(MAX_DASH_LOCAL).collect();
         return (dashes, phase);
     }
     // Otherwise pure dash array
-    (derefed_nums.into_iter().filter(|v| *v >=0.0).collect(), 0.0)
+    (derefed_nums.into_iter().filter(|v| *v >=0.0).take(MAX_DASH_LOCAL).collect(), 0.0)
 }
 
 pub(crate) fn parse_dash_extgstate(doc: &Document, obj: &Object) -> (Vec<f64>, f64) {
@@ -185,8 +187,14 @@ pub(crate) fn interpret_content(
         let o = &op.operands;
         match op.operator.as_str() {
             "q" => {
+                // P3 hardening: cap early and also bound subpath count growth to avoid DOS.
+                const MAX_SUBPATHS: usize = 20000;
                 if stack.len() < MAX_GRAPHICS_STACK {
                     stack.push(SavedState { gs: gs.clone(), clip_depth });
+                }
+                // Do not allow unbounded path building between q/Q
+                if subpaths.len() > MAX_SUBPATHS {
+                    subpaths.truncate(MAX_SUBPATHS);
                 }
             }
             "Q" => {
@@ -231,8 +239,9 @@ pub(crate) fn interpret_content(
                 }
             }
             "d" => {
+                const MAX_DASH_LEN: usize = 64;
                 if let Some(Object::Array(arr)) = o.first() {
-                    let dashes: Vec<f64> = arr.iter().filter_map(num).filter(|v| *v >= 0.0).collect();
+                    let dashes: Vec<f64> = arr.iter().filter_map(num).filter(|v| *v >= 0.0).take(MAX_DASH_LEN).collect();
                     gs.dash = dashes;
                 }
                 gs.dash_phase = o.get(1).and_then(num).unwrap_or(0.0);
@@ -346,9 +355,40 @@ pub(crate) fn interpret_content(
                 }
             }
             "W" => {
+                // Fix P0: multiple W without intervening paint must intersect.
+                // If a pending clip already exists, emit it as a ClipPush first
+                // so the new clip stacks (intersection) rather than overwriting.
+                if let Some(to_emit) = pending_clip.take() {
+                    if !text_only && !oc_stack.last().copied().unwrap_or(false) {
+                        for poly in to_emit.polys.iter() {
+                            if poly.len() >= 3 && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
+                                prims.push(Prim::ClipPush {
+                                    even_odd: to_emit.even_odd,
+                                    pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
+                                    path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
+                                });
+                                clip_depth += 1;
+                            }
+                        }
+                    }
+                }
                 pending_clip = Some(PendingClip { even_odd: false, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
             "W*" => {
+                if let Some(to_emit) = pending_clip.take() {
+                    if !text_only && !oc_stack.last().copied().unwrap_or(false) {
+                        for poly in to_emit.polys.iter() {
+                            if poly.len() >= 3 && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
+                                prims.push(Prim::ClipPush {
+                                    even_odd: to_emit.even_odd,
+                                    pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
+                                    path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
+                                });
+                                clip_depth += 1;
+                            }
+                        }
+                    }
+                }
                 pending_clip = Some(PendingClip { even_odd: true, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
             "m" => {
@@ -860,8 +900,12 @@ pub(crate) fn interpret_content(
             "EMC" => {
                 if !oc_stack.is_empty() { oc_stack.pop(); }
             }
-            "d0" | "d1" => {}
-                        "BT" => {
+            "d0" | "d1" => {
+                // Type3 glyph width+bbox: record if inside Type3 context (in draw.rs)
+                // Here at top-level content stream, these are explicit no-ops per spec
+                // outside charproc, but we honor d1/d0 as no-op without advancing pen.
+            }
+            "BT" => {
                 if let Some(to_emit) = pending_clip.take() {
                     for poly in to_emit.polys.iter() {
                         if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
@@ -1001,7 +1045,7 @@ pub(crate) fn interpret_content(
             }
             // Explicit no-ops (documented): rendering intent, and compatibility
             // sections have no effect on our flat-primitive output.
-            "ri" | "BX" | "EX" => {}
+            "ri" | "BX" | "EX" | "EI" => {}
             _ => {}
         }
     }
@@ -1320,7 +1364,19 @@ fn paint_tiling_pattern(
     let bbox = dict.get(b"BBox").ok().and_then(|o| read_rect(doc, o)).unwrap_or([0.0, 0.0, 1.0, 1.0]);
     let xstep = dict.get(b"XStep").ok().and_then(num).unwrap_or(bbox[2] - bbox[0]);
     let ystep = dict.get(b"YStep").ok().and_then(num).unwrap_or(bbox[3] - bbox[1]);
+    // Zero-step pattern is malformed — show bbox once instead of blanking
     if xstep.abs() < 1e-6 || ystep.abs() < 1e-6 {
+        let res = dict
+            .get(b"Resources")
+            .ok()
+            .and_then(|o| deref(doc, o))
+            .and_then(|o| o.as_dict().ok())
+            .cloned();
+        if let Ok(content) = Content::decode(&stream_data_with_doc(doc, stream)) {
+            let mut tile_gs = GraphicsState { ctm: *pmat, ..GraphicsState::default() };
+            if paint_type == 2 { tile_gs.fill = base_argb; tile_gs.stroke = base_argb; }
+            interpret_content(doc, &content.operations, res.as_ref(), tile_gs, prims, depth + 1, false);
+        }
         return;
     }
     let res = dict
@@ -1350,6 +1406,13 @@ fn paint_tiling_pattern(
 
     // Map that box into pattern space to bound the tile index range.
     let inv = mat_inverse(pmat);
+    // Singular pattern matrix — degrade to single tile instead of blank.
+    if (inv[0]*inv[3] - inv[1]*inv[2]).abs() < 1e-12 {
+        let mut tile_gs = GraphicsState { ctm: *pmat, ..GraphicsState::default() };
+        if paint_type == 2 { tile_gs.fill = base_argb; tile_gs.stroke = base_argb; }
+        interpret_content(doc, &content.operations, res.as_ref(), tile_gs, prims, depth + 1, false);
+        return;
+    }
     let (mut pminx, mut pminy, mut pmaxx, mut pmaxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for (x, y) in [(minx, miny), (maxx, miny), (minx, maxy), (maxx, maxy)] {
         let (px, py) = transform(&inv, x, y);
@@ -1364,9 +1427,19 @@ fn paint_tiling_pattern(
     let j1 = ((pmaxy - bbox[1]) / ystep).ceil() as i64;
 
     const MAX_TILES: i64 = 400;
+    // Cap tile range to MAX_TILES instead of blanking — degrade at high zoom.
+    let total_i = (i1 - i0 + 1).max(0);
+    let total_j = (j1 - j0 + 1).max(0);
+    let (i1_clamped, j1_clamped) = if total_i * total_j > MAX_TILES {
+        // Prioritize tiles around origin for single-tile fallback quality
+        let side = (MAX_TILES as f64).sqrt() as i64;
+        (i0 + side.min(total_i), j0 + side.min(total_j))
+    } else {
+        (i1, j1)
+    };
     let mut count = 0i64;
-    'outer: for j in j0..=j1 {
-        for i in i0..=i1 {
+    'outer: for j in j0..=j1_clamped {
+        for i in i0..=i1_clamped {
             if count >= MAX_TILES || prims.len() >= MAX_PRIMITIVES {
                 break 'outer;
             }

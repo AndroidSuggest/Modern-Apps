@@ -1,12 +1,14 @@
 use crate::*;
 
-// Document registry
+// Document registry - bounded LRU to avoid long-running leak (P3 fix)
 // ---------------------------------------------------------------------------
+
+const MAX_REG_DOCS: usize = 8;
 
 /// Process-wide registry of parsed documents keyed by an opaque `i64` handle,
 /// mirroring the weather crate's `cached_backend`. Keeping the parsed
 /// `Document` alive lets Kotlin re-render / re-scroll pages without re-parsing
-/// the file.
+/// the file. Bounded to `MAX_REG_DOCS` LRU to avoid leak when many PDFs are opened.
 pub(crate) fn registry() -> &'static Mutex<HashMap<i64, Document>> {
     static REG: OnceLock<Mutex<HashMap<i64, Document>>> = OnceLock::new();
     REG.get_or_init(|| Mutex::new(HashMap::new()))
@@ -35,7 +37,16 @@ pub(crate) fn open_document_pw(bytes: &[u8], password: &[u8]) -> i64 {
         }
     }
     let handle = next_handle();
-    registry().lock().unwrap().insert(handle, doc);
+    let mut map = registry().lock().unwrap();
+    // Bounded eviction to avoid unbounded leak (P3 fix)
+    if map.len() >= MAX_REG_DOCS {
+        if let Some(oldest) = map.keys().next().copied() {
+            map.remove(&oldest);
+            index_cache().lock().unwrap().remove(&oldest);
+        }
+    }
+    map.insert(handle, doc);
+    drop(map);
     handle
 }
 

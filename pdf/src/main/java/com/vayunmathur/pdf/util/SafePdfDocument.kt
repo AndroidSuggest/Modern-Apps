@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A parsed PDF for the "safe" viewer, backed by the native Rust renderer.
@@ -20,24 +19,77 @@ class SafePdfDocument private constructor(
     private val handle: Long,
     val pageCount: Int,
 ) {
-    private val cache = ConcurrentHashMap<Int, SafePdfPage>()
+    // P3 fix: bounded LRU to avoid OOM on 1000-page docs with images (was unbounded ConcurrentHashMap).
+    private val cache: MutableMap<Int, SafePdfPage> = object : LinkedHashMap<Int, SafePdfPage>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, SafePdfPage>?): Boolean {
+            if (size <= MAX_CACHED_PAGES) return false
+            // Evict oldest; bitmaps will be GC'd, but explicitly recycle if possible
+            eldest?.value?.let { page ->
+                page.primitives.forEach { prim ->
+                    if (prim is PdfPrimitive.Image) {
+                        runCatching { prim.bitmap?.recycle() }
+                    }
+                }
+            }
+            return true
+        }
+    }
+    private var cachedPixels: Long = 0L
 
     /** Decode page [index] (0-based), or `null` if the native render fails. */
     suspend fun renderPage(index: Int): SafePdfPage? = withContext(Dispatchers.IO) {
-        cache[index]?.let { return@withContext it }
+        synchronized(cache) { cache[index] }?.let { return@withContext it }
         val bytes = PdfNative.renderPage(handle, index) ?: return@withContext null
         val page = SafePdfParser.parse(bytes)
-        cache[index] = page
+        synchronized(cache) {
+            // Budget-based eviction in addition to count-based
+            var pixels = page.primitives.sumOf { prim ->
+                if (prim is PdfPrimitive.Image) {
+                    prim.bitmap?.let { it.width.toLong() * it.height.toLong() } ?: 0L
+                } else 0L
+            }
+            cachedPixels += pixels
+            while (cachedPixels > MAX_CACHED_PIXELS && cache.isNotEmpty()) {
+                val eldest = cache.entries.iterator().next()
+                cache.remove(eldest.key)?.let { evicted ->
+                    evicted.primitives.forEach { p ->
+                        if (p is PdfPrimitive.Image) {
+                            cachedPixels -= p.bitmap?.let { b -> b.width.toLong() * b.height.toLong() } ?: 0L
+                            runCatching { p.bitmap?.recycle() }
+                        }
+                    }
+                }
+            }
+            cache[index] = page
+        }
         page
     }
 
     /** Release native resources. Idempotent-safe to call once. */
     fun close() {
+        synchronized(cache) {
+            cache.values.forEach { page ->
+                page.primitives.forEach { prim ->
+                    if (prim is PdfPrimitive.Image) runCatching { prim.bitmap?.recycle() }
+                }
+            }
+            cache.clear()
+            cachedPixels = 0L
+        }
         PdfNative.closeDocument(handle)
     }
 
     private fun invalidate(index: Int) {
-        cache.remove(index)
+        synchronized(cache) {
+            cache.remove(index)?.let { page ->
+                page.primitives.forEach { prim ->
+                    if (prim is PdfPrimitive.Image) {
+                        cachedPixels -= prim.bitmap?.let { b -> b.width.toLong() * b.height.toLong() } ?: 0L
+                        runCatching { prim.bitmap?.recycle() }
+                    }
+                }
+            }
+        }
     }
 
     /** Annotations on [index] for the editing overlay. */
@@ -178,12 +230,12 @@ class SafePdfDocument private constructor(
 
     /** Serialize with streams compressed + unused objects pruned - wrapper for saveCompressed native */
     suspend fun saveCompressed(): ByteArray? = withContext(Dispatchers.IO) {
-        PdfNative.saveCompressed(handle).also { cache.clear() }
+        PdfNative.saveCompressed(handle).also { synchronized(cache) { cache.clear(); cachedPixels = 0L } }
     }
 
     /** Flatten annotations into page content - wrapper for flattenDocument native */
     suspend fun flattenDocument(): Boolean = withContext(Dispatchers.IO) {
-        PdfNative.flattenDocument(handle).also { cache.clear() }
+        PdfNative.flattenDocument(handle).also { synchronized(cache) { cache.clear(); cachedPixels = 0L } }
     }
 
     /** Extract page [index] into standalone one-page PDF bytes */
@@ -211,7 +263,7 @@ class SafePdfDocument private constructor(
 
     /** Permanently remove content under redaction annotations. */
     suspend fun applyRedactions(): Boolean = withContext(Dispatchers.IO) {
-        PdfNative.applyRedactions(handle).also { cache.clear() }
+        PdfNative.applyRedactions(handle).also { synchronized(cache) { cache.clear(); cachedPixels = 0L } }
     }
 
     /** Whether any redaction annotations exist (to show the Apply-redactions action). */
@@ -248,6 +300,8 @@ class SafePdfDocument private constructor(
         withContext(Dispatchers.IO) { PdfNative.saveEncrypted(handle, userPw, ownerPw) }
 
     companion object {
+        private const val MAX_CACHED_PAGES = 12
+        private const val MAX_CACHED_PIXELS = 64 * 1024 * 1024L // ~64 MP aggregate budget
         /**
          * Open [uri] as a safe PDF, or return `null` when the native lib is
          * unavailable, the bytes can't be read, or parsing fails. Encrypted PDFs

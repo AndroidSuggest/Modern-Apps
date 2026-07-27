@@ -152,3 +152,6 @@ pub(crate) const MAX_TYPE3_GLYPHS: usize = 500;
 pub(crate) const MAX_TYPE3_PRIMS_PER_GLYPH: usize = 1000;
 pub(crate) const MAX_PATTERN_RECURSION: u32 = 4;
 pub(crate) const MAX_OC_STACK: usize = 32;
+pub(crate) const MAX_SUBPATHS: usize = 20000;
+pub(crate) const MAX_DASH_LEN: usize = 64;
+pub(crate) const MAX_CONTENT_OPS: usize = 200_000;

@@ -180,6 +180,10 @@ use crate::*;
         let doc = Document::with_version("1.5");
         let fi = FontInfo {
             two_byte: false,
+            wmode: 0,
+            vertical_metrics: HashMap::new(),
+            default_vertical: (0.0, -1000.0),
+            cid_to_gid: None,
             to_unicode: None,
             encoding: HashMap::new(),
             cmap_uni: HashMap::new(),
@@ -225,6 +229,10 @@ use crate::*;
         let doc = Document::with_version("1.5");
         let fi = FontInfo {
             two_byte: false,
+            wmode: 0,
+            vertical_metrics: HashMap::new(),
+            default_vertical: (0.0, -1000.0),
+            cid_to_gid: None,
             to_unicode: None,
             encoding: HashMap::new(),
             cmap_uni: HashMap::new(),

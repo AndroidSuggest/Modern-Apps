@@ -157,6 +157,27 @@ fn annot_border_width(doc: &Document, dict: &lopdf::Dictionary) -> f64 {
     1.0
 }
 
+/// Border dash array from ExGState `/D` or `/BS /D` or `/Border` dash [3rd?].
+fn annot_border_dash(doc: &Document, dict: &lopdf::Dictionary) -> Vec<f64> {
+    const MAX_D: usize = 32;
+    if let Some(b) = dict.get(b"BS").ok().and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()) {
+        if let Some(db) = b.get(b"D").ok().and_then(|o| deref(doc, o).or(Some(o))) {
+            let (d, _phase) = parse_dash_extgstate(doc, db);
+            if !d.is_empty() {
+                return d.into_iter().take(MAX_D).collect();
+            }
+        }
+    }
+    if let Some(Object::Array(b)) = dict.get(b"Border").ok().and_then(|o| deref(doc, o)) {
+        if b.len() >= 4 {
+            if let Some(Object::Array(dash_arr)) = b.get(3) {
+                return dash_arr.iter().filter_map(num).filter(|v| *v >= 0.0).take(MAX_D).collect();
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Synthesize a basic appearance for common annotation types that lack an `/AP`
 /// stream, emitting primitives directly (Square/Circle/Line/Ink and the text
 /// markup types via `/QuadPoints`). Unknown types are skipped.
@@ -200,6 +221,8 @@ pub(crate) fn synthesize_annotation_appearance(
             if let Some(s) = stroke {
                 let mut ring = poly.clone(); ring.push(poly[0]);
                 let mut sgs = gs.clone(); sgs.stroke = s;
+                let d = annot_border_dash(doc, dict);
+                if !d.is_empty() { sgs.dash = d; }
                 emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
             }
         }
@@ -215,15 +238,20 @@ pub(crate) fn synthesize_annotation_appearance(
             if let Some(s) = stroke {
                 let mut ring = poly.clone(); ring.push(poly[0]);
                 let mut sgs = gs.clone(); sgs.stroke = s;
+                let d = annot_border_dash(doc, dict);
+                if !d.is_empty() { sgs.dash = d; }
                 emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
             }
         }
         b"Line" => {
-            if let Some(Object::Array(l)) = dict.get(b"L").ok().and_then(|o| deref(doc, o)) {
-                let n: Vec<f64> = l.iter().filter_map(num).collect();
+            let l_arr: Option<Vec<f64>> = dict.get(b"L").ok().and_then(|o| deref(doc, o)).and_then(|o| o.as_array().ok()).map(|a| a.iter().filter_map(num).collect());
+            if let Some(n) = l_arr {
                 if n.len() >= 4 {
                     let seg = vec![dev(n[0],n[1]), dev(n[2],n[3])];
                     let mut sgs = gs.clone(); sgs.stroke = stroke.unwrap_or(0xFF00_0000);
+                    let d = annot_border_dash(doc, dict);
+                    if !d.is_empty() { sgs.dash = d; }
+                    // Line ending styles omitted — render as straight segment
                     emit_stroke(prims, std::slice::from_ref(&seg), &sgs);
                 }
             }
@@ -231,6 +259,8 @@ pub(crate) fn synthesize_annotation_appearance(
         b"Ink" => {
             if let Some(Object::Array(paths)) = dict.get(b"InkList").ok().and_then(|o| deref(doc, o)) {
                 let mut sgs = gs.clone(); sgs.stroke = stroke.unwrap_or(0xFF00_0000);
+                let d = annot_border_dash(doc, dict);
+                if !d.is_empty() { sgs.dash = d; }
                 for p in paths {
                     let n: Vec<f64> = p.as_array().map(|a| a.iter().filter_map(num).collect()).unwrap_or_default();
                     let pts: Vec<(f64,f64)> = n.chunks_exact(2).map(|c| dev(c[0], c[1])).collect();
@@ -240,25 +270,92 @@ pub(crate) fn synthesize_annotation_appearance(
         }
         b"Highlight" => {
             let color = stroke.unwrap_or(0xFFFF_FF00); // default yellow
-            for q in &quads {
-                let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
-                // QuadPoint ordering varies; use the convex bbox to be safe.
-                let bx = bbox_of(&poly);
-                let rectp = vec![(bx[0],bx[1]),(bx[2],bx[1]),(bx[2],bx[3]),(bx[0],bx[3])];
-                emit_fill(prims, std::slice::from_ref(&rectp), apply_alpha_to_argb(color, ca), false, 1.0, BlendMode::Multiply);
+            if !quads.is_empty() && prims.len() + quads.len() < MAX_PRIMITIVES {
+                // Precise quad fill per QuadPoints instead of bbox rect
+                for q in &quads {
+                    let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
+                    if poly.len() >= 4 {
+                        emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(color, ca), false, 1.0, BlendMode::Multiply);
+                    }
+                }
+            } else if quads.is_empty() {
+                let poly = vec![dev(rect[0],rect[1]), dev(rect[2],rect[1]), dev(rect[2],rect[3]), dev(rect[0],rect[3])];
+                emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(color, ca), false, 1.0, BlendMode::Multiply);
+            } else {
+                for q in &quads {
+                    let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
+                    let bx = bbox_of(&poly);
+                    let rectp = vec![(bx[0],bx[1]),(bx[2],bx[1]),(bx[2],bx[3]),(bx[0],bx[3])];
+                    emit_fill(prims, std::slice::from_ref(&rectp), apply_alpha_to_argb(color, ca), false, 1.0, BlendMode::Multiply);
+                }
             }
         }
-        b"Underline" | b"StrikeOut" => {
+        b"Underline" | b"StrikeOut" | b"Squiggly" => {
             let color = stroke.unwrap_or(0xFF00_0000);
             let mut sgs = gs.clone(); sgs.stroke = color;
-            sgs.line_width = (bw.max(1.0)) / scale.max(1e-6); // ~1px device
-            for q in &quads {
-                let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
-                let bx = bbox_of(&poly);
-                let y = if subtype == b"StrikeOut" { (bx[1]+bx[3])/2.0 } else { bx[3].max(bx[1]) };
-                let seg = vec![(bx[0], y), (bx[2], y)];
-                emit_stroke(prims, std::slice::from_ref(&seg), &sgs);
+            let d = annot_border_dash(doc, dict);
+            if !d.is_empty() { sgs.dash = d; }
+            if subtype == b"Squiggly" {
+                // Zig-zag approximate underline
+                for q in &quads {
+                    let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
+                    let bx = bbox_of(&poly);
+                    let base_y = bx[1];
+                    let amp = (bx[3] - bx[1]) * 0.08;
+                    let step = (bx[2] - bx[0]) / 8.0;
+                    let mut zig: Vec<(f64,f64)> = Vec::new();
+                    for i in 0..=8 {
+                        let x = bx[0] + i as f64 * step;
+                        let y = if i % 2 == 0 { base_y } else { base_y + amp };
+                        zig.push((x, y));
+                    }
+                    if zig.len() >= 2 { emit_stroke(prims, std::slice::from_ref(&zig), &sgs); }
+                }
+            } else {
+                sgs.line_width = (bw.max(1.0)) / scale.max(1e-6); // ~1px device
+                for q in &quads {
+                    let poly: Vec<(f64,f64)> = q.iter().map(|&(x,y)| dev(x,y)).collect();
+                    let bx = bbox_of(&poly);
+                    let y = if subtype == b"StrikeOut" { (bx[1]+bx[3])/2.0 } else { bx[1] + (bx[3]-bx[1]) * 0.10 };
+                    let seg = vec![(bx[0], y), (bx[2], y)];
+                    emit_stroke(prims, std::slice::from_ref(&seg), &sgs);
+                }
             }
+        }
+        b"Polygon" | b"PolyLine" | b"Caret" | b"Stamp" | b"FileAttachment" => {
+            // Best-effort synthesis for these subtypes via vertices or rect
+            if let Some(Object::Array(verts)) = dict.get(b"Vertices").ok().and_then(|o| deref(doc, o)) {
+                let n: Vec<f64> = verts.iter().filter_map(num).collect();
+                let pts: Vec<(f64,f64)> = n.chunks_exact(2).map(|c| dev(c[0], c[1])).collect();
+                if pts.len() >= 2 {
+                    let closed = subtype == b"Polygon";
+                    if closed {
+                        if let Some(f) = fill {
+                            emit_fill(prims, std::slice::from_ref(&pts), apply_alpha_to_argb(f, ca), false, 1.0, BlendMode::Normal);
+                        }
+                    }
+                    if let Some(s) = stroke.or(fill) {
+                        let mut ring = pts.clone();
+                        if closed { ring.push(pts[0]); }
+                        let mut sgs = gs.clone(); sgs.stroke = s;
+                        emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
+                    }
+                }
+            } else {
+                // Fallback to rect box
+                let poly = vec![dev(rect[0],rect[1]), dev(rect[2],rect[1]), dev(rect[2],rect[3]), dev(rect[0],rect[3])];
+                if let Some(f) = fill { emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(f, ca), false, 1.0, BlendMode::Normal); }
+                if let Some(s) = stroke {
+                    let mut ring = poly.clone(); ring.push(poly[0]);
+                    let mut sgs = gs.clone(); sgs.stroke = s;
+                    emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
+                }
+            }
+        }
+        b"Redact" => {
+            // Show redaction box outline so user knows where to apply
+            let poly = vec![dev(rect[0],rect[1]), dev(rect[2],rect[1]), dev(rect[2],rect[3]), dev(rect[0],rect[3])];
+            emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(0x66000000, ca), false, 1.0, BlendMode::Normal);
         }
         _ => {}
     }

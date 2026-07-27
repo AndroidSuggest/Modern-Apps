@@ -72,9 +72,58 @@ pub(crate) fn list_links(handle: i64, page_index: i32) -> Option<Vec<u8>> {
                     if let Ok(d) = action.get(b"D") {
                         dest_page = resolve_dest_page(doc, d, &page_of);
                     }
+                } else if s == Some(b"GoToR".as_ref()) {
+                    if let Ok(d) = action.get(b"D") {
+                        dest_page = resolve_dest_page(doc, d, &page_of);
+                    }
+                    if dest_page < 0 {
+                        if let Some(f) = action
+                            .get(b"F")
+                            .ok()
+                            .and_then(|o| deref(doc, o).or(Some(o)))
+                            .and_then(|o| o.as_str().ok())
+                        {
+                            uri = String::from_utf8_lossy(f).into_owned();
+                        }
+                    }
+                } else if s == Some(b"Launch".as_ref()) {
+                    if let Some(f_obj) = action
+                        .get(b"F")
+                        .ok()
+                        .and_then(|o| deref(doc, o).or(Some(o)))
+                        .cloned()
+                    {
+                        let f_str = f_obj.as_str().ok().or_else(|| {
+                            f_obj
+                                .as_dict()
+                                .ok()
+                                .and_then(|d| d.get(b"F").ok())
+                                .and_then(|o| o.as_str().ok())
+                        });
+                        if let Some(f) = f_str {
+                            uri = String::from_utf8_lossy(f).into_owned();
+                        }
+                    } else if let Some(win_f) = action
+                        .get(b"Win")
+                        .ok()
+                        .and_then(|o| deref(doc, o))
+                        .and_then(|o| o.as_dict().ok())
+                        .and_then(|d| d.get(b"F").ok())
+                        .and_then(|o| o.as_str().ok())
+                    {
+                        uri = String::from_utf8_lossy(win_f).into_owned();
+                    }
+                } else if s == Some(b"Named".as_ref()) {
+                    // Named action (e.g. /N /GoToPage) — not directly resolvable
                 }
             } else if let Ok(d) = dict.get(b"Dest") {
                 dest_page = resolve_dest_page(doc, d, &page_of);
+                // If Dest is Named via string, attempt name tree lookup
+                if dest_page < 0 {
+                    if let Some(obj) = deref(doc, d).or(Some(d)) {
+                        dest_page = resolve_dest(doc, obj, &page_of);
+                    }
+                }
             }
             if dest_page >= 0 || !uri.is_empty() {
                 records.push((rect, dest_page, uri));
