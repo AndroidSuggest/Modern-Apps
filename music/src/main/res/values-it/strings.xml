@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Musica</string>
     <string name="nav_home">Home</string>
@@ -36,4 +37,4 @@
     <string name="dialog_create_playlist">Crea playlist</string>
     <string name="dialog_create">Crea</string>
     <string name="playlist_name_hint">Nome playlist</string>
-    </resources>
+</resources>
