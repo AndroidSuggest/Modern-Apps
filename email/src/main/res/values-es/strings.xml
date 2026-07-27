@@ -115,4 +115,6 @@
     <string name="open_app_password_help"></string>
     <string name="failed"></string>
     <string name="microsoft_sign_in_failed"></string>
+    <string name="cancel">Cancelar</string>
+    <string name="settings">Configuración</string>
 </resources>
