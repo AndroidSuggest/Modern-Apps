@@ -5,8 +5,4 @@
     <string name="drawing">Disegno</string>
     <string name="add_image">Aggiungi immagine</string>
     <string name="add_drawing">Aggiungi disegno</string>
-    <string name="external_save_failed"></string>
-    <string name="external_saved"></string>
-    <string name="external_read_failed"></string>
-    <string name="note"></string>
 </resources>
