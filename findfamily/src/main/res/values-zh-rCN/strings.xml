@@ -1,4 +1,5 @@
-<resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Find Family</string>
     <string name="notification_channel_location_tracking_name">位置追踪</string>
     <string name="notification_channel_location_tracking_desc">用于 FindFamily 后台位置更新</string>
@@ -99,4 +100,14 @@
     <string name="history_step_plus_10s">+10秒</string>
     <string name="history_step_plus_1m">+1分钟</string>
     <string name="history_step_plus_5m">+5分钟</string>
+    <string name="point_the_back_of_your_phone_toward_your">请将手机背面朝向您的联系人</string>
+    <string name="compare_this_code_with_on_their_device_i">请将此验证码与对方设备上的 %1$s 进行比对。如果两部手机上的数字一致，则表示您的连接已通过端到端验证 — 没有人截获您的连接。</string>
+    <string name="dist">距离：</string>
+    <string name="unknown">未知</string>
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab">尚无法计算 — %1$s 的密钥不可用。请确保双方都已连接，然后重试。</string>
+    <string name="security_code">安全码</string>
+    <string name="el">海拔：</string>
+    <string name="az">方位角：</string>
+    <string name="computing">正在计算…</string>
+    <string name="done">完成</string>
 </resources>
