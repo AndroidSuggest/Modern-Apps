@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="confirm_delete">Confirmer la suppression</string>
     <string name="weather_title">Météo</string>
@@ -8,4 +9,46 @@
     <string name="app_name">Météo</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
     <string name="weather_widget_description">L\'heure, la date et la météo du moment en un coup d\'œil — appuyez pour consulter les prévisions</string>
+    <string name="add_a_city_or_use_your_current_location">Ajoutez une ville ou utilisez votre position actuelle pour consulter les prévisions.</string>
+    <string name="locations">Lieux</string>
+    <string name="summary_winds_noticeable">Le vent se fera sentir aujourd’hui.</string>
+    <string name="not_enough_data_to_plot">Pas assez de données pour afficher le graphique.</string>
+    <string name="detect_your_device_s_current_location_au">Détecter automatiquement la position actuelle de votre appareil et l’ajouter à votre liste</string>
+    <string name="metric_wind_speed">Vitesse du vent</string>
+    <string name="summary_expect_conditions">Attendez-vous à %1$s tout au long de la journée.</string>
+    <string name="metric_pressure">Pression</string>
+    <string name="summary_showers_possible">Des averses sont possibles plus tard.</string>
+    <string name="max_min">Max %1$s Min %2$s</string>
+    <string name="condition_unknown">Inconnu</string>
+    <string name="metric_humidity">Humidité</string>
+    <string name="summary_mixed_conditions">des conditions variables</string>
+    <string name="metric_uv_index">Indice UV</string>
+    <string name="summary_high_low">Maximale : %1$s, minimale : %2$s.</string>
+    <string name="condition_snow">Neige</string>
+    <string name="delete">Supprimer</string>
+    <string name="summary_slight_chance_rain">Faible risque de pluie.</string>
+    <string name="metric_visibility">Visibilité</string>
+    <string name="metric_temperature">Température</string>
+    <string name="from_gusts">Vent de %1$s · Rafales à %2$s</string>
+    <string name="condition_clear">Dégagé</string>
+    <string name="metric_feels_like">Ressenti</string>
+    <string name="feels_like">Ressenti : %1$s</string>
+    <string name="use_current_location">Utiliser la position actuelle</string>
+    <string name="condition_partly_cloudy">Partiellement nuageux</string>
+    <string name="condition_rain">Pluie</string>
+    <string name="metric_precipitation">Précipitations</string>
+    <string name="couldn_t_determine_location">Impossible de déterminer votre position</string>
+    <string name="metric_wind_gusts">Rafales de vent</string>
+    <string name="condition_thunderstorm">Orage</string>
+    <string name="metric_cloud_cover">Couverture nuageuse</string>
+    <string name="no_matches">Aucun résultat</string>
+    <string name="condition_fog">Brouillard</string>
+    <string name="summary_rain_likely">La pluie est probable — prenez un parapluie.</string>
+    <string name="condition_cloudy">Nuageux</string>
+    <string name="dew_point">Point de rosée</string>
+    <string name="no_locations_yet">Aucun lieu pour le moment</string>
+    <string name="condition_drizzle">Bruine</string>
+    <string name="summary_title">Résumé</string>
+    <string name="location_permission_denied">Autorisation d’accès à la position refusée</string>
+    <string name="locating">Localisation en cours…</string>
 </resources>
