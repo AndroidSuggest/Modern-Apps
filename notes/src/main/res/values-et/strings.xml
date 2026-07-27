@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Märkmik</string>
     <string name="title">Pealkiri</string>
@@ -7,4 +8,5 @@
     <string name="external_saved">Salvestatud faili</string>
     <string name="external_save_failed">Salvestamine ei õnnestunud (fail võib olla vaid lugemisõigustes)</string>
     <string name="external_read_failed">Faili avamine ei õnnestunud</string>
+    <string name="note">märge</string>
 </resources>
