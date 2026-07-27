@@ -11,11 +11,11 @@
     <string name="no">Non</string>
     <string name="mode_casual">Décontracté</string>
     <string name="mode_competitive">Compétitif</string>
-    <string name="competitive_score">Score : %1$d</string>
+    <string name="competitive_score">Score : %1$d</string>
     <string name="competitive_start">Démarrer</string>
     <string name="competitive_difficulty">Difficulté</string>
     <string name="competitive_time_limit">%1$d secondes par niveau</string>
-    <string name="competitive_solved">Résolu ! +%1$d points</string>
+    <string name="competitive_solved">Résolu ! +%1$d points</string>
     <string name="all_levels_completed">Tous les niveaux ont été complétés</string>
     <string name="stay_tuned_new_levels">Restez à l\'affût de nouveaux niveaux dans les prochaines mises à jour</string>
     <string name="error_parse_level">Échec de l\'analyse des données du niveau.</string>
@@ -24,6 +24,6 @@
     <string name="bonus_words">Mots bonus</string>
     <string name="tap_to_spell">Appuyez pour épeler</string>
     <string name="tap_to_spell_description">Appuyez sur les lettres pour former des mots au lieu de les faire glisser</string>
-    <string name="hint_confirmation">Êtes-vous sûr de vouloir utiliser un indice ?</string>
-    <string name="competitive_timed_out">Temps écoulé ! %1$d points</string>
+    <string name="hint_confirmation">Êtes-vous sûr de vouloir utiliser un indice ?</string>
+    <string name="competitive_timed_out">Temps écoulé ! %1$d points</string>
 </resources>
