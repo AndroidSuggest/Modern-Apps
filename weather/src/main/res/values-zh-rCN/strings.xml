@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Weather</string>
     <string name="search_location">搜索位置</string>
@@ -8,4 +9,46 @@
     <string name="map_time">时间</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
     <string name="weather_widget_description">一览当前时间、日期和天气 — 点按即可查看天气预报</string>
+    <string name="add_a_city_or_use_your_current_location">添加城市或使用当前位置查看天气预报。</string>
+    <string name="locations">位置</string>
+    <string name="summary_winds_noticeable">今天风力较明显。</string>
+    <string name="not_enough_data_to_plot">数据不足，无法绘制。</string>
+    <string name="detect_your_device_s_current_location_au">自动检测设备的当前位置并将其添加到列表中</string>
+    <string name="metric_wind_speed">风速</string>
+    <string name="summary_expect_conditions">全天预计 %1$s。</string>
+    <string name="metric_pressure">气压</string>
+    <string name="summary_showers_possible">晚些时候可能有阵雨。</string>
+    <string name="max_min">最高 %1$s 最低 %2$s</string>
+    <string name="condition_unknown">未知</string>
+    <string name="metric_humidity">湿度</string>
+    <string name="summary_mixed_conditions">混合天气</string>
+    <string name="metric_uv_index">紫外线指数</string>
+    <string name="summary_high_low">最高 %1$s，最低 %2$s。</string>
+    <string name="condition_snow">雪</string>
+    <string name="delete">删除</string>
+    <string name="summary_slight_chance_rain">有小雨的可能。</string>
+    <string name="metric_visibility">能见度</string>
+    <string name="metric_temperature">温度</string>
+    <string name="from_gusts">来自 %1$s · 阵风 %2$s</string>
+    <string name="condition_clear">晴</string>
+    <string name="metric_feels_like">体感温度</string>
+    <string name="feels_like">体感温度 %1$s</string>
+    <string name="use_current_location">使用当前位置</string>
+    <string name="condition_partly_cloudy">多云</string>
+    <string name="condition_rain">雨</string>
+    <string name="metric_precipitation">降水</string>
+    <string name="couldn_t_determine_location">无法确定位置</string>
+    <string name="metric_wind_gusts">阵风</string>
+    <string name="condition_thunderstorm">雷暴</string>
+    <string name="metric_cloud_cover">云量</string>
+    <string name="no_matches">无匹配项</string>
+    <string name="condition_fog">雾</string>
+    <string name="summary_rain_likely">可能下雨 — 请携带雨伞。</string>
+    <string name="condition_cloudy">阴</string>
+    <string name="dew_point">露点</string>
+    <string name="no_locations_yet">尚无位置</string>
+    <string name="condition_drizzle">毛毛雨</string>
+    <string name="summary_title">摘要</string>
+    <string name="location_permission_denied">位置权限被拒绝</string>
+    <string name="locating">正在定位…</string>
 </resources>
