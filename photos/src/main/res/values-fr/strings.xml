@@ -222,5 +222,4 @@
     <string name="editor_desc_selective">Peindre un réglage sur des zones précises.</string>
     <string name="done">Terminer</string>
     <string name="tool_line">Ligne</string>
-    <string name="editor_desc_none"></string>
 </resources>
