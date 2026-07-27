@@ -92,6 +92,4 @@
     <string name="no_name">(Bez nazwy)</string>
     <string name="add_number_to_contact">Dodaj numer do kontaktu</string>
     <string name="create_new_contact">Utwórz nowy kontakt</string>
-    <string name="crop_photo"></string>
-    <string name="import_contacts_from_vcf_files"></string>
 </resources>

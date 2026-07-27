@@ -83,15 +83,4 @@
     <string name="no_groups_found">Nessun gruppo trovato. Creane uno nella scheda Gruppi.</string>
     <string name="contacts_count">%1$d contatti</string>
     <string name="done">Fatto</string>
-    <string name="import_summary_contacts"></string>
-    <string name="select_account"></string>
-    <string name="add_number_to_contact"></string>
-    <string name="crop_photo"></string>
-    <string name="import_to_existing_account"></string>
-    <string name="no_name"></string>
-    <string name="create_new_account_option"></string>
-    <string name="create_new_contact"></string>
-    <string name="no_contacts_found"></string>
-    <string name="import_contacts_from_vcf_files"></string>
-    <string name="import_vcf_file"></string>
 </resources>
