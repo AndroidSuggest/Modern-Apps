@@ -50,4 +50,5 @@
     <string name="location_permission_denied"></string>
     <string name="locating"></string>
     <string name="weather_widget_description"></string>
+    <string name="delete">Borrar</string>
 </resources>
