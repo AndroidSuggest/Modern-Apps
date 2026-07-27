@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings">Seadistused</string>
     <string name="cancel">Katkesta</string>
@@ -58,7 +59,7 @@
     <string name="create_new_calendar">+ Loo uus kalender</string>
     <string name="default_layout">Vaikimisi paigutus</string>
     <string name="add_reminder">Lisa meeldetuletus</string>
-    <string name="calendar_widget_description">Tulevaset sündmused ühe vaatena - klõpsa ja ava Kalender</string>
+    <string name="calendar_widget_description">Tulevased sündmused ühe vaatena - klõpsa ja ava Kalender</string>
     <string name="on_label">Aeg</string>
     <string name="month_option_day_of_month">Kuu %1$d-ndal päeval</string>
     <string name="month_option_nth_weekday">%1$s %2$s</string>
@@ -72,4 +73,68 @@
     <string name="create_new_calendar_option">Loo uus kalender</string>
     <string name="no_events_found">Sündmusi ei leidu</string>
     <string name="import_summary">%1$d sündmust on importimiseks valmis</string>
+    <plurals name="rrule_every_months">
+        <item quantity="one">Iga %1$d kuu järel</item>
+        <item quantity="other">Iga %1$d kuu järel</item>
+    </plurals>
+    <string name="theme_light">Hele kujundus</string>
+    <plurals name="reminder_hours_before">
+        <item quantity="one">%1$d tund varem</item>
+        <item quantity="other">%1$d tundi varem</item>
+    </plurals>
+    <string name="layout_full_week_summary">Täisnädala kokkuvõte</string>
+    <string name="import_events_from_ics_files">Impordi sündmused .ics failist</string>
+    <plurals name="rrule_count_suffix">
+        <item quantity="one">, %1$d kord</item>
+        <item quantity="other">, %1$d korda</item>
+    </plurals>
+    <string name="theme_dark">Tume kujundus</string>
+    <string name="theme_system_default">Süsteemi kujundus</string>
+    <string name="rrule_weekly">Iga nädal</string>
+    <string name="layout_short_month">K</string>
+    <string name="layout_work_week">Töönädal</string>
+    <plurals name="rrule_every_weeks">
+        <item quantity="one">Iga %1$d nädala järel</item>
+        <item quantity="other">Iga %1$d nädala järel</item>
+    </plurals>
+    <string name="theme">Kujundus</string>
+    <string name="layout_agenda">Päevaplaan</string>
+    <plurals name="reminder_minutes_before">
+        <item quantity="one">%1$d minut varem</item>
+        <item quantity="other">%1$d minutit varem</item>
+    </plurals>
+    <plurals name="rrule_every_days">
+        <item quantity="one">Iga %1$d päeva järel</item>
+        <item quantity="other">Iga %1$d päeva järel</item>
+    </plurals>
+    <string name="layout_work_week_summary">Töönädala kokkuvõte</string>
+    <string name="search_countries">Otsi riike</string>
+    <string name="layout_short_agenda">Pl</string>
+    <string name="please_grant_calendar_permission">Palun anna õigused kalendri kasutamiseks</string>
+    <string name="rrule_yearly">Iga aasta</string>
+    <string name="layout_day">Päev</string>
+    <string name="layout_full_week">Täisnädal</string>
+    <string name="rrule_until_suffix">, kuni %1$s</string>
+    <string name="reminder_at_time_of_event">Sündmuse alguses</string>
+    <string name="layout_short_work_week">Nd5</string>
+    <string name="rrule_on_days">%1$s, %2$s</string>
+    <string name="layout_short_work_week_summary">Nd5Kv</string>
+    <string name="layout_month">Kuu</string>
+    <string name="rrule_daily">Iga päev</string>
+    <string name="add_public_holidays_for_countries">Lisa riikide pühad</string>
+    <plurals name="rrule_every_years">
+        <item quantity="one">Iga %1$d aasta järel</item>
+        <item quantity="other">Iga %1$d aasta järel</item>
+    </plurals>
+    <string name="layout_short_full_week">Nd7</string>
+    <string name="rrule_monthly">Iga kuu</string>
+    <string name="layout_short_full_week_summary">Nd7Kv</string>
+    <string name="choose_language">Vali keel</string>
+    <plurals name="reminder_days_before">
+        <item quantity="one">%1$d päev varem</item>
+        <item quantity="other">%1$d päeva varem</item>
+    </plurals>
+    <string name="add">Lisa</string>
+    <string name="layout_short_day">Pv</string>
+    <string name="holiday_calendars">Pühade kalendrid</string>
 </resources>
