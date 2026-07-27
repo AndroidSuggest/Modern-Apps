@@ -1,4 +1,5 @@
-<resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="cancel">取消</string>
     <string name="month_year_format">%1$s %2$d</string>
     <string name="week_range">%1$s – %2$s</string>
@@ -111,4 +112,31 @@
     <string name="label_exercise">锻炼</string>
     <string name="no_workouts">未记录任何训练</string>
     <string name="log_body_metric">记录 %1$s</string>
+    <string name="create_recipe">创建食谱</string>
+    <string name="no_results_found">未找到结果</string>
+    <string name="select_recipe">选择食谱</string>
+    <string name="original_1">原始：%1$s</string>
+    <string name="segments">分段</string>
+    <string name="saved_locally">已保存在本地</string>
+    <string name="servings">份量</string>
+    <string name="quantity_x_100g">数量（× 100克）</string>
+    <string name="online">在线</string>
+    <string name="lap">第 %1$s 圈</string>
+    <string name="hydration_cups">杯</string>
+    <string name="add_your_first_ingredient">添加您的第一个配料</string>
+    <string name="view_full_breakdown">查看完整明细</string>
+    <string name="edit_recipe">编辑食谱</string>
+    <string name="meals_cal">%1$s 餐 · %2$s 卡路里</string>
+    <string name="ingredient">（配料）</string>
+    <string name="downloaded">已下载</string>
+    <string name="laps">圈数</string>
+    <string name="calories">卡路里</string>
+    <string name="hydration_ounces">盎司</string>
+    <string name="hydration_liters">升</string>
+    <string name="kcal">%1$s / %2$s 千卡</string>
+    <string name="no_meals_logged_today">今天未记录餐食</string>
+    <string name="reps">%1$s 次</string>
+    <string name="hydration_milliliters">毫升</string>
+    <string name="route_recorded">路线已记录</string>
+    <string name="create_your_first_recipe">创建您的第一个食谱</string>
 </resources>
