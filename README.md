@@ -96,7 +96,8 @@ iOS: https://apps.apple.com/us/app/find-family-secure-private/id6760863634
 - Airtag-like hardware trackers
 
 ## Maps
-Officially unreleased, but the apk is available for download for testing.
+Officially unreleased
+
 ### Features
 - Offline Maps (download regions)
 - Display OSM data for POIs
@@ -119,7 +120,9 @@ If you are curious about how word processors / office software works, I would *h
 ## Messages
 The private aggregator for messaging apps. There exist other aggregators, but those apps run bridges on their own servers (privacy risk because your messages are or can be decrypted by the server), while this app runs the bridges on-device, preserving end-to-end encryption.
 
-Currently supports Google Messages, Whatsapp, and Google Voice with more services in development.
+Currently supports Google Messages, Whatsapp, and Google Voice with more services only partially supported.
+
+This is not actively being worked on, so I wouldn't recommend using it, and any issues relating to it will be closed. I may return to active development at some point in the future
 
 ## OpenAssistant
 A 100% offline AI app that supports text, image, and audio input using the Gemma 4 models
