@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">אישור</string>
     <string name="cancel">ביטול</string>
@@ -54,4 +55,43 @@
     <string name="backup_and_export">גיבוי וייצוא</string>
     <string name="search_contacts">חיפוש אנשי קשר</string>
     <string name="telegram">טלגרם</string>
+    <string name="delete_selected_contacts_title"></string>
+    <string name="no_groups_found"></string>
+    <string name="add_to_group"></string>
+    <string name="name_nickname_format"></string>
+    <string name="delete_group_title"></string>
+    <string name="import_summary_contacts"></string>
+    <string name="select_contact_hint"></string>
+    <string name="select_account"></string>
+    <string name="signal"></string>
+    <string name="delete_selected_contacts_confirm"></string>
+    <string name="contact_photo_description"></string>
+    <string name="add_number_to_contact"></string>
+    <string name="crop_photo"></string>
+    <string name="whatsapp"></string>
+    <string name="display"></string>
+    <string name="contacts_count"></string>
+    <string name="select_group_hint"></string>
+    <string name="delete_group_confirm"></string>
+    <string name="contacts"></string>
+    <string name="import_to_existing_account"></string>
+    <string name="account_display_format"></string>
+    <string name="no_name"></string>
+    <string name="create_new_account_option"></string>
+    <string name="create_new_contact"></string>
+    <string name="sync_contacts_calendar"></string>
+    <string name="enter_group_name"></string>
+    <string name="enter_account_name"></string>
+    <string name="no_contacts_found"></string>
+    <string name="show_account_labels"></string>
+    <string name="selected_count"></string>
+    <string name="google_meet"></string>
+    <string name="groups"></string>
+    <string name="delete_contact_name_confirm"></string>
+    <string name="add_group"></string>
+    <string name="include_year"></string>
+    <string name="grant_calendar_permissions"></string>
+    <string name="import_contacts_from_vcf_files"></string>
+    <string name="import_vcf_file"></string>
+    <string name="system_default"></string>
 </resources>
