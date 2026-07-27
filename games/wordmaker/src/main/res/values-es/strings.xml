@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="close">Cerrar</string>
-    <string name="settings">Configuración de la pantalla</string>
+    <string name="settings">Configuración</string>
     <string name="difficulty_hard"></string>
     <string name="cd_hint"></string>
     <string name="competitive_score"></string>
