@@ -24,7 +24,7 @@
     <string name="stopwatch_time_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"05\"&gt;%2$02d&lt;/xliff:g&gt;</string>
     <string name="button_add_minute">+ 1:00</string>
     <string name="timer_finished_title">Koniec odliczania</string>
-    <string name="timer_finished_text">&lt;xliff:g id=\"timer_name\" example=\"Tea\"&gt;%1$s&lt;/xliff:g&gt; has ended!</string>
+    <string name="timer_finished_text">&lt;xliff:g id=\"timer_name\" example=\"Tea\"&gt;%1$s&lt;/xliff:g&gt; – odliczanie zakończone!</string>
     <string name="label_new_timer">Nowy minutnik</string>
     <string name="field_label">Etykieta</string>
     <string name="button_cancel">Anuluj</string>
