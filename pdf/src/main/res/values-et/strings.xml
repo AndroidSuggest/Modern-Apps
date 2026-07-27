@@ -47,4 +47,6 @@
     <string name="sticky_note"></string>
     <string name="aa"></string>
     <string name="done"></string>
+    <string name="safe_pdf_error"></string>
+    <string name="add">Lisa</string>
 </resources>
