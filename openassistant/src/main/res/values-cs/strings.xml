@@ -14,7 +14,4 @@
     <string name="error_inference_timeout">Časový limit inference vypršel</string>
     <string name="error_ai_engine_failed">Selhal AI engine</string>
     <string name="error_ai_json_schema_mismatch">AI se nepodařilo vrátit platný JSON odpovídající schématu.</string>
-    <string name="settings_title"></string>
-    <string name="memories"></string>
-    <string name="no_memories_yet"></string>
 </resources>
