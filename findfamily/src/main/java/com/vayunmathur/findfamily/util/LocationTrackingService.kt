@@ -24,6 +24,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
@@ -117,107 +118,161 @@ class LocationTrackingService : Service(), SensorEventListener {
     }
 
     private suspend fun syncHeartbeat() {
-        val location = lastKnownLocation ?: return
-        if (Networking.userid == 0L) return
-        
-        val currentUsers = userDao.getAll()
-        val currentWaypoints = waypointDao.getAll()
-        val currentLinks = temporaryLinkDao.getAll()
-        val userIDs = currentUsers.map { it.id }
-        val now = Clock.System.now()
-
-        val locationValue = LocationValue(
-            Networking.userid,
-            Coord(location.latitude, location.longitude),
-            0f,
-            location.accuracy,
-            now,
-            bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toFloat()
-        )
-
-        locationValueDao.upsert(locationValue)
-        Networking.ensureUserExists()
-
-        if (currentUsers.none { it.id == Networking.userid }) {
-            userDao.upsert(
-                User(
-                    getString(R.string.me_label),
-                    null,
-                    "Unnamed Location",
-                    true,
-                    RequestStatus.MUTUAL_CONNECTION,
-                    Clock.System.now(),
-                    null,
-                    Networking.userid
-                )
-            )
+        val location = lastKnownLocation ?: run {
+            Log.d("FF-Heartbeat", "syncHeartbeat: no lastKnownLocation yet")
+            return
+        }
+        if (Networking.userid == 0L) {
+            Log.d("FF-Heartbeat", "syncHeartbeat: userid==0, not initialized yet")
+            return
         }
 
-        currentUsers.filter { it.id != Networking.userid && it.sendingEnabled }.forEach { Networking.publishLocation(locationValue, it) }
-        currentLinks.filter { now < it.deleteAt }.forEach { Networking.publishLocation(locationValue, it) }
-        currentLinks.filter { now >= it.deleteAt }.forEach { temporaryLinkDao.delete(it) }
+        // Shield the entire heartbeat so one failing DAO / crypto / network call
+        // does not kill the foreground service loop (which previously surfaced as
+        // FATAL BadPaddingException in decrypt).
+        try {
+            val currentUsers = userDao.getAll()
+            val currentWaypoints = waypointDao.getAll()
+            val currentLinks = temporaryLinkDao.getAll()
+            val userIDs = currentUsers.map { it.id }
+            val now = Clock.System.now()
 
-        delay(3000)
-        Networking.receiveLocations()?.let { locations ->
-            val usersRecieved = locations.map { it.userid }.distinct()
-            val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
-            userDao.insertAllIgnore(newUsers.map {
-                User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
-            })
+            Log.d("FF-Heartbeat", "heartbeat userid=${Networking.userid.toULong()} self raw=${Networking.userid} users=${currentUsers.size} links=${currentLinks.size} moving=$isMoving loc=${location.latitude},${location.longitude} acc=${location.accuracy}")
 
-            val latestMap = locationValueDao.getLatest().first().associateBy { it.userid }
-            currentUsers.forEach { user ->
-                // Self never receives its own published location, so fall back to the fix we
-                // just recorded this heartbeat; otherwise "me" never gets its waypoint recomputed.
-                val lastLoc = if (user.id == Networking.userid) locationValue
-                    else locations.filter { it.userid == user.id }.maxByOrNull { it.timestamp }
-                lastLoc ?: return@forEach
-                val lastSavedLoc = latestMap[user.id]
+            val locationValue = LocationValue(
+                Networking.userid,
+                Coord(location.latitude, location.longitude),
+                0f,
+                location.accuracy,
+                now,
+                bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toFloat()
+            )
 
-                if (lastLoc.battery <= 15f && (lastSavedLoc?.battery ?: 100f) > 15f) {
-                    if (user.id != Networking.userid) {
-                        createNotificationWithCategory(user.name, getString(R.string.notification_low_battery, user.name), "BATTERY_LOW", user.id)
-                    }
-                }
+            Log.d("FF-Heartbeat", "upsert local LocationValue for self")
+            locationValueDao.upsert(locationValue)
+            try {
+                Log.d("FF-Heartbeat", "ensureUserExists start")
+                Networking.ensureUserExists()
+                Log.d("FF-Heartbeat", "ensureUserExists done")
+            } catch (e: Exception) {
+                Log.w("FF-Heartbeat", "ensureUserExists threw", e)
+            }
 
-                val inWaypoint = currentWaypoints.find { havershine(it.coord, lastLoc.coord) < it.range }
-                val prevId = user.lastWaypointId
-                val stillInsidePrev = prevId?.let { pid ->
-                    currentWaypoints.find { it.id == pid }?.let {
-                        havershine(it.coord, lastLoc.coord) < it.range * 1.2
-                    }
-                } ?: false
-                val currentId: Long? = inWaypoint?.id ?: if (stillInsidePrev) prevId else null
+            if (currentUsers.none { it.id == Networking.userid }) {
+                Log.d("FF-Heartbeat", "self not in user DB, inserting me")
+                userDao.upsert(
+                    User(
+                        getString(R.string.me_label),
+                        null,
+                        "Unnamed Location",
+                        true,
+                        RequestStatus.MUTUAL_CONNECTION,
+                        Clock.System.now(),
+                        null,
+                        Networking.userid
+                    )
+                )
+            }
 
-                // Display name: prefer waypoint name (either entered or sticky-via-hysteresis), then geocoded address.
-                val displayName = inWaypoint?.name
-                    ?: currentWaypoints.find { it.id == currentId }?.name
-                    ?: fetchAddress(lastLoc.coord.lat, lastLoc.coord.lon)?.let {
-                        it.featureName ?: it.thoroughfare
-                    }
-                    ?: "Unknown Location"
-
-                if (currentId != prevId || displayName != user.locationName) {
-                    userDao.upsert(user.copy(
-                        locationName = displayName,
-                        lastWaypointId = currentId,
-                        lastLocationChangeTime = lastLoc.timestamp
-                    ))
-                }
-
-                if (currentId != prevId && user.id != Networking.userid) {
-                    if (currentId != null) {
-                        val enteredName = inWaypoint?.name
-                            ?: currentWaypoints.find { it.id == currentId }?.name
-                            ?: displayName
-                        createNotificationWithCategory(user.name, getString(R.string.notification_entered_waypoint, user.name, enteredName), "ENTRY_EXIT", user.id)
-                    } else if (prevId != null) {
-                        val exitedName = currentWaypoints.find { it.id == prevId }?.name ?: user.locationName
-                        createNotificationWithCategory(user.name, getString(R.string.notification_exited_waypoint, user.name, exitedName), "ENTRY_EXIT", user.id)
+            // Auto-toggle check: flip sendingEnabled when scheduled time is due (Never = disabled)
+            currentUsers.forEach { u ->
+                val at = u.sharingAutoToggleAt
+                if (at != null && now >= at) {
+                    try {
+                        userDao.upsert(u.copy(sendingEnabled = !u.sendingEnabled, sharingAutoToggleAt = null))
+                    } catch (e: Exception) {
+                        Log.w("FF-Heartbeat", "auto-toggle failed for ${u.id}", e)
                     }
                 }
             }
-            locationValueDao.upsertAll(locations)
+
+            val publishTargets = currentUsers.filter { it.id != Networking.userid && it.sendingEnabled }
+            Log.d("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=${publishTargets.map{ it.id.toULong() }} names=${publishTargets.map{ it.name }}")
+            publishTargets.forEach {
+                val result = runCatching { Networking.publishLocation(locationValue, it) }
+                if (result.isFailure) Log.w("FF-Heartbeat", "publish to ${it.id.toULong()} threw", result.exceptionOrNull())
+            }
+            currentLinks.filter { now < it.deleteAt }.forEach {
+                val result = runCatching { Networking.publishLocation(locationValue, it) }
+                if (result.isFailure) Log.w("FF-Heartbeat", "publish to link ${it.id} threw", result.exceptionOrNull())
+            }
+            currentLinks.filter { now >= it.deleteAt }.forEach { runCatching { temporaryLinkDao.delete(it) } }
+
+            Log.d("FF-Heartbeat", "delay 3s then receive")
+            delay(3000)
+            val locations = try {
+                Networking.receiveLocations()
+            } catch (e: Exception) {
+                Log.w("FF-Heartbeat", "receiveLocations threw", e)
+                null
+            }
+            Log.d("FF-Heartbeat", "receiveLocations result=${locations?.size} for self ${Networking.userid.toULong()}")
+            locations?.let { locList ->
+                val usersRecieved = locList.map { it.userid }.distinct()
+                Log.d("FF-Heartbeat", "received userids=${usersRecieved.map{ it.toULong() }} self=${Networking.userid.toULong()} known=${userIDs.map{ it.toULong() }}")
+                val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
+                Log.d("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
+                userDao.insertAllIgnore(newUsers.map {
+                    User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
+                })
+
+                val latestMap = locationValueDao.getLatest().first().associateBy { it.userid }
+                currentUsers.forEach { user ->
+                    // Self never receives its own published location, so fall back to the fix we
+                    // just recorded this heartbeat; otherwise "me" never gets its waypoint recomputed.
+                    val lastLoc = if (user.id == Networking.userid) locationValue
+                    else locList.filter { it.userid == user.id }.maxByOrNull { it.timestamp }
+                    lastLoc ?: return@forEach
+                    val lastSavedLoc = latestMap[user.id]
+
+                    if (lastLoc.battery <= 15f && (lastSavedLoc?.battery ?: 100f) > 15f) {
+                        if (user.id != Networking.userid) {
+                            createNotificationWithCategory(user.name, getString(R.string.notification_low_battery, user.name), "BATTERY_LOW", user.id)
+                        }
+                    }
+
+                    val inWaypoint = currentWaypoints.find { havershine(it.coord, lastLoc.coord) < it.range }
+                    val prevId = user.lastWaypointId
+                    val stillInsidePrev = prevId?.let { pid ->
+                        currentWaypoints.find { it.id == pid }?.let {
+                            havershine(it.coord, lastLoc.coord) < it.range * 1.2
+                        }
+                    } ?: false
+                    val currentId: Long? = inWaypoint?.id ?: if (stillInsidePrev) prevId else null
+
+                    // Display name: prefer waypoint name (either entered or sticky-via-hysteresis), then geocoded address.
+                    val displayName = inWaypoint?.name
+                        ?: currentWaypoints.find { it.id == currentId }?.name
+                        ?: runCatching { fetchAddress(lastLoc.coord.lat, lastLoc.coord.lon) }.getOrNull()?.let {
+                            it.featureName ?: it.thoroughfare
+                        }
+                        ?: "Unknown Location"
+
+                    if (currentId != prevId || displayName != user.locationName) {
+                        userDao.upsert(user.copy(
+                            locationName = displayName,
+                            lastWaypointId = currentId,
+                            lastLocationChangeTime = lastLoc.timestamp
+                        ))
+                    }
+
+                    if (currentId != prevId && user.id != Networking.userid) {
+                        if (currentId != null) {
+                            val enteredName = inWaypoint?.name
+                                ?: currentWaypoints.find { it.id == currentId }?.name
+                                ?: displayName
+                            createNotificationWithCategory(user.name, getString(R.string.notification_entered_waypoint, user.name, enteredName), "ENTRY_EXIT", user.id)
+                        } else if (prevId != null) {
+                            val exitedName = currentWaypoints.find { it.id == prevId }?.name ?: user.locationName
+                            createNotificationWithCategory(user.name, getString(R.string.notification_exited_waypoint, user.name, exitedName), "ENTRY_EXIT", user.id)
+                        }
+                    }
+                }
+                locationValueDao.upsertAll(locList)
+                Log.d("FF-Heartbeat", "upsertAll ${locList.size} locations done")
+            }
+        } catch (e: Exception) {
+            Log.w("FF-Heartbeat", "syncHeartbeat crashed", e)
         }
     }
 
@@ -228,7 +283,9 @@ class LocationTrackingService : Service(), SensorEventListener {
      * also fire a local notification so the user knows ranging is happening.
      */
     private suspend fun drainUwbInbox() {
-        val envelopes = Networking.receiveUwbMessages() ?: return
+        val envelopes = try {
+            Networking.receiveUwbMessages() ?: return
+        } catch (_: Exception) { return }
         if (envelopes.isEmpty()) return
         val users = userDao.getAll()
         for (envelope in envelopes) {
@@ -652,7 +709,8 @@ object LocationServiceController {
      * answer is correct regardless of whether the UI/ViewModel is alive.
      */
     suspend fun isSharingEnabled(context: Context): Boolean {
-        val selfId = DataStoreUtils.getInstance(context).getLong("userid")
+        val ds = DataStoreUtils.getInstance(context)
+        val selfId = try { ds.getLongAwait("userid") } catch (_: Exception) { ds.getLong("userid") }
         val db = context.buildDatabase<FFDatabase>()
         return db.userDao().getAll().any { it.sendingEnabled && it.id != selfId }
     }

@@ -331,11 +331,48 @@ class FindFamilyViewModel(
     }
 
     /** Toggle per-person location sharing and reconcile the service so it stops
-     * when nobody is being shared with and starts when sharing is (re)enabled. */
+     * when nobody is being shared with and starts when sharing is (re)enabled.
+     * Manual toggle always resets auto-toggle to Never. */
     fun setUserSharing(user: User, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
-            userDao.upsert(user.copy(sendingEnabled = enabled))
+            userDao.upsert(user.copy(sendingEnabled = enabled, sharingAutoToggleAt = null))
             LocationServiceController.syncServiceState(ctx)
+        }
+    }
+
+    /** Set auto-toggle for sharing — same durations as one-time links, Never = null. Single field. */
+    fun setUserAutoToggle(user: User, duration: kotlin.time.Duration?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (duration == null) {
+                userDao.upsert(user.copy(sharingAutoToggleAt = null))
+            } else {
+                val at = Clock.System.now() + duration
+                userDao.upsert(user.copy(sharingAutoToggleAt = at))
+            }
+        }
+    }
+
+    /** Called from foreground service (or init) when any auto-toggle is due. */
+    suspend fun applyDueAutoToggles() {
+        val now = Clock.System.now()
+        val all = userDao.getAll()
+        for (u in all) {
+            val at = u.sharingAutoToggleAt
+            if (at != null && now >= at) {
+                userDao.upsert(
+                    u.copy(
+                        sendingEnabled = !u.sendingEnabled,
+                        sharingAutoToggleAt = null
+                    )
+                )
+            }
+        }
+    }
+
+    /** Clears expired auto-toggles that are past due but without flipping — used during init cleanup. */
+    fun clearExpiredAutoTogglesIfAny() {
+        viewModelScope.launch(Dispatchers.IO) {
+            applyDueAutoToggles()
         }
     }
 
@@ -416,6 +453,8 @@ class FindFamilyViewModel(
         // it's safe for the service to also call it (it may start before the UI).
         viewModelScope.launch(Dispatchers.IO) {
             Networking.init(userDao, DataStoreUtils.getInstance(ctx), ctx.getString(R.string.me_label))
+            // Apply any due auto-toggles on cold start
+            applyDueAutoToggles()
         }
         // Trim location history older than a week.
         viewModelScope.launch(Dispatchers.IO) {

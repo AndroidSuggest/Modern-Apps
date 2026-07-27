@@ -112,6 +112,12 @@
     <string name="share_your_location">Share your location with this person</string>
     <!-- UserPage: Button to change linked contact entry. Verb phrase -->
     <string name="change_connected_contact">Change connected contact</string>
+    <!-- UserPage: Auto-toggle dropdown label when sharing is ON — will disable after duration -->
+    <string name="disable_after">Disable after</string>
+    <!-- UserPage: Auto-toggle dropdown label when sharing is OFF — will enable after duration -->
+    <string name="enable_after">Enable after</string>
+    <!-- UserPage: Auto-toggle dropdown option for never / disabled -->
+    <string name="auto_toggle_never">Never</string>
     <!-- MainPage TopAppBar: Title when in history mode. %1$s = selected user name, e.g. Alice -->
     <string name="history_title">History: <xliff:g id="person_name" example="Alice">%1$s</xliff:g></string>
     <!-- HistoryScrubber: Button label to step back 5 minutes. Verb with duration -->

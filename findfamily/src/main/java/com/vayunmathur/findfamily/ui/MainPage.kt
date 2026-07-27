@@ -46,6 +46,9 @@ import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.ExposedDropdownMenuDefaults
+import com.vayunmathur.library.ui.DropdownMenu
+import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Slider
@@ -58,6 +61,10 @@ import com.vayunmathur.library.ui.dynamicLightColorScheme
 import com.vayunmathur.library.ui.rememberBottomSheetScaffoldState
 import com.vayunmathur.library.ui.rememberSliderState
 import com.vayunmathur.library.room.SqlCipherDbCodec
+import com.vayunmathur.findfamily.ui.dialogs.interactionSourceClickable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -356,6 +363,9 @@ fun MainPage(
                                 { send -> ffViewModel.setUserSharing(user, send) }
                             )
                         }
+                        // Auto-toggle: "Turn on/off after" + duration dropdown (Never default)
+                        Spacer(Modifier.height(4.dp))
+                        AutoToggleRow(user, ffViewModel)
                         Spacer(Modifier.height(4.dp))
                         OutlinedButton(
                             { requestPickContact() },
@@ -738,6 +748,111 @@ fun timestring(timestamp: Instant, future: Boolean, context: Context): String {
         duration.inWholeMinutes < 60 -> context.getString(if (future) R.string.time_in_minutes else R.string.time_minutes_ago, duration.inWholeMinutes)
         duration.inWholeHours < 24 -> context.getString(if (future) R.string.time_in_hours else R.string.time_hours_ago, duration.inWholeHours)
         else -> context.getString(if (future) R.string.time_in_days else R.string.time_days_ago, duration.inWholeDays)
+    }
+}
+
+private fun formatAutoToggleCountdown(remaining: Duration): String {
+    val totalSeconds = remaining.inWholeSeconds.coerceAtLeast(0)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AutoToggleRow(user: User, ffViewModel: FindFamilyViewModel) {
+    val neverLabel = stringResource(R.string.auto_toggle_never)
+    val opts = remember {
+        listOf(
+            Pair("15 min", 15.minutes),
+            Pair("30 min", 30.minutes),
+            Pair("1 hour", 1.hours),
+            Pair("2 hours", 2.hours),
+            Pair("4 hours", 4.hours),
+            Pair("6 hours", 6.hours),
+            Pair("12 hours", 12.hours),
+            Pair("1 day", 1.days),
+            Pair("2 days", 2.days),
+            Pair("1 week", 7.days),
+        )
+    }
+
+    val resolvedLabels = mapOf(
+        "15 min" to stringResource(R.string.expiry_15_minutes),
+        "30 min" to stringResource(R.string.expiry_30_minutes),
+        "1 hour" to stringResource(R.string.expiry_1_hour),
+        "2 hours" to stringResource(R.string.expiry_2_hours),
+        "4 hours" to stringResource(R.string.expiry_4_hours),
+        "6 hours" to stringResource(R.string.expiry_6_hours),
+        "12 hours" to stringResource(R.string.expiry_12_hours),
+        "1 day" to stringResource(R.string.expiry_1_day),
+        "2 days" to stringResource(R.string.expiry_2_days),
+        "1 week" to stringResource(R.string.expiry_1_week),
+    )
+
+    val labelToDuration: Map<String, Duration> = opts.associate { (k, v) -> (resolvedLabels[k] ?: k) to v }
+
+    // Live ticker for countdown — ticks every second while a timeout is active
+    var now by remember { mutableStateOf(Clock.System.now()) }
+    val endAt = user.sharingAutoToggleAt
+    LaunchedEffect(endAt) {
+        if (endAt == null) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            val current = Clock.System.now()
+            now = current
+            if (current >= endAt) break
+        }
+    }
+
+    // If enabled, show live [hh:]mm:ss countdown; otherwise Never. Dropdown remains for picking new value.
+    val currentLabel = if (endAt == null) {
+        neverLabel
+    } else {
+        val remaining = endAt - now
+        if (remaining.inWholeSeconds <= 0) neverLabel else formatAutoToggleCountdown(remaining)
+    }
+
+    val dropdownLabel = if (user.sendingEnabled) stringResource(R.string.disable_after) else stringResource(R.string.enable_after)
+
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            dropdownLabel,
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Box {
+            OutlinedTextField(
+                currentLabel, {},
+                interactionSource = interactionSourceClickable { expanded = true },
+                readOnly = true,
+                modifier = Modifier.width(180.dp),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+            )
+            DropdownMenu(expanded, { expanded = false }) {
+                // Never option first — disables auto-toggle; others reschedule countdown
+                DropdownMenuItem({ Text(neverLabel) }, {
+                    expanded = false
+                    ffViewModel.setUserAutoToggle(user, null)
+                })
+                labelToDuration.forEach { (label, dur) ->
+                    DropdownMenuItem({ Text(label) }, {
+                        expanded = false
+                        ffViewModel.setUserAutoToggle(user, dur)
+                    })
+                }
+            }
+        }
     }
 }
 
