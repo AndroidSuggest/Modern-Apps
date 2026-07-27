@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Muusika</string>
     <string name="nav_home">Avaleht</string>
@@ -36,4 +37,4 @@
     <string name="dialog_create_playlist">Koosta esitusloend</string>
     <string name="dialog_create">Koosta</string>
     <string name="playlist_name_hint">Esitusloendi nimi</string>
-    </resources>
+</resources>
