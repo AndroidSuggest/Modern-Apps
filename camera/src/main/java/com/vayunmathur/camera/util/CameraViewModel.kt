@@ -211,13 +211,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _aspectRatio = MutableStateFlow(AspectRatioOption.RATIO_4_3)
     val aspectRatio = _aspectRatio.asStateFlow()
 
-    private val _videoCodec = MutableStateFlow(
-        when {
-            CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
-            CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
-            else -> VideoCodec.AVC
-        }
-    )
+    // Default to AVC on main-thread init; the best available codec (AV1/HEVC) is
+    // determined off the main thread in loadSettings() to avoid MediaCodecList
+    // blocking startup (MediaCodecList can take 10-20s on some devices).
+    private val _videoCodec = MutableStateFlow(VideoCodec.AVC)
     val videoCodec = _videoCodec.asStateFlow()
 
     private val _isRecording = MutableStateFlow(false)
@@ -463,13 +460,22 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        loadSettings()
         panoramaEngine.onSweepComplete = { finishPanoramaSweep() }
-        viewModelScope.launch {
+
+        // Settings include disk read + MediaCodecList which is known to block 10-20s
+        // on some devices. Must never run on main thread during cold start or the
+        // window can't handle FocusEvent -> ANR.
+        viewModelScope.launch(Dispatchers.IO) {
+            CodecSupport.prewarm() // MediaCodecList off main, cached
+            loadSettings()
+        }
+        viewModelScope.launch(Dispatchers.IO) {
             _lastCaptureUri.collect { uri -> _galleryThumbnail.value = loadThumbnail(uri) }
         }
         // Probe Slo-Mo capability once (back camera only). UI hides Slo-Mo if unsupported.
-        viewModelScope.launch {
+        // Must run off main thread: ProcessCameraProvider.awaitInstance + high-speed caps
+        // queries are heavy.
+        viewModelScope.launch(Dispatchers.Default) {
             _sloMoSupported.value = probeSloMoSupport()
         }
     }
@@ -510,36 +516,64 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun loadThumbnail(uri: Uri?): Bitmap? = uri?.let {
-        withContext(Dispatchers.IO) {
+    private suspend fun loadThumbnail(uri: Uri?): Bitmap? {
+        if (uri == null) return null
+        return withContext(Dispatchers.IO) {
             try {
-                app.contentResolver.loadThumbnail(it, Size(96, 96), null)
+                // Safeguard: loadThumbnail can throw SecurityException / FileNotFound if
+                // MediaStore row gone. Also IO heavy – always on IO dispatcher.
+                app.contentResolver.loadThumbnail(uri, Size(96, 96), null)
             } catch (e: Exception) {
-                Log.w("CameraViewModel", "Failed to load gallery thumbnail", e)
+                // Only log at debug level – expected after deletion / first launch
+                Log.d("CameraViewModel", "Failed to load gallery thumbnail: $uri", e)
                 null
             }
         }
     }
 
     private fun loadSettings() {
-        ds.getString("camera_flash")?.let { _flashMode.value = FlashMode.valueOf(it) }
-        ds.getString("camera_timer")?.let { _timerDuration.value = TimerDuration.valueOf(it) }
-        ds.getString("camera_aspect_ratio")?.let { _aspectRatio.value = AspectRatioOption.valueOf(it) }
-        ds.getString("camera_video_codec")?.let {
-            _videoCodec.value = try { VideoCodec.valueOf(it) } catch (_: Exception) {
+        // DataStore state is in-memory, but this whole method now runs on IO dispatcher
+        // to avoid MediaCodecList (CodecSupport) stalling main thread -> FocusEvent ANR.
+        try { _flashMode.value = ds.getString("camera_flash")?.let { FlashMode.valueOf(it) } ?: FlashMode.OFF } catch (_: Exception) {}
+        try { _timerDuration.value = ds.getString("camera_timer")?.let { TimerDuration.valueOf(it) } ?: TimerDuration.NONE } catch (_: Exception) {}
+        try { _aspectRatio.value = ds.getString("camera_aspect_ratio")?.let { AspectRatioOption.valueOf(it) } ?: AspectRatioOption.RATIO_4_3 } catch (_: Exception) {}
+
+        // Codec: if user has explicit preference, use it; otherwise probe best available
+        // codec OFF main thread (MediaCodecList can take 10-20s).
+        val savedCodec = ds.getString("camera_video_codec")
+        _videoCodec.value = if (savedCodec != null) {
+            try { VideoCodec.valueOf(savedCodec) } catch (_: Exception) {
+                // Fall back to best available (IO thread safe now)
                 when {
                     CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
                     CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
                     else -> VideoCodec.AVC
                 }
             }
+        } else {
+            when {
+                CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
+                CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
+                else -> VideoCodec.AVC
+            }
         }
-        ds.getString("camera_location")?.let { _locationEnabled.value = it.toBoolean() }
-        ds.getString("camera_last_capture")?.let { _lastCaptureUri.value = Uri.parse(it) }
-        ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }
-        ds.getString("camera_level")?.let { _levelEnabled.value = it.toBoolean() }
-        ds.getString("camera_mic_muted")?.let { _micMuted.value = it.toBoolean() }
-        if (_levelEnabled.value) registerLevelSensor()
+
+        try { _locationEnabled.value = ds.getString("camera_location")?.toBoolean() ?: false } catch (_: Exception) {}
+        try { ds.getString("camera_last_capture")?.let { if (it.isNotEmpty()) _lastCaptureUri.value = Uri.parse(it) } } catch (_: Exception) {}
+        try { _gridEnabled.value = ds.getString("camera_grid")?.toBoolean() ?: false } catch (_: Exception) {}
+        try { _levelEnabled.value = ds.getString("camera_level")?.toBoolean() ?: false } catch (_: Exception) {}
+        try { _micMuted.value = ds.getString("camera_mic_muted")?.toBoolean() ?: false } catch (_: Exception) {}
+
+        // Sensor registration must happen on main thread; post if we're on IO.
+        if (_levelEnabled.value) {
+            try {
+                if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                    registerLevelSensor()
+                } else {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { registerLevelSensor() }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     fun setFlashMode(mode: FlashMode) {
@@ -801,12 +835,15 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     @android.annotation.SuppressLint("MissingPermission")
     fun updateLocation() {
         if (!_locationEnabled.value) return
-        try {
-            val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            lastLocation = lm.getLastKnownLocation(LocationManager.FUSED_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-        } catch (e: Exception) {
-            Log.w("CameraViewModel", "Failed to read last known location", e)
+        // LocationManager binder call should not run on main during cold start.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                lastLocation = lm.getLastKnownLocation(LocationManager.FUSED_PROVIDER)
+                    ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            } catch (e: Exception) {
+                Log.w("CameraViewModel", "Failed to read last known location", e)
+            }
         }
     }
 

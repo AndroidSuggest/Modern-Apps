@@ -279,9 +279,14 @@ fun CameraScreen(
     val highSpeedActive by viewModel.highSpeedActive.collectAsState()
     val photoSessionActive by viewModel.photoSessionActive.collectAsState()
     // Whether the CameraX NIGHT extension is available on the current lens (PHOTO only).
+    // Night extension probe does heavy ProcessCameraProvider work -> offload to IO.
     var nightExtAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(lensFacing, cameraMode) {
-        nightExtAvailable = if (cameraMode == CameraMode.PHOTO) viewModel.isNightExtensionAvailable() else false
+        nightExtAvailable = if (cameraMode == CameraMode.PHOTO) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                viewModel.isNightExtensionAvailable()
+            }
+        } else false
     }
     // Bind the NIGHT-extension preview when low light is auto-detected in PHOTO mode
     // and the extension is available; otherwise the normal photo session is used.
@@ -336,7 +341,9 @@ fun CameraScreen(
     val galleryBitmap by viewModel.galleryThumbnail.collectAsState()
 
     LaunchedEffect(Unit) {
-        viewModel.updateLocation()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            viewModel.updateLocation()
+        }
     }
 
     LaunchedEffect(flashMode) {
@@ -449,23 +456,41 @@ fun CameraScreen(
     // Unified session binding, made lifecycle-aware so the camera is released when the app is
     // backgrounded and rebound on resume. Without this the ManualLifecycleOwner stays RESUMED,
     // the OS reclaims the camera while we're away, and the preview comes back frozen.
+    //
+    // CRITICAL ANR FIX: ProcessCameraProvider.getInstance()/awaitInstance and
+    // ExtensionsManager + Recorder capability queries can block 10-20s (MediaCodecList,
+    // camera service binder). They must never run on the main thread during cold
+    // start, or InputDispatcher times out waiting for FocusEvent(hasFocus=true).
+    // We keep teardown on main (lightweight) but move the heavy bind to IO/Default,
+    // then await cancellation on main again.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lensFacing, sessionKind, useNightPreview, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            // Lightweight teardown can stay on main; add small delay to let surface detach
             viewModel.teardownSession()
-            delay(250)
-            when (sessionKind) {
-                SessionKind.HIGH_SPEED -> viewModel.setupHighSpeedSession()
-                SessionKind.VIDEO -> viewModel.setupVideoSession()
-                SessionKind.PANORAMA -> viewModel.setupPanoramaSession()
-                SessionKind.PORTRAIT -> viewModel.setupPortraitSession()
-                SessionKind.PHOTO ->
-                    if (useNightPreview) viewModel.setupNightPreviewSession()
-                    else viewModel.setupPhotoSession()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                delay(250)
+            }
+            // Heavy camera bind off main thread to avoid 20s FocusEvent stall
+            val ready = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                when (sessionKind) {
+                    SessionKind.HIGH_SPEED -> viewModel.setupHighSpeedSession()
+                    SessionKind.VIDEO -> viewModel.setupVideoSession()
+                    SessionKind.PANORAMA -> viewModel.setupPanoramaSession()
+                    SessionKind.PORTRAIT -> viewModel.setupPortraitSession()
+                    SessionKind.PHOTO ->
+                        if (useNightPreview) viewModel.setupNightPreviewSession()
+                        else viewModel.setupPhotoSession()
+                }
+            }
+            // Log bind result (optional)
+            if (!ready) {
+                android.util.Log.w("CameraScreen", "Camera session bind failed for $sessionKind")
             }
             try {
                 awaitCancellation()
             } finally {
+                // Ensure teardown runs even if we are on cancellation
                 viewModel.teardownSession()
             }
         }
