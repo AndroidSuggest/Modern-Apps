@@ -23,8 +23,4 @@
     <string name="competitive_timed_out">Aeg on täis! %1$d punkti</string>
     <string name="mode_casual">Lihtsustatud</string>
     <string name="mode_competitive">Konkurentsitihe</string>
-    <string name="cd_hint"></string>
-    <string name="cd_shuffle"></string>
-    <string name="cd_submit"></string>
-    <string name="cd_backspace"></string>
 </resources>
