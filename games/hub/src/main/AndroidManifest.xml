@@ -10,6 +10,7 @@
         <package android:name="com.vayunmathur.games.unblockjam" />
         <package android:name="com.vayunmathur.games.wordmaker" />
         <package android:name="com.vayunmathur.games.logicgate" />
+        <package android:name="com.vayunmathur.games.voxels" />
         <package android:name="com.vayunmathur.games" />
         <!-- Also allow generic launcher query as fallback for any com.vayunmathur.games.* -->
         <intent>
