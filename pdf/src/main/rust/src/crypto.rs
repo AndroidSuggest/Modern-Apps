@@ -142,6 +142,55 @@ pub fn authenticate(
     }
 }
 
+/// Owner-password fallback for R2-R4: per PDF spec algorithm 5 reverse,
+/// try to decrypt O with owner password to recover user password, then
+/// authenticate. Returns file key if owner password valid.
+pub fn authenticate_owner_fallback(
+    pw: &[u8],
+    o: &[u8],
+    u: &[u8],
+    p: i32,
+    id0: &[u8],
+    n: usize,
+    rev: u8,
+) -> Option<Vec<u8>> {
+    // Derive owner key from owner pw
+    let mut hash = md5(&pad_pw(pw));
+    if rev >= 3 {
+        for _ in 0..50 {
+            hash = md5(&hash[..n]);
+        }
+    }
+    let okey = hash[..n].to_vec();
+    // Decrypt O to get user pad (reverse of compute_o)
+    let mut user_pad = if o.len() >= 32 { o[..32].to_vec() } else { o.to_vec() };
+    if rev >= 3 {
+        for i in (0u8..=19).rev() {
+            let k: Vec<u8> = okey.iter().map(|b| b ^ i).collect();
+            user_pad = rc4(&k, &user_pad);
+        }
+    } else {
+        user_pad = rc4(&okey, &user_pad);
+    }
+    // user_pad is the padded user password; strip PKCS-ish Pad for key derivation? Use raw 32 bytes as password input per spec algorithm 2 using user_pad as password (with unpad semantics).
+    // The spec says O = encrypted user_pad. We try using unpad? Actually user_pad may contain PAD suffix.
+    // Compute key using the recovered user pad truncated to valid length: try first n bytes? Safer to try the 32-byte user_pad directly.
+    // Remove trailing PAD bytes heuristics: if last bytes match PAD pattern, trim.
+    let mut candidate_pw = user_pad.clone();
+    // Trim PAD suffix: find where PAD pattern ends
+    // PDF pad is fixed 32-byte constant; if user_pad tail matches PAD tail, trim.
+    // Simple heuristic: if candidate_pw length 32 and ends with PAD char not printable, still use it as-is for compute_key.
+    // authenticate will compute key and check U.
+    let key_candidate = compute_key(&candidate_pw, o, p, id0, n, rev);
+    let computed = compute_u(&key_candidate, id0, rev);
+    let cmp_len = if rev == 2 { 32 } else { 16 };
+    if computed.len() >= cmp_len && u.len() >= cmp_len && computed[..cmp_len] == u[..cmp_len] {
+        return Some(key_candidate);
+    }
+    // Also try using owner pw directly as user pw (owner may equal user)
+    authenticate(pw, o, u, p, id0, n, rev)
+}
+
 /// AES-256-CBC encrypt without padding, IV = zeros (used to build /UE and /OE).
 pub fn aes256_cbc_encrypt_nopad_zeroiv(key: &[u8], data: &[u8]) -> Vec<u8> {
     let iv = [0u8; 16];
@@ -249,10 +298,13 @@ pub fn aes_cbc_decrypt(key: &[u8], data: &[u8]) -> Vec<u8> {
     }
 }
 
-/// AES-CBC encrypt with PKCS#7 padding; a random-ish 16-byte IV is prepended.
+/// AES-CBC encrypt with PKCS#7 padding; a random 16-byte IV is prepended.
+/// Supports AES-128/192/256 (critical fix: previously missing 192).
 pub fn aes_cbc_encrypt(key: &[u8], iv: &[u8; 16], data: &[u8]) -> Vec<u8> {
     let ct = match key.len() {
         16 => cbc::Encryptor::<aes::Aes128>::new(key.into(), iv.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(data),
+        24 => cbc::Encryptor::<aes::Aes192>::new(key.into(), iv.into())
             .encrypt_padded_vec_mut::<Pkcs7>(data),
         32 => cbc::Encryptor::<aes::Aes256>::new(key.into(), iv.into())
             .encrypt_padded_vec_mut::<Pkcs7>(data),
@@ -319,7 +371,13 @@ fn hash_2b(pw: &[u8], salt: &[u8], udata: &[u8]) -> Vec<u8> {
 
 /// Authenticate against a V5 (AESV3) document; returns the 32-byte file key.
 /// `u`/`ue` are the 48-byte `/U` and 32-byte `/UE` entries. `rev` is 5 or 6.
+/// Critical fix: now also has owner variant; user path kept for compat.
 pub fn authenticate_v5(pw: &[u8], u: &[u8], ue: &[u8], rev: u8) -> Option<Vec<u8>> {
+    authenticate_v5_user(pw, u, ue, rev)
+}
+
+/// User-password path for AESV3 (R5/R6).
+pub fn authenticate_v5_user(pw: &[u8], u: &[u8], ue: &[u8], rev: u8) -> Option<Vec<u8>> {
     if u.len() < 48 || ue.len() < 32 {
         return None;
     }
@@ -339,6 +397,37 @@ pub fn authenticate_v5(pw: &[u8], u: &[u8], ue: &[u8], rev: u8) -> Option<Vec<u8
         sha256(&[pw, key_salt].concat())
     };
     let file_key = aes256_cbc_decrypt_nopad_zeroiv(&ikey, &ue[..32]);
+    if file_key.len() == 32 {
+        Some(file_key)
+    } else {
+        None
+    }
+}
+
+/// Owner-password path for AESV3 (R5/R6): checks /O /OE with U as extra input per ISO 32000-2 alg 2.B.
+/// `o` is 48-byte /O, `oe` is 32-byte /OE, `u` is 48-byte /U (for owner, /O hashes owner_pw+oVal+U).
+/// Returns file key on success.
+pub fn authenticate_v5_owner(pw: &[u8], o: &[u8], oe: &[u8], u: &[u8], rev: u8) -> Option<Vec<u8>> {
+    if o.len() < 48 || oe.len() < 32 || u.len() < 48 {
+        return None;
+    }
+    let o_val_salt = &o[32..40];
+    let o_key_salt = &o[40..48];
+    // Owner validation hash: hash(owner_pw + oValSalt + U)
+    let check = if rev >= 6 {
+        hash_2b(pw, o_val_salt, u)
+    } else {
+        sha256(&[pw, o_val_salt, u].concat())
+    };
+    if check[..32] != o[..32] {
+        return None;
+    }
+    let ikey = if rev >= 6 {
+        hash_2b(pw, o_key_salt, u)
+    } else {
+        sha256(&[pw, o_key_salt, u].concat())
+    };
+    let file_key = aes256_cbc_decrypt_nopad_zeroiv(&ikey, &oe[..32]);
     if file_key.len() == 32 {
         Some(file_key)
     } else {

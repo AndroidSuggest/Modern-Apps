@@ -1,299 +1,1074 @@
 use crate::*;
-    use jni::objects::{JByteArray, JClass, JFloatArray, JString};
-    use jni::sys::{jbyteArray, jboolean, jfloat, jint, jlong, jstring};
-    use jni::JNIEnv;
+use jni::objects::{JByteArray, JClass, JFloatArray, JString};
+use jni::sys::{jbyteArray, jboolean, jfloat, jint, jlong, jstring};
+use jni::JNIEnv;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
-    /// `PdfNative.openDocument(byte[]) -> long`. Returns a non-zero handle, or
-    /// 0 on parse failure / encrypted document.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_openDocument<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        data: JByteArray<'local>,
-    ) -> jlong {
-        let bytes = match env.convert_byte_array(&data) {
-            Ok(b) => b,
-            Err(_) => return 0,
-        };
-        open_document(&bytes) as jlong
+// ---------------------------------------------------------------------------
+// Safety / JNI constants
+// ---------------------------------------------------------------------------
+
+/// Maximum Java byte[] size we accept (200 MB) to prevent OOM DoS.
+/// Audit #7: unbounded convert_byte_array copy. An Intent with huge PDF could OOM native heap,
+/// and registry then duplicates via Document::load_mem.
+const MAX_JAVA_BYTE_ARRAY_BYTES: usize = 200 * 1024 * 1024;
+
+/// Throw a Java IllegalArgumentException (if possible). Requires &mut JNIEnv.
+fn throw_iae<'local>(env: &mut JNIEnv<'local>, msg: &str) {
+    let _ = env.throw_new("java/lang/IllegalArgumentException", msg);
+}
+
+fn throw_oom<'local>(env: &mut JNIEnv<'local>, msg: &str) {
+    let _ = env.throw_new("java/lang/OutOfMemoryError", msg);
+}
+
+/// Convert JString to Rust String with proper error propagation (no unwrap_or_default hiding errors).
+/// Returns Ok(String) or Err with message. Handles null JString.
+/// Audit #5 + #3: jstr unwrap_or_default hides malformed Modified UTF-8 and null.
+fn jstr_safe<'local>(env: &mut JNIEnv<'local>, s: &JString<'local>) -> Result<String, String> {
+    if s.is_null() {
+        return Ok(String::new());
     }
-
-    /// `PdfNative.openDocumentWithPassword(byte[], String) -> long`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_openDocumentWithPassword<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        data: JByteArray<'local>,
-        password: JString<'local>,
-    ) -> jlong {
-        let bytes = match env.convert_byte_array(&data) {
-            Ok(b) => b,
-            Err(_) => return 0,
-        };
-        let pw = jstr(&mut env, &password);
-        open_document_pw(&bytes, pw.as_bytes()) as jlong
-    }
-
-    /// `PdfNative.pdfPasswordState(byte[]) -> int` (0 none, 1 needs pw, 2 unsupported).
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_pdfPasswordState<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        data: JByteArray<'local>,
-    ) -> jint {
-        let bytes = match env.convert_byte_array(&data) {
-            Ok(b) => b,
-            Err(_) => return 0,
-        };
-        pdf_password_state(&bytes)
-    }
-
-    /// `PdfNative.saveEncrypted(long, String, String) -> byte[]`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveEncrypted<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        user_pw: JString<'local>,
-        owner_pw: JString<'local>,
-    ) -> jbyteArray {
-        let u = jstr(&mut env, &user_pw);
-        let o = jstr(&mut env, &owner_pw);
-        bytes_or_null(&env, save_encrypted(handle as i64, u.as_bytes(), o.as_bytes()))
-    }
-
-    /// `PdfNative.signCms(byte[], String) -> byte[]`. Detached CMS/PKCS#7
-    /// signature (fresh self-signed RSA-2048, SHA-256 with RSA) over `content`,
-    /// or null on failure. Replaces the Bouncy Castle path on the Kotlin side.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_signCms<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        content: JByteArray<'local>,
-        name: JString<'local>,
-    ) -> jbyteArray {
-        let data = match env.convert_byte_array(&content) {
-            Ok(b) => b,
-            Err(_) => return std::ptr::null_mut(),
-        };
-        let nm = jstr(&mut env, &name);
-        bytes_or_null(&env, crate::signing::sign_cms(&data, &nm))
-    }
-
-    /// `PdfNative.getPageCount(long) -> int`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_getPageCount<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jint {
-        page_count(handle as i64)
-    }
-
-    /// `PdfNative.renderPage(long, int) -> byte[]`. Serialized primitives, or
-    /// `null` on error.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_renderPage<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        index: jint,
-    ) -> jbyteArray {
-        let null = std::ptr::null_mut();
-        let buf = match render_page(handle as i64, index) {
-            Some(b) => b,
-            None => return null,
-        };
-        match env.byte_array_from_slice(&buf) {
-            Ok(arr) => arr.into_raw(),
-            Err(_) => null,
+    match env.get_string(s) {
+        Ok(js) => Ok(js.into()),
+        Err(e) => {
+            let _ = env.exception_clear();
+            Err(format!("Invalid JString (Modified UTF-8): {:?}", e))
         }
     }
+}
 
-    /// `PdfNative.closeDocument(long)`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_closeDocument<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) {
-        close_document(handle as i64);
+/// Legacy jstr wrapper that never panics, but now clears exception and returns empty on error.
+/// Prefer jstr_safe for new code.
+fn jstr<'local>(env: &mut JNIEnv<'local>, s: &JString<'local>) -> String {
+    if s.is_null() {
+        return String::new();
     }
-
-    /// `PdfNative.createEmptyDocument() -> long`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_createEmptyDocument<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-    ) -> jlong {
-        create_empty_document()
+    match env.get_string(s) {
+        Ok(js) => js.into(),
+        Err(_) => {
+            let _ = env.exception_clear();
+            String::new()
+        }
     }
+}
 
-    /// `PdfNative.appendPdf(long, byte[]) -> int` (pages added).
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_appendPdf<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        data: JByteArray<'local>,
-    ) -> jint {
-        let bytes = match env.convert_byte_array(&data) {
-            Ok(b) => b,
-            Err(_) => return 0,
-        };
-        append_pdf(handle as i64, &bytes)
-    }
-
-    /// `PdfNative.appendImagePage(long, byte[], int, int) -> int`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_appendImagePage<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        jpeg: JByteArray<'local>,
-        w: jint,
-        h: jint,
-    ) -> jint {
-        let bytes = match env.convert_byte_array(&jpeg) {
-            Ok(b) => b,
-            Err(_) => return 0,
-        };
-        append_image_page(handle as i64, &bytes, w as u32, h as u32)
-    }
-
-    /// `PdfNative.movePage(long, int, int) -> boolean`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_movePage<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        from: jint,
-        to: jint,
-    ) -> jboolean {
-        move_page(handle as i64, from.max(0) as usize, to.max(0) as usize) as jboolean
-    }
-
-    /// `PdfNative.removePage(long, int) -> boolean`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_removePage<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        index: jint,
-    ) -> jboolean {
-        remove_page(handle as i64, index.max(0) as usize) as jboolean
-    }
-
-    /// `PdfNative.rotatePage(long, int, int) -> boolean`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_rotatePage<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        index: jint,
-        delta: jint,
-    ) -> jboolean {
-        rotate_page(handle as i64, index, delta) as jboolean
-    }
-
-    /// `PdfNative.extractPage(long, int) -> byte[]`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_extractPage<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        index: jint,
-    ) -> jbyteArray {
-        bytes_or_null(&env, extract_page(handle as i64, index))
-    }
-
-    fn bytes_or_null<'local>(env: &JNIEnv<'local>, data: Option<Vec<u8>>) -> jbyteArray {
-        let null = std::ptr::null_mut();
-        match data {
-            Some(b) => match env.byte_array_from_slice(&b) {
-                Ok(arr) => arr.into_raw(),
+/// Convert Option<Vec<u8>> to jbyteArray with local ref safety.
+/// Audit #4 + #6: bytes_or_null local ref leak / overflow, missing EnsureLocalCapacity, missing SAFETY comment.
+fn bytes_or_null<'local>(env: &JNIEnv<'local>, data: Option<Vec<u8>>) -> jbyteArray {
+    let null = std::ptr::null_mut();
+    match data {
+        Some(b) => {
+            // Ensure we have capacity for at least 2 local refs (array + any intermediate)
+            // Audit #4: local ref table overflow guard. ensure_local_capacity is best-effort.
+            // Single allocation per call won't overflow 512 limit unless caller already has many locals.
+            if env.ensure_local_capacity(2).is_err() {
+                return null;
+            }
+            match env.byte_array_from_slice(&b) {
+                Ok(arr) => {
+                    // SAFETY: into_raw transfers ownership of the local ref to Java. The JNI local ref table
+                    // entry is consumed and the raw jbyteArray pointer is now owned by JVM caller.
+                    // The array content is copied from `b` into Java heap; `b` is dropped after.
+                    // No use of `env` after into_raw for this ref is needed.
+                    // On Java OOM during allocation, byte_array_from_slice returns Err (OOM exception pending).
+                    arr.into_raw()
+                }
                 Err(_) => null,
-            },
-            None => null,
+            }
+        }
+        None => null,
+    }
+}
+
+/// Helper that creates a Java byte[] from Option<Vec<u8>> ensuring local capacity first.
+/// Uses &mut JNIEnv since ensure_local_capacity requires &mut and we want to handle errors properly.
+/// Returns raw jbyteArray (null on failure).
+fn bytes_or_null_mut<'local>(env: &mut JNIEnv<'local>, data: Option<Vec<u8>>) -> jbyteArray {
+    let null = std::ptr::null_mut();
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return null;
+    }
+    match data {
+        Some(b) => match env.byte_array_from_slice(&b) {
+            Ok(arr) => {
+                // SAFETY: ownership transferred to JVM via into_raw. Local ref consumed.
+                // Java GC will free the array. No further use of `env` for this object needed.
+                arr.into_raw()
+            }
+            Err(_) => null,
+        },
+        None => null,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Inner logic functions (panic-safe, wrapped by catch_unwind in extern fns)
+// ---------------------------------------------------------------------------
+
+fn open_document_inner<'local>(env: &mut JNIEnv<'local>, data: JByteArray<'local>) -> jlong {
+    if data.is_null() {
+        throw_iae(env, "data is null");
+        return 0;
+    }
+    let len = env.get_array_length(&data).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "PDF too large (>200MB)");
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    open_document(&bytes) as jlong
+}
+
+fn open_document_pw_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    data: JByteArray<'local>,
+    password: JString<'local>,
+) -> jlong {
+    if data.is_null() {
+        throw_iae(env, "data is null");
+        return 0;
+    }
+    let len = env.get_array_length(&data).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "PDF too large (>200MB)");
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    let pw = if password.is_null() {
+        String::new()
+    } else {
+        match jstr_safe(env, &password) {
+            Ok(s) => s,
+            Err(e) => {
+                throw_iae(env, &e);
+                return 0;
+            }
+        }
+    };
+    open_document_pw(&bytes, pw.as_bytes()) as jlong
+}
+
+fn pdf_password_state_inner<'local>(env: &mut JNIEnv<'local>, data: JByteArray<'local>) -> jint {
+    if data.is_null() {
+        throw_iae(env, "data is null");
+        return 0;
+    }
+    let len = env.get_array_length(&data).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "PDF too large (>200MB)");
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    pdf_password_state(&bytes)
+}
+
+fn save_encrypted_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    user_pw: JString<'local>,
+    owner_pw: JString<'local>,
+) -> jbyteArray {
+    let u = match jstr_safe(env, &user_pw) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return std::ptr::null_mut();
+        }
+    };
+    let o = match jstr_safe(env, &owner_pw) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return std::ptr::null_mut();
+        }
+    };
+    // Ensure capacity before allocating byte array (audit #4)
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, save_encrypted(handle as i64, u.as_bytes(), o.as_bytes()))
+}
+
+fn sign_cms_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    content: JByteArray<'local>,
+    name: JString<'local>,
+) -> jbyteArray {
+    if content.is_null() {
+        throw_iae(env, "content is null");
+        return std::ptr::null_mut();
+    }
+    let len = env.get_array_length(&content).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "Content too large (>200MB)");
+        return std::ptr::null_mut();
+    }
+    let data = match env.convert_byte_array(&content) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return std::ptr::null_mut();
+        }
+    };
+    let nm = match jstr_safe(env, &name) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return std::ptr::null_mut();
+        }
+    };
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, crate::signing::sign_cms(&data, &nm))
+}
+
+fn render_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: jint) -> jbyteArray {
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, render_page(handle as i64, index))
+}
+
+fn append_pdf_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+) -> jint {
+    if data.is_null() {
+        throw_iae(env, "data is null");
+        return 0;
+    }
+    let len = env.get_array_length(&data).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "PDF to append too large (>200MB)");
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    append_pdf(handle as i64, &bytes)
+}
+
+fn append_image_page_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    jpeg: JByteArray<'local>,
+    w: jint,
+    h: jint,
+) -> jint {
+    if jpeg.is_null() {
+        throw_iae(env, "jpeg is null");
+        return 0;
+    }
+    let len = env.get_array_length(&jpeg).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "Image too large (>200MB)");
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&jpeg) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    append_image_page(handle as i64, &bytes, w as u32, h as u32)
+}
+
+fn extract_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: jint) -> jbyteArray {
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, extract_page(handle as i64, index))
+}
+
+fn list_data_inner<'local, F>(env: &mut JNIEnv<'local>, f: F) -> jbyteArray
+where
+    F: FnOnce() -> Option<Vec<u8>>,
+{
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, f())
+}
+
+fn add_free_text_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    argb: jint,
+    size: jfloat,
+    text: JString<'local>,
+) -> jlong {
+    let t = match jstr_safe(env, &text) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return 0;
+        }
+    };
+    add_free_text(
+        handle as i64,
+        page,
+        [x0 as f64, y0 as f64, x1 as f64, y1 as f64],
+        argb as u32,
+        size as f64,
+        &t,
+    )
+    .unwrap_or(0)
+}
+
+fn add_note_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    page: jint,
+    x: jfloat,
+    y: jfloat,
+    argb: jint,
+    text: JString<'local>,
+) -> jlong {
+    let t = match jstr_safe(env, &text) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return 0;
+        }
+    };
+    add_note(handle as i64, page, x as f64, y as f64, argb as u32, &t).unwrap_or(0)
+}
+
+fn add_callout_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    page: jint,
+    ax: jfloat,
+    ay: jfloat,
+    bx: jfloat,
+    by: jfloat,
+    argb: jint,
+    size: jfloat,
+    text: JString<'local>,
+) -> jlong {
+    let t = match jstr_safe(env, &text) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return 0;
+        }
+    };
+    add_callout(
+        handle as i64,
+        page,
+        ax as f64,
+        ay as f64,
+        bx as f64,
+        by as f64,
+        argb as u32,
+        size as f64,
+        &t,
+    )
+    .unwrap_or(0)
+}
+
+fn add_poly_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    page: jint,
+    argb: jint,
+    line_width: jfloat,
+    fill: jboolean,
+    closed: jboolean,
+    pts: JFloatArray<'local>,
+) -> jlong {
+    if pts.is_null() {
+        throw_iae(env, "pts is null");
+        return 0;
+    }
+    let len = match env.get_array_length(&pts) {
+        Ok(l) => l as usize,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    if len > 100_000 {
+        throw_iae(env, "pts too large");
+        return 0;
+    }
+    let mut buf = vec![0f32; len];
+    if env.get_float_array_region(&pts, 0, &mut buf).is_err() {
+        let _ = env.exception_clear();
+        return 0;
+    }
+    add_poly(
+        handle as i64,
+        page,
+        &buf,
+        argb as u32,
+        line_width as f64,
+        fill != 0,
+        closed != 0,
+    )
+    .unwrap_or(0)
+}
+
+fn add_ink_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    page: jint,
+    argb: jint,
+    line_width: jfloat,
+    pts: JFloatArray<'local>,
+) -> jlong {
+    if pts.is_null() {
+        throw_iae(env, "pts is null");
+        return 0;
+    }
+    let len = match env.get_array_length(&pts) {
+        Ok(l) => l as usize,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    if len > 100_000 {
+        throw_iae(env, "pts too large");
+        return 0;
+    }
+    let mut buf = vec![0f32; len];
+    if env.get_float_array_region(&pts, 0, &mut buf).is_err() {
+        let _ = env.exception_clear();
+        return 0;
+    }
+    add_ink(handle as i64, page, argb as u32, line_width as f64, &buf).unwrap_or(0)
+}
+
+fn add_stamp_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    img_w: jint,
+    img_h: jint,
+    jpeg: JByteArray<'local>,
+) -> jlong {
+    if jpeg.is_null() {
+        throw_iae(env, "jpeg is null");
+        return 0;
+    }
+    let len = env.get_array_length(&jpeg).unwrap_or(0);
+    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
+        throw_oom(env, "Image stamp too large (>200MB)");
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&jpeg) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return 0;
+        }
+    };
+    add_stamp(
+        handle as i64,
+        page,
+        [x0 as f64, y0 as f64, x1 as f64, y1 as f64],
+        img_w as u32,
+        img_h as u32,
+        &bytes,
+    )
+    .unwrap_or(0)
+}
+
+fn update_text_annotation_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    annot_id: jlong,
+    text: JString<'local>,
+) -> jboolean {
+    let t = match jstr_safe(env, &text) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return 0;
+        }
+    };
+    update_free_text(handle as i64, annot_id, &t) as jboolean
+}
+
+fn set_text_field_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    widget_id: jlong,
+    value: JString<'local>,
+) -> jboolean {
+    let v = match jstr_safe(env, &value) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return 0;
+        }
+    };
+    set_text_field(handle as i64, widget_id, &v) as jboolean
+}
+
+fn set_choice_field_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    widget_id: jlong,
+    value: JString<'local>,
+) -> jboolean {
+    let v = match jstr_safe(env, &value) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return 0;
+        }
+    };
+    set_choice_field(handle as i64, widget_id, &v) as jboolean
+}
+
+fn save_document_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong) -> jbyteArray {
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, save_document(handle as i64))
+}
+
+fn prepare_signature_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    name: JString<'local>,
+    contents_bytes: jint,
+) -> jbyteArray {
+    let n = match jstr_safe(env, &name) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return std::ptr::null_mut();
+        }
+    };
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(
+        env,
+        prepare_signature(handle as i64, &n, contents_bytes.max(0) as usize),
+    )
+}
+
+fn save_compressed_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong) -> jbyteArray {
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, save_compressed(handle as i64))
+}
+
+fn extract_text_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong) -> jstring {
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    let text_opt = document_text(handle as i64);
+    let s_opt = match text_opt {
+        Some(t) => match env.new_string(t) {
+            Ok(js) => Some(js),
+            Err(_) => {
+                let _ = env.exception_clear();
+                None
+            }
+        },
+        None => None,
+    };
+    match s_opt {
+        Some(s) => {
+            // SAFETY: into_raw transfers ownership of local ref to JVM. JVM GC manages lifetime.
+            s.into_raw()
+        }
+        None => std::ptr::null_mut(),
+    }
+}
+
+fn search_document_inner_fn<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    query: JString<'local>,
+) -> jbyteArray {
+    let q = match jstr_safe(env, &query) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return std::ptr::null_mut();
+        }
+    };
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, search_document(handle as i64, &q))
+}
+
+fn search_document_cs_inner<'local>(
+    env: &mut JNIEnv<'local>,
+    handle: jlong,
+    query: JString<'local>,
+) -> jbyteArray {
+    let q = match jstr_safe(env, &query) {
+        Ok(s) => s,
+        Err(e) => {
+            throw_iae(env, &e);
+            return std::ptr::null_mut();
+        }
+    };
+    if env.ensure_local_capacity(4).is_err() {
+        let _ = env.exception_clear();
+        return std::ptr::null_mut();
+    }
+    bytes_or_null_mut(env, search_document_case_sensitive(handle as i64, &q))
+}
+
+// ---------------------------------------------------------------------------
+// JNI entry points — all wrapped in catch_unwind (critical #1)
+// ---------------------------------------------------------------------------
+
+/// `PdfNative.openDocument(byte[]) -> long`. Returns a non-zero handle, or
+/// 0 on parse failure / encrypted document.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_openDocument<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    data: JByteArray<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| open_document_inner(&mut env, data))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in openDocument",
+            );
+            0
         }
     }
+}
 
-    fn jstr(env: &mut JNIEnv, s: &JString) -> String {
-        env.get_string(s).map(|s| s.into()).unwrap_or_default()
+/// `PdfNative.openDocumentWithPassword(byte[], String) -> long`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_openDocumentWithPassword<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    data: JByteArray<'local>,
+    password: JString<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        open_document_pw_inner(&mut env, data, password)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in openDocumentWithPassword",
+            );
+            0
+        }
     }
+}
 
-    /// `PdfNative.listAnnotations(long, int) -> byte[]`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listAnnotations<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-    ) -> jbyteArray {
-        bytes_or_null(&env, list_annotations(handle as i64, page))
+/// `PdfNative.pdfPasswordState(byte[]) -> int` (0 none, 1 needs pw, 2 unsupported).
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_pdfPasswordState<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    data: JByteArray<'local>,
+) -> jint {
+    match catch_unwind(AssertUnwindSafe(|| pdf_password_state_inner(&mut env, data))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in pdfPasswordState",
+            );
+            0
+        }
     }
+}
 
-    /// `PdfNative.listFormFields(long, int) -> byte[]`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listFormFields<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-    ) -> jbyteArray {
-        bytes_or_null(&env, list_form_fields(handle as i64, page))
+/// `PdfNative.saveEncrypted(long, String, String) -> byte[]`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveEncrypted<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    user_pw: JString<'local>,
+    owner_pw: JString<'local>,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        save_encrypted_inner(&mut env, handle, user_pw, owner_pw)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in saveEncrypted",
+            );
+            std::ptr::null_mut()
+        }
     }
+}
 
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listLinks<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-    ) -> jbyteArray {
-        bytes_or_null(&env, list_links(handle as i64, page))
+/// `PdfNative.signCms(byte[], String) -> byte[]`. Detached CMS/PKCS#7
+/// signature (fresh self-signed RSA-2048, SHA-256 with RSA) over `content`,
+/// or null on failure. Replaces the Bouncy Castle path on the Kotlin side.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_signCms<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    content: JByteArray<'local>,
+    name: JString<'local>,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| sign_cms_inner(&mut env, content, name))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in signCms");
+            std::ptr::null_mut()
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addTextAnnotation<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-        argb: jint,
-        size: jfloat,
-        text: JString<'local>,
-    ) -> jlong {
-        let t = jstr(&mut env, &text);
-        add_free_text(
-            handle as i64,
-            page,
-            [x0 as f64, y0 as f64, x1 as f64, y1 as f64],
-            argb as u32,
-            size as f64,
-            &t,
-        )
-        .unwrap_or(0)
+/// `PdfNative.getPageCount(long) -> int`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_getPageCount<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jint {
+    match catch_unwind(AssertUnwindSafe(|| page_count(handle as i64))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in getPageCount",
+            );
+            0
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addHighlight<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-        argb: jint,
-    ) -> jlong {
+/// `PdfNative.renderPage(long, int) -> byte[]`. Serialized primitives, or
+/// `null` on error.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_renderPage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    index: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| render_page_inner(&mut env, handle, index))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in renderPage");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.closeDocument(long)`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_closeDocument<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) {
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        close_document(handle as i64);
+    }));
+    if res.is_err() {
+        let _ = env.exception_clear();
+    }
+}
+
+/// `PdfNative.createEmptyDocument() -> long`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_createEmptyDocument<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| create_empty_document())) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in createEmptyDocument",
+            );
+            0
+        }
+    }
+}
+
+/// `PdfNative.appendPdf(long, byte[]) -> int` (pages added).
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_appendPdf<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+) -> jint {
+    match catch_unwind(AssertUnwindSafe(|| append_pdf_inner(&mut env, handle, data))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in appendPdf");
+            0
+        }
+    }
+}
+
+/// `PdfNative.appendImagePage(long, byte[], int, int) -> int`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_appendImagePage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    jpeg: JByteArray<'local>,
+    w: jint,
+    h: jint,
+) -> jint {
+    match catch_unwind(AssertUnwindSafe(|| {
+        append_image_page_inner(&mut env, handle, jpeg, w, h)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in appendImagePage",
+            );
+            0
+        }
+    }
+}
+
+/// `PdfNative.movePage(long, int, int) -> boolean`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_movePage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    from: jint,
+    to: jint,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        move_page(handle as i64, from.max(0) as usize, to.max(0) as usize) as jboolean
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.removePage(long, int) -> boolean`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_removePage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    index: jint,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        remove_page(handle as i64, index.max(0) as usize) as jboolean
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.rotatePage(long, int, int) -> boolean`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_rotatePage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    index: jint,
+    delta: jint,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| rotate_page(handle as i64, index, delta) as jboolean)) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.extractPage(long, int) -> byte[]`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_extractPage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    index: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| extract_page_inner(&mut env, handle, index))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in extractPage");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.listAnnotations(long, int) -> byte[]`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listAnnotations<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        list_data_inner(&mut env, || list_annotations(handle as i64, page))
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.listFormFields(long, int) -> byte[]`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listFormFields<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        list_data_inner(&mut env, || list_form_fields(handle as i64, page))
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listLinks<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        list_data_inner(&mut env, || list_links(handle as i64, page))
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addTextAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    argb: jint,
+    size: jfloat,
+    text: JString<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_free_text_inner(&mut env, handle, page, x0, y0, x1, y1, argb, size, text)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in addTextAnnotation",
+            );
+            0
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addHighlight<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    argb: jint,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
         add_highlight(
             handle as i64,
             page,
@@ -301,22 +1076,30 @@ use crate::*;
             argb as u32,
         )
         .unwrap_or(0)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addTextMarkup<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-        argb: jint,
-        kind: jint,
-    ) -> jlong {
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addTextMarkup<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    argb: jint,
+    kind: jint,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
         add_text_markup(
             handle as i64,
             page,
@@ -325,68 +1108,79 @@ use crate::*;
             kind,
         )
         .unwrap_or(0)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addNote<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x: jfloat,
-        y: jfloat,
-        argb: jint,
-        text: JString<'local>,
-    ) -> jlong {
-        let t = jstr(&mut env, &text);
-        add_note(handle as i64, page, x as f64, y as f64, argb as u32, &t).unwrap_or(0)
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addNote<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x: jfloat,
+    y: jfloat,
+    argb: jint,
+    text: JString<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_note_inner(&mut env, handle, page, x, y, argb, text)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addCallout<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        ax: jfloat,
-        ay: jfloat,
-        bx: jfloat,
-        by: jfloat,
-        argb: jint,
-        size: jfloat,
-        text: JString<'local>,
-    ) -> jlong {
-        let t = jstr(&mut env, &text);
-        add_callout(
-            handle as i64,
-            page,
-            ax as f64,
-            ay as f64,
-            bx as f64,
-            by as f64,
-            argb as u32,
-            size as f64,
-            &t,
-        )
-        .unwrap_or(0)
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addCallout<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    ax: jfloat,
+    ay: jfloat,
+    bx: jfloat,
+    by: jfloat,
+    argb: jint,
+    size: jfloat,
+    text: JString<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_callout_inner(&mut env, handle, page, ax, ay, bx, by, argb, size, text)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addRectAnnotation<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-        argb: jint,
-        line_width: jfloat,
-        fill: jboolean,
-    ) -> jlong {
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addRectAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    argb: jint,
+    line_width: jfloat,
+    fill: jboolean,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
         add_square(
             handle as i64,
             page,
@@ -396,23 +1190,31 @@ use crate::*;
             fill != 0,
         )
         .unwrap_or(0)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addCircleAnnotation<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-        argb: jint,
-        line_width: jfloat,
-        fill: jboolean,
-    ) -> jlong {
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addCircleAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    argb: jint,
+    line_width: jfloat,
+    fill: jboolean,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
         add_circle(
             handle as i64,
             page,
@@ -422,336 +1224,488 @@ use crate::*;
             fill != 0,
         )
         .unwrap_or(0)
-    }
-
-    /// `PdfNative.addPolyAnnotation(long, int, int argb, float width, bool fill, bool closed, float[] pts)`.
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addPolyAnnotation<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        argb: jint,
-        line_width: jfloat,
-        fill: jboolean,
-        closed: jboolean,
-        pts: JFloatArray<'local>,
-    ) -> jlong {
-        let len = env.get_array_length(&pts).unwrap_or(0) as usize;
-        let mut buf = vec![0f32; len];
-        if env.get_float_array_region(&pts, 0, &mut buf).is_err() {
-            return 0;
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
         }
-        add_poly(
-            handle as i64,
-            page,
-            &buf,
-            argb as u32,
-            line_width as f64,
-            fill != 0,
-            closed != 0,
-        )
-        .unwrap_or(0)
     }
+}
 
-    /// `PdfNative.addInkAnnotation(long, int, int argb, float width, float[] pts)`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addInkAnnotation<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        argb: jint,
-        line_width: jfloat,
-        pts: JFloatArray<'local>,
-    ) -> jlong {
-        let len = env.get_array_length(&pts).unwrap_or(0) as usize;
-        let mut buf = vec![0f32; len];
-        if env.get_float_array_region(&pts, 0, &mut buf).is_err() {
-            return 0;
+/// `PdfNative.addPolyAnnotation(long, int, int argb, float width, bool fill, bool closed, float[] pts)`.
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addPolyAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    argb: jint,
+    line_width: jfloat,
+    fill: jboolean,
+    closed: jboolean,
+    pts: JFloatArray<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_poly_inner(&mut env, handle, page, argb, line_width, fill, closed, pts)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
         }
-        add_ink(handle as i64, page, argb as u32, line_width as f64, &buf).unwrap_or(0)
     }
+}
 
-    /// `PdfNative.addImageStamp(long, int, rect, imgW, imgH, byte[] jpeg)`.
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addImageStamp<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-        img_w: jint,
-        img_h: jint,
-        jpeg: JByteArray<'local>,
-    ) -> jlong {
-        let bytes = match env.convert_byte_array(&jpeg) {
-            Ok(b) => b,
-            Err(_) => return 0,
-        };
-        add_stamp(
-            handle as i64,
-            page,
-            [x0 as f64, y0 as f64, x1 as f64, y1 as f64],
-            img_w as u32,
-            img_h as u32,
-            &bytes,
-        )
-        .unwrap_or(0)
+/// `PdfNative.addInkAnnotation(long, int, int argb, float width, float[] pts)`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addInkAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    argb: jint,
+    line_width: jfloat,
+    pts: JFloatArray<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_ink_inner(&mut env, handle, page, argb, line_width, pts)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_updateAnnotationRect<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        annot_id: jlong,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-    ) -> jboolean {
+/// `PdfNative.addImageStamp(long, int, rect, imgW, imgH, byte[] jpeg)`.
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addImageStamp<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+    img_w: jint,
+    img_h: jint,
+    jpeg: JByteArray<'local>,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_stamp_inner(&mut env, handle, page, x0, y0, x1, y1, img_w, img_h, jpeg)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_updateAnnotationRect<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    annot_id: jlong,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
         update_annotation_rect(
             handle as i64,
             page,
             annot_id,
             [x0 as f64, y0 as f64, x1 as f64, y1 as f64],
         ) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_updateTextAnnotation<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        annot_id: jlong,
-        text: JString<'local>,
-    ) -> jboolean {
-        let t = jstr(&mut env, &text);
-        update_free_text(handle as i64, annot_id, &t) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_deleteAnnotation<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        annot_id: jlong,
-    ) -> jboolean {
-        delete_annotation(handle as i64, page, annot_id) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_detachAnnotation<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        annot_id: jlong,
-    ) -> jboolean {
-        detach_annotation(handle as i64, page, annot_id) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_reattachAnnotation<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        annot_id: jlong,
-    ) -> jboolean {
-        reattach_annotation(handle as i64, page, annot_id) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_duplicateAnnotation<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        annot_id: jlong,
-        dx: jfloat,
-        dy: jfloat,
-    ) -> jlong {
-        duplicate_annotation(handle as i64, page, annot_id, dx as f64, dy as f64)
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setTextField<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        widget_id: jlong,
-        value: JString<'local>,
-    ) -> jboolean {
-        let v = jstr(&mut env, &value);
-        set_text_field(handle as i64, widget_id, &v) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setCheckbox<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        widget_id: jlong,
-        on: jboolean,
-    ) -> jboolean {
-        set_checkbox(handle as i64, widget_id, on != 0) as jboolean
-    }
-
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setChoiceField<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        widget_id: jlong,
-        value: JString<'local>,
-    ) -> jboolean {
-        let v = jstr(&mut env, &value);
-        set_choice_field(handle as i64, widget_id, &v) as jboolean
-    }
-
-    /// `PdfNative.saveDocument(long) -> byte[]`. Serialized modified PDF.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveDocument<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jbyteArray {
-        bytes_or_null(&env, save_document(handle as i64))
-    }
-
-    /// `PdfNative.prepareSignature(long, String, int) -> byte[]`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_prepareSignature<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        name: JString<'local>,
-        contents_bytes: jint,
-    ) -> jbyteArray {
-        let n = jstr(&mut env, &name);
-        bytes_or_null(&env, prepare_signature(handle as i64, &n, contents_bytes.max(0) as usize))
-    }
-
-    /// `PdfNative.saveCompressed(long) -> byte[]`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveCompressed<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jbyteArray {
-        bytes_or_null(&env, save_compressed(handle as i64))
-    }
-
-    /// `PdfNative.flattenDocument(long) -> boolean`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_flattenDocument<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jboolean {
-        flatten_document(handle as i64) as jboolean
-    }
-
-    /// `PdfNative.applyRedactions(long) -> boolean`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_applyRedactions<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jboolean {
-        apply_redactions(handle as i64) as jboolean
-    }
-
-    /// `PdfNative.hasRedactions(long) -> boolean`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_hasRedactions<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jboolean {
-        has_redactions(handle as i64) as jboolean
-    }
-
-    /// `PdfNative.addRedaction(long, int, f,f,f,f) -> long`.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addRedaction<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        page: jint,
-        x0: jfloat,
-        y0: jfloat,
-        x1: jfloat,
-        y1: jfloat,
-    ) -> jlong {
-        add_redaction(handle as i64, page, [x0 as f64, y0 as f64, x1 as f64, y1 as f64]).unwrap_or(0)
-    }
-
-    /// `PdfNative.extractText(long) -> String` (null on failure).
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_extractText<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jstring {
-        match document_text(handle as i64).and_then(|s| env.new_string(s).ok()) {
-            Some(s) => s.into_raw(),
-            None => std::ptr::null_mut(),
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
         }
     }
+}
 
-    /// `PdfNative.listOutline(long) -> byte[]`. Serialized document outline.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listOutline<'local>(
-        env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) -> jbyteArray {
-        bytes_or_null(&env, list_outline(handle as i64))
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_updateTextAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    annot_id: jlong,
+    text: JString<'local>,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        update_text_annotation_inner(&mut env, handle, annot_id, text)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    /// `PdfNative.searchDocument(long, String) -> byte[]`. Serialized matches.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_searchDocument<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        query: JString<'local>,
-    ) -> jbyteArray {
-        let q = jstr(&mut env, &query);
-        bytes_or_null(&env, search_document(handle as i64, &q))
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_deleteAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    annot_id: jlong,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        delete_annotation(handle as i64, page, annot_id) as jboolean
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    /// `PdfNative.searchDocumentCaseSensitive(long, String) -> byte[]`. Phase 7 toggle.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_searchDocumentCaseSensitive<'local>(
-        mut env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-        query: JString<'local>,
-    ) -> jbyteArray {
-        let q = jstr(&mut env, &query);
-        bytes_or_null(&env, search_document_case_sensitive(handle as i64, &q))
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_detachAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    annot_id: jlong,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        detach_annotation(handle as i64, page, annot_id) as jboolean
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
     }
+}
 
-    /// `PdfNative.buildSearchIndex(long)`. Prebuilds the text index so the first
-    /// search is instant; safe to call on a background thread.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_buildSearchIndex<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        handle: jlong,
-    ) {
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_reattachAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    annot_id: jlong,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        reattach_annotation(handle as i64, page, annot_id) as jboolean
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_duplicateAnnotation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    annot_id: jlong,
+    dx: jfloat,
+    dy: jfloat,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        duplicate_annotation(handle as i64, page, annot_id, dx as f64, dy as f64)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setTextField<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    widget_id: jlong,
+    value: JString<'local>,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        set_text_field_inner(&mut env, handle, widget_id, value)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setCheckbox<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    widget_id: jlong,
+    on: jboolean,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        set_checkbox(handle as i64, widget_id, on != 0) as jboolean
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_setChoiceField<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    widget_id: jlong,
+    value: JString<'local>,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| {
+        set_choice_field_inner(&mut env, handle, widget_id, value)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.saveDocument(long) -> byte[]`. Serialized modified PDF.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveDocument<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| save_document_inner(&mut env, handle))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            let _ = env.throw_new(
+                "java/lang/RuntimeException",
+                "Native panic in saveDocument",
+            );
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.prepareSignature(long, String, int) -> byte[]`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_prepareSignature<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    name: JString<'local>,
+    contents_bytes: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        prepare_signature_inner(&mut env, handle, name, contents_bytes)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.saveCompressed(long) -> byte[]`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveCompressed<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| save_compressed_inner(&mut env, handle))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.flattenDocument(long) -> boolean`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_flattenDocument<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| flatten_document(handle as i64) as jboolean)) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.applyRedactions(long) -> boolean`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_applyRedactions<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| apply_redactions(handle as i64) as jboolean)) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.hasRedactions(long) -> boolean`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_hasRedactions<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jboolean {
+    match catch_unwind(AssertUnwindSafe(|| has_redactions(handle as i64) as jboolean)) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.addRedaction(long, int, f,f,f,f) -> long`.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_addRedaction<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    page: jint,
+    x0: jfloat,
+    y0: jfloat,
+    x1: jfloat,
+    y1: jfloat,
+) -> jlong {
+    match catch_unwind(AssertUnwindSafe(|| {
+        add_redaction(
+            handle as i64,
+            page,
+            [x0 as f64, y0 as f64, x1 as f64, y1 as f64],
+        )
+        .unwrap_or(0)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            0
+        }
+    }
+}
+
+/// `PdfNative.extractText(long) -> String` (null on failure).
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_extractText<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jstring {
+    match catch_unwind(AssertUnwindSafe(|| extract_text_inner(&mut env, handle))) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.listOutline(long) -> byte[]`. Serialized document outline.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_listOutline<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        list_data_inner(&mut env, || list_outline(handle as i64))
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.searchDocument(long, String) -> byte[]`. Serialized matches.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_searchDocument<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    query: JString<'local>,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        search_document_inner_fn(&mut env, handle, query)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.searchDocumentCaseSensitive(long, String) -> byte[]`. Phase 7 toggle.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_searchDocumentCaseSensitive<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    query: JString<'local>,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| {
+        search_document_cs_inner(&mut env, handle, query)
+    })) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = env.exception_clear();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// `PdfNative.buildSearchIndex(long)`. Prebuilds the text index so the first
+/// search is instant; safe to call on a background thread.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_buildSearchIndex<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) {
+    let res = catch_unwind(AssertUnwindSafe(|| {
         let _ = ensure_index(handle as i64);
+    }));
+    if res.is_err() {
+        let _ = env.exception_clear();
     }
+}

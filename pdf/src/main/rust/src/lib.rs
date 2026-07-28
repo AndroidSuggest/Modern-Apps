@@ -72,7 +72,6 @@ mod images;
 pub(crate) use images::*;
 
 mod wire;
-#[cfg(not(test))]
 mod jni_bindings;
 #[cfg(test)]
 mod tests;

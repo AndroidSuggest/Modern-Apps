@@ -101,7 +101,7 @@ pub(crate) fn decrypt_in_place(doc: &mut Document, password: &[u8]) -> DecryptSt
         Ok(id) => id,
         Err(_) => return DecryptStatus::Unsupported,
     };
-    let (o, u, ue, p, r, length, method) = {
+    let (o, u, ue, oe, p, r, length, method, _cf_dict_opt) = {
         let enc = match doc.get_dictionary(enc_id) {
             Ok(d) => d,
             Err(_) => return DecryptStatus::Unsupported,
@@ -117,24 +117,59 @@ pub(crate) fn decrypt_in_place(doc: &mut Document, password: &[u8]) -> DecryptSt
         }
         let v = enc.get(b"V").ok().and_then(num).unwrap_or(0.0) as i64;
         let r = enc.get(b"R").ok().and_then(num).unwrap_or(0.0) as i64;
-        // Determine the crypt method.
+        // P0 fix: properly resolve /CF dict + /StmF /StrF names vs. only StdCF
+        // Per PDF 1.7 §7.6.2, /CF may have multiple named crypt filters.
+        // /StmF and /StrF name which CF to use for streams and strings.
+        // Previously only StdCF checked, breaking crypt-filters docs.
+        let cf_dict_opt = enc.get(b"CF").ok().and_then(|o| o.as_dict().ok()).cloned();
+        // For V=4, if CF absent spec says fall back to V2 Rc4 — fix P0 issue #22
         let method = if v >= 5 {
             CryptMethod::AesV3
         } else if v == 4 {
-            // Read /CF /StdCF /CFM.
-            let cfm = enc
-                .get(b"CF")
-                .ok()
-                .and_then(|o| o.as_dict().ok())
-                .and_then(|cf| cf.get(b"StdCF").ok())
-                .and_then(|s| s.as_dict().ok())
-                .and_then(|s| s.get(b"CFM").ok())
-                .and_then(|o| o.as_name().ok());
-            match cfm {
-                Some(b) if b == b"AESV3" => CryptMethod::AesV3,
-                Some(b) if b == b"AESV2" => CryptMethod::AesV2,
-                Some(b) if b == b"V2" => CryptMethod::Rc4,
-                _ => return DecryptStatus::Unsupported,
+            if let Some(cf_dict) = &cf_dict_opt {
+                // Try StdCF first, then StmF-named filter, then any CF entry
+                let stm_f_name = enc.get(b"StmF").ok().and_then(|o| o.as_name().ok()).unwrap_or(b"StdCF");
+                let cfm = cf_dict
+                    .get(stm_f_name)
+                    .or_else(|_| cf_dict.get(b"StdCF"))
+                    .ok()
+                    .and_then(|s| s.as_dict().ok())
+                    .and_then(|s| s.get(b"CFM").ok())
+                    .and_then(|o| o.as_name().ok());
+                match cfm {
+                    Some(b) if b == b"AESV3" => CryptMethod::AesV3,
+                    Some(b) if b == b"AESV2" => CryptMethod::AesV2,
+                    Some(b) if b == b"V2" => CryptMethod::Rc4,
+                    // If no CFM found but CF present, could be custom — treat as Unsupported
+                    // unless CF missing entirely then fall back to Rc4 below
+                    Some(_) => return DecryptStatus::Unsupported,
+                    None => {
+                        // CF exists but no CFM? Check if CF dict non-empty maybe encryption present but missing method
+                        // Per plan, if CF dict absent entirely we fall through to Rc4 fallback
+                        // If CF present but unreadable, Unsupported
+                        if cf_dict.is_empty() {
+                            CryptMethod::Rc4
+                        } else {
+                            // Try any CF entry's CFM
+                            let mut found = None;
+                            for (_, cf_entry) in cf_dict.iter() {
+                                if let Ok(d) = cf_entry.as_dict() {
+                                    if let Ok(cfm_obj) = d.get(b"CFM") {
+                                        if let Ok(cfm_name) = cfm_obj.as_name() {
+                                            if cfm_name == b"AESV3" { found = Some(CryptMethod::AesV3); break; }
+                                            if cfm_name == b"AESV2" { found = Some(CryptMethod::AesV2); break; }
+                                            if cfm_name == b"V2" { found = Some(CryptMethod::Rc4); break; }
+                                        }
+                                    }
+                                }
+                            }
+                            found.unwrap_or(CryptMethod::Rc4)
+                        }
+                    }
+                }
+            } else {
+                // V=4 with no CF dict — spec says default to V2 Rc4 fallback
+                CryptMethod::Rc4
             }
         } else {
             CryptMethod::Rc4
@@ -142,25 +177,57 @@ pub(crate) fn decrypt_in_place(doc: &mut Document, password: &[u8]) -> DecryptSt
         let o = enc.get(b"O").ok().and_then(|o| o.as_str().ok()).map(|s| s.to_vec()).unwrap_or_default();
         let u = enc.get(b"U").ok().and_then(|o| o.as_str().ok()).map(|s| s.to_vec()).unwrap_or_default();
         let ue = enc.get(b"UE").ok().and_then(|o| o.as_str().ok()).map(|s| s.to_vec()).unwrap_or_default();
+        let oe = enc.get(b"OE").ok().and_then(|o| o.as_str().ok()).map(|s| s.to_vec()).unwrap_or_default();
+        // Preserve CF dict for later StmF/StrF handling? We already parsed method but for auth need OE for owner
         let p = enc.get(b"P").ok().and_then(num).unwrap_or(0.0) as i32;
         let default_len = if method == CryptMethod::AesV2 { 128.0 } else { 40.0 };
         let length = enc.get(b"Length").ok().and_then(num).unwrap_or(default_len) as usize;
-        (o, u, ue, p, r, length, method)
+        (o, u, ue, oe, p, r, length, method, cf_dict_opt)
     };
 
     let id0 = trailer_id0(doc);
     let n = if method == CryptMethod::AesV2 { 16 } else { (length / 8).clamp(5, 16) };
 
-    // Derive the file key.
+    // Derive the file key: try user pw first, then owner pw for both V<5 and V>=5 (P0 fix #14 + #21)
     let key = match method {
-        CryptMethod::AesV3 => match crypto::authenticate_v5(password, &u, &ue, r as u8) {
-            Some(k) => k,
-            None => return DecryptStatus::NeedPassword,
-        },
-        _ => match crypto::authenticate(password, &o, &u, p, &id0, n, r as u8) {
-            Some(k) => k,
-            None => return DecryptStatus::NeedPassword,
-        },
+        CryptMethod::AesV3 => {
+            // V5/R5/R6: try user auth then owner auth
+            if let Some(k) = crypto::authenticate_v5_user(password, &u, &ue, r as u8) {
+                k
+            } else if let Some(k) = crypto::authenticate_v5_owner(password, &o, &oe, &u, r as u8) {
+                k
+            } else {
+                return DecryptStatus::NeedPassword;
+            }
+        }
+        _ => {
+            // V<5: spec says owner pw derives via O then user check, but many viewers try both
+            // Also support owner password path: authenticate returns key if U matches; try both user and owner variants?
+            // Owner auth in RC4: you can recover user pw from O using owner pw. To avoid full impl, we reuse authenticate
+            // which already checks U against key derived from pw (user). Owner-only docs use empty user pw that still validates,
+            // but some require owner.
+            // Attempt direct authenticate with given password (user path)
+            if let Some(k) = crypto::authenticate(password, &o, &u, p, &id0, n, r as u8) {
+                k
+            } else {
+                // Owner path: if owner pw supplied, O entry contains user pw encrypted; try to brute cheap?
+                // Implement algorithm 7 (recover user key from O using owner pw) per spec.
+                // Simplified: compute key from owner pw directly, then compute U and compare via O decryption.
+                // For minimal fix, attempt authenticate_owner which we emulate below.
+                let mut found: Option<Vec<u8>> = None;
+                // Try derive candidate owner key and then decrypt O to get user pw, then authenticate that user pw
+                // Algorithm 3 reverse: owner pw -> okey -> user_pad = rc4 decypt O etc.
+                // We'll delegate to helper.
+                if let Some(k) = crypto::authenticate_owner_fallback(password, &o, &u, p, &id0, n, r as u8) {
+                    found = Some(k);
+                }
+                if let Some(k) = found {
+                    k
+                } else {
+                    return DecryptStatus::NeedPassword;
+                }
+            }
+        }
     };
 
     let ids: Vec<ObjectId> = doc.objects.keys().copied().collect();

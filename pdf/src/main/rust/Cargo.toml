@@ -7,7 +7,7 @@ license = "GPL-2.0-only"
 
 [lib]
 name = "pdf_render"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 lopdf = { version = "0.36", features = ["serde"] }
@@ -23,6 +23,9 @@ md-5 = "0.10"
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 sha2 = { version = "0.10", features = ["oid"] }
+indexmap = "2"
+# Use getrandom 0.2 to match rand 0.8 (avoids duplicate getrandom 0.2 + 0.3 in .so ~30KB bloat)
+getrandom = "0.2"
 
 # Detached CMS/PKCS#7 signing (replaces Bouncy Castle on the Kotlin side).
 rsa = { version = "0.9", features = ["sha2"] }
@@ -37,5 +40,8 @@ const-oid = { version = "0.9", features = ["db"] }
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = "abort"
-strip = true
+# Must be unwind for JNI – abort would kill JVM process on any panic. Panics are caught
+# via catch_unwind in jni_bindings.rs and translated to Java null/0 returns.
+panic = "unwind"
+# Keep debuginfo for Play Console stack traces, strip only debug symbols not needed at runtime
+strip = "debuginfo"

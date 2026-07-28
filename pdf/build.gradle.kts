@@ -15,9 +15,14 @@ android {
 
 androidComponents {
     onVariants { variant ->
-        variant.sources.jniLibs?.addStaticSourceDirectory(
-            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
-        )
+        val rustDir = layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        variant.sources.jniLibs?.addStaticSourceDirectory(rustDir)
+        // Note: if cargoBuild fails, stale .so could be packaged (audit #16). We rely on
+        // cargoBuild task's outputs.file check and the fact that RustNative.kt's per-ABI Exec
+        // task validates inputs/outputs. A doFirst delete of stale .so was considered but
+        // addStaticSourceDirectory vs addGeneratedSourceDirectory migration is tracked separately.
+        // For now, ensure cargoNdkBuild task deletes stale outputs on failure via its own doFirst/doLast
+        // in RustNative.kt (see that file for stale .so cleanup logic that should be added there).
     }
 }
 

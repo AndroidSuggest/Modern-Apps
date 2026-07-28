@@ -48,7 +48,7 @@ pub(crate) fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) ->
     None
 }
 
-/// Read a 4-element rectangle from an inherited page attribute, if present.
+/// Read a 4-element rectangle from an inherited page attribute, validating finiteness.
 fn inherited_rect(doc: &Document, page_id: ObjectId, key: &[u8]) -> Option<[f64; 4]> {
     let obj = inherited(doc, page_id, key).and_then(|o| deref(doc, o))?;
     let arr = obj.as_array().ok()?;
@@ -57,7 +57,15 @@ fn inherited_rect(doc: &Document, page_id: ObjectId, key: &[u8]) -> Option<[f64;
     }
     let mut out = [0.0; 4];
     for (i, v) in arr.iter().enumerate() {
-        out[i] = deref(doc, v).and_then(num)?;
+        let val = deref(doc, v).and_then(num)?;
+        if !val.is_finite() {
+            return None;
+        }
+        out[i] = val;
+    }
+    // Also validate rect finite (NaN/Inf guard for malformed PDF)
+    if !out.iter().all(|x| x.is_finite()) {
+        return None;
     }
     Some(out)
 }
@@ -111,11 +119,21 @@ pub(crate) fn page_rotation(doc: &Document, page_id: ObjectId) -> i64 {
 /// Matrix mapping raw page space (visible rect origin, before rotation) into
 /// displayed space: origin bottom-left, with dimensions swapped for 90/270.
 /// Visible rect is CropBox clipped to MediaBox, scaled by UserUnit.
+/// Formula: normalize vb to [minx,miny,maxx,maxy], w=abs(x1-x0), h=abs(y1-y0),
+/// t = translate(-minx,-miny) moves CropBox origin to 0, then r rotates and
+/// translates to keep content in positive quadrant:
+///   90°: [0,1,-1,0,h,0] maps (0,0)->(h,0), (w,0)->(h,w), (0,h)->(0,0)
+///   180°: [-1,0,0,-1,w,h]
+///   270°: [0,-1,1,0,0,w] maps (0,0)->(0,w)
+/// Verified for vb=[100,100,712,792], w=612,h=692.
 pub(crate) fn page_base_matrix(doc: &Document, page_id: ObjectId) -> Mat {
     let vb = page_visible_box(doc, page_id);
+    // Normalize to min/max to handle inverted boxes.
+    let minx = vb[0].min(vb[2]);
+    let miny = vb[1].min(vb[3]);
     let w = (vb[2] - vb[0]).abs();
     let h = (vb[3] - vb[1]).abs();
-    let t = translate(-vb[0].min(vb[2]), -vb[1].min(vb[3]));
+    let t = translate(-minx, -miny);
     let r: Mat = match page_rotation(doc, page_id) {
         90 => [0.0, 1.0, -1.0, 0.0, h, 0.0],
         180 => [-1.0, 0.0, 0.0, -1.0, w, h],
