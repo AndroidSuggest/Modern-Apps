@@ -4,7 +4,7 @@
     <string name="cancel">取消</string>
     <string name="delete">删除</string>
     <string name="settings">设置</string>
-    <string name="app_name">Contacts</string>
+    <string name="app_name">联系人</string>
     <string name="contact_not_found">未找到联系人</string>
     <string name="name_nickname_format">&lt;xliff:g id=\"name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt;（&lt;xliff:g id=\"nickname\" example=\"Johnny\"&gt;%2$s&lt;/xliff:g&gt;）</string>
     <string name="contact_photo_description">&lt;xliff:g id=\"contact_name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt; 照片</string>
