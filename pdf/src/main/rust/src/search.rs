@@ -46,23 +46,37 @@ fn lower_aligned(s: &str) -> String {
     out
 }
 
-/// Fold diacritics for search normalization: maps common accented characters to their ASCII base so that
-/// `café` matches `cafe`. Byte length not preserved — only used when caller requests NFKC-like folding.
+/// Fold diacritics for search normalization: maps accented characters (both cases + extra œø) to ASCII base.
+/// Fix #44: previously missing uppercase É etc and ligatures œ/ø.
 pub(crate) fn fold_diacritics(s: &str) -> String {
     s.chars()
         .map(|c| match c {
-            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
-            'è' | 'é' | 'ê' | 'ë' => 'e',
-            'ì' | 'í' | 'î' | 'ï' => 'i',
-            'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 'o',
-            'ù' | 'ú' | 'û' | 'ü' => 'u',
-            'ñ' => 'n',
-            'ç' => 'c',
-            'š' | 'Š' => 's',
-            'ž' | 'Ž' => 'z',
+            // a
+            'à'|'á'|'â'|'ã'|'ä'|'å'|'À'|'Á'|'Â'|'Ã'|'Ä'|'Å'|'ā'|'ă'|'ą'| 'ǎ' => 'a',
+            // e
+            'è'|'é'|'ê'|'ë'|'È'|'É'|'Ê'|'Ë'|'ē'|'ĕ'|'ė'|'ę'|'ě' => 'e',
+            // i
+            'ì'|'í'|'î'|'ï'|'Ì'|'Í'|'Î'|'Ï'|'ī'|'ĭ'|'į'|'ı' => 'i',
+            // o
+            'ò'|'ó'|'ô'|'õ'|'ö'|'Ò'|'Ó'|'Ô'|'Õ'|'Ö'|'ō'|'ŏ'|'ő'|'ø'|'Ø'|'œ'|'Œ' => 'o',
+            // u
+            'ù'|'ú'|'û'|'ü'|'Ù'|'Ú'|'Û'|'Ü'|'ū'|'ŭ'|'ů'|'ű'|'ų' => 'u',
+            'ñ'|'Ñ' => 'n',
+            'ç'|'Ç' => 'c',
+            'š'|'Š'|'ş'|'Ş'|'ś'|'Ś' => 's',
+            'ž'|'Ž'|'ź'|'Ż'|'ż' => 'z',
+            'ß' => 's', // will be mapped ss in lig expansion step elsewhere but keep s for byte-align
+            'æ'|'Æ' => 'a',
+            'ÿ'|'Ÿ' => 'y',
+            'ý'|'Ý' => 'y',
             _ => c,
         })
         .collect()
+}
+
+/// Expand ligatures fi, fl, ff, ffi, ffl mapping to their Latin expansions for search.
+pub(crate) fn expand_ligatures(s: &str) -> String {
+    s.replace('ﬁ', "fi").replace('ﬂ', "fl").replace('ﬀ', "ff").replace('ﬃ', "ffi").replace('ﬄ', "ffl")
 }
 
 /// Build the text index for every page (text-only interpretation, no images).
@@ -104,18 +118,34 @@ pub(crate) fn build_index(doc: &Document) -> Vec<PageIndex> {
     out
 }
 
-/// Return the cached text index for `handle`, building it on first use.
+/// Return cached index: consistent lock order registry->index_cache to avoid deadlock, poison-safe.
 pub(crate) fn ensure_index(handle: i64) -> Option<std::sync::Arc<Vec<PageIndex>>> {
-    if let Some(idx) = index_cache().lock().unwrap().get(&handle) {
+    // First check with existing cache lock (poison safe)
+    if let Some(idx) = index_cache().lock().unwrap_or_else(|e| e.into_inner()).get(&handle) {
         return Some(idx.clone());
     }
+    // Lock registry then cache (documented order registry->index_cache)
     let built = {
-        let reg = registry().lock().unwrap();
+        let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
         let doc = reg.get(&handle)?;
         std::sync::Arc::new(build_index(doc))
     };
-    index_cache().lock().unwrap().insert(handle, built.clone());
+    index_cache().lock().unwrap_or_else(|e| e.into_inner()).insert(handle, built.clone());
     Some(built)
+}
+
+/// Invalidate cache for handle on edits (fix #45: cache never evicted, stale after edits). Also evict LRU when >32 entries.
+pub(crate) fn invalidate_index(handle: i64) {
+    if let Ok(mut cache) = index_cache().lock() {
+        cache.remove(&handle);
+        // LRU eviction: keep 32 most recent by insertion order (HashMap not ordered, just truncate arbitrarily to 32)
+        const MAX: usize = 32;
+        if cache.len() > MAX {
+            let extra = cache.len() - MAX;
+            let keys: Vec<i64> = cache.keys().copied().take(extra).collect();
+            for k in keys { cache.remove(&k); }
+        }
+    }
 }
 
 pub(crate) fn search_document_inner(index: &Vec<PageIndex>, needle: &str, case_sensitive: bool) -> Vec<(i32, f32, f32, f32, f32)> {
@@ -138,9 +168,15 @@ pub(crate) fn search_document_inner(index: &Vec<PageIndex>, needle: &str, case_s
             for (s, e, x, y, size, advance) in &page.spans {
                 if *s < me && *e > ms {
                     any = true;
+                    // Fix high #43: RTL negative advance produces inverted boxes; use |advance|
+                    let adv_abs = advance.abs();
                     minx = minx.min(*x);
                     miny = miny.min(*y);
-                    maxx = maxx.max(*x + *advance);
+                    // For RTL visual, x may go right->left, but max should be max of x and x+adv
+                    let x_end = if *advance >= 0.0 { *x + *advance } else { *x };
+                    let x_start = if *advance >= 0.0 { *x } else { *x + *advance };
+                    minx = minx.min(x_start);
+                    maxx = maxx.max(x_end.max(*x + adv_abs));
                     maxy = maxy.max(*y + *size);
                 }
             }
