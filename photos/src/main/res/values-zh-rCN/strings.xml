@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="app_name">Photos</string>
+    <string name="app_name">照片</string>
     <string name="title_edit_photo">编辑照片</string>
     <string name="action_save">保存</string>
     <string name="action_save_as_copy">另存为副本</string>
