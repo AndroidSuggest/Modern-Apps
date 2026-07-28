@@ -1,6 +1,7 @@
 package com.vayunmathur.contacts.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +31,7 @@ import com.vayunmathur.contacts.util.ContactSorting.groupKey
 import com.vayunmathur.contacts.util.ContactSorting.sortedLocale
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -56,6 +59,14 @@ fun InsertOrEditContactScreen(
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     var isSaving by remember { mutableStateOf(false) }
+
+    // Cold-launched via external intent (dialer "Add to contacts"), _allContacts starts
+    // empty and was previously loaded only after a 500ms debounce, so the UI rendered
+    // an empty LazyColumn that looked like "empty contact list". Trigger a load and
+    // show a spinner while waiting.
+    LaunchedEffect(Unit) {
+        viewModel.loadContacts()
+    }
 
     Scaffold(
         topBar = {
@@ -106,50 +117,58 @@ fun InsertOrEditContactScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            if (contacts.isEmpty() && searchQuery.isNotEmpty()) {
-                Column(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(stringResource(R.string.no_contacts_found))
+            when {
+                contacts.isEmpty() && searchQuery.isEmpty() -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
                 }
-            } else {
-                val grouped = remember(contacts) {
-                    contacts.groupBy { groupKey(it.name.value) }
-                        .mapValues { (_, c) -> c.sortedLocale() }
-                        .toSortedMap()
+                contacts.isEmpty() && searchQuery.isNotEmpty() -> {
+                    Column(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(stringResource(R.string.no_contacts_found))
+                    }
                 }
+                else -> {
+                    val grouped = remember(contacts) {
+                        contacts.groupBy { groupKey(it.name.value) }
+                            .mapValues { (_, c) -> c.sortedLocale() }
+                            .toSortedMap()
+                    }
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    grouped.forEach { (letter, contactsInGroup) ->
-                        item(key = "insedit-header-$letter") { LetterHeader(letter) }
-                        item(key = "insedit-card-$letter") {
-                            GroupedContactSection(count = contactsInGroup.size) { idx ->
-                                val contact = contactsInGroup[idx]
-                                ContactItem(
-                                    contact = contact,
-                                    isSelected = false,
-                                    showAccountLabels = true,
-                                    viewModel = viewModel,
-                                    embeddedInCard = true,
-                                    onClick = {
-                                        if (isSaving) return@ContactItem
-                                        if (phone.isNullOrBlank()) {
-                                            backStack.setLast(Route.ContactDetail(contact.id))
-                                            return@ContactItem
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        grouped.forEach { (letter, contactsInGroup) ->
+                            item(key = "insedit-header-$letter") { LetterHeader(letter) }
+                            item(key = "insedit-card-$letter") {
+                                GroupedContactSection(count = contactsInGroup.size) { idx ->
+                                    val contact = contactsInGroup[idx]
+                                    ContactItem(
+                                        contact = contact,
+                                        isSelected = false,
+                                        showAccountLabels = true,
+                                        viewModel = viewModel,
+                                        embeddedInCard = true,
+                                        onClick = {
+                                            if (isSaving) return@ContactItem
+                                            if (phone.isNullOrBlank()) {
+                                                backStack.setLast(Route.ContactDetail(contact.id))
+                                                return@ContactItem
+                                            }
+                                            isSaving = true
+                                            viewModel.addPhoneNumberToContact(contact.id, phone) {
+                                                isSaving = false
+                                                backStack.setLast(Route.ContactDetail(contact.id))
+                                            }
                                         }
-                                        isSaving = true
-                                        viewModel.addPhoneNumberToContact(contact.id, phone) {
-                                            isSaving = false
-                                            backStack.setLast(Route.ContactDetail(contact.id))
-                                        }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }

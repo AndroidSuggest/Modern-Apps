@@ -71,9 +71,58 @@ fun CropPhotoScreen(
         bitmap = withContext(Dispatchers.IO) {
             try {
                 val parsed = uri.toUri()
-                context.contentResolver.openInputStream(parsed)?.use { stream ->
-                    BitmapFactory.decodeStream(stream)
+                // First pass: decode bounds to determine downsample factor.
+                // An 8000x4000 photo would be ~128MB as ARGB_8888 and exceeds
+                // Canvas' max bitmap size (~100MB), crashing with
+                // "Canvas: trying to draw too large(...) bitmap."
+                // We cap the loaded bitmap to at most 2048 on its longest side;
+                // the final cropped result is scaled to 1024x1024 anyway, so this
+                // preserves enough detail for cropping while staying well under
+                // the Canvas limit (~16MB for 2048x2048).
+                val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                try {
+                    context.contentResolver.openInputStream(parsed)?.use { stream ->
+                        BitmapFactory.decodeStream(stream, null, boundsOpts)
+                    }
+                } catch (_: Exception) { /* ignore, fallback to full decode */ }
+
+                val outW = boundsOpts.outWidth
+                val outH = boundsOpts.outHeight
+                val maxSide = 2048
+                var sampleSize = 1
+                if (outW > 0 && outH > 0) {
+                    var maxDim = maxOf(outW, outH)
+                    // BitmapFactory requires power-of-2 sample size for best efficiency
+                    while (maxDim / sampleSize > maxSide) {
+                        sampleSize *= 2
+                    }
+                } else {
+                    // If bounds failed, use a conservative sample to avoid OOM on huge images
+                    sampleSize = 2
                 }
+
+                val decodeOpts = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    // Prefer ARGB_8888 for cropping quality; downsampling already limits memory
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+
+                var result: Bitmap? = null
+                try {
+                    context.contentResolver.openInputStream(parsed)?.use { stream ->
+                        result = BitmapFactory.decodeStream(stream, null, decodeOpts)
+                    }
+                } catch (_: Exception) { /* fall through */ }
+
+                // If first decode failed (bounds gave 0 etc.), try without sampling as fallback
+                if (result == null && sampleSize != 1) {
+                    try {
+                        context.contentResolver.openInputStream(parsed)?.use { stream ->
+                            result = BitmapFactory.decodeStream(stream) ?: result
+                        }
+                    } catch (_: Exception) { /* ignore */ }
+                }
+                result
             } catch (_: Exception) { null }
         }
     }

@@ -141,8 +141,10 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
                 override fun onChange(selfChange: Boolean) { syncTrigger.tryEmit(Unit) }
             }
             resolver.registerContentObserver(ContactsContract.AUTHORITY_URI, true, observer)
-            syncTrigger.tryEmit(Unit) // initial sync
             try {
+                // Load immediately so cold-launched screens like InsertOrEdit don't
+                // show empty list while waiting for the 500ms debounce.
+                syncFromSystem()
                 syncTrigger.debounce(500).collectLatest { syncFromSystem() }
             } finally {
                 resolver.unregisterContentObserver(observer)
