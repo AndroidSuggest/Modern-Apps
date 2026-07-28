@@ -41,6 +41,7 @@ import com.vayunmathur.games.logicgate.data.Levels
 import com.vayunmathur.games.logicgate.ui.CircuitCanvas
 import com.vayunmathur.games.logicgate.ui.LogicGateTheme
 import com.vayunmathur.games.logicgate.ui.ProgressionScreen
+import com.vayunmathur.games.logicgate.ui.Turing
 import com.vayunmathur.games.logicgate.util.AppBackupAgent
 import com.vayunmathur.games.logicgate.util.EvalStatus
 import com.vayunmathur.games.logicgate.util.LogicViewModel
@@ -50,9 +51,7 @@ import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.GameCenterScreen
 import com.vayunmathur.library.ui.IconNavigation
-import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
@@ -123,7 +122,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
     var selectedGroup by remember { mutableStateOf<ChipGroup?>(null) }
     val density = LocalDensity.current
 
-    // ---- Representative test vector for live I/O values (mirrors evaluator seed 1234) ----
+    // representative vector
     val totalInBits = level.totalInputBits
     val displayLimit = if (totalInBits <= 10) minOf(64, (1 shl totalInBits)) else 28
     val inputVectors: List<List<Boolean>> = remember(totalInBits, displayLimit) {
@@ -193,256 +192,294 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(text = "${level.displayName}  ${if (levelId in completed) "✓" else ""}", fontSize = 16.sp) },
-                navigationIcon = { IconNavigation(backStack) },
-                actions = {
-                    Row(modifier = Modifier.padding(end = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (uiState.canUndo) Button(onClick = { viewModel.undo() }) { Text(stringResource(R.string.undo), fontSize = 10.sp) }
-                        if (uiState.canRedo) Button(onClick = { viewModel.redo() }) { Text(stringResource(R.string.redo), fontSize = 10.sp) }
-                        Button(onClick = { viewModel.toggleTruthTable() }) { Text(text = if (uiState.showTruthTable) "Hide" else "Show", fontSize = 10.sp) }
-                    }
-                }
+    if (!isCurrent) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F1E2D)), contentAlignment = Alignment.Center) { Text(stringResource(R.string.loading)) }
+        return
+    }
+
+    val isWiring = uiState.wiringFrom != null
+    val gateCost = uiState.circuit.totalNandCost()
+    val delayEst = remember(uiState.circuit) { estimateDelay(uiState.circuit) }
+    val statusText = when (val s = uiState.evalStatus) {
+        is EvalStatus.Ok -> if (s.isFullyCorrect) "PASS • ${level.unlocksChipId?.let { "Unlocked $it" } ?: "CORRECT"}"
+        else "${s.passingRows}/${s.totalRows} FAIL ${s.failingRows.size}"
+        is EvalStatus.Error -> s.msg.take(88)
+        is EvalStatus.Cycle -> "CYCLE ${s.ids.take(2).joinToString()}"
+        else -> "Drag chip • drag terminals • tap output->input to wire • tap wire delete • long-press gate delete"
+    }
+    val statusColor = when {
+        uiState.evalStatus is EvalStatus.Ok && (uiState.evalStatus as EvalStatus.Ok).isFullyCorrect -> Color(0xFF22C55E)
+        uiState.evalStatus is EvalStatus.Ok && (uiState.evalStatus as EvalStatus.Ok).passingRows > 0 -> Color(0xFFFBBF24)
+        else -> Color(0xFF94A3B8)
+    }
+
+    // Full Turing Complete layout
+    Column(modifier = Modifier.fillMaxSize().background(Turing.headerBg)) {
+        // ----- TOP BAR (matches screenshot) -----
+        TuringTopBar(
+            levelName = level.displayName.uppercase(),
+            gateCount = gateCost,
+            delay = delayEst,
+            onBack = { backStack.pop() },
+            onClear = { viewModel.clearCircuit() },
+            statusText = statusText,
+            statusColor = statusColor,
+            isWiring = isWiring,
+            onCancelWiring = { viewModel.cancelWiring() }
+        )
+
+        // ----- MIDDLE: left panel + toolbar + canvas + right tabs -----
+        Row(modifier = Modifier.weight(1f).fillMaxWidth().background(Turing.bg)) {
+            // Left I/O panel (Tick, Sim speed, Inputs, Outputs) - as screenshot left dark card
+            TuringLeftPanel(
+                tick = selectedIdx,
+                simSpeed = if (selectedIdx == 0) 0 else 20,
+                level = level,
+                inputDecimals = inputDecimals,
+                inputBitSlices = inputBitSlices,
+                desiredDecimals = desiredDecimals,
+                desiredBitSlices = desiredBitSlices,
+                actualDecimals = actualDecimals,
+                modifier = Modifier.width(132.dp).fillMaxHeight()
             )
-        },
-        bottomBar = {
-            if (isCurrent) {
-                Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E2433))) {
-                    // BIT / WORD / CUSTOM filter — horizontal for mobile (like screenshot right vertical tabs)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf<Pair<ChipGroup?, String>>(null to "ALL", ChipGroup.BIT to "BIT", ChipGroup.WORD to "WORD", ChipGroup.CUSTOM to "CUSTOM").forEach { (g, label) ->
-                            val isSel = selectedGroup == g
-                            Button(onClick = { selectedGroup = g }) {
-                                Text(text = label, fontSize = 10.sp, color = if (isSel) Color(0xFF2BE4B8) else Color(0xFF9AA3BB))
-                            }
-                        }
+
+            // Vertical icon toolbar (magnify, play, etc)
+            TuringMiddleToolbar(
+                onClear = { viewModel.clearCircuit() },
+                onUndo = { viewModel.undo() },
+                onRedo = { viewModel.redo() },
+                canUndo = uiState.canUndo,
+                canRedo = uiState.canRedo,
+                modifier = Modifier.width(48.dp).fillMaxHeight()
+            )
+
+            // Canvas
+            Box(
+                modifier = Modifier.weight(1f).fillMaxHeight().onGloballyPositioned { coords ->
+                    canvasPosInWindow = coords.positionInWindow()
+                    canvasSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
+                }
+            ) {
+                CircuitCanvas(
+                    level = level,
+                    gates = uiState.circuit.gates,
+                    wires = uiState.circuit.wires,
+                    outputMaps = uiState.circuit.outputMappings,
+                    inputPositions = uiState.circuit.inputPositions,
+                    outputPositions = uiState.circuit.outputPositions,
+                    wiringFrom = uiState.wiringFrom,
+                    onCreateWire = { f, t -> viewModel.createWire(f, t) },
+                    onStartWiring = { viewModel.startWiring(it) },
+                    onCancelWiring = { viewModel.cancelWiring() },
+                    onGateMove = { id, x, y -> viewModel.onGateMoved(id, x, y) },
+                    onGateMoveFinished = { id, x, y -> viewModel.onGateMoveFinished(id, x, y) },
+                    onInputTermMove = { idx, x, y -> viewModel.onInputMoved(idx, x, y) },
+                    onInputTermMoveFinished = { idx, x, y -> viewModel.onInputMoveFinished(idx, x, y) },
+                    onOutputTermMove = { idx, x, y -> viewModel.onOutputMoved(idx, x, y) },
+                    onOutputTermMoveFinished = { idx, x, y -> viewModel.onOutputMoveFinished(idx, x, y) },
+                    onGateDelete = { viewModel.removeGate(it) },
+                    onWireDelete = { viewModel.removeWire(it) },
+                    onOutputMapDelete = { viewModel.removeOutputMapping(it) },
+                    dragGhostLineEnd = uiState.dragGhostLineEnd,
+                    onGhostLine = { viewModel.updateGhostLine(it) },
+                    inputValues = inputDecimals,
+                    desiredOutputValues = desiredDecimals,
+                    outputValues = actualDecimals,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Ghost for inventory drag
+                draggingChipId?.let { chipId ->
+                    val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
+                    val isOver = localOffset.x >= 0f && localOffset.x <= canvasSize.width && localOffset.y >= 0f && localOffset.y <= canvasSize.height
+                    val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
+                    val ghostW = 84.dp; val ghostH = 36.dp
+                    Box(
+                        modifier = Modifier.offset {
+                            IntOffset(
+                                (localOffset.x - with(density) { ghostW.toPx() } / 2f).roundToInt(),
+                                (localOffset.y - with(density) { ghostH.toPx() } / 2f).roundToInt()
+                            )
+                        }.size(ghostW, ghostH)
+                            .background(if (isOver) Color(0xFFD1FAE5).copy(alpha = 0.92f) else Color(0xFF4B5563).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                            .border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Color.White.copy(alpha = 0.28f), RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) { def?.let { Text(text = it.displayName.take(8), fontSize = 10.sp, color = if (isOver) Color(0xFF14532D) else Color.White) } }
+                }
+            }
+
+            // Right BIT/WORD/CUSTOM tabs vertical (screenshot right)
+            TuringRightTabs(
+                selected = selectedGroup,
+                onSelect = { selectedGroup = it },
+                modifier = Modifier.width(52.dp).fillMaxHeight()
+            )
+        }
+
+        // Inventory bar (chips) - horizontal, above bottom panel
+        TuringInventoryBar(
+            allowed = level.allowedChipIds,
+            unlockedChips = unlocked,
+            selectedGroup = selectedGroup,
+            onChipDragStart = { chipId, windowOffset ->
+                draggingChipId = chipId
+                draggingChipWindowPos = windowOffset
+            },
+            onChipDrag = { chipId, windowOffset ->
+                draggingChipId = chipId
+                draggingChipWindowPos = windowOffset
+            },
+            onChipDrop = { chipId, windowOffset ->
+                val local = Offset(windowOffset.x - canvasPosInWindow.x, windowOffset.y - canvasPosInWindow.y)
+                val isOver = local.x >= 0f && local.x <= canvasSize.width && local.y >= 0f && local.y <= canvasSize.height
+                if (isOver) viewModel.addGateAt(chipId, local.x, local.y)
+                draggingChipId = null
+                draggingChipWindowPos = Offset.Zero
+            },
+            modifier = Modifier.fillMaxWidth().background(Color(0xFF1A2332))
+        )
+
+        // Bottom testbench matching screenshot
+        TuringBottomTestbench(
+            level = level,
+            selectedIdx = selectedIdx,
+            inputDecimals = inputDecimals,
+            inputBitSlices = inputBitSlices,
+            desiredDecimals = desiredDecimals,
+            desiredBitSlices = desiredBitSlices,
+            actualDecimals = actualDecimals,
+            actualBitSlices = actualBitSlices,
+            failingCount = (uiState.evalStatus as? EvalStatus.Ok)?.failingRows?.size ?: 0,
+            onToggle = { viewModel.toggleTruthTable() },
+            showTable = uiState.showTruthTable,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun TuringTopBar(
+    levelName: String,
+    gateCount: Int,
+    delay: Int,
+    onBack: () -> Unit,
+    onClear: () -> Unit,
+    statusText: String,
+    statusColor: Color,
+    isWiring: Boolean,
+    onCancelWiring: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().background(Turing.headerBg)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(38.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left icons mimicking screenshot: hamburger, chat, doc, book, hierarchy, chip, envelope, +255, bulb
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Turing.iconBg).clickable { onBack() }, contentAlignment = Alignment.Center) {
+                    Text("☰", fontSize = 12.sp, color = Color(0xFF9AA3BB))
+                }
+                Text("💬", fontSize = 12.sp, color = Color(0xFF8AA0BB))
+                Text("📄", fontSize = 11.sp, color = Color(0xFF8AA0BB))
+                Text("📖", fontSize = 11.sp, color = Color(0xFF8AA0BB))
+                Text("⯀", fontSize = 11.sp, color = Color(0xFF8AA0BB))
+                Text("🖥", fontSize = 11.sp, color = Color(0xFF8AA0BB))
+                Text("✉", fontSize = 11.sp, color = Color(0xFF8AA0BB))
+                Box(modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF3A3A52)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                    Text("+255", fontSize = 8.sp, color = Color.White)
+                }
+                Text("💡", fontSize = 11.sp, color = Color(0xFFF5C15A))
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            // Center title pink like screenshot
+            Text(
+                text = levelName,
+                fontSize = 12.sp,
+                color = Turing.headerPink,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            // Right Gate / Delay
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Gate: $gateCount", fontSize = 10.sp, color = Color.White)
+                    Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(0xFF4B5563))) {
+                        Text("⌖", fontSize = 7.sp, color = Color.White, modifier = Modifier.align(Alignment.Center))
                     }
-                    TuringInventoryBar(
-                        allowed = level.allowedChipIds,
-                        unlockedChips = unlocked,
-                        selectedGroup = selectedGroup,
-                        onChipDragStart = { chipId, windowOffset ->
-                            draggingChipId = chipId
-                            draggingChipWindowPos = windowOffset
-                        },
-                        onChipDrag = { chipId, windowOffset ->
-                            draggingChipId = chipId
-                            draggingChipWindowPos = windowOffset
-                        },
-                        onChipDrop = { chipId, windowOffset ->
-                            val local = Offset(windowOffset.x - canvasPosInWindow.x, windowOffset.y - canvasPosInWindow.y)
-                            val isOver = local.x >= 0f && local.x <= canvasSize.width && local.y >= 0f && local.y <= canvasSize.height
-                            if (isOver) viewModel.addGateAt(chipId, local.x, local.y)
-                            draggingChipId = null
-                            draggingChipWindowPos = Offset.Zero
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Delay: $delay", fontSize = 10.sp, color = Color.White)
+                    Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(0xFF4B5563))) {
+                        Text("◐", fontSize = 7.sp, color = Color.White, modifier = Modifier.align(Alignment.Center))
+                    }
                 }
             }
         }
-    ) { padding ->
-        if (!isCurrent) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text(stringResource(R.string.loading)) }
-            return@Scaffold
+        // Second slim status row if needed
+        if (isWiring) {
+            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E2A3A)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text("Wiring: tap input dot (yellow) or empty to cancel", fontSize = 10.sp, color = Turing.wireYellow)
+            }
+        } else if (statusText.isNotBlank()) {
+            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E2A3A)).padding(horizontal = 10.dp, vertical = 3.dp)) {
+                Text(statusText, fontSize = 9.sp, color = statusColor)
+            }
         }
+    }
+}
 
-        Column(modifier = Modifier.fillMaxSize().padding(padding).background(Color(0xFF0F1E2D))) {
-            val isWiring = uiState.wiringFrom != null
-            val statusText = when (val s = uiState.evalStatus) {
-                is EvalStatus.Ok -> if (s.isFullyCorrect) "✓ CORRECT — ${level.unlocksChipId?.let { "Unlocked $it!" } ?: "PASS"}"
-                else "${s.passingRows}/${s.totalRows} — ${s.failingRows.size} failing • sel #${selectedIdx}"
-                is EvalStatus.Error -> "Error: ${s.msg}"
-                is EvalStatus.Cycle -> "Cycle: ${s.ids.take(3).joinToString()} — needs latch"
-                else -> "Drag from inventory • Move items on grid • Tap output→input to wire • Tap wire to delete • Long-press gate delete"
+@Composable
+private fun TuringLeftPanel(
+    tick: Int,
+    simSpeed: Int,
+    level: com.vayunmathur.games.logicgate.data.LevelDef,
+    inputDecimals: Map<Int, Int>,
+    inputBitSlices: Map<Int, List<Boolean>>,
+    desiredDecimals: Map<Int, Int>,
+    desiredBitSlices: Map<Int, List<Boolean>>,
+    actualDecimals: Map<Int, Int>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.background(Turing.leftPanelBg).verticalScroll(rememberScrollState()).padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Tick / Sim speed card
+        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Turing.leftPanelCard).padding(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Tick", fontSize = 9.sp, color = Color(0xFF8AA0BB))
+                Text("$tick", fontSize = 9.sp, color = Color.White)
             }
-            val statusColor = when {
-                uiState.evalStatus is EvalStatus.Ok && (uiState.evalStatus as EvalStatus.Ok).isFullyCorrect -> Color(0xFF22C55E)
-                uiState.evalStatus is EvalStatus.Ok && (uiState.evalStatus as EvalStatus.Ok).passingRows > 0 -> Color(0xFFFBBF24)
-                else -> Color(0xFF94A3B8)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Sim speed", fontSize = 9.sp, color = Color(0xFF8AA0BB))
+                Text("${simSpeed}hz", fontSize = 9.sp, color = Color.White)
             }
-
-            // Status bar — dark compact with wiring crossfade (like Alchemist trash vs inventory)
-            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFF16202B)).padding(horizontal = 10.dp, vertical = 6.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Crossfade(targetState = isWiring, label = "wiring_cf") { wiring ->
-                            if (wiring) Text(text = "Wiring: tap input dot (yellow) or empty to cancel", fontSize = 11.sp, color = Color(0xFFFFFF00))
-                            else Text(text = statusText, fontSize = 11.sp, color = statusColor)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            LegendDot(Color(0xFF22C55E), "1b ON") // green = 1 like screenshot
-                            LegendDot(Color(0xFFEF4444), "0 OFF")
-                            LegendDot(Color(0xFFFFA126), "4b")
-                            LegendDot(Color(0xFF4FC3FF), "8b")
-                            Text(text = level.description.take(52), fontSize = 9.sp, color = Color(0xFF6B7D96))
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = { viewModel.clearCircuit() }) { Text(stringResource(R.string.clear), fontSize = 9.sp) }
-                        if (isWiring) Button(onClick = { viewModel.cancelWiring() }) { Text(stringResource(R.string.cancel_wire), fontSize = 9.sp) }
-                        Card(modifier = Modifier.padding(start = 2.dp)) {
-                            Text(stringResource(R.string.gates, uiState.circuit.gates.size), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
-                        }
-                    }
+        }
+        // Inputs
+        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Turing.leftPanelCard).padding(8.dp)) {
+            Text("Inputs", fontSize = 11.sp, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp))
+            level.inputs.forEachIndexed { idx, name ->
+                val dec = inputDecimals[idx] ?: 0
+                val bits = inputBitSlices[idx] ?: emptyList()
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(name, fontSize = 9.sp, color = Color(0xFFB8C6D8))
+                    Spacer(modifier = Modifier.height(3.dp))
+                    TuringBitDotsRow(bits = bits, dotSize = 6.dp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("$dec", fontSize = 9.sp, color = Color.White)
                 }
             }
-
-            BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                val wide = maxWidth > maxHeight
-
-                @Composable
-                fun GameCanvas(mod: Modifier) {
-                    CircuitCanvas(
-                        level = level,
-                        gates = uiState.circuit.gates,
-                        wires = uiState.circuit.wires,
-                        outputMaps = uiState.circuit.outputMappings,
-                        inputPositions = uiState.circuit.inputPositions,
-                        outputPositions = uiState.circuit.outputPositions,
-                        wiringFrom = uiState.wiringFrom,
-                        onCreateWire = { f, t -> viewModel.createWire(f, t) },
-                        onStartWiring = { viewModel.startWiring(it) },
-                        onCancelWiring = { viewModel.cancelWiring() },
-                        onGateMove = { id, x, y -> viewModel.onGateMoved(id, x, y) },
-                        onGateMoveFinished = { id, x, y -> viewModel.onGateMoveFinished(id, x, y) },
-                        onInputTermMove = { idx, x, y -> viewModel.onInputMoved(idx, x, y) },
-                        onInputTermMoveFinished = { idx, x, y -> viewModel.onInputMoveFinished(idx, x, y) },
-                        onOutputTermMove = { idx, x, y -> viewModel.onOutputMoved(idx, x, y) },
-                        onOutputTermMoveFinished = { idx, x, y -> viewModel.onOutputMoveFinished(idx, x, y) },
-                        onGateDelete = { viewModel.removeGate(it) },
-                        onWireDelete = { viewModel.removeWire(it) },
-                        onOutputMapDelete = { viewModel.removeOutputMapping(it) },
-                        dragGhostLineEnd = uiState.dragGhostLineEnd,
-                        onGhostLine = { viewModel.updateGhostLine(it) },
-                        inputValues = inputDecimals,
-                        desiredOutputValues = desiredDecimals,
-                        outputValues = actualDecimals,
-                        modifier = mod
-                    )
-                }
-
-                // Wide: Row [I/O panel | toolbar | canvas | truth panel]
-                // Portrait: Column [canvas with floating toolbar | truth panel]
-                if (wide) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        TuringIOPanel(
-                            level = level,
-                            inputDecimals = inputDecimals,
-                            inputBitSlices = inputBitSlices,
-                            desiredDecimals = desiredDecimals,
-                            desiredBitSlices = desiredBitSlices,
-                            actualDecimals = actualDecimals,
-                            actualBitSlices = actualBitSlices,
-                            modifier = Modifier.width(150.dp).fillMaxHeight().background(Color(0xFF1B2636))
-                        )
-                        TuringVerticalToolbar(
-                            onClear = { viewModel.clearCircuit() },
-                            onUndo = { viewModel.undo() },
-                            onRedo = { viewModel.redo() },
-                            canUndo = uiState.canUndo,
-                            canRedo = uiState.canRedo,
-                            modifier = Modifier.width(52.dp).fillMaxHeight().background(Color(0xFF121B27))
-                        )
-                        // Canvas Box tracks its own positionInWindow for inventory drop — fixes wide misalignment
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().onGloballyPositioned { coords ->
-                                canvasPosInWindow = coords.positionInWindow()
-                                canvasSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
-                            }
-                        ) {
-                            GameCanvas(Modifier.fillMaxSize())
-                            // Global ghost overlay inside canvas Box (Alchemist IntOffset pattern)
-                            draggingChipId?.let { chipId ->
-                                val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
-                                val isOver = localOffset.x >= 0f && localOffset.x <= canvasSize.width && localOffset.y >= 0f && localOffset.y <= canvasSize.height
-                                val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
-                                val ghostW = 96.dp; val ghostH = 44.dp
-                                Box(
-                                    modifier = Modifier.offset {
-                                        IntOffset(
-                                            (localOffset.x - with(density) { ghostW.toPx() } / 2f).roundToInt(),
-                                            (localOffset.y - with(density) { ghostH.toPx() } / 2f).roundToInt()
-                                        )
-                                    }.size(ghostW, ghostH)
-                                        .background(if (isOver) Color(0xFFD1FAE5).copy(alpha = 0.92f) else Color(0xFF4B5563).copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                                        .border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) { def?.let { Text(text = it.displayName.take(8), fontSize = 10.sp, color = if (isOver) Color(0xFF14532D) else Color.White) } }
-                            }
-                        }
-                        if (uiState.showTruthTable) {
-                            TuringBottomTruthPanel(
-                                level = level,
-                                selectedIdx = selectedIdx,
-                                inputDecimals = inputDecimals,
-                                inputBitSlices = inputBitSlices,
-                                desiredDecimals = desiredDecimals,
-                                desiredBitSlices = desiredBitSlices,
-                                actualDecimals = actualDecimals,
-                                actualBitSlices = actualBitSlices,
-                                failingCount = (uiState.evalStatus as? EvalStatus.Ok)?.failingRows?.size ?: 0,
-                                modifier = Modifier.width(260.dp).fillMaxHeight().background(Color(0xFF212636))
-                            )
-                        }
-                    }
-                } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { coords ->
-                                canvasPosInWindow = coords.positionInWindow()
-                                canvasSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
-                            }
-                        ) {
-                            GameCanvas(Modifier.fillMaxSize())
-                            // Floating vertical toolbar top-start for portrait (like screenshot left of canvas icons)
-                            Column(
-                                modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Color(0xFF1B2636).copy(alpha = 0.92f), RoundedCornerShape(8.dp)).padding(4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                ToolbarIcon("🗑", onClick = { viewModel.clearCircuit() })
-                                if (uiState.canUndo) ToolbarIcon("↩", onClick = { viewModel.undo() })
-                                if (uiState.canRedo) ToolbarIcon("↪", onClick = { viewModel.redo() })
-                                ToolbarIcon("8") {}
-                            }
-                            draggingChipId?.let { chipId ->
-                                val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
-                                val isOver = localOffset.x >= 0f && localOffset.x <= canvasSize.width && localOffset.y >= 0f && localOffset.y <= canvasSize.height
-                                val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
-                                val ghostW = 96.dp; val ghostH = 44.dp
-                                Box(
-                                    modifier = Modifier.offset {
-                                        IntOffset(
-                                            (localOffset.x - with(density) { ghostW.toPx() } / 2f).roundToInt(),
-                                            (localOffset.y - with(density) { ghostH.toPx() } / 2f).roundToInt()
-                                        )
-                                    }.size(ghostW, ghostH)
-                                        .background(if (isOver) Color(0xFFD1FAE5).copy(alpha = 0.92f) else Color(0xFF4B5563).copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                                        .border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) { def?.let { Text(text = it.displayName.take(8), fontSize = 10.sp, color = if (isOver) Color(0xFF14532D) else Color.White) } }
-                            }
-                        }
-                        if (uiState.showTruthTable) {
-                            TuringBottomTruthPanel(
-                                level = level,
-                                selectedIdx = selectedIdx,
-                                inputDecimals = inputDecimals,
-                                inputBitSlices = inputBitSlices,
-                                desiredDecimals = desiredDecimals,
-                                desiredBitSlices = desiredBitSlices,
-                                actualDecimals = actualDecimals,
-                                actualBitSlices = actualBitSlices,
-                                failingCount = (uiState.evalStatus as? EvalStatus.Ok)?.failingRows?.size ?: 0,
-                                modifier = Modifier.fillMaxWidth().height(150.dp).background(Color(0xFF212636))
-                            )
-                        }
-                    }
+            Spacer(modifier = Modifier.height(6.dp))
+            // Outputs inside same card like screenshot
+            Text("Outputs", fontSize = 11.sp, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp))
+            level.outputs.forEachIndexed { idx, name ->
+                val dec = actualDecimals[idx] ?: desiredDecimals[idx] ?: 0
+                val bits = desiredBitSlices[idx] ?: emptyList()
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(name, fontSize = 9.sp, color = Color(0xFFB8C6D8))
+                    Spacer(modifier = Modifier.height(3.dp))
+                    TuringBitDotsRow(bits = bits, dotSize = 6.dp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("$dec", fontSize = 9.sp, color = Color.White)
                 }
             }
         }
@@ -450,15 +487,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
 }
 
 @Composable
-private fun LegendDot(col: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(col))
-        Text(text = label, fontSize = 8.sp, color = Color(0xFF8AA0BA))
-    }
-}
-
-@Composable
-private fun TuringVerticalToolbar(
+private fun TuringMiddleToolbar(
     onClear: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
@@ -466,81 +495,78 @@ private fun TuringVerticalToolbar(
     canRedo: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        ToolbarIcon("⌕") {}
-        ToolbarIcon("▶") {}
-        ToolbarIcon("■", onClick = onClear)
-        Box(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color(0xFF2A3A50)))
-        ToolbarIcon("⬚") {}
-        ToolbarIcon("🗑", onClick = onClear)
-        ToolbarIcon("✎") {}
-        ToolbarIcon("🎨") {}
-        if (canUndo) ToolbarIcon("↩", onClick = onUndo)
-        if (canRedo) ToolbarIcon("↪", onClick = onRedo)
+    Column(
+        modifier = modifier.background(Turing.iconBarBg).padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        ToolbarBtn("⊕", onClick = {})
+        ToolbarBtn("⊖", onClick = {})
+        Spacer(modifier = Modifier.height(4.dp))
+        ToolbarBtn("▶", sub = "${20}kHz", onClick = {})
+        ToolbarBtn("↗", onClick = onRedo) // placeholder for step
+        ToolbarBtn("↩", onClick = { if (canUndo) onUndo() })
+        ToolbarBtn("■", onClick = onClear)
+        Box(modifier = Modifier.height(1.dp).fillMaxWidth(0.6f).background(Color(0xFF2A3A50)))
+        ToolbarBtn("⬚", onClick = {})
+        ToolbarBtn("🗑", onClick = onClear)
+        ToolbarBtn("✎", onClick = {})
+        ToolbarBtn("◍", onClick = {})
         Spacer(modifier = Modifier.weight(1f))
-        Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF2A3042)), contentAlignment = Alignment.Center) {
-            Text("8", fontSize = 10.sp, color = Color.White)
+        Box(modifier = Modifier.size(30.dp).clip(RoundedCornerShape(6.dp)).background(Turing.iconBg).border(0.6.dp, Color(0xFF2E425C), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+            Text("8↔", fontSize = 9.sp, color = Color.White)
         }
     }
 }
 
 @Composable
-private fun ToolbarIcon(symbol: String, onClick: () -> Unit = {}) {
-    Box(
-        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF222C3E)).border(0.6.dp, Color(0xFF32415C), RoundedCornerShape(6.dp)).clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) { Text(symbol, fontSize = 12.sp, color = Color(0xFF9AA3BB)) }
+private fun ToolbarBtn(text: String, sub: String? = null, onClick: () -> Unit = {}) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp)).background(Turing.iconBg).border(0.6.dp, Color(0xFF2E425C), RoundedCornerShape(6.dp)).clickable { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text, fontSize = 12.sp, color = Color(0xFF9AA3BB))
+        }
+        if (sub != null) {
+            Text(sub, fontSize = 7.sp, color = Color(0xFF7A8AA3))
+        }
+    }
 }
 
 @Composable
-private fun TuringIOPanel(
-    level: com.vayunmathur.games.logicgate.data.LevelDef,
-    inputDecimals: Map<Int, Int>,
-    inputBitSlices: Map<Int, List<Boolean>>,
-    desiredDecimals: Map<Int, Int>,
-    desiredBitSlices: Map<Int, List<Boolean>>,
-    actualDecimals: Map<Int, Int>,
-    actualBitSlices: Map<Int, List<Boolean>>,
+private fun TuringRightTabs(
+    selected: ChipGroup?,
+    onSelect: (ChipGroup?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(6.dp)) {
-        Text("Inputs", fontSize = 11.sp, color = Color.White, modifier = Modifier.padding(bottom = 4.dp))
-        level.inputs.forEachIndexed { idx, name ->
-            val dec = inputDecimals[idx] ?: 0
-            val bits = inputBitSlices[idx] ?: emptyList()
-            IOPanelRow(name, dec, bits, Color(0xFF38BDF8))
-            Spacer(modifier = Modifier.height(6.dp))
+    Column(
+        modifier = modifier.background(Color(0xFF11202E)).padding(vertical = 6.dp, horizontal = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Mimic screenshot BIT WORD CUSTOM vertical pills
+        listOf<Triple<ChipGroup?, String, String>>(Triple(null, "ALL", "ALL"), Triple(ChipGroup.BIT, "BIT", "BIT"), Triple(ChipGroup.WORD, "WORD", "WORD"), Triple(ChipGroup.CUSTOM, "CUSTOM", "CUSTOM")).forEach { (g, label, _) ->
+            val isSel = selected == g
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isSel) Turing.rightTabOn else Turing.rightTabOff)
+                    .border(0.6.dp, if (isSel) Color(0xFF5A667A) else Color(0xFF2A344A), RoundedCornerShape(6.dp))
+                    .clickable { onSelect(g) }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(label, fontSize = 8.sp, color = if (isSel) Color.White else Color(0xFF8A97AD))
+            }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Outputs", fontSize = 11.sp, color = Color.White, modifier = Modifier.padding(bottom = 4.dp))
-        level.outputs.forEachIndexed { idx, name ->
-            val decD = desiredDecimals[idx] ?: 0
-            val bitsD = desiredBitSlices[idx] ?: emptyList()
-            IOPanelRow("$name exp", decD, bitsD, Color(0xFFFBBF24))
-            val decA = actualDecimals[idx] ?: 0
-            val bitsA = actualBitSlices[idx] ?: emptyList()
-            IOPanelRow("$name cur", decA, bitsA, Color(0xFF22C55E))
-            Spacer(modifier = Modifier.height(6.dp))
-        }
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun IOPanelRow(name: String, dec: Int, bits: List<Boolean>, col: Color) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(col))
-            Text(text = name.take(14), fontSize = 9.sp, color = Color.White)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(start = 4.dp, top = 2.dp)) {
-            BitDotRow(bits, dotSize = 6.dp)
-        }
-        Text(text = "$dec", fontSize = 9.sp, color = Color(0xFF9AA3BB), modifier = Modifier.padding(start = 8.dp))
-    }
-}
-
-@Composable
-private fun TuringBottomTruthPanel(
+private fun TuringBottomTestbench(
     level: com.vayunmathur.games.logicgate.data.LevelDef,
     selectedIdx: Int,
     inputDecimals: Map<Int, Int>,
@@ -550,61 +576,118 @@ private fun TuringBottomTruthPanel(
     actualDecimals: Map<Int, Int>,
     actualBitSlices: Map<Int, List<Boolean>>,
     failingCount: Int,
+    onToggle: () -> Unit,
+    showTable: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.padding(8.dp).verticalScroll(rememberScrollState())) {
+    Column(modifier = modifier.background(Turing.bottomBg).padding(vertical = 6.dp, horizontal = 8.dp)) {
+        // header row
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Test #${selectedIdx} • ${level.displayName} • fail $failingCount", fontSize = 9.sp, color = Color(0xFF94A3B8))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Tick 0", fontSize = 8.sp, color = Color(0xFF6B7D96))
-                Text("0hz", fontSize = 8.sp, color = Color(0xFF6B7D96))
+            Box(modifier = Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF1E1E32).copy(alpha = 0.9f)).clickable { onToggle() }, contentAlignment = Alignment.Center) {
+                Text(if (showTable) "⌄" else "⌃", fontSize = 12.sp, color = Color(0xFF8A8DB0))
+            }
+            // empty center spacer
+            Spacer(modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.size(22.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF2E2E4A)), contentAlignment = Alignment.Center) { Text("◫", fontSize = 10.sp, color = Color.White) }
+                Box(modifier = Modifier.size(22.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF2E2E4A)), contentAlignment = Alignment.Center) { Text("⛶", fontSize = 12.sp, color = Color.White) }
             }
         }
+        if (!showTable) return
         Spacer(modifier = Modifier.height(6.dp))
-        level.inputs.forEachIndexed { idx, name ->
-            val dec = inputDecimals[idx] ?: 0
-            val bits = inputBitSlices[idx] ?: emptyList()
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = name, fontSize = 10.sp, color = Color(0xFFFBBF24), modifier = Modifier.width(86.dp))
-                Text(text = "$dec", fontSize = 10.sp, color = Color.White, modifier = Modifier.width(34.dp))
-                BitDotRow(bits, dotSize = 8.dp)
+        // Centered test vector like screenshot: opcode OR with 3 dots, Input1, Input2, Desired, Current
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Try to map first input as opcode if exists
+            level.inputs.forEachIndexed { idx, name ->
+                val dec = inputDecimals[idx] ?: 0
+                val bits = inputBitSlices[idx] ?: emptyList()
+                val opMnemonic = if (name.lowercase().contains("opcode") || name.lowercase().contains("op")) decodeOpcode(dec) else ""
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 3.dp)) {
+                    Text(text = if (idx == 0 && level.inputs.size > 1) "Opcode" else if (level.inputs.size == 1) "Input" else "Input ${idx + 1}", fontSize = 11.sp, color = Turing.orangeLabel, modifier = Modifier.width(96.dp))
+                    Text(text = if (opMnemonic.isNotEmpty()) opMnemonic else "$dec", fontSize = 11.sp, color = Color.White, modifier = Modifier.width(36.dp))
+                    TuringBitDotsRow(bits = bits, dotSize = 12.dp, spacing = 5.dp)
+                }
             }
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF2A3042)))
-        Spacer(modifier = Modifier.height(4.dp))
-        level.outputs.forEachIndexed { idx, name ->
-            val decD = desiredDecimals[idx] ?: 0
-            val bitsD = desiredBitSlices[idx] ?: emptyList()
-            val decA = actualDecimals[idx] ?: 0
-            val bitsA = actualBitSlices[idx] ?: emptyList()
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Desired $name", fontSize = 9.sp, color = Color(0xFFF59E0B), modifier = Modifier.width(86.dp))
-                Text(text = "$decD", fontSize = 9.sp, color = Color.White, modifier = Modifier.width(34.dp))
-                BitDotRow(bitsD, dotSize = 8.dp)
-            }
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                val match = decD == decA
-                Text(text = "Current $name", fontSize = 9.sp, color = if (match) Color(0xFF22C55E) else Color(0xFFFF8A80), modifier = Modifier.width(86.dp))
-                Text(text = "$decA", fontSize = 9.sp, color = if (match) Color(0xFF86EFAC) else Color(0xFFFF8A80), modifier = Modifier.width(34.dp))
-                BitDotRow(bitsA, dotSize = 8.dp)
-                if (!match) Text(text = " ✗", fontSize = 10.sp, color = Color(0xFFFF8A80))
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(modifier = Modifier.fillMaxWidth(0.7f).height(1.dp).background(Color(0xFF3A3A52)))
+            Spacer(modifier = Modifier.height(4.dp))
+            level.outputs.forEachIndexed { idx, name ->
+                val decD = desiredDecimals[idx] ?: 0
+                val bitsD = desiredBitSlices[idx] ?: emptyList()
+                val decA = actualDecimals[idx] ?: 0
+                val bitsA = actualBitSlices[idx] ?: emptyList()
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 3.dp)) {
+                    Text("Desired output", fontSize = 11.sp, color = Turing.orangeLabel, modifier = Modifier.width(96.dp))
+                    Text("$decD", fontSize = 11.sp, color = Color.White, modifier = Modifier.width(36.dp))
+                    TuringBitDotsRow(bits = bitsD, dotSize = 12.dp, spacing = 5.dp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 3.dp)) {
+                    val match = decD == decA
+                    Text("Current output", fontSize = 11.sp, color = if (match) Turing.orangeLabel else Color(0xFFFF8A8A), modifier = Modifier.width(96.dp))
+                    Text("$decA", fontSize = 11.sp, color = if (match) Color(0xFF8EF0B0) else Color(0xFFFF8A8A), modifier = Modifier.width(36.dp))
+                    TuringBitDotsRow(bits = bitsA, dotSize = 12.dp, spacing = 5.dp)
+                    if (!match) Text("✗ fail $failingCount", fontSize = 9.sp, color = Color(0xFFFF8A8A), modifier = Modifier.padding(start = 6.dp))
+                }
             }
         }
     }
 }
 
+private fun decodeOpcode(v: Int): String = when (v and 0b111) {
+    0 -> "ADD"; 1 -> "SUB"; 2 -> "AND"; 3 -> "OR"; 4 -> "XOR"; 5 -> "NOT"; 6 -> "INC"; 7 -> "DEC"; else -> "$v"
+}
+
+private fun estimateDelay(circuit: com.vayunmathur.games.logicgate.data.Circuit): Int {
+    // crude depth via topological longest path from inputs
+    val gates = circuit.gates
+    if (gates.isEmpty()) return 0
+    val idToIdx = gates.mapIndexed { i, g -> g.instanceId to i }.toMap()
+    val incoming = mutableMapOf<String, MutableList<String>>()
+    gates.forEach { incoming[it.instanceId] = mutableListOf() }
+    circuit.wires.forEach { w ->
+        val to = w.to.instanceId
+        val from = w.from.instanceId
+        if (to.startsWith("__OUT_")) return@forEach
+        if (from.startsWith("__IN_")) return@forEach
+        if (incoming.containsKey(to)) incoming[to]?.add(from)
+    }
+    val depth = mutableMapOf<String, Int>()
+    fun dfs(id: String, visited: MutableSet<String>): Int {
+        if (id in depth) return depth[id]!!
+        if (id in visited) return 0
+        visited.add(id)
+        val d = (incoming[id]?.maxOfOrNull { dfs(it, visited) } ?: -1) + 1
+        visited.remove(id)
+        depth[id] = d
+        return d
+    }
+    var maxD = 0
+    gates.forEach { maxD = maxOf(maxD, dfs(it.instanceId, mutableSetOf())) }
+    return maxD.coerceAtLeast(0)
+}
+
 @Composable
 fun BitDot(isOne: Boolean, dotSize: androidx.compose.ui.unit.Dp = 8.dp) {
-    // Green = 1 (ON) matches Turing Complete screenshot where green dot = 1
     Box(modifier = Modifier.size(dotSize).clip(CircleShape).background(if (isOne) Color(0xFF22C55E) else Color(0xFFEF4444)))
 }
 
 @Composable
 fun BitDotRow(bits: List<Boolean>, dotSize: androidx.compose.ui.unit.Dp = 7.dp, maxDots: Int = 8) {
-    val display = if (bits.size > 1) bits.reversed() else bits // MSB left like screenshot
+    val display = if (bits.size > 1) bits.reversed() else bits
     Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
         display.take(maxDots).forEach { b -> BitDot(b, dotSize) }
         if (display.size > maxDots) Text(text = "+${display.size - maxDots}", fontSize = 8.sp, color = Color(0xFF6B7D96))
+    }
+}
+
+@Composable
+fun TuringBitDotsRow(bits: List<Boolean>, dotSize: androidx.compose.ui.unit.Dp = 8.dp, spacing: androidx.compose.ui.unit.Dp = 3.dp, maxDots: Int = 8) {
+    val display = if (bits.size > 1) bits.reversed() else bits
+    Row(horizontalArrangement = Arrangement.spacedBy(spacing), verticalAlignment = Alignment.CenterVertically) {
+        display.take(maxDots).forEach { b ->
+            Box(modifier = Modifier.size(dotSize).clip(CircleShape).background(if (b) Turing.bitGreen else Turing.bitRed).border(0.6.dp, Color.Black.copy(alpha = 0.3f), CircleShape))
+        }
+        if (display.size > maxDots) Text("+${display.size - maxDots}", fontSize = 8.sp, color = Color(0xFF6B7D96))
     }
 }
 
@@ -619,30 +702,28 @@ fun TuringInventoryBar(
     modifier: Modifier = Modifier
 ) {
     val rowScroll = rememberScrollState()
-    Column(modifier = modifier.background(Color(0xFF131C26), RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).padding(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rowScroll),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val filtered = allowed.filter { it in unlockedChips }.filter { chipId ->
-                if (selectedGroup == null) true else {
-                    val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
-                    def?.let { groupForCategory(it.category) == selectedGroup } ?: true
-                }
-            }.sortedBy { try { ChipLibrary.get(it).nandCost } catch (_: Exception) { 999 } }
+    Row(
+        modifier = modifier.horizontalScroll(rowScroll).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val filtered = allowed.filter { it in unlockedChips }.filter { chipId ->
+            if (selectedGroup == null) true else {
+                val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
+                def?.let { groupForCategory(it.category) == selectedGroup } ?: true
+            }
+        }.sortedBy { try { ChipLibrary.get(it).nandCost } catch (_: Exception) { 999 } }
 
-            filtered.forEach { chipId ->
-                TuringDraggableChipItem(
-                    chipId = chipId,
-                    chipOnDragStart = { id, g -> onChipDragStart(id, g) },
-                    chipOnDrag = { id, g -> onChipDrag(id, g) },
-                    chipOnDrop = { id, g -> onChipDrop(id, g) }
-                )
-            }
-            if (filtered.isEmpty()) {
-                Text("No chips in filter • select ALL", fontSize = 10.sp, color = Color(0xFF6B7D96), modifier = Modifier.padding(8.dp))
-            }
+        filtered.forEach { chipId ->
+            TuringDraggableChipItem(
+                chipId = chipId,
+                chipOnDragStart = { id, g -> onChipDragStart(id, g) },
+                chipOnDrag = { id, g -> onChipDrag(id, g) },
+                chipOnDrop = { id, g -> onChipDrop(id, g) }
+            )
+        }
+        if (filtered.isEmpty()) {
+            Text("No chips • ALL", fontSize = 10.sp, color = Color(0xFF6B7D96), modifier = Modifier.padding(8.dp))
         }
     }
 }
@@ -656,13 +737,13 @@ private fun TuringDraggableChipItem(
 ) {
     val def = ChipLibrary.get(chipId)
     val baseCol = when (def.category) {
-        ChipCategory.PRIMITIVE -> Color(0xFF1B3A4A)
-        ChipCategory.FOUNDATION -> Color(0xFF134E2D)
-        ChipCategory.ROUTING -> Color(0xFF5A3812)
-        ChipCategory.BUS -> Color(0xFF312A4A)
-        ChipCategory.ARITH -> Color(0xFF6B2A12)
-        ChipCategory.MEMORY -> Color(0xFF3A1A52)
-        ChipCategory.CPU -> Color(0xFF6B1437)
+        ChipCategory.PRIMITIVE -> Color(0xFF153A45)
+        ChipCategory.FOUNDATION -> Color(0xFF144A38)
+        ChipCategory.ROUTING -> Color(0xFF4A3514)
+        ChipCategory.BUS -> Color(0xFF2B284A)
+        ChipCategory.ARITH -> Color(0xFF5A2A14)
+        ChipCategory.MEMORY -> Color(0xFF3A1E52)
+        ChipCategory.CPU -> Color(0xFF5E1840)
     }
     val busW = def.dominantBusWidth()
     val busColor = when (busW) { 4 -> Color(0xFFFFA126); 8 -> Color(0xFF4FC3FF); else -> Color(0xFF2BE4B8) }
@@ -673,9 +754,9 @@ private fun TuringDraggableChipItem(
     Box(
         modifier = Modifier
             .onGloballyPositioned { c -> chipPosInWindow = c.positionInWindow() }
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(baseCol)
-            .border(if (isDragging) 1.6.dp else if (def.isBus) 1.dp else 0.6.dp, if (isDragging) Color.White else busColor.copy(alpha = if (def.isBus) 0.7f else 0.25f), RoundedCornerShape(8.dp))
+            .border(if (isDragging) 1.4.dp else if (def.isBus) 0.9.dp else 0.6.dp, if (isDragging) Color.White else busColor.copy(alpha = if (def.isBus) 0.65f else 0.28f), RoundedCornerShape(6.dp))
             .pointerInput(chipId) {
                 awaitPointerEventScope {
                     while (true) {
@@ -706,7 +787,7 @@ private fun TuringDraggableChipItem(
                     }
                 }
             }
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -714,7 +795,7 @@ private fun TuringDraggableChipItem(
                 if (busW > 1) Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(busColor))
                 Text(text = def.displayName, fontSize = 10.sp, color = Color.White)
             }
-            Text(text = "${def.inputs.size}→${def.outputs.size} ${def.nandCost}N", fontSize = 8.sp, color = Color.White.copy(alpha = 0.6f))
+            Text(text = "${def.inputs.size}→${def.outputs.size} ${def.nandCost}N", fontSize = 7.sp, color = Color.White.copy(alpha = 0.55f))
         }
     }
 }

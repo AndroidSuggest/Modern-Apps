@@ -4,9 +4,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -33,30 +30,60 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vayunmathur.games.logicgate.R
 import com.vayunmathur.games.logicgate.data.*
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-// ----- Palette: Turing Complete mobile -----
-private object Turing {
-    val bg = Color(0xFF111E2E)          // canvas deep
-    val grid = Color(0xFF1E344A)        // grid line
-    val gridDot = Color(0x14FFFFFF)
-    val inputRed = Color(0xFFD44A4A)    // big I/O circles
-    val inputBorder = Color(0xFFFF8A8A)
-    val outputRed = Color(0xFFD44A4A)
-    val outputBorder = Color(0xFFFF8A8A)
-    val gateBgDefault = Color(0xFF0F6D62)
-    val gateStroke = Color(0xFF46E6CF)
-    val bit = Color(0xFF7EE8C0)
-    val bus4 = Color(0xFFFFA231)
-    val bus8 = Color(0xFF60C0FF)
+// ----- Palette: Turing Complete reference (screenshot faithful) -----
+internal object Turing {
+    // Canvas is slate-blue from screenshot
+    val bg = Color(0xFF2B4D68)
+    val gridLine = Color(0xFF1E3C56)
+    val gridLine2 = Color(0xFF24435E)
+    val gridDot = Color(0x0DFFFFFF)
+
+    val headerBg = Color(0xFF2E2B44)
+    val headerPink = Color(0xFFE66A7E)
+
+    val leftPanelBg = Color(0xFF1D2A3A)
+    val leftPanelCard = Color(0xFF243447)
+    val leftPanelCardDeep = Color(0xFF1A2838)
+
+    val iconBarBg = Color(0xFF1C2C3E)
+    val iconBg = Color(0xFF22364D)
+    val iconActive = Color(0xFF2A4460)
+
+    val bottomBg = Color(0xFF2A2A44)
+    val bottomBgDeep = Color(0xFF24243C)
+
+    val inputRed = Color(0xFFC93B3B)
+    val inputRedDeep = Color(0xFF9F2E2E)
+    val inputBorder = Color(0xFFFF9A9A)
+
+    val gateTeal = Color(0xFF0F7A6E)
+    val gateTealDeep = Color(0xFF0C635A)
+    val gateStroke = Color(0xFF4BE8C6)
+    val gateLabel = Color.White
+
+    val bitGreen = Color(0xFF2ECC71)
+    val bitRed = Color(0xFFE74C4C)
+    val busOrange = Color(0xFFFFA53D)
+    val busBlue = Color(0xFF4FC3FF)
+    val busBlueDeep = Color(0xFF8AD8FF)
+
+    val wireThin = Color(0xFF3DD68A)
+    val wireOrange = Color(0xFFFFA53D)
+    val wireBlue = Color(0xFF4EC8FF)
+    val wireYellow = Color(0xFFFDE68A)
+
     val ghostOk = Color(0xFFFFFF00)
     val ghostBad = Color(0x66FFFFFF)
     val pinOut = Color(0xFFA7F3D0)
     val pinIn = Color.White
+    val orangeLabel = Color(0xFFF0A040)
+    val rightTabOn = Color(0xFF3D455C)
+    val rightTabOff = Color(0xFF1E2636)
 }
 
 data class GateBox(val chip: PlacedChip, val left: Float, val top: Float, val w: Float, val h: Float) {
@@ -80,11 +107,9 @@ data class GateBox(val chip: PlacedChip, val left: Float, val top: Float, val w:
         val gap = h / (count + 1)
         return Offset(w, gap * (i + 1))
     }
-    fun bodyContains(p: Offset): Boolean = p.x in left..left + w && p.y in top..top + h
 }
 
 data class TerminalBox(val idx: Int, val center: Offset, val name: String, val isInput: Boolean, val pillW: Float)
-data class HitOutput(val end: WireEnd, val pos: Offset)
 data class HitInput(val end: WireEnd, val pos: Offset)
 
 @Composable
@@ -120,18 +145,25 @@ fun CircuitCanvas(
     var canvasSizePx by remember { mutableStateOf(Size.Zero) }
 
     val pinHitR = with(density) { 28.dp.toPx() }
-    val termMoveHitR = with(density) { 56.dp.toPx() }
     val termWireDotR = with(density) { 26.dp.toPx() }
     val wireHitThreshold = with(density) { 34.dp.toPx() }
 
     fun gateSizeFor(def: ChipDef): Pair<Float, Float> {
+        // Match screenshot small rects: 72x28 for 3-pin etc
         val maxPins = max(def.inputCount, def.outputCount)
         val wDp = when {
-            maxPins > 8 -> 128.dp
-            maxPins > 4 -> 104.dp
-            else -> 88.dp
+            maxPins > 8 -> 124.dp
+            maxPins > 5 -> 98.dp
+            maxPins > 3 -> 80.dp
+            else -> 68.dp
         }
-        val hDp = if (maxPins <= 2) 46.dp else (18.dp * maxPins + 18.dp).coerceAtLeast(46.dp)
+        val hDp = when {
+            maxPins <= 1 -> 30.dp
+            maxPins == 2 -> 38.dp
+            maxPins == 3 -> 46.dp
+            maxPins == 4 -> 58.dp
+            else -> (13.dp * maxPins + 16.dp).coerceAtLeast(48.dp)
+        }
         return with(density) { wDp.toPx() to hDp.toPx() }
     }
 
@@ -172,8 +204,8 @@ fun CircuitCanvas(
         }
     }
 
-    fun dotForInput(t: TerminalBox): Offset = Offset(t.center.x + t.pillW / 2f - with(density) { 10.dp.toPx() }, t.center.y)
-    fun dotForOutput(t: TerminalBox): Offset = Offset(t.center.x - t.pillW / 2f + with(density) { 10.dp.toPx() }, t.center.y)
+    fun dotForInput(t: TerminalBox): Offset = Offset(t.center.x + 42f, t.center.y)
+    fun dotForOutput(t: TerminalBox): Offset = Offset(t.center.x - 42f, t.center.y)
 
     fun resolveSourceWith(boxes: Map<String, GateBox>, inLayouts: List<TerminalBox>, end: WireEnd): Offset? {
         if (end.instanceId.startsWith("__IN_")) {
@@ -197,7 +229,6 @@ fun CircuitCanvas(
     fun resolveSource(end: WireEnd): Offset? = resolveSourceWith(rectById, inputLayouts, end)
     fun resolveSink(end: WireEnd): Offset? = resolveSinkWith(rectById, outputLayouts, end)
 
-    // Live refs for background canvas gesture (so pointerInput(Unit) still sees latest)
     val gateBoxesRef = remember { mutableStateOf(gateBoxes) }
     val rectByIdRef = remember { mutableStateOf(rectById) }
     val chipDefsRef = remember { mutableStateOf(chipDefs) }
@@ -205,9 +236,7 @@ fun CircuitCanvas(
     val outputLayoutsRef = remember { mutableStateOf(outputLayouts) }
     val wiresRef = remember { mutableStateOf(wires) }
     val outputMapsRef = remember { mutableStateOf(outputMaps) }
-    val canvasSizeRef = remember { mutableStateOf(canvasSizePx) }
     val wiringFromRef = remember { mutableStateOf(wiringFrom) }
-    val dragGhostEndRef = remember { mutableStateOf(dragGhostLineEnd) }
 
     LaunchedEffect(gateBoxes, rectById, chipDefs, inputLayouts, outputLayouts, wires, outputMaps, canvasSizePx, wiringFrom, dragGhostLineEnd) {
         gateBoxesRef.value = gateBoxes
@@ -217,9 +246,7 @@ fun CircuitCanvas(
         outputLayoutsRef.value = outputLayouts
         wiresRef.value = wires
         outputMapsRef.value = outputMaps
-        canvasSizeRef.value = canvasSizePx
         wiringFromRef.value = wiringFrom
-        dragGhostEndRef.value = dragGhostLineEnd
     }
 
     val currentOnCreateWire by rememberUpdatedState(onCreateWire)
@@ -236,14 +263,12 @@ fun CircuitCanvas(
     val currentOnOutputMapDelete by rememberUpdatedState(onOutputMapDelete)
     val currentOnGhostLine by rememberUpdatedState(onGhostLine)
 
-    // Canvas size tracking Box
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Turing.bg)
             .onSizeChanged { canvasSizePx = Size(it.width.toFloat(), it.height.toFloat()) }
     ) {
-        // Bottom layer: grid + wires + ghost
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -251,20 +276,23 @@ fun CircuitCanvas(
                     fun resolveSrcLive(end: WireEnd): Offset? = resolveSourceWith(rectByIdRef.value, inputLayoutsRef.value, end)
                     fun resolveSnkLive(end: WireEnd): Offset? = resolveSinkWith(rectByIdRef.value, outputLayoutsRef.value, end)
                     fun closestWireLive(pos: Offset): Wire? {
-                        var best: Wire? = null; var bestD = wireHitThreshold
+                        var best: Wire? = null
+                        var bestD = wireHitThreshold
                         for (w in wiresRef.value) {
-                            val a = resolveSrcLive(w.from) ?: continue; val b = resolveSnkLive(w.to) ?: continue
-                            val d = distPointToBezier(pos, a, b)
+                            val a = resolveSrcLive(w.from) ?: continue
+                            val b = resolveSnkLive(w.to) ?: continue
+                            val d = distPointToOrth(pos, a, b)
                             if (d < bestD) { bestD = d; best = w }
                         }
                         return best
                     }
                     fun closestOMLive(pos: Offset): OutputMapping? {
-                        var best: OutputMapping? = null; var bestD = wireHitThreshold
+                        var best: OutputMapping? = null
+                        var bestD = wireHitThreshold
                         for (om in outputMapsRef.value) {
                             val a = resolveSrcLive(om.from) ?: continue
                             val b = outputLayoutsRef.value.find { it.idx == om.outputIndex }?.let { dotForOutput(it) } ?: continue
-                            val d = distPointToBezier(pos, a, b)
+                            val d = distPointToOrth(pos, a, b)
                             if (d < bestD) { bestD = d; best = om }
                         }
                         return best
@@ -283,7 +311,6 @@ fun CircuitCanvas(
                         for (t in outLayouts) if ((pos - dotForOutput(t)).getDistance() < termWireDotR) return HitInput(WireEnd("__OUT_${t.idx}", 0), dotForOutput(t))
                         return null
                     }
-
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -291,7 +318,6 @@ fun CircuitCanvas(
                             val cw = closestWireLive(downPos)
                             if (cw != null) {
                                 currentOnWireDelete(cw.id)
-                                // consume up
                                 while (true) {
                                     val ev = awaitPointerEvent()
                                     val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
@@ -309,7 +335,6 @@ fun CircuitCanvas(
                                 }
                                 continue
                             }
-                            // If wiring active, tap empty cancels or completes to input
                             if (wiringFromRef.value != null) {
                                 val hitIn = hitInputLive(downPos)
                                 if (hitIn != null && wiringFromRef.value!!.instanceId != hitIn.end.instanceId) {
@@ -325,7 +350,6 @@ fun CircuitCanvas(
                                 }
                                 continue
                             }
-                            // Ghost drag tracking when wiring active (second finger move after start)
                             var cur = downPos
                             var tracking = wiringFromRef.value != null
                             while (true) {
@@ -353,31 +377,36 @@ fun CircuitCanvas(
                 }
         ) {
             val cs = canvasSizePx
-            // grid
-            val gridStep = 68f
+            // grid - screenshot has big squares
+            val gridStep = 84f
             if (cs.width > 1f && cs.height > 1f) {
                 var x = 0f
                 while (x <= cs.width) {
-                    drawLine(Turing.grid, Offset(x, 0f), Offset(x, cs.height), strokeWidth = 1.1f)
+                    drawLine(Turing.gridLine, Offset(x, 0f), Offset(x, cs.height), strokeWidth = 1.2f)
                     x += gridStep
                 }
                 var y = 0f
                 while (y <= cs.height) {
-                    drawLine(Turing.grid, Offset(0f, y), Offset(cs.width, y), strokeWidth = 1.1f)
+                    drawLine(Turing.gridLine, Offset(0f, y), Offset(cs.width, y), strokeWidth = 1.2f)
                     y += gridStep
                 }
+                // subtle dot at intersections
                 var gx = 0f
                 while (gx < cs.width) {
                     var gy = 0f
-                    while (gy < cs.height) { drawCircle(Turing.gridDot, 1f, Offset(gx, gy)); gy += gridStep }
+                    while (gy < cs.height) {
+                        drawCircle(Turing.gridDot, 1.1f, Offset(gx, gy))
+                        gy += gridStep
+                    }
                     gx += gridStep
                 }
             }
-            // wires
+            // wires - orthogonal like Turing Complete
             for (w in wires) {
-                val a = resolveSource(w.from) ?: continue; val b = resolveSink(w.to) ?: continue
+                val a = resolveSource(w.from) ?: continue
+                val b = resolveSink(w.to) ?: continue
                 val (col, thick) = wireStyleForWidth(w.busWidth)
-                drawWire(a, b, col, false, thick)
+                drawOrthWire(a, b, col, thick, isGhost = false, dash = false)
             }
             for (om in outputMaps) {
                 val a = resolveSource(om.from) ?: continue
@@ -388,7 +417,7 @@ fun CircuitCanvas(
                     def?.outputPinWidth(om.from.pinIndex) ?: 1
                 } catch (_: Exception) { 1 }
                 val (_, thick) = wireStyleForWidth(srcWidth)
-                drawWire(a, b, Color(0xFFFDE68A), false, thick)
+                drawOrthWire(a, b, Turing.wireBlue, thick, false, false)
             }
             // ghost
             val gStart = wiringFrom?.let { resolveSource(it) }
@@ -406,18 +435,19 @@ fun CircuitCanvas(
                     if (!found) for (t in outputLayouts) if ((gEnd - dotForOutput(t)).getDistance() < termWireDotR + 6f) { found = true; break }
                     found
                 }
-                drawWire(gStart, gEnd, if (isOverInput) Turing.ghostOk else Turing.ghostBad, true, 3f, dash = true)
+                drawOrthWire(gStart, gEnd, if (isOverInput) Turing.ghostOk else Turing.ghostBad, 3f, true, true)
             } else if (wiringFrom != null) {
                 resolveSource(wiringFrom)?.let { drawCircle(Color.Yellow.copy(alpha = 0.28f), 22f, it) }
             }
         }
 
-        // Terminal layers (draggable circles)
+        // Terminals
         inputLayouts.forEach { t ->
-            DraggableTerminal(
+            TuringBigTerminal(
                 box = t,
                 isInput = true,
                 decimal = inputValues[t.idx],
+                inputWidth = try { level.inputWidth(t.idx) } catch (_: Exception) { 1 },
                 canvasSize = canvasSizePx,
                 wiringFrom = wiringFrom,
                 ghostEnd = dragGhostLineEnd,
@@ -428,7 +458,6 @@ fun CircuitCanvas(
                 onGhost = { off -> currentOnGhostLine(off) },
                 onCancel = { currentOnCancelWiring(); currentOnGhostLine(null) },
                 density = density,
-                textMeasurer = textMeasurer,
                 pinHitR = pinHitR,
                 termWireDotR = termWireDotR,
                 hitInputLive = { pos ->
@@ -439,21 +468,20 @@ fun CircuitCanvas(
                         val def = cDefs[box.chip.instanceId] ?: continue
                         for (j in 0 until def.inputCount) {
                             val pp = box.inputPos(j, def.inputCount)
-                            if ((pos - pp).getDistance() < pinHitR) return@DraggableTerminal HitInput(WireEnd(box.chip.instanceId, j), pp)
+                            if ((pos - pp).getDistance() < pinHitR) return@TuringBigTerminal HitInput(WireEnd(box.chip.instanceId, j), pp)
                         }
                     }
-                    for (ot in outLayouts) if ((pos - dotForOutput(ot)).getDistance() < termWireDotR) return@DraggableTerminal HitInput(WireEnd("__OUT_${ot.idx}", 0), dotForOutput(ot))
+                    for (ot in outLayouts) if ((pos - dotForOutput(ot)).getDistance() < termWireDotR) return@TuringBigTerminal HitInput(WireEnd("__OUT_${ot.idx}", 0), dotForOutput(ot))
                     null
-                },
-                dotForOutputLocal = { tt -> dotForOutput(tt) },
-                dotForInputLocal = { tt -> dotForInput(tt) }
+                }
             )
         }
         outputLayouts.forEach { t ->
-            DraggableTerminal(
+            TuringBigTerminal(
                 box = t,
                 isInput = false,
                 decimal = outputValues[t.idx] ?: desiredOutputValues[t.idx],
+                inputWidth = try { level.outputWidth(t.idx) } catch (_: Exception) { 1 },
                 canvasSize = canvasSizePx,
                 wiringFrom = wiringFrom,
                 ghostEnd = dragGhostLineEnd,
@@ -464,7 +492,6 @@ fun CircuitCanvas(
                 onGhost = { off -> currentOnGhostLine(off) },
                 onCancel = { currentOnCancelWiring(); currentOnGhostLine(null) },
                 density = density,
-                textMeasurer = textMeasurer,
                 pinHitR = pinHitR,
                 termWireDotR = termWireDotR,
                 hitInputLive = { pos ->
@@ -475,20 +502,18 @@ fun CircuitCanvas(
                         val def = cDefs[box.chip.instanceId] ?: continue
                         for (j in 0 until def.inputCount) {
                             val pp = box.inputPos(j, def.inputCount)
-                            if ((pos - pp).getDistance() < pinHitR) return@DraggableTerminal HitInput(WireEnd(box.chip.instanceId, j), pp)
+                            if ((pos - pp).getDistance() < pinHitR) return@TuringBigTerminal HitInput(WireEnd(box.chip.instanceId, j), pp)
                         }
                     }
-                    for (ot in outLayouts) if ((pos - dotForOutput(ot)).getDistance() < termWireDotR) return@DraggableTerminal HitInput(WireEnd("__OUT_${ot.idx}", 0), dotForOutput(ot))
+                    for (ot in outLayouts) if ((pos - dotForOutput(ot)).getDistance() < termWireDotR) return@TuringBigTerminal HitInput(WireEnd("__OUT_${ot.idx}", 0), dotForOutput(ot))
                     null
-                },
-                dotForOutputLocal = { tt -> dotForOutput(tt) },
-                dotForInputLocal = { tt -> dotForInput(tt) }
+                }
             )
         }
 
-        // Gates layer — each gate is its own draggable Box (guaranteed move works, like Alchemist DraggableElement)
+        // Gates layer
         gateBoxes.forEach { gBox ->
-            DraggableGate(
+            TuringGate(
                 gateBox = gBox,
                 chipDef = chipDefs[gBox.chip.instanceId],
                 canvasSize = canvasSizePx,
@@ -502,7 +527,6 @@ fun CircuitCanvas(
                 onGhost = { off -> currentOnGhostLine(off) },
                 onCancel = { currentOnCancelWiring(); currentOnGhostLine(null) },
                 density = density,
-                textMeasurer = textMeasurer,
                 pinHitR = pinHitR,
                 hitInputLive = { pos ->
                     val boxes = gateBoxesRef.value
@@ -512,22 +536,19 @@ fun CircuitCanvas(
                         val def = cDefs[box.chip.instanceId] ?: continue
                         for (j in 0 until def.inputCount) {
                             val pp = box.inputPos(j, def.inputCount)
-                            if ((pos - pp).getDistance() < pinHitR) return@DraggableGate HitInput(WireEnd(box.chip.instanceId, j), pp)
+                            if ((pos - pp).getDistance() < pinHitR) return@TuringGate HitInput(WireEnd(box.chip.instanceId, j), pp)
                         }
                     }
-                    for (ot in outLayouts) if ((pos - dotForOutput(ot)).getDistance() < termWireDotR) return@DraggableGate HitInput(WireEnd("__OUT_${ot.idx}", 0), dotForOutput(ot))
+                    for (ot in outLayouts) if ((pos - dotForOutput(ot)).getDistance() < termWireDotR) return@TuringGate HitInput(WireEnd("__OUT_${ot.idx}", 0), dotForOutput(ot))
                     null
-                },
-                gateBoxesRef = gateBoxesRef,
-                rectByIdRef = rectByIdRef,
-                dotForOutputLocal = { tt -> dotForOutput(tt) },
+                }
             )
         }
     }
 }
 
 @Composable
-private fun DraggableGate(
+private fun TuringGate(
     gateBox: GateBox,
     chipDef: ChipDef?,
     canvasSize: Size,
@@ -541,47 +562,29 @@ private fun DraggableGate(
     onGhost: (Offset?) -> Unit,
     onCancel: () -> Unit,
     density: androidx.compose.ui.unit.Density,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
     pinHitR: Float,
     hitInputLive: (Offset) -> HitInput?,
-    gateBoxesRef: MutableState<List<GateBox>>,
-    rectByIdRef: MutableState<Map<String, GateBox>>,
-    dotForOutputLocal: (TerminalBox) -> Offset,
 ) {
     val def = chipDef ?: return
     val id = gateBox.chip.instanceId
     var localPos by remember(id) { mutableStateOf(Offset(gateBox.left, gateBox.top)) }
     var dragging by remember(id) { mutableStateOf(false) }
-    // Sync from VM when not dragging
     LaunchedEffect(gateBox.left, gateBox.top) {
         if (!dragging) localPos = Offset(gateBox.left, gateBox.top)
     }
     val w = gateBox.w
     val h = gateBox.h
-
     Box(
         modifier = Modifier
             .offset { androidx.compose.ui.unit.IntOffset(localPos.x.toInt(), localPos.y.toInt()) }
             .size(with(density) { w.toDp() }, with(density) { h.toDp() })
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                when (def.category) {
-                    ChipCategory.PRIMITIVE -> Color(0xFF114A52)
-                    ChipCategory.FOUNDATION -> Color(0xFF14523E)
-                    ChipCategory.ROUTING -> Color(0xFF2A5A35)
-                    ChipCategory.BUS -> Color(0xFF342A68)
-                    ChipCategory.ARITH -> Color(0xFF6E3514)
-                    ChipCategory.MEMORY -> Color(0xFF4A1C6B)
-                    ChipCategory.CPU -> Color(0xFF7E163C)
-                }
-            )
-            .border(1.2.dp, if (dragging) Color.White else Turing.gateStroke.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(5.dp))
+            .background(Turing.gateTeal)
+            .border(1.4.dp, if (dragging) Color.White else Turing.gateStroke.copy(alpha = 0.78f), RoundedCornerShape(5.dp))
             .pointerInput(id) {
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        // If down near a pin, let pin composable handle wiring (child will consume first)
-                        // Check if down is very close to a pin — if so skip gate drag to allow wiring
                         var nearPin = false
                         for (j in 0 until def.inputCount) {
                             val lp = gateBox.inputPosLocal(j, def.inputCount)
@@ -594,7 +597,6 @@ private fun DraggableGate(
                             }
                         }
                         if (nearPin) {
-                            // let child handle; wait for up
                             while (true) {
                                 val ev = awaitPointerEvent()
                                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
@@ -611,18 +613,16 @@ private fun DraggableGate(
                             val ev = awaitPointerEvent()
                             val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                             if (ch.changedToUpIgnoreConsumed()) {
-                                if (!longHandled) {
-                                    if (total.getDistance() > 4f) {
-                                        val clamped = clampGate(start + total, w, h, canvasSize, 12.dp, density)
-                                        localPos = clamped
-                                        onMoveFinished(id, clamped.x, clamped.y)
-                                    }
+                                if (!longHandled && total.getDistance() > 4f) {
+                                    val clamped = clampGate(start + total, w, h, canvasSize, 12.dp, density)
+                                    localPos = clamped
+                                    onMoveFinished(id, clamped.x, clamped.y)
                                 }
                                 break
                             }
                             total = ch.position - down.position
                             val elapsed = System.currentTimeMillis() - downTime
-                            if (!longHandled && elapsed > 500 && total.getDistance() < 12f) {
+                            if (!longHandled && elapsed > 520 && total.getDistance() < 12f) {
                                 longHandled = true
                                 onDelete(id)
                                 break
@@ -640,46 +640,55 @@ private fun DraggableGate(
                 }
             }
     ) {
-        // Gate label
         Box(modifier = Modifier.fillMaxSize()) {
+            // top subtle highlight and bottom label bar like screenshot
             androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                // subtle top highlight like screenshot
-                drawRoundRect(Color.White.copy(alpha = 0.06f), Offset(0f, 0f), Size(w, 14f), CornerRadius(8f, 8f))
+                drawRoundRect(Turing.gateTealDeep, Offset(0f, size.height * 0.58f), Size(size.width, size.height * 0.42f), CornerRadius(0f, 0f))
+                drawRoundRect(Color.White.copy(alpha = 0.07f), Offset(0f, 0f), Size(size.width, 9f), CornerRadius(5f, 5f))
             }
-            // Name
+            // width badge top
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-7).dp)
+                    .size(18.dp, 12.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF103D4A))
+                    .border(0.7.dp, Turing.gateStroke.copy(alpha = 0.6f), RoundedCornerShape(3.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Text(text = "${def.dominantBusWidth()}", fontSize = 7.sp, color = Turing.gateStroke)
+            }
+            // name centered
             androidx.compose.material3.Text(
-                text = def.displayName.take(9),
-                fontSize = 10.sp,
+                text = def.displayName.take(6).uppercase(),
+                fontSize = if (def.inputs.size > 4) 7.sp else 8.5.sp,
                 color = Color.White,
-                modifier = Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 4.dp)
+                modifier = Modifier.align(Alignment.Center)
             )
+            // nand cost tiny top end
             androidx.compose.material3.Text(
-                text = "${def.nandCost}N",
-                fontSize = 7.sp,
-                color = Color.White.copy(alpha = 0.5f),
-                modifier = Modifier.align(Alignment.TopEnd).padding(end = 5.dp, top = 5.dp)
+                text = "${def.nandCost}",
+                fontSize = 6.sp,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.TopEnd).padding(end = 3.dp, top = 2.dp)
             )
-            // Input pins with wiring drag
+            // Inputs
             for (j in 0 until def.inputCount) {
                 val lp = gateBox.inputPosLocal(j, def.inputCount)
-                // Hover highlight when ghost near
-                val isHover = ghostEnd?.let { ge ->
-                    val absPos = localPos + lp
-                    (ge - absPos).getDistance() < pinHitR
-                } ?: false
+                val isHover = ghostEnd?.let { (localPos + lp - it).getDistance() < pinHitR } ?: false
                 Box(
                     modifier = Modifier
                         .offset { androidx.compose.ui.unit.IntOffset((lp.x - 10f).toInt(), (lp.y - 10f).toInt()) }
                         .size(20.dp)
                         .clip(CircleShape)
                         .background(if (isHover) Color.Yellow else Color.Transparent)
-                        .border(1.dp, if (isHover) Color.Yellow else Color.White.copy(alpha = 0.2f), CircleShape)
+                        .border(0.7.dp, if (isHover) Color.Yellow else Color.White.copy(alpha = 0.14f), CircleShape)
                         .pointerInput(id, j) {
                             awaitPointerEventScope {
                                 while (true) {
                                     val d = awaitFirstDown(requireUnconsumed = false)
                                     if ((d.position - Offset(10f, 10f)).getDistance() > pinHitR) {
-                                        // not on pin center, let parent drag handle
                                         while (true) {
                                             val ev = awaitPointerEvent()
                                             val ch = ev.changes.firstOrNull { it.id == d.id } ?: break
@@ -687,13 +696,10 @@ private fun DraggableGate(
                                         }
                                         continue
                                     }
-                                    // Pin tap: if wiring active, completes wire
                                     if (wiringFrom != null && wiringFrom.instanceId != id) {
                                         onCompleteWiring(wiringFrom, WireEnd(id, j))
                                         onGhost(null)
-                                    } else {
-                                        onCancel()
-                                    }
+                                    } else onCancel()
                                     while (true) {
                                         val ev = awaitPointerEvent()
                                         val ch = ev.changes.firstOrNull { it.id == d.id } ?: break
@@ -704,14 +710,13 @@ private fun DraggableGate(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (isHover) Color.Yellow else Color.White))
+                    Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(if (isHover) Color.Yellow else Color.White.copy(alpha = 0.9f)))
                 }
             }
-            // Output pins with wiring drag start
+            // Outputs
             for (j in 0 until def.outputCount) {
                 val lp = gateBox.outputPosLocal(j, def.outputCount)
                 val isSrc = wiringFrom?.instanceId == id && wiringFrom.pinIndex == j
-                val isHoverOut = ghostEnd == null && isSrc // glow when source active
                 Box(
                     modifier = Modifier
                         .offset { androidx.compose.ui.unit.IntOffset((lp.x - 10f).toInt(), (lp.y - 10f).toInt()) }
@@ -734,22 +739,16 @@ private fun DraggableGate(
                                     onStartWiring(WireEnd(id, j))
                                     onGhost(pinAbs)
                                     var cur = pinAbs
-                                    var total = Offset.Zero
                                     while (true) {
                                         val ev = awaitPointerEvent()
                                         val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                                         if (ch.changedToUpIgnoreConsumed()) {
-                                            // try create to input
                                             val hit = hitInputLive(cur)
-                                            if (hit != null && hit.end.instanceId != id) {
-                                                onCompleteWiring(WireEnd(id, j), hit.end)
-                                            } else {
-                                                onCancel()
-                                            }
+                                            if (hit != null && hit.end.instanceId != id) onCompleteWiring(WireEnd(id, j), hit.end) else onCancel()
                                             onGhost(null)
                                             break
                                         }
-                                        total = ch.position - down.position
+                                        val total = ch.position - down.position
                                         cur = pinAbs + total
                                         onGhost(cur)
                                         ch.consume()
@@ -759,8 +758,8 @@ private fun DraggableGate(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(modifier = Modifier.size(if (isSrc) 22.dp else 0.dp).clip(CircleShape).background(Color.Yellow.copy(alpha = 0.16f)))
-                    Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(if (isSrc) Color.Yellow else Turing.pinOut).border(1.dp, Color.Black.copy(alpha = 0.3f), CircleShape))
+                    if (isSrc) Box(modifier = Modifier.size(20.dp).clip(CircleShape).background(Color.Yellow.copy(alpha = 0.18f)))
+                    Box(modifier = Modifier.size(9.dp).clip(CircleShape).background(if (isSrc) Color.Yellow else Turing.pinOut).border(1.dp, Color.Black.copy(alpha = 0.35f), CircleShape))
                 }
             }
         }
@@ -768,10 +767,11 @@ private fun DraggableGate(
 }
 
 @Composable
-private fun DraggableTerminal(
+private fun TuringBigTerminal(
     box: TerminalBox,
     isInput: Boolean,
     decimal: Int?,
+    inputWidth: Int,
     canvasSize: Size,
     wiringFrom: WireEnd?,
     ghostEnd: Offset?,
@@ -782,39 +782,33 @@ private fun DraggableTerminal(
     onGhost: (Offset?) -> Unit,
     onCancel: () -> Unit,
     density: androidx.compose.ui.unit.Density,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
     pinHitR: Float,
     termWireDotR: Float,
     hitInputLive: (Offset) -> HitInput?,
-    dotForOutputLocal: (TerminalBox) -> Offset,
-    dotForInputLocal: (TerminalBox) -> Offset,
 ) {
     var center by remember(box.idx, box.center) { mutableStateOf(box.center) }
     var dragging by remember(box.idx) { mutableStateOf(false) }
     LaunchedEffect(box.center) { if (!dragging) center = box.center }
-
-    val radius = 40f
+    val radius = 44f
     val diameter = radius * 2f
-    val radiusDp = with(density) { radius.toDp() }
     val diamDp = with(density) { diameter.toDp() }
-
+    val isWiringSrc = wiringFrom?.instanceId == "__${if (isInput) "IN" else "OUT"}_${box.idx}"
     Box(
         modifier = Modifier
             .offset { androidx.compose.ui.unit.IntOffset((center.x - radius).toInt(), (center.y - radius).toInt()) }
             .size(diamDp)
             .clip(CircleShape)
             .background(Turing.inputRed)
-            .border(if (wiringFrom?.instanceId == "__${if (isInput) "IN" else "OUT"}_${box.idx}") 2.4.dp else 1.4.dp, if (wiringFrom?.instanceId == "__${if (isInput) "IN" else "OUT"}_${box.idx}" || (ghostEnd?.let { (it - center).getDistance() < termWireDotR + 10f } == true)) Color.Yellow else if (isInput) Turing.inputBorder else Turing.outputBorder, CircleShape)
+            .border(if (isWiringSrc) 2.2.dp else 1.3.dp, if (isWiringSrc || ghostEnd?.let { (it - center).getDistance() < 48f } == true) Color.Yellow else Turing.inputBorder, CircleShape)
             .pointerInput(box.idx) {
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val isNearDot = run {
-                            val dotLocal = if (isInput) Offset(diameter - 10f, radius) else Offset(10f, radius)
+                            val dotLocal = if (isInput) Offset(diameter - 12f, radius) else Offset(12f, radius)
                             (down.position - dotLocal).getDistance() < termWireDotR
                         }
                         if (isNearDot) {
-                            // Let dot handler manage (child) — wait for up to avoid double handling
                             while (true) {
                                 val ev = awaitPointerEvent()
                                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
@@ -847,57 +841,61 @@ private fun DraggableTerminal(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Label + decimal like screenshot red circles: value big, name small below
-        androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            androidx.compose.material3.Text(text = decimal?.toString() ?: box.name.take(4), fontSize = 10.sp, color = Color.White, maxLines = 1)
-            androidx.compose.material3.Text(text = box.name.take(7), fontSize = 7.sp, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
+        // width badge like screenshot: small blue rectangle at top
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-3).dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color(0xFF0E2F49))
+                .border(0.8.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(3.dp))
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.material3.Text(text = "$inputWidth", fontSize = 7.sp, color = Color.White)
         }
-        // Dot at edge
-        val dotOffset = if (isInput) Modifier.align(Alignment.CenterEnd).offset(x = (-4).dp) else Modifier.align(Alignment.CenterStart).offset(x = 4.dp)
+        // content: value big, name small
+        androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.material3.Text(text = decimal?.toString() ?: box.name.take(3), fontSize = 11.sp, color = Color.White, maxLines = 1)
+            androidx.compose.material3.Text(text = box.name.take(10), fontSize = 7.sp, color = Color.White.copy(alpha = 0.92f), maxLines = 1)
+        }
+        // wire dot at edge
+        val dotOffset = if (isInput) Modifier.align(Alignment.CenterEnd).offset(x = (-5).dp) else Modifier.align(Alignment.CenterStart).offset(x = 5.dp)
         Box(
             modifier = Modifier
                 .then(dotOffset)
                 .size(14.dp)
                 .clip(CircleShape)
-                .background(if (wiringFrom?.instanceId == "__${if (isInput) "IN" else "OUT"}_${box.idx}") Color.Yellow else if (isInput) Color(0xFF38BDF8) else Color(0xFFF87171))
-                .border(1.dp, Color.Black.copy(alpha = 0.4f), CircleShape)
+                .background(if (isWiringSrc) Color.Yellow else if (isInput) Color(0xFF38BDF8) else Color(0xFFF87171))
+                .border(1.dp, Color.Black.copy(alpha = 0.45f), CircleShape)
                 .pointerInput(box.idx, isInput) {
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val dotAbs = if (isInput) center + Offset(radius - 6f, 0f) else center + Offset(-radius + 6f, 0f)
+                            val dotAbs = if (isInput) center + Offset(radius - 9f, 0f) else center + Offset(-radius + 9f, 0f)
                             if (isInput) {
-                                // source: start wiring drag
                                 onStartWiring(WireEnd("__IN_${box.idx}", 0))
                                 onGhost(dotAbs)
                                 var cur = dotAbs
-                                var total = Offset.Zero
                                 while (true) {
                                     val ev = awaitPointerEvent()
                                     val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                                     if (ch.changedToUpIgnoreConsumed()) {
                                         val hit = hitInputLive(cur)
-                                        if (hit != null) {
-                                            onCompleteWiring(WireEnd("__IN_${box.idx}", 0), hit.end)
-                                        } else {
-                                            onCancel()
-                                        }
+                                        if (hit != null) onCompleteWiring(WireEnd("__IN_${box.idx}", 0), hit.end) else onCancel()
                                         onGhost(null)
                                         break
                                     }
-                                    total = ch.position - down.position
+                                    val total = ch.position - down.position
                                     cur = dotAbs + total
                                     onGhost(cur)
                                     ch.consume()
                                 }
                             } else {
-                                // sink: if wiring active, completes
                                 if (wiringFrom != null) {
                                     onCompleteWiring(wiringFrom, WireEnd("__OUT_${box.idx}", 0))
                                     onGhost(null)
-                                } else {
-                                    onCancel()
-                                }
+                                } else onCancel()
                                 while (true) {
                                     val ev = awaitPointerEvent()
                                     val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
@@ -911,21 +909,56 @@ private fun DraggableTerminal(
     }
 }
 
-private fun wireStyleForWidth(busWidth: Int): Pair<Color, Float> = when (busWidth) {
-    4 -> Turing.bus4 to 4.2f
-    8 -> Turing.bus8 to 5.8f
-    else -> Turing.bit to 2.8f
+private fun wireStyleForWidth(busWidth: Int): Pair<Color, Float> = when {
+    busWidth >= 8 -> Turing.wireBlue to 5.2f
+    busWidth >= 2 -> Turing.wireOrange to 3.8f
+    else -> Turing.wireThin to 2.6f
 }
 
-private fun DrawScope.drawWire(from: Offset, to: Offset, color: Color, isSelected: Boolean, thickPx: Float, dash: Boolean = false) {
+private fun DrawScope.drawOrthWire(from: Offset, to: Offset, color: Color, thickPx: Float, isGhost: Boolean, dash: Boolean) {
+    // Screenshot orthogonal: sharp 90 deg with small junction dots and tiny offset
+    // Path: from.x -> midX -> to.x, with vertical segment at midX
+    // Compute stub lengths
     val dx = to.x - from.x
-    val ctrl = min(180f, max(50f, abs(dx) * 0.58f))
-    val path = Path().apply { moveTo(from.x, from.y); cubicTo(from.x + ctrl, from.y, to.x - ctrl, to.y, to.x, to.y) }
-    if (isSelected || color.alpha > 0.5f) drawPath(path, color.copy(alpha = 0.14f), style = Stroke(width = thickPx + 5.2f))
-    if (dash) drawPath(path, color, style = Stroke(width = thickPx, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)))
-    else drawPath(path, color, style = Stroke(width = thickPx))
-    drawCircle(color, thickPx * 0.68f + 1f, to)
-    drawCircle(Color.Black.copy(alpha = 0.55f), 1.2f, to)
+    val stub = 18f
+    val midX = if (dx > 0) from.x + stub + 28f else from.x + stub
+    // Alternate: use 2-bend path if vertical distance large, else straight
+    val path = Path().apply {
+        moveTo(from.x, from.y)
+        // small horizontal out
+        lineTo(from.x + stub, from.y)
+        // if destination y differs significantly, go vertical then horizontal
+        if (abs(to.y - from.y) > 6f) {
+            // choose intermediate X clamped
+            val ix = if (abs(dx) < 50f) (from.x + to.x) / 2f else from.x + 32f + (dx * 0.15f).coerceIn(0f, 80f)
+            lineTo(ix, from.y)
+            lineTo(ix, to.y)
+            lineTo(to.x - 6f, to.y)
+        } else {
+            lineTo(to.x - 6f, to.y)
+        }
+        lineTo(to.x, to.y)
+    }
+    if (!isGhost) {
+        // glow underneath like screenshot slightly thicker darker
+        drawPath(path, color.copy(alpha = 0.18f), style = Stroke(width = thickPx + 4.5f))
+    }
+    if (dash) {
+        drawPath(path, color.copy(alpha = 0.9f), style = Stroke(width = thickPx, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 7f), 0f)))
+    } else {
+        drawPath(path, color, style = Stroke(width = thickPx))
+    }
+    // junction dots at bends (orange/blue small circles like screenshot)
+    drawCircle(color, thickPx * 0.55f + 1.2f, to)
+    drawCircle(Color.White.copy(alpha = 0.9f), 1.8f, to)
+    // intermediate junction dot if we had a bend
+    if (abs(to.y - from.y) > 18f) {
+        val ix = if (abs(dx) < 50f) (from.x + to.x) / 2f else from.x + 32f + (dx * 0.15f).coerceIn(0f, 80f)
+        drawCircle(color, 3.2f, Offset(ix, from.y))
+        drawCircle(color, 3.2f, Offset(ix, to.y))
+        drawCircle(Color.White.copy(alpha = 0.7f), 1f, Offset(ix, from.y))
+        drawCircle(Color.White.copy(alpha = 0.7f), 1f, Offset(ix, to.y))
+    }
 }
 
 private fun distPointToSegment(p: Offset, a: Offset, b: Offset): Float {
@@ -935,17 +968,24 @@ private fun distPointToSegment(p: Offset, a: Offset, b: Offset): Float {
     val proj = Offset(a.x + ab.x * t, a.y + ab.y * t)
     return (p - proj).getDistance()
 }
-private fun distPointToBezier(p: Offset, from: Offset, to: Offset): Float {
-    val dx = to.x - from.x; val ctrl = min(180f, max(50f, abs(dx) * 0.58f))
-    var best = Float.MAX_VALUE; var prev = from; val steps = 24
-    for (i in 1..steps) {
-        val t = i / steps.toFloat(); val mt = 1 - t
-        val x = mt * mt * mt * from.x + 3 * mt * mt * t * (from.x + ctrl) + 3 * mt * t * t * (to.x - ctrl) + t * t * t * to.x
-        val y = mt * mt * mt * from.y + 3 * mt * mt * t * from.y + 3 * mt * t * t * to.y
-        val cur = Offset(x, y); val d = distPointToSegment(p, prev, cur); if (d < best) best = d; prev = cur; if (best < 2f) return best
-    }
+private fun distPointToOrth(p: Offset, from: Offset, to: Offset): Float {
+    // approximate distance to our orthogonal polyline: use 3 segments
+    val dx = to.x - from.x
+    val stub = 18f
+    val ix = if (abs(dx) < 50f) (from.x + to.x) / 2f else from.x + 32f + (dx * 0.15f).coerceIn(0f, 80f)
+    val p1 = from
+    val p2 = Offset(from.x + stub, from.y)
+    val p3 = Offset(ix, from.y)
+    val p4 = Offset(ix, to.y)
+    val p5 = Offset(to.x, to.y)
+    var best = distPointToSegment(p, p1, p2)
+    best = min(best, distPointToSegment(p, p2, p3))
+    best = min(best, distPointToSegment(p, p3, p4))
+    best = min(best, distPointToSegment(p, p4, p5))
     return best
 }
+private fun distPointToBezier(p: Offset, from: Offset, to: Offset): Float = distPointToOrth(p, from, to)
+
 private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.awaitFirstDown(requireUnconsumed: Boolean = true): androidx.compose.ui.input.pointer.PointerInputChange {
     while (true) {
         val event = awaitPointerEvent()
