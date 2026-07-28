@@ -18,7 +18,7 @@
     <string name="cancel">Annuler</string>
     <string name="send_now">Envoyer maintenant</string>
     <string name="host_label">Serveur</string>
-    <string name="selected_count">%1$d sélectionné(s)</string>
+    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; sélectionné(s)</string>
     <string name="outbox_with_count">Boîte d\'envoi (%1$d)</string>
     <string name="outbox">Boîte d\'envoi</string>
     <string name="compose">Rédiger</string>
