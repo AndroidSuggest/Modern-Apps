@@ -34,18 +34,18 @@
     <string name="tab_play">玩</string>
     <string name="tab_puzzles">谜题</string>
     <string name="tab_learn">学习</string>
-    <string name="learn_stage_number">关卡 %1$d：%2$s</string>
+    <string name="learn_stage_number">关卡 &lt;xliff:g id=\"stage_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;：&lt;xliff:g id=\"stage_title\" example=\"Basics\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="learn_lets_go">开始吧！</string>
     <string name="learn_next">下一个</string>
     <string name="learn_retry">重试</string>
     <string name="learn_completed">太棒了！</string>
     <string name="learn_failed">未成功 — 请重试。</string>
-    <string name="learn_stage_complete_n">关卡 %1$d 完成</string>
-    <string name="learn_your_score">得分：%1$d</string>
-    <string name="learn_next_stage">下一个：%1$s</string>
+    <string name="learn_stage_complete_n">关卡 &lt;xliff:g id=\"stage_id\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; 完成</string>
+    <string name="learn_your_score">得分：&lt;xliff:g id=\"score\" example=\"350\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="learn_next_stage">下一个：&lt;xliff:g id=\"next_stage\" example=\"Tactics\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="learn_back_to_menu">返回菜单</string>
-    <string name="learn_progress">%1$d/%2$d</string>
-    <string name="puzzle_rating">评分 %1$d</string>
+    <string name="learn_progress">&lt;xliff:g id=\"done\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;/&lt;xliff:g id=\"total\" example=\"5\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="puzzle_rating">评分 &lt;xliff:g id=\"rating\" example=\"1200\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="puzzle_your_move">轮到您了 — 找出最佳走法。</string>
     <string name="puzzle_white_to_move">白方走。</string>
     <string name="puzzle_black_to_move">黑方走。</string>
