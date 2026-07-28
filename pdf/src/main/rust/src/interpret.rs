@@ -157,6 +157,14 @@ pub(crate) fn interpret_content(
     let mut stack: Vec<SavedState> = Vec::new();
     let mut q_overflow: usize = 0;
 
+    struct PendingClip {
+        even_odd: bool,
+        polys: Vec<Vec<(f64,f64)>>,
+        path_ops: Vec<PathOp>,
+    }
+
+    // single ClipPush per W op preserving holes via full path_ops (fix high #7)
+    #[inline]
     fn emit_one_clip(prims: &mut Vec<Prim>, pc: PendingClip, clip_depth: &mut usize, text_only: bool, oc_hidden: bool) {
         if text_only || oc_hidden { return; }
         if *clip_depth >= MAX_CLIP_DEPTH { return; }
@@ -175,12 +183,6 @@ pub(crate) fn interpret_content(
     let mut subpaths: Vec<Vec<(f64, f64)>> = Vec::new();
     let mut cur_user: (f64, f64) = (0.0, 0.0);
     let mut start_user: (f64, f64) = (0.0, 0.0);
-
-    struct PendingClip {
-        even_odd: bool,
-        polys: Vec<Vec<(f64,f64)>>,
-        path_ops: Vec<PathOp>, // bezier-retentive for v3 clip
-    }
     // OCG visibility stack: true=visible, false=hidden (marked content /OC)
     let mut oc_stack: Vec<bool> = Vec::new(); // true means currently invisible due to OCG suppression
     let mut group_depth: usize = 0;
@@ -358,39 +360,15 @@ pub(crate) fn interpret_content(
                 }
             }
             "W" => {
-                // Fix P0: multiple W without intervening paint must intersect.
-                // If a pending clip already exists, emit it as a ClipPush first
-                // so the new clip stacks (intersection) rather than overwriting.
-                if let Some(to_emit) = pending_clip.take() {
-                    if !text_only && !oc_stack.last().copied().unwrap_or(false) {
-                        for poly in to_emit.polys.iter() {
-                            if poly.len() >= 3 && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                                prims.push(Prim::ClipPush {
-                                    even_odd: to_emit.even_odd,
-                                    pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
-                                    path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
-                                });
-                                clip_depth += 1;
-                            }
-                        }
-                    }
+                // P0 fix: emit as single ClipPush preserving holes via path_ops (was per-poly loop)
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 pending_clip = Some(PendingClip { even_odd: false, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
             "W*" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    if !text_only && !oc_stack.last().copied().unwrap_or(false) {
-                        for poly in to_emit.polys.iter() {
-                            if poly.len() >= 3 && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                                prims.push(Prim::ClipPush {
-                                    even_odd: to_emit.even_odd,
-                                    pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
-                                    path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
-                                });
-                                clip_depth += 1;
-                            }
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 pending_clip = Some(PendingClip { even_odd: true, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
