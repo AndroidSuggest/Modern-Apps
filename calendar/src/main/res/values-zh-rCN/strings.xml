@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ok">确定</string>
-    <string name="app_name">Calendar</string>
+    <string name="app_name">日历</string>
     <string name="cancel">取消</string>
     <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"January\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
     <string name="date_range_format">&lt;xliff:g id=\"start_date\" example=\"Jan 1\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Jan 2\"&gt;%2$s&lt;/xliff:g&gt;</string>
