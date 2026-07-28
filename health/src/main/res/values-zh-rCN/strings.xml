@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="cancel">取消</string>
-    <string name="month_year_format">%1$s %2$d</string>
-    <string name="week_range">%1$s – %2$s</string>
+    <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
+    <string name="week_range"><xliff:g id="start_date" example="May 12">%1$s</xliff:g> – <xliff:g id="end_date" example="May 18">%2$s</xliff:g></string>
     <string name="app_name">Health</string>
-    <string name="unit_only_format">" %1$s"</string>
-    <string name="value_unit_space_format">%1$s %2$s</string>
-    <string name="k_format">%1$sk</string>
+    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
+    <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g>k</string>
     <string name="grant_permissions">授予权限</string>
     <string name="tab_day">日</string>
     <string name="tab_week">周</string>
     <string name="tab_month">月</string>
     <string name="tab_year">年</string>
     <string name="no_data_available">此时段没有可用数据</string>
-    <string name="unit_per_day_avg_format">%1$s 每日（平均）</string>
+    <string name="unit_per_day_avg_format">每天 <xliff:g id="unit" example="steps">%1$s</xliff:g>（平均）</string>
     <string name="metric_energy_burned">能量消耗</string>
     <string name="metric_active_calories">活动卡路里</string>
     <string name="metric_basal_metabolic_rate">基础代谢率</string>
@@ -46,10 +46,10 @@
     <string name="section_body_composition">身体成分</string>
     <string name="label_active">活动</string>
     <string name="label_today">今日</string>
-    <string name="slash_value_format">%1$s/%2$s</string>
-    <string name="dash_value_format">%1$s - %2$s</string>
-    <string name="hours_minutes_format">%1$dh %2$dm</string>
-    <string name="minutes_format">%1$dm</string>
+    <string name="slash_value_format"><xliff:g id="first" example="120">%1$s</xliff:g>/<xliff:g id="second" example="80">%2$s</xliff:g></string>
+    <string name="dash_value_format"><xliff:g id="min" example="60">%1$s</xliff:g> - <xliff:g id="max" example="140">%2$s</xliff:g></string>
+    <string name="hours_minutes_format"><xliff:g id="hours" example="7">%1$d</xliff:g>小时<xliff:g id="minutes" example="30">%2$d</xliff:g>分钟</string>
+    <string name="minutes_format"><xliff:g id="minutes" example="25">%1$d</xliff:g>分钟</string>
     <string name="label_steps">步数</string>
     <string name="label_wheelchair_pushes">轮椅推动次数</string>
     <string name="label_mindfulness">正念</string>
@@ -101,7 +101,7 @@
     <string name="recipe_name">食谱名称</string>
     <string name="add">添加</string>
     <string name="save_recipe">保存食谱</string>
-    <string name="set_quantity_for_format">为 %1$s 设置数量</string>
+    <string name="set_quantity_for_format">为 <xliff:g id="ingredient" example="Tomato">%1$s</xliff:g> 设置数量</string>
     <string name="quantity">数量</string>
     <string name="unit">单位</string>
     <string name="confirm">确认</string>
@@ -111,31 +111,31 @@
     <string name="metric_exercise_duration">锻炼</string>
     <string name="label_exercise">锻炼</string>
     <string name="no_workouts">未记录任何训练</string>
-    <string name="log_body_metric">记录 %1$s</string>
+    <string name="log_body_metric">记录 <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
     <string name="create_recipe">创建食谱</string>
     <string name="no_results_found">未找到结果</string>
     <string name="select_recipe">选择食谱</string>
-    <string name="original_1">原始：%1$s</string>
+    <string name="original_1">原始：<xliff:g id="original_name" example="Tomato">%1$s</xliff:g></string>
     <string name="segments">分段</string>
     <string name="saved_locally">已保存在本地</string>
     <string name="servings">份量</string>
     <string name="quantity_x_100g">数量（× 100克）</string>
     <string name="online">在线</string>
-    <string name="lap">第 %1$s 圈</string>
+    <string name="lap">第 <xliff:g id="lap_index" example="1">%1$s</xliff:g> 圈</string>
     <string name="hydration_cups">杯</string>
     <string name="add_your_first_ingredient">添加您的第一个配料</string>
     <string name="view_full_breakdown">查看完整明细</string>
     <string name="edit_recipe">编辑食谱</string>
-    <string name="meals_cal">%1$s 餐 · %2$s 卡路里</string>
+    <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> 餐 · <xliff:g id="total_cal" example="850">%2$s</xliff:g> 卡路里</string>
     <string name="ingredient">（配料）</string>
     <string name="downloaded">已下载</string>
     <string name="laps">圈数</string>
     <string name="calories">卡路里</string>
     <string name="hydration_ounces">盎司</string>
     <string name="hydration_liters">升</string>
-    <string name="kcal">%1$s / %2$s 千卡</string>
+    <string name="kcal"><xliff:g id="current_cal" example="1200">%1$s</xliff:g> / <xliff:g id="goal_cal" example="2000">%2$s</xliff:g> 千卡</string>
     <string name="no_meals_logged_today">今天未记录餐食</string>
-    <string name="reps">%1$s 次</string>
+    <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> 次</string>
     <string name="hydration_milliliters">毫升</string>
     <string name="route_recorded">路线已记录</string>
     <string name="create_your_first_recipe">创建您的第一个食谱</string>
