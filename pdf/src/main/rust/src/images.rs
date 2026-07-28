@@ -537,33 +537,18 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
             if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
             return Some(ImageData{ w: jw, h: jh, format: 0, data: rgba });
         }
-        // If JBIG2 decode fails, fallback to attempt chain decode? It will still be blank; we continue to allow placeholder path later
-        // But try to decode as if data was after ASCII filters
+        // If JBIG2 decode fails, try chain fallback then return transparent None (remove red placeholder artifact per P0 critical #6)
         let raw = stream.content.clone();
         if let Some(chain) = filters::decode_stream_chain(raw, &specs, doc) {
-            // chain may still be JBIG2; retry
-            if let Some((jw,jh,mut rgba)) = jbig2::decode_jbig2(&chain, globals_bytes.as_deref(), w, h) {
+            if let Some((jw, jh, mut rgba)) = jbig2::decode_jbig2(&chain, globals_bytes.as_deref(), w, h) {
                 let smask = read_smask(doc, dict, jw, jh);
                 apply_smask(&mut rgba, &smask);
                 if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
-                return Some(ImageData{ w: jw, h: jh, format: 0, data: rgba });
+                return Some(ImageData { w: jw, h: jh, format: 0, data: rgba });
             }
         }
-        // Instead of blank, emit placeholder gray box 100x100 with warning color per Phase 6
-        let pw = w.min(200);
-        let ph = h.min(200);
-        if (pw as usize)*(ph as usize) > crate::MAX_IMAGE_PIXELS { return None; }
-        let mut rgba = vec![0u8; (pw * ph * 4) as usize];
-        for y in 0..ph as usize {
-            for x in 0..pw as usize {
-                let idx = (y * pw as usize + x)*4;
-                // light gray with red border to indicate JBIG2 decode failure placeholder
-                let is_border = x<2 || y<2 || x>=pw as usize -2 || y>=ph as usize -2;
-                if is_border { rgba[idx]=200; rgba[idx+1]=0; rgba[idx+2]=0; rgba[idx+3]=255; }
-                else { rgba[idx]=0xCC; rgba[idx+1]=0xCC; rgba[idx+2]=0xCC; rgba[idx+3]=255; }
-            }
-        }
-        return Some(ImageData{ w: pw, h: ph, format: 0, data: rgba });
+        // P0 fix: don't emit gray+red placeholder, return None so page is transparent where JBIG2 failed
+        return None;
     }
 
     // JPEG2000 path
@@ -605,45 +590,35 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
                 }
             })
         };
-        // Try chain decode first for possible Ascii/Flate wrappers before CCITT?
+        // Try chain decode first for possible Ascii/Flate wrappers before CCITT
         let raw = stream.content.clone();
         let chain_bytes = filters::decode_stream_chain(raw.clone(), &specs, doc).unwrap_or(raw);
-        // If chain_bytes still seems compressed CCITT, try fax decoder
+        // If chain_bytes is CCITT, decode — fix #11 Columns vs Width: output raster is Columns, not max
         if let Some(packed) = filters::decode_ccitt(&chain_bytes, w, h, &params) {
-            // packed is 1-bit per pixel packed bits -> convert to RGBA
-            let row_bytes = ((params.columns.max(w) as usize +7)/8);
-            let rows = if params.rows>0 { params.rows as usize } else { h as usize };
-            let cols = params.columns.max(w) as usize;
-            let w_us = w as usize; // use PDF declared w? but columns may differ, use columns for raster width?
-            // Use columns as actual width for output, clamped to PDF w? Plan says legible for Columns=1728 fax
-            let out_w = params.columns.max(w);
-            let out_h = if params.rows>0 { params.rows } else { h };
-            if (out_w as usize)*(out_h as usize) > MAX_IMAGE_PIXELS { return None; }
-            let mut rgba = vec![0u8; (out_w * out_h *4) as usize];
-            // `decode_ccitt` already returns semantic 1-bit data (1 = black), so
-            // /BlackIs1 has been accounted for during decode and is not re-applied.
-            for y in 0..rows.min(out_h as usize) {
-                for x in 0..cols {
-                    let byte = packed.get(y*row_bytes + x/8).copied().unwrap_or(0);
-                    let bit = (byte >> (7 - (x%8))) &1;
-                    let black = bit==1;
-                    if black {
-                        // black pixel
-                        let idx = (y * out_w as usize + x)*4;
-                        if idx+3 < rgba.len() { rgba[idx]=0; rgba[idx+1]=0; rgba[idx+2]=0; rgba[idx+3]=255; }
-                    } else {
-                        let idx = (y * out_w as usize + x)*4;
-                        if idx+3 < rgba.len() { rgba[idx]=255; rgba[idx+1]=255; rgba[idx+2]=255; rgba[idx+3]=255; }
+            let columns = if params.columns > 0 { params.columns as usize } else { w as usize };
+            let rows_est = if params.rows > 0 { params.rows as usize } else { h as usize };
+            // Guard: packed already accounts for BlackIs1
+            let out_w = columns as u32;
+            let out_h = rows_est as u32;
+            if (out_w as usize) * (out_h as usize) > MAX_IMAGE_PIXELS { return None; }
+            let row_bytes = (columns + 7) / 8;
+            let mut rgba = vec![255u8; (out_w * out_h * 4) as usize]; // white init
+            for y in 0..rows_est {
+                for x in 0..columns {
+                    let byte = packed.get(y * row_bytes + x / 8).copied().unwrap_or(0);
+                    let bit = (byte >> (7 - (x % 8))) & 1;
+                    if bit == 1 {
+                        let idx = (y * out_w as usize + x) * 4;
+                        if idx + 3 < rgba.len() { rgba[idx] = 0; rgba[idx+1] = 0; rgba[idx+2] = 0; rgba[idx+3] = 255; }
                     }
                 }
             }
             let smask = read_smask(doc, dict, out_w, out_h);
             apply_smask(&mut rgba, &smask);
             if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
-            return Some(ImageData{ w: out_w, h: out_h, format: 0, data: rgba });
+            return Some(ImageData { w: out_w, h: out_h, format: 0, data: rgba });
         }
-        // CCITT decode failed: don't reinterpret the encoded fax data as raw
-        // 1-bit samples.
+        // CCITT decode failed: don't reinterpret the encoded fax data as raw 1-bit samples.
         return None;
     }
 

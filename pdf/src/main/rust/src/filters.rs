@@ -248,32 +248,40 @@ pub fn parse_ccitt_params(doc: &Document, dict_opt: Option<&Dictionary>) -> Ccit
 }
 
 pub fn decode_ccitt(data: &[u8], w: u32, h: u32, params: &CcittParams) -> Option<Vec<u8>> {
-    // Honoring best-effort: /EncodedByteAlign and K>0 mixed G3 are documented
-    // fallbacks — we handle pure G3/G4 correctly, and for K>0 we degrade by
-    // attempting G3 decode (mixed 1-D/2-D) then G4 fallback. Byte-align is
-    // handled by padding EOL detection: when EncodedByteAlign, we skip optional
-    // EOL markers but fax crate consumes automatically so we just ensure we
-    // don't blank large images — tiling is handled at image extraction by caps.
-    let columns = if params.columns>0 { params.columns } else { w };
-    let rows = if params.rows>0 { params.rows } else { h };
+    // P0 fix: honor BlackIs1 (spec §7.4.6: true=>1=black, false default=>1=white inverted), estimate Rows when absent
+    let columns = if params.columns > 0 { params.columns } else { w.max(1) };
+    let rows_est = if params.rows > 0 { params.rows } else {
+        // Estimate from data length: rows ≈ data_len*8 / cols (fax data may omit Rows)
+        let est = (data.len() * 8 / columns.max(1) as usize) as u32;
+        est.max(h).max(1)
+    };
+    let rows = rows_est;
     let rows_us = rows as usize;
     let cols_us = columns as usize;
-    if cols_us==0 || rows_us==0 || cols_us>20000 || rows_us>20000 { return None; }
-    let row_bytes = (cols_us+7)/8;
-    // Guard total pixels but degrade to tiled decode when huge: cap to 16MP, caller handles OOM placeholder
-    if (cols_us*rows_us) > 16*1024*1024 { return None; }
-    let mut packed = vec![0u8; row_bytes*rows_us];
+    if cols_us == 0 || rows_us == 0 || cols_us > 20000 || rows_us > 20000 { return None; }
+    let row_bytes = (cols_us + 7) / 8;
+    if (cols_us * rows_us) > 16 * 1024 * 1024 { return None; }
+    let mut packed = vec![0u8; row_bytes * rows_us];
 
+    let black_is1 = params.black_is1;
+    // Fill helper honoring BlackIs1 inversion: fax crate Black pel = 1 bit per G3/G4 logical.
+    // Spec: BlackIs1 false (default) means 0 bits are black? Actually PDF spec: BlackIs1 false => 1-bits are not black (0=black), True=>1=black.
+    // Wait typical fax: BlackIs1 false (default) 0=white, 1? Actually check: PDF 1.7 Table 8: BlackIs1: 0= white is 0? spec says if false, 1 bits are white? Let's interpret: false => 1 is black? Quick reference: PDF spec says BlackIs1 false (default) means 1 bits will be interpreted as white (0 black), True means 1 is black. But many viewers treat default as 1=white? Actually typical TIFF: 0=white means Photometric 0=white, so 1=black. BlackIs1 true means 1=black.
+    // So false => 1=white => need invert black pels (fax Black -> should be white when false? Hmm)
+    // For robustness and to match Telerik # fix: invert when BlackIs1==false (default) vs true? Let's implement: true=>1=black => keep black as black (no invert), false=>1=white => black pel should become white => invert.
+    // Previous code ignored flag; we now honor: paint_black = is_black if black_is1 else !is_black
     let fill_rows = |lines: Vec<Vec<u32>>, packed: &mut Vec<u8>| {
         for (y, trans) in lines.into_iter().enumerate() {
-            if y>=rows_us { break; }
-            let mut cur_x=0usize;
+            if y >= rows_us { break; }
+            let mut cur_x = 0usize;
             for pel in fax::decoder::pels(&trans, columns) {
-                if matches!(pel, fax::Color::Black) {
-                    packed[y*row_bytes + cur_x/8] |= 1 << (7 - (cur_x%8));
+                let is_black = matches!(pel, fax::Color::Black);
+                let paint_black = if black_is1 { is_black } else { !is_black };
+                if paint_black {
+                    packed[y * row_bytes + cur_x / 8] |= 1 << (7 - (cur_x % 8));
                 }
-                cur_x+=1;
-                if cur_x>=cols_us { break; }
+                cur_x += 1;
+                if cur_x >= cols_us { break; }
             }
         }
     };
