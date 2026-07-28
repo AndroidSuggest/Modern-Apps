@@ -76,6 +76,7 @@ pub(crate) fn render_annotation(doc: &Document, dict: &lopdf::Dictionary, base: 
             return;
         }
     };
+    // Fix P0 early return without fallback — if /AP present but N malformed, synthesize fallback
     let normal = match ap.get(b"N").ok().and_then(|o| deref(doc, o)) {
         Some(Object::Stream(s)) => s,
         Some(Object::Dictionary(states)) => {
@@ -85,10 +86,16 @@ pub(crate) fn render_annotation(doc: &Document, dict: &lopdf::Dictionary, base: 
                 .or_else(|| states.iter().next().map(|(_, v)| v));
             match picked.and_then(|o| deref(doc, o)) {
                 Some(Object::Stream(s)) => s,
-                _ => return,
+                _ => {
+                    synthesize_annotation_appearance(doc, dict, rect, base, prims);
+                    return;
+                }
             }
         }
-        _ => return,
+        _ => {
+            synthesize_annotation_appearance(doc, dict, rect, base, prims);
+            return;
+        }
     };
 
     let bbox = normal
@@ -417,7 +424,8 @@ pub(crate) fn normalize_rect(r: [f64; 4]) -> [f64; 4] {
     ]
 }
 
-/// Escape a string for use inside a PDF content-stream literal `(...)`.
+/// Escape a string for PDF literal — full escapes per spec §7.3.4.2: \n \r \t \b \f ( ) \
+/// Previous only escaped ( ) \ causing invalid streams for FreeText with newlines.
 pub(crate) fn escape_pdf_literal(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -425,32 +433,39 @@ pub(crate) fn escape_pdf_literal(s: &str) -> String {
             '(' => out.push_str("\\("),
             ')' => out.push_str("\\)"),
             '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{0008}' => out.push_str("\\b"),
+            '\u{000C}' => out.push_str("\\f"),
             _ => out.push(c),
         }
     }
     out
 }
 
-/// Decode a PDF text string (`/Contents`, `/V`): UTF-16BE if it has a BOM, else
-/// treated as Latin-1 (a superset-safe approximation of PDFDocEncoding).
+/// Decode PDF text string: handles BE BOM FE FF and LE BOM FF FE, else Latin-1/PDFDoc approximation.
+/// Fix: previously only BE, not LE.
 pub(crate) fn decode_pdf_text(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
-        let units: Vec<u16> = bytes[2..]
-            .chunks(2)
-            .map(|c| ((c[0] as u16) << 8) | *c.get(1).unwrap_or(&0) as u16)
-            .collect();
+        let units: Vec<u16> = bytes[2..].chunks(2).map(|c| ((c[0] as u16) << 8) | *c.get(1).unwrap_or(&0) as u16).collect();
+        String::from_utf16_lossy(&units)
+    } else if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
+        let units: Vec<u16> = bytes[2..].chunks(2).map(|c| (c[0] as u16) | ((*c.get(1).unwrap_or(&0) as u16) << 8)).collect();
         String::from_utf16_lossy(&units)
     } else {
+        // PDFDocEncoding vs Latin-1 difference mainly 0x80-0x9F, but mapping via win_ansi приближает
         bytes.iter().map(|&b| b as char).collect()
     }
 }
 
-/// Resources dictionary with a single Helvetica font under `/F1`.
+/// Resources with Helvetica /F1 plus WinAnsiEncoding for non-ASCII, per P0 #7
 pub(crate) fn helvetica_resources() -> Dictionary {
     let mut font = Dictionary::new();
     font.set("Type", name_obj("Font"));
     font.set("Subtype", name_obj("Type1"));
     font.set("BaseFont", name_obj("Helvetica"));
+    font.set("Encoding", name_obj("WinAnsiEncoding"));
     let mut fonts = Dictionary::new();
     fonts.set("F1", Object::Dictionary(font));
     let mut res = Dictionary::new();
