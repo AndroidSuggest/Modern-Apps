@@ -4,8 +4,11 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -272,29 +275,44 @@ fun HomeScreen(
                                                     contextMenuExpanded = true
                                                 }, onClick = {})
                                                 .pointerInput(item.id) {
-                                                    detectDragGestures(onDragStart = { startOffset ->
-                                                        draggingInventoryId = item.id
-                                                        val fingerInWindow =
-                                                            itemPosInWindow + startOffset
-                                                        draggingInventoryOffset = Offset(
-                                                            x = fingerInWindow.x - playAreaOffsetInWindow.x - 100f,
-                                                            y = fingerInWindow.y - playAreaOffsetInWindow.y - 100f
-                                                        )
-                                                    }, onDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        draggingInventoryOffset += dragAmount
-                                                    }, onDragEnd = {
-                                                        val limitY =
-                                                            bottomBarTopInWindow - playAreaOffsetInWindow.y - 48f
-                                                        if (draggingInventoryOffset.y < limitY) {
-                                                            viewModel.placeElement(
-                                                                item.id, draggingInventoryOffset
-                                                            )
+                                                    // Direction split (45°): horizontal drag -> let the LazyRow scroll;
+                                                    // vertical drag -> lift the item out to place it on the board.
+                                                    val slop = viewConfiguration.touchSlop
+                                                    awaitEachGesture {
+                                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                                        var total = Offset.Zero
+                                                        var decided = false
+                                                        var pullOut = false
+                                                        while (true) {
+                                                            val ev = awaitPointerEvent()
+                                                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                                            if (ch.changedToUpIgnoreConsumed()) {
+                                                                if (pullOut) {
+                                                                    val limitY = bottomBarTopInWindow - playAreaOffsetInWindow.y - 48f
+                                                                    if (draggingInventoryOffset.y < limitY) {
+                                                                        viewModel.placeElement(item.id, draggingInventoryOffset)
+                                                                    }
+                                                                }
+                                                                draggingInventoryId = null
+                                                                break
+                                                            }
+                                                            val dragAmount = ch.position - ch.previousPosition
+                                                            total += dragAmount
+                                                            if (!decided && total.getDistance() > slop) {
+                                                                decided = true
+                                                                if (kotlin.math.abs(total.y) > kotlin.math.abs(total.x)) {
+                                                                    pullOut = true
+                                                                    draggingInventoryId = item.id
+                                                                    val fingerInWindow = itemPosInWindow + ch.position
+                                                                    draggingInventoryOffset = Offset(
+                                                                        x = fingerInWindow.x - playAreaOffsetInWindow.x - 100f,
+                                                                        y = fingerInWindow.y - playAreaOffsetInWindow.y - 100f
+                                                                    )
+                                                                } else break // horizontal -> don't consume; LazyRow scrolls
+                                                            }
+                                                            if (pullOut) { ch.consume(); draggingInventoryOffset += dragAmount }
                                                         }
-                                                        draggingInventoryId = null
-                                                    }, onDragCancel = {
-                                                        draggingInventoryId = null
-                                                    })
+                                                    }
                                                 }
                                         ) {
                                             DynamicAlchemyIcon(item.id)
