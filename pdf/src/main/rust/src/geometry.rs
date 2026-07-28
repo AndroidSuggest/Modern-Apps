@@ -154,12 +154,10 @@ pub(crate) fn page_display_size(doc: &Document, page_id: ObjectId) -> (f32, f32)
     }
 }
 
-/// Inverse of an affine matrix `[a b c d e f]` (identity if singular).
-pub(crate) fn mat_inverse(m: &Mat) -> Mat {
+/// Inverse with Option: None if singular (determinant < eps)
+pub(crate) fn mat_inverse_checked(m: &Mat) -> Option<Mat> {
     let det = m[0] * m[3] - m[1] * m[2];
-    if det.abs() < 1e-12 {
-        return IDENTITY;
-    }
+    if det.abs() < 1e-12 { return None; }
     let inv = 1.0 / det;
     let a = m[3] * inv;
     let b = -m[1] * inv;
@@ -167,7 +165,12 @@ pub(crate) fn mat_inverse(m: &Mat) -> Mat {
     let d = m[0] * inv;
     let e = -(m[4] * a + m[5] * c);
     let f = -(m[4] * b + m[5] * d);
-    [a, b, c, d, e, f]
+    Some([a, b, c, d, e, f])
+}
+
+/// Inverse returning IDENTITY fallback (previous behavior) — now wraps checked
+pub(crate) fn mat_inverse(m: &Mat) -> Mat {
+    mat_inverse_checked(m).unwrap_or(IDENTITY)
 }
 
 /// Inverse base matrix for a page index, mapping displayed (editor) coordinates
