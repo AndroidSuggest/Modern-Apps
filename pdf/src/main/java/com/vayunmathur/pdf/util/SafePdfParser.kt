@@ -8,27 +8,26 @@ import java.nio.ByteOrder
  * Decodes the compact little-endian primitive buffer produced by the native
  * renderer ([PdfNative.renderPage]) into a [SafePdfPage].
  *
- * Wire format v8 (must stay in sync with `pdf/rust/src/wire.rs`):
+ * Wire format v9 (must stay in sync with `pdf/rust/src/wire.rs`):
  * ```
- * header: u32 MAGIC=0x50444657, u32 VERSION=8, f32 pageWidth, f32 pageHeight, u32 primitiveCount
+ * header: u32 MAGIC=0x50444657, u32 VERSION=9, f32 pageWidth, f32 pageHeight, u32 primitiveCount
  *  Legacy v1 fallback: header is f32 W,H,u32 count (no magic)
- *  v2..v7 fallbacks: same layout with fewer trailing per-primitive fields
+ *  v2..v9 fallbacks: same layout with fewer trailing fields for older cached pages
  * per primitive: u8 tag, then payload
- *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8 bit0 bold bit1 italic), f32 hScale (v8)
+ *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8 bold italic), f32 hScale (v8)
  *   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
- *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
- *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, u32 len, [bytes]
+ *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, y]..., u8 blend (v5)
+ *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, f32 alpha (v9 per-image alpha fix #2), u32 len, [bytes]
  *   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [...] (v4)
  *   6 ClipPop: empty
  *   7 GroupPush: u8 isolated, u8 knockout, f32 alpha, u8 blend
  *   8 GroupPop: empty
  *   9 TextClipApply: empty (v4)
- *   10 SoftMaskPush: u8 maskType (0 alpha, 1 luminosity) (v5)
+ *   10 SoftMaskPush: u8 maskType (0 alpha, 1 lum) (v5)
  *   11 SoftMaskContent: empty (v5)
  *   12 SoftMaskPop: empty (v5)
  * ```
- * Pure function -> unit-testable with no Android dependencies beyond [Offset].
- * Enforces count guards to avoid OOM: max 50k primitives. v8 adds font style.
+ * Pure function -> unit-testable. Guards via MAX_PRIMITIVES avoid OOM. v9 adds per-image alpha.
  */
 object SafePdfParser {
 
@@ -51,13 +50,14 @@ object SafePdfParser {
     private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 8
+    const val WIRE_VERSION: Int = 9
     private const val WIRE_VERSION_V2 = 2
     private const val WIRE_VERSION_V4 = 4
     private const val WIRE_VERSION_V5 = 5
     private const val WIRE_VERSION_V6 = 6
     private const val WIRE_VERSION_V7 = 7
     private const val WIRE_VERSION_V8 = 8
+    private const val WIRE_VERSION_V9 = 9
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -99,6 +99,7 @@ object SafePdfParser {
         val isV6 = wireVersion >= WIRE_VERSION_V6
         val isV7 = wireVersion >= WIRE_VERSION_V7
         val isV8 = wireVersion >= WIRE_VERSION_V8
+        val isV9 = wireVersion >= WIRE_VERSION_V9
         // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
         // forward-compat parsing as long as the tags are known.
         if (wireVersion !in 1..WIRE_VERSION) {
@@ -242,32 +243,35 @@ object SafePdfParser {
                     val w = buf.int
                     val h = buf.int
                     if (w <= 0 || h <= 0 || w > 20000 || h > 20000) {
-                        // Skip corrupt image payload if any? Need to know len; attempt to skip
                         if (buf.remaining() >= 5) {
-                            val fmt = buf.get().toInt()
+                            buf.get() // fmt
+                            if (isV9 && buf.remaining() >= 4) buf.float // alpha v9
                             val len = buf.int
-                            if (len >=0 && buf.remaining() >= len) {
-                                buf.position(buf.position()+len)
-                            }
+                            if (len >=0 && buf.remaining() >= len) buf.position(buf.position()+len)
                         }
                         return@repeat
                     }
                     if (w.toLong()*h.toLong() > 16*1024*1024) {
-                        // Too large, skip
                         if (buf.remaining() >= 5) {
-                            val fmt = buf.get().toInt()
+                            buf.get()
+                            if (isV9 && buf.remaining() >= 4) buf.float
                             val len = buf.int
                             if (len >=0 && buf.remaining() >= len) buf.position(buf.position()+len)
                         }
                         return@repeat
                     }
                     val format = buf.get().toInt()
+                    val imgAlpha = if (isV9) {
+                        if (buf.remaining() < 4) throw IllegalArgumentException("Image v9 alpha truncated")
+                        buf.float.coerceIn(0f,1f)
+                    } else 1f
                     val len = buf.int
                     if (len < 0 || len > 16*1024*1024) throw IllegalArgumentException("Image data length out of bounds $len")
                     if (buf.remaining() < len) throw IllegalArgumentException("Image data truncated")
                     val data = ByteArray(len)
                     buf.get(data)
-                    primitives.add(PdfPrimitive.Image(ctm, decodeBitmap(w, h, format, data)))
+                    val bmp = decodeBitmap(w, h, format, data)
+                    primitives.add(PdfPrimitive.Image(ctm, bmp, imgAlpha))
                 }
 
                 TAG_CLIP_PUSH -> {
@@ -315,7 +319,11 @@ object SafePdfParser {
                     primitives.add(PdfPrimitive.SoftMaskPop)
                 }
 
-                else -> throw IllegalArgumentException("Unknown primitive tag: $tag wireVersion=$wireVersion width=$width")
+                else -> {
+                    // P1 fix (#12 Kotlin audit): unknown tag should skip not crash whole page (forward compat)
+                    android.util.Log.w("SafePdfParser", "Unknown primitive tag $tag wireVersion=$wireVersion width=$width — skipping")
+                    // We cannot know payload length, so just skip this primitive
+                }
             }
         }
 
@@ -382,7 +390,10 @@ object SafePdfParser {
     }
 
     private fun readString(buf: ByteBuffer): String {
+        if (buf.remaining() < 2) throw IllegalArgumentException("readString header truncated")
         val len = buf.short.toInt() and 0xFFFF
+        if (len > 4096) throw IllegalArgumentException("readString length $len exceeds 4096 cap (v9 guard)")
+        if (buf.remaining() < len) throw IllegalArgumentException("readString truncated len=$len remaining=${buf.remaining()}")
         val b = ByteArray(len)
         buf.get(b)
         return String(b, Charsets.UTF_8)

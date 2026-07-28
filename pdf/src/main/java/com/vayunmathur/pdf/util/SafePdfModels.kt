@@ -18,7 +18,8 @@ enum class BlendMode(val code: Int) {
     ColorDodge(6), ColorBurn(7), HardLight(8), SoftLight(9), Difference(10),
     Exclusion(11), Hue(12), Saturation(13), Color(14), Luminosity(15);
     companion object {
-        fun fromCode(c: Int): BlendMode = values().find { it.code == c } ?: Normal
+        private val CODE_MAP: Map<Int, BlendMode> = entries.associateBy { it.code }
+        fun fromCode(c: Int): BlendMode = CODE_MAP[c] ?: Normal
     }
 }
 
