@@ -1,9 +1,7 @@
 use ash::vk;
 use std::ffi::CString;
-
 const BLOCK_VERT_SPV: &[u8] = include_bytes!("../../shaders/block.vert.spv");
 const BLOCK_FRAG_SPV: &[u8] = include_bytes!("../../shaders/block.frag.spv");
-
 pub struct Pipelines {
     pub layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
@@ -11,56 +9,56 @@ pub struct Pipelines {
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
 }
-
 impl Pipelines {
-    pub unsafe fn new(device: &ash::Device, swapchain_format: vk::Format, depth_format: vk::Format, ubo_buffer: vk::Buffer, ubo_size: u64, atlas_view: vk::ImageView, atlas_sampler: vk::Sampler) -> Result<Self, String> {
+    // Classic Vulkan 1.0 RenderPass path - no KHR_dynamic_rendering, avoids Unable to load cmd_begin_rendering
+    pub unsafe fn new(device: &ash::Device, render_pass: vk::RenderPass, ubo_buffer: vk::Buffer, ubo_size: u64, atlas_view: vk::ImageView, atlas_sampler: vk::Sampler) -> Result<Self, String> {
         let bindings = [
             vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
             vk::DescriptorSetLayoutBinding::default().binding(1).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT),
         ];
-        let dsl_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-        let descriptor_set_layout = device.create_descriptor_set_layout(&dsl_info, None).map_err(|e| format!("create dsl {e:?}"))?;
-        let layouts = [descriptor_set_layout];
-        let pl_info = vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts);
-        let layout = device.create_pipeline_layout(&pl_info, None).map_err(|e| format!("layout {e:?}"))?;
+        let dsl = device.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None).map_err(|e| format!("dsl {e:?}"))?;
+        let layouts = [dsl];
+        let layout = device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts), None).map_err(|e| format!("layout {e:?}"))?;
         let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(2), vk::DescriptorPoolSize::default().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(2)];
-        let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(2);
-        let descriptor_pool = device.create_descriptor_pool(&pool_info, None).map_err(|e| format!("pool {e:?}"))?;
-        let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(&layouts);
-        let sets = device.allocate_descriptor_sets(&alloc_info).map_err(|e| format!("alloc sets {e:?}"))?;
-        let descriptor_set = sets[0];
-        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer).offset(0).range(ubo_size);
-        let image_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(atlas_view).sampler(atlas_sampler);
-        let writes = [vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info)), vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(1).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&image_info))];
+        let pool = device.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(2), None).map_err(|e| format!("pool {e:?}"))?;
+        let sets = device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&layouts), None).map_err(|e| format!("alloc {e:?}"))?;
+        let set = sets[0];
+        let buf_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer).offset(0).range(ubo_size);
+        let img_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(atlas_view).sampler(atlas_sampler);
+        let writes = [
+            vk::WriteDescriptorSet::default().dst_set(set).dst_binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buf_info)),
+            vk::WriteDescriptorSet::default().dst_set(set).dst_binding(1).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&img_info))
+        ];
         device.update_descriptor_sets(&writes, &[]);
-        let vert_module = Self::create_module(device, BLOCK_VERT_SPV)?;
-        let frag_module = Self::create_module(device, BLOCK_FRAG_SPV)?;
-        let entry_name = CString::new("main").unwrap();
-        let stages = [vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vert_module).name(&entry_name), vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(frag_module).name(&entry_name)];
+        let vert_mod = Self::create_module(device, BLOCK_VERT_SPV)?;
+        let frag_mod = Self::create_module(device, BLOCK_FRAG_SPV)?;
+        let entry = CString::new("main").unwrap();
+        let stages = [
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vert_mod).name(&entry),
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(frag_mod).name(&entry)
+        ];
         let binding = crate::vulkan::buffers::Vertex::binding_description();
         let attrs = crate::vulkan::buffers::Vertex::attribute_descriptions();
-        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default().vertex_binding_descriptions(std::slice::from_ref(&binding)).vertex_attribute_descriptions(&attrs);
-        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-        let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
-        let raster = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::BACK).front_face(vk::FrontFace::COUNTER_CLOCKWISE).line_width(1.0);
-        let multisample = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(true).depth_compare_op(vk::CompareOp::LESS);
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA).blend_enable(true).src_color_blend_factor(vk::BlendFactor::SRC_ALPHA).dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA).color_blend_op(vk::BlendOp::ADD);
-        let color_blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&color_blend_attachment));
-        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-        let mut pipeline_rendering_info = vk::PipelineRenderingCreateInfo::default().color_attachment_formats(std::slice::from_ref(&swapchain_format)).depth_attachment_format(depth_format);
-        let pipeline_info = vk::GraphicsPipelineCreateInfo::default().stages(&stages).vertex_input_state(&vertex_input).input_assembly_state(&input_assembly).viewport_state(&viewport_state).rasterization_state(&raster).multisample_state(&multisample).depth_stencil_state(&depth_stencil).color_blend_state(&color_blend).dynamic_state(&dynamic).layout(layout).push_next(&mut pipeline_rendering_info);
-        let pipelines = device.create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None).map_err(|(_, e)| format!("create pipelines {e:?}"))?;
-        device.destroy_shader_module(vert_module, None);
-        device.destroy_shader_module(frag_module, None);
-        Ok(Self { layout, pipeline: pipelines[0], descriptor_set_layout, descriptor_pool, descriptor_set })
+        let vi = vk::PipelineVertexInputStateCreateInfo::default().vertex_binding_descriptions(std::slice::from_ref(&binding)).vertex_attribute_descriptions(&attrs);
+        let ia = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+        let vp_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
+        // Fix black: cull NONE because Vulkan Y flip (-1) inverts winding, old BACK culled everything
+        let raster = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).front_face(vk::FrontFace::COUNTER_CLOCKWISE).line_width(1.0);
+        let ms = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
+        let ds = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(true).depth_compare_op(vk::CompareOp::LESS);
+        let att = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA).blend_enable(true).src_color_blend_factor(vk::BlendFactor::SRC_ALPHA).dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA);
+        let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&att));
+        let dyn_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dyn_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dyn_states);
+        let pi = vk::GraphicsPipelineCreateInfo::default().stages(&stages).vertex_input_state(&vi).input_assembly_state(&ia).viewport_state(&vp_state).rasterization_state(&raster).multisample_state(&ms).depth_stencil_state(&ds).color_blend_state(&cb).dynamic_state(&dyn_state).layout(layout).render_pass(render_pass).subpass(0);
+        let pipes = device.create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pi), None).map_err(|(_, e)| format!("pipe {e:?}"))?;
+        device.destroy_shader_module(vert_mod, None);
+        device.destroy_shader_module(frag_mod, None);
+        Ok(Self{layout, pipeline: pipes[0], descriptor_set_layout: dsl, descriptor_pool: pool, descriptor_set: set})
     }
-    unsafe fn create_module(device: &ash::Device, spv_bytes: &[u8]) -> Result<vk::ShaderModule, String> {
-        if spv_bytes.len() % 4 != 0 { return Err("spv not aligned".into()); }
-        let code = unsafe { std::slice::from_raw_parts(spv_bytes.as_ptr() as *const u32, spv_bytes.len() / 4) };
-        let info = vk::ShaderModuleCreateInfo::default().code(code);
-        device.create_shader_module(&info, None).map_err(|e| format!("create shader module {e:?}"))
+    unsafe fn create_module(device: &ash::Device, spv: &[u8]) -> Result<vk::ShaderModule, String> {
+        let code = unsafe { std::slice::from_raw_parts(spv.as_ptr() as *const u32, spv.len()/4) };
+        device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None).map_err(|e| format!("mod {e:?}"))
     }
     pub unsafe fn destroy(&mut self, device: &ash::Device) {
         device.destroy_pipeline(self.pipeline, None);
