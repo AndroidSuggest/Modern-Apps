@@ -110,4 +110,7 @@
     <string name="az">方位角：</string>
     <string name="computing">正在计算…</string>
     <string name="done">完成</string>
+    <string name="disable_after">在此之后禁用</string>
+    <string name="enable_after">在此之后启用</string>
+    <string name="auto_toggle_never">从不</string>
 </resources>
