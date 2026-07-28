@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$SCRIPT_DIR"
+
+print_help() {
+  cat <<'EOF'
+Usage:
+  ./install [dev|release] <module> [module...]
+  ./install <module> [module...]            # defaults to dev
+
+Description:
+  Ergonomic wrapper around ./gradlew :module:installDev / installRelease.
+  - Variant is swappable and optional (defaults to dev)
+  - Supports both slash and colon notations: games/voxels == games:voxels
+  - Supports games shorthand: ./install voxels -> games:voxels (if games/<name> exists and root <name> does not)
+  - Supports multiple modules in one call (single gradlew invocation)
+
+Examples:
+  ./install dev contacts                    -> :contacts:installDev
+  ./install release games:voxels            -> :games:voxels:installRelease
+  ./install dev games/voxels                -> :games:voxels:installDev (slash normalized)
+  ./install dev :games:voxels:              -> :games:voxels:installDev (colon trimming)
+  ./install voxels                          -> :games:voxels:installDev (shorthand)
+  ./install contacts calendar               -> :contacts:installDev :calendar:installDev
+  ./install release contacts                -> :contacts:installRelease
+  ./install contacts dev                    -> :contacts:installDev (variant anywhere)
+  ./install --help
+  ./install --dry-run dev contacts          # prints what would run without executing gradle
+
+Variant rules (see .llms/rules/installing.md):
+  - dev (default): always use installDev unless explicitly asked for release
+  - release: use installRelease when explicitly requested
+  - debug: BLOCKED - never use installDebug
+
+Notes:
+  - NEVER uninstalls an app (no uninstall tasks)
+  - Validates modules against app modules (those applying common-conventions-app)
+  - Set INSTALL_DRY_RUN=1 or pass --dry-run for dry-run mode
+
+EOF
+}
+
+normalize_module() {
+  local m="$1"
+  m="$(echo "$m" | xargs)"
+  m="$(echo "$m" | sed -e 's|^[/:]*||' -e 's|[/:]*$||')"
+  m="$(echo "$m" | tr '/' ':')"
+  while echo "$m" | grep -q "::"; do
+    m="$(echo "$m" | sed 's/::/:/g')"
+  done
+  m="$(echo "$m" | tr '[:upper:]' '[:lower:]')"
+  echo "$m"
+}
+
+get_app_modules_slash() {
+  local settings_file="$ROOT/settings.gradle.kts"
+  if [[ ! -f "$settings_file" ]]; then
+    return
+  fi
+  grep -E 'include\(":[^"]+"\)' "$settings_file" 2>/dev/null \
+    | sed -E 's/.*include\(":([^"]+)"\).*/\1/' \
+    | tr ':' '/' \
+    | while IFS= read -r p; do
+        case "$p" in "" ) continue;; esac
+        if [[ -f "$ROOT/$p/build.gradle.kts" ]] && grep -q "common-conventions-app" "$ROOT/$p/build.gradle.kts" 2>/dev/null; then
+          echo "$p"
+        fi
+      done | sort -u
+}
+
+print_valid_modules() {
+  local slash_modules
+  slash_modules="$(get_app_modules_slash)"
+  if [[ -z "$slash_modules" ]]; then
+    echo "  (could not discover app modules)"
+    return
+  fi
+  echo ""
+  echo "Valid app modules (slash notation for filesystem, colon for Gradle):"
+  echo ""
+  printf "  %-30s %s\n" "Filesystem (slash)" "Gradle (colon)"
+  printf "  %-30s %s\n" "--------------------" "-------------------"
+  while IFS= read -r sm; do
+    case "$sm" in "" ) continue;; esac
+    colon_mod="$(echo "$sm" | tr '/' ':')"
+    printf "  %-30s :%s\n" "$sm" "$colon_mod"
+  done <<< "$slash_modules"
+  echo ""
+  echo "Tip: Use either notation: ./install dev games/voxels  OR  ./install dev games:voxels"
+  echo "Shorthand: ./install dev voxels  (if games/voxels exists and ./voxels does not)"
+}
+
+array_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# --- Handle zero args early (no array expansion needed) ---
+if [[ $# -eq 0 ]]; then
+  print_help
+  echo ""
+  echo "Error: No modules specified."
+  print_valid_modules
+  exit 1
+fi
+
+# --- Detect --help/-h/help anywhere (direct $@ loop, no array) ---
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h|help)
+      print_help
+      exit 0
+      ;;
+  esac
+done
+
+# --- Early DRY_RUN detection ---
+DRY_RUN=0
+if [[ "${INSTALL_DRY_RUN:-0}" == "1" ]]; then
+  DRY_RUN=1
+fi
+for arg in "$@"; do
+  if [[ "$arg" == "--dry-run" ]]; then
+    DRY_RUN=1
+  fi
+done
+
+# --- Build FILTERED_ARGS (exclude --dry-run) ---
+FILTERED_ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--dry-run" ]]; then
+    continue
+  fi
+  FILTERED_ARGS+=("$arg")
+done
+
+# After filtering, if empty (e.g., only --dry-run was passed)
+if [[ ${#FILTERED_ARGS[@]} -eq 0 ]]; then
+  print_help
+  echo ""
+  echo "Error: No modules specified (dry-run mode)."
+  print_valid_modules
+  exit 1
+fi
+
+# --- Arg parsing: variant detection anywhere ---
+VARIANT_LC=""
+VARIANT_COUNT=0
+MODULES_RAW=()
+
+idx=0
+while [[ $idx -lt ${#FILTERED_ARGS[@]} ]]; do
+  arg="${FILTERED_ARGS[$idx]}"
+  lc="$(echo "$arg" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$lc" == "dev" || "$lc" == "release" || "$lc" == "debug" ]]; then
+    if [[ -z "$VARIANT_LC" ]]; then
+      VARIANT_LC="$lc"
+      VARIANT_COUNT=1
+    else
+      if [[ "$VARIANT_LC" != "$lc" ]]; then
+        echo "Error: Multiple distinct variants specified: '$VARIANT_LC' and '$lc'."
+        echo "Please specify only one variant: dev or release."
+        echo ""
+        print_help
+        exit 1
+      fi
+      VARIANT_COUNT=$((VARIANT_COUNT + 1))
+    fi
+  else
+    MODULES_RAW+=("$arg")
+  fi
+  idx=$((idx + 1))
+done
+
+if [[ -z "$VARIANT_LC" ]]; then
+  VARIANT_LC="dev"
+fi
+
+if [[ "$VARIANT_LC" == "debug" ]]; then
+  echo "Error: 'debug' variant is blocked."
+  echo ""
+  echo "Per .llms/rules/installing.md:"
+  echo "  - NEVER uninstall an app EVER"
+  echo "  - Always install with the installDev task, unless specifically asked to installRelease task"
+  echo "  - never use installDebug"
+  echo ""
+  echo "Use 'dev' (default) or 'release' instead:"
+  echo "  ./install dev <module>"
+  echo "  ./install release <module>"
+  exit 1
+fi
+
+if [[ ${#MODULES_RAW[@]} -eq 0 ]]; then
+  echo "Error: No modules specified (only variant '$VARIANT_LC' found)."
+  echo ""
+  print_help
+  print_valid_modules
+  exit 1
+fi
+
+# --- Normalization + Dedup + Shorthand ---
+NORMALIZED_MODULES=()
+
+idx=0
+while [[ $idx -lt ${#MODULES_RAW[@]} ]]; do
+  raw="${MODULES_RAW[$idx]}"
+  norm="$(normalize_module "$raw")"
+  if [[ -z "$norm" ]]; then
+    echo "Warning: Skipping empty/invalid module token '$raw' after normalization."
+    idx=$((idx + 1))
+    continue
+  fi
+
+  if [[ "$norm" != *":"* ]]; then
+    if [[ ! -e "$ROOT/$norm" && -e "$ROOT/games/$norm" ]]; then
+      expanded="games:$norm"
+      echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found games/$norm)"
+      norm="$expanded"
+    fi
+  fi
+
+  # Dedup via index loop (bash 3.2 safe)
+  dup=0
+  j=0
+  while [[ $j -lt ${#NORMALIZED_MODULES[@]} ]]; do
+    if [[ "${NORMALIZED_MODULES[$j]}" == "$norm" ]]; then
+      dup=1
+      break
+    fi
+    j=$((j + 1))
+  done
+
+  if [[ $dup -eq 0 ]]; then
+    NORMALIZED_MODULES+=("$norm")
+  fi
+  idx=$((idx + 1))
+done
+
+if [[ ${#NORMALIZED_MODULES[@]} -eq 0 ]]; then
+  echo "Error: No valid modules after normalization."
+  print_valid_modules
+  exit 1
+fi
+
+# --- Validation ---
+INVALID_MODULES=()
+idx=0
+while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
+  mod="${NORMALIZED_MODULES[$idx]}"
+  fs_path="$(echo "$mod" | tr ':' '/')"
+  full_path="$ROOT/$fs_path"
+  if [[ ! -f "$full_path/build.gradle.kts" ]]; then
+    INVALID_MODULES+=("$mod (not found: $fs_path/build.gradle.kts)")
+  else
+    if ! grep -q "common-conventions-app" "$full_path/build.gradle.kts" 2>/dev/null; then
+      INVALID_MODULES+=("$mod (exists but is not an app module - missing common-conventions-app)")
+    fi
+  fi
+  idx=$((idx + 1))
+done
+
+if [[ ${#INVALID_MODULES[@]} -gt 0 ]]; then
+  echo "Error: Some modules are invalid:"
+  idx=0
+  while [[ $idx -lt ${#INVALID_MODULES[@]} ]]; do
+    echo "  - ${INVALID_MODULES[$idx]}"
+    idx=$((idx + 1))
+  done
+  print_valid_modules
+  exit 1
+fi
+
+# --- Build Gradle tasks ---
+VARIANT_CAP="$(echo "$VARIANT_LC" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+TASKS=()
+idx=0
+while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
+  mod="${NORMALIZED_MODULES[$idx]}"
+  TASKS+=(":${mod}:install${VARIANT_CAP}")
+  idx=$((idx + 1))
+done
+
+# Safe joining without ${ARRAY[*]} under set -u when empty (should not be empty here, but guard)
+modules_str=""
+tasks_str=""
+idx=0
+while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
+  if [[ $idx -gt 0 ]]; then
+    modules_str="$modules_str ${NORMALIZED_MODULES[$idx]}"
+  else
+    modules_str="${NORMALIZED_MODULES[$idx]}"
+  fi
+  idx=$((idx + 1))
+done
+idx=0
+while [[ $idx -lt ${#TASKS[@]} ]]; do
+  if [[ $idx -gt 0 ]]; then
+    tasks_str="$tasks_str ${TASKS[$idx]}"
+  else
+    tasks_str="${TASKS[$idx]}"
+  fi
+  idx=$((idx + 1))
+done
+
+echo "Variant: $VARIANT_LC (task suffix: install${VARIANT_CAP})"
+echo "Modules (${#NORMALIZED_MODULES[@]}): $modules_str"
+echo "Gradle tasks: $tasks_str"
+echo ""
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "[DRY-RUN] Would execute: $SCRIPT_DIR/gradlew $tasks_str"
+  exit 0
+fi
+echo "Running: $SCRIPT_DIR/gradlew $tasks_str"
+echo ""
+
+# Execute with all tasks expanded via index loop (preserving word splitting safety)
+set +u
+exec "$SCRIPT_DIR/gradlew" "${TASKS[@]}"
