@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Weather</string>
     <string name="search_location">搜索位置</string>
     <string name="confirm_delete">确认删除</string>
@@ -15,24 +15,24 @@
     <string name="not_enough_data_to_plot">数据不足，无法绘制。</string>
     <string name="detect_your_device_s_current_location_au">自动检测设备的当前位置并将其添加到列表中</string>
     <string name="metric_wind_speed">风速</string>
-    <string name="summary_expect_conditions">全天预计 %1$s。</string>
+    <string name="summary_expect_conditions">预计全天 &lt;xliff:g id=\"conditions\" example=\"light rain\"&gt;%1$s&lt;/xliff:g&gt;。</string>
     <string name="metric_pressure">气压</string>
     <string name="summary_showers_possible">晚些时候可能有阵雨。</string>
-    <string name="max_min">最高 %1$s 最低 %2$s</string>
+    <string name="max_min">最高 &lt;xliff:g id=\"max\" example=\"28°C\"&gt;%1$s&lt;/xliff:g&gt; 最低 &lt;xliff:g id=\"min\" example=\"14°C\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="condition_unknown">未知</string>
     <string name="metric_humidity">湿度</string>
     <string name="summary_mixed_conditions">混合天气</string>
     <string name="metric_uv_index">紫外线指数</string>
-    <string name="summary_high_low">最高 %1$s，最低 %2$s。</string>
+    <string name="summary_high_low">最高 &lt;xliff:g id=\"high\" example=\"24°C\"&gt;%1$s&lt;/xliff:g&gt;，最低 &lt;xliff:g id=\"low\" example=\"12°C\"&gt;%2$s&lt;/xliff:g&gt;。</string>
     <string name="condition_snow">雪</string>
     <string name="delete">删除</string>
     <string name="summary_slight_chance_rain">有小雨的可能。</string>
     <string name="metric_visibility">能见度</string>
     <string name="metric_temperature">温度</string>
-    <string name="from_gusts">来自 %1$s · 阵风 %2$s</string>
+    <string name="from_gusts">来自 &lt;xliff:g id=\"direction\" example=\"NW\"&gt;%1$s&lt;/xliff:g&gt; · 阵风 &lt;xliff:g id=\"gusts\" example=\"18 km/h\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="condition_clear">晴</string>
     <string name="metric_feels_like">体感温度</string>
-    <string name="feels_like">体感温度 %1$s</string>
+    <string name="feels_like">体感温度 &lt;xliff:g id=\"temp\" example=\"26°C\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="use_current_location">使用当前位置</string>
     <string name="condition_partly_cloudy">多云</string>
     <string name="condition_rain">雨</string>
@@ -51,4 +51,47 @@
     <string name="summary_title">摘要</string>
     <string name="location_permission_denied">位置权限被拒绝</string>
     <string name="locating">正在定位…</string>
+    <string name="precip_rain_in_min">约 <xliff:g id="minutes" example="15">%1$d</xliff:g> 分钟后下雨</string>
+    <string name="last_updated">最后更新于 <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
+    <string name="minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g> 分钟前</string>
+    <string name="hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g> 小时前</string>
+    <string name="days_ago"><xliff:g id="days" example="3">%1$d</xliff:g> 天前</string>
+    <string name="duration_h_m"><xliff:g id="hours" example="11">%1$d</xliff:g>小时<xliff:g id="minutes" example="30">%2$d</xliff:g>分钟</string>
+    <string name="weather_no_data">—</string>
+    <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
+    <string name="current_location">当前位置</string>
+    <string name="block_sun">太阳</string>
+    <string name="block_pollen">花粉</string>
+    <string name="block_wind">风</string>
+    <string name="block_air_quality">空气质量</string>
+    <string name="hourly_forecast">每小时预报</string>
+    <string name="daily_forecast">每日预报</string>
+    <string name="now">现在</string>
+    <string name="today">今天</string>
+    <string name="today_short">今天</string>
+    <string name="tomorrow_short">明天</string>
+    <string name="level_none">无</string>
+    <string name="level_low">低</string>
+    <string name="level_medium">中</string>
+    <string name="level_moderate">中等</string>
+    <string name="level_high">高</string>
+    <string name="level_very_high">很高</string>
+    <string name="level_extreme">极端</string>
+    <string name="level_severe">严重</string>
+    <string name="cloud_clear">晴</string>
+    <string name="cloud_mostly_clear">大部分晴</string>
+    <string name="cloud_partly_cloudy">多云</string>
+    <string name="cloud_mostly_cloudy">大部分多云</string>
+    <string name="cloud_overcast">阴天</string>
+    <string name="aqi_good">良好</string>
+    <string name="aqi_moderate">中等</string>
+    <string name="aqi_unhealthy_sensitive">不健康（敏感人群）</string>
+    <string name="aqi_unhealthy">不健康</string>
+    <string name="aqi_very_unhealthy">非常不健康</string>
+    <string name="aqi_hazardous">有害</string>
+    <string name="precip_raining_now">正在下雨</string>
+    <string name="precip_no_rain_next_2h">未来 2 小时无雨</string>
+    <string name="precip_rain_starting_now">即将开始下雨</string>
+    <string name="no_data_yet">暂无数据</string>
+    <string name="just_now">刚刚</string>
 </resources>
