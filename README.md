@@ -26,45 +26,45 @@ All APK files made by me will match this SHA-256 certificate:
 ### Acknowledgement of Bugs
 The v2.x.x versions of these apps are **all to be considered beta versions**. Lots of features/apps being done in a short period of time will inevitably result in some bugs here and there. All bug reports are appreciated, and any PRs to add fixes or new features (as long as not bloaty) are very appreciated. Version numbering will change to v3.x.x when all the apps are stable.
 
-# Download links:
+# Master Table:
 
 Every released and planned app is listed here:
 
 Though some apps may have exceptions, generally a 64-bit device running at least Android 12 is required.
 
-| App Name | F-Droid | Obtainium |
-| :--- | :---: | :---: |
-| **Astronomy** | In Progress | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Astronomy&packageName=com.vayunmathur.astronomy&apk=astronomy-release.apk) |
-| **Calendar** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.calendar) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Calendar&packageName=com.vayunmathur.calendar&apk=calendar-release.apk) |
-| **Camera** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.camera) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Camera&packageName=com.vayunmathur.camera&apk=camera-release.apk) |
-| **Clock** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.clock) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Clock&packageName=com.vayunmathur.clock&apk=clock-release.apk) |
-| **Contacts** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.contacts) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Contacts&packageName=com.vayunmathur.contacts&apk=contacts-release.apk) |
-| **EverySync** | In Progress | In Progress |
-| **Email** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.email) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Email&packageName=com.vayunmathur.email&apk=email-release.apk) |
-| **Find Family** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.findfamily) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Find%20Family&packageName=com.vayunmathur.findfamily&apk=findfamily-release.apk) |
-| **Maps** | In Progress | In Progress |
-| **Messages** | In Progress | In Progress |
-| **Music** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.music) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Music&packageName=com.vayunmathur.music&apk=music-release.apk) |
-| **Notes** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.notes) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Notes&packageName=com.vayunmathur.notes&apk=notes-release.apk) |
-| **Office** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.office) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Office&packageName=com.vayunmathur.office&apk=office-release.apk) |
-| **Open Assistant** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.openassistant) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=OpenAssistant&packageName=com.vayunmathur.openassistant&apk=openassistant-release.apk) |
-| **Passwords** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.passwords) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Passwords&packageName=com.vayunmathur.passwords&apk=passwords-release.apk) |
-| **PDF Reader** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.pdf) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=PDF&packageName=com.vayunmathur.pdf&apk=pdf-release.apk) |
-| **Photos** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.photos) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Photos&packageName=com.vayunmathur.photos&apk=photos-release.apk) |
-| **Travel** | In Progress | In Progress |
-| **Weather** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.weather) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Weather&packageName=com.vayunmathur.weather&apk=weather-release.apk) |
-| **YouPipe** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.youpipe) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=YouPipe&packageName=com.vayunmathur.youpipe&apk=youpipe-release.apk) |
+| App Name | Homepage | F-Droid | Obtainium |
+| :--- | :---: | :---: | :---: |
+| **Astronomy** | [Homepage](https://ma.vayunmathur.com/apps/astronomy) | In Progress | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Astronomy&packageName=com.vayunmathur.astronomy&apk=astronomy-release.apk) |
+| **Calendar** | [Homepage](https://ma.vayunmathur.com/apps/calendar) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.calendar) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Calendar&packageName=com.vayunmathur.calendar&apk=calendar-release.apk) |
+| **Camera** | [Homepage](https://ma.vayunmathur.com/apps/camera) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.camera) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Camera&packageName=com.vayunmathur.camera&apk=camera-release.apk) |
+| **Clock** | [Homepage](https://ma.vayunmathur.com/apps/clock) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.clock) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Clock&packageName=com.vayunmathur.clock&apk=clock-release.apk) |
+| **Contacts** | [Homepage](https://ma.vayunmathur.com/apps/contacts) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.contacts) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Contacts&packageName=com.vayunmathur.contacts&apk=contacts-release.apk) |
+| **EverySync** | [Homepage](https://ma.vayunmathur.com/apps/everysync) | In Progress | In Progress |
+| **Email** | [Homepage](https://ma.vayunmathur.com/apps/email) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.email) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Email&packageName=com.vayunmathur.email&apk=email-release.apk) |
+| **Find Family** | [Homepage](https://ma.vayunmathur.com/apps/findfamily) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.findfamily) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Find%20Family&packageName=com.vayunmathur.findfamily&apk=findfamily-release.apk) |
+| **Health** | [Homepage](https://ma.vayunmathur.com/apps/health) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.health) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Health&packageName=com.vayunmathur.health&apk=health-release.apk) |
+| **Maps** | [Homepage](https://ma.vayunmathur.com/apps/maps) | In Progress | In Progress |
+| **Messages** | [Homepage](https://ma.vayunmathur.com/apps/messages) | In Progress | In Progress |
+| **Music** | [Homepage](https://ma.vayunmathur.com/apps/music) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.music) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Music&packageName=com.vayunmathur.music&apk=music-release.apk) |
+| **Notes** | [Homepage](https://ma.vayunmathur.com/apps/notes) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.notes) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Notes&packageName=com.vayunmathur.notes&apk=notes-release.apk) |
+| **Office** | [Homepage](https://ma.vayunmathur.com/apps/office) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.office) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Office&packageName=com.vayunmathur.office&apk=office-release.apk) |
+| **Open Assistant** | [Homepage](https://ma.vayunmathur.com/apps/openassistant) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.openassistant) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=OpenAssistant&packageName=com.vayunmathur.openassistant&apk=openassistant-release.apk) |
+| **Passwords** | [Homepage](https://ma.vayunmathur.com/apps/passwords) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.passwords) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Passwords&packageName=com.vayunmathur.passwords&apk=passwords-release.apk) |
+| **PDF Reader** | [Homepage](https://ma.vayunmathur.com/apps/pdf) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.pdf) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=PDF&packageName=com.vayunmathur.pdf&apk=pdf-release.apk) |
+| **Photos** | [Homepage](https://ma.vayunmathur.com/apps/photos) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.photos) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Photos&packageName=com.vayunmathur.photos&apk=photos-release.apk) |
+| **Travel** | [Homepage](https://ma.vayunmathur.com/apps/travel) | In Progress | In Progress |
+| **Weather** | [Homepage](https://ma.vayunmathur.com/apps/weather) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.weather) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Weather&packageName=com.vayunmathur.weather&apk=weather-release.apk) |
+| **YouPipe** | [Homepage](https://ma.vayunmathur.com/apps/youpipe) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.youpipe) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=YouPipe&packageName=com.vayunmathur.youpipe&apk=youpipe-release.apk) |
 
-| **Games Hub** | In Progress | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Games%20Hub&packageName=com.vayunmathur.games.hub&apk=hub-release.apk) |
-| :--- | :---: | :---: |
-| **Alchemist** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.alchemist) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Alchemist&packageName=com.vayunmathur.games.alchemist&apk=alchemist-release.apk) |
-| **Chess** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.chess) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Chess&packageName=com.vayunmathur.games.chess&apk=chess-release.apk) |
-| **Logic Gate** | In Progress | In Progress |
-| **Pipes** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.pipes) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Pipes&packageName=com.vayunmathur.games.pipes&apk=pipes-release.apk) |
-| **Solitaire** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.solitaire) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Solitaire&packageName=com.vayunmathur.games.solitaire&apk=solitaire-release.apk) |
-| **Unblock Jam** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.unblockjam) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Unblock%20Jam&packageName=com.vayunmathur.games.unblockjam&apk=unblockjam-release.apk) |
-| **Word Maker** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.wordmaker) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Word%20Maker&packageName=com.vayunmathur.games.wordmaker&apk=wordmaker-release.apk) |
-| **Health** | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.health) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Health&packageName=com.vayunmathur.health&apk=health-release.apk) |
+| **Games Hub** | [Homepage](https://ma.vayunmathur.com/apps/games-hub) | In Progress | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Games%20Hub&packageName=com.vayunmathur.games.hub&apk=hub-release.apk) |
+| :--- | :---: | :---: | :---: |
+| **Alchemist** | [Homepage](https://ma.vayunmathur.com/apps/games-alchemist) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.alchemist) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Alchemist&packageName=com.vayunmathur.games.alchemist&apk=alchemist-release.apk) |
+| **Chess** | [Homepage](https://ma.vayunmathur.com/apps/games-chess) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.chess) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Chess&packageName=com.vayunmathur.games.chess&apk=chess-release.apk) |
+| **Logic Gate** | [Homepage](https://ma.vayunmathur.com/apps/games-logicgate) | In Progress | In Progress |
+| **Pipes** | [Homepage](https://ma.vayunmathur.com/apps/games-pipes) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.pipes) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Pipes&packageName=com.vayunmathur.games.pipes&apk=pipes-release.apk) |
+| **Solitaire** | [Homepage](https://ma.vayunmathur.com/apps/games-solitaire) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.solitaire) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Solitaire&packageName=com.vayunmathur.games.solitaire&apk=solitaire-release.apk) |
+| **Unblock Jam** | [Homepage](https://ma.vayunmathur.com/apps/games-unblockjam) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.unblockjam) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Unblock%20Jam&packageName=com.vayunmathur.games.unblockjam&apk=unblockjam-release.apk) |
+| **Word Maker** | [Homepage](https://ma.vayunmathur.com/apps/games-wordmaker) | [![F-Droid](https://img.shields.io/badge/F--Droid-Download-blue?logo=f-droid&style=flat-square)](https://f-droid.org/packages/com.vayunmathur.games.wordmaker) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Word%20Maker&packageName=com.vayunmathur.games.wordmaker&apk=wordmaker-release.apk) |
 
 # Contributions
 
@@ -72,64 +72,5 @@ Though some apps may have exceptions, generally a 64-bit device running at least
 Contribute to translations for these apps through the weblate project: https://hosted.weblate.org/projects/modern-apps/
 
 # App Feature Descriptions
-Just for the "interesting" apps
 
-## Email
-
-Supports any email provider and supports push notifications for emails (so you get emails immediately instead of waiting for the app to check in with the server again).
-
-## FindFamily
-
-iOS: https://apps.apple.com/us/app/find-family-secure-private/id6760863634
-
-### Features:
-- End-to-end encryption
-- No emails, phone numbers, or any other personal information required
-- Saved places, with notifications when people enter or leave them
-- See battery status / low battery notifications
-- Show how long person has been at place (saved or not)
-- See where you were at any point in the past
-- Temporary location sharing via link (opens in website)
-
-### In progress:
-- UWB Precision Finding (direction and distance)
-- Airtag-like hardware trackers
-
-## Maps
-Officially unreleased
-
-### Features
-- Offline Maps (download regions)
-- Display OSM data for POIs
-- Check Google Reviews Ratings for POIs
-- Search for nearby POIs
-- Offline routing for walking and biking
-- On-device driving routing (including traffic)
-- Offline routing for public transit (no live schedules though)
-
-### In progress:
-- Use live schedules for public transit
-
-## Office
-First ever FOSS full office suite for Android that uses modern Android UI.
-
-Supports viewing and editing documents in the odf family (odt, ods, odp, odg)
-
-If you are curious about how word processors / office software works, I would *highly* encourage reading the code here. It's actually only like 6 files, so it should be quite accessible even for beginners. I try to make all my code easily accessible for beginners (one of my goals here is to build easy-to-understand reference implementations of these apps too), but I had to point this one out for those who might feel intimidated by Android's first native Android word processor.
-
-## Messages
-The private aggregator for messaging apps. There exist other aggregators, but those apps run bridges on their own servers (privacy risk because your messages are or can be decrypted by the server), while this app runs the bridges on-device, preserving end-to-end encryption.
-
-Currently supports Google Messages, Whatsapp, and Google Voice with more services only partially supported.
-
-This is not actively being worked on, so I wouldn't recommend using it, and any issues relating to it will be closed. I may return to active development at some point in the future
-
-## OpenAssistant
-A 100% offline AI app that supports text, image, and audio input using the Gemma 4 models
-
-Also supports tool calling, which enables interactions with other apps in this ecosystem (reading and writing to notes, searching and playing music, etc.)
-
-## YouPipe
-A YouTube frontend using Material 3 You - based on the NewPipe Extractor library. Supports downloading videos, and and importing data directly from NewPipe or Youtube (via Google Takeout).
-
-Also includes a simple (will be improved as time goes on) algorithm to suggest videos you might like. The algorithm runs 100% on-device, and is based solely on watch history, subscriptions, and (eventually) explicit user input.
+Each app has its own homepage describing its features and relevant technical details. See the **Homepage** links in the download tables above, or browse them all at [ma.vayunmathur.com/apps](https://ma.vayunmathur.com/apps).
