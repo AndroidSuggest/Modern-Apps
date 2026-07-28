@@ -458,17 +458,8 @@ pub(crate) fn interpret_content(
                 cur_user = start_user;
             }
             "S" | "s" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len() >= 3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush {
-                                even_odd: to_emit.even_odd,
-                                pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
-                                path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
-                            });
-                            clip_depth += 1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if op.operator == "s" {
                     if let Some(sp) = subpaths.last_mut() {
@@ -489,17 +480,8 @@ pub(crate) fn interpret_content(
                 subpaths.clear(); clip_path_ops.clear();
             }
             "f" | "F" | "f*" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len() >=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush {
-                                even_odd: to_emit.even_odd,
-                                pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
-                                path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
-                            });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
                     let sm_start = prims.len();
@@ -516,17 +498,8 @@ pub(crate) fn interpret_content(
                 subpaths.clear(); clip_path_ops.clear();
             }
             "B" | "B*" | "b" | "b*" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush {
-                                even_odd: to_emit.even_odd,
-                                pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
-                                path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
-                            });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if op.operator.starts_with('b') {
                     if let Some(sp) = subpaths.last_mut() {
@@ -553,28 +526,14 @@ pub(crate) fn interpret_content(
                 subpaths.clear(); clip_path_ops.clear();
             }
             "n" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush {
-                                even_odd: to_emit.even_odd,
-                                pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(),
-                                path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } },
-                            });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 subpaths.clear(); clip_path_ops.clear();
             }
             "BI" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush { even_odd: to_emit.even_odd, pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(), path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } } });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
                     if let Some(Object::Stream(stream)) = o.first() {
@@ -587,13 +546,8 @@ pub(crate) fn interpret_content(
                 }
             }
             "Do" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush { even_odd: to_emit.even_odd, pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(), path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } } });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if let Some(Object::Name(name)) = o.first() {
                     if let Some(&id) = xobjects.get(name) {
@@ -811,13 +765,8 @@ pub(crate) fn interpret_content(
                     }
                     [x0, y0, x1, y1]
                 }).filter(|b| b[2] > b[0] && b[3] > b[1]);
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush { even_odd: to_emit.even_odd, pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(), path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } } });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if !text_only {
                     if let Some(Object::Name(name)) = o.first() {
@@ -887,13 +836,8 @@ pub(crate) fn interpret_content(
                 // outside charproc, but we honor d1/d0 as no-op without advancing pen.
             }
             "BT" => {
-                if let Some(to_emit) = pending_clip.take() {
-                    for poly in to_emit.polys.iter() {
-                        if poly.len()>=3 && !text_only && !oc_stack.last().copied().unwrap_or(false) && clip_depth < MAX_CLIP_DEPTH && shoelace_area(poly).abs() >= 1e-3 {
-                            prims.push(Prim::ClipPush { even_odd: to_emit.even_odd, pts: poly.iter().map(|&(x,y)| (x as f32, y as f32)).collect(), path_ops: { let ops = to_emit.path_ops.clone(); if ops.is_empty() { None } else { Some(ops) } } });
-                            clip_depth+=1;
-                        }
-                    }
+                if let Some(pc) = pending_clip.take() {
+                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 text_matrix = IDENTITY;
                 line_matrix = IDENTITY;
@@ -978,29 +922,35 @@ pub(crate) fn interpret_content(
                     let sm_start = prims.len();
                     let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
                     text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
-                    if gs.render_mode <= 2 { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
+                    // P0 fix #24/#25: soft-mask must also cover invisible-clip modes 4-6, not only 0-2
+                    let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
+                    if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
                 }
             }
             "'" => {
                 line_matrix = mat_mul(&translate(0.0, -leading), &line_matrix);
                 text_matrix = line_matrix;
                 if let Some(Object::String(bytes, _)) = o.first() {
+                    // P0 fix #24: soft-mask must apply to ' operator
+                    let sm_start = prims.len();
                     let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
                     text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
+                    if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
                 }
             }
             "\"" => {
-                if let Some(aw) = o.first().and_then(num) {
-                    gs.word_spacing = aw;
-                }
-                if let Some(ac) = o.get(1).and_then(num) {
-                    gs.char_spacing = ac;
-                }
+                if let Some(aw) = o.first().and_then(num) { gs.word_spacing = aw; }
+                if let Some(ac) = o.get(1).and_then(num) { gs.char_spacing = ac; }
                 line_matrix = mat_mul(&translate(0.0, -leading), &line_matrix);
                 text_matrix = line_matrix;
                 if let Some(Object::String(bytes, _)) = o.get(2) {
+                    // P0 fix #24: soft-mask must apply to " operator
+                    let sm_start = prims.len();
                     let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
                     text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
+                    if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
                 }
             }
             "TJ" => {
@@ -1009,8 +959,7 @@ pub(crate) fn interpret_content(
                     for el in arr {
                         match el {
                             Object::String(bytes, _) => {
-                                let adv =
-                                    show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
+                                let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
                                 text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
                             }
                             Object::Integer(_) | Object::Real(_) => {
@@ -1022,7 +971,8 @@ pub(crate) fn interpret_content(
                         }
                     }
                 }
-                if gs.render_mode <= 2 { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
+                let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
+                if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
             }
             // Explicit no-ops (documented): rendering intent, and compatibility
             // sections have no effect on our flat-primitive output.
