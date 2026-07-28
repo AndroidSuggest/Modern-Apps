@@ -12,14 +12,14 @@
     <string name="search">Otsi</string>
     <string name="no_title">(Pealkirja pole)</string>
     <string name="event_not_found">Sündmust ei leidu</string>
-    <string name="month_year_format">%1$s %2$d</string>
-    <string name="date_range_format">%1$s - %2$s</string>
-    <string name="date_time_range_format">%1$s • %2$s - %3$s</string>
-    <string name="full_date_time_range_format">%1$s, %2$s - %3$s, %4$s</string>
+    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"Jaanuar\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="date_range_format">&lt;xliff:g id=\"start_date\" example=\"Jan 1\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Jan 2\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"1. jan\"&gt;%1$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"start_time\" example=\"09:00\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="full_date_time_range_format">&lt;xliff:g id=\"start_date\" example=\"1. ja\"&gt;%1$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"start_time\" example=\"09:00\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"2. jan\"&gt;%3$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%4$s&lt;/xliff:g&gt;</string>
     <string name="twelve_am">12 el (AM)</string>
-    <string name="hour_am">%1$d el (AM)</string>
+    <string name="hour_am">&lt;xliff:g id=\"hour\" example=\"9\"&gt;%1$d&lt;/xliff:g&gt; el (AM)</string>
     <string name="twelve_pm">12 pl (PM)</string>
-    <string name="hour_pm">%1$d 12 pl (PM)</string>
+    <string name="hour_pm">&lt;xliff:g id=\"hour\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; pl (PM)</string>
     <string name="label_title">Pealkiri</string>
     <string name="label_description">Kirjeldus</string>
     <string name="label_location">Asukoht</string>
@@ -28,7 +28,7 @@
     <string name="does_not_repeat">Ei kordu</string>
     <string name="repeats">Kordub</string>
     <string name="no_account">(Kasutajakontot pole)</string>
-    <string name="calendar_id_label">Tunnus: %1$d</string>
+    <string name="calendar_id_label">Tunnus: &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="choose_calendar">Vali kalender</string>
     <string name="local_account">(Kohalik)</string>
     <string name="go_to_date">Vaata kuupäeva</string>
