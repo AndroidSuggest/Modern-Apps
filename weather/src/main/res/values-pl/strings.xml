@@ -9,4 +9,5 @@
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
     <string name="map_time">Czas</string>
     <string name="weather_widget_description">Aktualny czas, data i pogoda na pierwszy rzut oka — dotknij, aby zobaczyć prognozę</string>
+    <string name="delete">Usuń</string>
 </resources>
