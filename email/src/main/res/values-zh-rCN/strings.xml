@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Email</string>
+    <string name="app_name">电子邮件</string>
     <string name="all_accounts">所有账号</string>
     <string name="add_account">添加账号</string>
     <string name="logout_current_account">退出登录当前账号</string>
