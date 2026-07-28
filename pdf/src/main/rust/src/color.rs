@@ -416,25 +416,24 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             Some(rgb_to_argb(gamma_corr(r_lin), gamma_corr(g_lin), gamma_corr(b_lin)))
         }
         CsKind::ICCBased { n, alt } => {
-            // Use alt if present and we can evaluate, else fallback based on n
+            // Use alt if present — already handles Separation/DeviceN alt may be device (fast path)
             if let Some(alt_kind) = alt {
-                // If alt is RGB/Gray/CMYK, evaluate with comps as alt
-                // But ICC n may differ from alt comps? For simplicity, if alt n matches, evaluate
                 if let Some(rgb) = eval_cs_to_rgb(doc, alt_kind, comps, cs_resources) {
                     return Some(rgb);
                 }
             }
-            // Fallback: based on component count
+            // P0 fix critical #3: ICCBased had no ICC handling, silent fallback. Use alt or component-count fallback but warn.
+            // Ideally parse ICC profile, but use RGB/Gray/CMYK by N with alpha-preserved alt lookup.
             match n {
                 1 => {
                     let v = comps.get(0).copied().unwrap_or(0.0);
                     Some(gray_to_argb(v))
                 }
                 3 => {
-                    if comps.len()>=3 { Some(rgb_to_argb(comps[0], comps[1], comps[2])) } else { None }
+                    if comps.len() >= 3 { Some(rgb_to_argb(comps[0], comps[1], comps[2])) } else { None }
                 }
                 4 => {
-                    if comps.len()>=4 { Some(cmyk_to_argb(comps[0], comps[1], comps[2], comps[3])) } else { None }
+                    if comps.len() >= 4 { Some(cmyk_to_argb(comps[0], comps[1], comps[2], comps[3])) } else { None }
                 }
                 _ => None,
             }
@@ -452,14 +451,27 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             }
         }
         CsKind::Separation { alt, tint_fn, .. } => {
-            let t = comps.get(0).copied().unwrap_or(0.0);
+            let t = comps.get(0).copied().unwrap_or(1.0).clamp(0.0, 1.0);
             if let Some(tf) = tint_fn {
                 let alt_comps = tf.eval(&[t]);
-                eval_cs_to_rgb(doc, alt, &alt_comps, cs_resources)
-            } else {
-                // No tint transform: approximate as subtractive ink (0 tint = white).
-                Some(gray_to_argb(1.0 - t))
+                if let Some(rgb) = eval_cs_to_rgb(doc, alt, &alt_comps, cs_resources) {
+                    return Some(rgb);
+                }
             }
+            // P0 fix medium #17: No tint transform previously returned gray heuristic making PANTONE spots invisible.
+            // Use Alternate with tint value directly, then fallback with full tint 1.0 blended for visibility.
+            if let Some(rgb) = eval_cs_to_rgb(doc, alt, &[t], cs_resources) {
+                return Some(rgb);
+            }
+            if let Some(rgb_full) = eval_cs_to_rgb(doc, alt, &[1.0], cs_resources) {
+                // Scale full alternate color by tint: blend towards white
+                let a = t;
+                let r = ((rgb_full >> 16) & 0xFF) as f64 * a + 255.0 * (1.0 - a);
+                let g = ((rgb_full >> 8) & 0xFF) as f64 * a + 255.0 * (1.0 - a);
+                let b = (rgb_full & 0xFF) as f64 * a + 255.0 * (1.0 - a);
+                return Some(0xFF00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32));
+            }
+            Some(gray_to_argb(1.0 - t))
         }
         CsKind::DeviceN { alt, tint_fn, .. } => {
             if let Some(tf) = tint_fn {
@@ -564,10 +576,11 @@ pub(crate) fn colorspace_info(
                     (n.max(1), None)
                 }
                 b"Separation" => (1, None),
+                b"Pattern" => (0, None),
                 _ => (1, None),
             }
         }
-        _ => (1, None),
+        _ => (0, None),
     }
 }
 

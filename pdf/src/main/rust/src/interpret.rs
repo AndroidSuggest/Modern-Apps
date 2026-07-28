@@ -1196,7 +1196,8 @@ pub(crate) fn paint_pattern_stroke(
     let sx = (ctm[0]*ctm[0] + ctm[1]*ctm[1]).sqrt();
     let sy = (ctm[2]*ctm[2] + ctm[3]*ctm[3]).sqrt();
     let scale = (sx + sy) / 2.0;
-    let hw = ((gs.line_width * scale) / 2.0).max(0.35);
+    // P0 fix medium #23: don't enlarge hairlines via min 0.35 – keep true width, Kotlin handles 1 device px hairline
+    let hw = (gs.line_width * scale) / 2.0;
 
     let quads = stroke_outline_quads(subpaths, hw);
     let stroke_bbox = polys_device_bbox(subpaths);
