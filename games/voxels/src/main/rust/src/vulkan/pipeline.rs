@@ -2,9 +2,12 @@ use ash::vk;
 use std::ffi::CString;
 const BLOCK_VERT_SPV: &[u8] = include_bytes!("../../shaders/block.vert.spv");
 const BLOCK_FRAG_SPV: &[u8] = include_bytes!("../../shaders/block.frag.spv");
+const SKY_VERT_SPV: &[u8] = include_bytes!("../../shaders/sky.vert.spv");
+const SKY_FRAG_SPV: &[u8] = include_bytes!("../../shaders/sky.frag.spv");
 pub struct Pipelines {
     pub layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
+    pub sky_pipeline: vk::Pipeline,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
@@ -21,7 +24,7 @@ impl Pipelines {
         let layout = device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts), None).map_err(|e| format!("layout {e:?}"))?;
         let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(2), vk::DescriptorPoolSize::default().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(2)];
         let pool = device.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(2), None).map_err(|e| format!("pool {e:?}"))?;
-        let sets = device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&layouts), None).map_err(|e| format!("alloc {e:?}"))?;
+        let sets = device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&layouts)).map_err(|e| format!("alloc {e:?}"))?;
         let set = sets[0];
         let buf_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer).offset(0).range(ubo_size);
         let img_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(atlas_view).sampler(atlas_sampler);
@@ -54,7 +57,26 @@ impl Pipelines {
         let pipes = device.create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pi), None).map_err(|(_, e)| format!("pipe {e:?}"))?;
         device.destroy_shader_module(vert_mod, None);
         device.destroy_shader_module(frag_mod, None);
-        Ok(Self{layout, pipeline: pipes[0], descriptor_set_layout: dsl, descriptor_pool: pool, descriptor_set: set})
+
+        // Sky pipeline: fullscreen triangle, no vertex input, no depth test/write, opaque. Reuses the
+        // same pipeline layout / descriptor set (UBO at binding 0) and render pass as the block pass.
+        let sky_vert_mod = Self::create_module(device, SKY_VERT_SPV)?;
+        let sky_frag_mod = Self::create_module(device, SKY_FRAG_SPV)?;
+        let sky_stages = [
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(sky_vert_mod).name(&entry),
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(sky_frag_mod).name(&entry)
+        ];
+        let sky_vi = vk::PipelineVertexInputStateCreateInfo::default();
+        // Depth-tested (LEQUAL, no write) so the sky only fills pixels terrain didn't cover.
+        let sky_ds = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::LESS_OR_EQUAL);
+        let sky_att = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA).blend_enable(false);
+        let sky_cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&sky_att));
+        let sky_pi = vk::GraphicsPipelineCreateInfo::default().stages(&sky_stages).vertex_input_state(&sky_vi).input_assembly_state(&ia).viewport_state(&vp_state).rasterization_state(&raster).multisample_state(&ms).depth_stencil_state(&sky_ds).color_blend_state(&sky_cb).dynamic_state(&dyn_state).layout(layout).render_pass(render_pass).subpass(0);
+        let sky_pipes = device.create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&sky_pi), None).map_err(|(_, e)| format!("sky pipe {e:?}"))?;
+        device.destroy_shader_module(sky_vert_mod, None);
+        device.destroy_shader_module(sky_frag_mod, None);
+
+        Ok(Self{layout, pipeline: pipes[0], sky_pipeline: sky_pipes[0], descriptor_set_layout: dsl, descriptor_pool: pool, descriptor_set: set})
     }
     unsafe fn create_module(device: &ash::Device, spv: &[u8]) -> Result<vk::ShaderModule, String> {
         let code = unsafe { std::slice::from_raw_parts(spv.as_ptr() as *const u32, spv.len()/4) };
@@ -62,6 +84,7 @@ impl Pipelines {
     }
     pub unsafe fn destroy(&mut self, device: &ash::Device) {
         device.destroy_pipeline(self.pipeline, None);
+        device.destroy_pipeline(self.sky_pipeline, None);
         device.destroy_pipeline_layout(self.layout, None);
         device.destroy_descriptor_pool(self.descriptor_pool, None);
         device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);

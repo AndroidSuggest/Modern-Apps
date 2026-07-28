@@ -1,14 +1,17 @@
-use super::block::{Block, tile_uv};
+use super::block::{Block, GRASS_SIDE_OVERLAY};
 use super::chunk::{Chunk, SECTION_SIZE, SECTIONS_PER_CHUNK};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub pos: [f32; 3],
+    // uv carries per-block tile counts (0..w, 0..h); the shader wraps with fract into the tile so
+    // greedy-merged faces tile the texture instead of stretching one tile across the whole quad.
     pub uv: [f32; 2],
     pub color: [f32; 3],
     pub ao: f32,
     pub tile_idx: f32,
+    pub normal: [f32; 3],
 }
 
 pub struct MeshData {
@@ -18,7 +21,7 @@ pub struct MeshData {
 
 impl MeshData { pub fn is_empty(&self) -> bool { self.vertices.is_empty() } }
 
-pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<Option<MeshData>> {
+pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8, grass_tint: &dyn Fn(i32,i32)->[f32;3]) -> Vec<Option<MeshData>> {
     let mut result: Vec<Option<MeshData>> = (0..SECTIONS_PER_CHUNK).map(|_| None).collect();
     for sec_idx in 0..SECTIONS_PER_CHUNK {
         let section = match &chunk.sections[sec_idx] {
@@ -30,6 +33,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
         let mut indices = Vec::with_capacity(1536);
         let dirs = [(1,0,0,0), (-1,0,0,0), (0,1,0,1), (0,-1,0,1), (0,0,1,2), (0,0,-1,2)];
         for &(dx,dy,dz, axis) in &dirs {
+            let nrm = [dx as f32, dy as f32, dz as f32];
             match axis {
                 0 => {
                     for x in 0..SECTION_SIZE {
@@ -62,7 +66,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
                             let x0 = x as f32 + if dx==1 { 1.0 } else { 0.0 };
                             let y0 = y as f32; let z0 = z as f32;
                             let ww = w as f32; let hh = h as f32;
-                            let (u0,v0,u1,v1) = tile_uv(tile_idx);
+                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, ww, hh); // u: z (ww), v: y (hh)
                             let color = Block::from_id(bid).color();
                             let quad = if dx==1 {
                                 [([x0, y0, z0], [u0, v1]), ([x0, y0+hh, z0], [u0, v0]), ([x0, y0+hh, z0+ww], [u1, v0]), ([x0, y0, z0+ww], [u1, v1])]
@@ -74,9 +78,24 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
                             let by = base_y as f32;
                             let start = verts.len() as u32;
                             for (pos, uv) in quad.iter() {
-                                verts.push(Vertex{ pos: [wx0 + pos[0], by + pos[1], wz0 + pos[2]], uv: *uv, color, ao: 1.0, tile_idx: tile_idx as f32 });
+                                verts.push(Vertex{ pos: [wx0 + pos[0], by + pos[1], wz0 + pos[2]], uv: *uv, color, ao: 1.0, tile_idx: tile_idx as f32, normal: nrm });
                             }
                             indices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
+                            // Grass side: tinted grass_block_side_overlay just outside the dirt face.
+                            if bid == Block::Grass as u8 {
+                                let oc = grass_tint(chunk.pos.world_origin().0 + x as i32, chunk.pos.world_origin().1 + z as i32);
+                                let ex = 0.02 * dx as f32;
+                                let oquad = if dx==1 {
+                                    [([x0, y0, z0], [u0, v1]), ([x0, y0+hh, z0], [u0, v0]), ([x0, y0+hh, z0+ww], [u1, v0]), ([x0, y0, z0+ww], [u1, v1])]
+                                } else {
+                                    [([x0, y0, z0+ww], [u0, v1]), ([x0, y0+hh, z0+ww], [u0, v0]), ([x0, y0+hh, z0], [u1, v0]), ([x0, y0, z0], [u1, v1])]
+                                };
+                                let ostart = verts.len() as u32;
+                                for (pos, uv) in oquad.iter() {
+                                    verts.push(Vertex{ pos: [wx0 + pos[0] + ex, by + pos[1], wz0 + pos[2]], uv: *uv, color: oc, ao: 1.0, tile_idx: GRASS_SIDE_OVERLAY as f32, normal: nrm });
+                                }
+                                indices.extend_from_slice(&[ostart, ostart+1, ostart+2, ostart, ostart+2, ostart+3]);
+                            }
                         }}
                     }
                 }
@@ -112,8 +131,12 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
                             let y0 = y as f32 + if dy==1 { 1.0 } else { 0.0 };
                             let x0 = x as f32; let z0 = z as f32;
                             let ww = w as f32; let hh = h as f32;
-                            let (u0,v0,u1,v1) = tile_uv(tile_idx);
-                            let color = Block::from_id(bid).color();
+                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww); // u: x (hh), v: z (ww)
+                            // Grass tops use the grayscale grass_top tile tinted per biome; other faces
+                            // keep the block's base colour (dirt bottom stays brown).
+                            let color = if bid == Block::Grass as u8 && dy == 1 {
+                                grass_tint(chunk.pos.world_origin().0 + x as i32, chunk.pos.world_origin().1 + z as i32)
+                            } else { Block::from_id(bid).color() };
                             let wx0 = chunk.pos.world_origin().0 as f32;
                             let wz0 = chunk.pos.world_origin().1 as f32;
                             let by = base_y as f32;
@@ -124,7 +147,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
                             };
                             let start = verts.len() as u32;
                             for (lp, uv) in quad.iter() {
-                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: if dy==1 { 1.0 } else { 0.75 }, tile_idx: tile_idx as f32 });
+                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: if dy==1 { 1.0 } else { 0.75 }, tile_idx: tile_idx as f32, normal: nrm });
                             }
                             indices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
                         }}
@@ -160,7 +183,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
                             let z0 = z as f32 + if dz==1 { 1.0 } else { 0.0 };
                             let x0 = x as f32; let y0 = y as f32;
                             let ww = w as f32; let hh = h as f32;
-                            let (u0,v0,u1,v1) = tile_uv(tile_idx);
+                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww); // u: x (hh), v: y (ww)
                             let color = Block::from_id(bid).color();
                             let wx0 = chunk.pos.world_origin().0 as f32;
                             let wz0 = chunk.pos.world_origin().1 as f32;
@@ -172,9 +195,24 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8) -> Vec<
                             };
                             let start = verts.len() as u32;
                             for (lp, uv) in quad.iter() {
-                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: 0.92, tile_idx: tile_idx as f32 });
+                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: 0.92, tile_idx: tile_idx as f32, normal: nrm });
                             }
                             indices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
+                            // Grass side: tinted grass_block_side_overlay just outside the dirt face.
+                            if bid == Block::Grass as u8 {
+                                let oc = grass_tint(chunk.pos.world_origin().0 + x as i32, chunk.pos.world_origin().1 + z as i32);
+                                let ez = 0.02 * dz as f32;
+                                let oquad = if dz==1 {
+                                    [([x0, y0, z0], [u0, v1]), ([x0+hh, y0, z0], [u1, v1]), ([x0+hh, y0+ww, z0], [u1, v0]), ([x0, y0+ww, z0], [u0, v0])]
+                                } else {
+                                    [([x0+hh, y0, z0], [u0, v1]), ([x0, y0, z0], [u1, v1]), ([x0, y0+ww, z0], [u1, v0]), ([x0+hh, y0+ww, z0], [u0, v0])]
+                                };
+                                let ostart = verts.len() as u32;
+                                for (lp, uv) in oquad.iter() {
+                                    verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2] + ez], uv: *uv, color: oc, ao: 0.92, tile_idx: GRASS_SIDE_OVERLAY as f32, normal: nrm });
+                                }
+                                indices.extend_from_slice(&[ostart, ostart+1, ostart+2, ostart, ostart+2, ostart+3]);
+                            }
                         }}
                     }
                 }
@@ -193,14 +231,14 @@ mod tests {
     #[test]
     fn empty_chunk_no_mesh() {
         let c = Chunk::new(ChunkPos(0,0));
-        let m = mesh_chunk(&c, &|_,_,_| 0);
+        let m = mesh_chunk(&c, &|_,_,_| 0, &|_,_| [0.4,0.7,0.3]);
         assert!(m.iter().all(|o| o.is_none()));
     }
     #[test]
     fn single_block_has_faces() {
         let mut c = Chunk::new(ChunkPos(0,0));
         c.set_block(1, 10, 1, 1);
-        let m = mesh_chunk(&c, &|x,y,z| if x==1 && y==10 && z==1 { 1 } else { 0 });
+        let m = mesh_chunk(&c, &|x,y,z| if x==1 && y==10 && z==1 { 1 } else { 0 }, &|_,_| [0.4,0.7,0.3]);
         let total: usize = m.iter().filter_map(|o| o.as_ref()).map(|md| md.vertices.len()).sum();
         assert!(total >= 24);
     }

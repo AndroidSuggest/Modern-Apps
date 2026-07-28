@@ -68,4 +68,5 @@ impl ChunkMap {
         for (_, ch) in self.chunks.iter() { if ch.dirty { let _ = save::save_chunk(&self.save_dir, ch); } }
     }
     pub fn len(&self) -> usize { self.chunks.len() }
+    pub fn grass_tint(&self, wx: i32, wz: i32) -> [f32; 3] { self.gen.grass_tint(wx as f64, wz as f64) }
 }

@@ -9,19 +9,21 @@ pub struct Vertex {
     pub color: [f32; 3],
     pub ao: f32,
     pub tile_idx: f32,
+    pub normal: [f32; 3],
 }
 
 impl Vertex {
     pub fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription::default().binding(0).stride(mem::size_of::<Self>() as u32).input_rate(vk::VertexInputRate::VERTEX)
     }
-    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 5] {
+    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 6] {
         [
             vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32B32_SFLOAT).offset(mem::offset_of!(Vertex, pos) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(1).format(vk::Format::R32G32_SFLOAT).offset(mem::offset_of!(Vertex, uv) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(2).format(vk::Format::R32G32B32_SFLOAT).offset(mem::offset_of!(Vertex, color) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(3).format(vk::Format::R32_SFLOAT).offset(mem::offset_of!(Vertex, ao) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(4).format(vk::Format::R32_SFLOAT).offset(mem::offset_of!(Vertex, tile_idx) as u32),
+            vk::VertexInputAttributeDescription::default().binding(0).location(5).format(vk::Format::R32G32B32_SFLOAT).offset(mem::offset_of!(Vertex, normal) as u32),
         ]
     }
 }
@@ -37,11 +39,18 @@ pub struct UboData {
     pub player_pos: [f32; 4],
     pub day_factor: f32,
     pub _pad: [f32; 3],
+    // Inverse of view_proj; the sky pass reconstructs per-pixel world rays from it.
+    pub inv_view_proj: [[f32; 4]; 4],
+    // Shared lighting used by sky, clouds AND terrain so the whole scene reads as one system.
+    pub sun_color: [f32; 3],
+    pub cloud_shadow: f32, // strength of cloud shadows cast on terrain (0..1)
+    pub ambient_color: [f32; 3],
+    pub _pad2: f32,
 }
 
 impl Default for UboData {
     fn default() -> Self {
-        Self { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_dir: [0.2, -1.0, 0.3], time: 0.0, fog_color: [0.53, 0.81, 0.92], fog_density: 0.01, player_pos: [0.0, 70.0, 0.0, 0.0], day_factor: 1.0, _pad: [0.0;3] }
+        Self { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_dir: [0.2, -1.0, 0.3], time: 0.0, fog_color: [0.53, 0.81, 0.92], fog_density: 0.01, player_pos: [0.0, 70.0, 0.0, 0.0], day_factor: 1.0, _pad: [0.0;3], inv_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_color: [1.0, 0.97, 0.9], cloud_shadow: 0.6, ambient_color: [0.45, 0.55, 0.72], _pad2: 0.0 }
     }
 }
 

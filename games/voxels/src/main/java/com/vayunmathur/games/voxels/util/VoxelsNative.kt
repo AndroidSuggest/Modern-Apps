@@ -17,10 +17,14 @@ object VoxelsNative {
     external fun surfaceChanged(width: Int, height: Int)
     external fun surfaceDestroyed()
     external fun nativeOnDestroy()
-    external fun onJoystickInput(moveX: Float, moveY: Float, lookDeltaYaw: Float, lookDeltaPitch: Float)
-    external fun onAction(jump: Boolean, sneak: Boolean, toggleFly: Boolean)
-    external fun breakBlock(): Boolean
-    external fun placeBlock(): Boolean
+    external fun onMoveInput(moveX: Float, moveY: Float)
+    external fun onLookInput(lookYawRate: Float, lookPitchRate: Float)
+    external fun setJump(held: Boolean)
+    external fun setFlyDown(held: Boolean)
+    external fun setSneak(on: Boolean)
+    external fun toggleFly()
+    external fun breakBlockAt(x: Float, y: Float): Boolean
+    external fun placeBlockAt(x: Float, y: Float): Boolean
     external fun selectSlot(slot: Int)
     external fun getInventoryJson(): String
     external fun getDebugJson(): String

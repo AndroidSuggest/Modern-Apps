@@ -83,10 +83,15 @@ impl Block {
     }
 }
 
-pub const TILES_PER_ROW: f32 = 4.0;
+// Atlas is 4 tiles wide x 8 tall (64x128). Tiles 0..15 are the block textures; tile 16 is the
+// grayscale grass_block_side_overlay, tinted per biome and drawn over grass side faces.
+pub const ATLAS_COLS: f32 = 4.0;
+pub const ATLAS_ROWS: f32 = 8.0;
+pub const GRASS_SIDE_OVERLAY: u32 = 16;
 pub fn tile_uv(tile_index: u32) -> (f32,f32,f32,f32) {
     let tx = (tile_index % 4) as f32;
     let ty = (tile_index / 4) as f32;
-    let s = 1.0 / TILES_PER_ROW;
-    (tx*s, ty*s, (tx+1.0)*s, (ty+1.0)*s)
+    let sx = 1.0 / ATLAS_COLS;
+    let sy = 1.0 / ATLAS_ROWS;
+    (tx*sx, ty*sy, (tx+1.0)*sx, (ty+1.0)*sy)
 }

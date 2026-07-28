@@ -9,6 +9,10 @@ fn main() {
     let frag = shaders_dir.join("block.frag");
     let vert_spv = shaders_dir.join("block.vert.spv");
     let frag_spv = shaders_dir.join("block.frag.spv");
+    let sky_vert = shaders_dir.join("sky.vert");
+    let sky_frag = shaders_dir.join("sky.frag");
+    let sky_vert_spv = shaders_dir.join("sky.vert.spv");
+    let sky_frag_spv = shaders_dir.join("sky.frag.spv");
     let atlas_bin = shaders_dir.join("atlas.bin");
 
     if !atlas_bin.exists() {
@@ -27,13 +31,20 @@ fn main() {
         println!("cargo:warning=Found glslc at {}", glslc_path.display());
         let _ = Command::new(glslc_path).arg("-o").arg(&vert_spv).arg(&vert).status();
         let _ = Command::new(glslc_path).arg("-o").arg(&frag_spv).arg(&frag).status();
+        let _ = Command::new(glslc_path).arg("-o").arg(&sky_vert_spv).arg(&sky_vert).status();
+        let _ = Command::new(glslc_path).arg("-o").arg(&sky_frag_spv).arg(&sky_frag).status();
     }
 
     if !vert_spv.exists() { std::fs::write(&vert_spv, minimal_vert_spv()).ok(); }
     if !frag_spv.exists() { std::fs::write(&frag_spv, minimal_frag_spv()).ok(); }
+    // include_bytes! requires these to exist even if glslc is unavailable.
+    if !sky_vert_spv.exists() { std::fs::write(&sky_vert_spv, minimal_vert_spv()).ok(); }
+    if !sky_frag_spv.exists() { std::fs::write(&sky_frag_spv, minimal_frag_spv()).ok(); }
 
     println!("cargo:rerun-if-changed=shaders/block.vert");
     println!("cargo:rerun-if-changed=shaders/block.frag");
+    println!("cargo:rerun-if-changed=shaders/sky.vert");
+    println!("cargo:rerun-if-changed=shaders/sky.frag");
     println!("cargo:rerun-if-changed=shaders/atlas.bin");
     println!("cargo:rerun-if-changed=build.rs");
 }

@@ -10,6 +10,8 @@ use crate::texture_atlas::TextureAtlas;
 
 pub struct ChunkGpuMesh { pub vertex_buffer: AllocatedBuffer, pub index_buffer: AllocatedBuffer, pub index_count: u32 }
 
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 { let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) }
+
 pub struct VulkanRenderer {
     pub ctx: VulkanContext,
     pub swapchain: Swapchain,
@@ -42,7 +44,7 @@ impl VulkanRenderer {
         let atlas_pixels = crate::texture_atlas::load_atlas_bin();
         let atlas = unsafe { TextureAtlas::new(&instance, &device, phys, command_pool, ctx.queue, &atlas_pixels)? };
         let ubo_buffer = unsafe { AllocatedBuffer::new(&instance, &device, phys, ubo_size, vk::BufferUsageFlags::UNIFORM_BUFFER, vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)? };
-        let pipelines = unsafe { Pipelines::new(&device, swapchain.format, vk::Format::D32_SFLOAT, ubo_buffer.buffer, ubo_size, atlas.view, atlas.sampler)? };
+        let pipelines = unsafe { Pipelines::new(&device, swapchain.render_pass, ubo_buffer.buffer, ubo_size, atlas.view, atlas.sampler)? };
         let alloc_info = vk::CommandBufferAllocateInfo::default().command_pool(command_pool).level(vk::CommandBufferLevel::PRIMARY).command_buffer_count(swapchain.images.len() as u32);
         let command_buffers = device.allocate_command_buffers(&alloc_info).map_err(|e| format!("alloc cmd {e:?}"))?;
         let sem_info = vk::SemaphoreCreateInfo::default();
@@ -103,8 +105,20 @@ impl VulkanRenderer {
         let sun_angle=day_t*std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
         let sun_dir=Vec3::new(sun_angle.cos()*0.3, sun_angle.sin(), sun_angle.cos()*0.1).normalize_or_zero();
         let day_factor=(sun_dir.y*0.5+0.5).clamp(0.0,1.0).powf(0.6);
-        let fog_color=if day_factor>0.5 { Vec3::new(0.53,0.81,0.92) } else { Vec3::new(0.05,0.07,0.15) }.lerp(Vec3::new(0.53,0.81,0.92), day_factor);
-        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, 0.0], day_factor, _pad: [0.0;3] };
+        // Horizon sky colour approximating the sky shader, so distance fog melts terrain into the sky.
+        let sun_up = smoothstep(-0.10, 0.22, sun_dir.y);
+        let day_sky = Vec3::new(0.52, 0.66, 0.86);
+        let sunset = Vec3::new(0.85, 0.45, 0.28);
+        let night = Vec3::new(0.03, 0.04, 0.09);
+        let horizon_day = day_sky.lerp(sunset, (1.0 - sun_up) * 0.7);
+        let fog_color = night.lerp(horizon_day, sun_up);
+        // Shared surface lighting (same sun the sky/clouds use). Warm at sunrise/sunset, white at noon.
+        // Kept modest so daylight doesn't blow out to white after tonemapping.
+        let sun_color = Vec3::new(1.0, 0.45, 0.20).lerp(Vec3::new(1.0, 0.96, 0.88), sun_up) * (1.5 * sun_up + 0.03);
+        // Sky-dome ambient: blue-ish in day, dark at night; keeps shadowed faces from going black.
+        let ambient_color = Vec3::new(0.04, 0.05, 0.09).lerp(Vec3::new(0.34, 0.40, 0.52), sun_up);
+        let inv_view_proj = view_proj.inverse();
+        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, 0.0], day_factor, _pad: [0.0;3], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow: 0.6, ambient_color: ambient_color.to_array(), _pad2: 0.0 };
         let bytes=unsafe { std::slice::from_raw_parts((&self.ubo_data as *const UboData) as *const u8, std::mem::size_of::<UboData>()) };
         self.ubo_buffer.upload(&self.ctx.device, bytes);
     }
@@ -122,22 +136,19 @@ impl VulkanRenderer {
         let begin_info=vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe {
             device.begin_command_buffer(cmd, &begin_info).map_err(|e| format!("begin {e:?}"))?;
-            let barrier=vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::UNDEFINED).new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL).image(self.swapchain.images[image_index as usize]).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
-            device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier));
-            let depth_barrier=vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::UNDEFINED).new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL).image(self.swapchain.depth_image).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::DEPTH, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).dst_access_mask(vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE);
-            device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&depth_barrier));
             let clear_color=vk::ClearValue { color: vk::ClearColorValue { float32: [ self.ubo_data.fog_color[0]*self.ubo_data.day_factor, self.ubo_data.fog_color[1]*self.ubo_data.day_factor, self.ubo_data.fog_color[2]*self.ubo_data.day_factor+0.05, 1.0 ] } };
             let clear_depth=vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } };
-            let color_att=vk::RenderingAttachmentInfo::default().image_view(self.swapchain.image_views[image_index as usize]).image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL).load_op(vk::AttachmentLoadOp::CLEAR).store_op(vk::AttachmentStoreOp::STORE).clear_value(clear_color);
-            let depth_att=vk::RenderingAttachmentInfo::default().image_view(self.swapchain.depth_view).image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL).load_op(vk::AttachmentLoadOp::CLEAR).store_op(vk::AttachmentStoreOp::DONT_CARE).clear_value(clear_depth);
-            let rendering_info=vk::RenderingInfo::default().render_area(vk::Rect2D { offset: vk::Offset2D { x:0, y:0 }, extent: self.swapchain.extent }).layer_count(1).color_attachments(std::slice::from_ref(&color_att)).depth_attachment(&depth_att);
-            device.cmd_begin_rendering(cmd, &rendering_info);
+            let clears=[clear_color, clear_depth];
+            let rp_begin=vk::RenderPassBeginInfo::default().render_pass(self.swapchain.render_pass).framebuffer(self.swapchain.framebuffers[image_index as usize]).render_area(vk::Rect2D { offset: vk::Offset2D { x:0, y:0 }, extent: self.swapchain.extent }).clear_values(&clears);
+            device.cmd_begin_render_pass(cmd, &rp_begin, vk::SubpassContents::INLINE);
             let viewport=vk::Viewport::default().x(0.0).y(0.0).width(self.swapchain.extent.width as f32).height(self.swapchain.extent.height as f32).min_depth(0.0).max_depth(1.0);
             let scissor=vk::Rect2D::default().extent(self.swapchain.extent);
             device.cmd_set_viewport(cmd, 0, std::slice::from_ref(&viewport));
             device.cmd_set_scissor(cmd, 0, std::slice::from_ref(&scissor));
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.pipeline);
             device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.layout, 0, std::slice::from_ref(&self.pipelines.descriptor_set), &[]);
+            // Terrain first (writes depth), then the sky fills only the remaining (far-depth) pixels —
+            // so the expensive cloud raymarch runs for visible sky only, not behind terrain.
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.pipeline);
             let player=Vec3::new(self.ubo_data.player_pos[0], self.ubo_data.player_pos[1], self.ubo_data.player_pos[2]);
             for ((cx,_sec_y,cz), gpu_mesh) in self.gpu_meshes.iter() {
                 let cx_center=*cx as f32 *16.0+8.0; let cz_center=*cz as f32*16.0+8.0;
@@ -148,9 +159,10 @@ impl VulkanRenderer {
                 device.cmd_bind_index_buffer(cmd, gpu_mesh.index_buffer.buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd, gpu_mesh.index_count, 1, 0, 0, 0);
             }
-            device.cmd_end_rendering(cmd);
-            let present_barrier=vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL).new_layout(vk::ImageLayout::PRESENT_SRC_KHR).image(self.swapchain.images[image_index as usize]).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
-            device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT, vk::PipelineStageFlags::BOTTOM_OF_PIPE, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&present_barrier));
+            // Sky + clouds fill the pixels terrain didn't cover (depth-tested LEQUAL against far).
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.sky_pipeline);
+            device.cmd_draw(cmd, 3, 1, 0, 0);
+            device.cmd_end_render_pass(cmd);
             device.end_command_buffer(cmd).map_err(|e| format!("end {e:?}"))?;
         }
         let wait_sem=[self.image_available[self.current_frame]];

@@ -2,8 +2,10 @@ use ash::vk;
 use crate::vulkan::buffers::AllocatedBuffer;
 
 pub const ATLAS_TILES_PER_ROW: u32 = 4;
+pub const ATLAS_TILE_ROWS: u32 = 8;
 pub const TILE_SIZE: u32 = 16;
-pub const ATLAS_SIZE: u32 = ATLAS_TILES_PER_ROW * TILE_SIZE;
+pub const ATLAS_W: u32 = ATLAS_TILES_PER_ROW * TILE_SIZE; // 64
+pub const ATLAS_H: u32 = ATLAS_TILE_ROWS * TILE_SIZE;     // 128
 
 pub struct TextureAtlas {
     pub image: vk::Image,
@@ -24,7 +26,7 @@ impl TextureAtlas {
         let img_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(vk::Format::R8G8B8A8_SRGB)
-            .extent(vk::Extent3D { width: ATLAS_SIZE, height: ATLAS_SIZE, depth: 1 })
+            .extent(vk::Extent3D { width: ATLAS_W, height: ATLAS_H, depth: 1 })
             .mip_levels(1).array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
@@ -49,7 +51,7 @@ impl TextureAtlas {
         device.begin_command_buffer(cmd, &begin).map_err(|e| format!("begin atlas cmd failed: {e:?}"))?;
         let barrier_to_transfer = vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::UNDEFINED).new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL).image(image).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).src_access_mask(vk::AccessFlags::empty()).dst_access_mask(vk::AccessFlags::TRANSFER_WRITE);
         device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_transfer));
-        let region = vk::BufferImageCopy::default().image_subresource(vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 }).image_extent(vk::Extent3D { width: ATLAS_SIZE, height: ATLAS_SIZE, depth: 1 });
+        let region = vk::BufferImageCopy::default().image_subresource(vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 }).image_extent(vk::Extent3D { width: ATLAS_W, height: ATLAS_H, depth: 1 });
         device.cmd_copy_buffer_to_image(cmd, staging.buffer, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, std::slice::from_ref(&region));
         let barrier_to_shader = vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL).new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image(image).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).src_access_mask(vk::AccessFlags::TRANSFER_WRITE).dst_access_mask(vk::AccessFlags::SHADER_READ);
         device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_shader));
@@ -74,10 +76,10 @@ impl TextureAtlas {
 }
 pub fn load_atlas_bin() -> Vec<u8> {
     let maybe: &[u8] = include_bytes!("../shaders/atlas.bin");
-    if maybe.len() == (ATLAS_SIZE*ATLAS_SIZE*4) as usize { maybe.to_vec() } else {
-        let mut fallback = vec![0u8; (ATLAS_SIZE*ATLAS_SIZE*4) as usize];
-        for y in 0..ATLAS_SIZE { for x in 0..ATLAS_SIZE {
-            let i = ((y*ATLAS_SIZE + x)*4) as usize;
+    if maybe.len() == (ATLAS_W*ATLAS_H*4) as usize { maybe.to_vec() } else {
+        let mut fallback = vec![0u8; (ATLAS_W*ATLAS_H*4) as usize];
+        for y in 0..ATLAS_H { for x in 0..ATLAS_W {
+            let i = ((y*ATLAS_W + x)*4) as usize;
             if (x/8 + y/8) %2==0 { fallback[i]=255; fallback[i+1]=0; fallback[i+2]=255; fallback[i+3]=255; } else { fallback[i]=0; fallback[i+1]=0; fallback[i+2]=0; fallback[i+3]=255; }
         }}
         fallback

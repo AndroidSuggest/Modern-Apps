@@ -26,3 +26,4 @@ scratch/LiteRT-LM/
 
 reverse-engineering/
 **/rust/target/
+tmp/

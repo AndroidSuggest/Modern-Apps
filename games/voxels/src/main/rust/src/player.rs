@@ -34,42 +34,81 @@ impl Player {
         if input.move_right.abs() > 0.001 { wish += right * input.move_right; }
         if wish.length_squared() > 0.0 { wish = wish.normalize_or_zero(); }
 
-        let speed = if self.flying { 10.0 * if input.sprint { 2.0 } else { 1.0 } } else { 4.3 * if input.sprint { 1.3 } else { 1.0 } };
-
         if self.flying {
+            let speed = 10.0 * if input.sprint { 2.0 } else { 1.0 };
             let mut vel = wish * speed;
-            if input.jump { vel.y += speed; }
-            if input.sneak { vel.y -= speed; }
+            if input.jump_held { vel.y += speed; } // top button (Up)
+            if input.down_held { vel.y -= speed; } // bottom button (Down)
             let old = self.pos;
             self.pos += vel * dt;
             if self.collides_at(self.pos, chunks) { self.pos = old; }
             self.walk_dist += (vel * dt).length();
         } else {
+            let sneaking = input.sneak;
+            let speed = 4.3 * if sneaking { 0.3 } else if input.sprint { 1.3 } else { 1.0 };
+            // Auto-unstuck: if we ended up inside terrain (bad save, block placed onto us, spawn
+            // fractionally embedded) rise until free so the player is never permanently trapped.
+            if self.collides_at(self.pos, chunks) {
+                let mut lift = 0.0;
+                while lift < 3.0 && self.collides_at(self.pos, chunks) { self.pos.y += 0.1; lift += 0.1; }
+                self.vel.y = 0.0;
+            }
             let horiz_vel = vec3(wish.x * speed, 0.0, wish.z * speed);
             let mut new_pos = self.pos;
-            new_pos.x += horiz_vel.x * dt;
-            if self.collides_at(new_pos, chunks) { new_pos.x = self.pos.x; }
-            new_pos.z += horiz_vel.z * dt;
-            if self.collides_at(new_pos, chunks) { new_pos.z = self.pos.z; }
-            self.walk_dist += (new_pos - self.pos).length();
+            // X axis: step up small ledges when grounded; when sneaking, refuse to walk off edges.
+            let try_x = vec3(new_pos.x + horiz_vel.x * dt, new_pos.y, new_pos.z);
+            if !self.collides_at(try_x, chunks) {
+                if !(sneaking && self.on_ground) || self.supported_at(try_x, chunks) { new_pos.x = try_x.x; }
+            } else if self.on_ground && !sneaking {
+                let step = vec3(try_x.x, new_pos.y + 0.6, new_pos.z);
+                if !self.collides_at(step, chunks) { new_pos.x = step.x; new_pos.y = step.y; }
+            }
+            // Z axis, same rules.
+            let try_z = vec3(new_pos.x, new_pos.y, new_pos.z + horiz_vel.z * dt);
+            if !self.collides_at(try_z, chunks) {
+                if !(sneaking && self.on_ground) || self.supported_at(try_z, chunks) { new_pos.z = try_z.z; }
+            } else if self.on_ground && !sneaking {
+                let step = vec3(new_pos.x, new_pos.y + 0.6, try_z.z);
+                if !self.collides_at(step, chunks) { new_pos.z = step.z; new_pos.y = step.y; }
+            }
+            self.walk_dist += (vec3(new_pos.x, 0.0, new_pos.z) - vec3(self.pos.x, 0.0, self.pos.z)).length();
+            // Vertical: gravity + collision, resting at whatever height horizontal step-up left us at.
+            let base_y = new_pos.y;
             self.vel.y -= 28.0 * dt;
-            new_pos.y += self.vel.y * dt;
+            new_pos.y = base_y + self.vel.y * dt;
             if self.collides_at(new_pos, chunks) {
-                new_pos.y = self.pos.y;
+                new_pos.y = base_y;
                 if self.vel.y <= 0.0 { self.on_ground = true; }
                 self.vel.y = 0.0;
             } else {
-                let mut probe = new_pos; probe.y -= 0.01;
+                let mut probe = new_pos; probe.y -= 0.05;
                 self.on_ground = probe.y <= 0.0 || (self.collides_at(probe, chunks) && self.vel.y <= 0.0);
                 if self.on_ground && self.vel.y <= 0.0 { self.vel.y = 0.0; }
             }
-            if input.jump && self.on_ground {
+            // Can't jump while sneaking (must toggle sneak off first).
+            if input.jump_held && self.on_ground && !sneaking {
                 self.vel.y = 8.5;
                 self.on_ground = false;
             }
             self.pos = new_pos;
         }
         if self.pos.y < 0.1 { self.pos.y = 0.1; self.vel.y = 0.0; self.on_ground = true; }
+    }
+
+    // True if there is a solid block just under the player's footprint at `pos` (used so a sneaking
+    // player won't walk off ledges).
+    fn supported_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {
+        let hw = 0.3;
+        let y = (pos.y - 0.05).floor() as i32;
+        for &dx in &[-hw, hw] {
+            for &dz in &[-hw, hw] {
+                let x = (pos.x + dx).floor() as i32;
+                let z = (pos.z + dz).floor() as i32;
+                let id = chunks.get_block_world(x, y, z);
+                if id != 0 && Block::from_id(id).is_solid() { return true; }
+            }
+        }
+        false
     }
 
     fn collides_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {

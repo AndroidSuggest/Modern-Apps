@@ -12,6 +12,23 @@ pub struct Swapchain {
     pub depth_view: vk::ImageView,
     pub render_pass: vk::RenderPass,
     pub framebuffers: Vec<vk::Framebuffer>,
+    pub pre_transform: vk::SurfaceTransformFlagsKHR,
+}
+
+impl Swapchain {
+    // Android surfaces on portrait-native panels report a rotated `currentTransform` in landscape.
+    // We render into the panel's native-orientation images and pre-rotate the projection to match.
+    // Returns (swap_aspect, rotation_radians): whether width/height are swapped for the aspect ratio,
+    // and the clip-space Z rotation to prepend to the view-projection.
+    pub fn pre_rotation(&self) -> (bool, f32) {
+        use vk::SurfaceTransformFlagsKHR as T;
+        match self.pre_transform {
+            t if t == T::ROTATE_90 => (true, std::f32::consts::FRAC_PI_2),
+            t if t == T::ROTATE_180 => (false, std::f32::consts::PI),
+            t if t == T::ROTATE_270 => (true, std::f32::consts::FRAC_PI_2 * 3.0),
+            _ => (false, 0.0),
+        }
+    }
 }
 impl Swapchain {
     pub fn new(ctx: &VulkanContext, width: u32, height: u32) -> Result<Self, String> { unsafe { Self::new_inner(ctx, width.max(1), height.max(1)) } }
@@ -29,7 +46,13 @@ impl Swapchain {
         let present_mode = if present_modes.contains(&vk::PresentModeKHR::MAILBOX) { vk::PresentModeKHR::MAILBOX } else { vk::PresentModeKHR::FIFO };
         let image_count = (caps.min_image_count+1).min(if caps.max_image_count==0 {3} else {caps.max_image_count});
         let loader = ash::khr::swapchain::Device::new(&ctx.instance, &ctx.device);
-        let ci = vk::SwapchainCreateInfoKHR::default().surface(ctx.surface).min_image_count(image_count).image_format(chosen_format.format).image_color_space(chosen_format.color_space).image_extent(extent).image_array_layers(1).image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT).image_sharing_mode(vk::SharingMode::EXCLUSIVE).pre_transform(caps.current_transform).composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE).present_mode(present_mode).clipped(true);
+        // Prefer IDENTITY so the presentation engine doesn't rotate our (already display-oriented) image
+        // — its currentExtent here is landscape. Only fall back to pre-rotating ourselves if IDENTITY
+        // isn't supported (see pre_rotation()).
+        let pre_transform = if caps.supported_transforms.contains(vk::SurfaceTransformFlagsKHR::IDENTITY) {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else { caps.current_transform };
+        let ci = vk::SwapchainCreateInfoKHR::default().surface(ctx.surface).min_image_count(image_count).image_format(chosen_format.format).image_color_space(chosen_format.color_space).image_extent(extent).image_array_layers(1).image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT).image_sharing_mode(vk::SharingMode::EXCLUSIVE).pre_transform(pre_transform).composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE).present_mode(present_mode).clipped(true);
         let swapchain = loader.create_swapchain(&ci, None).map_err(|e| format!("create_swapchain {e:?}"))?;
         let images = loader.get_swapchain_images(swapchain).map_err(|e| format!("get_images {e:?}"))?;
         let mut image_views = Vec::with_capacity(images.len());
@@ -60,10 +83,11 @@ impl Swapchain {
         let render_pass = ctx.device.create_render_pass(&rp_info, None).map_err(|e| format!("rp {e:?}"))?;
         let mut framebuffers = Vec::with_capacity(image_views.len());
         for &iv in &image_views {
-            let fb_info = vk::FramebufferCreateInfo::default().render_pass(render_pass).attachments(&[iv, depth_view]).width(extent.width).height(extent.height).layers(1);
+            let fb_attachments = [iv, depth_view];
+            let fb_info = vk::FramebufferCreateInfo::default().render_pass(render_pass).attachments(&fb_attachments).width(extent.width).height(extent.height).layers(1);
             framebuffers.push(ctx.device.create_framebuffer(&fb_info, None).map_err(|e| format!("fb {e:?}"))?);
         }
-        Ok(Self{loader, swapchain, images, image_views, format: chosen_format.format, extent, depth_image, depth_mem, depth_view, render_pass, framebuffers})
+        Ok(Self{loader, swapchain, images, image_views, format: chosen_format.format, extent, depth_image, depth_mem, depth_view, render_pass, framebuffers, pre_transform})
     }
     pub fn cleanup(&mut self, device: &ash::Device) {
         unsafe {

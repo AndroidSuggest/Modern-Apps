@@ -22,6 +22,19 @@ impl TerrainGen {
             seed,
         }
     }
+    // Per-biome grass tint (multiplied over the grayscale grass_top / grass_side textures). Uses the
+    // same low-frequency biome noise the terrain height uses, plus a humidity sample, so the ground
+    // colour shifts smoothly between cool-lush, warm-lush and dry regions.
+    pub fn grass_tint(&self, wx: f64, wz: f64) -> [f32; 3] {
+        let temp = (self.perlin_biome.get([wx * 0.0015, wz * 0.0015]) as f32 * 0.5 + 0.5).clamp(0.0, 1.0);
+        let humid = (self.perlin_biome.get([wx * 0.0015 + 137.0, wz * 0.0015 - 91.0]) as f32 * 0.5 + 0.5).clamp(0.0, 1.0);
+        let lerp3 = |a: [f32; 3], b: [f32; 3], t: f32| [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t];
+        let cold = [0.46, 0.62, 0.42]; // cool blue-green
+        let lush = [0.40, 0.68, 0.28]; // temperate plains
+        let dry  = [0.74, 0.72, 0.36]; // warm/dry yellow-green
+        let warm = lerp3(dry, lush, humid);
+        lerp3(cold, warm, temp)
+    }
     pub fn height_at(&self, wx: f64, wz: f64) -> i32 {
         let h1 = self.perlin_height.get([wx * 0.007, wz * 0.007]) * 28.0;
         let h2 = self.perlin_height.get([wx * 0.015, wz * 0.015]) * 10.0;

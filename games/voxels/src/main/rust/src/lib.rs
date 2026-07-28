@@ -101,43 +101,78 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativ
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onJoystickInput<'l>(
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onMoveInput<'l>(
     _env: JNIEnv<'l>,
     _class: JClass<'l>,
     move_x: jfloat,
     move_y: jfloat,
-    look_yaw: jfloat,
-    look_pitch: jfloat,
 ) {
     input::set_move(move_x, move_y);
-    input::add_look(look_yaw, look_pitch);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onAction<'l>(
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_onLookInput<'l>(
     _env: JNIEnv<'l>,
     _class: JClass<'l>,
-    jump: jboolean,
-    sneak: jboolean,
-    toggle_fly: jboolean,
+    look_yaw_rate: jfloat,
+    look_pitch_rate: jfloat,
 ) {
-    input::set_action(jump != 0, sneak != 0, toggle_fly != 0, false);
+    input::set_look_rate(look_yaw_rate, look_pitch_rate);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_breakBlock<'l>(
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_setJump<'l>(
     _env: JNIEnv<'l>,
     _class: JClass<'l>,
-) -> jboolean {
-    if engine::break_block_action() { 1 } else { 0 }
+    held: jboolean,
+) {
+    input::set_jump(held != 0);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_placeBlock<'l>(
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_setFlyDown<'l>(
     _env: JNIEnv<'l>,
     _class: JClass<'l>,
+    held: jboolean,
+) {
+    input::set_down(held != 0);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_setSneak<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    on: jboolean,
+) {
+    input::set_sneak(on != 0);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_toggleFly<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+) {
+    input::request_toggle_fly();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_breakBlockAt<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    x: jfloat,
+    y: jfloat,
 ) -> jboolean {
-    if engine::place_block_action() { 1 } else { 0 }
+    if engine::break_block_at(x, y) { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_placeBlockAt<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    x: jfloat,
+    y: jfloat,
+) -> jboolean {
+    if engine::place_block_at(x, y) { 1 } else { 0 }
 }
 
 #[no_mangle]
@@ -203,7 +238,7 @@ mod tests {
         let mut c = Chunk::new(ChunkPos(0, 0));
         gen.fill_chunk(&mut c);
         assert!(c.generated);
-        let mesh = mesh_chunk(&c, &|_, _, _| 0);
+        let mesh = mesh_chunk(&c, &|_, _, _| 0, &|_, _| [0.4, 0.7, 0.3]);
         let total: usize = mesh.iter().filter_map(|o| o.as_ref()).map(|m| m.vertices.len()).sum();
         assert!(total > 0 || c.sections.iter().all(|s| s.is_none() || s.as_ref().unwrap().is_empty()));
     }

@@ -98,6 +98,16 @@ where F: FnOnce(&mut EngineState) -> R {
     Some(f(state))
 }
 
+// Non-blocking variant: if the render thread currently holds the engine lock (it holds it for the
+// whole frame, including the GPU fence wait), this returns None instead of stalling the caller.
+// The Compose UI polls read-only JSON on the main thread, so it must never block on the 3D frame.
+pub fn with_engine_try<F, R>(f: F) -> Option<R>
+where F: FnOnce(&mut EngineState) -> R {
+    let mut guard = engine_lock().try_lock().ok()?;
+    let state = guard.as_mut()?;
+    Some(f(state))
+}
+
 pub fn destroy_engine() {
     let mut guard = match engine_lock().lock() { Ok(g) => g, Err(_) => return, };
     if let Some(mut state) = guard.take() {
@@ -166,7 +176,10 @@ pub fn rebuild_chunk_meshes(state: &mut EngineState, chunk_pos: crate::world::ch
         let closure = move |wx: i32, wy: i32, wz: i32| -> u8 {
             unsafe { (*map_ptr).get_block_world(wx, wy, wz) }
         };
-        mesher::mesh_chunk(chunk, &closure)
+        let tint = move |wx: i32, wz: i32| -> [f32;3] {
+            unsafe { (*map_ptr).grass_tint(wx, wz) }
+        };
+        mesher::mesh_chunk(chunk, &closure, &tint)
     };
     if let Some(renderer) = state.renderer.as_mut() {
         for (sec_idx, mesh_opt) in meshes.into_iter().enumerate() {
@@ -209,8 +222,10 @@ pub fn tick_and_render() {
         let input = crate::input::snapshot_and_clear_look();
         if input.toggle_fly { state.player.flying = !state.player.flying; }
 
-        state.player.yaw += input.look_yaw_delta.to_radians();
-        state.player.pitch += input.look_pitch_delta.to_radians();
+        // Rate-based look: (curved) stick displacement -> angular velocity (rad/s at full deflection).
+        let look_speed = 3.2;
+        state.player.yaw += input.look_yaw_rate * look_speed * dt;
+        state.player.pitch += input.look_pitch_rate * look_speed * dt;
         state.player.pitch = state.player.pitch.clamp(-1.55, 1.55);
 
         let mut input_mut = input;
@@ -239,11 +254,17 @@ pub fn tick_and_render() {
             let center = eye + state.player.forward();
             let up = Vec3::Y;
             let view = Mat4::look_at_rh(eye, center, up);
-            let aspect = if state.height==0 { 1.0 } else { state.width as f32 / state.height as f32 };
+            // Aspect + pre-rotation come from the swapchain's surface transform (Android portrait-native
+            // panels present landscape via ROTATE_90/270, with images in native orientation).
+            let (swap_aspect, pre_rot_angle) = renderer.swapchain.pre_rotation();
+            let ext = renderer.swapchain.extent;
+            let (ew, eh) = (ext.width.max(1) as f32, ext.height.max(1) as f32);
+            let aspect = if swap_aspect { eh / ew } else { ew / eh };
             let proj = Mat4::perspective_rh(70f32.to_radians(), aspect, 0.1, 500.0);
             let vulkan_correction = Mat4::from_cols_array(&[1.0,0.0,0.0,0.0, 0.0,-1.0,0.0,0.0, 0.0,0.0,0.5,0.0, 0.0,0.0,0.5,1.0]);
-            let view_proj = vulkan_correction * proj * view;
-            let time = (Instant::now() - state.start_time).as_secs_f32();
+            let view_proj = Mat4::from_rotation_z(pre_rot_angle) * vulkan_correction * proj * view;
+            // Start at midday (day_t=0.5 -> sun overhead) so the world is lit when the app opens.
+            let time = 60.0 + (Instant::now() - state.start_time).as_secs_f32();
             unsafe {
                 renderer.update_ubo(view_proj, state.player.pos, time);
                 let _ = renderer.draw_frame();
@@ -252,8 +273,22 @@ pub fn tick_and_render() {
     });
 }
 
+// UI-polled JSON getters. They use with_engine_try (never block on the render frame) and fall back to
+// the last cached value when the render thread holds the lock, so the Compose UI stays smooth.
+static DEBUG_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+static INV_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+static STATS_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+
+fn cached(cache: &'static OnceLock<Mutex<String>>, default: &str, fresh: Option<String>) -> String {
+    let m = cache.get_or_init(|| Mutex::new(default.to_string()));
+    match fresh {
+        Some(j) => { if let Ok(mut c) = m.lock() { *c = j.clone(); } j }
+        None => m.lock().map(|c| c.clone()).unwrap_or_else(|_| default.to_string()),
+    }
+}
+
 pub fn get_debug_json() -> String {
-    with_engine(|state| {
+    let fresh = with_engine_try(|state| {
         let fps = if let Some(r) = &state.renderer {
             let elapsed = (Instant::now() - state.start_time).as_secs_f32();
             if elapsed>0.1 { r.frame_count as f32 / elapsed } else { 0.0 }
@@ -268,73 +303,100 @@ pub fn get_debug_json() -> String {
             "time": format!("{:.1}s", (Instant::now() - state.start_time).as_secs_f32()),
             "meshes": state.renderer.as_ref().map(|r| r.gpu_meshes.len()).unwrap_or(0),
         }).to_string()
-    }).unwrap_or_else(|| r#"{"error":"no engine"}"#.to_string())
+    });
+    cached(&DEBUG_CACHE, r#"{"error":"no engine"}"#, fresh)
 }
 
 pub fn get_inventory_json() -> String {
-    with_engine(|state| state.inventory.to_json()).unwrap_or_else(|| r#"{"selected":0,"slots":[]}"#.to_string())
+    let fresh = with_engine_try(|state| state.inventory.to_json());
+    cached(&INV_CACHE, r#"{"selected":0,"slots":[]}"#, fresh)
 }
 
 pub fn get_stats_json() -> String {
-    with_engine(|state| {
+    let fresh = with_engine_try(|state| {
         let walked = state.player.walk_dist as i32;
         let time = (Instant::now() - state.start_time).as_secs_f32();
         let day_t = (time / 120.0) % 1.0;
         let night = day_t > 0.5 && day_t < 0.92;
         serde_json::json!({ "placed": state.inventory.placed, "broken": state.inventory.broken, "walked": walked, "night": night }).to_string()
-    }).unwrap_or_else(|| "{}".to_string())
+    });
+    cached(&STATS_CACHE, "{}", fresh)
 }
 
-pub fn break_block_action() -> bool {
-    with_engine(|state| {
-        let origin = state.player.eye_pos();
-        let dir = state.player.forward();
-        if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 5.0) {
-            let (x,y,z) = hit.pos;
-            let id = state.chunks.get_block_world(x,y,z);
-            if id !=0 {
-                state.chunks.set_block_world(x,y,z, 0);
-                state.inventory.add_block(id);
-                state.inventory.broken +=1;
-                let cp = crate::world::chunk::ChunkPos::from_world(x,z);
-                if let Some(ch) = state.chunks.get_mut(cp) { ch.mesh_dirty = true; }
-                let lx = x.rem_euclid(16); let lz = z.rem_euclid(16);
-                if lx==0 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0-1, cp.1)) { ch.mesh_dirty=true; } }
-                if lx==15 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0+1, cp.1)) { ch.mesh_dirty=true; } }
-                if lz==0 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0, cp.1-1)) { ch.mesh_dirty=true; } }
-                if lz==15 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0, cp.1+1)) { ch.mesh_dirty=true; } }
-                return true;
-            }
+// Build a world-space pick ray from a tap at pixel (px, py) using a pinhole model matching the
+// renderer's 70deg vertical FOV. Avoids the swapchain/matrix Y-flip quirks entirely.
+fn screen_ray(state: &EngineState, px: f32, py: f32) -> (Vec3, Vec3) {
+    let eye = state.player.eye_pos();
+    let forward = state.player.forward();
+    let world_up = Vec3::Y;
+    let right = forward.cross(world_up).normalize_or_zero();
+    let up = right.cross(forward).normalize_or_zero();
+    let w = state.width.max(1) as f32;
+    let h = state.height.max(1) as f32;
+    let aspect = w / h;
+    let thf_y = (70f32.to_radians() * 0.5).tan();
+    let thf_x = thf_y * aspect;
+    let ndc_x = (px / w) * 2.0 - 1.0;
+    let ndc_y = (py / h) * 2.0 - 1.0; // screen y grows downward
+    let dir = (forward + right * (ndc_x * thf_x) + up * (-ndc_y * thf_y)).normalize_or_zero();
+    (eye, dir)
+}
+
+fn mark_neighbors_dirty(state: &mut EngineState, x: i32, z: i32) {
+    use crate::world::chunk::ChunkPos;
+    let cp = ChunkPos::from_world(x, z);
+    if let Some(ch) = state.chunks.get_mut(cp) { ch.mesh_dirty = true; }
+    let lx = x.rem_euclid(16); let lz = z.rem_euclid(16);
+    if lx==0 { if let Some(ch) = state.chunks.get_mut(ChunkPos(cp.0-1, cp.1)) { ch.mesh_dirty=true; } }
+    if lx==15 { if let Some(ch) = state.chunks.get_mut(ChunkPos(cp.0+1, cp.1)) { ch.mesh_dirty=true; } }
+    if lz==0 { if let Some(ch) = state.chunks.get_mut(ChunkPos(cp.0, cp.1-1)) { ch.mesh_dirty=true; } }
+    if lz==15 { if let Some(ch) = state.chunks.get_mut(ChunkPos(cp.0, cp.1+1)) { ch.mesh_dirty=true; } }
+}
+
+fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
+    if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 6.0) {
+        let (x,y,z) = hit.pos;
+        let id = state.chunks.get_block_world(x,y,z);
+        if id != 0 {
+            state.chunks.set_block_world(x,y,z, 0);
+            state.inventory.add_block(id);
+            state.inventory.broken += 1;
+            mark_neighbors_dirty(state, x, z);
+            return true;
         }
-        false
+    }
+    false
+}
+
+fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
+    if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 6.0) {
+        let (px,py,pz) = hit.prev;
+        if state.chunks.get_block_world(px,py,pz) != 0 { return false; }
+        let min_check = vec3(state.player.pos.x - 0.3, state.player.pos.y, state.player.pos.z - 0.3);
+        let max_check = vec3(state.player.pos.x + 0.3, state.player.pos.y + 1.8, state.player.pos.z + 0.3);
+        let inside_x = (px as f32 + 1.0) > min_check.x && (px as f32) < max_check.x;
+        let inside_y = (py as f32 + 1.0) > min_check.y && (py as f32) < max_check.y;
+        let inside_z = (pz as f32 + 1.0) > min_check.z && (pz as f32) < max_check.z;
+        if inside_x && inside_y && inside_z { return false; }
+        if let Some(id) = state.inventory.consume_selected() {
+            state.chunks.set_block_world(px,py,pz, id);
+            mark_neighbors_dirty(state, px, pz);
+            return true;
+        }
+    }
+    false
+}
+
+pub fn break_block_at(px: f32, py: f32) -> bool {
+    with_engine(|state| {
+        let (o, d) = screen_ray(state, px, py);
+        do_break(state, o, d)
     }).unwrap_or(false)
 }
 
-pub fn place_block_action() -> bool {
+pub fn place_block_at(px: f32, py: f32) -> bool {
     with_engine(|state| {
-        let origin = state.player.eye_pos();
-        let dir = state.player.forward();
-        if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 5.0) {
-            let (px,py,pz) = hit.prev;
-            if state.chunks.get_block_world(px,py,pz) !=0 { return false; }
-            let min_check = vec3(state.player.pos.x - 0.3, state.player.pos.y, state.player.pos.z - 0.3);
-            let max_check = vec3(state.player.pos.x + 0.3, state.player.pos.y + 1.8, state.player.pos.z + 0.3);
-            let inside_x = (px as f32 + 1.0) > min_check.x && (px as f32) < max_check.x;
-            let inside_y = (py as f32 + 1.0) > min_check.y && (py as f32) < max_check.y;
-            let inside_z = (pz as f32 + 1.0) > min_check.z && (pz as f32) < max_check.z;
-            if inside_x && inside_y && inside_z { return false; }
-            if let Some(id) = state.inventory.consume_selected() {
-                state.chunks.set_block_world(px,py,pz, id);
-                let cp = crate::world::chunk::ChunkPos::from_world(px,pz);
-                if let Some(ch) = state.chunks.get_mut(cp) { ch.mesh_dirty=true; }
-                let lx = px.rem_euclid(16); let lz = pz.rem_euclid(16);
-                if lx==0 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0-1, cp.1)) { ch.mesh_dirty=true; } }
-                if lx==15 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0+1, cp.1)) { ch.mesh_dirty=true; } }
-                if lz==0 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0, cp.1-1)) { ch.mesh_dirty=true; } }
-                if lz==15 { if let Some(ch) = state.chunks.get_mut(crate::world::chunk::ChunkPos(cp.0, cp.1+1)) { ch.mesh_dirty=true; } }
-                return true;
-            }
-        }
-        false
+        let (o, d) = screen_ray(state, px, py);
+        do_place(state, o, d)
     }).unwrap_or(false)
 }
