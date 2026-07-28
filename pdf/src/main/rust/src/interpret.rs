@@ -373,7 +373,9 @@ pub(crate) fn interpret_content(
                 pending_clip = Some(PendingClip { even_odd: true, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
             "m" => {
-                if let (Some(x), Some(y)) = (o.first().and_then(num), o.get(1).and_then(num)) {
+                let xn = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x)));
+                let yn = o.get(1).and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x)));
+                if let (Some(x), Some(y)) = (xn, yn) {
                     cur_user = (x, y);
                     start_user = (x, y);
                     let (dx, dy) = dev(&gs, x, y);
@@ -382,7 +384,9 @@ pub(crate) fn interpret_content(
                 }
             }
             "l" => {
-                if let (Some(x), Some(y)) = (o.first().and_then(num), o.get(1).and_then(num)) {
+                let xn = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x)));
+                let yn = o.get(1).and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x)));
+                if let (Some(x), Some(y)) = (xn, yn) {
                     cur_user = (x, y);
                     let (dx, dy) = dev(&gs, x, y);
                     if let Some(sp) = subpaths.last_mut() {
@@ -394,7 +398,7 @@ pub(crate) fn interpret_content(
                 }
             }
             "c" | "v" | "y" => {
-                let nums: Vec<f64> = o.iter().filter_map(num).collect();
+                let nums: Vec<f64> = o.iter().filter_map(|x| deref(doc, x).and_then(num).or_else(|| num(x))).collect();
                 let (p1, p2, p3) = match op.operator.as_str() {
                     "c" if nums.len() == 6 => (
                         (nums[0], nums[1]),
@@ -426,7 +430,7 @@ pub(crate) fn interpret_content(
                 clip_path_ops.push(PathOp::Cubic(c1x as f32, c1y as f32, c2x as f32, c2y as f32, c3x as f32, c3y as f32));
             }
             "re" => {
-                let nums: Vec<f64> = o.iter().filter_map(num).collect();
+                let nums: Vec<f64> = o.iter().filter_map(|x| deref(doc, x).and_then(num).or_else(|| num(x))).collect();
                 if nums.len() == 4 {
                     let (x, y, w, h) = (nums[0], nums[1], nums[2], nums[3]);
                     let rect = vec![
@@ -451,8 +455,11 @@ pub(crate) fn interpret_content(
                 }
             }
             "h" => {
+                // P0 fix: avoid duplicate close point causing zero-length segment
                 if let Some(sp) = subpaths.last_mut() {
-                    sp.push(dev(&gs, start_user.0, start_user.1));
+                    let (sx, sy) = dev(&gs, start_user.0, start_user.1);
+                    let skip_dup = sp.last().map(|&(px, py)| (px-sx).abs() < 1e-6 && (py-sy).abs() < 1e-6).unwrap_or(false);
+                    if !skip_dup { sp.push((sx, sy)); }
                 }
                 clip_path_ops.push(PathOp::Close);
                 cur_user = start_user;
