@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Notes</string>
+    <string name="app_name">笔记</string>
     <string name="title">标题</string>
     <string name="drawing">绘图</string>
     <string name="add_image">添加图片</string>
