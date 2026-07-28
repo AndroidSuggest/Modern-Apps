@@ -35,4 +35,5 @@
         <item quantity="other">%1$d osób</item>
     </plurals>
     <string name="view_360">Widok 360°</string>
+    <string name="cancel">Anuluj</string>
 </resources>
