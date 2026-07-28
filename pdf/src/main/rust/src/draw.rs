@@ -22,24 +22,21 @@ pub(crate) fn cubic_bezier(
 
 
 pub(crate) fn emit_stroke(prims: &mut Vec<Prim>, subpaths: &[Vec<(f64, f64)>], gs: &GraphicsState) {
-    // Approximate device-space scale via the CTM's average axis length.
+    // Device-space scale via CTM
     let ctm = &gs.ctm;
     let sx = (ctm[0] * ctm[0] + ctm[1] * ctm[1]).sqrt();
     let sy = (ctm[2] * ctm[2] + ctm[3] * ctm[3]).sqrt();
     let scale = (sx + sy) / 2.0;
     let width = (gs.line_width * scale) as f32;
-    let dash: Vec<f32> = gs
-        .dash
-        .iter()
-        .map(|d| (d * scale) as f32)
-        .filter(|d| *d >= 0.0)
-        .collect();
-    // A valid dash needs at least two positive entries with a non-zero sum.
-    let dash = if dash.len() >= 2 && dash.iter().sum::<f32>() > 0.0 {
-        dash
-    } else {
-        Vec::new()
-    };
+    // Single-element dash is valid (odd -> duplicate) per PDF spec — fix #19
+    let mut dash: Vec<f32> = gs.dash.iter().map(|d| (d * scale) as f32).filter(|d| *d >= 0.0).collect();
+    if dash.len() == 1 && dash[0] > 0.0 {
+        dash.push(dash[0]);
+    } else if dash.len() % 2 == 1 && dash.len() > 1 {
+        let cl = dash.clone();
+        dash.extend(cl);
+    }
+    let dash = if dash.len() >= 2 && dash.iter().sum::<f32>() > 0.0 { dash } else { Vec::new() };
     let dash_phase = (gs.dash_phase * scale) as f32;
     let argb = apply_alpha_to_argb(gs.stroke, gs.alpha_stroke);
     // Overprint (stroking) is approximated as Multiply on an RGB compositor:
@@ -146,12 +143,12 @@ pub(crate) fn show_string(
     }
 
     let mut pen = 0.0_f64;
-    let mut pen_x_device: f32 = 0.0; // track device advance for selection/search fidelity
-    // Precompute device stroke width for text stroke modes (respect primitive cap/join in Kotlin)
-    let ctm = &gs.ctm;
-    let sx_ctm = (ctm[0]*ctm[0] + ctm[1]*ctm[1]).sqrt();
-    let sy_ctm = (ctm[2]*ctm[2] + ctm[3]*ctm[3]).sqrt();
-    let device_stroke_w = ((gs.line_width * (sx_ctm+sy_ctm)/2.0) as f32).max(0.1);
+    // Fix high #12: device stroke width should use Trm scale (includes Tm·Tfs·Th), not just CTM
+    let trm = mat_mul(text_matrix, &gs.ctm);
+    let sx_trm = (trm[0] * trm[0] + trm[1] * trm[1]).sqrt();
+    let sy_trm = (trm[2] * trm[2] + trm[3] * trm[3]).sqrt();
+    let avg_trm_scale = (sx_trm + sy_trm) * 0.5;
+    let device_stroke_w = (gs.line_width * avg_trm_scale) as f32;
 
     fi.for_each_code(bytes, |code, is_space| {
         let tx = fi.width(code) * tfs + gs.char_spacing + if is_space { gs.word_spacing } else { 0.0 };
@@ -171,8 +168,6 @@ pub(crate) fn show_string(
                 let has_stroke = matches!(gs.render_mode, 1|2|5|6);
                 let clip_only = gs.render_mode == 7;
                 let rm = gs.render_mode as u8;
-                let base_adv = fi.width(code) * tfs;
-                let _ = base_adv;
                 let glyph_device_adv = (glyph_advance_user * x_scale) as f32;
                 let bold = fi.style.bold;
                 let italic = fi.style.italic;
@@ -232,7 +227,6 @@ pub(crate) fn show_string(
             }
         }
         pen += glyph_advance_user;
-        let _ = pen_x_device; // reserved for future horizontal scaling accurate mapping
     });
     // Enforce primitive cap
     if prims.len() > MAX_PRIMITIVES {
