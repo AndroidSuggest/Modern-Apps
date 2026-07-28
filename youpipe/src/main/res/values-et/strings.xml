@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="title_history">Ajalugu</string>
     <string name="label_search">Otsi</string>
-    <string name="subscribers_count">%1$s tellijat</string>
+    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; tellijat</string>
     <string name="title_create_subscription_category">Loo tellimuste kategooria</string>
     <string name="title_update_subscription_category">Uuenda tellimuste kategooriat</string>
     <string name="app_name">YouPipe</string>
@@ -18,20 +18,20 @@
     <string name="label_groups">Grupid:</string>
     <string name="label_all_subscriptions">Kõik tellimused</string>
     <string name="label_channels">Kanalid:</string>
-    <string name="video_info_format">%1$s • %2$s vaatamist • %3$s</string>
+    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1.2M\"&gt;%2$s&lt;/xliff:g&gt; vaatamist | &lt;xliff:g id=\"time\" example=\"2 päeva tagasi\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="time_ago_just_now">Äsja</string>
-    <string name="time_ago_minutes">%1$d minuti eest</string>
-    <string name="time_ago_hours">%1$d tunni eest</string>
-    <string name="time_ago_days">%1$d päeva eest</string>
-    <string name="time_ago_months">%1$d kuu eest</string>
-    <string name="time_ago_years">%1$d aasta eest</string>
-    <string name="count_k_format">%1$s tuh</string>
-    <string name="count_m_format">%1$s mln</string>
-    <string name="count_b_format">%1$s bln</string>
+    <string name="time_ago_minutes">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti eest</string>
+    <string name="time_ago_hours">&lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; tunni eest</string>
+    <string name="time_ago_days">&lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; päeva eest</string>
+    <string name="time_ago_months">&lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; kuu eest</string>
+    <string name="time_ago_years">&lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; aasta eest</string>
+    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12.3\"&gt;%1$s&lt;/xliff:g&gt;K</string>
+    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1.2\"&gt;%1$s&lt;/xliff:g&gt;mln</string>
+    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3.4\"&gt;%1$s&lt;/xliff:g&gt;bln</string>
     <string name="action_subscribe">Telli</string>
     <string name="action_unsubscribe">Loobu tellimusest</string>
-    <string name="channel_info">%1$s tellijat</string>
-    <string name="video_stat_format">%1$s vaatamist • %2$s</string>
+    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1.2M\"&gt;%1$s&lt;/xliff:g&gt; tellijat</string>
+    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; vaatamist | &lt;xliff:g id=\"time\" example=\"3 päeva tagasi\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="label_description">Kirjeldus</string>
     <string name="title_settings">Seadistused</string>
     <string name="label_sponsorblock">SponsorBlocki kategooriad</string>
@@ -40,11 +40,11 @@
     <string name="label_import_newpipe">Impordi NewPipe\'i tellimused</string>
     <string name="label_import_youtube">Impordi YouTube\'ist (Takeout-liidestus)</string>
     <string name="label_export_youpipe">Ekspordi tellimused</string>
-    <string name="video_quality_fps_codec">%1$s (%2$d kaadrit sekundis) %3$s</string>
+    <string name="video_quality_fps_codec">&lt;xliff:g id=\"quality\" example=\"1080p\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"fps\" example=\"60\"&gt;%2$d&lt;/xliff:g&gt;kaadrit sekundis) &lt;xliff:g id=\"codec\" example=\"avc\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="empty_recommendations">Kui tahad näha sulle mõeldud soovitusi, siis vaata natuke videoid</string>
     <string name="label_dearrow">Pisipiltide kuvamiseks kasuta DeArrow teenust</string>
     <string name="label_dearrow_description">Asenda liiga klikialtid pealkirjad ja pisipildid kogukonna loodud alterantiivisega</string>
-    <string name="recommendation_reason">Põhjus: %1$s</string>
+    <string name="recommendation_reason">Põhjus: &lt;xliff:g id=\"reason\" example=\"vaadatuga sarnane sisu\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="action_not_interested">See ei huvita mind</string>
     <string name="action_more_like_this">Tahan veel sellist sisu</string>
     <string name="action_pin_channel">Tõsta kanal esile</string>
@@ -88,4 +88,19 @@
     <string name="label_youtube_content">YouTube\'i sisu</string>
     <string name="label_youtube_language">Sisu keel</string>
     <string name="label_system_default">Süsteemi vaikeseadistus</string>
+    <string name="download_options">Allalaadimise valikud</string>
+    <string name="download">Laadi alla</string>
+    <string name="resolution">Eraldusvõime</string>
+    <string name="language">Keel</string>
+    <string name="off">Väljas</string>
+    <string name="chapter">Peatükk</string>
+    <string name="cc">CC</string>
+    <string name="loading_recent_subscriptions">Viimased tellimused on laadimisel</string>
+    <string name="selected"><xliff:g id="count" example="3">%1$s</xliff:g> on valitud</string>
+    <string name="clear_history">Kustuta ajalugu</string>
+    <string name="are_you_sure_you_want_to_clear_all_watch">Kas sa oled kindel, et soovid kustutada kogu vaatamiste ajaloo?</string>
+    <string name="clear">Eemalda</string>
+    <string name="cancel">Katkesta</string>
+    <string name="downloads">Allalaadimised</string>
+    <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> on valitud</string>
 </resources>
