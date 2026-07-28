@@ -26,7 +26,23 @@ pub(crate) fn pages_root(doc: &Document) -> Option<ObjectId> {
 }
 
 /// Append a page reference to the `/Pages` tree and refresh `/Count`.
+/// Fix: handle indirect Kids array (common — was assuming inline, losing pages #34 high)
 pub(crate) fn append_kid(doc: &mut Document, pages_id: ObjectId, page_id: ObjectId) {
+    // Indirect ref case: Kids is Reference(id) holding Array
+    let kids_ref_opt = doc.get_dictionary(pages_id).ok().and_then(|d| d.get(b"Kids").ok()).and_then(|o| {
+        if let Object::Reference(id) = o { Some(*id) } else { None }
+    });
+    if let Some(kids_id) = kids_ref_opt {
+        if let Ok(Object::Array(a)) = doc.get_object_mut(kids_id) {
+            a.push(Object::Reference(page_id));
+        }
+        // compute count from that indirect array
+        let cnt = doc.get_object(kids_id).ok().and_then(|o| o.as_array().ok()).map(|arr| arr.len() as i64).unwrap_or(0);
+        if let Ok(pages) = doc.get_dictionary_mut(pages_id) {
+            pages.set("Count", cnt);
+        }
+        return;
+    }
     if let Ok(pages) = doc.get_dictionary_mut(pages_id) {
         let has = matches!(pages.get(b"Kids"), Ok(Object::Array(_)));
         if !has {
