@@ -52,23 +52,22 @@ fun clampTerm(
  * Responsive default positions for I/O terminals — fixes portrait off-screen bug.
  * Inputs left side, outputs right edge relative to current canvasSize.
  */
-fun defaultInputPos(idx: Int, canvasSize: Size, pillW: Float = 86f): Offset {
-  val padding = 20f
-  val spacing = if (canvasSize.height > 0f) {
-    val available = canvasSize.height - padding * 2f - 44f
-    val per = available / 8f
-    per.coerceIn(42f, 62f)
-  } else 56f
-  return Offset(padding + pillW / 2f, padding + 44f + idx * spacing)
+// Center the terminal stack vertically and space rows by the block height so they never overlap.
+private fun defaultStackY(idx: Int, count: Int, canvasSize: Size, itemH: Float): Float {
+  val padding = 16f
+  val spacing = itemH + 22f
+  val totalH = spacing * count.coerceAtLeast(1)
+  val startY = ((canvasSize.height - totalH) / 2f).coerceAtLeast(padding) + spacing / 2f
+  return startY + idx * spacing
 }
 
-fun defaultOutputPos(idx: Int, canvasSize: Size, pillW: Float = 86f): Offset {
+fun defaultInputPos(idx: Int, count: Int, canvasSize: Size, pillW: Float = 86f, itemH: Float = 56f): Offset {
   val padding = 20f
-  val spacing = if (canvasSize.height > 0f) {
-    val available = canvasSize.height - padding * 2f - 44f
-    val per = available / 8f
-    per.coerceIn(42f, 62f)
-  } else 56f
+  return Offset(padding + pillW / 2f, defaultStackY(idx, count, canvasSize, itemH))
+}
+
+fun defaultOutputPos(idx: Int, count: Int, canvasSize: Size, pillW: Float = 86f, itemH: Float = 56f): Offset {
+  val padding = 20f
   val x = if (canvasSize.width > 0f) canvasSize.width - padding - pillW / 2f else 320f
-  return Offset(x, padding + 44f + idx * spacing)
+  return Offset(x, defaultStackY(idx, count, canvasSize, itemH))
 }

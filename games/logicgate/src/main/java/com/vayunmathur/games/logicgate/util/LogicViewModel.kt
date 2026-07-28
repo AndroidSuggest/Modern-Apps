@@ -183,6 +183,14 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         updateCircuit(Circuit())
     }
 
+    fun selectGate(id: String?) { _uiState.update { it.copy(selectedGateInstanceId = id) } }
+
+    fun deleteSelected() {
+        val id = _uiState.value.selectedGateInstanceId ?: return
+        removeGate(id)
+        _uiState.update { it.copy(selectedGateInstanceId = null) }
+    }
+
     private fun pushHistory(c: Circuit) {
         val lvl = _uiState.value.currentLevelId ?: return
         val stack = undoStacks.getOrPut(lvl) { mutableListOf() }

@@ -5,7 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,7 +16,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -27,9 +33,11 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -54,6 +62,8 @@ internal object Turing {
     val inputBorder = Color(0xFFFF9A9A)
     val gateTeal = Color(0xFF0F7A6E)
     val gateStroke = Color(0xFF4BE8C6)
+    val gateBlue = Color(0xFF2C6FB5)
+    val gateBlueStroke = Color(0xFF7CB6EC)
     val bitGreen = Color(0xFF2ECC71)
     val bitRed = Color(0xFFE74C4C)
     val busOrange = Color(0xFFFFA53D)
@@ -67,6 +77,82 @@ internal object Turing {
     val orangeLabel = Color(0xFFF0A040)
     val rightTabOn = Color(0xFF3D455C)
     val rightTabOff = Color(0xFF1E2636)
+}
+
+// Logic-gate silhouettes (Turing-Complete style): triangle=NOT/buffer, D=AND/NAND,
+// bullet=OR/NOR, bullet+double-back=XOR/XNOR, rounded rect=everything else.
+// Inverting gates (NAND/NOR/XNOR/NOT) also get the negation bubble at the output.
+private enum class GateShape { TRIANGLE, DSHAPE, ORSHAPE, RECT }
+private data class GateStyle(val shape: GateShape, val inverting: Boolean, val doubleBack: Boolean)
+
+private fun gateStyleFor(def: ChipDef): GateStyle {
+    // All components render as compact rounded rectangles.
+    return GateStyle(GateShape.RECT, inverting = false, doubleBack = false)
+}
+
+// Size a placed component (px): width fits the label, height grows per pin for spacing. Shared by the canvas and the drag ghost.
+internal fun gatePlacedSizePx(def: ChipDef, density: Density, textMeasurer: TextMeasurer): Pair<Float, Float> {
+    val maxPins = max(def.inputCount, def.outputCount)
+    val measured = try {
+        textMeasurer.measure(def.displayName, TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold)).size.width.toFloat()
+    } catch (_: Exception) { def.displayName.length * with(density) { 8.dp.toPx() } }
+    val wPx = (measured + with(density) { 16.dp.toPx() }).coerceIn(with(density) { 44.dp.toPx() }, with(density) { 104.dp.toPx() })
+    val hDp = if (maxPins <= 1) 30.dp else (20.dp * maxPins + 12.dp)
+    return wPx to with(density) { hDp.toPx() }
+}
+
+// Builds a gate body path occupying [left, left+w] x [0,h].
+private fun buildGateBody(shape: GateShape, left: Float, w: Float, h: Float): Path {
+    val p = Path()
+    when (shape) {
+        GateShape.DSHAPE -> {
+            val r = (h / 2f).coerceAtMost(w / 2f)
+            p.moveTo(left, 0f); p.lineTo(left + w - r, 0f)
+            p.arcTo(Rect(left + w - 2f * r, 0f, left + w, h), -90f, 180f, false)
+            p.lineTo(left, h); p.close()
+        }
+        GateShape.ORSHAPE -> {
+            p.moveTo(left, 0f)
+            p.quadraticBezierTo(left + w * 0.30f, h * 0.5f, left, h)   // concave back
+            p.quadraticBezierTo(left + w * 0.72f, h, left + w, h * 0.5f) // bottom to tip
+            p.quadraticBezierTo(left + w * 0.72f, 0f, left, 0f)          // tip to top
+            p.close()
+        }
+        GateShape.TRIANGLE -> {
+            p.moveTo(left, 0f); p.lineTo(left + w, h / 2f); p.lineTo(left, h); p.close()
+        }
+        GateShape.RECT -> {}
+    }
+    return p
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGate(style: GateStyle, fill: Color, stroke: Color, strokeW: Float) {
+    val w = size.width; val h = size.height
+    if (style.shape == GateShape.RECT) {
+        val cr = androidx.compose.ui.geometry.CornerRadius(with(this) { 8.dp.toPx() }, with(this) { 8.dp.toPx() })
+        drawRoundRect(fill, size = size, cornerRadius = cr)
+        drawRoundRect(stroke, size = size, cornerRadius = cr, style = Stroke(strokeW))
+        return
+    }
+    val bubbleR = if (style.inverting) h * 0.13f else 0f
+    val backGap = if (style.doubleBack) h * 0.16f else 0f
+    val left = backGap
+    val bodyW = (w - bubbleR * 2f - backGap).coerceAtLeast(h * 0.6f)
+    val body = buildGateBody(style.shape, left, bodyW, h)
+    drawPath(body, fill)
+    drawPath(body, stroke, style = Stroke(strokeW))
+    if (style.doubleBack) {
+        val back = Path().apply {
+            moveTo(0f, 0f)
+            quadraticBezierTo(bodyW * 0.30f, h * 0.5f, 0f, h)
+        }
+        drawPath(back, stroke, style = Stroke(strokeW))
+    }
+    if (style.inverting) {
+        val cx = left + bodyW + bubbleR; val cy = h / 2f
+        drawCircle(fill, bubbleR, Offset(cx, cy))
+        drawCircle(stroke, bubbleR, Offset(cx, cy), style = Stroke(strokeW))
+    }
 }
 
 data class GateBox(val chip: PlacedChip, val left: Float, val top: Float, val w: Float, val h: Float, val pinOut: Float = 0f) {
@@ -123,7 +209,9 @@ fun CircuitCanvas(
     inputBitSlices: Map<Int, List<Boolean>> = emptyMap(),
     outputBitSlicesActual: Map<Int, List<Boolean>> = emptyMap(),
     // Reports the current pan/zoom so callers can map screen drops to content coords: content = (screen - offset) / scale
-    onViewportChange: (scale: Float, offset: Offset) -> Unit = { _, _ -> }
+    onViewportChange: (scale: Float, offset: Offset) -> Unit = { _, _ -> },
+    selectedGateId: String? = null,
+    onSelectGate: (String?) -> Unit = {}
 ) {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
@@ -134,41 +222,27 @@ fun CircuitCanvas(
     // Explicit start anchor for the wiring ghost — WireEnd(gate, pin) is ambiguous between
     // an input and output pin, so we remember the exact pin the drag started from.
     var wiringAnchor by remember { mutableStateOf<Offset?>(null) }
+    // Drag-a-gate-to-the-bottom-to-delete (Alchemist style).
+    var gateDragActive by remember { mutableStateOf(false) }
+    var gateDragArmed by remember { mutableStateOf(false) }
+    val deleteBandPx = with(density) { 72.dp.toPx() }
+    fun inDeleteZone(contentCenterY: Float): Boolean {
+        val chH = canvasSizePx.height
+        if (chH <= 0f) return false
+        val screenRelY = contentCenterY * scale + offset.y
+        return screenRelY > chH - deleteBandPx
+    }
 
     val pinHitR = with(density) { if (isCompact) 36.dp.toPx() else 28.dp.toPx() }
     val termWireDotR = with(density) { if (isCompact) 32.dp.toPx() else 26.dp.toPx() }
     val wireHitThreshold = with(density) { if (isCompact) 40.dp.toPx() else 34.dp.toPx() }
     val pinOutsideDp: Dp = 14.dp
     val pinOutsidePx = with(density) { pinOutsideDp.toPx() }
-    val termMinWpx = with(density) { 120.dp.toPx() }
-    val termMaxWpx = with(density) { 160.dp.toPx() }
+    val termMinWpx = with(density) { 78.dp.toPx() }
+    val termMaxWpx = with(density) { 124.dp.toPx() }
+    val termHpx = with(density) { if (isCompact) 46.dp.toPx() else 42.dp.toPx() } // must match TuringBigTerminal.visualH
 
-    fun gateSizeFor(def: ChipDef): Pair<Float, Float> {
-        val maxPins = max(def.inputCount, def.outputCount)
-        val wDp = when {
-            isCompact && maxPins > 8 -> 136.dp
-            isCompact && maxPins > 5 -> 110.dp
-            isCompact && maxPins > 3 -> 92.dp
-            isCompact -> 88.dp
-            maxPins > 8 -> 124.dp
-            maxPins > 5 -> 98.dp
-            maxPins > 3 -> 80.dp
-            else -> 68.dp
-        }
-        val hDp = when {
-            isCompact && maxPins <= 1 -> 38.dp
-            isCompact && maxPins == 2 -> 46.dp
-            isCompact && maxPins == 3 -> 54.dp
-            isCompact && maxPins == 4 -> 66.dp
-            isCompact -> (14.dp * maxPins + 20.dp).coerceAtLeast(56.dp)
-            maxPins <= 1 -> 30.dp
-            maxPins == 2 -> 38.dp
-            maxPins == 3 -> 46.dp
-            maxPins == 4 -> 58.dp
-            else -> (13.dp * maxPins + 16.dp).coerceAtLeast(48.dp)
-        }
-        return with(density) { wDp.toPx() to hDp.toPx() }
-    }
+    fun gateSizeFor(def: ChipDef): Pair<Float, Float> = gatePlacedSizePx(def, density, textMeasurer)
 
     val gateBoxes: List<GateBox> = remember(gates, isCompact, pinOutsidePx) {
         gates.map { g ->
@@ -181,10 +255,10 @@ fun CircuitCanvas(
 
     fun pillW(display: String): Float {
         val measured = try {
-            val layout = textMeasurer.measure(display, TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold))
+            val layout = textMeasurer.measure(display, TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold))
             layout.size.width.toFloat()
-        } catch (_: Exception) { display.length * 14f }
-        return (with(density) { 56.dp.toPx() } + measured).coerceIn(with(density) { 110.dp.toPx() }, with(density) { 180.dp.toPx() })
+        } catch (_: Exception) { display.length * 12f }
+        return (with(density) { 28.dp.toPx() } + measured).coerceIn(termMinWpx, termMaxWpx)
     }
     fun visualPillW(raw: Float): Float = raw.coerceIn(termMinWpx, termMaxWpx)
 
@@ -193,7 +267,7 @@ fun CircuitCanvas(
             val label = displayInputLabel(level, i)
             val pw = pillW(label)
             val vw = visualPillW(pw)
-            val default = defaultInputPos(i, canvasSizePx, vw)
+            val default = defaultInputPos(i, level.inputs.size, canvasSizePx, vw, termHpx)
             val p = inputPositions[i]
             val center = if (p != null) Offset(p.x, p.y) else default
             TerminalBox(i, center, label, true, pw)
@@ -204,7 +278,7 @@ fun CircuitCanvas(
             val label = displayOutputLabel(level, i)
             val pw = pillW(label)
             val vw = visualPillW(pw)
-            val default = defaultOutputPos(i, canvasSizePx, vw)
+            val default = defaultOutputPos(i, level.outputs.size, canvasSizePx, vw, termHpx)
             val p = outputPositions[i]
             val center = if (p != null) Offset(p.x, p.y) else default
             TerminalBox(i, center, label, false, pw)
@@ -298,9 +372,10 @@ fun CircuitCanvas(
     val onOutputMapDeleteState by rememberUpdatedState(onOutputMapDelete)
     val onGhostLineState by rememberUpdatedState(onGhostLine)
     val onToggleInputState by rememberUpdatedState(onToggleInput)
+    val onSelectGateState by rememberUpdatedState(onSelectGate)
 
     Box(
-        modifier = modifier.fillMaxSize().background(Turing.bg)
+        modifier = modifier.fillMaxSize().background(Turing.bg).clipToBounds()
             // Two-finger pinch/pan, intercepted in the Initial pass so single-finger
             // gestures still reach the gates/terminals/wires below.
             .pointerInput(Unit) {
@@ -440,6 +515,8 @@ fun CircuitCanvas(
                         while (true) { val ev = awaitPointerEvent(); val ch = ev.changes.firstOrNull { it.id == down.id } ?: break; if (ch.changedToUpIgnoreConsumed()) break }
                         continue
                     }
+                    // Empty-space tap: clear the current selection.
+                    onSelectGateState(null)
                 }
             }
         }) {
@@ -515,7 +592,9 @@ fun CircuitCanvas(
         gateBoxes.forEach { gBox ->
             TuringGate(
                 gateBox = gBox, chipDef = chipDefs[gBox.chip.instanceId], canvasSize = canvasSizePx,
-                wiringFrom = wiringFrom, ghostEnd = dragGhostLineEnd,
+                wiringFrom = wiringFrom, wiringAnchor = wiringAnchor, ghostEnd = dragGhostLineEnd,
+                isSelected = selectedGateId == gBox.chip.instanceId,
+                onSelect = { id -> onSelectGateState(id) },
                 onMoveFinished = { id, x, y -> onGateMoveFinishedState(id, x, y) },
                 onMove = { id, x, y -> onGateMoveState(id, x, y) },
                 onDelete = { id -> onGateDeleteState(id) },
@@ -525,9 +604,29 @@ fun CircuitCanvas(
                 onCancel = { onCancelWiringState(); onGhostLineState(null) },
                 resolveTargetAt = { pos, excl -> resolveTargetAt(pos, excl) },
                 onAnchor = { pos -> wiringAnchor = pos },
+                inDeleteZone = { y -> inDeleteZone(y) },
+                onDragZone = { active, armed -> gateDragActive = active; gateDragArmed = armed },
                 density = density, pinHitR = pinHitR, isCompact = isCompact
             )
         }
+      }
+      // Delete zone: drag a component here (toward the inventory) to remove it.
+      if (gateDragActive) {
+          Box(
+              modifier = Modifier
+                  .align(Alignment.BottomCenter)
+                  .fillMaxWidth()
+                  .height(with(density) { deleteBandPx.toDp() })
+                  .background(if (gateDragArmed) Color(0xE6B91C1C) else Color(0x66B91C1C)),
+              contentAlignment = Alignment.Center
+          ) {
+              androidx.compose.material3.Text(
+                  text = if (gateDragArmed) "Release to delete" else "Drag here to delete",
+                  color = Color.White,
+                  fontSize = 14.sp,
+                  fontWeight = FontWeight.Bold
+              )
+          }
       }
     }
 }
@@ -538,7 +637,10 @@ private fun TuringGate(
     chipDef: ChipDef?,
     canvasSize: Size,
     wiringFrom: WireEnd?,
+    wiringAnchor: Offset?,
     ghostEnd: Offset?,
+    isSelected: Boolean,
+    onSelect: (String) -> Unit,
     onMoveFinished: (String, Float, Float) -> Unit,
     onMove: (String, Float, Float) -> Unit,
     onDelete: (String) -> Unit,
@@ -548,6 +650,8 @@ private fun TuringGate(
     onCancel: () -> Unit,
     resolveTargetAt: (Offset, String?) -> WireEnd?,
     onAnchor: (Offset) -> Unit,
+    inDeleteZone: (Float) -> Boolean,
+    onDragZone: (Boolean, Boolean) -> Unit,
     density: androidx.compose.ui.unit.Density,
     pinHitR: Float,
     isCompact: Boolean = false
@@ -561,34 +665,22 @@ private fun TuringGate(
     val w = gateBox.w; val h = gateBox.h
     val wDp = with(density) { w.toDp() }
     val hDp = with(density) { h.toDp() }
+    val gateStyle = remember(def.id) { gateStyleFor(def) }
+    val isTriangle = gateStyle.shape == GateShape.TRIANGLE
 
     Box(modifier = Modifier.graphicsLayer { translationX = localPos.x; translationY = localPos.y }) {
         Box(
             modifier = Modifier
                 .size(wDp, hDp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Turing.gateTeal)
-                .border(if (dragging) 1.6.dp else 1.2.dp, if (dragging) Color.White else Turing.gateStroke.copy(alpha = 0.78f), RoundedCornerShape(8.dp))
+                .drawBehind {
+                    val strokeCol = when { isSelected -> Color.Yellow; dragging -> Color.White; else -> Turing.gateBlueStroke }
+                    val strokeW = (if (isSelected || dragging) 2.dp else 1.4.dp).toPx()
+                    drawGate(gateStyle, Turing.gateBlue, strokeCol, strokeW)
+                }
                 .pointerInput(id) {
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val nearPin = run {
-                                var near = false
-                                for (j in 0 until def.inputCount) {
-                                    val lp = gateBox.inputPosLocal(def.inputCount, j)
-                                    if ((down.position.x) < pinHitR && abs(down.position.y - lp.y) < pinHitR) { near = true; break }
-                                }
-                                if (!near) for (j in 0 until def.outputCount) {
-                                    val lpLocal = gateBox.outputPosLocal(def.outputCount, j)
-                                    if (abs(down.position.x - w) < pinHitR && abs(down.position.y - lpLocal.y) < pinHitR) { near = true; break }
-                                }
-                                near
-                            }
-                            if (nearPin) {
-                                while (true) { val ev = awaitPointerEvent(); val ch = ev.changes.firstOrNull { it.id == down.id } ?: break; if (ch.changedToUpIgnoreConsumed()) break }
-                                continue
-                            }
                             var dragTotal = Offset.Zero
                             dragging = true
                             val downTime = System.currentTimeMillis()
@@ -597,32 +689,43 @@ private fun TuringGate(
                                 val ev = awaitPointerEvent()
                                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                                 if (ch.changedToUpIgnoreConsumed()) {
-                                    if (!longHandled && dragTotal.getDistance() > 4f) {
-                                        onMoveFinished(id, localPos.x, localPos.y)
+                                    val armed = dragTotal.getDistance() > 4f && inDeleteZone(localPos.y + h / 2f)
+                                    onDragZone(false, false)
+                                    if (!longHandled) {
+                                        when {
+                                            armed -> onDelete(id) // dropped in the delete band -> remove
+                                            dragTotal.getDistance() > 4f -> onMoveFinished(id, localPos.x, localPos.y)
+                                            else -> onSelect(id) // tap selects (yellow outline)
+                                        }
                                     }
                                     break
                                 }
                                 val delta = ch.position - ch.previousPosition
                                 dragTotal += delta
                                 val elapsed = System.currentTimeMillis() - downTime
-                                if (!longHandled && elapsed > 520 && dragTotal.getDistance() < 12f) { longHandled = true; onDelete(id); break }
+                                if (!longHandled && elapsed > 520 && dragTotal.getDistance() < 12f) { longHandled = true; onDragZone(false, false); onDelete(id); break }
                                 if (dragTotal.getDistance() > 4f) {
                                     ch.consume()
                                     localPos = clampGateWithPin(localPos + delta, w, h, gateBox.pinOut, canvasSize, 12.dp, density)
                                     onMove(id, localPos.x, localPos.y) // keep connected wires attached live
+                                    onDragZone(true, inDeleteZone(localPos.y + h / 2f))
                                 }
                             }
                             dragging = false
                         }
                     }
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = if (isTriangle) Alignment.CenterStart else Alignment.Center
         ) {
-            androidx.compose.material3.Text(text = def.displayName, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
+            // Triangle points right, so keep the label in the wide left portion.
+            androidx.compose.material3.Text(text = def.displayName, fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(start = if (isTriangle) 6.dp else 4.dp, end = if (isTriangle) 14.dp else 4.dp))
         }
         for (j in 0 until def.inputCount) {
             val lp = gateBox.inputPosLocal(def.inputCount, j)
             val isHover = ghostEnd?.let { (localPos + lp - it).getDistance() < pinHitR } ?: false
+            // Source pin (the one being dragged from) — identified precisely by the wiring anchor
+            // since WireEnd(id, pin) can't tell an input from an output of the same index.
+            val isSrc = wiringFrom?.instanceId == id && wiringAnchor != null && (localPos + lp - wiringAnchor).getDistance() < 12f
             val hitSize = 28.dp; val dotSize = 12.dp
             val halfHit = with(density) { hitSize.toPx() } / 2f
             val onStartState by rememberUpdatedState(onStartWiring)
@@ -662,11 +765,11 @@ private fun TuringGate(
                     }
                 },
                 contentAlignment = Alignment.Center
-            ) { Box(modifier = Modifier.size(dotSize).clip(CircleShape).background(if (isHover) Color.Yellow else Color.White).border(1.dp, Color.Black.copy(alpha = 0.35f), CircleShape)) }
+            ) { Box(modifier = Modifier.size(dotSize).clip(CircleShape).background(if (isSrc || isHover) Color.Yellow else Color.White).border(1.dp, Color.Black.copy(alpha = 0.35f), CircleShape)) }
         }
         for (j in 0 until def.outputCount) {
             val lp = gateBox.outputPosLocal(def.outputCount, j)
-            val isSrc = wiringFrom?.instanceId == id && wiringFrom.pinIndex == j
+            val isSrc = wiringFrom?.instanceId == id && wiringAnchor != null && (localPos + lp - wiringAnchor).getDistance() < 12f
             val hitSize = 28.dp; val dotSize = 12.dp
             val halfHit = with(density) { hitSize.toPx() } / 2f
             val onStartState by rememberUpdatedState(onStartWiring)
@@ -745,7 +848,7 @@ private fun TuringBigTerminal(
     var dragging by remember(box.idx) { mutableStateOf(false) }
     LaunchedEffect(box.center) { if (!dragging) center = box.center }
     val visualW = box.pillW.coerceIn(termMinWpx, termMaxWpx)
-    val visualH = with(density) { if (isCompact) 72.dp.toPx() else 64.dp.toPx() }
+    val visualH = with(density) { if (isCompact) 46.dp.toPx() else 42.dp.toPx() }
     val halfW = visualW / 2f; val halfH = visualH / 2f
     val isWiringSrc = wiringFrom?.instanceId == "__${if (isInput) "IN" else "OUT"}_${box.idx}"
     val label = box.name
@@ -766,7 +869,7 @@ private fun TuringBigTerminal(
                 .size(with(density) { visualW.toDp() }, with(density) { visualH.toDp() })
                 .clip(RoundedCornerShape(16.dp))
                 .background(bgColor)
-                .border(if (isWiringSrc) 2.2.dp else 1.3.dp, if (isWiringSrc || ghostEnd?.let { (it - center).getDistance() < 56f } == true) Color.Yellow else Turing.inputBorder, RoundedCornerShape(16.dp))
+                .border(1.3.dp, Turing.inputBorder, RoundedCornerShape(16.dp))
                 .pointerInput(box.idx) {
                     awaitPointerEventScope {
                         while (true) {
@@ -798,7 +901,7 @@ private fun TuringBigTerminal(
                     }
                 },
             contentAlignment = Alignment.Center
-        ) { androidx.compose.material3.Text(text = label, fontSize = 14.sp, color = Color.White, maxLines = 1, fontWeight = FontWeight.Bold) }
+        ) { androidx.compose.material3.Text(text = label, fontSize = 12.sp, color = Color.White, maxLines = 1, fontWeight = FontWeight.Bold, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 4.dp)) }
         val pinHitSize = 36.dp; val pinDotSize = 14.dp
         val pinMod = if (isInput) Modifier.offset { IntOffset((visualW + pinOutsidePx - with(density) { pinHitSize.toPx() } / 2f + 8f).toInt(), (halfH - with(density) { pinHitSize.toPx() } / 2f).toInt()) }
         else Modifier.offset { IntOffset((-pinOutsidePx - with(density) { pinHitSize.toPx() } / 2f - 8f).toInt(), (halfH - with(density) { pinHitSize.toPx() } / 2f).toInt()) }
@@ -825,7 +928,7 @@ private fun TuringBigTerminal(
                     }
                 }
             }
-        }, contentAlignment = Alignment.Center) { Box(modifier = Modifier.size(pinDotSize).clip(CircleShape).background(if (isInput) Color(0xFF38BDF8) else Color(0xFFF87171)).border(1.2.dp, Color.Black, CircleShape)) }
+        }, contentAlignment = Alignment.Center) { Box(modifier = Modifier.size(pinDotSize).clip(CircleShape).background(if (isWiringSrc) Color.Yellow else if (isInput) Color(0xFF38BDF8) else Color(0xFFF87171)).border(1.2.dp, Color.Black, CircleShape)) }
     }
 }
 

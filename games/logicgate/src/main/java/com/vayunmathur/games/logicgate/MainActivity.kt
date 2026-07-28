@@ -45,6 +45,8 @@ import com.vayunmathur.games.logicgate.data.EvalResult
 import com.vayunmathur.games.logicgate.data.LevelDef
 import com.vayunmathur.games.logicgate.data.Levels
 import com.vayunmathur.games.logicgate.ui.CircuitCanvas
+import com.vayunmathur.games.logicgate.ui.gatePlacedSizePx
+import androidx.compose.ui.text.rememberTextMeasurer
 import com.vayunmathur.games.logicgate.ui.LogicGateTheme
 import com.vayunmathur.games.logicgate.ui.MobileDimens
 import com.vayunmathur.games.logicgate.ui.ProgressionScreen
@@ -229,6 +231,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
     var selectedGroup by remember { mutableStateOf<ChipGroup?>(null) }
     var showIoSheet by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
 
     val totalInBits = level.totalInputBits
     val displayLimit = if (totalInBits <= 10) minOf(64, (1 shl totalInBits)) else 28
@@ -383,6 +386,11 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
         val idx = Levels.all.indexOfFirst { it.id == levelId }
         if (idx >= 0) Levels.all.getOrNull(idx + 1)?.id else null
     }
+    val availableGroups = remember(level.allowedChipIds, unlocked) {
+        level.allowedChipIds.filter { it in unlocked }
+            .mapNotNull { try { groupForCategory(ChipLibrary.get(it).category) } catch (_: Exception) { null } }
+            .toSet()
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val maxW = maxWidth
@@ -405,9 +413,6 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                         Spacer(modifier = Modifier.width(4.dp))
                         AppBarActionBtn(glyph = "↩", enabled = uiState.canUndo) { viewModel.undo() }
                         AppBarActionBtn(glyph = "↪", enabled = uiState.canRedo) { viewModel.redo() }
-                        Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Turing.iconBg).clickable { viewModel.clearCircuit() }, contentAlignment = Alignment.Center) {
-                            IconDelete(modifier = Modifier.size(20.dp), tint = Color(0xFFFF8A8A))
-                        }
                         Spacer(modifier = Modifier.width(4.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Turing.headerBg, titleContentColor = Color.White, navigationIconContentColor = Color.White, actionIconContentColor = Color.White)
@@ -446,21 +451,27 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                             inputOnMap = inputOnMap,
                             inputBitSlices = inputBitSlices,
                             outputBitSlicesActual = actualBitSlices,
-                            onViewportChange = { s: Float, o: Offset -> canvasScale = s; canvasOffset = o }
+                            onViewportChange = { s: Float, o: Offset -> canvasScale = s; canvasOffset = o },
+                            selectedGateId = uiState.selectedGateInstanceId,
+                            onSelectGate = { id: String? -> viewModel.selectGate(id) }
                         )
                         draggingChipId?.let { chipId ->
                             val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
                             val isOver = localOffset.x >= 0f && localOffset.x <= canvasSize.width && localOffset.y >= 0f && localOffset.y <= canvasSize.height
                             val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
-                            val ghostW = 100.dp; val ghostH = 56.dp
-                            Box(modifier = Modifier.offset {
-                                IntOffset((localOffset.x - with(density) { ghostW.toPx() } / 2f).roundToInt(), (localOffset.y - with(density) { ghostH.toPx() } / 2f).roundToInt())
-                            }.size(ghostW, ghostH).background(if (isOver) Color(0xFFD1FAE5).copy(alpha = 0.92f) else Color(0xFF4B5563).copy(alpha = 0.7f), RoundedCornerShape(12.dp)).border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Color.White.copy(alpha = 0.28f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                                def?.let { Text(text = it.displayName, fontSize = 13.sp, color = if (isOver) Color(0xFF14532D) else Color.White) }
+                            if (def != null) {
+                                // Ghost previews the actual placed component (blue rect at real size, scaled to the canvas zoom).
+                                val (gwPx, ghPx) = gatePlacedSizePx(def, density, textMeasurer)
+                                val vw = gwPx * canvasScale; val vh = ghPx * canvasScale
+                                Box(modifier = Modifier.offset {
+                                    IntOffset((localOffset.x - vw / 2f).roundToInt(), (localOffset.y - vh / 2f).roundToInt())
+                                }.size(with(density) { vw.toDp() }, with(density) { vh.toDp() }).clip(RoundedCornerShape(8.dp)).background(Turing.gateBlue.copy(alpha = if (isOver) 0.95f else 0.55f)).border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Turing.gateBlueStroke, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                    Text(text = def.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 4.dp))
+                                }
                             }
                         }
                     }
-                    MobileFilterRow(selected = selectedGroup, onSelect = { selectedGroup = it }, modifier = Modifier.fillMaxWidth())
+                    MobileFilterRow(selected = selectedGroup, onSelect = { selectedGroup = it }, availableGroups = availableGroups, modifier = Modifier.fillMaxWidth())
                     MobileInventoryBar(
                         allowed = level.allowedChipIds, unlockedChips = unlocked, selectedGroup = selectedGroup,
                         onChipDragStart = { chipId: String, windowOffset: Offset -> draggingChipId = chipId; draggingChipWindowPos = windowOffset },
@@ -469,7 +480,10 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                             val local = Offset(windowOffset.x - canvasPosInWindow.x, windowOffset.y - canvasPosInWindow.y)
                             val isOver = local.x >= 0f && local.x <= canvasSize.width && local.y >= 0f && local.y <= canvasSize.height
                             if (isOver) {
-                                val content = Offset((local.x - canvasOffset.x) / canvasScale, (local.y - canvasOffset.y) / canvasScale)
+                                // Map screen drop -> content coords (undo pan/zoom), centered under the finger using the real gate size.
+                                val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
+                                val (gwPx, ghPx) = if (def != null) gatePlacedSizePx(def, density, textMeasurer) else 0f to 0f
+                                val content = Offset((local.x - canvasOffset.x) / canvasScale - gwPx / 2f, (local.y - canvasOffset.y) / canvasScale - ghPx / 2f)
                                 viewModel.addGateAt(chipId, content.x, content.y)
                             }
                             draggingChipId = null; draggingChipWindowPos = Offset.Zero
@@ -520,22 +534,27 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                                     inputOnMap = inputOnMap,
                                     inputBitSlices = inputBitSlices,
                                     outputBitSlicesActual = actualBitSlices,
-                                    onViewportChange = { s: Float, o: Offset -> canvasScale = s; canvasOffset = o }
+                                    onViewportChange = { s: Float, o: Offset -> canvasScale = s; canvasOffset = o },
+                                    selectedGateId = uiState.selectedGateInstanceId,
+                                    onSelectGate = { id: String? -> viewModel.selectGate(id) }
                                 )
                                 draggingChipId?.let { chipId ->
                                     val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
                                     val isOver = localOffset.x >= 0f && localOffset.x <= canvasSize.width && localOffset.y >= 0f && localOffset.y <= canvasSize.height
                                     val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
-                                    val ghostW = 100.dp; val ghostH = 56.dp
-                                    Box(modifier = Modifier.offset {
-                                        IntOffset((localOffset.x - with(density) { ghostW.toPx() } / 2f).roundToInt(), (localOffset.y - with(density) { ghostH.toPx() } / 2f).roundToInt())
-                                    }.size(ghostW, ghostH).background(if (isOver) Color(0xFFD1FAE5).copy(alpha = 0.92f) else Color(0xFF4B5563).copy(alpha = 0.7f), RoundedCornerShape(12.dp)).border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Color.White.copy(alpha = 0.28f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                                        def?.let { Text(text = it.displayName, fontSize = 13.sp, color = if (isOver) Color(0xFF14532D) else Color.White) }
+                                    if (def != null) {
+                                        val (gwPx, ghPx) = gatePlacedSizePx(def, density, textMeasurer)
+                                        val vw = gwPx * canvasScale; val vh = ghPx * canvasScale
+                                        Box(modifier = Modifier.offset {
+                                            IntOffset((localOffset.x - vw / 2f).roundToInt(), (localOffset.y - vh / 2f).roundToInt())
+                                        }.size(with(density) { vw.toDp() }, with(density) { vh.toDp() }).clip(RoundedCornerShape(8.dp)).background(Turing.gateBlue.copy(alpha = if (isOver) 0.95f else 0.55f)).border(if (isOver) 2.dp else 1.dp, if (isOver) Color(0xFF22C55E) else Turing.gateBlueStroke, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                            Text(text = def.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 4.dp))
+                                        }
                                     }
                                 }
                             }
                         }
-                        MobileFilterRow(selected = selectedGroup, onSelect = { selectedGroup = it }, modifier = Modifier.fillMaxWidth())
+                        MobileFilterRow(selected = selectedGroup, onSelect = { selectedGroup = it }, availableGroups = availableGroups, modifier = Modifier.fillMaxWidth())
                         MobileInventoryBar(
                             allowed = level.allowedChipIds, unlockedChips = unlocked, selectedGroup = selectedGroup,
                             onChipDragStart = { chipId: String, windowOffset: Offset -> draggingChipId = chipId; draggingChipWindowPos = windowOffset },
@@ -544,7 +563,9 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                                 val local = Offset(windowOffset.x - canvasPosInWindow.x, windowOffset.y - canvasPosInWindow.y)
                                 val isOver = local.x >= 0f && local.x <= canvasSize.width && local.y >= 0f && local.y <= canvasSize.height
                                 if (isOver) {
-                                    val content = Offset((local.x - canvasOffset.x) / canvasScale, (local.y - canvasOffset.y) / canvasScale)
+                                    val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
+                                    val (gwPx, ghPx) = if (def != null) gatePlacedSizePx(def, density, textMeasurer) else 0f to 0f
+                                    val content = Offset((local.x - canvasOffset.x) / canvasScale - gwPx / 2f, (local.y - canvasOffset.y) / canvasScale - ghPx / 2f)
                                     viewModel.addGateAt(chipId, content.x, content.y)
                                 }
                                 draggingChipId = null; draggingChipWindowPos = Offset.Zero
@@ -596,10 +617,11 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
 }
 
 @Composable
-fun MobileFilterRow(selected: ChipGroup?, onSelect: (ChipGroup?) -> Unit, modifier: Modifier = Modifier) {
+fun MobileFilterRow(selected: ChipGroup?, onSelect: (ChipGroup?) -> Unit, availableGroups: Set<ChipGroup>, modifier: Modifier = Modifier) {
     val scroll = rememberScrollState()
     Row(modifier = modifier.height(48.dp).horizontalScroll(scroll).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         val items: List<Pair<ChipGroup?, String>> = listOf(null to "ALL", ChipGroup.BIT to "BIT", ChipGroup.WORD to "WORD", ChipGroup.CUSTOM to "CUSTOM")
+            .filter { it.first == null || it.first in availableGroups } // hide filters with no unlocked chips
         items.forEach { pair ->
             val g = pair.first
             val label = pair.second
@@ -620,7 +642,7 @@ fun MobileInventoryBar(
     modifier: Modifier = Modifier
 ) {
     val rowScroll = rememberScrollState()
-    Row(modifier = modifier.height(80.dp).background(Color(0xFF1A2332)).horizontalScroll(rowScroll).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier.height(60.dp).background(Color(0xFF1A2332)).horizontalScroll(rowScroll).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         val filtered = allowed.filter { it in unlockedChips }.filter { chipId ->
             if (selectedGroup == null) true else {
                 val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
@@ -654,34 +676,42 @@ private fun MobileDraggableChipItem(chipId: String, chipOnDragStart: (String, Of
     val chipPosState by rememberUpdatedState(chipPosInWindow)
     var isDragging by remember { mutableStateOf(false) }
     // Solid color only, one text – block name – no circles inside
-    Box(modifier = Modifier.onGloballyPositioned { c -> chipPosInWindow = c.positionInWindow() }.widthIn(min = 88.dp, max = 200.dp).height(56.dp).clip(RoundedCornerShape(12.dp)).background(baseCol).border(if (isDragging) 1.4.dp else 0.8.dp, if (isDragging) Color.White else busColor.copy(alpha = 0.65f), RoundedCornerShape(12.dp)).pointerInput(chipId) {
+    Box(modifier = Modifier.onGloballyPositioned { c -> chipPosInWindow = c.positionInWindow() }.widthIn(min = 52.dp, max = 132.dp).height(40.dp).clip(RoundedCornerShape(10.dp)).background(baseCol).border(if (isDragging) 1.4.dp else 0.8.dp, if (isDragging) Color.White else busColor.copy(alpha = 0.65f), RoundedCornerShape(10.dp)).pointerInput(chipId) {
+        val slop = viewConfiguration.touchSlop
         awaitPointerEventScope {
             while (true) {
                 val down = awaitFirstDownGlobal()
                 val startWindow = chipPosState + down.position
                 var dragTotal = Offset.Zero
-                var dragActive = false
+                var decided = false      // direction resolved yet?
+                var pullOut = false      // vertical drag => lift the chip out to place it
                 var curWindow = startWindow
                 while (true) {
                     val ev = awaitPointerEvent()
                     val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                     if (ch.changedToUpIgnoreConsumed()) {
-                        if (dragActive) chipOnDrop(chipId, curWindow)
+                        if (pullOut) chipOnDrop(chipId, curWindow)
                         isDragging = false; break
                     }
                     val delta = ch.position - ch.previousPosition
                     dragTotal += delta
                     curWindow += delta
-                    if (!dragActive && dragTotal.getDistance() > 8f) { dragActive = true; isDragging = true; chipOnDragStart(chipId, curWindow) }
-                    if (dragActive) { ch.consume(); chipOnDrag(chipId, curWindow) }
+                    if (!decided && dragTotal.getDistance() > slop) {
+                        decided = true
+                        // 45° split: more vertical -> pull out; more horizontal -> leave it to the row's scroll.
+                        if (kotlin.math.abs(dragTotal.y) > kotlin.math.abs(dragTotal.x)) {
+                            pullOut = true; isDragging = true; chipOnDragStart(chipId, curWindow)
+                        } else break // don't consume: horizontalScroll parent takes over
+                    }
+                    if (pullOut) { ch.consume(); chipOnDrag(chipId, curWindow) }
                 }
             }
         }
     }, contentAlignment = Alignment.Center) {
         Text(
             text = def.displayName,
-            modifier = Modifier.padding(horizontal = 12.dp),
-            fontSize = 14.sp,
+            modifier = Modifier.padding(horizontal = 8.dp),
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             color = Color.White,
             maxLines = 1,
@@ -805,41 +835,26 @@ fun MobileTestbench(
     tableRows: List<TableRowUi>,
     selectedIdx: Int,
     onSelectRow: (Int) -> Unit,
-    showTable: Boolean,
-    onToggle: () -> Unit,
+    outputsConnected: Boolean,
     failingSet: Set<Int>,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.background(Turing.bottomBg)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp).clickable { onToggle() }.padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Box(modifier = Modifier.width(32.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF3A3A52)))
-                    Text(if (showTable) "⌄" else "⌃", fontSize = 16.sp, color = Color(0xFF8A8DB0))
-                }
-            }
-            Spacer(modifier = Modifier.weight(1f))
-        }
-        if (!showTable) return
+    val hScroll = rememberScrollState()
+    val vScroll = rememberScrollState()
+    val inputCellWs = level.inputs.indices.map { cellWidthForInput(level, it) }
+    val outCellWs = level.outputs.indices.map { cellWidthForOutput(level, it) }
+    val checkW = 28.dp
 
-        val hScroll = rememberScrollState()
-        val vScroll = rememberScrollState()
-        val inputCellWs = level.inputs.indices.map { cellWidthForInput(level, it) }
-        val outCellWs = level.outputs.indices.map { cellWidthForOutput(level, it) }
-        val checkW = 32.dp
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 340.dp)
-                .verticalScroll(vScroll)
-                .navigationBarsPadding()
-        ) {
+    Column(
+        modifier = modifier
+            .background(Turing.bottomBg)
+            .fillMaxWidth()
+            .heightIn(max = 300.dp)
+            .verticalScroll(vScroll)
+            .navigationBarsPadding()
+    ) {
             Row(modifier = Modifier.horizontalScroll(hScroll)) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     // Header – fixed grid, same padding as rows
                     Row(
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
@@ -870,8 +885,8 @@ fun MobileTestbench(
                         val isFailing = failingSet.contains(rowIdx)
                         Row(
                             modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .heightIn(min = 28.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(
                                     when {
                                         isFailing -> Color(0x1AFF8A8A)
@@ -880,40 +895,43 @@ fun MobileTestbench(
                                     }
                                 )
                                 .clickable { onSelectRow(rowIdx) }
-                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                .padding(vertical = 2.dp, horizontal = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(0.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             level.inputs.forEachIndexed { inIdx, _ ->
                                 Box(modifier = Modifier.width(inputCellWs[inIdx]), contentAlignment = Alignment.Center) {
                                     val bits = row.inputSlices[inIdx] ?: emptyList()
-                                    MobileBitDotsRow(bits = bits, dotSize = 14.dp, spacing = 4.dp, maxDots = level.inputWidth(inIdx))
+                                    MobileBitDotsRow(bits = bits, dotSize = 12.dp, spacing = 4.dp, maxDots = level.inputWidth(inIdx))
                                 }
                             }
-                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFF3A3A52).copy(alpha = 0.5f)))
+                            Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color(0xFF3A3A52).copy(alpha = 0.5f)))
                             level.outputs.forEachIndexed { outIdx, _ ->
                                 Box(modifier = Modifier.width(outCellWs[outIdx]), contentAlignment = Alignment.Center) {
                                     val bits = row.desiredSlices[outIdx] ?: emptyList()
-                                    MobileBitDotsRow(bits = bits, dotSize = 14.dp, spacing = 4.dp, maxDots = level.outputWidth(outIdx))
+                                    MobileBitDotsRow(bits = bits, dotSize = 12.dp, spacing = 4.dp, maxDots = level.outputWidth(outIdx))
                                 }
                             }
                             level.outputs.forEachIndexed { outIdx, _ ->
                                 Box(modifier = Modifier.width(outCellWs[outIdx]), contentAlignment = Alignment.Center) {
-                                    val bits = row.actualSlices?.get(outIdx)
+                                    val bits = if (outputsConnected) row.actualSlices?.get(outIdx) else null
                                     if (bits != null) {
-                                        MobileBitDotsRow(bits = bits, dotSize = 14.dp, spacing = 4.dp, maxDots = level.outputWidth(outIdx))
+                                        MobileBitDotsRow(bits = bits, dotSize = 12.dp, spacing = 4.dp, maxDots = level.outputWidth(outIdx))
                                     } else {
                                         // Placeholder gray dots matching width – keeps columns aligned
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                             repeat(level.outputWidth(outIdx)) {
-                                                Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(Color(0xFF3A3A52)))
+                                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(0xFF3A3A52)))
                                             }
                                         }
                                     }
                                 }
                             }
                             Box(modifier = Modifier.width(checkW), contentAlignment = Alignment.Center) {
-                                Text(if (isFailing) "✗" else "✓", fontSize = 14.sp, color = if (isFailing) Color(0xFFFF8A8A) else Color(0xFF22C55E), fontWeight = FontWeight.Bold)
+                                // No check until an output is actually driven (nothing connected yet).
+                                if (outputsConnected && row.actualSlices != null) {
+                                    Text(if (isFailing) "✗" else "✓", fontSize = 13.sp, color = if (isFailing) Color(0xFFFF8A8A) else Color(0xFF22C55E), fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -921,4 +939,3 @@ fun MobileTestbench(
             }
         }
     }
-}
