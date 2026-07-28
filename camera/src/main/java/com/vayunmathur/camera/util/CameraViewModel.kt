@@ -22,9 +22,10 @@ import androidx.annotation.StringRes
 import com.vayunmathur.camera.R
 import android.util.Log
 import android.util.Size
-import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Camera
+import androidx.camera.core.SessionConfig
+import androidx.camera.core.UseCase
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -40,6 +41,7 @@ import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionSessionConfig
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.HighSpeedVideoSessionConfig
@@ -112,13 +114,9 @@ fun buildColorAdjustmentMatrix(warmth: Float, shadows: Float): ColorMatrix = Col
 class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     companion object {
 
-        // Master switch for the CameraX vendor NIGHT extension (real-time night preview + vendor
-        // multi-frame capture). Disabled because it fails to configure on the camera-pipe backend
-        // on Pixel (ERROR_GRAPH_CONFIG "Framework size list map not supported in pixel path"),
-        // giving a black preview and failed captures. With it off, night mode runs the app's own
-        // burst + Rust-merge path over the normal photo session. Flip back to true once CameraX
-        // ships a pipe-extensions fix. See isNightExtensionAvailable().
-        private const val ENABLE_NIGHT_EXTENSION = false
+        // Once the vendor NIGHT extension fails to bind on this device, don't try again for this
+        // long (persisted). Re-probes after it expires in case a system update fixes the extender.
+        private const val NIGHT_EXT_FAILURE_TTL_MS = 7L * 24 * 60 * 60 * 1000
 
         // Night-mode auto-detection tuning. Engage once average Y stays below ENGAGE for a few
         // frames; disengage once it climbs above DISENGAGE for a few frames. The gap between the
@@ -340,6 +338,113 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     val nightModeActive = combine(_lowLightDetected, _nightModeOverriddenOff) { low, off -> low && !off }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    // Whether to offer the vendor NIGHT extension. We optimistically probe with
+    // isSessionConfigSupported(), but the authoritative signal is the actual bind: if
+    // setupNightPreviewSession() ever fails on this device, we remember that (persisted, with a
+    // ~1-week TTL) and stop offering night for a week — so a broken extender (GrapheneOS/Pixel)
+    // makes at most one failed attempt per week instead of engaging/failing in a loop.
+    private val _nightExtensionUsable = MutableStateFlow(false)
+    val nightExtensionUsable = _nightExtensionUsable.asStateFlow()
+
+    private fun nightExtFailedRecently(): Boolean {
+        val at = ds.getString("night_ext_failed_at")?.toLongOrNull() ?: return false
+        return System.currentTimeMillis() - at < NIGHT_EXT_FAILURE_TTL_MS
+    }
+
+    private fun recordNightExtensionFailure() {
+        viewModelScope.launch { ds.setString("night_ext_failed_at", System.currentTimeMillis().toString()) }
+        _nightExtensionUsable.value = false
+    }
+
+    /**
+     * Re-evaluates whether night should be offered on the current lens/mode. Cheap checks first
+     * (mode + the daily failure cache), then the isSessionConfigSupported() probe. Heavy — call off
+     * the main thread.
+     */
+    suspend fun refreshNightExtensionUsable(cameraMode: CameraMode) {
+        _nightExtensionUsable.value = when {
+            cameraMode != CameraMode.PHOTO -> false
+            nightExtFailedRecently() -> false
+            else -> isNightExtensionAvailable()
+        }
+    }
+
+    // Preferred night detection: CameraX's getNightModeIndicator() (1.7.0-alpha02) — the OS/vendor
+    // reports when the scene is dark enough that night mode is RECOMMENDED. We observe the bound
+    // camera's indicator LiveData and drive _lowLightDetected from it. Where the device doesn't
+    // support the indicator, onLuminance()'s luminance heuristic is used as a fallback instead.
+    private var nightIndicatorLiveData: androidx.lifecycle.LiveData<Int>? = null
+    var nightIndicatorSupported = false
+        private set
+    private val nightIndicatorObserver = androidx.lifecycle.Observer<Int> { state ->
+        // Don't override a manual "off" for the current dark scene; the moon button owns that.
+        if (_nightModeOverriddenOff.value) return@Observer
+        // RECOMMENDED engages; anything else (NOT_RECOMMENDED / UNKNOWN) disengages, so night turns
+        // off again when the scene brightens. (The toggle loop this used to cause on unusable devices
+        // is now prevented by the daily failure cache in nightExtensionUsable instead.)
+        _lowLightDetected.value = state == androidx.camera.core.NightModeIndicator.RECOMMENDED
+    }
+
+    /** Observe getNightModeIndicator() on the freshly-bound camera (call on the main thread). */
+    private fun observeNightModeIndicator(cameraInfo: androidx.camera.core.CameraInfo) {
+        stopObservingNightModeIndicator()
+        nightIndicatorSupported = try { cameraInfo.isNightModeIndicatorSupported } catch (_: Exception) { false }
+        if (!nightIndicatorSupported) return
+        val ld = try { cameraInfo.getNightModeIndicator() } catch (_: Exception) { null } ?: return
+        nightIndicatorLiveData = ld
+        ld.observeForever(nightIndicatorObserver)
+    }
+
+    private fun stopObservingNightModeIndicator() {
+        nightIndicatorLiveData?.removeObserver(nightIndicatorObserver)
+        nightIndicatorLiveData = null
+    }
+
+    // Live NIGHT-extension processing strength (0..100) from CameraExtensionsInfo.getExtensionStrength(),
+    // for a "night processing" indicator in the UI. Null when unavailable / not in an extension session.
+    private val _extensionStrength = MutableStateFlow<Int?>(null)
+    val extensionStrength = _extensionStrength.asStateFlow()
+    private var extensionStrengthLiveData: androidx.lifecycle.LiveData<Int>? = null
+    private val extensionStrengthObserver = androidx.lifecycle.Observer<Int> { s -> _extensionStrength.value = s }
+
+    /** Observe the bound extension camera's processing strength (call on the main thread). */
+    private fun observeExtensionStrength(cameraInfo: androidx.camera.core.CameraInfo) {
+        stopObservingExtensionStrength()
+        val mgr = extensionsManager ?: return
+        val info = try { mgr.getCameraExtensionsInfo(cameraInfo) } catch (_: Exception) { return }
+        if (!info.isExtensionStrengthAvailable) return
+        val ld = try { info.getExtensionStrength() } catch (_: Exception) { null } ?: return
+        extensionStrengthLiveData = ld
+        ld.observeForever(extensionStrengthObserver)
+    }
+
+    private fun stopObservingExtensionStrength() {
+        extensionStrengthLiveData?.removeObserver(extensionStrengthObserver)
+        extensionStrengthLiveData = null
+        _extensionStrength.value = null
+    }
+
+    // The vendor NIGHT extension can bind "successfully" (bindToLifecycle returns) yet fail
+    // asynchronously when camera-pipe configures the ExtensionCaptureSession (GrapheneOS/Pixel:
+    // ERROR_STREAM_CONFIG). That never throws from setupNightPreviewSession, so we watch the bound
+    // extension camera's CameraState and treat any error as a real failure → cache it for a week.
+    private var extensionCameraStateLiveData: androidx.lifecycle.LiveData<androidx.camera.core.CameraState>? = null
+    private val extensionCameraStateObserver = androidx.lifecycle.Observer<androidx.camera.core.CameraState> { st ->
+        val err = st.error ?: return@Observer
+        Log.w("NightPreview", "night extension camera error type=${st.type} code=${err.code} – disabling night extension (cached)")
+        recordNightExtensionFailure()
+    }
+    private fun observeExtensionCameraState(cameraInfo: androidx.camera.core.CameraInfo) {
+        stopObservingExtensionCameraState()
+        val ld = cameraInfo.cameraState
+        extensionCameraStateLiveData = ld
+        ld.observeForever(extensionCameraStateObserver)
+    }
+    private fun stopObservingExtensionCameraState() {
+        extensionCameraStateLiveData?.removeObserver(extensionCameraStateObserver)
+        extensionCameraStateLiveData = null
+    }
+
     // Consecutive-frame counters backing the hysteresis + debounce in onLuminance().
     private var lowLumaFrames = 0
     private var highLumaFrames = 0
@@ -385,11 +490,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     // The analyzer currently attached to imageAnalysis, so the night burst can swap in a temporary
     // frame collector and restore the previous analyzer (PhotoAnalyzer) when it finishes.
     private var currentAnalyzer: ImageAnalysis.Analyzer? = null
-
-    // Latest device orientation as a Surface.ROTATION_* constant. Driven by the UI's
-    // OrientationEventListener and applied to ImageCapture so landscape shots save
-    // with the correct orientation even while the activity stays locked to portrait.
-    private var targetRotation: Int = Surface.ROTATION_0
 
     /** True once the photo session's use cases (incl. ImageAnalysis) are bound. */
     private val _photoSessionActive = MutableStateFlow(false)
@@ -733,7 +833,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * user's per-scene override is reset so the next dark scene re-engages cleanly.
      */
     fun onLuminance(avg: Float) {
-        // LOTS of logging to figure out what the real problem is (per user request)
+        // getNightModeIndicator() is authoritative when the device supports it — skip the luminance
+        // heuristic so the two don't fight. This luma path is only the fallback for devices without
+        // the indicator.
+        if (nightIndicatorSupported) return
         val beforeLow = _lowLightDetected.value
         val beforeOff = _nightModeOverriddenOff.value
         Log.d("NightPreview", "onLuminance() avg=$avg lowLightBefore=$beforeLow overriddenOff=$beforeOff lowFrames=$lowLumaFrames highFrames=$highLumaFrames nightActive=${nightModeActive.value} photoActive=${_photoSessionActive.value} nightPreviewActive=${_nightPreviewActive.value} thread=${Thread.currentThread().name}")
@@ -824,6 +927,15 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun setQrResult(text: String?) {
         _qrResult.value = text
+    }
+
+    /**
+     * The CameraXViewfinder's built-in pinch-to-zoom already applied [ratio] to the camera, so this
+     * only syncs the displayed value (used by the zoom bar). It does NOT call cameraControl again —
+     * that would double-apply and could feedback-loop with onZoomRatioChanged.
+     */
+    fun onViewfinderZoomRatio(ratio: Float) {
+        _zoomRatio.value = ratio
     }
 
     fun setZoomRatio(ratio: Float) {
@@ -936,7 +1048,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             // MirrorMode is not allowed for high-speed video (HighSpeedVideoSessionConfig
             // validates and throws IllegalArgumentException). Slo-Mo is back-only anyway.
             val videoCapture = VideoCapture.Builder(recorder).build()
-            videoCapture.targetRotation = targetRotation
             highSpeedVideoCapture = videoCapture
 
             // Query available HFR frame-rate ranges via a temp config.
@@ -979,6 +1090,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                         .setPreview(preview)
                         .setSlowMotionEnabled(true)
                         .setFrameRateRange(range)
+                        .setAutoRotationEnabled(true)
 
                     val owner = ManualLifecycleOwner()
                     owner.start()
@@ -1033,6 +1145,22 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             false
         }
     }
+
+    /**
+     * Binds [useCases] via a [SessionConfig] with auto-rotation enabled, so CameraX applies the
+     * correct output rotation from the device sensors — no manual targetRotation plumbing needed.
+     * Every session (photo/night/portrait/pano/video) binds through here.
+     */
+    private fun bindSession(
+        provider: ProcessCameraProvider,
+        owner: LifecycleOwner,
+        selector: CameraSelector,
+        vararg useCases: UseCase,
+    ): Camera = provider.bindToLifecycle(
+        owner,
+        selector,
+        SessionConfig.Builder(*useCases).setAutoRotationEnabled(true).build(),
+    )
 
     /**
      * Binds a manual Preview + ImageCapture + ImageAnalysis session for the photo modes
@@ -1096,7 +1224,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     val captureBuilder = ImageCapture.Builder()
                         .setResolutionSelector(selectorBuilder.build())
                         .setFlashMode(getImageCaptureFlashMode())
-                        .setTargetRotation(targetRotation)
                     if (ultraHdr) {
                         captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
                     }
@@ -1111,7 +1238,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     }
                     val analysis = analysisBuilder.build()
                     imageAnalysis = analysis
-                    provider.bindToLifecycle(owner, selector, preview, capture, analysis).also {
+                    bindSession(provider, owner, selector, preview, capture, analysis).also {
                         Log.d("NightPreview", "setupPhotoSession() bind SUCCESS res=${it.cameraInfo} zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} max=${it.cameraInfo.zoomState.value?.maxZoomRatio}")
                     }
                 } catch (e: Exception) {
@@ -1155,8 +1282,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             }
             readManualControlRanges()
             applyManualControls()
+            boundCamera?.cameraInfo?.let { observeNightModeIndicator(it) }
             _photoSessionActive.value = true
-            Log.d("NightPreview", "setupPhotoSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution}")
+            Log.d("NightPreview", "setupPhotoSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution} nightIndicatorSupported=$nightIndicatorSupported")
             true
         } catch (e: Exception) {
             Log.e("NightPreview", "setupPhotoSession() OUTER CATCH – Failed to set up photo session – solid black root? ${e.javaClass.simpleName} ${e.message}", e)
@@ -1175,8 +1303,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      */
     suspend fun setupNightPreviewSession(): Boolean {
         Log.d("NightPreview", "setupNightPreviewSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
-        _surfaceRequest.value = null
-        Log.d("NightPreview", "setupNightPreviewSession() cleared stale surfaceRequest before extension bind to prevent black-frame trap")
         return try {
             val provider = ProcessCameraProvider.awaitInstance(app)
             cameraProvider = provider
@@ -1209,27 +1335,25 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                 Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
                 throw e
             }
-            val nightSelector = try {
-                mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
-            } catch (e: Exception) {
-                Log.e("NightPreview", "setupNightPreviewSession() getExtensionEnabledCameraSelector FAILED (hidden)", e)
-                throw e
-            }
-            Log.d("NightPreview", "setupNightPreviewSession() got nightSelector=$nightSelector")
             val analysisSupported = try {
                 mgr.isImageAnalysisSupported(baseSelector, ExtensionMode.NIGHT)
             } catch (e: Exception) {
-                Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED (was Warn only)", e)
+                Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED", e)
                 false
             }
-            Log.d("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported – this decides if luminance can auto-disengage; if false, preview binds without ImageAnalysis and zoom may be reported as 1x-only by vendor")
+            Log.d("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported")
+
+            // Proven-on-stock path: getExtensionEnabledCameraSelector + bindToLifecycle. It's
+            // deprecated in 1.7.0-alpha02, but it's what actually binds on devices where the vendor
+            // NIGHT extender works. On GrapheneOS/Pixel it throws "Framework size list map ...", but
+            // we never get here there: isNightExtensionAvailable() probes first and hides the mode.
+            val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
 
             val preview = Preview.Builder().build()
             preview.setSurfaceProvider { request ->
-                Log.d("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution} format=${request.javaClass.simpleName} – if this stops after _surfaceRequest=null, viewfinder goes black permanently")
+                Log.d("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution}")
                 _surfaceRequest.value = request
             }
-            Log.d("NightPreview", "setupNightPreviewSession() preview surfaceProvider attached, waiting for first request emission")
 
             val owner = ManualLifecycleOwner()
             owner.start()
@@ -1237,56 +1361,30 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
             val capture = ImageCapture.Builder()
                 .setFlashMode(getImageCaptureFlashMode())
-                .setTargetRotation(targetRotation)
                 .build()
             imageCapture = capture
 
-            // Extensions manage AE/AF/multi-frame internally, so we bind default
-            // resolutions (no max-res 3-stream ladder) to stay within the combos
-            // the vendor extension guarantees.
             fun bind(withAnalysis: Boolean): Camera {
-                Log.d("NightPreview", "setupNightPreviewSession() bind() withAnalysis=$withAnalysis START")
-                return try {
-                    if (withAnalysis) {
-                        val analysis = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .build()
-                        imageAnalysis = analysis
-                        provider.bindToLifecycle(owner, nightSelector, preview, capture, analysis).also {
-                            Log.d("NightPreview", "setupNightPreviewSession() bind WITH analysis SUCCESS camera=${it.cameraInfo}")
-                        }
-                    } else {
-                        imageAnalysis = null
-                        provider.bindToLifecycle(owner, nightSelector, preview, capture).also {
-                            Log.d("NightPreview", "setupNightPreviewSession() bind WITHOUT analysis SUCCESS – note: after this, PhotoAnalyzer stops, so onLuminance won't fire and lowLightDetected stays frozen")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) EXCEPTION (was caught as warning) – this is likely why preview stays black and zoom shows only 1x", e)
-                    throw e
+                Log.d("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) START")
+                return if (withAnalysis) {
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                    imageAnalysis = analysis
+                    bindSession(provider, owner, nightSelector, preview, capture, analysis)
+                } else {
+                    imageAnalysis = null
+                    bindSession(provider, owner, nightSelector, preview, capture)
                 }
             }
 
             boundCamera = try {
                 bind(withAnalysis = analysisSupported)
             } catch (e: Exception) {
-                Log.w("NightPreview", "setupNightPreviewSession() first bind FAILED withAnalysis=$analysisSupported, exception type=${e.javaClass.simpleName} message=${e.message}", e)
-                if (!analysisSupported) {
-                    Log.e("NightPreview", "setupNightPreviewSession() analysisSupported=false and bind failed – NOT retrying (no fallback), will go to catch and fallback to normal session")
-                    throw e
-                }
-                Log.w("NightPreview", "setupNightPreviewSession() retrying bind WITHOUT analysis – this loses luminance auto-disengage but may recover preview")
-                try {
-                    provider.unbindAll()
-                } catch (e2: Exception) {
-                    Log.e("NightPreview", "setupNightPreviewSession() retry unbindAll FAILED", e2)
-                }
-                try {
-                    bind(withAnalysis = false)
-                } catch (e2: Exception) {
-                    Log.e("NightPreview", "setupNightPreviewSession() retry bind without analysis ALSO FAILED – root cause of black preview: ${e2.javaClass.simpleName} ${e2.message}", e2)
-                    throw e2
-                }
+                Log.w("NightPreview", "setupNightPreviewSession() bind FAILED withAnalysis=$analysisSupported: ${e.javaClass.simpleName} ${e.message}", e)
+                if (!analysisSupported) throw e
+                try { provider.unbindAll() } catch (_: Exception) {}
+                bind(withAnalysis = false)
             }
 
             val zs = boundCamera?.cameraInfo?.zoomState?.value
@@ -1297,6 +1395,16 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                 _zoomRatio.value = it.zoomRatio
                 Log.d("NightPreview", "setupNightPreviewSession() updated zoomRatio=${_zoomRatio.value} levels=${_availableZoomLevels.value}")
             }
+            // Do NOT observe getNightModeIndicator() on the extension camera: it reports
+            // UNKNOWN/NOT_RECOMMENDED there, which fights the normal session's RECOMMENDED reading
+            // and flips _lowLightDetected → an engage/disengage toggle loop. Night stays engaged
+            // (frozen at the value the normal session detected) until the moon button turns it off.
+            // We do watch the extension camera's state to catch async ExtensionCaptureSession
+            // failures, and its strength for the UI indicator.
+            boundCamera?.cameraInfo?.let {
+                observeExtensionStrength(it)
+                observeExtensionCameraState(it)
+            }
             _nightPreviewActive.value = true
             _photoSessionActive.value = true
             Log.d("NightPreview", "setupNightPreviewSession() SUCCESS – nightPreviewActive=true photoSessionActive=true surfaceRequest=${_surfaceRequest.value?.resolution}")
@@ -1304,6 +1412,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             Log.e("NightPreview", "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, falling back to normal photo session. Root cause of solid black: exception=${e.javaClass.simpleName} msg=${e.message}", e)
             _nightPreviewActive.value = false
+            // The extension genuinely can't bind here (e.g. GrapheneOS/Pixel). Remember it so night
+            // isn't offered again for a week; flipping nightExtensionUsable false also makes the UI
+            // drop useNightPreview immediately, so we don't loop back into this failure.
+            recordNightExtensionFailure()
             val fallback = try {
                 setupPhotoSession()
             } catch (e2: Exception) {
@@ -1366,7 +1478,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                 val analysis = analysisBuilder.build()
                 imageAnalysis = analysis
                 imageCapture = null // No ImageCapture in this session.
-                return provider.bindToLifecycle(owner, selector, preview, analysis)
+                return bindSession(provider, owner, selector, preview, analysis)
             }
 
             boundCamera = try {
@@ -1471,7 +1583,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     val captureBuilder = ImageCapture.Builder()
                         .setResolutionSelector(captureSelectorBuilder.build())
                         .setFlashMode(getImageCaptureFlashMode())
-                        .setTargetRotation(targetRotation)
                     if (ultraHdr) {
                         captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
                     }
@@ -1493,7 +1604,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     }
                     val analysis = analysisBuilder.build()
                     imageAnalysis = analysis
-                    provider.bindToLifecycle(owner, selector, preview, capture, analysis).also {
+                    bindSession(provider, owner, selector, preview, capture, analysis).also {
                         Log.d("NightPreview", "setupPortraitSession() bind SUCCESS capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} max=${it.cameraInfo.zoomState.value?.maxZoomRatio}")
                     }
                 } catch (e: Exception) {
@@ -1649,7 +1760,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     .setDynamicRange(dynamicRange)
                 applyVideoCaptureRequestOptions(captureBuilder, bestFpsRange, stabilizationMode)
                 val capture = captureBuilder.build()
-                capture.targetRotation = targetRotation
                 videoCapture = capture
                 recordingWithAv1 = av1
                 recordingWithHevc = hevc
@@ -1657,13 +1767,12 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     // Extra ImageCapture use case enables taking a still while recording (SDR JPEG).
                     val still = ImageCapture.Builder()
                         .setFlashMode(ImageCapture.FLASH_MODE_OFF)
-                        .setTargetRotation(targetRotation)
                         .build()
                     imageCapture = still
-                    provider.bindToLifecycle(owner, selector, preview, capture, still)
+                    bindSession(provider, owner, selector, preview, capture, still)
                 } else {
                     imageCapture = null
-                    provider.bindToLifecycle(owner, selector, preview, capture)
+                    bindSession(provider, owner, selector, preview, capture)
                 }
             }
 
@@ -1825,6 +1934,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Tears down whatever session is currently bound and clears the shared preview surface. */
     fun teardownSession() {
         Log.d("NightPreview", "teardownSession() START thread=${Thread.currentThread().name} surface=${_surfaceRequest.value?.resolution} photoActive=${_photoSessionActive.value} nightPreviewActive=${_nightPreviewActive.value} highSpeedActive=${_highSpeedActive.value} videoActive=${_videoSessionActive.value} boundCamera=${boundCamera != null} provider=${cameraProvider != null}")
+        stopObservingNightModeIndicator()
+        stopObservingExtensionStrength()
+        stopObservingExtensionCameraState()
         // CRITICAL: clear stale SurfaceRequest BEFORE unbind so CameraXViewfinder drops dead texture immediately (black-frame trap fix)
         _surfaceRequest.value = null
         Log.d("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
@@ -1904,14 +2016,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Pushes the current flash mode onto the bound ImageCapture (runtime-mutable, no rebind). */
     fun applyImageCaptureFlashMode() {
         imageCapture?.flashMode = getImageCaptureFlashMode()
-    }
-
-    /** Updates the capture orientation from the device's physical rotation (Surface.ROTATION_*). */
-    fun setTargetRotation(rotation: Int) {
-        targetRotation = rotation
-        imageCapture?.targetRotation = rotation
-        videoCapture?.targetRotation = rotation
-        highSpeedVideoCapture?.targetRotation = rotation
     }
 
     /** Swaps the analyzer on the bound ImageAnalysis without rebinding. */
@@ -2039,9 +2143,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     private fun capturePhoto() {
         if (imageCapture == null) return
         when {
-            // Preview is already bound with the NIGHT extension: the vendor pipeline
-            // processes the shot, so a plain single capture yields the night image.
-            nightModeActive.value && isExposureAuto() && _nightPreviewActive.value -> captureSinglePhoto()
+            // Night Sight mode (or auto-engaged night): the preview is bound with the vendor NIGHT
+            // extension, so a plain single capture through that ImageCapture lets the vendor pipeline
+            // produce the multi-frame night image.
+            _nightPreviewActive.value -> captureSinglePhoto()
             // Multi-frame night capture only when night mode is active and exposure is fully auto.
             nightModeActive.value && isExposureAuto() -> captureNightPhoto()
             // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a caller).
@@ -2338,11 +2443,13 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /**
      * Routes the night shutter: prefer CameraX Extensions NIGHT (vendor multi-frame processing)
-     * when available on the current lens, otherwise fall back to the custom burst + Rust merge.
+     * when it's usable on this device, otherwise fall back to the custom burst + Rust merge. Uses
+     * nightExtensionUsable (the gated/failure-cached value) so a device where the extension can't
+     * bind (GrapheneOS/Pixel) goes straight to the working custom path instead of failing.
      */
     private fun captureNightPhoto() {
         viewModelScope.launch {
-            if (isNightExtensionAvailable()) {
+            if (_nightExtensionUsable.value) {
                 captureNightPhotoExtension()
             } else {
                 captureNightPhotoCustom()
@@ -2384,14 +2491,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Whether the CameraX NIGHT extension is available on the current lens. */
     suspend fun isNightExtensionAvailable(): Boolean {
-        // The vendor advertises the NIGHT extension (isExtensionAvailable(NIGHT)=true), but on the
-        // camera-pipe backend that every CameraX build this app can use runs on, creating the
-        // extension capture session fails at graph-config time on Pixel ("Framework size list map
-        // not supported in pixel path" -> ERROR_GRAPH_CONFIG). The bind "succeeds" and emits a
-        // SurfaceRequest, then the session dies async: black preview + failed capture. Until CameraX
-        // fixes pipe extensions, treat NIGHT as unavailable so night mode uses the custom burst +
-        // Rust-merge path (captureNightPhotoCustom) over the normal, working photo session.
-        if (!ENABLE_NIGHT_EXTENSION) return false
         val startMs = System.currentTimeMillis()
         Log.d("NightPreview", "isNightExtensionAvailable() START lensFacing=${_lensFacing.value} thread=${Thread.currentThread().name}")
         return try {
@@ -2406,17 +2505,29 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             val selector = CameraSelector.Builder()
                 .requireLensFacing(_lensFacing.value)
                 .build()
-            val affordStart = System.currentTimeMillis()
-            val avail = try {
-                mgr.isExtensionAvailable(selector, ExtensionMode.NIGHT)
+            if (!mgr.isExtensionAvailable(selector, ExtensionMode.NIGHT)) {
+                Log.d("NightPreview", "isNightExtensionAvailable() isExtensionAvailable(NIGHT)=false lens=${_lensFacing.value}")
+                return false
+            }
+            // Optimistic support query. Neither this nor a getCameraInfo probe reliably predicts the
+            // GrapheneOS/Pixel extender failure (it only surfaces at actual bind time), so we accept a
+            // yes here and rely on the daily failure cache (recordNightExtensionFailure) to stop
+            // offering night after the first real bind failure.
+            val cameraInfo = provider.getCameraInfo(selector)
+            val nightConfig = ExtensionSessionConfig.Builder(ExtensionMode.NIGHT, mgr)
+                .addUseCase(Preview.Builder().build())
+                .addUseCase(ImageCapture.Builder().build())
+                .build()
+            val supported = try {
+                cameraInfo.isSessionConfigSupported(nightConfig)
             } catch (e: Exception) {
-                Log.e("NightPreview", "isNightExtensionAvailable() isExtensionAvailable(NIGHT) THREW – swallowed as false before! lens=${_lensFacing.value} selector=$selector", e)
+                Log.w("NightPreview", "isNightExtensionAvailable() isSessionConfigSupported threw", e)
                 false
             }
-            Log.d("NightPreview", "isNightExtensionAvailable() isExtensionAvailable(NIGHT)=$avail lens=${_lensFacing.value} lookupTook=${System.currentTimeMillis() - affordStart}ms total=${System.currentTimeMillis() - startMs}ms – if false, NIGHT preview disabled, zoom stays full, no black")
-            avail
+            Log.d("NightPreview", "isNightExtensionAvailable() isSessionConfigSupported(NIGHT)=$supported lens=${_lensFacing.value} total=${System.currentTimeMillis() - startMs}ms")
+            supported
         } catch (e: Exception) {
-            Log.e("NightPreview", "isNightExtensionAvailable() OUTER EXCEPTION – was hidden as Warn, returning false, totalTook=${System.currentTimeMillis() - startMs}ms", e)
+            Log.e("NightPreview", "isNightExtensionAvailable() OUTER EXCEPTION – returning false, totalTook=${System.currentTimeMillis() - startMs}ms", e)
             false
         }
     }
@@ -2460,10 +2571,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
             val capture = ImageCapture.Builder()
                 .setFlashMode(getImageCaptureFlashMode())
-                .setTargetRotation(targetRotation)
                 .build()
             imageCapture = capture
-            boundCamera = provider.bindToLifecycle(owner, nightSelector, preview, capture)
+            boundCamera = bindSession(provider, owner, nightSelector, preview, capture)
 
             val contentValues = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
             val metadata = ImageCapture.Metadata().apply {

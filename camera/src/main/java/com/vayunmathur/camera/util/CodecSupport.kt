@@ -1,35 +1,32 @@
 package com.vayunmathur.camera.util
 
-import android.media.MediaCodecList
 import android.media.MediaFormat
-import android.util.Log
+import androidx.camera.video.ExperimentalMimeTypeApi
+import androidx.camera.video.Recorder
 
 /**
- * Reports whether the device can encode with modern video codecs. AV1 is only offered when a
- * true hardware encoder is present, because software AV1 encoding is too slow for realtime capture.
+ * Which modern video codecs this device can encode, sourced from CameraX's
+ * [Recorder.getSupportedVideoMimeTypes] — the formats the Recorder itself reports it can encode on
+ * this device — instead of scraping [android.media.MediaCodecList] directly. A mime appearing here
+ * means it's safe to request via `Recorder.Builder.setVideoMimeType`.
  */
 object CodecSupport {
 
-    /** A hardware-accelerated AV1 (`video/av01`) encoder exists on this device. */
-    val isHardwareAv1EncoderAvailable: Boolean by lazy {
-        hasEncoder(MediaFormat.MIMETYPE_VIDEO_AV1, requireHardware = true)
-    }
-
-    /** An HEVC/H.265 (`video/hevc`) encoder exists on this device. */
-    val isHevcEncoderAvailable: Boolean by lazy {
-        hasEncoder(MediaFormat.MIMETYPE_VIDEO_HEVC, requireHardware = false)
-    }
-
-    private fun hasEncoder(mimeType: String, requireHardware: Boolean): Boolean {
-        return try {
-            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
-                info.isEncoder &&
-                    (!requireHardware || info.isHardwareAccelerated) &&
-                    info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
-            }
+    @OptIn(ExperimentalMimeTypeApi::class)
+    private val supportedVideoMimeTypes: List<String> by lazy {
+        try {
+            Recorder.getSupportedVideoMimeTypes()
         } catch (e: Exception) {
-            Log.w("CodecSupport", "Failed to query encoders for $mimeType", e)
-            false
+            emptyList()
         }
     }
+
+    private fun supports(mimeType: String): Boolean =
+        supportedVideoMimeTypes.any { it.equals(mimeType, ignoreCase = true) }
+
+    /** The Recorder can encode AV1 (`video/av01`) on this device. */
+    val isHardwareAv1EncoderAvailable: Boolean by lazy { supports(MediaFormat.MIMETYPE_VIDEO_AV1) }
+
+    /** The Recorder can encode HEVC/H.265 (`video/hevc`) on this device. */
+    val isHevcEncoderAvailable: Boolean by lazy { supports(MediaFormat.MIMETYPE_VIDEO_HEVC) }
 }

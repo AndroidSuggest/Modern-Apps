@@ -17,7 +17,6 @@ import android.util.Patterns
 import android.widget.Toast
 import android.util.Log
 import android.view.OrientationEventListener
-import android.view.Surface
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.FocusMeteringAction
@@ -42,7 +41,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -262,6 +260,7 @@ fun CameraScreen(
     val longExposureRemaining by viewModel.longExposureRemaining.collectAsState()
     val lowLightDetected by viewModel.lowLightDetected.collectAsState()
     val nightModeActive by viewModel.nightModeActive.collectAsState()
+    val extensionStrength by viewModel.extensionStrength.collectAsState()
 
     var activeSetting by remember { mutableStateOf<CameraSetting?>(null) }
     var maskBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -280,22 +279,17 @@ fun CameraScreen(
     }
     val highSpeedActive by viewModel.highSpeedActive.collectAsState()
     val photoSessionActive by viewModel.photoSessionActive.collectAsState()
-    // Whether the CameraX NIGHT extension is available on the current lens (PHOTO only).
-    var nightExtAvailable by remember { mutableStateOf(false) }
+    // Whether to offer the NIGHT extension. Reactive: the ViewModel recomputes it on lens/mode
+    // change (off-main; support probe + weekly failure cache) AND flips it false immediately if a
+    // night bind fails, so a broken extender (GrapheneOS/Pixel) stops engaging night after one try.
+    val nightExtAvailable by viewModel.nightExtensionUsable.collectAsState()
     LaunchedEffect(lensFacing, cameraMode) {
-        val startMs = System.currentTimeMillis()
-        Log.d("NightPreview", "CameraScreen LaunchedEffect night check START lensFacing=$lensFacing cameraMode=$cameraMode thread=${Thread.currentThread().name}")
-        val avail = try {
-            if (cameraMode == CameraMode.PHOTO) viewModel.isNightExtensionAvailable() else false
-        } catch (e: Exception) {
-            Log.e("NightPreview", "CameraScreen nightExtAvailable check threw (was silently hidden before)", e)
-            false
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            viewModel.refreshNightExtensionUsable(cameraMode)
         }
-        nightExtAvailable = avail
-        Log.d("NightPreview", "CameraScreen LaunchedEffect night check END avail=$avail took=${System.currentTimeMillis() - startMs}ms")
     }
-    // Bind the NIGHT-extension preview when low light is auto-detected in PHOTO mode
-    // and the extension is available; otherwise the normal photo session is used.
+    // Auto night: when getNightModeIndicator()/luminance reports a dark scene (nightModeActive) in
+    // PHOTO mode and the extension is usable, bind the vendor NIGHT extension preview.
     val useNightPreview = sessionKind == SessionKind.PHOTO && cameraMode == CameraMode.PHOTO &&
         nightModeActive && nightExtAvailable
     LaunchedEffect(useNightPreview) {
@@ -332,6 +326,8 @@ fun CameraScreen(
         animationSpec = tween(durationMillis = 300)
     )
 
+    // Tracks physical orientation purely to rotate the on-screen control icons. Capture output
+    // rotation is handled by CameraX via SessionConfig.setAutoRotationEnabled(true).
     DisposableEffect(Unit) {
         val listener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
@@ -342,16 +338,6 @@ fun CameraScreen(
                     orientation in 225..314 -> 90
                     else -> 0
                 }
-                // Feed the physical orientation to ImageCapture so landscape shots are saved
-                // with the right orientation even though the activity is locked to portrait.
-                viewModel.setTargetRotation(
-                    when {
-                        orientation in 45..134 -> Surface.ROTATION_270
-                        orientation in 135..224 -> Surface.ROTATION_180
-                        orientation in 225..314 -> Surface.ROTATION_90
-                        else -> Surface.ROTATION_0
-                    }
-                )
             }
         }
         listener.enable()
@@ -480,12 +466,10 @@ fun CameraScreen(
         Log.d("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing sessionKind=$sessionKind useNightPreview=$useNightPreview lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             Log.d("NightPreview", "CameraScreen repeatOnLifecycle STARTED – calling teardownSession()")
-            val teardownStart = System.currentTimeMillis()
             viewModel.teardownSession()
-            Log.d("NightPreview", "CameraScreen teardownSession() returned took=${System.currentTimeMillis() - teardownStart}ms, surface after=${viewModel.surfaceRequest.value?.resolution}")
-            Log.d("NightPreview", "CameraScreen delay(250) START to let surface detach (main-thread per a20f656b revert, not IO)")
-            delay(250)
-            Log.d("NightPreview", "CameraScreen delay(250) END, about to bind sessionKind=$sessionKind useNightPreview=$useNightPreview")
+            // Brief yield so the previous session's surface detaches before the next binds; short
+            // enough that a mode switch reads as instant, long enough to avoid a bind-over-teardown race.
+            delay(40)
             val bindStart = System.currentTimeMillis()
             val bindSuccess = try {
                 when (sessionKind) {
@@ -494,10 +478,8 @@ fun CameraScreen(
                     SessionKind.PANORAMA -> viewModel.setupPanoramaSession()
                     SessionKind.PORTRAIT -> viewModel.setupPortraitSession()
                     SessionKind.PHOTO ->
-                        if (useNightPreview) {
-                            Log.d("NightPreview", "CameraScreen switching to NIGHT extension preview – if this goes black with only 1x zoom, vendor reports min=max=1x and/or surfaceProvider not re-emitted")
-                            viewModel.setupNightPreviewSession()
-                        } else viewModel.setupPhotoSession()
+                        if (useNightPreview) viewModel.setupNightPreviewSession()
+                        else viewModel.setupPhotoSession()
                 }
             } catch (e: Exception) {
                 Log.e("NightPreview", "CameraScreen session binding THREW (was not logged before) kind=$sessionKind useNightPreview=$useNightPreview nightExtAvailable=$nightExtAvailable", e)
@@ -665,6 +647,9 @@ fun CameraScreen(
                                 }
                             }
                         )
+                            // Tap-to-focus and pinch-to-zoom are handled by CameraXViewfinder's
+                            // built-in gestures (below). Long-press to lock AE/AF isn't built in, so
+                            // keep just that here.
                             .pointerInput(activeSetting) {
                                 fun meteringPoint(tapOffset: Offset) = surfaceRequest?.let { request ->
                                     val transformed = with(coordinateTransformer) { tapOffset.transform() }
@@ -675,25 +660,13 @@ fun CameraScreen(
                                     factory.createPoint(transformed.x, transformed.y)
                                 }
                                 detectTapGestures(
-                                    onTap = { tapOffset ->
-                                        val point = meteringPoint(tapOffset) ?: return@detectTapGestures
-                                        viewModel.startFocusAndMetering(
-                                            FocusMeteringAction.Builder(point).build()
-                                        )
-                                    },
                                     onLongPress = { tapOffset ->
-                                        // Long-press locks AE/AF at the point until the next tap.
                                         val point = meteringPoint(tapOffset) ?: return@detectTapGestures
                                         viewModel.lockFocusAndMetering(
                                             FocusMeteringAction.Builder(point).disableAutoCancel().build()
                                         )
                                     }
                                 )
-                            }
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, _, zoom, _ ->
-                                    if (zoom != 1f) viewModel.setZoomRatio(viewModel.zoomRatio.value * zoom)
-                                }
                             }
 
                     surfaceRequest?.let { request ->
@@ -708,26 +681,23 @@ fun CameraScreen(
                         }
                         CameraXViewfinder(
                             surfaceRequest = request,
-                            modifier = previewModifier
-                                .graphicsLayer {
-                                    // Log when graphicsLayer runs – if RenderEffect crashes it swallows?
-                                },
+                            modifier = previewModifier,
                             implementationMode = ImplementationMode.EMBEDDED,
                             coordinateTransformer = coordinateTransformer,
                             alignment = Alignment.Center,
-                            contentScale = if (isSloMo) ContentScale.Crop else ContentScale.Fit
+                            contentScale = if (isSloMo) ContentScale.Crop else ContentScale.Fit,
+                            // Built-in tap-to-focus and pinch-to-zoom (1.7.0-alpha02). The viewfinder
+                            // applies focus/zoom on the SurfaceRequest's camera; we just sync the
+                            // displayed zoom ratio so the zoom bar stays in step.
+                            isTapToFocusEnabled = true,
+                            isPinchToZoomEnabled = true,
+                            onZoomRatioChanged = { ratio -> viewModel.onViewfinderZoomRatio(ratio) },
                         )
                     }
                     if (surfaceRequest == null) {
-                        LaunchedEffect(useNightPreview, sessionKind) {
-                            Log.w("NightPreview", "CameraScreen rendering NO preview because surfaceRequest==null useNightPreview=$useNightPreview sessionKind=$sessionKind lowLight=$lowLightDetected nightActive=$nightModeActive nightExtAvailable=$nightExtAvailable – solid black!")
-                        }
-                        Box(
-                            modifier = previewModifier.background(Color.Black),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("NO SURFACE: useNightPreview=$useNightPreview session=$sessionKind", color = Color.White, fontSize = 12.sp)
-                        }
+                        // Brief gap between a mode's teardown and the next session's first frame.
+                        // Show a plain black fill (no debug text) so the switch reads as instant.
+                        Box(modifier = previewModifier.background(Color.Black))
                     }
 
                     if (gridEnabled) {
@@ -759,12 +729,28 @@ fun CameraScreen(
                         )
                     }
 
-                    if (lowLightDetected) {
+                    // Auto night: shown when a dark scene is detected (getNightModeIndicator /
+                    // luminance) and the extension is usable; tap toggles night off for this scene.
+                    if (lowLightDetected && nightExtAvailable) {
                         NightModeButton(
                             active = nightModeActive,
                             onClick = { viewModel.toggleNightModeOverride() },
                             iconRotation = animatedRotation,
                             modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp)
+                        )
+                    }
+
+                    // Live vendor night-processing strength while the NIGHT extension preview is bound.
+                    extensionStrength?.let { strength ->
+                        Text(
+                            text = "Night $strength%",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 56.dp)
+                                .background(Color(0x66000000), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
 
