@@ -9,6 +9,8 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
+.llms
+.idea
 build/
 release/
 /captures
@@ -23,3 +25,4 @@ __pycache__/
 scratch/LiteRT-LM/
 
 reverse-engineering/
+**/rust/target/
