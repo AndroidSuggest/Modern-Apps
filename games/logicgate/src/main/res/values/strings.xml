@@ -10,6 +10,16 @@
 
     <!-- MainActivity: Loading state when level data not yet ready from DataStore. Verb progressive -->
     <string name="loading">Loading...</string>
+    <!-- GameScreen win dialog: Title shown when the level is solved. Noun phrase -->
+    <string name="level_complete_title">Level Complete!</string>
+    <!-- GameScreen win dialog: Body. %1$s = level name, e.g. XOR. Sentence -->
+    <string name="level_complete_body">You solved <xliff:g id="level_name" example="XOR">%1$s</xliff:g>.</string>
+    <!-- GameScreen win dialog: Button to advance to the next level. Verb phrase -->
+    <string name="next_level">Next Level</string>
+    <!-- GameScreen win dialog: Button to return to the level map when there is no next level. Verb phrase -->
+    <string name="back_to_map">Back to Map</string>
+    <!-- GameScreen win dialog: Button to dismiss the dialog and keep editing the current level. Verb phrase -->
+    <string name="keep_editing">Keep Editing</string>
     <!-- GameScreen: Status line showing current level hint. %1$s = hint text from level definition, e.g. NAND(in,in)=NOT. Noun with value -->
     <string name="hint_1">Hint: <xliff:g id="hint_text" example="NAND(in,in)=NOT">%1$s</xliff:g></string>
     <!-- GameScreen: Button to cancel active wire connection when user started wiring. Verb phrase -->

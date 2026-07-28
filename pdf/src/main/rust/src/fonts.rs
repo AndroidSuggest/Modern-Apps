@@ -33,8 +33,18 @@ pub(crate) struct FontInfo {
     pub(crate) t3: Option<Type3Font>,
     /// Synthetic font style recovered from BaseFont name + FontDescriptor.
     pub(crate) style: FontStyle,
+    /// Generic font family for substitute shaping on the Kotlin side, recovered
+    /// from the BaseFont name + FontDescriptor `/Flags`: 0 = sans-serif,
+    /// 1 = serif, 2 = monospace.
+    pub(crate) family: u8,
     /// Descriptive base font name for fallback shaping (optional).
     pub(crate) base_font: String,
+    /// Embedded font program (TrueType/CFF/Type1) for rendering the PDF's real
+    /// glyph outlines. `None` falls back to system-font substitution.
+    pub(crate) glyph_program: Option<crate::outlines::GlyphProgram>,
+    /// `code -> glyph name` from the PDF `/Encoding` `/Differences`, used to look
+    /// up outlines by name in Type1 / CFF programs.
+    pub(crate) glyph_names: HashMap<u32, String>,
 }
 
 /// Type 3 font: glyphs are content streams drawn in glyph space, mapped to text
@@ -325,6 +335,45 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
             .map(|n| String::from_utf8_lossy(n).to_lowercase().contains("bold")).unwrap_or(false) { bold = true; }
     }
 
+    // --- Embedded glyph outline program (real font rendering) ---
+    // Type 3 fonts draw via CharProc streams, not outline programs.
+    let glyph_program = if is_type3 {
+        None
+    } else {
+        crate::outlines::build_glyph_program(doc, fd.as_ref())
+    };
+    let glyph_names = if two_byte || is_type3 {
+        HashMap::new()
+    } else {
+        crate::outlines::encoding_differences(doc, font)
+    };
+
+    // --- Generic family detection for substitute shaping (0 sans, 1 serif, 2 mono) ---
+    // The embedded base font is not rendered directly; Kotlin picks a matching
+    // system typeface, so we only need the broad family. BaseFont names (including
+    // subset prefixes like `BCFRDE+Times-Roman`) give the strongest signal; the
+    // FontDescriptor `/Flags` (PDF 9.8.2, Table 121: bit 1 FixedPitch, bit 2 Serif)
+    // is authoritative when the name is generic.
+    let is_mono_name = lower.contains("courier") || lower.contains("mono") || lower.contains("consol");
+    let is_sans_name = lower.contains("arial") || lower.contains("helvetica")
+        || lower.contains("verdana") || lower.contains("tahoma") || lower.contains("calibri")
+        || lower.contains("segoe") || lower.contains("sans");
+    let is_serif_name = !is_sans_name && (lower.contains("times") || lower.contains("georgia")
+        || lower.contains("garamond") || lower.contains("minion") || lower.contains("palatino")
+        || lower.contains("cambria") || lower.contains("antiqua") || lower.contains("serif")
+        || lower.contains("roman"));
+    let mut family: u8 = if is_mono_name { 2 } else if is_serif_name { 1 } else { 0 };
+    if let Some(ref desc) = fd {
+        if let Some(flags) = desc.get(b"Flags").ok().and_then(num) {
+            let f = flags as i64;
+            if f & 1 != 0 {
+                family = 2; // FixedPitch -> monospace
+            } else if f & 2 != 0 && !is_sans_name && !is_mono_name {
+                family = 1; // Serif
+            }
+        }
+    }
+
     FontInfo {
         two_byte,
         wmode: effective_wmode,
@@ -338,7 +387,10 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         default_width,
         t3,
         style: FontStyle { bold, italic },
+        family,
         base_font: base_font_name,
+        glyph_program,
+        glyph_names,
     }
 }
 

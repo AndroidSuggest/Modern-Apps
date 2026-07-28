@@ -40,12 +40,12 @@ fun clampTerm(
   density: Density? = null
 ): Offset {
   if (canvasSize.width <= 0f || canvasSize.height <= 0f) return center
-  val half = pillW / 2f + padding
-  val maxX = (canvasSize.width - half).coerceAtLeast(half)
-  val minX = half
-  val minY = padding + 22f
-  val maxY = (canvasSize.height - padding - 22f).coerceAtLeast(minY)
-  return Offset(center.x.coerceIn(minX, maxX), center.y.coerceIn(minY, maxY))
+  // Large virtual work area (matches CircuitCanvas.CANVAS_MARGIN) so terminals can be moved off-viewport.
+  val margin = 4000f
+  return Offset(
+    center.x.coerceIn(-margin, canvasSize.width + margin),
+    center.y.coerceIn(-margin, canvasSize.height + margin)
+  )
 }
 
 /**

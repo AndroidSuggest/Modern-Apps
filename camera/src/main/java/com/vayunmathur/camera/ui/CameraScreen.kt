@@ -15,9 +15,11 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.util.Patterns
 import android.widget.Toast
+import android.util.Log
 import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.camera.compose.CameraXViewfinder
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -279,22 +281,41 @@ fun CameraScreen(
     val highSpeedActive by viewModel.highSpeedActive.collectAsState()
     val photoSessionActive by viewModel.photoSessionActive.collectAsState()
     // Whether the CameraX NIGHT extension is available on the current lens (PHOTO only).
-    // Night extension probe does heavy ProcessCameraProvider work -> offload to IO.
     var nightExtAvailable by remember { mutableStateOf(false) }
     LaunchedEffect(lensFacing, cameraMode) {
-        nightExtAvailable = if (cameraMode == CameraMode.PHOTO) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                viewModel.isNightExtensionAvailable()
-            }
-        } else false
+        val startMs = System.currentTimeMillis()
+        Log.d("NightPreview", "CameraScreen LaunchedEffect night check START lensFacing=$lensFacing cameraMode=$cameraMode thread=${Thread.currentThread().name}")
+        val avail = try {
+            if (cameraMode == CameraMode.PHOTO) viewModel.isNightExtensionAvailable() else false
+        } catch (e: Exception) {
+            Log.e("NightPreview", "CameraScreen nightExtAvailable check threw (was silently hidden before)", e)
+            false
+        }
+        nightExtAvailable = avail
+        Log.d("NightPreview", "CameraScreen LaunchedEffect night check END avail=$avail took=${System.currentTimeMillis() - startMs}ms")
     }
     // Bind the NIGHT-extension preview when low light is auto-detected in PHOTO mode
     // and the extension is available; otherwise the normal photo session is used.
     val useNightPreview = sessionKind == SessionKind.PHOTO && cameraMode == CameraMode.PHOTO &&
         nightModeActive && nightExtAvailable
+    LaunchedEffect(useNightPreview) {
+        Log.d("NightPreview", "CameraScreen useNightPreview recomputed=$useNightPreview sessionKind=$sessionKind cameraMode=$cameraMode nightModeActive=$nightModeActive nightExtAvailable=$nightExtAvailable lensFacing=$lensFacing")
+    }
     val surfaceRequest by viewModel.surfaceRequest.collectAsState()
+    LaunchedEffect(surfaceRequest) {
+        Log.d("NightPreview", "CameraScreen surfaceRequest changed res=${surfaceRequest?.resolution} frameType=${surfaceRequest?.javaClass?.simpleName} useNightPreview=$useNightPreview sessionKind=$sessionKind thread=${Thread.currentThread().name} lensFacing=${lensFacing}")
+        if (surfaceRequest == null && useNightPreview) {
+            Log.w("NightPreview", "CameraScreen WARNING: surfaceRequest is NULL while useNightPreview=true – preview will be black until Provider re-emits. This is the black-frame trap you described: teardown -> delay(250) -> setupNightPreviewSession() tears down standard photo session surface before extension emits!")
+        }
+        if (surfaceRequest == null && !useNightPreview) {
+            Log.w("NightPreview", "CameraScreen tracing maybe delayed rebind? surface null while normal photo – expected during 250ms delay window")
+        }
+    }
     val coordinateTransformer = remember { MutableCoordinateTransformer() }
     val availableZoomLevels by viewModel.availableZoomLevels.collectAsState()
+    LaunchedEffect(availableZoomLevels) {
+        Log.d("NightPreview", "CameraScreen availableZoomLevels changed=$availableZoomLevels currentZoom=${zoomRatio} useNightPreview=$useNightPreview – vendor NIGHT often reports only [1x], making zoom bar appear to 'disappear' except 1x")
+    }
     val bokehShader = remember { lazy { RuntimeShader(BOKEH_SHADER) } }
 
     val panoSweeping by viewModel.panoramaEngine.isSweeping.collectAsState()
@@ -341,9 +362,7 @@ fun CameraScreen(
     val galleryBitmap by viewModel.galleryThumbnail.collectAsState()
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            viewModel.updateLocation()
-        }
+        viewModel.updateLocation()
     }
 
     LaunchedEffect(flashMode) {
@@ -456,44 +475,46 @@ fun CameraScreen(
     // Unified session binding, made lifecycle-aware so the camera is released when the app is
     // backgrounded and rebound on resume. Without this the ManualLifecycleOwner stays RESUMED,
     // the OS reclaims the camera while we're away, and the preview comes back frozen.
-    //
-    // CRITICAL ANR FIX: ProcessCameraProvider.getInstance()/awaitInstance and
-    // ExtensionsManager + Recorder capability queries can block 10-20s (MediaCodecList,
-    // camera service binder). They must never run on the main thread during cold
-    // start, or InputDispatcher times out waiting for FocusEvent(hasFocus=true).
-    // We keep teardown on main (lightweight) but move the heavy bind to IO/Default,
-    // then await cancellation on main again.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lensFacing, sessionKind, useNightPreview, lifecycleOwner) {
+        Log.d("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing sessionKind=$sessionKind useNightPreview=$useNightPreview lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            // Lightweight teardown can stay on main; add small delay to let surface detach
+            Log.d("NightPreview", "CameraScreen repeatOnLifecycle STARTED – calling teardownSession()")
+            val teardownStart = System.currentTimeMillis()
             viewModel.teardownSession()
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                delay(250)
-            }
-            // Heavy camera bind off main thread to avoid 20s FocusEvent stall
-            val ready = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            Log.d("NightPreview", "CameraScreen teardownSession() returned took=${System.currentTimeMillis() - teardownStart}ms, surface after=${viewModel.surfaceRequest.value?.resolution}")
+            Log.d("NightPreview", "CameraScreen delay(250) START to let surface detach (main-thread per a20f656b revert, not IO)")
+            delay(250)
+            Log.d("NightPreview", "CameraScreen delay(250) END, about to bind sessionKind=$sessionKind useNightPreview=$useNightPreview")
+            val bindStart = System.currentTimeMillis()
+            val bindSuccess = try {
                 when (sessionKind) {
                     SessionKind.HIGH_SPEED -> viewModel.setupHighSpeedSession()
                     SessionKind.VIDEO -> viewModel.setupVideoSession()
                     SessionKind.PANORAMA -> viewModel.setupPanoramaSession()
                     SessionKind.PORTRAIT -> viewModel.setupPortraitSession()
                     SessionKind.PHOTO ->
-                        if (useNightPreview) viewModel.setupNightPreviewSession()
-                        else viewModel.setupPhotoSession()
+                        if (useNightPreview) {
+                            Log.d("NightPreview", "CameraScreen switching to NIGHT extension preview – if this goes black with only 1x zoom, vendor reports min=max=1x and/or surfaceProvider not re-emitted")
+                            viewModel.setupNightPreviewSession()
+                        } else viewModel.setupPhotoSession()
                 }
+            } catch (e: Exception) {
+                Log.e("NightPreview", "CameraScreen session binding THREW (was not logged before) kind=$sessionKind useNightPreview=$useNightPreview nightExtAvailable=$nightExtAvailable", e)
+                false
             }
-            // Log bind result (optional)
-            if (!ready) {
-                android.util.Log.w("CameraScreen", "Camera session bind failed for $sessionKind")
+            Log.d("NightPreview", "CameraScreen session bind finished success=$bindSuccess took=${System.currentTimeMillis() - bindStart}ms surface after=${viewModel.surfaceRequest.value?.resolution} zoomLevels=${viewModel.availableZoomLevels.value} zoomRatio=${viewModel.zoomRatio.value}")
+            if (!bindSuccess) {
+                Log.e("NightPreview", "CameraScreen BIND FAILED – this produces solid black preview and zoom bar showing only 1x (fallback?). Check logcat for NightPreview tag – exception was previously swallowed as warning")
             }
             try {
                 awaitCancellation()
             } finally {
-                // Ensure teardown runs even if we are on cancellation
+                Log.d("NightPreview", "CameraScreen session coroutine cancelled/finished, calling teardownSession()")
                 viewModel.teardownSession()
             }
         }
+        Log.d("NightPreview", "CameraScreen repeatOnLifecycle block EXIT – lifecycle dropped below STARTED")
     }
 
 
@@ -676,14 +697,37 @@ fun CameraScreen(
                             }
 
                     surfaceRequest?.let { request ->
+                        LaunchedEffect(request) {
+                            Log.d("NightPreview", "CameraXViewfinder COMPOSED with request res=${request.resolution} dynamicRange=${request.dynamicRange} useNightPreview=$useNightPreview sessionKind=$sessionKind zoomRatio=${zoomRatio} levels=${availableZoomLevels} thread=${Thread.currentThread().name}")
+                        }
+                        DisposableEffect(request) {
+                            Log.d("NightPreview", "CameraXViewfinder DisposableEffect ATTACH request res=${request.resolution} useNightPreview=$useNightPreview")
+                            onDispose {
+                                Log.d("NightPreview", "CameraXViewfinder DisposableEffect DETACH request res=${request.resolution} useNightPreview=$useNightPreview – surface will be invalidated, if next request fails to emit we go black")
+                            }
+                        }
                         CameraXViewfinder(
                             surfaceRequest = request,
-                            modifier = previewModifier,
+                            modifier = previewModifier
+                                .graphicsLayer {
+                                    // Log when graphicsLayer runs – if RenderEffect crashes it swallows?
+                                },
                             implementationMode = ImplementationMode.EMBEDDED,
                             coordinateTransformer = coordinateTransformer,
                             alignment = Alignment.Center,
                             contentScale = if (isSloMo) ContentScale.Crop else ContentScale.Fit
                         )
+                    }
+                    if (surfaceRequest == null) {
+                        LaunchedEffect(useNightPreview, sessionKind) {
+                            Log.w("NightPreview", "CameraScreen rendering NO preview because surfaceRequest==null useNightPreview=$useNightPreview sessionKind=$sessionKind lowLight=$lowLightDetected nightActive=$nightModeActive nightExtAvailable=$nightExtAvailable – solid black!")
+                        }
+                        Box(
+                            modifier = previewModifier.background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("NO SURFACE: useNightPreview=$useNightPreview session=$sessionKind", color = Color.White, fontSize = 12.sp)
+                        }
                     }
 
                     if (gridEnabled) {

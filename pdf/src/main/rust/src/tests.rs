@@ -192,7 +192,10 @@ use crate::*;
             default_width: 0.5,
             t3: None,
             style: FontStyle::default(),
+            family: 0,
             base_font: String::new(),
+            glyph_program: None,
+            glyph_names: HashMap::new(),
         };
         let mut fonts = HashMap::new();
         fonts.insert(b"F1".to_vec(), fi);
@@ -240,7 +243,10 @@ use crate::*;
             default_width: 0.5,
             t3: None,
             style: FontStyle::default(),
+            family: 0,
             base_font: String::new(),
+            glyph_program: None,
+            glyph_names: HashMap::new(),
         };
         let mut fonts = HashMap::new();
         fonts.insert(b"F1".to_vec(), fi);

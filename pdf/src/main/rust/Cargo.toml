@@ -11,6 +11,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 lopdf = { version = "0.36", features = ["serde"] }
+# TrueType / CFF / OpenType glyph outline extraction (embedded font rendering).
+# no_std-capable, pure Rust, no transitive deps — keeps the .so lean.
+ttf-parser = { version = "0.25", default-features = false, features = ["std", "glyph-names"] }
 jni = "0.21"
 jpeg-decoder = "0.3"
 weezl = "0.1"

@@ -1,6 +1,7 @@
 package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -40,47 +41,106 @@ class PhotoAnalyzer(
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
-        val buffer = imageProxy.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
-
-        // Average luminance over a strided subsample of the Y plane (kept cheap).
-        var sum = 0L
-        var count = 0
-        var i = 0
-        while (i < bytes.size) {
-            sum += (bytes[i].toInt() and 0xFF)
-            count++
-            i += 16
-        }
-        if (count > 0) onLuminance(sum.toFloat() / count)
-
-        // Feed the Motion-Photo ring buffer with an RGB copy of this frame.
-        onMotionFrame?.let { emit ->
-            try {
-                emit(imageProxy.toBitmap(), imageProxy.imageInfo.timestamp, imageProxy.imageInfo.rotationDegrees)
-            } catch (_: Exception) {
-            }
-        }
-
-        val source = PlanarYUVLuminanceSource(
-            bytes,
-            imageProxy.width,
-            imageProxy.height,
-            0, 0,
-            imageProxy.width,
-            imageProxy.height,
-            false
-        )
-        val bitmap = BinaryBitmap(HybridBinarizer(source))
-
+        val startMs = System.currentTimeMillis()
         try {
-            val result = reader.decodeWithState(bitmap)
-            onQrDetected(result.text)
-        } catch (_: NotFoundException) {
-        } finally {
-            reader.reset()
-            imageProxy.close()
+            val buffer = imageProxy.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            try {
+                buffer.get(bytes)
+            } catch (e: Exception) {
+                Log.e("NightPreview", "PhotoAnalyzer buffer.get() threw (swallowed before) plane0Remaining? ${buffer.remaining()}", e)
+                throw e
+            }
+
+            // Average luminance over a strided subsample of the Y plane (kept cheap).
+            var sum = 0L
+            var count = 0
+            var i = 0
+            try {
+                while (i < bytes.size) {
+                    sum += (bytes[i].toInt() and 0xFF)
+                    count++
+                    i += 16
+                }
+            } catch (e: Exception) {
+                Log.e("NightPreview", "PhotoAnalyzer luma loop threw (hidden)", e)
+            }
+            if (count > 0) {
+                val avg = sum.toFloat() / count
+                Log.d("NightPreview", "PhotoAnalyzer luma avg=$avg sum=$sum count=$count bytesSize=${bytes.size} width=${imageProxy.width} height=${imageProxy.height} timestamp=${imageProxy.imageInfo.timestamp} rot=${imageProxy.imageInfo.rotationDegrees} took=${System.currentTimeMillis() - startMs}ms")
+                try {
+                    onLuminance(avg)
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "PhotoAnalyzer onLuminance callback threw (was hidden)", e)
+                }
+            } else {
+                Log.w("NightPreview", "PhotoAnalyzer count=0, no luma callback – preview may be black? bytesSize=${bytes.size}")
+            }
+
+            // Feed the Motion-Photo ring buffer with an RGB copy of this frame.
+            onMotionFrame?.let { emit ->
+                try {
+                    val bmp = try {
+                        imageProxy.toBitmap()
+                    } catch (e: Exception) {
+                        Log.e("NightPreview", "PhotoAnalyzer toBitmap() for Motion-Photo threw (hidden before)", e)
+                        null
+                    }
+                    if (bmp != null) {
+                        try {
+                            emit(bmp, imageProxy.imageInfo.timestamp, imageProxy.imageInfo.rotationDegrees)
+                        } catch (e: Exception) {
+                            Log.e("NightPreview", "PhotoAnalyzer onMotionFrame emit threw (hidden)", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "PhotoAnalyzer Motion-Photo outer threw (hidden)", e)
+                }
+            }
+
+            val source = PlanarYUVLuminanceSource(
+                bytes,
+                imageProxy.width,
+                imageProxy.height,
+                0, 0,
+                imageProxy.width,
+                imageProxy.height,
+                false
+            )
+            val bitmap = BinaryBitmap(HybridBinarizer(source))
+
+            try {
+                val result = reader.decodeWithState(bitmap)
+                Log.d("NightPreview", "PhotoAnalyzer QR decoded text=${result.text} width=${imageProxy.width} height=${imageProxy.height}")
+                try {
+                    onQrDetected(result.text)
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "PhotoAnalyzer onQrDetected threw (hidden)", e)
+                }
+            } catch (_: NotFoundException) {
+                // expected – no QR in frame, NOT an error
+            } catch (e: Exception) {
+                Log.e("NightPreview", "PhotoAnalyzer ZXing decodeWithState threw OTHER than NotFound (was swallowed)", e)
+            } finally {
+                try {
+                    reader.reset()
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "PhotoAnalyzer reader.reset() threw (hidden)", e)
+                }
+                try {
+                    imageProxy.close()
+                    Log.d("NightPreview", "PhotoAnalyzer imageProxy.close() took=${System.currentTimeMillis() - startMs}ms total – if not closed, pipeline stalls -> black preview!")
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "PhotoAnalyzer imageProxy.close() threw – pipeline stall -> black preview root!", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("NightPreview", "PhotoAnalyzer analyze() OUTER threw – was not logged, causes black preview and only 1x zoom because analyzer crashes", e)
+            try {
+                imageProxy.close()
+            } catch (e2: Exception) {
+                Log.e("NightPreview", "PhotoAnalyzer outer close() also failed (double hidden)", e2)
+            }
         }
     }
 }

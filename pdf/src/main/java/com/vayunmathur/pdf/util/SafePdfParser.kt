@@ -161,16 +161,24 @@ object SafePdfParser {
                     }
                     val isBold: Boolean
                     val isItalic: Boolean
+                    val fontFamily: Int
+                    val outline: Boolean
                     val hScale: Float
                     if (isV8) {
                         if (buf.remaining() < 5) throw IllegalArgumentException("Text v8 fontFlags truncated")
                         val fontFlags = buf.get().toInt() and 0xFF
                         isBold = fontFlags and 1 != 0
                         isItalic = fontFlags and 2 != 0
+                        // Bits 2-3 carry the generic family: 0 sans, 1 serif, 2 mono.
+                        fontFamily = (fontFlags shr 2) and 0x3
+                        // Bit 4: glyph already drawn as outline fills (don't paint).
+                        outline = fontFlags and 0x10 != 0
                         hScale = buf.float
                     } else {
                         isBold = false
                         isItalic = false
+                        fontFamily = 0
+                        outline = false
                         hScale = 1f
                     }
                     primitives.add(
@@ -186,6 +194,8 @@ object SafePdfParser {
                             blend = blend,
                             isBold = isBold,
                             isItalic = isItalic,
+                            fontFamily = fontFamily,
+                            outline = outline,
                             hScale = hScale,
                         )
                     )

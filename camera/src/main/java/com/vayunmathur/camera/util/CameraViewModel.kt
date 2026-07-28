@@ -112,6 +112,14 @@ fun buildColorAdjustmentMatrix(warmth: Float, shadows: Float): ColorMatrix = Col
 class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     companion object {
 
+        // Master switch for the CameraX vendor NIGHT extension (real-time night preview + vendor
+        // multi-frame capture). Disabled because it fails to configure on the camera-pipe backend
+        // on Pixel (ERROR_GRAPH_CONFIG "Framework size list map not supported in pixel path"),
+        // giving a black preview and failed captures. With it off, night mode runs the app's own
+        // burst + Rust-merge path over the normal photo session. Flip back to true once CameraX
+        // ships a pipe-extensions fix. See isNightExtensionAvailable().
+        private const val ENABLE_NIGHT_EXTENSION = false
+
         // Night-mode auto-detection tuning. Engage once average Y stays below ENGAGE for a few
         // frames; disengage once it climbs above DISENGAGE for a few frames. The gap between the
         // two thresholds is the hysteresis band that stops the moon button from flickering.
@@ -211,10 +219,13 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _aspectRatio = MutableStateFlow(AspectRatioOption.RATIO_4_3)
     val aspectRatio = _aspectRatio.asStateFlow()
 
-    // Default to AVC on main-thread init; the best available codec (AV1/HEVC) is
-    // determined off the main thread in loadSettings() to avoid MediaCodecList
-    // blocking startup (MediaCodecList can take 10-20s on some devices).
-    private val _videoCodec = MutableStateFlow(VideoCodec.AVC)
+    private val _videoCodec = MutableStateFlow(
+        when {
+            CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
+            CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
+            else -> VideoCodec.AVC
+        }
+    )
     val videoCodec = _videoCodec.asStateFlow()
 
     private val _isRecording = MutableStateFlow(false)
@@ -460,23 +471,39 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        loadSettings()
         panoramaEngine.onSweepComplete = { finishPanoramaSweep() }
-
-        // Settings include disk read + MediaCodecList which is known to block 10-20s
-        // on some devices. Must never run on main thread during cold start or the
-        // window can't handle FocusEvent -> ANR.
-        viewModelScope.launch(Dispatchers.IO) {
-            CodecSupport.prewarm() // MediaCodecList off main, cached
-            loadSettings()
-        }
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             _lastCaptureUri.collect { uri -> _galleryThumbnail.value = loadThumbnail(uri) }
         }
         // Probe Slo-Mo capability once (back camera only). UI hides Slo-Mo if unsupported.
-        // Must run off main thread: ProcessCameraProvider.awaitInstance + high-speed caps
-        // queries are heavy.
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch {
             _sloMoSupported.value = probeSloMoSupport()
+        }
+        // DEBUG: Night mode resolution question – extension uses default resolution vs max-res, may be lower so can't take full quality?
+        viewModelScope.launch {
+            var last: List<Pair<String, Float>> = emptyList()
+            availableZoomLevels.collect { levels ->
+                if (levels != last) {
+                    Log.d("NightPreview", "CameraViewModel availableZoomLevels FLOW emitted=$levels previous=$last nightPreviewActive=${_nightPreviewActive.value} photoActive=${_photoSessionActive.value} zoomRatio=${_zoomRatio.value} – if only [1x], zoom bar appears disappeared")
+                    last = levels
+                }
+            }
+        }
+        viewModelScope.launch {
+            var lastRes: android.util.Size? = null
+            surfaceRequest.collect { req ->
+                val res = req?.resolution
+                if (res != lastRes) {
+                    Log.d("NightPreview", "CameraViewModel surfaceRequest FLOW emitted res=$res previous=$lastRes nightPreviewActive=${_nightPreviewActive.value} photoActive=${_photoSessionActive.value} – null->val during extension bind, black if stuck null")
+                    lastRes = res
+                }
+            }
+        }
+        viewModelScope.launch {
+            nightModeActive.collect { active ->
+                Log.d("NightPreview", "CameraViewModel nightModeActive FLOW=$active lowLight=${_lowLightDetected.value} overriddenOff=${_nightModeOverriddenOff.value} – button toggle drives this, triggers session rebind via useNightPreview in UI")
+            }
         }
     }
 
@@ -516,64 +543,36 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun loadThumbnail(uri: Uri?): Bitmap? {
-        if (uri == null) return null
-        return withContext(Dispatchers.IO) {
+    private suspend fun loadThumbnail(uri: Uri?): Bitmap? = uri?.let {
+        withContext(Dispatchers.IO) {
             try {
-                // Safeguard: loadThumbnail can throw SecurityException / FileNotFound if
-                // MediaStore row gone. Also IO heavy – always on IO dispatcher.
-                app.contentResolver.loadThumbnail(uri, Size(96, 96), null)
+                app.contentResolver.loadThumbnail(it, Size(96, 96), null)
             } catch (e: Exception) {
-                // Only log at debug level – expected after deletion / first launch
-                Log.d("CameraViewModel", "Failed to load gallery thumbnail: $uri", e)
+                Log.w("CameraViewModel", "Failed to load gallery thumbnail", e)
                 null
             }
         }
     }
 
     private fun loadSettings() {
-        // DataStore state is in-memory, but this whole method now runs on IO dispatcher
-        // to avoid MediaCodecList (CodecSupport) stalling main thread -> FocusEvent ANR.
-        try { _flashMode.value = ds.getString("camera_flash")?.let { FlashMode.valueOf(it) } ?: FlashMode.OFF } catch (_: Exception) {}
-        try { _timerDuration.value = ds.getString("camera_timer")?.let { TimerDuration.valueOf(it) } ?: TimerDuration.NONE } catch (_: Exception) {}
-        try { _aspectRatio.value = ds.getString("camera_aspect_ratio")?.let { AspectRatioOption.valueOf(it) } ?: AspectRatioOption.RATIO_4_3 } catch (_: Exception) {}
-
-        // Codec: if user has explicit preference, use it; otherwise probe best available
-        // codec OFF main thread (MediaCodecList can take 10-20s).
-        val savedCodec = ds.getString("camera_video_codec")
-        _videoCodec.value = if (savedCodec != null) {
-            try { VideoCodec.valueOf(savedCodec) } catch (_: Exception) {
-                // Fall back to best available (IO thread safe now)
+        ds.getString("camera_flash")?.let { _flashMode.value = FlashMode.valueOf(it) }
+        ds.getString("camera_timer")?.let { _timerDuration.value = TimerDuration.valueOf(it) }
+        ds.getString("camera_aspect_ratio")?.let { _aspectRatio.value = AspectRatioOption.valueOf(it) }
+        ds.getString("camera_video_codec")?.let {
+            _videoCodec.value = try { VideoCodec.valueOf(it) } catch (_: Exception) {
                 when {
                     CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
                     CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
                     else -> VideoCodec.AVC
                 }
             }
-        } else {
-            when {
-                CodecSupport.isHardwareAv1EncoderAvailable -> VideoCodec.AV1
-                CodecSupport.isHevcEncoderAvailable -> VideoCodec.HEVC
-                else -> VideoCodec.AVC
-            }
         }
-
-        try { _locationEnabled.value = ds.getString("camera_location")?.toBoolean() ?: false } catch (_: Exception) {}
-        try { ds.getString("camera_last_capture")?.let { if (it.isNotEmpty()) _lastCaptureUri.value = Uri.parse(it) } } catch (_: Exception) {}
-        try { _gridEnabled.value = ds.getString("camera_grid")?.toBoolean() ?: false } catch (_: Exception) {}
-        try { _levelEnabled.value = ds.getString("camera_level")?.toBoolean() ?: false } catch (_: Exception) {}
-        try { _micMuted.value = ds.getString("camera_mic_muted")?.toBoolean() ?: false } catch (_: Exception) {}
-
-        // Sensor registration must happen on main thread; post if we're on IO.
-        if (_levelEnabled.value) {
-            try {
-                if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-                    registerLevelSensor()
-                } else {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { registerLevelSensor() }
-                }
-            } catch (_: Exception) {}
-        }
+        ds.getString("camera_location")?.let { _locationEnabled.value = it.toBoolean() }
+        ds.getString("camera_last_capture")?.let { _lastCaptureUri.value = Uri.parse(it) }
+        ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }
+        ds.getString("camera_level")?.let { _levelEnabled.value = it.toBoolean() }
+        ds.getString("camera_mic_muted")?.let { _micMuted.value = it.toBoolean() }
+        if (_levelEnabled.value) registerLevelSensor()
     }
 
     fun setFlashMode(mode: FlashMode) {
@@ -734,35 +733,52 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * user's per-scene override is reset so the next dark scene re-engages cleanly.
      */
     fun onLuminance(avg: Float) {
+        // LOTS of logging to figure out what the real problem is (per user request)
+        val beforeLow = _lowLightDetected.value
+        val beforeOff = _nightModeOverriddenOff.value
+        Log.d("NightPreview", "onLuminance() avg=$avg lowLightBefore=$beforeLow overriddenOff=$beforeOff lowFrames=$lowLumaFrames highFrames=$highLumaFrames nightActive=${nightModeActive.value} photoActive=${_photoSessionActive.value} nightPreviewActive=${_nightPreviewActive.value} thread=${Thread.currentThread().name}")
         if (_lowLightDetected.value) {
             if (avg > NIGHT_DISENGAGE_LUMA) {
                 highLumaFrames++
                 lowLumaFrames = 0
+                Log.d("NightPreview", "onLuminance() currently in low-light, avg $avg > disengage ${NIGHT_DISENGAGE_LUMA}, highFrames=$highLumaFrames/${NIGHT_DEBOUNCE_FRAMES}")
                 if (highLumaFrames >= NIGHT_DEBOUNCE_FRAMES) {
+                    Log.d("NightPreview", "onLuminance() DISENGAGING night – high luma for $NIGHT_DEBOUNCE_FRAMES frames, lowLight=true->false")
                     _lowLightDetected.value = false
                     _nightModeOverriddenOff.value = false
                     highLumaFrames = 0
+                    Log.d("NightPreview", "onLuminance() after DISENGAGE lowLight=${_lowLightDetected.value} nightActive=${nightModeActive.value} – triggers teardown->setupPhotoSession() rebind")
                 }
             } else {
+                if (highLumaFrames != 0) Log.d("NightPreview", "onLuminance() resetting highFrames 0 (avg=$avg still below disengage)")
                 highLumaFrames = 0
             }
         } else {
             if (avg < NIGHT_ENGAGE_LUMA) {
                 lowLumaFrames++
                 highLumaFrames = 0
+                Log.d("NightPreview", "onLuminance() avg $avg < engage ${NIGHT_ENGAGE_LUMA}, lowFrames=$lowLumaFrames/${NIGHT_DEBOUNCE_FRAMES}")
                 if (lowLumaFrames >= NIGHT_DEBOUNCE_FRAMES) {
+                    Log.d("NightPreview", "onLuminance() ENGAGING night – low luma for $NIGHT_DEBOUNCE_FRAMES frames, lowLight=false->true")
                     _lowLightDetected.value = true
                     lowLumaFrames = 0
+                    Log.d("NightPreview", "onLuminance() after ENGAGE lowLight=${_lowLightDetected.value} nightActive=${nightModeActive.value} overriddenOff=${_nightModeOverriddenOff.value} – if extension available, useNightPreview should become true and rebind to setupNightPreviewSession()")
                 }
             } else {
+                if (lowLumaFrames != 0) Log.d("NightPreview", "onLuminance() resetting lowFrames 0 (avg=$avg above engage)")
                 lowLumaFrames = 0
             }
+        }
+        if (beforeLow != _lowLightDetected.value || beforeOff != _nightModeOverriddenOff.value) {
+            Log.d("NightPreview", "onLuminance() STATE CHANGE low $beforeLow -> ${_lowLightDetected.value} off $beforeOff -> ${_nightModeOverriddenOff.value} nightActive ${nightModeActive.value}")
         }
     }
 
     /** Toggles the user's override for the current dark scene (moon button handler). */
     fun toggleNightModeOverride() {
+        val before = _nightModeOverriddenOff.value
         _nightModeOverriddenOff.value = !_nightModeOverriddenOff.value
+        Log.d("NightPreview", "toggleNightModeOverride() CLICK moon button beforeOff=$before afterOff=${_nightModeOverriddenOff.value} lowLight=${_lowLightDetected.value} nightActiveBefore=${!before && _lowLightDetected.value} nightActiveAfter=${nightModeActive.value} thread=${Thread.currentThread().name} – screen should transition? if extension binds, preview resolution changes and zoom bar may collapse to 1x")
     }
 
     private fun setLastCaptureUri(uri: Uri?) {
@@ -812,14 +828,22 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun setZoomRatio(ratio: Float) {
         val cam = boundCamera
-        val clamped = cam?.cameraInfo?.zoomState?.value?.let {
+        val zs = cam?.cameraInfo?.zoomState?.value
+        Log.d("NightPreview", "setZoomRatio() requested=$ratio clamped? min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} nightPreviewActive=${_nightPreviewActive.value} photoActive=${_photoSessionActive.value} boundCamera=${cam != null}")
+        val clamped = zs?.let {
             ratio.coerceIn(it.minZoomRatio, it.maxZoomRatio)
         } ?: ratio
+        if (clamped != ratio) Log.w("NightPreview", "setZoomRatio() CLAMPED $ratio -> $clamped due to zoomState min/max – vendor NIGHT often reports max=1x, causing bar to show only 1x")
         _zoomRatio.value = clamped
-        cam?.cameraControl?.setZoomRatio(clamped)
+        try {
+            cam?.cameraControl?.setZoomRatio(clamped)
+        } catch (e: Exception) {
+            Log.e("NightPreview", "setZoomRatio() setZoomRatio() threw (was hidden before)", e)
+        }
     }
 
     fun updateZoomLevels(minZoom: Float, maxZoom: Float) {
+        Log.d("NightPreview", "updateZoomLevels() min=$minZoom max=$maxZoom nightPreviewActive=${_nightPreviewActive.value} photoActive=${_photoSessionActive.value} currentRatio=${_zoomRatio.value} thread=${Thread.currentThread().name}")
         val levels = mutableListOf<Pair<String, Float>>()
         // Wide-angle entry only when the lens can actually zoom out past 1x.
         if (minZoom < 0.95f) {
@@ -829,21 +853,19 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         for (tele in listOf(2f, 5f)) {
             if (tele <= maxZoom + 0.05f) levels.add(formatZoomLabel(tele) to tele)
         }
+        Log.d("NightPreview", "updateZoomLevels() emitting levels=$levels – if min=1f max=1f, only [1x] will show, explaining 'all zoom levels also disappear'")
         _availableZoomLevels.value = levels
     }
 
     @android.annotation.SuppressLint("MissingPermission")
     fun updateLocation() {
         if (!_locationEnabled.value) return
-        // LocationManager binder call should not run on main during cold start.
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                lastLocation = lm.getLastKnownLocation(LocationManager.FUSED_PROVIDER)
-                    ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            } catch (e: Exception) {
-                Log.w("CameraViewModel", "Failed to read last known location", e)
-            }
+        try {
+            val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            lastLocation = lm.getLastKnownLocation(LocationManager.FUSED_PROVIDER)
+                ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+        } catch (e: Exception) {
+            Log.w("CameraViewModel", "Failed to read last known location", e)
         }
     }
 
@@ -1019,9 +1041,11 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * limits, it falls back to a default ImageCapture resolution.
      */
     suspend fun setupPhotoSession(): Boolean {
+        Log.d("NightPreview", "setupPhotoSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
         return try {
             val provider = ProcessCameraProvider.awaitInstance(app)
             cameraProvider = provider
+            Log.d("NightPreview", "setupPhotoSession() got providerHash=${provider.hashCode()}")
             provider.unbindAll()
 
             val selector = CameraSelector.Builder()
@@ -1034,11 +1058,16 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             try {
                 androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
                     .setSessionCaptureCallback(aeSnapshotCallback)
+                Log.d("NightPreview", "setupPhotoSession() attached AE snapshot callback")
             } catch (e: Exception) {
-                Log.w("PhotoSession", "Could not attach AE snapshot callback", e)
+                Log.e("NightPreview", "setupPhotoSession() Could not attach AE snapshot callback (was hidden as Warn)", e)
             }
             val preview = previewBuilder.build()
-            preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+            preview.setSurfaceProvider { request ->
+                Log.d("NightPreview", "setupPhotoSession() surfaceRequest emitted res=${request.resolution} format=${request.javaClass.simpleName} thread=${Thread.currentThread().name} nightActive=${nightModeActive.value}")
+                _surfaceRequest.value = request
+            }
+            Log.d("NightPreview", "setupPhotoSession() preview surfaceProvider attached")
 
             val owner = ManualLifecycleOwner()
             owner.start()
@@ -1048,77 +1077,89 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             // here; the bind ladder falls back to plain JPEG if the Ultra HDR combo can't bind.
             val ultraHdrSupported = try {
                 val cameraInfo = provider.getCameraInfo(selector)
-                ImageCapture.getImageCaptureCapabilities(cameraInfo)
-                    .supportedOutputFormats
-                    .contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                val caps = ImageCapture.getImageCaptureCapabilities(cameraInfo).supportedOutputFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                Log.d("NightPreview", "setupPhotoSession() ultraHdrSupported=$caps selector=$selector")
+                caps
             } catch (e: Exception) {
-                Log.w("PhotoSession", "Could not query Ultra HDR support", e)
+                Log.e("NightPreview", "setupPhotoSession() Could not query Ultra HDR support (was hidden as Warn)", e)
                 false
             }
 
             fun bind(maxRes: Boolean, ultraHdr: Boolean): Camera {
-                val selectorBuilder = ResolutionSelector.Builder()
-                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                if (maxRes) {
-                    // HIGHEST_AVAILABLE + PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE unlocks the
-                    // full-res (maximum-resolution) sensor sizes, re-resolved per bound camera.
-                    selectorBuilder.setAllowedResolutionMode(
-                        ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
-                    )
+                Log.d("NightPreview", "setupPhotoSession() bind(maxRes=$maxRes ultraHdr=$ultraHdr) START thread=${Thread.currentThread().name}")
+                return try {
+                    val selectorBuilder = ResolutionSelector.Builder()
+                        .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                    if (maxRes) {
+                        selectorBuilder.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                    }
+                    val captureBuilder = ImageCapture.Builder()
+                        .setResolutionSelector(selectorBuilder.build())
+                        .setFlashMode(getImageCaptureFlashMode())
+                        .setTargetRotation(targetRotation)
+                    if (ultraHdr) {
+                        captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                    }
+                    val capture = captureBuilder.build()
+                    imageCapture = capture
+                    val analysisBuilder = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    if (maxRes) {
+                        analysisBuilder.setResolutionSelector(
+                            ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build()
+                        )
+                    }
+                    val analysis = analysisBuilder.build()
+                    imageAnalysis = analysis
+                    provider.bindToLifecycle(owner, selector, preview, capture, analysis).also {
+                        Log.d("NightPreview", "setupPhotoSession() bind SUCCESS res=${it.cameraInfo} zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} max=${it.cameraInfo.zoomState.value?.maxZoomRatio}")
+                    }
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "setupPhotoSession() bind(maxRes=$maxRes ultra=$ultraHdr) EXCEPTION – root cause of black preview when fallback also fails", e)
+                    throw e
                 }
-                val captureBuilder = ImageCapture.Builder()
-                    .setResolutionSelector(selectorBuilder.build())
-                    .setFlashMode(getImageCaptureFlashMode())
-                    .setTargetRotation(targetRotation)
-                if (ultraHdr) {
-                    captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-                }
-                val capture = captureBuilder.build()
-                imageCapture = capture
-                val analysisBuilder = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                if (maxRes) {
-                    // Raise the analysis stream too so the night-mode burst (collected off this
-                    // stream) is as high-res as the device's 3-stream combo allows. Tied to maxRes
-                    // so the default-resolution fallback keeps the analysis stream conservative if
-                    // the high-res 3-stream bind is rejected.
-                    analysisBuilder.setResolutionSelector(
-                        ResolutionSelector.Builder()
-                            .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                            .build()
-                    )
-                }
-                val analysis = analysisBuilder.build()
-                imageAnalysis = analysis
-                return provider.bindToLifecycle(owner, selector, preview, capture, analysis)
             }
 
             // Fallback ladder: UltraHDR+maxres → UltraHDR+default → JPEG+default.
             boundCamera = try {
                 bind(maxRes = true, ultraHdr = ultraHdrSupported)
             } catch (e: Exception) {
-                Log.w("PhotoSession", "Max-res bind failed; retrying at default resolution", e)
-                provider.unbindAll()
+                Log.e("NightPreview", "setupPhotoSession() Max-res bind failed (was Warn, hidden); retrying at default resolution. This is where resolution becomes lower and cannot take full quality!", e)
+                try {
+                    provider.unbindAll()
+                } catch (e2: Exception) {
+                    Log.e("NightPreview", "setupPhotoSession() unbindAll on fallback failed (hidden)", e2)
+                }
                 try {
                     bind(maxRes = false, ultraHdr = ultraHdrSupported)
                 } catch (e2: Exception) {
+                    Log.e("NightPreview", "setupPhotoSession() default-res ultraHdr=$ultraHdrSupported bind FAILED (was hidden)", e2)
                     if (!ultraHdrSupported) throw e2
-                    Log.w("PhotoSession", "Ultra HDR bind failed; falling back to plain JPEG", e2)
-                    provider.unbindAll()
+                    Log.e("NightPreview", "setupPhotoSession() Ultra HDR bind failed (was Warn), falling back to plain JPEG – lower quality path")
+                    try {
+                        provider.unbindAll()
+                    } catch (e3: Exception) {
+                        Log.e("NightPreview", "setupPhotoSession() unbindAll on second fallback failed", e3)
+                    }
                     bind(maxRes = false, ultraHdr = false)
                 }
             }
 
+            val zs = boundCamera?.cameraInfo?.zoomState?.value
+            Log.d("NightPreview", "setupPhotoSession() bound zoomState min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} ratio=${zs?.zoomRatio} thread=${Thread.currentThread().name}")
             boundCamera?.cameraInfo?.zoomState?.value?.let {
+                Log.d("NightPreview", "setupPhotoSession() calling updateZoomLevels min=${it.minZoomRatio} max=${it.maxZoomRatio} – should show .5,1x,2x,5x if >1x else only 1x")
                 updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
                 _zoomRatio.value = it.zoomRatio
+                Log.d("NightPreview", "setupPhotoSession() after levels=${_availableZoomLevels.value} ratio=${_zoomRatio.value}")
             }
             readManualControlRanges()
             applyManualControls()
             _photoSessionActive.value = true
+            Log.d("NightPreview", "setupPhotoSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution}")
             true
         } catch (e: Exception) {
-            Log.e("PhotoSession", "Failed to set up photo session", e)
+            Log.e("NightPreview", "setupPhotoSession() OUTER CATCH – Failed to set up photo session – solid black root? ${e.javaClass.simpleName} ${e.message}", e)
             false
         }
     }
@@ -1133,27 +1174,62 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * extension isn't available or can't be bound.
      */
     suspend fun setupNightPreviewSession(): Boolean {
+        Log.d("NightPreview", "setupNightPreviewSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
+        _surfaceRequest.value = null
+        Log.d("NightPreview", "setupNightPreviewSession() cleared stale surfaceRequest before extension bind to prevent black-frame trap")
         return try {
             val provider = ProcessCameraProvider.awaitInstance(app)
             cameraProvider = provider
-            val mgr = getExtensionsManager(provider) ?: return setupPhotoSession()
+            Log.d("NightPreview", "setupNightPreviewSession() got cameraProvider=$provider")
+            val mgr = getExtensionsManager(provider)
+            Log.d("NightPreview", "setupNightPreviewSession() ExtensionsManager=${mgr != null} cacheExt=${extensionsManager != null}")
+            if (mgr == null) {
+                Log.w("NightPreview", "setupNightPreviewSession() manager NULL, falling back to normal photo session")
+                return setupPhotoSession()
+            }
             val baseSelector = CameraSelector.Builder()
                 .requireLensFacing(_lensFacing.value)
                 .build()
-            if (!mgr.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)) {
+            val extAvail = try {
+                mgr.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)
+            } catch (e: Exception) {
+                Log.e("NightPreview", "setupNightPreviewSession() isExtensionAvailable threw (was hidden)", e)
+                false
+            }
+            Log.d("NightPreview", "setupNightPreviewSession() isExtensionAvailable(NIGHT)=$extAvail lens=${_lensFacing.value}")
+            if (!extAvail) {
+                Log.w("NightPreview", "setupNightPreviewSession() extension NOT available on lens=${_lensFacing.value}, falling back")
                 return setupPhotoSession()
             }
-            provider.unbindAll()
-            val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
+            Log.d("NightPreview", "setupNightPreviewSession() unbinding all before night selector")
+            try {
+                provider.unbindAll()
+                Log.d("NightPreview", "setupNightPreviewSession() provider.unbindAll SUCCESS")
+            } catch (e: Exception) {
+                Log.e("NightPreview", "setupNightPreviewSession() unbindAll FAILED (was hidden)", e)
+                throw e
+            }
+            val nightSelector = try {
+                mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
+            } catch (e: Exception) {
+                Log.e("NightPreview", "setupNightPreviewSession() getExtensionEnabledCameraSelector FAILED (hidden)", e)
+                throw e
+            }
+            Log.d("NightPreview", "setupNightPreviewSession() got nightSelector=$nightSelector")
             val analysisSupported = try {
                 mgr.isImageAnalysisSupported(baseSelector, ExtensionMode.NIGHT)
             } catch (e: Exception) {
-                Log.w("NightPreview", "isImageAnalysisSupported query failed", e)
+                Log.e("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported query FAILED (was Warn only)", e)
                 false
             }
+            Log.d("NightPreview", "setupNightPreviewSession() isImageAnalysisSupported=$analysisSupported – this decides if luminance can auto-disengage; if false, preview binds without ImageAnalysis and zoom may be reported as 1x-only by vendor")
 
             val preview = Preview.Builder().build()
-            preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+            preview.setSurfaceProvider { request ->
+                Log.d("NightPreview", "setupNightPreviewSession() NEW surfaceRequest emitted res=${request.resolution} format=${request.javaClass.simpleName} – if this stops after _surfaceRequest=null, viewfinder goes black permanently")
+                _surfaceRequest.value = request
+            }
+            Log.d("NightPreview", "setupNightPreviewSession() preview surfaceProvider attached, waiting for first request emission")
 
             val owner = ManualLifecycleOwner()
             owner.start()
@@ -1169,38 +1245,73 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             // resolutions (no max-res 3-stream ladder) to stay within the combos
             // the vendor extension guarantees.
             fun bind(withAnalysis: Boolean): Camera {
-                return if (withAnalysis) {
-                    val analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                    imageAnalysis = analysis
-                    provider.bindToLifecycle(owner, nightSelector, preview, capture, analysis)
-                } else {
-                    imageAnalysis = null
-                    provider.bindToLifecycle(owner, nightSelector, preview, capture)
+                Log.d("NightPreview", "setupNightPreviewSession() bind() withAnalysis=$withAnalysis START")
+                return try {
+                    if (withAnalysis) {
+                        val analysis = ImageAnalysis.Builder()
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .build()
+                        imageAnalysis = analysis
+                        provider.bindToLifecycle(owner, nightSelector, preview, capture, analysis).also {
+                            Log.d("NightPreview", "setupNightPreviewSession() bind WITH analysis SUCCESS camera=${it.cameraInfo}")
+                        }
+                    } else {
+                        imageAnalysis = null
+                        provider.bindToLifecycle(owner, nightSelector, preview, capture).also {
+                            Log.d("NightPreview", "setupNightPreviewSession() bind WITHOUT analysis SUCCESS – note: after this, PhotoAnalyzer stops, so onLuminance won't fire and lowLightDetected stays frozen")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "setupNightPreviewSession() bind(withAnalysis=$withAnalysis) EXCEPTION (was caught as warning) – this is likely why preview stays black and zoom shows only 1x", e)
+                    throw e
                 }
             }
 
             boundCamera = try {
                 bind(withAnalysis = analysisSupported)
             } catch (e: Exception) {
-                if (!analysisSupported) throw e
-                Log.w("NightPreview", "Night+analysis bind failed; retrying preview+capture only", e)
-                provider.unbindAll()
-                bind(withAnalysis = false)
+                Log.w("NightPreview", "setupNightPreviewSession() first bind FAILED withAnalysis=$analysisSupported, exception type=${e.javaClass.simpleName} message=${e.message}", e)
+                if (!analysisSupported) {
+                    Log.e("NightPreview", "setupNightPreviewSession() analysisSupported=false and bind failed – NOT retrying (no fallback), will go to catch and fallback to normal session")
+                    throw e
+                }
+                Log.w("NightPreview", "setupNightPreviewSession() retrying bind WITHOUT analysis – this loses luminance auto-disengage but may recover preview")
+                try {
+                    provider.unbindAll()
+                } catch (e2: Exception) {
+                    Log.e("NightPreview", "setupNightPreviewSession() retry unbindAll FAILED", e2)
+                }
+                try {
+                    bind(withAnalysis = false)
+                } catch (e2: Exception) {
+                    Log.e("NightPreview", "setupNightPreviewSession() retry bind without analysis ALSO FAILED – root cause of black preview: ${e2.javaClass.simpleName} ${e2.message}", e2)
+                    throw e2
+                }
             }
 
+            val zs = boundCamera?.cameraInfo?.zoomState?.value
+            Log.d("NightPreview", "setupNightPreviewSession() boundCamera zoomState min=${zs?.minZoomRatio} max=${zs?.maxZoomRatio} current=${zs?.zoomRatio} – vendor NIGHT extension often reports 1x-only; this explains zoom bar disappearing (only 1x). Full-res capture is still max-res? No, extension uses default resolution, lower than max-res photo session, cannot take full quality while in extension preview")
             boundCamera?.cameraInfo?.zoomState?.value?.let {
+                Log.d("NightPreview", "setupNightPreviewSession() calling updateZoomLevels min=${it.minZoomRatio} max=${it.maxZoomRatio}")
                 updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
                 _zoomRatio.value = it.zoomRatio
+                Log.d("NightPreview", "setupNightPreviewSession() updated zoomRatio=${_zoomRatio.value} levels=${_availableZoomLevels.value}")
             }
             _nightPreviewActive.value = true
             _photoSessionActive.value = true
+            Log.d("NightPreview", "setupNightPreviewSession() SUCCESS – nightPreviewActive=true photoSessionActive=true surfaceRequest=${_surfaceRequest.value?.resolution}")
             true
         } catch (e: Exception) {
-            Log.e("NightPreview", "Failed to set up night preview session; using normal session", e)
+            Log.e("NightPreview", "setupNightPreviewSession() OUTER CATCH – FAILED to set up night preview, falling back to normal photo session. Root cause of solid black: exception=${e.javaClass.simpleName} msg=${e.message}", e)
             _nightPreviewActive.value = false
-            setupPhotoSession()
+            val fallback = try {
+                setupPhotoSession()
+            } catch (e2: Exception) {
+                Log.e("NightPreview", "setupNightPreviewSession() fallback setupPhotoSession() ALSO FAILED (double hidden)", e2)
+                false
+            }
+            Log.d("NightPreview", "setupNightPreviewSession() fallback result=$fallback")
+            fallback
         }
     }
 
@@ -1259,21 +1370,37 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             }
 
             boundCamera = try {
+                Log.d("NightPreview", "setupPanoramaSession() bind capped=true START")
                 bind(capped = true)
             } catch (e: Exception) {
-                Log.w("PhotoSession", "Capped panorama bind failed; retrying at default resolution", e)
-                provider.unbindAll()
-                bind(capped = false)
+                Log.e("NightPreview", "setupPanoramaSession() Capped panorama bind FAILED (was hidden as Warn), retrying at default – resolution lower!", e)
+                try {
+                    provider.unbindAll()
+                    Log.d("NightPreview", "setupPanoramaSession() fallback unbindAll SUCCESS")
+                } catch (e2: Exception) {
+                    Log.e("NightPreview", "setupPanoramaSession() fallback unbindAll FAILED (swallowed)", e2)
+                }
+                try {
+                    bind(capped = false)
+                } catch (e2: Exception) {
+                    Log.e("NightPreview", "setupPanoramaSession() default bind ALSO FAILED – black root ${e2.javaClass.simpleName} ${e2.message}", e2)
+                    throw e2
+                }
             }
 
+            val zsP = boundCamera?.cameraInfo?.zoomState?.value
+            Log.d("NightPreview", "setupPanoramaSession() bound zoom min=${zsP?.minZoomRatio} max=${zsP?.maxZoomRatio} ratio=${zsP?.zoomRatio}")
             boundCamera?.cameraInfo?.zoomState?.value?.let {
+                Log.d("NightPreview", "setupPanoramaSession() updateZoomLevels min=${it.minZoomRatio} max=${it.maxZoomRatio}")
                 updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
                 _zoomRatio.value = it.zoomRatio
+                Log.d("NightPreview", "setupPanoramaSession() levels=${_availableZoomLevels.value}")
             }
             _photoSessionActive.value = true
+            Log.d("NightPreview", "setupPanoramaSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution}")
             true
         } catch (e: Exception) {
-            Log.e("PhotoSession", "Failed to set up panorama session", e)
+            Log.e("NightPreview", "setupPanoramaSession() OUTER CATCH – Failed solid black? ${e.javaClass.simpleName} ${e.message}", e)
             false
         }
     }
@@ -1289,9 +1416,11 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * capped+max+UHD → capped+max+JPEG → capped+default+UHD → capped+default+JPEG → default+default
      */
     suspend fun setupPortraitSession(): Boolean {
+        Log.d("NightPreview", "setupPortraitSession() ENTRY lens=${_lensFacing.value} thread=${Thread.currentThread().name}")
         return try {
             val provider = ProcessCameraProvider.awaitInstance(app)
             cameraProvider = provider
+            Log.d("NightPreview", "setupPortraitSession() providerHash=${provider.hashCode()}")
             provider.unbindAll()
 
             val selector = CameraSelector.Builder()
@@ -1302,11 +1431,15 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             try {
                 androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
                     .setSessionCaptureCallback(aeSnapshotCallback)
+                Log.d("NightPreview", "setupPortraitSession() attached AE snapshot callback")
             } catch (e: Exception) {
-                Log.w("PortraitSession", "Could not attach AE snapshot callback", e)
+                Log.e("NightPreview", "setupPortraitSession() Could not attach AE snapshot callback (was Warn)", e)
             }
             val preview = previewBuilder.build()
-            preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+            preview.setSurfaceProvider { request ->
+                Log.d("NightPreview", "setupPortraitSession() surfaceRequest res=${request.resolution} thread=${Thread.currentThread().name}")
+                _surfaceRequest.value = request
+            }
 
             val owner = ManualLifecycleOwner()
             owner.start()
@@ -1314,11 +1447,11 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
             val ultraHdrSupported = try {
                 val cameraInfo = provider.getCameraInfo(selector)
-                ImageCapture.getImageCaptureCapabilities(cameraInfo)
-                    .supportedOutputFormats
-                    .contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                val sup = ImageCapture.getImageCaptureCapabilities(cameraInfo).supportedOutputFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                Log.d("NightPreview", "setupPortraitSession() ultraHdrSupported=$sup")
+                sup
             } catch (e: Exception) {
-                Log.w("PortraitSession", "Could not query Ultra HDR support", e)
+                Log.e("NightPreview", "setupPortraitSession() Could not query Ultra HDR support (hidden)", e)
                 false
             }
 
@@ -1327,47 +1460,46 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                 maxResCapture: Boolean,
                 ultraHdr: Boolean
             ): Camera {
-                // Capture: always try max-res first to keep final image full-res.
-                val captureSelectorBuilder = ResolutionSelector.Builder()
-                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                if (maxResCapture) {
-                    captureSelectorBuilder.setAllowedResolutionMode(
-                        ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
-                    )
-                }
-                val captureBuilder = ImageCapture.Builder()
-                    .setResolutionSelector(captureSelectorBuilder.build())
-                    .setFlashMode(getImageCaptureFlashMode())
-                    .setTargetRotation(targetRotation)
-                if (ultraHdr) {
-                    captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-                }
-                val capture = captureBuilder.build()
-                imageCapture = capture
+                Log.d("NightPreview", "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr) START")
+                return try {
+                    // Capture: always try max-res first to keep final image full-res.
+                    val captureSelectorBuilder = ResolutionSelector.Builder()
+                        .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                    if (maxResCapture) {
+                        captureSelectorBuilder.setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                    }
+                    val captureBuilder = ImageCapture.Builder()
+                        .setResolutionSelector(captureSelectorBuilder.build())
+                        .setFlashMode(getImageCaptureFlashMode())
+                        .setTargetRotation(targetRotation)
+                    if (ultraHdr) {
+                        captureBuilder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                    }
+                    val capture = captureBuilder.build()
+                    imageCapture = capture
 
-                val analysisBuilder = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                if (cappedAnalysis) {
-                    analysisBuilder.setResolutionSelector(
-                        ResolutionSelector.Builder()
-                            .setResolutionStrategy(
-                                ResolutionStrategy(
-                                    Size(1024, 768), // ~0.8MP sweet spot > 256 model input
-                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
-                                )
-                            )
-                            .build()
-                    )
-                } else if (maxResCapture) {
-                    analysisBuilder.setResolutionSelector(
-                        ResolutionSelector.Builder()
-                            .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                            .build()
-                    )
+                    val analysisBuilder = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    if (cappedAnalysis) {
+                        analysisBuilder.setResolutionSelector(
+                            ResolutionSelector.Builder().setResolutionStrategy(
+                                ResolutionStrategy(Size(1024, 768), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)
+                            ).build()
+                        )
+                    } else if (maxResCapture) {
+                        analysisBuilder.setResolutionSelector(
+                            ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build()
+                        )
+                    }
+                    val analysis = analysisBuilder.build()
+                    imageAnalysis = analysis
+                    provider.bindToLifecycle(owner, selector, preview, capture, analysis).also {
+                        Log.d("NightPreview", "setupPortraitSession() bind SUCCESS capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr zoom min=${it.cameraInfo.zoomState.value?.minZoomRatio} max=${it.cameraInfo.zoomState.value?.maxZoomRatio}")
+                    }
+                } catch (e: Exception) {
+                    Log.e("NightPreview", "setupPortraitSession() bind(capped=$cappedAnalysis maxRes=$maxResCapture ultra=$ultraHdr) FAILED – swallowed before! ${e.javaClass.simpleName} ${e.message}", e)
+                    throw e
                 }
-                val analysis = analysisBuilder.build()
-                imageAnalysis = analysis
-                return provider.bindToLifecycle(owner, selector, preview, capture, analysis)
             }
 
             // Build attempt ladder; keep max-res capture attempts first per user request.
@@ -1390,54 +1522,70 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             var lastError: Exception? = null
             for ((capped, maxRes, ultra) in attempts) {
                 try {
-                    if (bound != null) provider.unbindAll()
+                    if (bound != null) {
+                        Log.d("NightPreview", "setupPortraitSession() unbindAll before attempt capped=$capped maxRes=$maxRes ultra=$ultra")
+                        provider.unbindAll()
+                    }
                     bound = bind(capped, maxRes, ultra)
-                    Log.d(
-                        "PortraitSession",
-                        "Portrait bind succeeded: capped=$capped maxRes=$maxRes ultra=$ultra"
-                    )
+                    Log.d("NightPreview", "setupPortraitSession() bind ladder SUCCESS capped=$capped maxRes=$maxRes ultra=$ultra zoom min=${bound.cameraInfo.zoomState.value?.minZoomRatio} max=${bound.cameraInfo.zoomState.value?.maxZoomRatio}")
                     break
                 } catch (e: Exception) {
                     lastError = e
-                    Log.w(
-                        "PortraitSession",
-                        "Portrait bind failed (capped=$capped maxRes=$maxRes ultra=$ultra); trying next",
-                        e
-                    )
-                    provider.unbindAll()
+                    Log.e("NightPreview", "setupPortraitSession() Portrait bind failed (capped=$capped maxRes=$maxRes ultra=$ultra) – was Warn with swallowed stack, root of black? ${e.javaClass.simpleName} msg=${e.message}", e)
+                    try {
+                        provider.unbindAll()
+                    } catch (e2: Exception) {
+                        Log.e("NightPreview", "setupPortraitSession() unbindAll in catch FAILED (hidden)", e2)
+                    }
                 }
             }
+            if (bound == null) Log.e("NightPreview", "setupPortraitSession() ALL attempts FAILED! lastError=${lastError?.javaClass?.simpleName} ${lastError?.message} – produces black preview?", lastError ?: Exception("none"))
             boundCamera = bound ?: throw (lastError ?: IllegalStateException("Portrait session bind failed"))
 
+            val zsPor = boundCamera?.cameraInfo?.zoomState?.value
+            Log.d("NightPreview", "setupPortraitSession() final zoom min=${zsPor?.minZoomRatio} max=${zsPor?.maxZoomRatio} ratio=${zsPor?.zoomRatio} – if max=1, zoom bar will show only 1x")
             boundCamera?.cameraInfo?.zoomState?.value?.let {
+                Log.d("NightPreview", "setupPortraitSession() updateZoomLevels min=${it.minZoomRatio} max=${it.maxZoomRatio}")
                 updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
                 _zoomRatio.value = it.zoomRatio
+                Log.d("NightPreview", "setupPortraitSession() after update levels=${_availableZoomLevels.value} ratio=${_zoomRatio.value}")
             }
             readManualControlRanges()
             applyManualControls()
             _photoSessionActive.value = true
+            Log.d("NightPreview", "setupPortraitSession() SUCCESS photoActive=true surface=${_surfaceRequest.value?.resolution}")
             true
         } catch (e: Exception) {
-            Log.e("PortraitSession", "Failed to set up portrait session", e)
+            Log.e("NightPreview", "setupPortraitSession() OUTER CATCH – Failed black root? ${e.javaClass.simpleName} ${e.message}", e)
             false
         }
     }
 
     /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
     private fun readManualControlRanges() {
-        val cam = boundCamera ?: return
+        Log.d("NightPreview", "readManualControlRanges() called bound=${boundCamera != null} thread=${Thread.currentThread().name}")
+        val cam = boundCamera ?: run {
+            Log.w("NightPreview", "readManualControlRanges() no bound camera, returning")
+            return
+        }
         try {
             val info = androidx.camera.camera2.interop.Camera2CameraInfo.from(cam.cameraInfo)
             val isoRange = info.getCameraCharacteristic(
                 android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE
             )
+            Log.d("NightPreview", "readManualControlRanges() isoRange=$isoRange")
             _isoStops.value = if (isoRange != null) {
-                listOf(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
+                val filtered = listOf(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
                     .filter { it in isoRange.lower..isoRange.upper }
                     .ifEmpty { listOf(isoRange.lower, isoRange.upper) }
-            } else emptyList()
+                Log.d("NightPreview", "readManualControlRanges() filtered stops=$filtered")
+                filtered
+            } else {
+                Log.w("NightPreview", "readManualControlRanges() isoRange null, emitting emptyList -> ISO bar notAvailable")
+                emptyList()
+            }
         } catch (e: Exception) {
-            Log.w("CameraViewModel", "Failed to read manual control ranges", e)
+            Log.e("NightPreview", "readManualControlRanges() FAILED (was Warn, hidden) – could affect ISO bar + manual controls", e)
         }
     }
 
@@ -1676,22 +1824,35 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Tears down whatever session is currently bound and clears the shared preview surface. */
     fun teardownSession() {
+        Log.d("NightPreview", "teardownSession() START thread=${Thread.currentThread().name} surface=${_surfaceRequest.value?.resolution} photoActive=${_photoSessionActive.value} nightPreviewActive=${_nightPreviewActive.value} highSpeedActive=${_highSpeedActive.value} videoActive=${_videoSessionActive.value} boundCamera=${boundCamera != null} provider=${cameraProvider != null}")
+        // CRITICAL: clear stale SurfaceRequest BEFORE unbind so CameraXViewfinder drops dead texture immediately (black-frame trap fix)
+        _surfaceRequest.value = null
+        Log.d("NightPreview", "teardownSession() cleared surfaceRequest -> null to avoid black-frame trap")
         currentRecording?.stop()
         currentRecording = null
         highSpeedRecording?.stop()
         highSpeedRecording = null
-        imageAnalysis?.clearAnalyzer()
+        try {
+            imageAnalysis?.clearAnalyzer()
+            Log.d("NightPreview", "teardownSession() cleared analyzer previous=${currentAnalyzer?.javaClass?.simpleName}")
+        } catch (e: Exception) {
+            Log.e("NightPreview", "teardownSession() clearAnalyzer failed (swallowed before)", e)
+        }
         currentAnalyzer = null
         sessionLifecycleOwner?.destroy()
         sessionLifecycleOwner = null
-        cameraProvider?.unbindAll()
+        try {
+            cameraProvider?.unbindAll()
+            Log.d("NightPreview", "teardownSession() unbindAll SUCCESS")
+        } catch (e: Exception) {
+            Log.e("NightPreview", "teardownSession() unbindAll FAILED (was hidden)", e)
+        }
         boundCamera = null
         imageCapture = null
         imageAnalysis = null
         videoCapture = null
         highSpeedVideoCapture = null
         cameraProvider = null
-        _surfaceRequest.value = null
         _photoSessionActive.value = false
         _nightPreviewActive.value = false
         _highSpeedActive.value = false
@@ -2059,7 +2220,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         val stop = EXPOSURE_TIME_STOPS[_exposureTimeIndex.value]
         // Manual shutter/ISO are already applied live via applyManualControls(); the only transient
         // per-capture override here is the night-mode emulation (fully-auto exposure + night active).
-        val nightExposure = if (nightModeActive.value && isExposureAuto())
+        // Skip it when the vendor NIGHT extension preview is bound: that session runs its own
+        // multi-frame AE and rejects Camera2-interop AE_MODE_OFF/manual-exposure options, which makes
+        // the capture fail. In that case a plain takePicture() lets the extension produce the shot.
+        val nightExposure = if (nightModeActive.value && isExposureAuto() && !_nightPreviewActive.value)
             computeNightExposure() else null
         // Used only to drive the long-exposure countdown overlay.
         val exposureNanos = stop.nanos ?: nightExposure?.nanos
@@ -2188,37 +2352,71 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Obtains (and caches) the ExtensionsManager bound to [provider]. Null if unavailable. */
     private suspend fun getExtensionsManager(provider: ProcessCameraProvider): ExtensionsManager? {
-        extensionsManager?.let { return it }
+        Log.d("NightPreview", "getExtensionsManager() called providerHash=${provider.hashCode()} cachedExists=${extensionsManager != null} thread=${Thread.currentThread().name} startMs=${System.currentTimeMillis()}")
+        extensionsManager?.let {
+            Log.d("NightPreview", "getExtensionsManager() returning CACHED manager providerHash=${provider.hashCode()} manager=$it – NOTE: cached across provider instances, may be tied to old provider if provider changed!")
+            return it
+        }
         return try {
+            val start = System.currentTimeMillis()
             val mgr = suspendCancellableCoroutine<ExtensionsManager> { cont ->
+                Log.d("NightPreview", "getExtensionsManager() creating async instance for providerHash=${provider.hashCode()}")
                 val future = ExtensionsManager.getInstanceAsync(app, provider)
                 future.addListener({
                     try {
-                        cont.resume(future.get())
+                        val res = future.get()
+                        Log.d("NightPreview", "getExtensionsManager() future.get() SUCCESS res=$res elapsed=${System.currentTimeMillis() - start}ms")
+                        cont.resume(res)
                     } catch (e: Exception) {
+                        Log.e("NightPreview", "getExtensionsManager() future.get() FAILED elapsed=${System.currentTimeMillis() - start}ms – this was previously swallowed as Warn", e)
                         cont.cancel(e)
                     }
                 }, ContextCompat.getMainExecutor(app))
             }
+            Log.d("NightPreview", "getExtensionsManager() obtained mgr=$mgr caching for providerHash=${provider.hashCode()} elapsed=${System.currentTimeMillis() - start}ms")
             extensionsManager = mgr
             mgr
         } catch (e: Exception) {
-            Log.w("CameraViewModel", "ExtensionsManager unavailable", e)
+            Log.e("NightPreview", "getExtensionsManager() EXCEPTION – ExtensionsManager unavailable (was hidden as Warn), root cause of black preview if NIGHT needed", e)
             null
         }
     }
 
     /** Whether the CameraX NIGHT extension is available on the current lens. */
     suspend fun isNightExtensionAvailable(): Boolean {
+        // The vendor advertises the NIGHT extension (isExtensionAvailable(NIGHT)=true), but on the
+        // camera-pipe backend that every CameraX build this app can use runs on, creating the
+        // extension capture session fails at graph-config time on Pixel ("Framework size list map
+        // not supported in pixel path" -> ERROR_GRAPH_CONFIG). The bind "succeeds" and emits a
+        // SurfaceRequest, then the session dies async: black preview + failed capture. Until CameraX
+        // fixes pipe extensions, treat NIGHT as unavailable so night mode uses the custom burst +
+        // Rust-merge path (captureNightPhotoCustom) over the normal, working photo session.
+        if (!ENABLE_NIGHT_EXTENSION) return false
+        val startMs = System.currentTimeMillis()
+        Log.d("NightPreview", "isNightExtensionAvailable() START lensFacing=${_lensFacing.value} thread=${Thread.currentThread().name}")
         return try {
             val provider = ProcessCameraProvider.awaitInstance(app)
-            val mgr = getExtensionsManager(provider) ?: return false
+            Log.d("NightPreview", "isNightExtensionAvailable() got providerHash=${provider.hashCode()} elapsed=${System.currentTimeMillis() - startMs}ms")
+            val mgr = getExtensionsManager(provider)
+            Log.d("NightPreview", "isNightExtensionAvailable() ExtensionsManager=${mgr != null} elapsed=${System.currentTimeMillis() - startMs}ms")
+            if (mgr == null) {
+                Log.w("NightPreview", "isNightExtensionAvailable() manager NULL after ${System.currentTimeMillis() - startMs}ms, returning false -> moon button may show but useNightPreview false, so no visible transition")
+                return false
+            }
             val selector = CameraSelector.Builder()
                 .requireLensFacing(_lensFacing.value)
                 .build()
-            mgr.isExtensionAvailable(selector, ExtensionMode.NIGHT)
+            val affordStart = System.currentTimeMillis()
+            val avail = try {
+                mgr.isExtensionAvailable(selector, ExtensionMode.NIGHT)
+            } catch (e: Exception) {
+                Log.e("NightPreview", "isNightExtensionAvailable() isExtensionAvailable(NIGHT) THREW – swallowed as false before! lens=${_lensFacing.value} selector=$selector", e)
+                false
+            }
+            Log.d("NightPreview", "isNightExtensionAvailable() isExtensionAvailable(NIGHT)=$avail lens=${_lensFacing.value} lookupTook=${System.currentTimeMillis() - affordStart}ms total=${System.currentTimeMillis() - startMs}ms – if false, NIGHT preview disabled, zoom stays full, no black")
+            avail
         } catch (e: Exception) {
-            Log.w("CameraViewModel", "Night extension availability check failed", e)
+            Log.e("NightPreview", "isNightExtensionAvailable() OUTER EXCEPTION – was hidden as Warn, returning false, totalTook=${System.currentTimeMillis() - startMs}ms", e)
             false
         }
     }

@@ -22,6 +22,13 @@ pub(crate) enum Prim {
         /// Font style flags recovered from BaseFont / FontDescriptor (v8).
         is_bold: bool,
         is_italic: bool,
+        /// Generic font family for substitute typeface selection: 0 sans-serif,
+        /// 1 serif, 2 monospace (packed into the v8 fontFlags byte, bits 2-3).
+        font_family: u8,
+        /// True when the glyph's real outline was already emitted as Fill/Stroke
+        /// prims (embedded-font rendering); Kotlin then keeps this Text only for
+        /// selection/search and does not paint it. Packed into fontFlags bit 4.
+        outline: bool,
         /// PDF text rise (Ts) and horizontal scale (Tz fraction) for verif; used for
         /// spacing / synthetic slant debugging (not strictly needed on wire but helps).
         h_scale: f32,

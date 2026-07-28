@@ -35,6 +35,8 @@ mod filters;
 mod functions;
 pub(crate) use functions::*;
 mod cff;
+mod type1;
+mod outlines;
 mod glyphlist;
 mod jbig2;
 mod shading;
@@ -75,3 +77,5 @@ mod wire;
 mod jni_bindings;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod debug_ishi_test;

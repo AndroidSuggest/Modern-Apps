@@ -50,7 +50,7 @@ fn truncate_str_safe(s: &str, max_bytes: usize) -> &str {
 /// ```text
 /// header: u32 MAGIC=0x50444657, u32 VERSION=9, f32 pageWidth, f32 pageHeight, u32 primitiveCount
 /// per primitive: u8 tag, then payload
-///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8: bit0 bold bit1 italic), f32 hScale (v8)
+///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8: bit0 bold bit1 italic, bits2-3 family 0=sans 1=serif 2=mono, bit4 outline-drawn), f32 hScale (v8)
 ///   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
 ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
 ///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, f32 alpha (v9), u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
@@ -76,7 +76,7 @@ pub fn serialize(page: &PageData) -> Vec<u8> {
     buf.extend_from_slice(&prim_count.to_le_bytes());
     for prim in &page.prims {
         match prim {
-            Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance, render_mode, blend, is_bold, is_italic, h_scale } => {
+            Prim::Text { x, y, size, argb, text, stroke_argb, stroke_width, advance, render_mode, blend, is_bold, is_italic, font_family, outline, h_scale } => {
                 buf.push(TAG_TEXT);
                 buf.extend_from_slice(&x.to_le_bytes());
                 buf.extend_from_slice(&y.to_le_bytes());
@@ -104,7 +104,11 @@ pub fn serialize(page: &PageData) -> Vec<u8> {
                 let mut font_flags = 0u8;
                 if *is_bold { font_flags |= 1; }
                 if *is_italic { font_flags |= 2; }
-                buf.push(font_flags); // v8: bold/italic
+                // v8 bits 2-3 carry the generic family (0 sans, 1 serif, 2 mono);
+                // bit 4 marks a glyph already drawn as outline fills (don't paint).
+                font_flags |= (*font_family & 0x3) << 2;
+                if *outline { font_flags |= 1 << 4; }
+                buf.push(font_flags); // v8: bold/italic + family + outline
                 buf.extend_from_slice(&h_scale.to_le_bytes()); // v8
             }
             Prim::Fill { argb, even_odd, contours, blend } => {
@@ -306,6 +310,8 @@ mod tests {
                     blend: BlendMode::Multiply,
                     is_bold: true,
                     is_italic: false,
+                    font_family: 1,
+                    outline: false,
                     h_scale: 1.0,
                 },
                 Prim::Fill {
@@ -367,7 +373,7 @@ mod tests {
         assert_eq!(r.u8(), 0); // render_mode (v4)
         assert_eq!(r.u8(), BlendMode::Multiply as u8); // blend (v5)
         assert!((r.f32() - 12.0).abs() < 1e-6); // advance (v7)
-        assert_eq!(r.u8(), 1); // fontFlags bold (v8)
+        assert_eq!(r.u8(), 1 | (1 << 2)); // fontFlags: bold + serif family (v8)
         assert!((r.f32() - 1.0).abs() < 1e-6); // h_scale (v8)
 
         assert_eq!(r.u8(), TAG_FILL);

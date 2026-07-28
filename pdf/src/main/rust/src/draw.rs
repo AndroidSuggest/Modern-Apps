@@ -129,6 +129,8 @@ pub(crate) fn show_string(
                         blend: gs.blend_mode,
                         is_bold: false,
                         is_italic: false,
+                        font_family: 0,
+                        outline: false,
                         h_scale: th as f32,
                     });
                 }
@@ -149,6 +151,11 @@ pub(crate) fn show_string(
     let sy_trm = (trm[2] * trm[2] + trm[3] * trm[3]).sqrt();
     let avg_trm_scale = (sx_trm + sy_trm) * 0.5;
     let device_stroke_w = (gs.line_width * avg_trm_scale) as f32;
+    // Constant per-font attributes hoisted out of the per-glyph closure.
+    let bold = fi.style.bold;
+    let italic = fi.style.italic;
+    let family = fi.family;
+    let has_program = fi.glyph_program.is_some();
 
     fi.for_each_code(bytes, |code, is_space| {
         let tx = fi.width(code) * tfs + gs.char_spacing + if is_space { gs.word_spacing } else { 0.0 };
@@ -169,9 +176,80 @@ pub(crate) fn show_string(
                 let clip_only = gs.render_mode == 7;
                 let rm = gs.render_mode as u8;
                 let glyph_device_adv = (glyph_advance_user * x_scale) as f32;
-                let bold = fi.style.bold;
-                let italic = fi.style.italic;
-                if prims.len() < MAX_PRIMITIVES {
+                // Real embedded outline for pure paint modes (0/1/2). Clip modes
+                // (4-7) keep the substitute-glyph path so Kotlin can build the clip.
+                let outline = if has_program && matches!(gs.render_mode, 0 | 1 | 2) {
+                    crate::outlines::glyph_outline(fi, code)
+                } else {
+                    None
+                };
+                if let Some((contours, upm)) = outline {
+                    // Glyph space (font units) -> device: (1/upm) · [Tfs·Th,0,0,Tfs] ·
+                    // translate(pen, rise) · Tm · CTM. Mirrors the Type 3 pipeline.
+                    let font_matrix: Mat = [1.0 / upm, 0.0, 0.0, 1.0 / upm, 0.0, 0.0];
+                    let scale_m: Mat = [tfs * th, 0.0, 0.0, tfs, 0.0, 0.0];
+                    let place = translate(pen, gs.rise);
+                    let m1 = mat_mul(&scale_m, &mat_mul(&place, &trm));
+                    let glyph_ctm = mat_mul(&font_matrix, &m1);
+                    let dev: Vec<Vec<(f32, f32)>> = contours
+                        .iter()
+                        .map(|c| {
+                            c.iter()
+                                .map(|&(gx, gy)| {
+                                    let (dx, dy) = transform(&glyph_ctm, gx, gy);
+                                    (dx as f32, dy as f32)
+                                })
+                                .collect()
+                        })
+                        .collect();
+                    if prims.len() < MAX_PRIMITIVES {
+                        if has_fill {
+                            prims.push(Prim::Fill {
+                                argb: apply_alpha_to_argb(gs.fill, fill_alpha),
+                                even_odd: false,
+                                contours: dev.clone(),
+                                blend: gs.blend_mode,
+                            });
+                        }
+                        if has_stroke {
+                            let sargb = apply_alpha_to_argb(gs.stroke, stroke_alpha);
+                            for c in &dev {
+                                if c.len() >= 2 {
+                                    prims.push(Prim::Stroke {
+                                        argb: sargb,
+                                        width: device_stroke_w.max(0.1),
+                                        dash: Vec::new(),
+                                        dash_phase: 0.0,
+                                        cap: gs.line_cap,
+                                        join: gs.line_join,
+                                        miter: gs.miter_limit as f32,
+                                        pts: c.clone(),
+                                        blend: gs.blend_mode,
+                                    });
+                                }
+                            }
+                        }
+                        // Non-painting Text carrying the glyph for selection/search.
+                        prims.push(Prim::Text {
+                            x: x as f32,
+                            y: y as f32,
+                            size,
+                            argb: apply_alpha_to_argb(gs.fill, fill_alpha),
+                            text: s.clone(),
+                            advance: glyph_device_adv.max(size * 0.1),
+                            stroke_argb: None,
+                            stroke_width: None,
+                            render_mode: rm,
+                            blend: gs.blend_mode,
+                            is_bold: bold,
+                            is_italic: italic,
+                            font_family: family,
+                            outline: true,
+                            h_scale: th as f32,
+                        });
+                    }
+                } else if prims.len() < MAX_PRIMITIVES {
+                    // Substitute-font path (no embedded program or glyph missing).
                     if has_fill {
                         prims.push(Prim::Text {
                             x: x as f32,
@@ -186,6 +264,8 @@ pub(crate) fn show_string(
                             blend: gs.blend_mode,
                             is_bold: bold,
                             is_italic: italic,
+                            font_family: family,
+                            outline: false,
                             h_scale: th as f32,
                         });
                     } else if has_stroke {
@@ -202,6 +282,8 @@ pub(crate) fn show_string(
                             blend: gs.blend_mode,
                             is_bold: bold,
                             is_italic: italic,
+                            font_family: family,
+                            outline: false,
                             h_scale: th as f32,
                         });
                     } else if clip_only {
@@ -220,6 +302,8 @@ pub(crate) fn show_string(
                             blend: gs.blend_mode,
                             is_bold: bold,
                             is_italic: italic,
+                            font_family: family,
+                            outline: false,
                             h_scale: th as f32,
                         });
                     }

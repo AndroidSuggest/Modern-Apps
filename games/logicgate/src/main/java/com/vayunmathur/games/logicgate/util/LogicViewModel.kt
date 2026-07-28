@@ -248,7 +248,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onGateMoved(instanceId: String, x: Float, y: Float) {
         val s = _uiState.value.circuit
-        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(8f,1200f), y=y.coerceIn(8f,2000f)) else it }
+        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(-4000f,6000f), y=y.coerceIn(-4000f,6000f)) else it }
         _uiState.update { it.copy(circuit=it.circuit.copy(gates=newGates)) }
     }
     fun onGateMoveFinished(instanceId: String, x: Float, y: Float) {
@@ -256,7 +256,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         // push history only if wasn't already pushed for this drag session
         if (undoStacks[_uiState.value.currentLevelId]?.lastOrNull() != prevCircuit) pushHistory(prevCircuit)
-        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(8f,1200f), y=y.coerceIn(8f,2000f)) else it }
+        val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(-4000f,6000f), y=y.coerceIn(-4000f,6000f)) else it }
         val newCircuit = s.copy(gates=newGates)
         val lvl = _uiState.value.currentLevelId
         if (lvl!=null) allCircuits[lvl]=newCircuit
@@ -268,7 +268,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
     fun onInputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.inputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
+        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
         _uiState.update { it.copy(circuit=s.copy(inputPositions=newMap)) }
     }
     fun onInputMoveFinished(idx: Int, x: Float, y: Float) {
@@ -276,7 +276,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         pushHistory(prevCircuit)
         val newMap = s.inputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
+        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
         val newCircuit = s.copy(inputPositions=newMap)
         val lvl=_uiState.value.currentLevelId
         if(lvl!=null) allCircuits[lvl]=newCircuit
@@ -286,7 +286,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
     fun onOutputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.outputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
+        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
         _uiState.update { it.copy(circuit=s.copy(outputPositions=newMap)) }
     }
     fun onOutputMoveFinished(idx: Int, x: Float, y: Float) {
@@ -294,7 +294,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         pushHistory(prevCircuit)
         val newMap = s.outputPositions.toMutableMap()
-        newMap[idx]=IoPos(x.coerceIn(8f,1200f), y.coerceIn(8f,2000f))
+        newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
         val newCircuit=s.copy(outputPositions=newMap)
         val lvl=_uiState.value.currentLevelId
         if(lvl!=null) allCircuits[lvl]=newCircuit
@@ -328,12 +328,21 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         val lvlId = _uiState.value.currentLevelId
         val level = lvlId?.let { try { Levels.get(it) } catch(_:Exception){null} }
         if (from.instanceId==to.instanceId) { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
-        val fromIsOut = isOutputEnd(from)
-        val toIsIn = isInputEnd(to)
-        if (!fromIsOut || !toIsIn) { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
 
-        val srcW = outputPinWidth(from, level)
-        val dstW = inputPinWidth(to, level)
+        // v2 bidirectional: auto-orient input<->output
+        val srcIsOut = isOutputEnd(from)
+        val dstIsIn = isInputEnd(to)
+        val srcIsIn = isInputEnd(from)
+        val dstIsOut = isOutputEnd(to)
+        val pair = when {
+            srcIsOut && dstIsIn -> from to to
+            srcIsIn && dstIsOut -> to to from
+            else -> { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
+        }
+        val (realFrom, realTo) = pair
+
+        val srcW = outputPinWidth(realFrom, level)
+        val dstW = inputPinWidth(realTo, level)
 
         if (srcW != dstW) {
             val msg = when {
@@ -348,14 +357,14 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         pushHistory(s)
-        if (to.instanceId.startsWith("__OUT_")) {
-            val outIdx = to.instanceId.removePrefix("__OUT_").toIntOrNull() ?: run { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
+        if (realTo.instanceId.startsWith("__OUT_")) {
+            val outIdx = realTo.instanceId.removePrefix("__OUT_").toIntOrNull() ?: run { _uiState.update{it.copy(wiringFrom=null,dragGhostLineEnd=null)}; return }
             val existing = s.outputMappings.filterNot { it.outputIndex==outIdx }
-            val newMap = existing + OutputMapping(outIdx, from)
+            val newMap = existing + OutputMapping(outIdx, realFrom)
             updateCircuit(s.copy(outputMappings=newMap))
         } else {
-            val existingWires = s.wires.filterNot { it.to==to }
-            val newWire = Wire(id="W_${UUID.randomUUID().toString().take(6)}", from=from, to=to, busWidth=srcW)
+            val existingWires = s.wires.filterNot { it.to==realTo }
+            val newWire = Wire(id="W_${UUID.randomUUID().toString().take(6)}", from=realFrom, to=realTo, busWidth=srcW)
             updateCircuit(s.copy(wires=existingWires + newWire))
         }
         _uiState.update { it.copy(wiringFrom=null, dragGhostLineEnd=null) }

@@ -1301,6 +1301,27 @@ private fun NonEditOverlay(
 private data class SelGlyph(val ch: String, val left: Float, val top: Float, val right: Float, val bottom: Float)
 
 /**
+ * Build the substitute [android.graphics.Typeface] for a text primitive. The
+ * embedded PDF font isn't rasterized, so we pick a system typeface matching the
+ * generic family (0 sans-serif, 1 serif, 2 monospace) recovered by the Rust core
+ * from BaseFont / FontDescriptor, then synthesize bold/italic.
+ */
+private fun pdfTypeface(family: Int, bold: Boolean, italic: Boolean): android.graphics.Typeface {
+    val base = when (family) {
+        1 -> android.graphics.Typeface.SERIF
+        2 -> android.graphics.Typeface.MONOSPACE
+        else -> android.graphics.Typeface.SANS_SERIF
+    }
+    val style = when {
+        bold && italic -> android.graphics.Typeface.BOLD_ITALIC
+        bold -> android.graphics.Typeface.BOLD
+        italic -> android.graphics.Typeface.ITALIC
+        else -> android.graphics.Typeface.NORMAL
+    }
+    return android.graphics.Typeface.create(base, style)
+}
+
+/**
  * Glyph-level selection over a page's text primitives: drag to select a range in
  * reading order, adjust with the two handles, and copy the exact substring.
  * Uses accurate glyph advances via Text.advance and Paint.measureText for ligatures/multi-char.
@@ -1322,15 +1343,10 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
         }
         for (prim in page.primitives) {
             if (prim !is PdfPrimitive.Text || prim.text.isEmpty()) continue
-            val tfStyle = when {
-                prim.isBold && prim.isItalic -> android.graphics.Typeface.BOLD_ITALIC
-                prim.isBold -> android.graphics.Typeface.BOLD
-                prim.isItalic -> android.graphics.Typeface.ITALIC
-                else -> android.graphics.Typeface.NORMAL
-            }
-            tmpPaint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, tfStyle)
-            tmpPaint.isFakeBoldText = prim.isBold
-            tmpPaint.textSkewX = if (prim.isItalic) -0.25f else 0f
+            val selTf = pdfTypeface(prim.fontFamily, prim.isBold, prim.isItalic)
+            tmpPaint.typeface = selTf
+            tmpPaint.isFakeBoldText = prim.isBold && !selTf.isBold
+            tmpPaint.textSkewX = if (prim.isItalic && !selTf.isItalic) -0.25f else 0f
             tmpPaint.textScaleX = prim.hScale.coerceIn(0.2f, 4f)
             tmpPaint.textSize = prim.size * scale
             val textStr = prim.text
@@ -2343,36 +2359,40 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
             }
 
             is PdfPrimitive.Text -> {
+                // Embedded-font glyphs are painted via their real outline as Fill
+                // prims; this Text is kept only for selection/search — never painted.
+                if (prim.outline) continue
                 if (prim.text.isBlank()) continue
                 val origin = map(prim.origin)
                 val ts = (prim.size * scale).coerceAtLeast(1f)
                 val rm = prim.renderMode
                 val isStrokeOnly = prim.strokeColor != null && prim.color == prim.strokeColor
 
-                // v8: font style synthesis from Rust — BaseFont / FontDescriptor bold/italic
-                // This fixes bolding/italics not being applied. We synthesize via Typeface
-                // + fakeBold/skew because PDF uses separate fonts for bold, which we don't
-                // rasterize as outlines. Also honor Tz (hScale) via Paint.textScaleX.
-                val tfStyle = when {
-                    prim.isBold && prim.isItalic -> android.graphics.Typeface.BOLD_ITALIC
-                    prim.isBold -> android.graphics.Typeface.BOLD
-                    prim.isItalic -> android.graphics.Typeface.ITALIC
-                    else -> android.graphics.Typeface.NORMAL
-                }
-                val tf = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, tfStyle)
+                // v8: substitute the embedded font with a system typeface matching the
+                // generic family (sans/serif/mono) + bold/italic recovered by Rust. Rust
+                // already emits one glyph per prim at its exact advance-based origin, so
+                // letters are correctly spaced without distorting glyph widths — we draw
+                // each glyph at its natural width and only apply Tz (hScale).
+                val tf = pdfTypeface(prim.fontFamily, prim.isBold, prim.isItalic)
+                // Only synthesize bold/italic when the real typeface can't supply it,
+                // so a genuine bold serif isn't double-weighted into a heavy/wrong look.
+                val fakeBold = prim.isBold && !tf.isBold
+                val skew = if (prim.isItalic && !tf.isItalic) -0.25f else 0f
+                val hs = prim.hScale.coerceIn(0.2f, 4f)
                 textPaint.typeface = tf
-                textPaint.isFakeBoldText = prim.isBold
-                textPaint.textSkewX = if (prim.isItalic) -0.25f else 0f
-                textPaint.textScaleX = prim.hScale.coerceIn(0.2f, 4f)
+                textPaint.textSize = ts
+                textPaint.isFakeBoldText = fakeBold
+                textPaint.textSkewX = skew
+                textPaint.textScaleX = hs
                 textStrokePaint.typeface = tf
-                textStrokePaint.isFakeBoldText = prim.isBold
-                textStrokePaint.textSkewX = textPaint.textSkewX
-                textStrokePaint.textScaleX = textPaint.textScaleX
+                textStrokePaint.isFakeBoldText = fakeBold
+                textStrokePaint.textSkewX = skew
+                textStrokePaint.textScaleX = hs
                 glyphPathPaint.typeface = tf
                 glyphPathPaint.textSize = ts
-                glyphPathPaint.textSkewX = textPaint.textSkewX
-                glyphPathPaint.textScaleX = textPaint.textScaleX
-                glyphPathPaint.isFakeBoldText = prim.isBold
+                glyphPathPaint.textSkewX = skew
+                glyphPathPaint.textScaleX = hs
+                glyphPathPaint.isFakeBoldText = fakeBold
 
                 // Paint the glyphs unless this is a clip-only run (Tr 7).
                 if (rm != 7) {
