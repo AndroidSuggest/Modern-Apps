@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Calendario</string>
     <string name="ok">OK</string>
     <string name="cancel">Annulla</string>
@@ -10,13 +10,13 @@
     <string name="remove">Rimuovi</string>
     <string name="search">Cerca</string>
     <string name="event_not_found">Evento non trovato</string>
-    <string name="date_range_format">%1$s - %2$s</string>
-    <string name="date_time_range_format">%1$s • %2$s - %3$s</string>
-    <string name="full_date_time_range_format">%1$s, %2$s - %3$s, %4$s</string>
+    <string name="date_range_format">&lt;xliff:g id=\"start_date\" example=\"Gen 1\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Gen 2\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"Gen 1\"&gt;%1$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"start_time\" example=\"9:00\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="full_date_time_range_format">&lt;xliff:g id=\"start_date\" example=\"Gen 1\"&gt;%1$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"start_time\" example=\"9:00\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Gen 2\"&gt;%3$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%4$s&lt;/xliff:g&gt;</string>
     <string name="twelve_am">12 AM</string>
-    <string name="hour_am">%1$d AM</string>
+    <string name="hour_am">&lt;xliff:g id=\"hour\" example=\"9\"&gt;%1$d&lt;/xliff:g&gt; AM</string>
     <string name="twelve_pm">12 PM</string>
-    <string name="hour_pm">%1$d PM</string>
+    <string name="hour_pm">&lt;xliff:g id=\"hour\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; PM</string>
     <string name="label_title">Titolo</string>
     <string name="label_description">Descrizione</string>
     <string name="label_location">Posizione</string>
@@ -26,12 +26,12 @@
     <string name="repeats">Ripete</string>
     <string name="settings">Impostazioni</string>
     <string name="no_account">(Nessun account)</string>
-    <string name="calendar_id_label">ID: %1$d</string>
+    <string name="calendar_id_label">ID: &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="choose_calendar">Scegli calendario</string>
     <string name="local_account">(Locale)</string>
     <string name="repeat">Ripeti</string>
     <string name="every">Ogni</string>
-    <string name="dropdown_freq_format">%1$s ▼</string>
+    <string name="dropdown_freq_format">&lt;xliff:g id=\"frequency\" example=\"Settimanale\"&gt;%1$s&lt;/xliff:g&gt; ▼</string>
     <string name="end">Fine</string>
     <string name="never">Mai</string>
     <string name="until">Fino a</string>
@@ -48,7 +48,7 @@
     <string name="new_name">Nuovo nome</string>
     <string name="create_a_calendar">Crea un calendario</string>
     <string name="choose_timezone">Scegli fuso orario</string>
-    <string name="month_year_format">%1$s %2$d</string>
+    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"Gennaio\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
     <string name="no_title">(Nessun titolo)</string>
     <string name="go_to_date">Vai alla data</string>
     <string name="on_days_of_week">Nei giorni della settimana</string>
@@ -60,5 +60,24 @@
     <string name="default_layout">Layout predefinito</string>
     <string name="add_reminder">Aggiungi promemoria</string>
     <string name="calendar_widget_description">Un riepilogo dei prossimi eventi — tocca per aprire il Calendario</string>
-    <string name="month_option_day_of_month">Il giorno %1$d del mese</string>
+    <string name="month_option_day_of_month">Il giorno &lt;xliff:g id=\"day\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; del mese</string>
+    <string name="layout_agenda">Agenda</string>
+    <string name="layout_day">Giorno</string>
+    <string name="layout_work_week">Settimana lavorativa</string>
+    <string name="layout_full_week">Settimana intera</string>
+    <string name="layout_month">Mese</string>
+    <string name="layout_work_week_summary">Riepilogo settimana lavorativa</string>
+    <string name="layout_full_week_summary">Riepilogo settimana intera</string>
+    <string name="layout_short_agenda">A</string>
+    <string name="layout_short_day">G</string>
+    <string name="layout_short_work_week">S5</string>
+    <string name="layout_short_full_week">S7</string>
+    <string name="layout_short_month">M</string>
+    <string name="layout_short_work_week_summary">RS5</string>
+    <string name="layout_short_full_week_summary">RS7</string>
+    <string name="theme_system_default">Predefinito di sistema</string>
+    <string name="theme_light">Chiaro</string>
+    <string name="theme_dark">Scuro</string>
+    <string name="on_label">Il</string>
+    <string name="month_option_nth_weekday">Il <xliff:g id="ordinal" example="secondo">%1$s</xliff:g> <xliff:g id="weekday" example="Lunedì">%2$s</xliff:g></string>
 </resources>
