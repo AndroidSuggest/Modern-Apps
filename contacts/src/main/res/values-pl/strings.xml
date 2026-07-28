@@ -4,10 +4,10 @@
     <string name="ok">OK</string>
     <string name="contact_not_found">Kontakt nie znaleziony</string>
     <string name="cancel">Anuluj</string>
-    <string name="name_nickname_format">%1$s (%2$s)</string>
-    <string name="contact_photo_description">Zdjęcie %1$s</string>
+    <string name="name_nickname_format">&lt;xliff:g id=\"name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"nickname\" example=\"Johnny\"&gt;%2$s&lt;/xliff:g&gt;)</string>
+    <string name="contact_photo_description">Zdjęcie &lt;xliff:g id=\"contact_name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="share_contact">Udostępnij kontakt</string>
-    <string name="about_name">O %1$s</string>
+    <string name="about_name">O &lt;xliff:g id=\"first_name\" example=\"John\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="birthday">Urodziny</string>
     <string name="note">Notatka</string>
     <string name="favorites">Ulubione</string>
@@ -49,10 +49,10 @@
     <string name="remove_email">Usuń email</string>
     <string name="remove_address">Usuń adres</string>
     <string name="remove_phone">Usuń telefon</string>
-    <string name="account_display_format">%1$s (%2$s)</string>
+    <string name="account_display_format">&lt;xliff:g id=\"account_name\" example=\"Personal\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"account_type\" example=\"com.google\"&gt;%2$s&lt;/xliff:g&gt;)</string>
     <string name="add_address">Dodaj adres</string>
     <string name="add_phone">Dodaj telefon</string>
-    <string name="delete_contact_name_confirm">Czy na pewno chcesz usunąć „%1$s”? Tej czynności nie można cofnąć.</string>
+    <string name="delete_contact_name_confirm">Czy na pewno chcesz usunąć „&lt;xliff:g id=\"contact_name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt;”? Tej operacji nie można cofnąć.</string>
     <string name="add_email">Dodaj email</string>
     <string name="calendar_sync">Synchronizacja kalendarza</string>
     <string name="sync_contacts_calendar">Pokaż urodziny w kalendarzu</string>
@@ -61,8 +61,8 @@
     <string name="backup_and_export">Kopia zapasowa i eksport</string>
     <string name="grant_calendar_permissions">Udziel uprawnień do kalendarza</string>
     <string name="delete_selected_contacts_title">Usuń wybrane kontakty</string>
-    <string name="delete_selected_contacts_confirm">Czy na pewno chcesz usunąć %1$d wybranych kontaktów? Tej czynności nie można cofnąć.</string>
-    <string name="selected_count">%1$d wybrano</string>
+    <string name="delete_selected_contacts_confirm">Czy na pewno chcesz usunąć &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; zaznaczonych kontaktów? Tej czynności nie można cofnąć.</string>
+    <string name="selected_count">Zaznaczono: &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="show_account_labels">Pokaż konta kontaktów</string>
     <string name="display">Wyświetl</string>
     <string name="search_contacts">Szukaj kontakty</string>
@@ -81,15 +81,17 @@
     <string name="telegram">Telegram</string>
     <string name="google_meet">Google Meet</string>
     <string name="no_groups_found">Nie znaleziono grup. Utwórz grupę w zakładce Grupy.</string>
-    <string name="contacts_count">%1$d kontaktów</string>
+    <string name="contacts_count">Kontakty: &lt;xliff:g id=\"count\" example=\"42\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="done">Zrobione</string>
     <string name="import_vcf_file">Importuj plik .vcf</string>
     <string name="import_to_existing_account">Importuj do istniejącego konta</string>
     <string name="create_new_account_option">Utwórz nowe konto</string>
     <string name="no_contacts_found">Nie znaleziono kontaktów</string>
-    <string name="import_summary_contacts">%1$d kontaktów gotowych do zaimportowania</string>
+    <string name="import_summary_contacts">Kontakty gotowe do zaimportowania: &lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="select_account">Wybierz konto</string>
     <string name="no_name">(Bez nazwy)</string>
     <string name="add_number_to_contact">Dodaj numer do kontaktu</string>
     <string name="create_new_contact">Utwórz nowy kontakt</string>
+    <string name="crop_photo">Przytnij zdjęcie</string>
+    <string name="import_contacts_from_vcf_files">Importuj kontakty z plików .vcf</string>
 </resources>
