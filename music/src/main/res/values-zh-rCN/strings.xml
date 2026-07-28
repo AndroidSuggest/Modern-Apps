@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Music</string>
+    <string name="app_name">音乐</string>
     <string name="nav_home">首页</string>
     <string name="nav_albums">专辑</string>
     <string name="nav_artists">音乐人</string>
