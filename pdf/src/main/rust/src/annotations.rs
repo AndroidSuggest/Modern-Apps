@@ -56,6 +56,15 @@ pub(crate) fn render_annotations(doc: &Document, page_id: ObjectId, base: &Mat, 
         if flags & 0b10 != 0 || flags & 0b10_0000 != 0 {
             continue;
         }
+        // Skip annotations on an optional-content group that is turned OFF.
+        if dict.get(b"OC").ok().map(|oc| crate::oc_object_hidden(doc, oc)).unwrap_or(false) {
+            continue;
+        }
+        // Popup annotations are only shown when their parent is open; don't paint
+        // them inline on the page.
+        if dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) == Some(b"Popup") {
+            continue;
+        }
         render_annotation(doc, dict, base, prims);
     }
 }
@@ -80,10 +89,14 @@ pub(crate) fn render_annotation(doc: &Document, dict: &lopdf::Dictionary, base: 
     let normal = match ap.get(b"N").ok().and_then(|o| deref(doc, o)) {
         Some(Object::Stream(s)) => s,
         Some(Object::Dictionary(states)) => {
+            // The appearance sub-state is selected by /AS. When /AS is missing or
+            // doesn't match, fall back to the "Off" state (a button's default) —
+            // NOT an arbitrary first entry, which is nondeterministic (HashMap order)
+            // and can render an unchecked box as checked.
             let as_name = dict.get(b"AS").ok().and_then(|o| o.as_name().ok());
             let picked = as_name
                 .and_then(|n| states.get(n).ok())
-                .or_else(|| states.iter().next().map(|(_, v)| v));
+                .or_else(|| states.get(b"Off").ok());
             match picked.and_then(|o| deref(doc, o)) {
                 Some(Object::Stream(s)) => s,
                 _ => {
@@ -359,6 +372,39 @@ pub(crate) fn synthesize_annotation_appearance(
                 }
             }
         }
+        b"FreeText" => {
+            // Border/background box plus the /Contents text (no /AP fallback).
+            let poly = vec![dev(rect[0],rect[1]), dev(rect[2],rect[1]), dev(rect[2],rect[3]), dev(rect[0],rect[3])];
+            if let Some(f) = fill { emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(f, ca), false, 1.0, BlendMode::Normal); }
+            if let Some(s) = stroke {
+                let mut ring = poly.clone(); ring.push(poly[0]);
+                let mut sgs = gs.clone(); sgs.stroke = s;
+                emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
+            }
+            let text = dict.get(b"Contents").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::String(b,_) => Some(decode_pdf_text(b)), _ => None }).unwrap_or_default();
+            if !text.is_empty() {
+                let size = 12.0_f64;
+                let dsize = (size * scale) as f32;
+                let mut y = rect[3] - size; // top-down in page space
+                for line in text.split(['\n', '\r']).filter(|l| !l.is_empty()) {
+                    if prims.len() >= MAX_PRIMITIVES || y < rect[1] { break; }
+                    let (px, py) = dev(rect[0] + 2.0, y);
+                    emit_annot_text(prims, px as f32, py as f32, dsize, 0xFF00_0000, line);
+                    y -= size * 1.2;
+                }
+            }
+        }
+        b"Text" => {
+            // Sticky-note icon: a small filled square marker at the annotation rect.
+            let x0 = rect[0]; let y1 = rect[3];
+            let s = 18.0_f64.min((rect[2]-rect[0]).abs().max(12.0));
+            let poly = vec![dev(x0, y1 - s), dev(x0 + s, y1 - s), dev(x0 + s, y1), dev(x0, y1)];
+            let col = stroke.or(fill).unwrap_or(0xFFFFE0_00); // note yellow
+            emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(col, ca), false, 1.0, BlendMode::Normal);
+            let mut ring = poly.clone(); ring.push(poly[0]);
+            let mut sgs = gs.clone(); sgs.stroke = 0xFF00_0000;
+            emit_stroke(prims, std::slice::from_ref(&ring), &sgs);
+        }
         b"Redact" => {
             // Show redaction box outline so user knows where to apply
             let poly = vec![dev(rect[0],rect[1]), dev(rect[2],rect[1]), dev(rect[2],rect[3]), dev(rect[0],rect[3])];
@@ -366,6 +412,25 @@ pub(crate) fn synthesize_annotation_appearance(
         }
         _ => {}
     }
+}
+
+/// Emit a single line of substitute-font text at a device-space baseline (used
+/// for synthesized FreeText appearances).
+fn emit_annot_text(prims: &mut Vec<Prim>, x: f32, y: f32, size: f32, argb: u32, text: &str) {
+    prims.push(Prim::Text {
+        x, y, size, argb,
+        text: text.to_string(),
+        stroke_argb: None,
+        stroke_width: None,
+        advance: size * 0.5,
+        render_mode: 0,
+        blend: BlendMode::Normal,
+        is_bold: false,
+        is_italic: false,
+        font_family: 0,
+        outline: false,
+        h_scale: 1.0,
+    });
 }
 
 /// Device-space bounding box [x0,y0,x1,y1] of a polygon.

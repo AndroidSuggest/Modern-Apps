@@ -153,6 +153,7 @@ pub(crate) fn interpret_content(
         gs: GraphicsState,
         clip_depth: usize,
         group_depth: usize,
+        clip_bbox: Option<[f64; 4]>,
     }
     let mut stack: Vec<SavedState> = Vec::new();
     let mut q_overflow: usize = 0;
@@ -163,13 +164,30 @@ pub(crate) fn interpret_content(
         path_ops: Vec<PathOp>,
     }
 
-    // single ClipPush per W op preserving holes via full path_ops (fix high #7)
+    // single ClipPush per W op preserving holes via full path_ops (fix high #7).
+    // Also intersects the new clip's device-space bbox into `clip_bbox` so that
+    // later `sh` operators know the current clip region even after `W n` commits.
     #[inline]
-    fn emit_one_clip(prims: &mut Vec<Prim>, pc: PendingClip, clip_depth: &mut usize, text_only: bool, oc_hidden: bool) {
+    fn emit_one_clip(prims: &mut Vec<Prim>, pc: PendingClip, clip_depth: &mut usize, clip_bbox: &mut Option<[f64;4]>, text_only: bool, oc_hidden: bool) {
         if text_only || oc_hidden { return; }
         if *clip_depth >= MAX_CLIP_DEPTH { return; }
         let has_valid = pc.polys.iter().any(|poly| poly.len() >= 3 && shoelace_area(poly).abs() >= 1e-3) || !pc.path_ops.is_empty();
         if !has_valid && pc.polys.is_empty() && pc.path_ops.is_empty() { return; }
+        // Intersect the accumulated clip bbox with this clip's device bbox.
+        let mut nx0 = f64::INFINITY; let mut ny0 = f64::INFINITY;
+        let mut nx1 = f64::NEG_INFINITY; let mut ny1 = f64::NEG_INFINITY;
+        for poly in &pc.polys {
+            for &(x, y) in poly {
+                nx0 = nx0.min(x); ny0 = ny0.min(y);
+                nx1 = nx1.max(x); ny1 = ny1.max(y);
+            }
+        }
+        if nx1 > nx0 && ny1 > ny0 {
+            *clip_bbox = Some(match *clip_bbox {
+                Some(cur) => [cur[0].max(nx0), cur[1].max(ny0), cur[2].min(nx1), cur[3].min(ny1)],
+                None => [nx0, ny0, nx1, ny1],
+            });
+        }
         let pts: Vec<(f32,f32)> = pc.polys.first().map(|p| p.iter().map(|&(x,y)| (x as f32, y as f32)).collect()).unwrap_or_default();
         let po = if pc.path_ops.is_empty() { None } else { Some(pc.path_ops) };
         prims.push(Prim::ClipPush { even_odd: pc.even_odd, pts, path_ops: po });
@@ -178,7 +196,6 @@ pub(crate) fn interpret_content(
 
     let mut text_matrix = IDENTITY;
     let mut line_matrix = IDENTITY;
-    let mut leading = 0.0_f64;
 
     let mut subpaths: Vec<Vec<(f64, f64)>> = Vec::new();
     let mut cur_user: (f64, f64) = (0.0, 0.0);
@@ -187,6 +204,9 @@ pub(crate) fn interpret_content(
     let mut oc_stack: Vec<bool> = Vec::new(); // true means currently invisible due to OCG suppression
     let mut group_depth: usize = 0;
     let mut pending_clip: Option<PendingClip> = None;
+    // Device-space bbox of the accumulated (committed) clip region, tracked so the
+    // `sh` operator can fill the current clip even after `W n` clears pending_clip.
+    let mut current_clip_bbox: Option<[f64; 4]> = None;
     let mut clip_depth: usize = 0;
     let mut clip_path_ops: Vec<PathOp> = Vec::new(); // current clip path ops before W
     // Whether the current text object (BT..ET) used a clip render mode (Tr 4-7).
@@ -200,7 +220,7 @@ pub(crate) fn interpret_content(
             "q" => {
                 const MAX_SUBPATHS_LOCAL: usize = 20000;
                 if stack.len() < MAX_GRAPHICS_STACK {
-                    stack.push(SavedState { gs: gs.clone(), clip_depth, group_depth });
+                    stack.push(SavedState { gs: gs.clone(), clip_depth, group_depth, clip_bbox: current_clip_bbox });
                 } else {
                     q_overflow += 1;
                 }
@@ -220,6 +240,7 @@ pub(crate) fn interpret_content(
                         if !text_only { prims.push(Prim::GroupPop); }
                         group_depth = group_depth.saturating_sub(1);
                     }
+                    current_clip_bbox = saved.clip_bbox;
                     gs = saved.gs;
                 }
             }
@@ -362,13 +383,13 @@ pub(crate) fn interpret_content(
             "W" => {
                 // P0 fix: emit as single ClipPush preserving holes via path_ops (was per-poly loop)
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 pending_clip = Some(PendingClip { even_odd: false, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
             "W*" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 pending_clip = Some(PendingClip { even_odd: true, polys: subpaths.clone(), path_ops: clip_path_ops.clone() });
             }
@@ -466,7 +487,7 @@ pub(crate) fn interpret_content(
             }
             "S" | "s" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if op.operator == "s" {
                     if let Some(sp) = subpaths.last_mut() {
@@ -488,12 +509,12 @@ pub(crate) fn interpret_content(
             }
             "f" | "F" | "f*" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
                     let sm_start = prims.len();
                     if let Some(pid) = gs.fill_pattern {
-                        paint_pattern_fill(doc, pid, &subpaths, op.operator == "f*", &pattern_base_ctm, gs.fill, prims, depth);
+                        paint_pattern_fill(doc, pid, &subpaths, op.operator == "f*", &pattern_base_ctm, gs.fill, gs.alpha_fill as f32, gs.blend_mode, prims, depth);
                     } else if prims.len() < MAX_PRIMITIVES {
                         let fb = if gs.overprint_fill && gs.blend_mode == BlendMode::Normal { BlendMode::Multiply } else { gs.blend_mode };
                         emit_fill(prims, &subpaths, gs.fill, op.operator == "f*", gs.alpha_fill, fb);
@@ -506,7 +527,7 @@ pub(crate) fn interpret_content(
             }
             "B" | "B*" | "b" | "b*" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if op.operator.starts_with('b') {
                     if let Some(sp) = subpaths.last_mut() {
@@ -516,7 +537,7 @@ pub(crate) fn interpret_content(
                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
                     let sm_start = prims.len();
                     if let Some(pid) = gs.fill_pattern {
-                        paint_pattern_fill(doc, pid, &subpaths, op.operator.ends_with('*'), &pattern_base_ctm, gs.fill, prims, depth);
+                        paint_pattern_fill(doc, pid, &subpaths, op.operator.ends_with('*'), &pattern_base_ctm, gs.fill, gs.alpha_fill as f32, gs.blend_mode, prims, depth);
                     } else if prims.len() < MAX_PRIMITIVES {
                         let fb = if gs.overprint_fill && gs.blend_mode == BlendMode::Normal { BlendMode::Multiply } else { gs.blend_mode };
                         emit_fill(prims, &subpaths, gs.fill, op.operator.ends_with('*'), gs.alpha_fill, fb);
@@ -534,19 +555,19 @@ pub(crate) fn interpret_content(
             }
             "n" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 subpaths.clear(); clip_path_ops.clear();
             }
             "BI" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
                     if let Some(Object::Stream(stream)) = o.first() {
                         if let Some(img) = extract_inline_image(doc, stream, gs.fill, &colorspaces) {
                             let sm_start = prims.len();
-                            if prims.len() < MAX_PRIMITIVES { prims.push(Prim::Image { ctm: gs.ctm, w: img.w, h: img.h, format: img.format, data: img.data, alpha: 1.0 }); }
+                            if prims.len() < MAX_PRIMITIVES { prims.push(Prim::Image { ctm: gs.ctm, w: img.w, h: img.h, format: img.format, data: img.data, alpha: gs.alpha_fill as f32, blend: gs.blend_mode }); }
                             if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); }
                         }
                     }
@@ -554,11 +575,15 @@ pub(crate) fn interpret_content(
             }
             "Do" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if let Some(Object::Name(name)) = o.first() {
                     if let Some(&id) = xobjects.get(name) {
                         if let Ok(Object::Stream(stream)) = doc.get_object(id) {
+                            // Skip the whole XObject if its optional-content group is OFF.
+                            if stream.dict.get(b"OC").ok().map(|oc| oc_object_hidden(doc, oc)).unwrap_or(false) {
+                                continue;
+                            }
                             let subtype = stream
                                 .dict
                                 .get(b"Subtype")
@@ -568,7 +593,7 @@ pub(crate) fn interpret_content(
                                 if !text_only && !oc_stack.last().copied().unwrap_or(false) {
                                     if let Some(img) = extract_image(doc, stream, gs.fill, &colorspaces) {
                                         let sm_start = prims.len();
-                                        if prims.len() < MAX_PRIMITIVES { prims.push(Prim::Image { ctm: gs.ctm, w: img.w, h: img.h, format: img.format, data: img.data, alpha: 1.0 }); }
+                                        if prims.len() < MAX_PRIMITIVES { prims.push(Prim::Image { ctm: gs.ctm, w: img.w, h: img.h, format: img.format, data: img.data, alpha: gs.alpha_fill as f32, blend: gs.blend_mode }); }
                                         if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); }
                                     }
                                 }
@@ -619,9 +644,35 @@ pub(crate) fn interpret_content(
                                         group_depth+=1;
                                     }
                                 }
+                                // Form content shall be clipped to /BBox (transformed by
+                                // /Matrix), per PDF 8.10.1, so it can't bleed past its box.
+                                let form_ctm = mat_mul(&form_matrix, &gs.ctm);
+                                let mut bbox_clipped = false;
+                                if !text_only && !oc_stack.last().copied().unwrap_or(false) {
+                                    if let Some(bb) = stream.dict.get(b"BBox").ok().and_then(|o| read_rect(doc, o)) {
+                                        if prims.len() < MAX_PRIMITIVES {
+                                            let c = [
+                                                transform(&form_ctm, bb[0], bb[1]),
+                                                transform(&form_ctm, bb[2], bb[1]),
+                                                transform(&form_ctm, bb[2], bb[3]),
+                                                transform(&form_ctm, bb[0], bb[3]),
+                                            ];
+                                            let pts: Vec<(f32, f32)> = c.iter().map(|&(x, y)| (x as f32, y as f32)).collect();
+                                            let po = vec![
+                                                PathOp::Move(c[0].0 as f32, c[0].1 as f32),
+                                                PathOp::Line(c[1].0 as f32, c[1].1 as f32),
+                                                PathOp::Line(c[2].0 as f32, c[2].1 as f32),
+                                                PathOp::Line(c[3].0 as f32, c[3].1 as f32),
+                                                PathOp::Close,
+                                            ];
+                                            prims.push(Prim::ClipPush { even_odd: false, pts, path_ops: Some(po) });
+                                            bbox_clipped = true;
+                                        }
+                                    }
+                                }
                                 if let Ok(sub) = Content::decode(&stream_data_with_doc(doc, &stream)) {
                                         let mut sub_gs = gs.clone();
-                                        sub_gs.ctm = mat_mul(&form_matrix, &gs.ctm);
+                                        sub_gs.ctm = form_ctm;
                                         // A soft mask does not re-apply to nested Do's inside the
                                         // (masked) form content.
                                         sub_gs.soft_mask = None;
@@ -645,6 +696,11 @@ pub(crate) fn interpret_content(
                                             depth + 1,
                                             text_only,
                                         );
+                                }
+                                if bbox_clipped {
+                                    // Always balance the ClipPush, even if the prim cap
+                                    // was hit inside the form, to keep the clip stack sane.
+                                    prims.push(Prim::ClipPop);
                                 }
                                 // Bracket the whole form as the masked content, then
                                 // append the mask group (rendered at the mask's set-time CTM).
@@ -707,6 +763,9 @@ pub(crate) fn interpret_content(
             "CS" => {
                 if let Some(cs_name) = o.first() {
                     if let Some(kind) = parse_named_cs(doc, cs_name, resources, &colorspaces) {
+                        // Selecting a color space resets the current color to its
+                        // initial value (PDF 8.6.8).
+                        if let Some(c) = cs_initial_color(doc, &kind, &colorspaces) { gs.stroke = c; }
                         gs.stroke_cs = kind;
                     }
                     gs.stroke_pattern = None;
@@ -715,6 +774,7 @@ pub(crate) fn interpret_content(
             "cs" => {
                 if let Some(cs_name) = o.first() {
                     if let Some(kind) = parse_named_cs(doc, cs_name, resources, &colorspaces) {
+                        if let Some(c) = cs_initial_color(doc, &kind, &colorspaces) { gs.fill = c; }
                         gs.non_stroke_cs = kind;
                     }
                     gs.fill_pattern = None;
@@ -771,9 +831,12 @@ pub(crate) fn interpret_content(
                         }
                     }
                     [x0, y0, x1, y1]
-                }).filter(|b| b[2] > b[0] && b[3] > b[1]);
+                }).filter(|b| b[2] > b[0] && b[3] > b[1])
+                // Fall back to the already-committed clip region (the common
+                // `re W n /Sh sh` case, where pending_clip is None by now).
+                .or(current_clip_bbox);
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 if !text_only {
                     if let Some(Object::Name(name)) = o.first() {
@@ -782,7 +845,7 @@ pub(crate) fn interpret_content(
                                 if let Some((ctm,w,h,data)) = rasterize_shading(doc, obj, &gs.ctm, &colorspaces, 0, clip_bbox_device) {
                                     if prims.len() < MAX_PRIMITIVES && !oc_stack.last().copied().unwrap_or(false) {
                                         let sm_start = prims.len();
-                                        prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: 1.0 });
+                                        prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: gs.alpha_fill as f32, blend: gs.blend_mode });
                                         if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); }
                                     }
                                 }
@@ -798,30 +861,28 @@ pub(crate) fn interpret_content(
                     }
                 }
             }
-            "BDC" | "MP" | "DP" => {
+            "BDC" => {
+                // Optional content: `/OC <props> BDC`, where <props> is the OCG/OCMD
+                // itself (an inline dict or a name resolved via /Properties). The
+                // property list IS the group — there is no nested /OC key.
                 let mut should_hide = false;
-                if let Some(prop_obj) = o.get(1) {
-                    let prop_deref = deref(doc, prop_obj).unwrap_or(prop_obj);
-                    let resolve_oc_ref = |obj: &Object, doc: &Document| -> Option<bool> {
-                        match deref(doc, obj).unwrap_or(obj) {
-                            Object::Reference(id) => Some(!is_ocg_visible(doc, *id)),
-                            _ => None
-                        }
-                    };
-                    if let Object::Dictionary(d) = prop_deref {
-                        if let Some(oc_obj) = d.get(b"OC").ok().and_then(|ob| deref(doc,ob).or(Some(ob))) {
-                            if let Some(h) = resolve_oc_ref(oc_obj, doc) { should_hide = h; }
-                        }
-                    } else if let Object::Name(n) = prop_deref {
-                        if let Some(res_dict) = resources {
-                            if let Some(prop_dict) = res_dict.get(b"Properties").ok().and_then(|ob| deref(doc,ob)).and_then(|ob| ob.as_dict().ok()) {
-                                if let Some(ocg_dict_obj) = prop_dict.get(n).ok().and_then(|ob| deref(doc,ob).or(Some(ob))) {
-                                    if let Object::Dictionary(pd) = ocg_dict_obj {
-                                        if let Some(oc_obj) = pd.get(b"OC").ok().and_then(|ob| deref(doc,ob).or(Some(ob))) {
-                                            if let Some(h) = resolve_oc_ref(oc_obj, doc) { should_hide = h; }
+                let tag = o.first().and_then(|t| t.as_name().ok());
+                if tag == Some(b"OC") {
+                    if let Some(prop_obj) = o.get(1) {
+                        match prop_obj {
+                            Object::Name(n) => {
+                                // Resolve via the /Properties resource, keeping the
+                                // indirect reference so ON/OFF lists can match it.
+                                if let Some(res_dict) = resources {
+                                    if let Some(prop_dict) = res_dict.get(b"Properties").ok().and_then(|ob| deref(doc, ob)).and_then(|ob| ob.as_dict().ok()) {
+                                        if let Ok(oc_ref) = prop_dict.get(n) {
+                                            should_hide = oc_object_hidden(doc, oc_ref);
                                         }
                                     }
                                 }
+                            }
+                            other => {
+                                should_hide = oc_object_hidden(doc, other);
                             }
                         }
                     }
@@ -829,10 +890,15 @@ pub(crate) fn interpret_content(
                 if should_hide {
                     if oc_stack.len() < MAX_OC_STACK { oc_stack.push(true); }
                 } else {
+                    // Non-OC (or visible) marked content: inherit the current hidden state.
                     if let Some(&hidden) = oc_stack.last() {
                         if hidden && oc_stack.len() < MAX_OC_STACK { oc_stack.push(true); }
                     }
                 }
+            }
+            "MP" | "DP" => {
+                // Marked-content point operators: no matching EMC, so they must not
+                // affect the marked-content / optional-content stack.
             }
             "EMC" => {
                 if !oc_stack.is_empty() { oc_stack.pop(); }
@@ -844,7 +910,7 @@ pub(crate) fn interpret_content(
             }
             "BT" => {
                 if let Some(pc) = pending_clip.take() {
-                    emit_one_clip(prims, pc, &mut clip_depth, text_only, oc_stack.last().copied().unwrap_or(false));
+                    emit_one_clip(prims, pc, &mut clip_depth, &mut current_clip_bbox, text_only, oc_stack.last().copied().unwrap_or(false));
                 }
                 text_matrix = IDENTITY;
                 line_matrix = IDENTITY;
@@ -870,7 +936,7 @@ pub(crate) fn interpret_content(
             }
             "TL" => {
                 if let Some(v) = o.first().and_then(num) {
-                    leading = v;
+                    gs.leading = v;
                 }
             }
             "Tc" => {
@@ -909,7 +975,7 @@ pub(crate) fn interpret_content(
             }
             "TD" => {
                 if let (Some(tx), Some(ty)) = (o.first().and_then(num), o.get(1).and_then(num)) {
-                    leading = -ty;
+                    gs.leading = -ty;
                     line_matrix = mat_mul(&translate(tx, ty), &line_matrix);
                     text_matrix = line_matrix;
                 }
@@ -921,27 +987,35 @@ pub(crate) fn interpret_content(
                 }
             }
             "T*" => {
-                line_matrix = mat_mul(&translate(0.0, -leading), &line_matrix);
+                line_matrix = mat_mul(&translate(0.0, -gs.leading), &line_matrix);
                 text_matrix = line_matrix;
             }
             "Tj" => {
                 if let Some(Object::String(bytes, _)) = o.first() {
                     let sm_start = prims.len();
                     let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
-                    text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
+                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
+                    } else {
+                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    }
                     // P0 fix #24/#25: soft-mask must also cover invisible-clip modes 4-6, not only 0-2
                     let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
                     if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
                 }
             }
             "'" => {
-                line_matrix = mat_mul(&translate(0.0, -leading), &line_matrix);
+                line_matrix = mat_mul(&translate(0.0, -gs.leading), &line_matrix);
                 text_matrix = line_matrix;
                 if let Some(Object::String(bytes, _)) = o.first() {
                     // P0 fix #24: soft-mask must apply to ' operator
                     let sm_start = prims.len();
                     let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
-                    text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
+                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
+                    } else {
+                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    }
                     let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
                     if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
                 }
@@ -949,13 +1023,17 @@ pub(crate) fn interpret_content(
             "\"" => {
                 if let Some(aw) = o.first().and_then(num) { gs.word_spacing = aw; }
                 if let Some(ac) = o.get(1).and_then(num) { gs.char_spacing = ac; }
-                line_matrix = mat_mul(&translate(0.0, -leading), &line_matrix);
+                line_matrix = mat_mul(&translate(0.0, -gs.leading), &line_matrix);
                 text_matrix = line_matrix;
                 if let Some(Object::String(bytes, _)) = o.get(2) {
                     // P0 fix #24: soft-mask must apply to " operator
                     let sm_start = prims.len();
                     let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
-                    text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
+                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
+                    } else {
+                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    }
                     let paint_mode = matches!(gs.render_mode, 0|1|2|4|5|6);
                     if paint_mode { if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth); } }
                 }
@@ -967,12 +1045,22 @@ pub(crate) fn interpret_content(
                         match el {
                             Object::String(bytes, _) => {
                                 let adv = show_string(doc, prims, &gs, &fonts, &text_matrix, bytes, depth);
-                                text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                                if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
+                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
+                    } else {
+                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                    }
                             }
                             Object::Integer(_) | Object::Real(_) => {
                                 let n = num(el).unwrap_or(0.0);
-                                let tx = -n / 1000.0 * gs.font_size * gs.h_scale;
-                                text_matrix = mat_mul(&translate(tx, 0.0), &text_matrix);
+                                // TJ adjustment applies along the writing axis.
+                                if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
+                                    let ty = -n / 1000.0 * gs.font_size;
+                                    text_matrix = mat_mul(&translate(0.0, ty), &text_matrix);
+                                } else {
+                                    let tx = -n / 1000.0 * gs.font_size * gs.h_scale;
+                                    text_matrix = mat_mul(&translate(tx, 0.0), &text_matrix);
+                                }
                             }
                             _ => {}
                         }
@@ -1213,7 +1301,7 @@ pub(crate) fn paint_pattern_stroke(
             if let Some(shobj) = dict.get(b"Shading").ok().and_then(|o| deref(doc, o)) {
                 if let Some((ctm, w, h, data)) = rasterize_shading(doc, shobj, &pmat, &HashMap::new(), 0, stroke_bbox) {
                     if prims.len() < MAX_PRIMITIVES {
-                        prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: 1.0 });
+                        prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: gs.alpha_stroke as f32, blend: gs.blend_mode });
                     }
                 }
             }
@@ -1232,6 +1320,8 @@ pub(crate) fn paint_pattern_fill(
     even_odd: bool,
     pattern_base_ctm: &Mat,
     base_argb: u32,
+    alpha_fill: f32,
+    blend: BlendMode,
     prims: &mut Vec<Prim>,
     depth: u32,
 ) {
@@ -1272,7 +1362,7 @@ pub(crate) fn paint_pattern_fill(
             let fill_bbox = polys_device_bbox(polys);
             if let Some((ctm, w, h, data)) = rasterize_shading(doc, shobj, &pmat, &HashMap::new(), 0, fill_bbox) {
                 if prims.len() < MAX_PRIMITIVES {
-                    prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: 1.0 });
+                    prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: alpha_fill, blend });
                 }
             }
         }
@@ -1385,12 +1475,31 @@ fn paint_tiling_pattern(
             count += 1;
             let translate: Mat = [1.0, 0.0, 0.0, 1.0, i as f64 * xstep, j as f64 * ystep];
             let tile_ctm = mat_mul(&translate, pmat);
+            // Clip each cell to the pattern /BBox (PDF 8.7.3.1) so content that
+            // overflows the cell — or a cell smaller than XStep/YStep — cannot
+            // bleed into neighboring cells.
+            let bc = [
+                transform(&tile_ctm, bbox[0], bbox[1]),
+                transform(&tile_ctm, bbox[2], bbox[1]),
+                transform(&tile_ctm, bbox[2], bbox[3]),
+                transform(&tile_ctm, bbox[0], bbox[3]),
+            ];
+            let cell_pts: Vec<(f32, f32)> = bc.iter().map(|&(x, y)| (x as f32, y as f32)).collect();
+            let cell_po = vec![
+                PathOp::Move(bc[0].0 as f32, bc[0].1 as f32),
+                PathOp::Line(bc[1].0 as f32, bc[1].1 as f32),
+                PathOp::Line(bc[2].0 as f32, bc[2].1 as f32),
+                PathOp::Line(bc[3].0 as f32, bc[3].1 as f32),
+                PathOp::Close,
+            ];
+            prims.push(Prim::ClipPush { even_odd: false, pts: cell_pts, path_ops: Some(cell_po) });
             let mut tile_gs = GraphicsState { ctm: tile_ctm, ..GraphicsState::default() };
             if paint_type == 2 {
                 tile_gs.fill = base_argb;
                 tile_gs.stroke = base_argb;
             }
             interpret_content(doc, &content.operations, res.as_ref(), tile_gs, prims, depth + 1, false);
+            prims.push(Prim::ClipPop);
         }
     }
 }

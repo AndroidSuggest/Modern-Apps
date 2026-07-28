@@ -66,6 +66,8 @@ pub(crate) enum Prim {
         data: Vec<u8>,
         /// Per-image alpha (from SMask or explicit) * alpha_fill, for transparency group compositing.
         alpha: f32,
+        /// Blend mode (from the graphics-state `/BM`) for compositing the image.
+        blend: BlendMode,
     },
     ClipPush {
         even_odd: bool,

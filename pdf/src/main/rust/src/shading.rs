@@ -238,7 +238,11 @@ fn parse_type4(
 ) -> Vec<(Vertex, Vertex, Vertex)> {
     let mut br = BitReader::new(data);
     let mut tris = Vec::new();
-    let (mut va, mut vb, mut vc): (Option<Vertex>, Option<Vertex>, Option<Vertex>) = (None, None, None);
+    // `last` holds the most recently completed triangle so flag 1/2 continuation
+    // vertices can form strips/fans; `pending` accumulates the three flag-0
+    // vertices that begin a new independent triangle (PDF 8.7.4.5.5).
+    let mut last: Option<(Vertex, Vertex, Vertex)> = None;
+    let mut pending: Vec<Vertex> = Vec::new();
     let mut guard = 0usize;
     while br.remaining_bits() >= (bps_flag + 2 * bps_coord + ncomp as u32 * bps_comp) as usize {
         guard += 1;
@@ -247,42 +251,32 @@ fn parse_type4(
         let v = match read_vertex(&mut br, bps_coord, bps_comp, ncomp, decode) { Some(v) => v, None => break };
         match flag {
             0 => {
-                // Flag 0 = new triangle, but PDF allows long all-zero streams: emit whenever 3 verts accumulated, then reset
-                if va.is_none() { va = Some(v); }
-                else if vb.is_none() { vb = Some(v); }
-                else {
-                    // vb Some, vc will become v -> triangle
-                    vc = Some(v);
-                    if let (Some(a), Some(b), Some(c)) = (&va, &vb, &vc) {
-                        tris.push((a.clone(), b.clone(), c.clone()));
-                    }
-                    // P0 fix #9: Reset for next independent triangle on flag 0, not retain vb/vc (would cause holes)
-                    // Spec streams often emit all flag-0 vertices as independent triangles, not strip. So reset all.
-                    va = None;
-                    vb = None;
-                    vc = None;
+                // Start (or continue accumulating) a new independent triangle: its
+                // three vertices all carry flag 0.
+                pending.push(v);
+                if pending.len() == 3 {
+                    let t = (pending[0].clone(), pending[1].clone(), pending[2].clone());
+                    tris.push(t.clone());
+                    last = Some(t);
+                    pending.clear();
                 }
             }
             1 => {
-                // vb, vc, v
-                if let (Some(b), Some(c)) = (vb.clone(), vc.clone()) {
-                    va = Some(b);
-                    vb = Some(c);
-                    vc = Some(v);
-                    if let (Some(a), Some(b), Some(c)) = (&va, &vb, &vc) {
-                        tris.push((a.clone(), b.clone(), c.clone()));
-                    }
+                // Continuation: new triangle = (vb, vc, v) of the previous triangle.
+                pending.clear();
+                if let Some((_a, b, c)) = last.clone() {
+                    let t = (b, c, v);
+                    tris.push(t.clone());
+                    last = Some(t);
                 }
             }
             2 => {
-                // va, vc, v
-                if let (Some(a), Some(c)) = (va.clone(), vc.clone()) {
-                    vb = Some(c);
-                    vc = Some(v);
-                    va = Some(a);
-                    if let (Some(a), Some(b), Some(c)) = (&va, &vb, &vc) {
-                        tris.push((a.clone(), b.clone(), c.clone()));
-                    }
+                // Continuation: new triangle = (va, vc, v) of the previous triangle.
+                pending.clear();
+                if let Some((a, _b, c)) = last.clone() {
+                    let t = (a, c, v);
+                    tris.push(t.clone());
+                    last = Some(t);
                 }
             }
             _ => break,
@@ -564,19 +558,21 @@ fn parse_type6_7(
 }
 
 /// Select the shared edge (4 control points + 2 corner colors) from the
-/// previous patch for a flag-1/2/3 continuation. Best-effort per PDF 7.10.5.7.
-/// Fix high #10: shared edge must be reversed (opposite winding) to avoid twisted Coons patches
+/// previous patch for a flag-1/2/3 continuation, per ISO 32000 Table 85 (Coons)
+/// / Table 86 (tensor). The new patch's first edge (p1..p4, colors c1,c2) is the
+/// previous patch's edge in FORWARD order so the patches join without twisting:
+///   flag 1 -> prev p4,p5,p6,p7 & colors c2,c3
+///   flag 2 -> prev p7,p8,p9,p10 & colors c3,c4
+///   flag 3 -> prev p10,p11,p12,p1 & colors c4,c1
 fn shared_edge(prev_pts: &[(f64, f64)], prev_cols: &[Vec<f64>], flag: u64) -> ([(f64, f64); 4], Vec<f64>, Vec<f64>) {
-    // Boundary points p1..p12 = index 0..11; corners at 0,3,6,9.
-    // Edges per spec Table 7.10.5.7 for flags 1,2,3 — reversed winding for continuation
+    // Boundary points p1..p12 = index 0..11; corner colors c1..c4 = index 0..3.
     let (ia, ib, ic, id, ca, cb) = match flag {
-        1 => (6usize, 5, 4, 3, 2usize, 1usize), // reverse of 3,4,5,6
-        2 => (9usize, 8, 7, 6, 3usize, 2usize), // reverse of 6,7,8,9
-        _ => (0usize, 11, 10, 9, 0usize, 3usize), // reverse of 9,10,11,0
+        1 => (3usize, 4, 5, 6, 1usize, 2usize),
+        2 => (6usize, 7, 8, 9, 2usize, 3usize),
+        _ => (9usize, 10, 11, 0, 3usize, 0usize),
     };
     let g = |i: usize| prev_pts.get(i).copied().unwrap_or((0.0, 0.0));
     let col = |i: usize| prev_cols.get(i).cloned().unwrap_or_default();
-    // Return reversed edge per spec: g(ia),g(ib),g(ic),g(id) now already reversed
     ([g(ia), g(ib), g(ic), g(id)], col(ca), col(cb))
 }
 

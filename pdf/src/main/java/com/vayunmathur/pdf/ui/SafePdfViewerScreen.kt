@@ -2450,7 +2450,9 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                 val dst = floatArrayOf(c00.x, c00.y, c10.x, c10.y, c11.x, c11.y, c01.x, c01.y)
                 val mat = android.graphics.Matrix()
                 mat.setPolyToPoly(src, 0, dst, 0, 4)
+                imagePaint.setBlend(prim.blend)
                 nativeCanvas.drawBitmap(bmp, mat, imagePaint)
+                imagePaint.setBlend(BlendMode.Normal)
                 imagePaint.alpha = 255
             }
 

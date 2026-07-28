@@ -298,6 +298,58 @@ pub(crate) fn ocg_is_visible_alias(doc: &Document, id: ObjectId) -> Option<bool>
     Some(is_ocg_visible(doc, id))
 }
 
+/// Evaluate an OCMD (Optional Content Membership Dictionary) `/OCGs` + `/P`
+/// visibility policy. Returns true if the membership resolves to HIDDEN.
+fn ocmd_hidden(doc: &Document, d: &Dictionary) -> bool {
+    let mut ids: Vec<ObjectId> = Vec::new();
+    match d.get(b"OCGs").ok() {
+        Some(Object::Reference(id)) => ids.push(*id),
+        Some(Object::Array(a)) => {
+            for o in a {
+                if let Ok(id) = o.as_reference() { ids.push(id); }
+            }
+        }
+        _ => {}
+    }
+    if ids.is_empty() {
+        return false; // no member groups -> visible
+    }
+    let vis: Vec<bool> = ids.iter().map(|id| is_ocg_visible(doc, *id)).collect();
+    let policy = d.get(b"P").ok().and_then(|o| o.as_name().ok());
+    let visible = match policy {
+        Some(b"AllOn") => vis.iter().all(|v| *v),
+        Some(b"AnyOff") => vis.iter().any(|v| !*v),
+        Some(b"AllOff") => vis.iter().all(|v| !*v),
+        _ => vis.iter().any(|v| *v), // AnyOn (default)
+    };
+    !visible
+}
+
+/// Decide whether marked content / an XObject tagged with the given `/OC` object
+/// (an OCG or OCMD, possibly an indirect reference) should be HIDDEN.
+pub(crate) fn oc_object_hidden(doc: &Document, obj: &Object) -> bool {
+    match obj {
+        Object::Reference(id) => {
+            if let Ok(Object::Dictionary(d)) = doc.get_object(*id) {
+                if d.get(b"Type").ok().and_then(|o| o.as_name().ok()) == Some(b"OCMD") {
+                    return ocmd_hidden(doc, d);
+                }
+            }
+            !is_ocg_visible(doc, *id)
+        }
+        Object::Dictionary(d) => {
+            if d.get(b"Type").ok().and_then(|o| o.as_name().ok()) == Some(b"OCMD") {
+                ocmd_hidden(doc, d)
+            } else {
+                // Inline OCG dict without an object id can't be matched against the
+                // ON/OFF lists; default to visible.
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
 
 /// Whether a colorspace requires the full `eval_cs_to_rgb` path (vs the fast
 /// `comps_to_rgb` device path which is equivalent for plain RGB/Gray/CMYK).
@@ -369,11 +421,27 @@ fn image_samples_to_rgba(
     let kind = match cs_kind {
         Some(k) if cs_needs_eval(&k) => k,
         _ => {
-            // Fast device path.
+            // Fast device path. Apply the image's /Decode array (default identity
+            // [0,1] per component) — e.g. a DeviceGray image with /Decode [1 0]
+            // must be inverted. Device spaces have <=4 components.
+            let has_decode = decode_arr.len() >= ncomp * 2
+                && (0..ncomp).any(|c| decode_arr[c * 2] != 0.0 || (decode_arr[c * 2 + 1] - 1.0).abs() > 1e-9);
             for i in 0..w * h {
                 let base = i * ncomp;
                 let (r, g, b) = if base + ncomp <= decoded_comps.len() {
-                    comps_to_rgb(&decoded_comps[base..base + ncomp], ncomp as u8)
+                    if has_decode {
+                        let mut tmp = [0u8; 4];
+                        for c in 0..ncomp.min(4) {
+                            let dmin = decode_arr[c * 2];
+                            let dmax = decode_arr[c * 2 + 1];
+                            let v = decoded_comps[base + c] as f64 / 255.0;
+                            let mapped = (dmin + v * (dmax - dmin)).clamp(0.0, 1.0);
+                            tmp[c] = (mapped * 255.0).round() as u8;
+                        }
+                        comps_to_rgb(&tmp[..ncomp.min(4)], ncomp as u8)
+                    } else {
+                        comps_to_rgb(&decoded_comps[base..base + ncomp], ncomp as u8)
+                    }
                 } else {
                     (0, 0, 0)
                 };
@@ -464,6 +532,24 @@ fn image_samples_to_rgba(
 
 /// Extract a drawable image from an image XObject stream, or `None` if the
 /// format is unsupported (e.g. JPEG2000, exotic color spaces).
+/// Turn a decoded 1-bit codec raster (black-on-white RGBA) into a stencil: dark
+/// pixels are painted with `fill_argb` (opaque), light pixels become transparent.
+/// `invert` swaps the sense (for `/Decode [1 0]`).
+fn stencilize(rgba: &mut [u8], fill_argb: u32, invert: bool) {
+    let fr = ((fill_argb >> 16) & 0xFF) as u8;
+    let fg = ((fill_argb >> 8) & 0xFF) as u8;
+    let fb = (fill_argb & 0xFF) as u8;
+    for px in rgba.chunks_exact_mut(4) {
+        let luma = (px[0] as u32 * 299 + px[1] as u32 * 587 + px[2] as u32 * 114) / 1000;
+        let paint = if invert { luma >= 128 } else { luma < 128 };
+        if paint {
+            px[0] = fr; px[1] = fg; px[2] = fb; px[3] = 255;
+        } else {
+            px[3] = 0;
+        }
+    }
+}
+
 pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u32, cs_resources: &HashMap<Vec<u8>, ObjectId>) -> Option<ImageData> {
     let dict = &stream.dict;
     let w = dict.get(b"Width").ok().and_then(num)? as u32;
@@ -490,6 +576,16 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
     let is_jpx = has_kind(filters::FilterKind::Jpx) || legacy_is_jpx;
     let is_ccitt = has_kind(filters::FilterKind::Ccitt);
     let is_jbig2 = has_kind(filters::FilterKind::Jbig2);
+
+    // A CCITT/JBIG2 stencil (`/ImageMask true`) must paint the current fill color
+    // where the sample selects "paint" and be transparent elsewhere — not render
+    // an opaque black/white raster. Detect it up front so the codec branches can
+    // stencil their output.
+    let mask_stencil = matches!(dict.get(b"ImageMask").ok(), Some(Object::Boolean(true)));
+    let mask_invert = mask_stencil && matches!(
+        dict.get(b"Decode").ok().and_then(|o| deref(doc, o)),
+        Some(Object::Array(a)) if a.first().and_then(num) == Some(1.0)
+    );
 
     // JBIG2: attempt with Globals
     if is_jbig2 {
@@ -532,6 +628,7 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
 
         // Attempt decode from raw content
         if let Some((jw,jh,mut rgba)) = jbig2::decode_jbig2(&stream.content, globals_bytes.as_deref(), w, h) {
+            if mask_stencil { stencilize(&mut rgba, fill_argb, mask_invert); return Some(ImageData{ w: jw, h: jh, format: 0, data: rgba }); }
             let smask = read_smask(doc, dict, jw, jh);
             apply_smask(&mut rgba, &smask);
             if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
@@ -541,6 +638,7 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
         let raw = stream.content.clone();
         if let Some(chain) = filters::decode_stream_chain(raw, &specs, doc) {
             if let Some((jw, jh, mut rgba)) = jbig2::decode_jbig2(&chain, globals_bytes.as_deref(), w, h) {
+                if mask_stencil { stencilize(&mut rgba, fill_argb, mask_invert); return Some(ImageData{ w: jw, h: jh, format: 0, data: rgba }); }
                 let smask = read_smask(doc, dict, jw, jh);
                 apply_smask(&mut rgba, &smask);
                 if let Some(ck) = read_color_key_mask(doc, dict) { apply_color_key_mask(&mut rgba, &Some(ck)); }
@@ -612,6 +710,10 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
                         if idx + 3 < rgba.len() { rgba[idx] = 0; rgba[idx+1] = 0; rgba[idx+2] = 0; rgba[idx+3] = 255; }
                     }
                 }
+            }
+            if mask_stencil {
+                stencilize(&mut rgba, fill_argb, mask_invert);
+                return Some(ImageData { w: out_w, h: out_h, format: 0, data: rgba });
             }
             let smask = read_smask(doc, dict, out_w, out_h);
             apply_smask(&mut rgba, &smask);
@@ -918,18 +1020,25 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
     // Function: full PDF function support (Type 0/2/3/4, or array-of-functions).
     let pdf_func = dict.get(b"Function").ok().and_then(|o| PdfFunction::parse(doc, o));
 
-    // Extend [bool bool]
+    // Extend [bool bool] — spec default is [false false] (ISO 32000 Table 79).
     let extend = dict.get(b"Extend").ok().and_then(|o| deref(doc, o)).and_then(|o| o.as_array().ok())
-        .map(|a| a.iter().filter_map(|o| deref(doc, o).map(|v| matches!(v, Object::Boolean(true)))).collect::<Vec<bool>>()).unwrap_or(vec![true,true]);
+        .map(|a| a.iter().filter_map(|o| deref(doc, o).map(|v| matches!(v, Object::Boolean(true)))).collect::<Vec<bool>>()).unwrap_or(vec![false,false]);
+    // Domain [t0 t1] maps the normalized axis parameter to the function domain
+    // (default [0 1]).
+    let domain = dict.get(b"Domain").ok().and_then(|o| deref(doc, o)).and_then(|o| o.as_array().ok())
+        .map(|a| a.iter().filter_map(|o| deref(doc, o).and_then(num)).collect::<Vec<f64>>())
+        .filter(|v| v.len() >= 2).unwrap_or(vec![0.0, 1.0]);
 
     let w = size;
     let h = size;
     let mut rgba = vec![0u8; (w*h*4) as usize];
 
-    // Helpers to evaluate color at t 0..1 via function
+    // Helpers to evaluate color at t 0..1 via function. The normalized parameter
+    // is first mapped through /Domain before the function is evaluated.
     let eval_func = |t: f64| -> Option<Vec<f64>> {
         if let Some(ref f) = pdf_func {
-            return Some(f.eval(&[t]));
+            let td = domain[0] + t * (domain[1] - domain[0]);
+            return Some(f.eval(&[td]));
         }
         // If no function, try to use Background as single color.
         if let Some(ref bgc) = bg {
@@ -963,8 +1072,8 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                 if coords.len()>=6 {
                     radial_shading_param(
                         &coords,
-                        extend.get(0).copied().unwrap_or(true),
-                        extend.get(1).copied().unwrap_or(true),
+                        extend.get(0).copied().unwrap_or(false),
+                        extend.get(1).copied().unwrap_or(false),
                         fx, fy,
                     ).unwrap_or(f64::NAN)
                 } else { 0.0 }
@@ -977,7 +1086,7 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
 
             // Extend handling
             let t_clamped = if t<0.0 {
-                if extend.get(0).copied().unwrap_or(true) { 0.0 } else {
+                if extend.get(0).copied().unwrap_or(false) { 0.0 } else {
                     // background outside
                     // pixel stays background/transparent
                     let idx = (y*w as usize + x)*4;
@@ -994,7 +1103,7 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                     continue;
                 }
             } else if t>1.0 {
-                if extend.get(1).copied().unwrap_or(true) { 1.0 } else {
+                if extend.get(1).copied().unwrap_or(false) { 1.0 } else {
                     let idx = (y*w as usize + x)*4;
                     if let Some(ref bgc) = bg {
                         let cs = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
@@ -1692,7 +1801,11 @@ pub(crate) fn read_smask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u3
     let sh = s.dict.get(b"Height").ok().and_then(num).unwrap_or(h as f64) as usize;
     if sw == 0 || sh == 0 || sw > 20000 || sh > 20000 { return None; }
     // P0 fix critical #1: previously DCT/JPX only; now uses unified decoder for all filters
-    let gray = decode_mask_stream_gray(doc, s, sw, sh)?;
+    let mut gray = decode_mask_stream_gray(doc, s, sw, sh)?;
+    // Honor the SMask's own /Decode [1 0], which inverts the alpha ramp.
+    if matches!(s.dict.get(b"Decode").ok().and_then(|o| deref(doc, o)), Some(Object::Array(a)) if a.first().and_then(num) == Some(1.0)) {
+        for v in gray.iter_mut() { *v = 255 - *v; }
+    }
     // Bilinear resample sw*sh -> w*h
     let (w_us, h_us) = (w as usize, h as usize);
     if sw == w_us && sh == h_us { return Some(gray); }

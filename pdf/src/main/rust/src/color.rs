@@ -254,6 +254,34 @@ pub(crate) fn cs_kind_ncomp(kind: &CsKind) -> u8 {
     }
 }
 
+/// Initial color value when a color space is selected via `cs`/`CS` (PDF 8.6.8):
+/// black for device/CIE/ICC spaces, index 0 for Indexed, full tint (all 1.0) for
+/// Separation/DeviceN. Returns `None` for Pattern (color unchanged).
+pub(crate) fn cs_initial_color(doc: &Document, kind: &CsKind, resources: &HashMap<Vec<u8>, ObjectId>) -> Option<u32> {
+    let comps: Vec<f64> = match kind {
+        CsKind::Separation { .. } => vec![1.0],
+        CsKind::DeviceN { names, .. } => vec![1.0; names.len().max(1)],
+        CsKind::Indexed { .. } => vec![0.0],
+        CsKind::Pattern { .. } => return None,
+        _ => vec![0.0; cs_kind_ncomp(kind).max(1) as usize],
+    };
+    eval_cs_to_rgb(doc, kind, &comps, resources)
+}
+
+/// Default per-component value range for a color space, used to decode Indexed
+/// palette bytes and image samples. All spaces use [0,1] except Lab, whose L is
+/// [0,100] and a*/b* follow the space's /Range.
+pub(crate) fn cs_kind_default_decode(kind: &CsKind) -> Vec<(f64, f64)> {
+    match kind {
+        CsKind::Lab { range, .. } => vec![
+            (0.0, 100.0),
+            (range[0][0], range[0][1]),
+            (range[1][0], range[1][1]),
+        ],
+        _ => vec![(0.0, 1.0); cs_kind_ncomp(kind) as usize],
+    }
+}
+
 pub(crate) fn read_white_point(dict: &lopdf::Dictionary) -> Option<[f64;3]> {
     let arr = dict.get(b"WhitePoint").ok().and_then(|o| o.as_array().ok())?;
     if arr.len()>=3 {
@@ -284,6 +312,39 @@ pub(crate) fn read_lab_range(dict: &lopdf::Dictionary) -> Option<[[f64;2];2]> {
     if arr.len()>=4 {
         Some([[num(&arr[0])?, num(&arr[1])?],[num(&arr[2])?, num(&arr[3])?]])
     } else { None }
+}
+
+/// Bradford chromatic adaptation of an XYZ triple from `src_white` to the D65
+/// white used by the sRGB matrix. Used for CalRGB/CalGray with non-D65 whites.
+fn adapt_to_d65(x: f64, y: f64, z: f64, src_white: [f64; 3]) -> (f64, f64, f64) {
+    const B: [[f64; 3]; 3] = [
+        [0.8951, 0.2664, -0.1614],
+        [-0.7502, 1.7135, 0.0367],
+        [0.0389, -0.0685, 1.0296],
+    ];
+    const BINV: [[f64; 3]; 3] = [
+        [0.9869929, -0.1470543, 0.1599627],
+        [0.4323053, 0.5183603, 0.0492912],
+        [-0.0085287, 0.0400428, 0.9684867],
+    ];
+    let mul = |m: &[[f64; 3]; 3], v: [f64; 3]| {
+        [
+            m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+        ]
+    };
+    let d65 = [0.95047, 1.0, 1.08883];
+    let s = mul(&B, src_white);
+    let d = mul(&B, d65);
+    let lms = mul(&B, [x, y, z]);
+    let scaled = [
+        lms[0] * d[0] / s[0].abs().max(1e-9),
+        lms[1] * d[1] / s[1].abs().max(1e-9),
+        lms[2] * d[2] / s[2].abs().max(1e-9),
+    ];
+    let out = mul(&BINV, scaled);
+    (out[0], out[1], out[2])
 }
 
 pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_resources: &HashMap<Vec<u8>, ObjectId>) -> Option<u32> {
@@ -381,16 +442,15 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             Some(rgb_to_argb(gamma(r_lin), gamma(g_lin), gamma(b_lin)))
         }
         CsKind::CalRGB { white, gamma, matrix } => {
-            // CalRGB: A^GammaR, B^GammaG, C^GammaB -> XYZ via Matrix * white scaling per spec.
+            // CalRGB: A^GammaR, B^GammaG, C^GammaB -> XYZ via Matrix, then adapt
+            // from the space's /WhitePoint to D65 before XYZ -> sRGB (PDF 8.6.5.3).
             let a = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[0].clamp(0.1,10.0));
             let b = comps.get(1).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[1].clamp(0.1,10.0));
             let c = comps.get(2).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[2].clamp(0.1,10.0));
             let x = matrix[0][0]*a + matrix[0][1]*b + matrix[0][2]*c;
             let y = matrix[1][0]*a + matrix[1][1]*b + matrix[1][2]*c;
             let z = matrix[2][0]*a + matrix[2][1]*b + matrix[2][2]*c;
-            // Apply whitepoint scaling (Cal uses white for full-int picture, but PDFWhite default ~D65? Actually spec white 0.9505,1,1.0890)
-            // D50->D65 Bradford from earlier Lab reused for Cal* too via same helper later.
-            let _ = white; // white already encoded in Matrix usually, ignore extra
+            let (x, y, z) = adapt_to_d65(x, y, z, *white);
             let r_lin =  3.2406 * x -1.5372 * y -0.4986 * z;
             let g_lin = -0.9689 * x +1.8758 * y +0.0415 * z;
             let b_lin =  0.0557 * x -0.2040 * y +1.0570 * z;
@@ -403,9 +463,8 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
         CsKind::CalGray { gamma, white, .. } => {
             let g = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,1.0);
             let a = g.powf(gamma.clamp(0.1,10.0));
-            let x = white[0]*a;
-            let y = white[1]*a;
-            let z = white[2]*a;
+            // Scale the whitepoint by the gray value, then adapt to D65.
+            let (x, y, z) = adapt_to_d65(white[0]*a, white[1]*a, white[2]*a, *white);
             let r_lin =  3.2406 * x -1.5372 * y -0.4986 * z;
             let g_lin = -0.9689 * x +1.8758 * y +0.0415 * z;
             let b_lin =  0.0557 * x -0.2040 * y +1.0570 * z;
@@ -443,14 +502,24 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             let off = idx * *base_ncomp as usize;
             if off + *base_ncomp as usize <= lookup.len() {
                 let slice = &lookup[off..off+*base_ncomp as usize];
-                // Convert lookup bytes 0..255 to 0..1 floats
-                let comps_f: Vec<f64> = slice.iter().map(|b| *b as f64 /255.0).collect();
+                // Each lookup byte 0..255 maps to the RANGE of the corresponding base
+                // component (PDF 8.6.6.3): [0,1] for device spaces, but [0,100]/Range
+                // for a Lab base — dividing by 255 unconditionally would darken Lab.
+                let ranges = cs_kind_default_decode(base);
+                let comps_f: Vec<f64> = slice.iter().enumerate().map(|(i, b)| {
+                    let (lo, hi) = ranges.get(i).copied().unwrap_or((0.0, 1.0));
+                    lo + (*b as f64 / 255.0) * (hi - lo)
+                }).collect();
                 eval_cs_to_rgb(doc, base, &comps_f, cs_resources)
             } else {
                 None
             }
         }
-        CsKind::Separation { alt, tint_fn, .. } => {
+        CsKind::Separation { name, alt, tint_fn } => {
+            // The special colorant /None produces no marks (fully transparent).
+            if name == b"None" {
+                return Some(0x0000_0000);
+            }
             let t = comps.get(0).copied().unwrap_or(1.0).clamp(0.0, 1.0);
             if let Some(tf) = tint_fn {
                 let alt_comps = tf.eval(&[t]);
@@ -473,7 +542,11 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             }
             Some(gray_to_argb(1.0 - t))
         }
-        CsKind::DeviceN { alt, tint_fn, .. } => {
+        CsKind::DeviceN { names, alt, tint_fn } => {
+            // If every colorant is /None the region produces no marks.
+            if !names.is_empty() && names.iter().all(|n| n == b"None") {
+                return Some(0x0000_0000);
+            }
             if let Some(tf) = tint_fn {
                 // Evaluate the tint transform over all N input components.
                 let alt_comps = tf.eval(comps);

@@ -387,6 +387,49 @@ fn parse_custom_encoding(d: &[u8], off: usize) -> Option<(HashMap<u8, u16>, Hash
     Some((base, supplements))
 }
 
+/// For a CID-keyed CFF (Top DICT has ROS, op 1230), parse the charset — which for
+/// a CIDFont maps GID -> CID — and invert it to CID -> GID so a CID can select the
+/// right glyph outline. Returns `None` for non-CID CFF or on parse failure.
+pub fn cid_to_gid_map(d: &[u8]) -> Option<HashMap<u32, u16>> {
+    if u8a(d, 0)? != 1 {
+        return None;
+    }
+    let hdr_size = u8a(d, 2)? as usize;
+    if hdr_size < 4 || hdr_size > d.len() {
+        return None;
+    }
+    let name_idx = read_index(d, hdr_size)?;
+    let top_idx = read_index(d, name_idx.end)?;
+    let string_idx = read_index(d, top_idx.end)?;
+    let (ts, te) = *top_idx.entries.first()?;
+    let top = parse_dict(d.get(ts..te)?);
+    // Only CID-keyed fonts (ROS present) need CID->GID remapping.
+    if !top.contains_key(&1230) {
+        return None;
+    }
+    let cs_off = *top.get(&17)?.first()? as usize; // CharStrings INDEX offset (op 17)
+    let nglyphs = read_index(d, cs_off)?.entries.len();
+    if nglyphs == 0 || nglyphs > 65535 {
+        return None;
+    }
+    let charset_off = top.get(&15).and_then(|v| v.first()).copied().unwrap_or(0.0) as usize;
+    let mut map: HashMap<u32, u16> = HashMap::new();
+    map.insert(0, 0); // CID 0 (.notdef) -> GID 0
+    if charset_off > 2 {
+        // Custom charset: entries are CIDs for CID-keyed fonts.
+        let gid_to_cid = parse_charset(d, charset_off, nglyphs, string_idx.entries.len())?;
+        for (gid, cid) in gid_to_cid {
+            map.insert(cid as u32, gid);
+        }
+    } else {
+        // Predefined charset offset (0/1/2): treat as identity (CID == GID).
+        for gid in 0..nglyphs as u16 {
+            map.insert(gid as u32, gid);
+        }
+    }
+    Some(map)
+}
+
 /// charset (format 0/1/2) -> GID -> SID with bounds checking.
 fn parse_charset(d: &[u8], off: usize, nglyphs: usize, custom_string_count: usize) -> Option<HashMap<u16, usize>> {
     if off == 0 {

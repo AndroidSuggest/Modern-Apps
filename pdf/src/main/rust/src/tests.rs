@@ -187,6 +187,7 @@ use crate::*;
             to_unicode: None,
             encoding: HashMap::new(),
             cmap_uni: HashMap::new(),
+            cmap: None,
             // 'A' (0x41) and 'B' (0x42) each 500 glyph units => 0.5.
             widths: HashMap::from([(0x41, 0.5), (0x42, 0.5)]),
             default_width: 0.5,
@@ -239,6 +240,7 @@ use crate::*;
             to_unicode: None,
             encoding: HashMap::new(),
             cmap_uni: HashMap::new(),
+            cmap: None,
             widths: HashMap::new(),
             default_width: 0.5,
             t3: None,

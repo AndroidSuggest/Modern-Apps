@@ -85,6 +85,7 @@ sealed interface PdfPrimitive {
         val ctm: FloatArray,
         val bitmap: android.graphics.Bitmap?,
         val alpha: Float = 1f,
+        val blend: BlendMode = BlendMode.Normal,
     ) : PdfPrimitive
 
     /**

@@ -17,7 +17,7 @@ import java.nio.ByteOrder
  *   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8 bytes], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8 bold italic), f32 hScale (v8)
  *   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
  *   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, y]..., u8 blend (v5)
- *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, f32 alpha (v9 per-image alpha fix #2), u32 len, [bytes]
+ *   4 Image:  6*f32 ctm, u32 w, u32 h, u8 format, f32 alpha (v9), u8 blend (v10), u32 len, [bytes]
  *   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [...] (v4)
  *   6 ClipPop: empty
  *   7 GroupPush: u8 isolated, u8 knockout, f32 alpha, u8 blend
@@ -50,7 +50,7 @@ object SafePdfParser {
     private const val PATHOP_CLOSE = 3
 
     const val WIRE_MAGIC: Int = 0x50444657 // 'PDFW' little-endian as u32
-    const val WIRE_VERSION: Int = 9
+    const val WIRE_VERSION: Int = 10
     private const val WIRE_VERSION_V2 = 2
     private const val WIRE_VERSION_V4 = 4
     private const val WIRE_VERSION_V5 = 5
@@ -58,6 +58,7 @@ object SafePdfParser {
     private const val WIRE_VERSION_V7 = 7
     private const val WIRE_VERSION_V8 = 8
     private const val WIRE_VERSION_V9 = 9
+    private const val WIRE_VERSION_V10 = 10
     const val MAX_PRIMITIVES = 50000
     const val MAX_ANNOTATIONS = 10000
 
@@ -100,6 +101,7 @@ object SafePdfParser {
         val isV7 = wireVersion >= WIRE_VERSION_V7
         val isV8 = wireVersion >= WIRE_VERSION_V8
         val isV9 = wireVersion >= WIRE_VERSION_V9
+        val isV10 = wireVersion >= WIRE_VERSION_V10
         // Accept v1 (legacy), v2, v3 and v4. Newer versions are tolerated via
         // forward-compat parsing as long as the tags are known.
         if (wireVersion !in 1..WIRE_VERSION) {
@@ -256,6 +258,7 @@ object SafePdfParser {
                         if (buf.remaining() >= 5) {
                             buf.get() // fmt
                             if (isV9 && buf.remaining() >= 4) buf.float // alpha v9
+                            if (isV10 && buf.remaining() >= 1) buf.get() // blend v10
                             val len = buf.int
                             if (len >=0 && buf.remaining() >= len) buf.position(buf.position()+len)
                         }
@@ -265,6 +268,7 @@ object SafePdfParser {
                         if (buf.remaining() >= 5) {
                             buf.get()
                             if (isV9 && buf.remaining() >= 4) buf.float
+                            if (isV10 && buf.remaining() >= 1) buf.get()
                             val len = buf.int
                             if (len >=0 && buf.remaining() >= len) buf.position(buf.position()+len)
                         }
@@ -275,13 +279,17 @@ object SafePdfParser {
                         if (buf.remaining() < 4) throw IllegalArgumentException("Image v9 alpha truncated")
                         buf.float.coerceIn(0f,1f)
                     } else 1f
+                    val imgBlend = if (isV10) {
+                        if (buf.remaining() < 1) throw IllegalArgumentException("Image v10 blend truncated")
+                        BlendMode.fromCode(buf.get().toInt() and 0xFF)
+                    } else BlendMode.Normal
                     val len = buf.int
                     if (len < 0 || len > 16*1024*1024) throw IllegalArgumentException("Image data length out of bounds $len")
                     if (buf.remaining() < len) throw IllegalArgumentException("Image data truncated")
                     val data = ByteArray(len)
                     buf.get(data)
                     val bmp = decodeBitmap(w, h, format, data)
-                    primitives.add(PdfPrimitive.Image(ctm, bmp, imgAlpha))
+                    primitives.add(PdfPrimitive.Image(ctm, bmp, imgAlpha, imgBlend))
                 }
 
                 TAG_CLIP_PUSH -> {

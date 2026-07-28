@@ -25,6 +25,9 @@ pub(crate) struct FontInfo {
     /// `code -> unicode char` recovered from an embedded TrueType `cmap`, for
     /// re-encoded subset fonts without `/ToUnicode`. Preferred over `encoding`.
     pub(crate) cmap_uni: HashMap<u32, char>,
+    /// Type0 `/Encoding` CMap mapping character codes -> CIDs (non-Identity CJK
+    /// encodings). `None` for Identity-H/V (code == CID) and simple fonts.
+    pub(crate) cmap: Option<cmap::EncodingCMap>,
     /// `code (or CID) -> glyph width` in text-space units (glyph units / 1000).
     pub(crate) widths: HashMap<u32, f64>,
     /// Fallback width (glyph units / 1000) for codes absent from `widths`.
@@ -76,19 +79,31 @@ impl FontInfo {
     /// string, honoring this font's code width (1 or 2 bytes).
     pub(crate) fn for_each_code(&self, bytes: &[u8], mut f: impl FnMut(u32, bool)) {
         if self.two_byte {
-            let mut i = 0;
-            while i + 1 < bytes.len() {
-                let code = ((bytes[i] as u32) << 8) | bytes[i + 1] as u32;
-                // Word spacing (Tw) should apply to all unicode spaces, not just 0x20.
-                // Check full-width (0x3000), NBSP (0xA0), and ToUnicode == " " or
-                // any whitespace-like mapping.
-                let to_uni = self.to_unicode.as_ref().and_then(|m| m.get(&code));
-                let is_space = code == 32
-                    || code == 0x00A0
-                    || code == 0x3000
-                    || to_uni.map(|s| s == " " || s.chars().any(|c| c.is_whitespace())).unwrap_or(false);
-                f(code, is_space);
-                i += 2;
+            match &self.cmap {
+                // Non-Identity CMap: segment bytes by the codespace (variable
+                // length) and yield the raw character code. Width/glyph lookups
+                // map code -> CID via `to_cid`.
+                Some(cm) => {
+                    let mut i = 0;
+                    while i < bytes.len() {
+                        let n = cm.code_len(bytes[i]).clamp(1, 4).min(bytes.len() - i);
+                        let mut c = 0u32;
+                        for k in 0..n { c = (c << 8) | bytes[i + k] as u32; }
+                        // Tw applies only to a single-byte code 32.
+                        f(c, n == 1 && c == 32);
+                        i += n;
+                    }
+                }
+                // Identity-H/V: fixed 2-byte codes, code == CID.
+                None => {
+                    let mut i = 0;
+                    while i + 1 < bytes.len() {
+                        let code = ((bytes[i] as u32) << 8) | bytes[i + 1] as u32;
+                        // Word spacing (Tw) never applies to 2-byte codes (PDF 9.3.3).
+                        f(code, false);
+                        i += 2;
+                    }
+                }
             }
         } else {
             for &b in bytes {
@@ -101,9 +116,20 @@ impl FontInfo {
         }
     }
 
-    /// Width of `code` in text-space units (glyph units / 1000).
+    /// Map a raw character code to a CID via the `/Encoding` CMap (identity when
+    /// there is no CMap, i.e. Identity-H/V or simple fonts).
+    pub(crate) fn to_cid(&self, code: u32) -> u32 {
+        match &self.cmap {
+            Some(cm) => cm.to_cid(code),
+            None => code,
+        }
+    }
+
+    /// Width of `code` in text-space units (glyph units / 1000). Widths (`/W`)
+    /// are keyed by CID, so the code is mapped through the CMap first.
     pub(crate) fn width(&self, code: u32) -> f64 {
-        self.widths.get(&code).copied().unwrap_or(self.default_width)
+        let cid = self.to_cid(code);
+        self.widths.get(&cid).copied().unwrap_or(self.default_width)
     }
 
     pub(crate) fn push_code(&self, code: u32, out: &mut String) {
@@ -160,10 +186,31 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         })
         .map(|data| cmap::parse(&data));
 
+    // Type0 /Encoding CMap: Identity-H/V need no code->CID map (code == CID); a
+    // named predefined CMap can't be embedded here (best-effort identity), but an
+    // embedded CMap stream is parsed for real code->CID mapping and WMode.
+    let mut encoding_cmap: Option<cmap::EncodingCMap> = None;
+    let mut cmap_wmode: u8 = 0;
+    if two_byte {
+        match font.get(b"Encoding").ok().and_then(|o| deref(doc, o)) {
+            Some(Object::Name(n)) => {
+                let name = String::from_utf8_lossy(n);
+                if name.ends_with("-V") { cmap_wmode = 1; }
+                // Identity-H/V and unembeddable predefined names -> identity (None).
+            }
+            Some(Object::Stream(s)) => {
+                let cm = cmap::parse_encoding_cmap(&stream_data(s));
+                cmap_wmode = cm.wmode;
+                encoding_cmap = Some(cm);
+            }
+            _ => {}
+        }
+    }
+
     // WMode: 0 horizontal (default), 1 vertical. Detect from Type0 font dict and descendant.
     let wmode: u8 = font.get(b"WMode").ok().and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(0) as u8;
     let desc_wmode: u8 = font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::Array(a) => a.first(), _ => None }).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()).and_then(|d| d.get(b"WMode").ok()).and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(wmode as u8) as u8;
-    let effective_wmode = desc_wmode.max(wmode as u8);
+    let effective_wmode = desc_wmode.max(wmode as u8).max(cmap_wmode);
 
     // CIDToGIDMap
     let cid_to_gid: Option<HashMap<u32, u16>> = {
@@ -202,7 +249,7 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         None
     };
 
-    let (widths, default_width) = if two_byte {
+    let (mut widths, default_width) = if two_byte {
         cid_widths(doc, font)
     } else if is_type3 {
         let fm_scale = t3.as_ref().map(|t| t.font_matrix[0]).unwrap_or(0.001);
@@ -348,6 +395,28 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         crate::outlines::encoding_differences(doc, font)
     };
 
+    // --- Standard-14 metrics fallback ---
+    // A non-embedded standard font (Helvetica/Times/Courier/Symbol/ZapfDingbats)
+    // may omit /Widths; use the Core-14 AFM widths (keyed by glyph name) so text
+    // is spaced correctly instead of at a flat 0.5 em. Resolve code -> glyph name
+    // via /Differences, falling back to StandardEncoding.
+    if !two_byte && !is_type3 && widths.is_empty() {
+        if let Some(afm) = crate::afm::standard_14_widths(&base_font_name) {
+            for code in 0u32..=255 {
+                let name = glyph_names.get(&code).cloned().or_else(|| {
+                    crate::type1::STANDARD_ENCODING.iter()
+                        .find(|(c, _)| *c as u32 == code)
+                        .map(|(_, n)| (*n).to_string())
+                });
+                if let Some(name) = name {
+                    if let Some(w) = afm.get(&name) {
+                        widths.insert(code, *w);
+                    }
+                }
+            }
+        }
+    }
+
     // --- Generic family detection for substitute shaping (0 sans, 1 serif, 2 mono) ---
     // The embedded base font is not rendered directly; Kotlin picks a matching
     // system typeface, so we only need the broad family. BaseFont names (including
@@ -383,6 +452,7 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         to_unicode,
         encoding,
         cmap_uni,
+        cmap: encoding_cmap,
         widths,
         default_width,
         t3,
@@ -1209,10 +1279,18 @@ use std::io::Cursor;
         m
     }
 
-    /// StandardEncoding: for the ASCII range it matches Latin-1; good enough as
-    /// a base to which /Differences are applied.
+    /// Adobe StandardEncoding: matches Latin-1 for the core ASCII letters/digits
+    /// but differs across punctuation (0x27 quoteright, 0x60 quoteleft) and the
+    /// whole 0x80–0xFF range, so it is built from the real name table rather than
+    /// aliased to Latin-1.
     fn standard() -> HashMap<u32, char> {
-        latin1()
+        let mut m = HashMap::new();
+        for (code, name) in crate::type1::STANDARD_ENCODING {
+            if let Some(c) = glyph_to_char(name) {
+                m.insert(*code as u32, c);
+            }
+        }
+        m
     }
 
     /// Codes 0x20–0xFF mapped as Latin-1 (identity to Unicode).
@@ -1484,6 +1562,128 @@ use std::io::Cursor;
             c = (c << 8) | b as u32;
         }
         c
+    }
+
+    /// A Type0 `/Encoding` CMap: variable-length codespace ranges plus code->CID
+    /// mappings (from `begincidrange`/`begincidchar`), and the writing mode.
+    #[derive(Default)]
+    pub struct EncodingCMap {
+        /// (lo, hi, byte_len) codespace ranges.
+        pub codespace: Vec<(u32, u32, u8)>,
+        pub single: HashMap<u32, u32>,
+        /// (lo, hi, cid_of_lo) contiguous ranges.
+        pub ranges: Vec<(u32, u32, u32)>,
+        pub wmode: u8,
+    }
+
+    impl EncodingCMap {
+        /// Map a character code to a CID (identity fallback if unmapped).
+        pub fn to_cid(&self, code: u32) -> u32 {
+            if let Some(c) = self.single.get(&code) {
+                return *c;
+            }
+            for &(lo, hi, c0) in &self.ranges {
+                if code >= lo && code <= hi {
+                    return c0 + (code - lo);
+                }
+            }
+            code
+        }
+
+        /// Byte length of the code beginning with `first_byte`, using the
+        /// codespace ranges (defaults to 2 bytes, the Identity case).
+        pub fn code_len(&self, first_byte: u8) -> usize {
+            for &(lo, hi, n) in &self.codespace {
+                let shift = (n.saturating_sub(1)) * 8;
+                let flo = (lo >> shift) & 0xFF;
+                let fhi = (hi >> shift) & 0xFF;
+                if (first_byte as u32) >= flo && (first_byte as u32) <= fhi {
+                    return n as usize;
+                }
+            }
+            if self.codespace.is_empty() { 2 } else { self.codespace[0].2 as usize }
+        }
+    }
+
+    /// Parse a Type0 `/Encoding` CMap stream. Handles `codespacerange`,
+    /// `cidrange`, `cidchar`, and `/WMode`. Numeric CID operands are decimal.
+    pub fn parse_encoding_cmap(data: &[u8]) -> EncodingCMap {
+        let mut cm = EncodingCMap::default();
+        // Lightweight token scan: hex strings <..>, decimal integers, keywords.
+        #[derive(PartialEq)]
+        enum T { Hex(Vec<u8>), Int(u32), Kw(String) }
+        let mut toks: Vec<T> = Vec::new();
+        let mut i = 0;
+        while i < data.len() {
+            let b = data[i];
+            if b == b'<' {
+                let mut hex = String::new();
+                i += 1;
+                while i < data.len() && data[i] != b'>' {
+                    if !data[i].is_ascii_whitespace() { hex.push(data[i] as char); }
+                    i += 1;
+                }
+                i += 1;
+                toks.push(T::Hex(hex_to_bytes(&hex)));
+            } else if b.is_ascii_digit() {
+                let s = i;
+                while i < data.len() && data[i].is_ascii_digit() { i += 1; }
+                let n: u32 = std::str::from_utf8(&data[s..i]).ok().and_then(|x| x.parse().ok()).unwrap_or(0);
+                toks.push(T::Int(n));
+            } else if b.is_ascii_alphabetic() || b == b'/' {
+                let s = i;
+                i += 1;
+                while i < data.len() && (data[i].is_ascii_alphanumeric() || data[i] == b'/' || data[i] == b'.') { i += 1; }
+                toks.push(T::Kw(String::from_utf8_lossy(&data[s..i]).into_owned()));
+            } else {
+                i += 1;
+            }
+        }
+        let byte_len = |bytes: &[u8]| -> u8 { bytes.len().clamp(1, 4) as u8 };
+        let mut j = 0;
+        while j < toks.len() {
+            match &toks[j] {
+                T::Kw(k) if k == "/WMode" => {
+                    if let Some(T::Int(w)) = toks.get(j + 1) { cm.wmode = if *w >= 1 { 1 } else { 0 }; }
+                    j += 1;
+                }
+                T::Kw(k) if k == "begincodespacerange" => {
+                    j += 1;
+                    while j + 1 < toks.len() {
+                        if let (T::Hex(lo), T::Hex(hi)) = (&toks[j], &toks[j + 1]) {
+                            cm.codespace.push((code(lo), code(hi), byte_len(lo)));
+                            j += 2;
+                        } else { break; }
+                    }
+                }
+                T::Kw(k) if k == "begincidrange" => {
+                    j += 1;
+                    while j + 2 < toks.len() {
+                        match (&toks[j], &toks[j + 1], &toks[j + 2]) {
+                            (T::Hex(lo), T::Hex(hi), T::Int(cid)) => {
+                                cm.ranges.push((code(lo), code(hi), *cid));
+                                j += 3;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                T::Kw(k) if k == "begincidchar" => {
+                    j += 1;
+                    while j + 1 < toks.len() {
+                        match (&toks[j], &toks[j + 1]) {
+                            (T::Hex(c), T::Int(cid)) => {
+                                cm.single.insert(code(c), *cid);
+                                j += 2;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                _ => { j += 1; }
+            }
+        }
+        cm
     }
 
     fn utf16be_units(bytes: &[u8]) -> Vec<u16> {

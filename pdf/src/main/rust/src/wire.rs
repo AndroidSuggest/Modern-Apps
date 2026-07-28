@@ -1,12 +1,13 @@
 use crate::*;
 
 const WIRE_MAGIC: u32 = 0x50444657; // 'PDFW'
-/// Bump to V9 to carry per-image alpha (fix for audit #10 / #critical alpha ignored).
-const WIRE_VERSION: u32 = 9;
+/// Bump to V10 to carry the per-image blend mode (V9 added per-image alpha).
+const WIRE_VERSION: u32 = 10;
 #[allow(dead_code)]
 const WIRE_VERSION_V2: u32 = 2;
 const WIRE_VERSION_V7: u32 = 7;
 const WIRE_VERSION_V8: u32 = 8;
+#[allow(dead_code)]
 const WIRE_VERSION_V9: u32 = 9;
 const TAG_TEXT: u8 = 1;
 const TAG_FILL: u8 = 2;
@@ -53,7 +54,7 @@ fn truncate_str_safe(s: &str, max_bytes: usize) -> &str {
 ///   1 Text:   f32 x, f32 y, f32 size, u32 argb, u16 len, [utf8], u8 hasStroke, u32 strokeArgb, f32 strokeWidth, u8 renderMode (v4), u8 blend (v5), f32 advance (v7), u8 fontFlags (v8: bit0 bold bit1 italic, bits2-3 family 0=sans 1=serif 2=mono, bit4 outline-drawn), f32 hScale (v8)
 ///   2 Fill:   u32 argb, u8 evenOdd, u16 nContours, [u16 nPts, [f32 x,y]...]... (v6), u8 blend (v5)
 ///   3 Stroke: u32 argb, f32 width, u8 nDash, [f32 dash]..., f32 phase, u8 cap, u8 join, f32 miter, u16 nPts, [f32 x, f32 y]..., u8 blend (v5)
-///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, f32 alpha (v9), u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
+///   4 Image:  6×f32 ctm, u32 w, u32 h, u8 format, f32 alpha (v9), u8 blend (v10), u32 len, [bytes] (format 0=RGBA8888, 1=JPEG)
 ///   5 ClipPush: u8 evenOdd, u16 nPts, [f32 x,y]..., u16 nPathOps, [u8 kind, coords]...  (path-ops section is v4)
 ///              path-op kinds: 0 Move(2f32) 1 Line(2f32) 2 Cubic(6f32) 3 Close(0)
 ///   6 ClipPop: empty
@@ -143,7 +144,7 @@ pub fn serialize(page: &PageData) -> Vec<u8> {
                 write_points(&mut buf, pts);
                 buf.push(*blend as u8); // v5
             }
-            Prim::Image { ctm, w, h, format, data, alpha } => {
+            Prim::Image { ctm, w, h, format, data, alpha, blend } => {
                 buf.push(TAG_IMAGE);
                 for v in ctm {
                     buf.extend_from_slice(&(*v as f32).to_le_bytes());
@@ -154,6 +155,7 @@ pub fn serialize(page: &PageData) -> Vec<u8> {
                 // FIX #10: previously `alpha: _` was ignored, causing opaque rendering for transparent images.
                 // V9 now serializes per-image alpha (from SMask or alpha_fill).
                 buf.extend_from_slice(&alpha.to_le_bytes()); // v9
+                buf.push(*blend as u8); // v10: image blend mode
                 // FIX #9: data.len() as u32 truncates >4GB crafted image -> Kotlin OOB read.
                 // Use try_from and cap data to u32::MAX, ensuring length field matches actual bytes written.
                 let (len_u32, data_slice) = match u32::try_from(data.len()) {

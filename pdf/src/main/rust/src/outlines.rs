@@ -111,7 +111,8 @@ pub(crate) enum GlyphProgram {
     /// TrueType / OpenType (incl. OpenType-CFF) parsed lazily via ttf-parser.
     Sfnt { data: Vec<u8>, upm: f64 },
     /// Bare CFF (`/Type1C`, `/CIDFontType0C`) parsed via ttf-parser's CFF table.
-    Cff { data: Vec<u8>, upm: f64 },
+    /// `cid_to_gid` is the inverted charset for CID-keyed CFF (else `None`).
+    Cff { data: Vec<u8>, upm: f64, cid_to_gid: Option<HashMap<u32, u16>> },
     /// Bare Type 1 font, pre-interpreted to name -> contours.
     Type1(Type1Font),
 }
@@ -159,7 +160,9 @@ pub(crate) fn build_glyph_program(
             // which are zero for essentially all text fonts.
             let sx = table.matrix().sx as f64;
             let upm = if sx.abs() > 1e-9 { 1.0 / sx } else { 1000.0 };
-            return Some(GlyphProgram::Cff { data, upm });
+            // CID-keyed CFF: build the charset CID->GID map so CIDs select glyphs.
+            let cid_to_gid = crate::cff::cid_to_gid_map(&data);
+            return Some(GlyphProgram::Cff { data, upm, cid_to_gid });
         }
     }
     // Bare Type 1 (`/FontFile`): eexec-encrypted charstrings.
@@ -207,9 +210,9 @@ pub(crate) fn glyph_outline(fi: &FontInfo, code: u32) -> Option<(Vec<Vec<(f64, f
             }
             Some((contours, *upm))
         }
-        GlyphProgram::Cff { data, upm } => {
+        GlyphProgram::Cff { data, upm, cid_to_gid } => {
             let table = ttf_parser::cff::Table::parse(data)?;
-            let gid = resolve_cff_gid(fi, &table, code)?;
+            let gid = resolve_cff_gid(fi, &table, code, cid_to_gid.as_ref())?;
             let mut cb = ContourBuilder::new();
             let mut sink = TtfSink(&mut cb);
             table.outline(gid, &mut sink).ok()?;
@@ -222,15 +225,20 @@ pub(crate) fn glyph_outline(fi: &FontInfo, code: u32) -> Option<(Vec<Vec<(f64, f
     }
 }
 
-/// Map a content-stream code to a glyph id in a bare CFF table.
-fn resolve_cff_gid(fi: &FontInfo, table: &ttf_parser::cff::Table, code: u32) -> Option<ttf_parser::GlyphId> {
+/// Map a content-stream code to a glyph id in a bare CFF table. `cff_cid_to_gid`
+/// is the font's own charset inversion for CID-keyed CFF.
+fn resolve_cff_gid(fi: &FontInfo, table: &ttf_parser::cff::Table, code: u32, cff_cid_to_gid: Option<&HashMap<u32, u16>>) -> Option<ttf_parser::GlyphId> {
     let n = table.number_of_glyphs();
     let as_gid = |g: u32| -> Option<ttf_parser::GlyphId> {
         if g < n as u32 { Some(ttf_parser::GlyphId(g as u16)) } else { None }
     };
     if fi.two_byte {
-        // CID-keyed CFF: approximate CID->GID via CIDToGIDMap or identity.
-        let gid = fi.cid_to_gid.as_ref().and_then(|m| m.get(&code).copied()).unwrap_or(code as u16);
+        // Map code -> CID (via /Encoding CMap), then CID -> GID: prefer the PDF
+        // /CIDToGIDMap, then the CFF's own charset, then identity.
+        let cid = fi.to_cid(code);
+        let gid = fi.cid_to_gid.as_ref().and_then(|m| m.get(&cid).copied())
+            .or_else(|| cff_cid_to_gid.and_then(|m| m.get(&cid).copied()))
+            .unwrap_or(cid as u16);
         return as_gid(gid as u32);
     }
     // Simple CFF: prefer glyph name, then the CFF's own 8-bit encoding.
@@ -261,8 +269,10 @@ fn resolve_gid(fi: &FontInfo, face: &ttf_parser::Face, code: u32) -> Option<ttf_
     };
 
     if fi.two_byte {
-        // Type0/CID: CID -> GID via CIDToGIDMap, else identity.
-        let gid = fi.cid_to_gid.as_ref().and_then(|m| m.get(&code).copied()).unwrap_or(code as u16);
+        // Type0/CID: map code -> CID (via /Encoding CMap) then CID -> GID via
+        // CIDToGIDMap, else identity.
+        let cid = fi.to_cid(code);
+        let gid = fi.cid_to_gid.as_ref().and_then(|m| m.get(&cid).copied()).unwrap_or(cid as u16);
         return as_gid(gid as u32);
     }
 

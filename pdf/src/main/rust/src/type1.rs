@@ -712,7 +712,7 @@ pub(crate) fn parse(data: &[u8]) -> Option<Type1Font> {
 
 /// Adobe StandardEncoding: code -> glyph name (used for the `StandardEncoding`
 /// shorthand and seac accent composition). Covers the printable Latin range.
-static STANDARD_ENCODING: &[(u8, &str)] = &[
+pub(crate) static STANDARD_ENCODING: &[(u8, &str)] = &[
     (32, "space"), (33, "exclam"), (34, "quotedbl"), (35, "numbersign"), (36, "dollar"),
     (37, "percent"), (38, "ampersand"), (39, "quoteright"), (40, "parenleft"), (41, "parenright"),
     (42, "asterisk"), (43, "plus"), (44, "comma"), (45, "hyphen"), (46, "period"),

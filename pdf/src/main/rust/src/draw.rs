@@ -156,16 +156,25 @@ pub(crate) fn show_string(
     let italic = fi.style.italic;
     let family = fi.family;
     let has_program = fi.glyph_program.is_some();
+    // Vertical writing mode (WMode 1): glyphs advance down the page and are
+    // centered on the vertical line (PDF 9.4.4). Metrics use typical CJK values.
+    let vertical = fi.wmode == 1;
 
     fi.for_each_code(bytes, |code, is_space| {
-        let tx = fi.width(code) * tfs + gs.char_spacing + if is_space { gs.word_spacing } else { 0.0 };
+        let w0 = fi.width(code); // horizontal glyph width (em)
+        let tx = w0 * tfs + gs.char_spacing + if is_space { gs.word_spacing } else { 0.0 };
         let glyph_advance_user = tx * th; // accurate advance using /Widths /W
-        // Map to device for advance field (used in search rect) - we store device advance as size * glyphCount? Actually plan says emit advance in Text prim extra
-        // Compute device-space x advance via trm x scale: approximated via y_scale already for size, but use x scale of CTM? We'll store glyph_advance_user * y_scale as device equivalent for simplicity, but Kotlin uses Paint.measureText fallback.
-        // Emit glyphs for every mode except 3 (invisible). Clip-only mode 7
-        // still emits (with no paint) so Kotlin can add the outline to the clip.
+        // Placement point (text space) and pen advance depend on writing mode.
+        // Vertical: center horizontally (-w0/2), drop by the vertical origin
+        // (~0.88 em), and advance one em downward (plus Tc/Tw).
+        let (place_x, place_y, advance) = if vertical {
+            let adv_down = tfs + gs.char_spacing + if is_space { gs.word_spacing } else { 0.0 };
+            (-0.5 * w0 * tfs, pen - 0.880 * tfs, -adv_down)
+        } else {
+            (pen, gs.rise, glyph_advance_user)
+        };
         if gs.render_mode != 3 {
-            let (x, y) = transform(&trm, pen, gs.rise);
+            let (x, y) = transform(&trm, place_x, place_y);
             let mut s = String::new();
             fi.push_code(code, &mut s);
             if !s.is_empty() {
@@ -175,7 +184,11 @@ pub(crate) fn show_string(
                 let has_stroke = matches!(gs.render_mode, 1|2|5|6);
                 let clip_only = gs.render_mode == 7;
                 let rm = gs.render_mode as u8;
-                let glyph_device_adv = (glyph_advance_user * x_scale) as f32;
+                let glyph_device_adv = if vertical {
+                    (advance.abs() * y_scale) as f32
+                } else {
+                    (glyph_advance_user * x_scale) as f32
+                };
                 // Real embedded outline for pure paint modes (0/1/2). Clip modes
                 // (4-7) keep the substitute-glyph path so Kotlin can build the clip.
                 let outline = if has_program && matches!(gs.render_mode, 0 | 1 | 2) {
@@ -188,7 +201,7 @@ pub(crate) fn show_string(
                     // translate(pen, rise) · Tm · CTM. Mirrors the Type 3 pipeline.
                     let font_matrix: Mat = [1.0 / upm, 0.0, 0.0, 1.0 / upm, 0.0, 0.0];
                     let scale_m: Mat = [tfs * th, 0.0, 0.0, tfs, 0.0, 0.0];
-                    let place = translate(pen, gs.rise);
+                    let place = translate(place_x, place_y);
                     let m1 = mat_mul(&scale_m, &mat_mul(&place, &trm));
                     let glyph_ctm = mat_mul(&font_matrix, &m1);
                     let dev: Vec<Vec<(f32, f32)>> = contours
@@ -310,7 +323,7 @@ pub(crate) fn show_string(
                 }
             }
         }
-        pen += glyph_advance_user;
+        pen += advance;
     });
     // Enforce primitive cap
     if prims.len() > MAX_PRIMITIVES {

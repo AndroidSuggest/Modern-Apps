@@ -35,6 +35,7 @@ mod filters;
 mod functions;
 pub(crate) use functions::*;
 mod cff;
+mod afm;
 mod type1;
 mod outlines;
 mod glyphlist;

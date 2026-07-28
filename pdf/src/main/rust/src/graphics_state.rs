@@ -85,6 +85,9 @@ pub(crate) struct GraphicsState {
     pub(crate) h_scale: f64,
     /// Text rise (Ts), user-space units.
     pub(crate) rise: f64,
+    /// Text leading (TL), user-space units. Part of the text state, so it is
+    /// saved/restored by q/Q.
+    pub(crate) leading: f64,
     /// Text rendering mode (Tr). 3 = invisible, 7 = clip-only (not drawn).
     pub(crate) render_mode: i64,
     /// Dash pattern (user-space segment lengths) and phase; empty = solid.
@@ -123,6 +126,7 @@ impl Default for GraphicsState {
             word_spacing: 0.0,
             h_scale: 1.0,
             rise: 0.0,
+            leading: 0.0,
             render_mode: 0,
             dash: Vec::new(),
             dash_phase: 0.0,
