@@ -4,7 +4,7 @@
     <string name="all_accounts">Kõik kasutajakontod</string>
     <string name="add_account">Lisa kasutajakonto</string>
     <string name="logout_current_account">Logi praegusest kasutajakontost välja</string>
-    <string name="selected_count">%1$d on valitud</string>
+    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; on valitud</string>
     <string name="reply">Vasta</string>
     <string name="forward">Edasta</string>
     <string name="compose">Koosta kiri</string>
@@ -15,12 +15,12 @@
     <string name="subject_label">Kirja pealkiri</string>
     <string name="body_label">Kirja sisu</string>
     <string name="outbox">Saadetud</string>
-    <string name="outbox_with_count">Saadetud (%1$d)</string>
+    <string name="outbox_with_count">Saadetud (&lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt;)</string>
     <string name="send_now">Saada kohe</string>
     <string name="email_address">E-posti aadress</string>
     <string name="testing_connection">Testin ühenduse toimimist…</string>
     <string name="test_connection_and_save">Testi ühendust ja salvesta</string>
-    <string name="open_app_password_help">Ava rakenduse salasõna abiteave: %1$s</string>
+    <string name="open_app_password_help">Ava rakenduse salasõna abiteave: &lt;xliff:g id=\"provider\" example=\"Google\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="host_label">Server</string>
     <string name="port_label">Port</string>
     <string name="ssl_tls">SSL/TLS</string>
@@ -31,4 +31,14 @@
     <string name="save">Salvesta</string>
     <string name="cancel">Katkesta</string>
     <string name="email_widget_description">Vaata e-kirju ühtsest postkastist - klõpsa ja ava E-post</string>
+    <string name="sign_in_with_microsoft">Logi sisse Microsofti teenusega</string>
+    <string name="account_added">Kasutajakonto on lisatud</string>
+    <string name="username">Kasutajanimi</string>
+    <string name="username_is_not_my_email">Kasutajanimi pole minu e-posti aadress</string>
+    <string name="smtp_outgoing">SMTP (saadetavad kirjad)</string>
+    <string name="imap_incoming">IMAP (saabuvad kirjad)</string>
+    <string name="how_to_get_your_app_password">Kust leiad oma rakenduse salasõna</string>
+    <string name="app_password">Rakenduse salasõna</string>
+    <string name="password">Salasõna</string>
+    <string name="open">Ava</string>
 </resources>
