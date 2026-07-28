@@ -10,6 +10,8 @@ launcherIcon {
 
 android {
     defaultConfig {
+        versionCode = 20260728
+        versionName = "v2.6.3"
         minSdk = 35
         applicationId = "com.vayunmathur.passwords"
     }

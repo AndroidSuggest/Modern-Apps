@@ -9,6 +9,8 @@ launcherIcon {
 
 android {
     defaultConfig {
+        versionCode = 20260728
+        versionName = "v2.6.3"
         applicationId = "com.vayunmathur.office"
     }
     // Ship the real sample documents (metadata_data/assets) inside the instrumented
