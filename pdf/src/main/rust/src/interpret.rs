@@ -1,12 +1,12 @@
 use crate::*;
 
 pub(crate) fn bezier_steps_for_flatness(flatness: f64) -> usize {
+    // PDF spec: flatness is tolerance, higher => fewer steps (previously inverted)
     if flatness <= 0.0 {
         return BEZIER_STEPS;
     }
-    // Higher flatness tolerates coarser curves; we do inverse of spec tolerance: steps ~ 16 * (1 + flatness/3) clamped 4..32
-    let steps = (BEZIER_STEPS as f64 * (1.0 + flatness / 3.0)).round() as usize;
-    steps.clamp(4, 32)
+    let steps = (BEZIER_STEPS as f64 / (1.0 + flatness / 3.0)).round() as usize;
+    steps.clamp(1, 32)
 }
 
 pub(crate) fn shoelace_area(pts: &[(f64,f64)]) -> f64 {
@@ -19,64 +19,60 @@ pub(crate) fn shoelace_area(pts: &[(f64,f64)]) -> f64 {
     area * 0.5
 }
 
-/// Parse ExtGState dash `D`: handles both normalized forms:
-/// - [[2 1] 0.5] -> outer array len=2, elem0=inner array of dashes, elem1=phase num
-/// - [3 3 0] flat where last entry is phase (spec allows but some writers do)
-/// - simple dash array [2 1] -> phase 0
-/// Filters negative values (>=0 guard) and returns (dashes, phase).
+/// Parse ExtGState dash `D`: Spec §8.4.3.6 canonical is [[dashArray] phase] nested. Flat [a b c] lenient where last=phase only for len>=3 (critical fix: pure [3 3] must NOT become [3] phase 3).
 pub(crate) fn parse_dash_d_array(doc: &Document, arr: &[Object]) -> (Vec<f64>, f64) {
     const MAX_DASH: usize = 64;
     if arr.is_empty() {
         return (Vec::new(), 0.0);
     }
-    // Case: [[dashArray] phase] — first array, second num
+    // Canonical nested [[dashArray] phase]
     if arr.len() == 2 {
-        if let Some(inner) = arr[0].as_array().ok().or_else(|| deref(doc, &arr[0]).and_then(|o| o.as_array().ok())) {
-            if let Some(phase) = deref(doc, &arr[1]).and_then(num).or_else(|| num(&arr[1])) {
-                let dashes: Vec<f64> = inner.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).filter(|v| *v >= 0.0).take(MAX_DASH).collect();
-                return (dashes, phase);
-            }
+        let first_is_arr = matches!(arr[0], Object::Array(_)) || matches!(deref(doc, &arr[0]), Some(Object::Array(_)));
+        if first_is_arr {
+            let inner = match &arr[0] {
+                Object::Array(a) => a.clone(),
+                _ => deref(doc, &arr[0]).and_then(|o| o.as_array().ok()).cloned().unwrap_or_default(),
+            };
+            let phase = deref(doc, &arr[1]).and_then(num).or_else(|| num(&arr[1])).unwrap_or(0.0);
+            let dashes: Vec<f64> = inner.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).filter(|v| *v >= 0.0).take(MAX_DASH).collect();
+            return (dashes, phase);
         }
     }
-    // Case: flat [dashes..., phase] ? but spec says phase separate; we support fallback where len>=2 and treating last as phase if array length >1 and last is num and preceding are dashes
-    // However canonical ExtGState /D is [dashArray phase] nested, so flat is less common. For safety:
-    // If arr contains only numbers, treat as dash only (phase 0) — operator form.
-    // If caller wants to handle [dash..., phase] flat, we can do: if last element numeric and len>1 and this arr is NOT a nested dash array, interpret last as phase and rest as dashes.
-    // The plan says to support flat [3 3 0] where last = phase. So attempt:
-    let derefed_nums: Vec<f64> = arr.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).collect();
-    if derefed_nums.is_empty() {
+    // Check for any nested arrays
+    let has_nested = arr.iter().any(|o| matches!(o, Object::Array(_)) || matches!(deref(doc, o), Some(Object::Array(_))));
+    let nums: Vec<f64> = arr.iter().filter_map(|o| deref(doc, o).and_then(num).or_else(|| num(o))).collect();
+    if has_nested {
+        let mut dashes = Vec::new();
+        for o in arr {
+            match o {
+                Object::Array(inner) => {
+                    dashes.extend(inner.iter().filter_map(|x| deref(doc, x).and_then(num).or_else(|| num(x))).filter(|v| *v >= 0.0));
+                }
+                _ => {
+                    if let Some(Object::Array(inner)) = deref(doc, o) {
+                        dashes.extend(inner.iter().filter_map(|x| deref(doc, x).and_then(num).or_else(|| num(x))).filter(|v| *v >= 0.0));
+                    }
+                }
+            }
+        }
+        if dashes.is_empty() {
+            dashes = nums;
+        }
+        return (dashes.into_iter().filter(|v| *v >= 0.0).take(MAX_DASH).collect(), 0.0);
+    }
+    if nums.is_empty() {
         return (Vec::new(), 0.0);
     }
-    // If originally arr[0] is an array-like and len==2 already handled, fall through
-    // Check if total array was actually 2 elements where first is array – already returned.
-    // Now if this array contains only numbers and we are parsing ExtGState D that was mistakenly flattened as numbers only (no nested), the spec still expects [dashArray phase] but writer may flatten?
-    // The plan's second case is inline d operator style? Actually for safety: if arr len>=2 and this is being called for both d-operator (phase separate) vs D-array, but we unify: for D-array that is nested we already handled.
-    // For D-array that appears as flat numbers [2 1 0.5]? That would be ambiguous: last could be phase. We adopt heuristic: if len>=3 treat last as phase only if dash count>=1 and caller explicitly wants flat phase detection.
-    // Here for ExtGState we will treat flat as: all numbers except last are dash, last is phase if len>=2 (configurable).
-    // But to avoid breaking normal dash arrays, we introduce a version that checks if arr was originally [dashArray phase] nested vs flat numeric. For flat numeric case [3 3 0] -> dashes [3,3] phase 0.
-    // We'll decide: if arr.len() >=2 and all elements are numbers, return dashes = all except last if last < and previous dash count >0? Actually can't distinguish. Use heuristic: if last element interpreted as phase and second last interpretation as phase-not-dash? We'll treat as: if len>=2, dashes = derefed_nums[..len-1], phase = last, but only if len>=3 or dash len>0. However that would mis-handle pure dash array without phase.
-    // Since this function is specifically for ExtGState D which SHOULD be nested [dash phase], we should NOT do flat fallback for ExtGState unless caller requests. But plan says to support both.
-    // So we will: if flat numeric array detected and its len>=2, return dashes = all but last, phase = last (as a lenient parse).
-    // The caller for operator d will not use this – it parses separately.
-    // For ExtGState D lenient, return dashes = derefed_nums[..len-1], phase = last if derefed_nums.len()>=2 else dash=derefed_nums, phase=0.
-    // However to avoid breaking a valid dash case where D = [ [dash] phase ] already handled, the remaining cases of flat numbers we treat as dash only if len==1? Let's just if len>=2 treat last as phase for ExtGState lenient mode.
-    // We'll return dash = filter >=0 for all but last, phase = last.
-    // This matches plan: "[ [3 3] 0 ] (Array len2 where elem0 Array + elem1 Num) and flat [3 3 0] (last = phase)". So flat case indeed implies len=3 last=phase.
-    // We'll implement lenient: if derefed_nums.len() >=2 and this function is called for ExtGState, interpret last as phase ONLY when arr is flat numbers (no nested arrays). That is, if arr.iter().all(|o| deref(doc,o).and_then(num).is_some() || num(o).is_some()) AND derefed_nums.len()>=2, then last=phase.
-    // To avoid breaking pure dash without phase, we only apply flat-phase heuristic when derefed_nums.len()>=2 AND caller explicitly wants flat-phase support? Plan says treat phase as dash previously – bug. So fixing means we should for ExtGState D that is flat numbers, interpret correctly.
-    // Implement:
-    const MAX_DASH_LOCAL: usize = 64;
-    let all_nums = arr.iter().all(|o| {
-        if let Some(Object::Array(_)) = deref(doc,o) { false } else { num(o).is_some() || deref(doc,o).and_then(num).is_some() }
-    });
-    if all_nums && derefed_nums.len() >= 2 {
-        let phase = derefed_nums.last().copied().unwrap_or(0.0);
-        let dashes: Vec<f64> = derefed_nums[..derefed_nums.len()-1].iter().copied().filter(|v| *v >=0.0).take(MAX_DASH_LOCAL).collect();
-        return (dashes, phase);
+    // Lenient flat [dashes..., phase] only for len>=3 to avoid [3 3] bug
+    if nums.len() >= 3 {
+        let phase = nums.last().copied().unwrap_or(0.0);
+        let dashes: Vec<f64> = nums[..nums.len()-1].iter().copied().filter(|v| *v >= 0.0).take(MAX_DASH).collect();
+        (dashes, phase)
+    } else {
+        (nums.into_iter().filter(|v| *v >= 0.0).take(MAX_DASH).collect(), 0.0)
     }
-    // Otherwise pure dash array
-    (derefed_nums.into_iter().filter(|v| *v >=0.0).take(MAX_DASH_LOCAL).collect(), 0.0)
 }
+
 
 pub(crate) fn parse_dash_extgstate(doc: &Document, obj: &Object) -> (Vec<f64>, f64) {
     match deref(doc, obj).unwrap_or(obj) {
@@ -156,8 +152,21 @@ pub(crate) fn interpret_content(
     struct SavedState {
         gs: GraphicsState,
         clip_depth: usize,
+        group_depth: usize,
     }
     let mut stack: Vec<SavedState> = Vec::new();
+    let mut q_overflow: usize = 0;
+
+    fn emit_one_clip(prims: &mut Vec<Prim>, pc: PendingClip, clip_depth: &mut usize, text_only: bool, oc_hidden: bool) {
+        if text_only || oc_hidden { return; }
+        if *clip_depth >= MAX_CLIP_DEPTH { return; }
+        let has_valid = pc.polys.iter().any(|poly| poly.len() >= 3 && shoelace_area(poly).abs() >= 1e-3) || !pc.path_ops.is_empty();
+        if !has_valid && pc.polys.is_empty() && pc.path_ops.is_empty() { return; }
+        let pts: Vec<(f32,f32)> = pc.polys.first().map(|p| p.iter().map(|&(x,y)| (x as f32, y as f32)).collect()).unwrap_or_default();
+        let po = if pc.path_ops.is_empty() { None } else { Some(pc.path_ops) };
+        prims.push(Prim::ClipPush { even_odd: pc.even_odd, pts, path_ops: po });
+        *clip_depth += 1;
+    }
 
     let mut text_matrix = IDENTITY;
     let mut line_matrix = IDENTITY;
@@ -187,23 +196,27 @@ pub(crate) fn interpret_content(
         let o = &op.operands;
         match op.operator.as_str() {
             "q" => {
-                // P3 hardening: cap early and also bound subpath count growth to avoid DOS.
-                const MAX_SUBPATHS: usize = 20000;
+                const MAX_SUBPATHS_LOCAL: usize = 20000;
                 if stack.len() < MAX_GRAPHICS_STACK {
-                    stack.push(SavedState { gs: gs.clone(), clip_depth });
+                    stack.push(SavedState { gs: gs.clone(), clip_depth, group_depth });
+                } else {
+                    q_overflow += 1;
                 }
-                // Do not allow unbounded path building between q/Q
-                if subpaths.len() > MAX_SUBPATHS {
-                    subpaths.truncate(MAX_SUBPATHS);
+                if subpaths.len() > MAX_SUBPATHS_LOCAL {
+                    subpaths.truncate(MAX_SUBPATHS_LOCAL);
                 }
             }
             "Q" => {
-                if let Some(saved) = stack.pop() {
+                if q_overflow > 0 {
+                    q_overflow -= 1;
+                } else if let Some(saved) = stack.pop() {
                     while clip_depth > saved.clip_depth {
-                        if !text_only {
-                            prims.push(Prim::ClipPop);
-                        }
+                        if !text_only { prims.push(Prim::ClipPop); }
                         clip_depth = clip_depth.saturating_sub(1);
+                    }
+                    while group_depth > saved.group_depth {
+                        if !text_only { prims.push(Prim::GroupPop); }
+                        group_depth = group_depth.saturating_sub(1);
                     }
                     gs = saved.gs;
                 }
@@ -214,37 +227,29 @@ pub(crate) fn interpret_content(
                 }
             }
             "w" => {
-                if let Some(v) = o.first().and_then(num) {
-                    gs.line_width = v;
-                }
+                if let Some(v) = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x))) { gs.line_width = v; }
             }
             "J" => {
-                if let Some(v) = o.first().and_then(num) {
-                    gs.line_cap = (v as i64).clamp(0,2) as u8;
-                }
+                if let Some(v) = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x))) { gs.line_cap = (v as i64).clamp(0,2) as u8; }
             }
             "j" => {
-                if let Some(v) = o.first().and_then(num) {
-                    gs.line_join = (v as i64).clamp(0,2) as u8;
-                }
+                if let Some(v) = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x))) { gs.line_join = (v as i64).clamp(0,2) as u8; }
             }
             "M" => {
-                if let Some(v) = o.first().and_then(num) {
-                    gs.miter_limit = v;
-                }
+                if let Some(v) = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x))) { gs.miter_limit = v; }
             }
             "i" => {
-                if let Some(v) = o.first().and_then(num) {
-                    gs.flatness = v.clamp(0.0, 100.0);
-                }
+                if let Some(v) = o.first().and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x))) { gs.flatness = v.clamp(0.0, 100.0); }
             }
             "d" => {
                 const MAX_DASH_LEN: usize = 64;
-                if let Some(Object::Array(arr)) = o.first() {
-                    let dashes: Vec<f64> = arr.iter().filter_map(num).filter(|v| *v >= 0.0).take(MAX_DASH_LEN).collect();
-                    gs.dash = dashes;
-                }
-                gs.dash_phase = o.get(1).and_then(num).unwrap_or(0.0);
+                let dash_obj = o.first().and_then(|x| deref(doc, x).or(Some(x)));
+                let mut dashes = if let Some(Object::Array(arr)) = dash_obj {
+                    arr.iter().filter_map(|x| deref(doc, x).and_then(num).or_else(|| num(x))).filter(|v| *v >= 0.0).take(MAX_DASH_LEN).collect()
+                } else { Vec::new() };
+                if dashes.len() % 2 == 1 && !dashes.is_empty() { let cl = dashes.clone(); dashes.extend(cl); if dashes.len() > MAX_DASH_LEN { dashes.truncate(MAX_DASH_LEN); } }
+                gs.dash = dashes;
+                gs.dash_phase = o.get(1).and_then(|x| deref(doc, x).and_then(num).or_else(|| num(x))).unwrap_or(0.0);
             }
             "gs" => {
                 if let Some(Object::Name(name)) = o.first() {
@@ -278,11 +283,10 @@ pub(crate) fn interpret_content(
                             gs.miter_limit = v;
                         }
                         if let Some(d_obj) = dict.get(b"D").ok().and_then(|obj| deref(doc, obj).or(Some(obj))) {
+                            // P1 fix: /D [] 0 must reset to solid (was previously ignored)
                             let (dashes, phase) = parse_dash_extgstate(doc, d_obj);
-                            if !dashes.is_empty() || phase != 0.0 {
-                                gs.dash = dashes;
-                                gs.dash_phase = phase;
-                            }
+                            gs.dash = dashes;
+                            gs.dash_phase = phase;
                         }
                         if let Some(bm_obj) = dict.get(b"BM").ok().and_then(|obj| deref(doc, obj).or(Some(obj))) {
                             if let Ok(n) = bm_obj.as_name() {
@@ -312,8 +316,7 @@ pub(crate) fn interpret_content(
                         if let Some(v) = dict.get(b"OPM").ok().and_then(num) {
                             gs.overprint_mode = (v as i64).clamp(0, 1) as u8;
                         }
-                        // Soft mask: /SMask /None clears; a dict << /S /Luminosity|/Alpha
-                        // /G <group stream ref> >> sets a luminosity/alpha soft mask.
+                        // Soft mask: /SMask /None clears; dict may have /G as Ref OR direct Stream (P0 fix)
                         if let Some(sm_raw) = dict.get(b"SMask").ok() {
                             if let Ok(n) = sm_raw.as_name() {
                                 if n == b"None" { gs.soft_mask = None; }
@@ -321,22 +324,22 @@ pub(crate) fn interpret_content(
                                 if let Ok(smdict) = sm.as_dict() {
                                     let mask_type = match smdict.get(b"S").ok().and_then(|o| o.as_name().ok()) {
                                         Some(b"Luminosity") => 1u8,
-                                        _ => 0u8, // Alpha (default)
+                                        _ => 0u8,
                                     };
-                                    // /BC backdrop color (components in the group's colorspace).
                                     let backdrop = smdict.get(b"BC").ok()
                                         .and_then(|o| deref(doc, o))
                                         .and_then(|o| o.as_array().ok())
                                         .map(|a| a.iter().filter_map(num).collect::<Vec<f64>>())
                                         .filter(|v| !v.is_empty());
-                                    // /G must be an indirect reference to the group stream.
-                                    if let Some(Object::Reference(gid)) = smdict.get(b"G").ok() {
-                                        gs.soft_mask = Some(SoftMask {
-                                            group_id: *gid,
-                                            mask_type,
-                                            ctm: gs.ctm,
-                                            backdrop,
-                                        });
+                                    // /G can be Ref or direct Stream/Dict — handle both
+                                    let gid_opt = smdict.get(b"G").ok().and_then(|g| {
+                                        if let Object::Reference(id) = g { Some(*id) }
+                                        else if let Some(Object::Reference(id)) = deref(doc, g) {
+                                            match deref(doc, g) { Some(Object::Reference(_)) => Some(*id), _ => g.as_reference().ok() }
+                                        } else { g.as_reference().ok() }
+                                    });
+                                    if let Some(gid) = gid_opt {
+                                        gs.soft_mask = Some(SoftMask { group_id: gid, mask_type, ctm: gs.ctm, backdrop });
                                     }
                                 }
                             }
