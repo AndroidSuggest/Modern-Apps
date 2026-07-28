@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Photos</string>
     <string name="close">Fermer</string>
     <string name="month_year_format">%1$s %2$d</string>
@@ -222,4 +222,16 @@
     <string name="editor_desc_selective">Peindre un réglage sur des zones précises.</string>
     <string name="done">Terminer</string>
     <string name="tool_line">Ligne</string>
+    <string name="set_as_wallpaper">Définir comme fond d’écran</string>
+    <string name="wallpaper_home">Écran d’accueil</string>
+    <string name="wallpaper_lock">Écran de verrouillage</string>
+    <string name="wallpaper_both">Les deux</string>
+    <string name="wallpaper_static">Fixe</string>
+    <string name="wallpaper_scrollable">Défilant</string>
+    <string name="wallpaper_scrollable_desc">Les fonds d’écran défilants sont plus larges et se déplacent lorsque vous balayez l’écran pour passer d’un écran d’accueil à l’autre</string>
+    <string name="set_wallpaper">Définir le fond d’écran</string>
+    <string name="setting_wallpaper">Définition du fond d’écran…</string>
+    <string name="wallpaper_set_success">Fond d’écran appliqué !</string>
+    <string name="wallpaper_set_failed">Échec de l’application du fond d’écran : <xliff id="error" example="IO error">%1$s</xliff></string>
+    <string name="wallpaper_load_failed">Impossible de charger l’image</string>
 </resources>
