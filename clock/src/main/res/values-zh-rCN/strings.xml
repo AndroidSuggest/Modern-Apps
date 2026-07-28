@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Clock</string>
+    <string name="app_name">时钟</string>
     <string name="label_alarm">闹钟</string>
     <string name="label_clock">时钟</string>
     <string name="label_timer">定时器</string>
