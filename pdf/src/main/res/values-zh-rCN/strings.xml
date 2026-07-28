@@ -21,11 +21,11 @@
     <string name="encrypt_with_password">使用密码加密</string>
     <string name="signed_and_saved">已签名并保存</string>
     <string name="sign">签名</string>
-    <string name="opacity">不透明度 %1$s%</string>
+    <string name="opacity">不透明度 &lt;xliff:g id=\"value\" example=\"75\"&gt;%1$s&lt;/xliff:g&gt;%</string>
     <string name="pdf_cut_and_glue">PDF 剪切与粘贴</string>
     <string name="save_as_u2026">另存为…</string>
     <string name="failed_to_save_pdf">无法保存 PDF</string>
-    <string name="line_width">线宽 %1$s</string>
+    <string name="line_width">线宽 &lt;xliff:g id=\"width\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="callout">标注</string>
     <string name="copied">已复制</string>
     <string name="style">样式</string>
