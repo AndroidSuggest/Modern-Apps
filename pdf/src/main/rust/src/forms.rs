@@ -146,7 +146,7 @@ pub(crate) fn list_links(handle: i64, page_index: i32) -> Option<Vec<u8>> {
 }
 
 pub(crate) fn list_form_fields(handle: i64, page_index: i32) -> Option<Vec<u8>> {
-    let reg = registry().lock().unwrap();
+    let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let doc = reg.get(&handle)?;
     let page_id = nth_page_id(doc, page_index)?;
     let base = page_base_matrix(doc, page_id);
@@ -170,15 +170,18 @@ pub(crate) fn list_form_fields(handle: i64, page_index: i32) -> Option<Vec<u8>> 
             };
             let is_widget = dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok())
                 == Some(b"Widget".as_ref());
+            // Follow Parent T to locate AcroForm field type - handle nested field attrs
             let ft = field_attr(doc, id, b"FT").and_then(|o| o.as_name().ok());
             if !is_widget || ft.is_none() {
                 continue;
             }
             let ft = ft.unwrap();
+            // P0 fix #8: Sig distinct type 4, not generic 3
             let type_code = match ft {
                 b"Tx" => 0u8,
                 b"Btn" => 1u8,
                 b"Ch" => 2u8,
+                b"Sig" => 4u8,
                 _ => 3u8,
             };
             let rect = match dict.get(b"Rect").ok().and_then(|o| read_rect(doc, o)) {
@@ -194,10 +197,19 @@ pub(crate) fn list_form_fields(handle: i64, page_index: i32) -> Option<Vec<u8>> 
                 .and_then(|o| o.as_str().ok())
                 .map(decode_pdf_text)
                 .unwrap_or_default();
+            // P0 fix #10: Choice multi-select V can be array
             let value = field_attr(doc, id, b"V")
                 .map(|o| match o {
                     Object::String(s, _) => decode_pdf_text(s),
                     Object::Name(n) => String::from_utf8_lossy(n).into_owned(),
+                    Object::Array(arr) => {
+                        // Multi-select array of strings
+                        arr.iter().filter_map(|x| match x {
+                            Object::String(s, _) => Some(decode_pdf_text(s)),
+                            Object::Name(n) => Some(String::from_utf8_lossy(n).into_owned()),
+                            _ => None,
+                        }).collect::<Vec<_>>().join(",")
+                    }
                     _ => String::new(),
                 })
                 .unwrap_or_default();
@@ -339,12 +351,23 @@ fn aligned_x(line: &str, w: f64, char_w: f64, quadding: i64) -> f64 {
 }
 
 pub(crate) fn set_text_field(handle: i64, widget_id: i64, value: &str) -> bool {
-    let mut reg = registry().lock().unwrap();
+    // Fix #11 medium: widget not parent — walk Parent chain to root field to set V on parent so all widgets reflect
+    let mut reg = registry().lock().unwrap_or_else(|e| e.into_inner());
     let doc = match reg.get_mut(&handle) {
         Some(d) => d,
         None => return false,
     };
     let id = decode_id(widget_id);
+    // Find root field by walking Parent chain
+    let mut root_id = id;
+    for _ in 0..16 {
+        let parent_opt = doc.get_dictionary(root_id).ok().and_then(|d| d.get(b"Parent").ok()).and_then(|o| o.as_reference().ok());
+        if let Some(p) = parent_opt {
+            root_id = p;
+        } else {
+            break;
+        }
+    }
     let rect = doc
         .get_dictionary(id)
         .ok()
@@ -352,7 +375,7 @@ pub(crate) fn set_text_field(handle: i64, widget_id: i64, value: &str) -> bool {
         .and_then(|o| read_rect(doc, o))
         .map(normalize_rect);
     // Field flags / alignment / comb length (Q may be inherited from AcroForm).
-    let dict_ro = doc.get_dictionary(id).ok();
+    let dict_ro = doc.get_dictionary(root_id).ok().or_else(|| doc.get_dictionary(id).ok());
     let flags = dict_ro
         .and_then(|d| d.get(b"Ff").ok())
         .and_then(num)
@@ -375,16 +398,32 @@ pub(crate) fn set_text_field(handle: i64, widget_id: i64, value: &str) -> bool {
         make_appearance(doc, w, h, content, helvetica_resources())
     });
 
-    if let Ok(dict) = doc.get_dictionary_mut(id) {
+    // Set V on root field so all kids reflect
+    let set_root = if let Ok(dict) = doc.get_dictionary_mut(root_id) {
         dict.set("V", Object::string_literal(value));
-        if let Some(ap_id) = ap_id {
-            let mut ap = Dictionary::new();
-            ap.set("N", Object::Reference(ap_id));
-            dict.set("AP", Object::Dictionary(ap));
-        }
+        true
+    } else { false };
+    let set_widget = if root_id != id {
+        if let Ok(dict) = doc.get_dictionary_mut(id) {
+            dict.set("V", Object::string_literal(value));
+            if let Some(ap_id) = ap_id {
+                let mut ap = Dictionary::new();
+                ap.set("N", Object::Reference(ap_id));
+                dict.set("AP", Object::Dictionary(ap));
+            }
+            true
+        } else { false }
     } else {
-        return false;
-    }
+        if let Ok(dict) = doc.get_dictionary_mut(root_id) {
+            if let Some(ap_id) = ap_id {
+                let mut ap = Dictionary::new();
+                ap.set("N", Object::Reference(ap_id));
+                dict.set("AP", Object::Dictionary(ap));
+            }
+            true
+        } else { false }
+    };
+    if !set_root && !set_widget { return false; }
     set_need_appearances(doc);
     true
 }
