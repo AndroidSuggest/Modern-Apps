@@ -44,4 +44,5 @@
     <string name="empty_recommendations">Obejrzyj kilka filmów, aby otrzymać spersonalizowane rekomendacje</string>
     <string name="label_dearrow">Włącz DeArrow</string>
     <string name="label_dearrow_description">Zastąp clickbait\'owe tytuły i miniaturki alternatywnymi dostarczonymi przez społeczność</string>
+    <string name="cancel">Anuluj</string>
 </resources>
