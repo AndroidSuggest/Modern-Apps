@@ -4,14 +4,17 @@
     <string name="recording">Salvestan…</string>
     <string name="message_placeholder">Sõnum…</string>
     <string name="voice_message">Häälsõnum</string>
-    <string name="mic_error_format">Mikrofoni viga: %1$s</string>
+    <string name="mic_error_format">Mikrofoni viga: &lt;xliff:g id=\"error\" example=\"Õigused on puudu\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="new_conversation">Uus vestlus</string>
     <string name="perm_desc_inference">Võimaldab teistel rakendustel kasutada seadmes asuvat tehisintellekti järeldusteenust struktureeritud andmete väljastamiseks.</string>
-    <string name="error_prefix">Viga: %1$s</string>
+    <string name="error_prefix">Viga: &lt;xliff:g id=\"error\" example=\"Aegumine\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="inference_service">Järeldamise teenus</string>
     <string name="processing_ai_inference">Töötlen tehisaru järeldusi…</string>
     <string name="error_request_expired">Tööde järjekorras olnud päring aegus</string>
     <string name="error_inference_timeout">Järeldamine aegus</string>
     <string name="error_ai_engine_failed">Tehisaru mootor ebaõnnestus</string>
     <string name="error_ai_json_schema_mismatch">Tehisaru vastuses polnud skeemale vastavat korrektset JSON-sisu.</string>
+    <string name="settings_title">Seadistused</string>
+    <string name="memories">Meeldejäetud sisu</string>
+    <string name="no_memories_yet">Meeldejäetud sisu veel pole.</string>
 </resources>
