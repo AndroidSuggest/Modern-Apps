@@ -9,23 +9,29 @@ import org.xmlpull.v1.XmlPullParser
 internal class OoxmlTheme(
     val colors: Map<String, Long>,
     val majorFont: String?,
-    val minorFont: String?
+    val minorFont: String?,
+    // Slide-master color map (bg1/tx1/bg2/tx2/accent* -> a theme slot dk1/lt1/...). Empty = defaults.
+    val clrMap: Map<String, String> = emptyMap()
 ) {
     /**
      * Resolves a scheme color name (as it appears in `a:schemeClr val`, incl. tx1/bg1/tx2/bg2
      * aliases and dk1/lt1/...) to an 0xFFRRGGBB base, or null. `phClr` returns null (context color).
      */
     fun schemeColor(name: String?): Long? {
-        val key = when (name?.lowercase()) {
-            "tx1", "dk1" -> "dk1"
-            "bg1", "lt1" -> "lt1"
-            "tx2", "dk2" -> "dk2"
-            "bg2", "lt2" -> "lt2"
-            null, "phclr" -> return null
-            else -> name.lowercase()
+        val lc = name?.lowercase() ?: return null
+        if (lc == "phclr") return null
+        // Apply the slide master's <p:clrMap> for the placeholder aliases (can invert on dark templates);
+        // fall back to the standard tx1->dk1 / bg1->lt1 mapping when no map is present.
+        val key = clrMap[lc] ?: when (lc) {
+            "tx1" -> "dk1"; "bg1" -> "lt1"; "tx2" -> "dk2"; "bg2" -> "lt2"
+            else -> lc
         }
         return colors[key]
     }
+
+    /** Returns a copy of this theme with the given slide-master color map applied. */
+    fun withClrMap(map: Map<String, String>): OoxmlTheme =
+        if (map.isEmpty()) this else OoxmlTheme(colors, majorFont, minorFont, map)
 
     companion object {
         val DEFAULT = OoxmlTheme(

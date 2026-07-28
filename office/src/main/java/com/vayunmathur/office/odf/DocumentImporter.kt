@@ -26,6 +26,10 @@ object DocumentImporter {
             "pptx", "pptm", "potx", "potm", "ppsx", "ppsm" ->
                 OoxmlImporter.import(readBytes(context, uri), fileName)
                     ?: throw IllegalArgumentException("Unsupported or corrupt Office file")
+            "doc", "xls", "ppt" -> throw IllegalArgumentException(
+                "Legacy Microsoft Office 97-2003 files (.doc/.xls/.ppt) aren't supported. " +
+                    "Open the file in Office or LibreOffice and save it as .docx/.xlsx/.pptx (or ODF)."
+            )
             "csv" -> OdfParser.parseCsv(readText(context, uri), fileName, ',')
             "tsv", "tab" -> OdfParser.parseCsv(readText(context, uri), fileName, '\t')
             "md", "markdown" -> MarkdownOdfConverter.markdownToOdf(readText(context, uri), fileName.substringBeforeLast('.'))
@@ -39,6 +43,11 @@ object DocumentImporter {
     /** Detects the format from the bytes when the extension is unknown/absent. */
     private fun sniff(context: Context, uri: Uri, fileName: String): OdfDocument {
         val bytes = readBytes(context, uri)
+        // OLE/CFB compound file (legacy binary Office, or an encrypted OOXML container).
+        if (OoxmlImporter.isEncryptedOfficeFile(bytes)) throw IllegalArgumentException(
+            "This looks like a legacy or password-protected Office file. Save it as .docx/.xlsx/.pptx " +
+                "(or ODF) without a password and try again."
+        )
         val isZip = bytes.size >= 2 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
         return when {
             isZip && OoxmlImporter.looksLikeOoxml(bytes) ->

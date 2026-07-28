@@ -22,7 +22,9 @@ internal object ExcelNumFmt {
     )
 
     fun forBuiltin(id: Int): OdfNumberFormat? {
-        val code = BUILTINS[id] ?: if (id in 27..36 || id in 50..58) return parse("date") else return null
+        // 27-36 and 50-58 are locale/CJK date-time builtins; use a sensible default date pattern
+        // (the literal "date" is not a valid format code and yields garbage tokens).
+        val code = BUILTINS[id] ?: if (id in 27..36 || id in 50..58) return parse("yyyy-mm-dd") else return null
         if (code == "General") return null
         return parse(code)
     }
@@ -42,13 +44,16 @@ internal object ExcelNumFmt {
         // Strip color / condition brackets like [Red], [$-409], [>100] but keep [$...] currency payloads.
         val currency = extractCurrency(section)
         val cleaned = stripBrackets(section)
+        // Date detection must ignore quoted literals: 0" days" is a number, not a date.
+        val dateProbe = stripLiterals(section)
 
         val isText = cleaned.contains("@")
         val isScientific = cleaned.contains("E+", true) || cleaned.contains("E-", true)
-        val hasDate = !isScientific && containsDateToken(cleaned)
+        val hasDate = !isScientific && containsDateToken(dateProbe)
         val isFraction = cleaned.contains("/") && Regex("[?#0]\\s*/\\s*[?#0]").containsMatchIn(cleaned)
 
-        if (hasDate) return parseDateTime(cleaned)
+        // Keep quotes for the token parser so literal segments aren't parsed as date letters.
+        if (hasDate) return parseDateTime(stripBracketsKeepQuotes(section))
 
         if (isText) return null
 
@@ -97,15 +102,26 @@ internal object ExcelNumFmt {
                 'd' -> { val run = runLen(code, i, 'd'); tokens.add(OdfNumberToken(if (run >= 3) "day-of-week" else "day", style = if (run == 4 || run == 2) "long" else "short", textual = run >= 3)); i += run }
                 'h' -> { val run = runLen(code, i, 'h'); tokens.add(OdfNumberToken("hours", style = if (run >= 2) "long" else "short")); seenHour = true; seenTime = true; i += run }
                 's' -> { val run = runLen(code, i, 's'); tokens.add(OdfNumberToken("seconds", style = if (run >= 2) "long" else "short")); seenTime = true; i += run }
+                '"' -> {
+                    // Quoted literal segment.
+                    val end = code.indexOf('"', i + 1)
+                    val lit = if (end >= 0) code.substring(i + 1, end) else code.substring(i + 1)
+                    if (lit.isNotEmpty()) tokens.add(OdfNumberToken("text", text = lit))
+                    i = if (end >= 0) end + 1 else code.length
+                }
+                '\\' -> {
+                    // Backslash-escaped single literal char.
+                    if (i + 1 < code.length) { tokens.add(OdfNumberToken("text", text = code[i + 1].toString())); i += 2 } else i++
+                }
                 else -> {
                     if (code.startsWith("AM/PM", i, true)) { tokens.add(OdfNumberToken("am-pm")); i += 5 }
                     else if (code.startsWith("A/P", i, true)) { tokens.add(OdfNumberToken("am-pm")); i += 3 }
                     else {
-                        // literal text run until next token char
+                        // literal text run until next token char / quote / escape
                         val start = i
-                        while (i < code.length && code[i].lowercaseChar() !in "ymdhs" && !code.startsWith("AM/PM", i, true)) i++
+                        while (i < code.length && code[i].lowercaseChar() !in "ymdhs" && code[i] != '"' && code[i] != '\\' && !code.startsWith("AM/PM", i, true)) i++
                         val lit = code.substring(start, i)
-                        if (lit.isNotEmpty()) tokens.add(OdfNumberToken("text", text = lit.replace("\\", "").trim('"').ifEmpty { lit }))
+                        if (lit.isNotEmpty()) tokens.add(OdfNumberToken("text", text = lit))
                     }
                 }
             }
@@ -136,4 +152,12 @@ internal object ExcelNumFmt {
 
     private fun stripBrackets(code: String): String =
         code.replace(Regex("\\[[^]]*]"), "").replace("\"", "").replace("\\", "")
+
+    /** Removes bracket sections but keeps quoted literals intact (for the date token parser). */
+    private fun stripBracketsKeepQuotes(code: String): String =
+        code.replace(Regex("\\[[^]]*]"), "")
+
+    /** Removes bracket sections, quoted literals, and backslash escapes (for date detection). */
+    private fun stripLiterals(code: String): String =
+        code.replace(Regex("\\[[^]]*]"), "").replace(Regex("\"[^\"]*\""), "").replace(Regex("\\\\."), "")
 }

@@ -214,7 +214,10 @@ object OdfParser {
 
     private fun parseColor(hex: String): Long? {
         return try {
-            val colorStr = hex.removePrefix("#")
+            var colorStr = hex.trim().removePrefix("#")
+            // Expand 3-digit shorthand (#FFF -> #FFFFFF).
+            if (colorStr.length == 3) colorStr = colorStr.map { "$it$it" }.joinToString("")
+            if (colorStr.length != 6) return null
             0xFF000000L or colorStr.toLong(16)
         } catch (_: Exception) { null }
     }
@@ -404,7 +407,16 @@ object OdfParser {
                     "text-properties" -> {
                         if (getAttr(parser, "font-weight") == "bold") bold = true
                         if (getAttr(parser, "font-style") == "italic") italic = true
-                        getAttr(parser, "font-size")?.let { s -> fontSize = s.replace("pt", "").replace("px", "").toFloatOrNull() }
+                        getAttr(parser, "font-size")?.let { s ->
+                            fontSize = when {
+                                s.endsWith("pt") || s.endsWith("px") -> s.dropLast(2).toFloatOrNull()
+                                // Percentage font sizes are relative to a 12pt default.
+                                s.endsWith("%") -> s.dropLast(1).toFloatOrNull()?.let { it / 100f * 12f }
+                                s.endsWith("cm") || s.endsWith("mm") || s.endsWith("in") || s.endsWith("pc") ->
+                                    parseDimension(s).takeIf { it > 0f }?.let { it / (96f / 72f) } // px@96 -> pt
+                                else -> s.toFloatOrNull()
+                            }
+                        }
                         getAttr(parser, "font-name")?.let { fontFamily = it }
                         if (fontFamily == null) getAttr(parser, "font-family")?.let { fontFamily = it }
                         getAttr(parser, "text-underline-style")?.let { if (it != "none") { underline = true; underlineStyle = it } }
@@ -418,9 +430,13 @@ object OdfParser {
                         getAttr(parser, "color")?.let { color = parseColor(it) }
                         getAttr(parser, "background-color")?.let { if (it != "transparent") bgColor = parseColor(it) }
                         getAttr(parser, "text-position")?.let { tp ->
+                            // Format is "<vertical-shift>% <height>%"; a 0% shift is baseline, not super/sub.
+                            val shift = tp.substringBefore(' ').removeSuffix("%").trim().toFloatOrNull()
                             when {
-                                tp.startsWith("super") || (tp.contains("%") && !tp.startsWith("-")) -> superscript = true
-                                tp.startsWith("sub") || tp.startsWith("-") -> subscript = true
+                                tp.startsWith("super") -> superscript = true
+                                tp.startsWith("sub") -> subscript = true
+                                shift != null && shift > 0f -> superscript = true
+                                shift != null && shift < 0f -> subscript = true
                             }
                         }
                     }
@@ -676,7 +692,8 @@ object OdfParser {
                             numbered = true,
                             numberFormat = getAttr(parser, "num-format")?.ifEmpty { "1" } ?: "1",
                             prefix = getAttr(parser, "num-prefix") ?: "",
-                            suffix = getAttr(parser, "num-suffix") ?: ".",
+                            // ODF default for text:num-suffix is empty; only add "." when present.
+                            suffix = getAttr(parser, "num-suffix") ?: "",
                             startValue = getAttr(parser, "start-value")?.toIntOrNull() ?: 1
                         )
                     }
@@ -1119,6 +1136,35 @@ object OdfParser {
                         }
                         spans.add(OdfSpan(text = "", refKind = parser.name, refName = getAttr(parser, "name")))
                     }
+                    "title", "desc" -> {
+                        // svg:title/svg:desc inside a draw:frame are accessibility alt text (attach to
+                        // the frame's image), NOT text fields. text:title remains a real field. Either way
+                        // consume the whole subtree so its text never leaks into the paragraph. (alt-text fix)
+                        val isSvg = parser.namespace?.contains("svg") == true
+                        val isField = !isSvg && parser.name in FIELD_TAGS
+                        if (textBuffer.isNotEmpty() && (isSvg || isField)) {
+                            spans.add(makeSpan(textBuffer.toString(), currentStyleName, styles, currentHref))
+                            textBuffer.clear()
+                        }
+                        val kind = parser.name
+                        val d = parser.depth
+                        val fb = StringBuilder()
+                        var ev = parser.next()
+                        while (!(ev == XmlPullParser.END_TAG && parser.depth == d)) {
+                            if (ev == XmlPullParser.TEXT) fb.append(parser.text)
+                            if (ev == XmlPullParser.END_DOCUMENT) break
+                            ev = parser.next()
+                        }
+                        val t = fb.toString().trim()
+                        when {
+                            isSvg -> if (t.isNotEmpty() && imagesOut != null && imagesOut.isNotEmpty()) {
+                                val idx = imagesOut.size - 1
+                                imagesOut[idx] = if (kind == "title") imagesOut[idx].copy(altTitle = t)
+                                    else imagesOut[idx].copy(altDesc = t)
+                            }
+                            isField -> spans.add(makeSpan(fb.toString(), currentStyleName, styles, currentHref).copy(field = kind))
+                        }
+                    }
                     in FIELD_TAGS -> {
                         // ODF text field elements -> a span carrying the field kind + cached value. (Priority 2)
                         if (textBuffer.isNotEmpty()) {
@@ -1401,7 +1447,9 @@ object OdfParser {
                             else -> ListType.BULLET
                         }
                         listTypeStack.add(type)
-                        listItemCounter.add(0)
+                        // Honor text:start-value so numbered lists can begin at N (not always 1).
+                        val startValue = styleInfo?.levelStyle(listDepth)?.startValue ?: 1
+                        listItemCounter.add((startValue - 1).coerceAtLeast(0))
                         listStyleStack.add(styleInfo)
                     }
                     inBody && parser.name == "list-item" -> {
@@ -1489,16 +1537,21 @@ object OdfParser {
                 "table-cell" -> {
                     val colSpan = getAttr(parser, "number-columns-spanned")?.toIntOrNull() ?: 1
                     val rowSpan = getAttr(parser, "number-rows-spanned")?.toIntOrNull() ?: 1
+                    val repeated = getAttr(parser, "number-columns-repeated")?.toIntOrNull() ?: 1
                     val styleName = getAttr(parser, "style-name")
                     val resolved = resolveStyle(styleName, styles)
-                    cells.add(OdfTableCell(
-                        paragraphs = parseTableCellContent(parser, styles),
-                        colSpan = colSpan, rowSpan = rowSpan,
-                        backgroundColor = resolved.cellBackgroundColor,
-                        borderColor = resolved.cellBorderColor,
-                        formula = getAttr(parser, "formula"),
-                        verticalAlign = resolved.cellVerticalAlign
-                    ))
+                    val formula = getAttr(parser, "formula")
+                    val paragraphs = parseTableCellContent(parser, styles)
+                    repeat(repeated.coerceAtMost(100)) {
+                        cells.add(OdfTableCell(
+                            paragraphs = paragraphs,
+                            colSpan = colSpan, rowSpan = rowSpan,
+                            backgroundColor = resolved.cellBackgroundColor,
+                            borderColor = resolved.cellBorderColor,
+                            formula = formula,
+                            verticalAlign = resolved.cellVerticalAlign
+                        ))
+                    }
                 }
                 "covered-table-cell" -> {
                     val repeated = getAttr(parser, "number-columns-repeated")?.toIntOrNull() ?: 1
@@ -1880,6 +1933,17 @@ object OdfParser {
             }
             eventType = parser.next()
         }
+        // Drop trailing "filler" cells (spreadsheets pad each row out to 1024 columns via
+        // number-columns-repeated on an empty, unstyled cell). Keeping them bloats the grid width.
+        while (cells.isNotEmpty()) {
+            val last = cells.last()
+            val isFiller = last.text.isEmpty() && last.formula == null && !last.isCovered &&
+                last.backgroundColor == null && last.borderColor == null &&
+                last.borders?.isEmpty() != false && last.annotation == null &&
+                last.numberValue == null && last.spannedColumns == 1 && last.rowSpan == 1 &&
+                last.condFormats.isEmpty() && last.validationName == null && last.hyperlink == null
+            if (isFiller) cells.removeAt(cells.size - 1) else break
+        }
         return cells
     }
 
@@ -1890,8 +1954,14 @@ object OdfParser {
         val depth = parser.depth
         var eventType = parser.next()
         while (!(eventType == XmlPullParser.END_TAG && parser.depth == depth)) {
-            if (eventType == XmlPullParser.START_TAG && parser.name == "annotation") {
-                annotation = parseAnnotation(parser, styles)
+            if (eventType == XmlPullParser.START_TAG) when (parser.name) {
+                "annotation" -> annotation = parseAnnotation(parser, styles)
+                // Separate successive paragraphs within a cell with a line break.
+                "p" -> if (sb.isNotEmpty()) sb.append("\n")
+                // Whitespace-preserving inline elements (multi-space runs, tabs, line breaks).
+                "s" -> sb.append(" ".repeat((getAttr(parser, "c")?.toIntOrNull() ?: 1).coerceIn(0, 4096)))
+                "tab" -> sb.append("\t")
+                "line-break" -> sb.append("\n")
             } else if (eventType == XmlPullParser.TEXT) {
                 sb.append(parser.text)
             }
@@ -2083,12 +2153,14 @@ object OdfParser {
     // --- Shapes ---
 
     private fun parseShape(parser: XmlPullParser, styles: Map<String, StyleInfo>, shapeName: String): OdfShape {
-        val x = parseDimension(getAttr(parser, "x"))
-        val y = parseDimension(getAttr(parser, "y"))
-        val w = parseDimension(getAttr(parser, "width"))
-        val h = parseDimension(getAttr(parser, "height"))
-        val x2 = if (shapeName == "line") parseDimension(getAttr(parser, "x2")) else 0f
-        val y2 = if (shapeName == "line") parseDimension(getAttr(parser, "y2")) else 0f
+        // draw:line uses svg:x1/y1/x2/y2; all other shapes use svg:x/y/width/height.
+        val isLine = shapeName == "line"
+        val x = parseDimension(getAttr(parser, if (isLine) "x1" else "x"))
+        val y = parseDimension(getAttr(parser, if (isLine) "y1" else "y"))
+        val x2 = if (isLine) parseDimension(getAttr(parser, "x2")) else 0f
+        val y2 = if (isLine) parseDimension(getAttr(parser, "y2")) else 0f
+        val w = if (isLine) kotlin.math.abs(x2 - x) else parseDimension(getAttr(parser, "width"))
+        val h = if (isLine) kotlin.math.abs(y2 - y) else parseDimension(getAttr(parser, "height"))
         val polyPoints = if (shapeName == "polyline" || shapeName == "polygon") {
             val vb = getAttr(parser, "viewBox")?.trim()?.split(Regex("\\s+"))?.mapNotNull { it.toFloatOrNull() }
             parsePolyPoints(getAttr(parser, "points"), vb, x, y, w, h)

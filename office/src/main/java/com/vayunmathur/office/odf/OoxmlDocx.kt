@@ -31,14 +31,16 @@ internal object OoxmlDocx {
         var highlight: Long? = null,
         var shdFill: Long? = null,
         var vanish: Boolean? = null,
-        var lang: String? = null
+        var lang: String? = null,
+        var styleId: String? = null           // w:rStyle reference (character style)
     ) {
         /** Returns a new RPr with [o]'s non-null values overriding this one's. */
         fun overlay(o: RPr) = RPr(
             o.bold ?: bold, o.italic ?: italic, o.underline ?: underline, o.underlineColor ?: underlineColor,
             o.strike ?: strike, o.color ?: color, o.sizeHalfPt ?: sizeHalfPt, o.font ?: font,
             o.vertAlign ?: vertAlign, o.caps ?: caps, o.smallCaps ?: smallCaps, o.spacingTwips ?: spacingTwips,
-            o.highlight ?: highlight, o.shdFill ?: shdFill, o.vanish ?: vanish, o.lang ?: lang
+            o.highlight ?: highlight, o.shdFill ?: shdFill, o.vanish ?: vanish, o.lang ?: lang,
+            o.styleId ?: styleId
         )
     }
 
@@ -99,6 +101,14 @@ internal object OoxmlDocx {
             var acc = docDefaultRPr
             for (s in chain) acc = acc.overlay(s.rpr)
             rprCache[id] = acc
+            return acc
+        }
+
+        /** RPr contributed by a character style's basedOn chain only (no docDefaults). */
+        fun charStyleRPr(id: String?): RPr {
+            if (id == null) return RPr()
+            var acc = RPr()
+            for (s in chain(id)) acc = acc.overlay(s.rpr)
             return acc
         }
 
@@ -202,7 +212,9 @@ internal object OoxmlDocx {
         val extraImages: LinkedHashMap<String, ByteArray> = LinkedHashMap(),
         val pendingBlocks: MutableList<OdfContentBlock> = mutableListOf(),
         var pageSetup: OdfPageSetup? = null,
-        var imageSeq: Int = 0
+        var imageSeq: Int = 0,
+        // Running list-item counters keyed by numId -> (ilvl -> count), for 1/2/3 numbering.
+        val listCounters: HashMap<Int, HashMap<Int, Int>> = HashMap()
     )
 
     // ---- Body ----
@@ -296,12 +308,14 @@ internal object OoxmlDocx {
         }
         val marginTop = eff.spacingBefore?.let { OoxmlUnits.twipsToPx(it) } ?: 0f
         val marginBottom = eff.spacingAfter?.let { OoxmlUnits.twipsToPx(it) } ?: 0f
-        val lineHeight = if (eff.lineRule == "auto" && eff.line != null) eff.line!! / 240f else null
+        // Absent w:lineRule defaults to "auto" per the spec (line is then in 240ths = multiples).
+        val lineHeight = if ((eff.lineRule == "auto" || eff.lineRule == null) && eff.line != null) eff.line!! / 240f else null
 
         // Numbering
         var listLevel = 0; var listType = ListType.BULLET
         var numFmt = "1"; var bulletChar = "\u2022"; var prefix = ""; var suffix = "."
         var isList = false
+        var listItemIndex = 0
         if (eff.numId != null && eff.numId != 0) {
             val ilvl = eff.ilvl ?: 0
             ctx.numbering.level(eff.numId!!, ilvl)?.let { lvl ->
@@ -319,6 +333,12 @@ internal object OoxmlDocx {
                         suffix = lvl.lvlText.substring(markers.last().range.last + 1)
                     }
                 }
+                // Assign a running 1/2/3 index: increment this level, reset any deeper levels.
+                val counters = ctx.listCounters.getOrPut(eff.numId!!) { HashMap() }
+                val next = (counters[ilvl] ?: (lvl.start - 1)) + 1
+                counters[ilvl] = next
+                counters.keys.filter { it > ilvl }.toList().forEach { counters.remove(it) }
+                listItemIndex = next
             }
         }
 
@@ -334,6 +354,7 @@ internal object OoxmlDocx {
             backgroundColor = eff.shdFill,
             listLevel = listLevel,
             listType = listType,
+            listItemIndex = listItemIndex,
             direction = direction,
             lineHeightPercent = lineHeight,
             borders = eff.borders?.takeIf { !it.isEmpty() },
@@ -392,10 +413,11 @@ internal object OoxmlDocx {
             e = parser.next()
         }
 
-        // Effective run props from paragraph mark + style default.
+        // Effective run props: docDefaults+paragraph style < paragraph mark < character style < direct rPr.
         val base = ctx.styles.resolvedRPr(ppr.styleId ?: ctx.styles.defaultParaStyle)
         val paraMark = ppr.rPr ?: RPr()
-        val eff = base.overlay(paraMark).overlay(rpr)
+        val charStyle = ctx.styles.charStyleRPr(rpr.styleId)
+        val eff = base.overlay(paraMark).overlay(charStyle).overlay(rpr)
 
         if (eff.vanish == true) return
         if (noteCitation != null) {
@@ -544,6 +566,7 @@ internal object OoxmlDocx {
         while (!(e == XmlPullParser.END_TAG && parser.depth == depth && (parser.name == "rPr" || parser.name == "defRPr"))) {
             if (e == XmlPullParser.END_DOCUMENT) break
             if (e == XmlPullParser.START_TAG) when (parser.name) {
+                "rStyle" -> r.styleId = OoxmlXml.attr(parser, "val")
                 "b" -> r.bold = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
                 "i" -> r.italic = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
                 "strike" -> r.strike = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
@@ -682,7 +705,8 @@ internal object OoxmlDocx {
         val pt = szEighthPt / 8f
         val color = OoxmlXml.attr(parser, "color")?.takeIf { !it.equals("auto", true) }?.let { "#$it" } ?: "#000000"
         val odfStyle = when (style) { "single" -> "solid"; "double" -> "double"; "dotted" -> "dotted"; "dashed" -> "dashed"; else -> "solid" }
-        return "%.2fpt %s %s".format(pt, odfStyle, color)
+        // Force a dot decimal separator; a locale-formatted "0,50pt" is an invalid fo:border value.
+        return "%.2fpt %s %s".format(java.util.Locale.ROOT, pt, odfStyle, color)
     }
 
     // ---- Styles / numbering parsing ----

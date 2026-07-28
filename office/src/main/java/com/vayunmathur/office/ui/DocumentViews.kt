@@ -79,9 +79,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
@@ -868,8 +870,18 @@ private fun TableView(
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).horizontalScroll(rememberScrollState())) {
         for ((r, row) in table.rows.withIndex()) {
             Row(Modifier.height(IntrinsicSize.Min)) {
+                var colspanSkip = 0
                 for ((c, cell) in row.cells.withIndex()) {
-                    if (cell.isCovered) continue
+                    if (cell.isCovered) {
+                        // Covered by a horizontal merge to its left: the anchor already claimed the width.
+                        if (colspanSkip > 0) { colspanSkip--; continue }
+                        // Covered by a vertical (row) merge from above: render an aligned placeholder so
+                        // columns below the merge don't collapse and shift left.
+                        Box(Modifier.width(colWidthDp(c, 1)).fillMaxHeight()
+                            .border(0.7.dp, MaterialTheme.colorScheme.outline)) {}
+                        continue
+                    }
+                    colspanSkip = if (cell.colSpan > 1) cell.colSpan - 1 else 0
                     Box(
                         Modifier.width(colWidthDp(c, cell.colSpan))
                             .fillMaxHeight()
@@ -910,13 +922,46 @@ private fun EditableCell(cell: OdfTableCell, onSurface: Color, mult: Float, onFo
     )
 }
 
+/** Rotation that swaps the layout footprint for 90°/270° turns so the image isn't squeezed/clipped. */
+private fun Modifier.rotateForDisplay(degrees: Float): Modifier {
+    if (degrees == 0f) return this
+    val norm = ((degrees % 360f) + 360f) % 360f
+    val quarterTurn = norm in 45f..135f || norm in 225f..315f
+    return if (!quarterTurn) this.rotate(degrees)
+    else this
+        .layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            layout(placeable.height, placeable.width) {
+                placeable.place((placeable.height - placeable.width) / 2, (placeable.width - placeable.height) / 2)
+            }
+        }
+        .rotate(degrees)
+}
+
+/** Draw alpha (0..1) from draw:image-opacity. */
+private fun OdfImage.alphaValue(): Float = (opacityPercent / 100f).coerceIn(0f, 1f)
+
+/** ColorFilter for draw:color-mode (greyscale/mono/watermark), or null for "standard". */
+private fun OdfImage.effectFilter(): ColorFilter? = when (colorMode) {
+    "greyscale", "mono" -> ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+    "watermark" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
+        0.4f, 0f, 0f, 0f, 140f,
+        0f, 0.4f, 0f, 0f, 140f,
+        0f, 0f, 0.4f, 0f, 140f,
+        0f, 0f, 0f, 1f, 0f
+    )))
+    else -> null
+}
+
 @Composable
 fun OdfImageView(image: OdfImage, modifier: Modifier = Modifier) {
     val bitmap = remember(image.path, image.imageData.size) {
         if (image.imageData.isNotEmpty()) try { BitmapFactory.decodeByteArray(image.imageData, 0, image.imageData.size) } catch (_: Exception) { null } else null
     }
     if (bitmap != null) {
-        val rot = if (image.rotationDegrees != 0f) Modifier.rotate(image.rotationDegrees) else Modifier
+        val rot = Modifier.rotateForDisplay(image.rotationDegrees)
+        val imgAlpha = image.alphaValue()
+        val imgFilter = image.effectFilter()
         val hasCrop = image.cropLeftPct > 0f || image.cropTopPct > 0f || image.cropRightPct > 0f || image.cropBottomPct > 0f
         if (hasCrop) {
             // Non-destructive crop: draw only the visible source rectangle, scaled to fill. (Phase 5)
@@ -938,7 +983,9 @@ fun OdfImageView(image: OdfImage, modifier: Modifier = Modifier) {
                     srcOffset = IntOffset(srcX, srcY),
                     srcSize = IntSize(srcW, srcH),
                     dstOffset = IntOffset.Zero,
-                    dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1))
+                    dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
+                    alpha = imgAlpha,
+                    colorFilter = imgFilter
                 )
             }
             return
@@ -951,14 +998,14 @@ fun OdfImageView(image: OdfImage, modifier: Modifier = Modifier) {
             Image(
                 bitmap = bitmap.asImageBitmap(), contentDescription = null,
                 modifier = modifier.width(widthDp.dp).aspectRatio(aspect).then(rot).padding(vertical = 4.dp),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit, alpha = imgAlpha, colorFilter = imgFilter
             )
         } else {
             val aspect = if (bitmap.height > 0) bitmap.width.toFloat() / bitmap.height.toFloat() else 1.5f
             Image(
                 bitmap = bitmap.asImageBitmap(), contentDescription = null,
                 modifier = modifier.fillMaxWidth().aspectRatio(aspect.coerceIn(0.3f, 4f)).then(rot).padding(vertical = 4.dp),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit, alpha = imgAlpha, colorFilter = imgFilter
             )
         }
     } else {
@@ -979,6 +1026,7 @@ private fun formatAxis(v: Float): String = if (v == v.toLong().toFloat()) v.toLo
 private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val surfaceColor = MaterialTheme.colorScheme.surface
     Column(Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 12.dp)) {
         chart.title?.let { Text(it, style = MaterialTheme.typography.titleSmall, color = onSurface, modifier = Modifier.padding(bottom = 4.dp)) }
         // Legend
@@ -994,21 +1042,28 @@ private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
         Spacer(Modifier.height(8.dp))
         val labelArgb = onSurface.toArgb()
         Canvas(Modifier.fillMaxWidth().height(240.dp)) {
-            val maxV = (chart.series.flatMap { it.values }.maxOrNull() ?: 1f).coerceAtLeast(1f)
+            val allVals = chart.series.flatMap { it.values }
+            // Include 0 in the range so negative values plot below the baseline instead of vanishing.
+            val maxV = maxOf(allVals.maxOrNull() ?: 1f, 0f).let { if (it <= 0f) 1f else it }
+            val minV = minOf(allVals.minOrNull() ?: 0f, 0f)
+            val range = (maxV - minV).coerceAtLeast(1f)
             val leftPad = 72f; val bottomPad = 56f; val topPad = 12f; val rightPad = 12f
             val plotW = size.width - leftPad - rightPad
             val plotH = size.height - bottomPad - topPad
+            val yFor = { v: Float -> topPad + plotH - plotH * ((v - minV) / range) }
+            val baselineY = yFor(0f)
             val axisPaint = android.graphics.Paint().apply { color = labelArgb; textSize = 26f; isAntiAlias = true }
             val centerPaint = android.graphics.Paint().apply { color = labelArgb; textSize = 26f; isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER }
             val steps = 5
             for (s in 0..steps) {
-                val v = maxV * s / steps
-                val y = topPad + plotH - plotH * s / steps
+                val v = minV + range * s / steps
+                val y = yFor(v)
                 drawLine(gridColor, Offset(leftPad, y), Offset(leftPad + plotW, y), 1f)
                 drawContext.canvas.nativeCanvas.drawText(formatAxis(v), 6f, y + 9f, axisPaint)
             }
             drawLine(onSurface, Offset(leftPad, topPad), Offset(leftPad, topPad + plotH), 2f)
-            drawLine(onSurface, Offset(leftPad, topPad + plotH), Offset(leftPad + plotW, topPad + plotH), 2f)
+            // Baseline (value 0): bottom edge for all-positive data, mid-plot when negatives exist.
+            drawLine(onSurface, Offset(leftPad, baselineY), Offset(leftPad + plotW, baselineY), 2f)
             val catCount = chart.categories.size.coerceAtLeast(1)
             when (chart.type) {
                 ChartType.LINE -> {
@@ -1018,7 +1073,7 @@ private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                         var prev: Offset? = null
                         for (ci in 0 until catCount) {
                             val v = ser.values.getOrNull(ci) ?: 0f
-                            val p = Offset(leftPad + stepX * ci, topPad + plotH - plotH * (v / maxV))
+                            val p = Offset(leftPad + stepX * ci, yFor(v))
                             prev?.let { drawLine(col, it, p, 4f) }
                             drawCircle(col, 5f, p)
                             prev = p
@@ -1026,7 +1081,7 @@ private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                     }
                     for (ci in 0 until catCount) {
                         val x = leftPad + (if (catCount > 1) plotW / (catCount - 1) else plotW) * ci
-                        drawContext.canvas.nativeCanvas.drawText(chart.categories[ci], x, topPad + plotH + 34f, centerPaint)
+                        drawContext.canvas.nativeCanvas.drawText(chart.categories.getOrElse(ci) { "" }, x, topPad + plotH + 34f, centerPaint)
                     }
                 }
                 ChartType.SCATTER -> {
@@ -1035,7 +1090,7 @@ private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                         val col = chartPalette[si % chartPalette.size]
                         for (ci in 0 until catCount) {
                             val v = ser.values.getOrNull(ci) ?: 0f
-                            drawCircle(col, 7f, Offset(leftPad + stepX * ci, topPad + plotH - plotH * (v / maxV)))
+                            drawCircle(col, 7f, Offset(leftPad + stepX * ci, yFor(v)))
                         }
                     }
                     for (ci in 0 until catCount) {
@@ -1056,7 +1111,7 @@ private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                     }
                     if (chart.type == ChartType.DONUT) {
                         val hole = d * 0.5f
-                        drawArc(Color.White, 0f, 360f, true, Offset(topLeft.x + (d - hole) / 2, topLeft.y + (d - hole) / 2), Size(hole, hole))
+                        drawArc(surfaceColor, 0f, 360f, true, Offset(topLeft.x + (d - hole) / 2, topLeft.y + (d - hole) / 2), Size(hole, hole))
                     }
                 }
                 ChartType.STACKED_BAR -> {
@@ -1084,8 +1139,10 @@ private fun OdfChartView(chart: OdfChart, onClick: () -> Unit = {}) {
                         val gx = leftPad + groupW * ci + pad
                         for (si in 0 until serCount) {
                             val v = chart.series[si].values.getOrNull(ci) ?: 0f
-                            val h = plotH * (v / maxV)
-                            drawRect(chartPalette[si % chartPalette.size], Offset(gx + barW * si, topPad + plotH - h), Size(barW * 0.92f, h))
+                            val yv = yFor(v)
+                            val top = minOf(yv, baselineY)
+                            val h = kotlin.math.abs(yv - baselineY)
+                            drawRect(chartPalette[si % chartPalette.size], Offset(gx + barW * si, top), Size(barW * 0.92f, h))
                         }
                         drawContext.canvas.nativeCanvas.drawText(chart.categories.getOrElse(ci) { "" }, leftPad + groupW * ci + groupW / 2, topPad + plotH + 34f, centerPaint)
                     }
@@ -1848,6 +1905,7 @@ private fun SlideTextEditor(key: String, paragraphs: List<OdfParagraph>, fontSca
 @Composable
 private fun PositionedFrame(frame: OdfFrame, fontScale: Float, editing: Boolean = false, editKey: String = "", onTextChange: (String) -> Unit = {}) {
     Box(Modifier.fillMaxSize()
+        .then(if (frame.rotationDegrees != 0f) Modifier.rotate(frame.rotationDegrees) else Modifier)
         .then(frame.fillColor?.let { Modifier.background(Color(it.toInt())) } ?: Modifier)
         .then(frame.strokeColor?.let { Modifier.border((frame.strokeWidth ?: 1f).dp.coerceAtLeast(0.5.dp), Color(it.toInt())) } ?: Modifier)
     ) {
@@ -1883,7 +1941,13 @@ private fun PositionedShape(shape: OdfShape, fontScale: Float, editing: Boolean 
             when (shape) {
                 is OdfShape.Rect -> { if (fillBrush != null) drawRect(fillBrush) else drawRect(fillColor); drawRect(strokeColor, style = strokeStyle) }
                 is OdfShape.Ellipse -> { if (fillBrush != null) drawOval(fillBrush) else drawOval(fillColor); drawOval(strokeColor, style = strokeStyle) }
-                is OdfShape.Line -> drawLine(strokeColor, Offset.Zero, Offset(size.width, size.height), strokeW, pathEffect = dashEffect)
+                is OdfShape.Line -> {
+                    // Draw between the actual endpoints: pick the box corner matching endpoint 1 so
+                    // negative-slope lines (bottom-left -> top-right) aren't mirrored.
+                    val sx = if (shape.x <= shape.x2) 0f else size.width
+                    val sy = if (shape.y <= shape.y2) 0f else size.height
+                    drawLine(strokeColor, Offset(sx, sy), Offset(size.width - sx, size.height - sy), strokeW, pathEffect = dashEffect)
+                }
                 is OdfShape.CustomShape -> { if (fillBrush != null) drawRect(fillBrush) else drawRect(fillColor); drawRect(strokeColor, style = strokeStyle) }
                 is OdfShape.Polyline -> {
                     if (shape.points.size >= 2) {

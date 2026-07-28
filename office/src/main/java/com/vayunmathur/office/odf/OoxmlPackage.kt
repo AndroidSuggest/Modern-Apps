@@ -108,7 +108,9 @@ internal class OoxmlPackage(
                             val ext = n.substringAfterLast('.', "").lowercase()
                             when {
                                 n.endsWith(".xml") || n.endsWith(".rels") ->
-                                    entries[n] = zip.readBytes().toString(Charsets.UTF_8)
+                                    // Strip a leading UTF-8 BOM (Word writes one on several parts);
+                                    // a retained U+FEFF makes the pull parser reject the XML prolog.
+                                    entries[n] = zip.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF")
                                 ext in MEDIA_EXTS -> media[n] = zip.readBytes()
                             }
                         }

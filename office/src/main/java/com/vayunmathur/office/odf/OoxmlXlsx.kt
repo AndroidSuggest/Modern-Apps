@@ -103,9 +103,16 @@ internal object OoxmlXlsx {
             if (e == XmlPullParser.START_TAG && parser.name == "si") {
                 val depth = parser.depth
                 val sb = StringBuilder()
+                var phoneticDepth = -1
                 var ev = parser.next()
                 while (!(ev == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "si")) {
-                    if (ev == XmlPullParser.START_TAG && parser.name == "t") sb.append(OoxmlXml.readElementText(parser, "t"))
+                    when {
+                        // Skip <t> inside <rPh> phonetic-guide runs (furigana), which aren't visible text.
+                        ev == XmlPullParser.START_TAG && parser.name == "rPh" -> phoneticDepth = parser.depth
+                        ev == XmlPullParser.END_TAG && parser.name == "rPh" -> phoneticDepth = -1
+                        ev == XmlPullParser.START_TAG && parser.name == "t" && phoneticDepth < 0 ->
+                            sb.append(OoxmlXml.readElementText(parser, "t"))
+                    }
                     if (ev == XmlPullParser.END_DOCUMENT) break
                     ev = parser.next()
                 }
@@ -288,8 +295,30 @@ internal object OoxmlXlsx {
             val tint = OoxmlXml.attr(parser, "tint")?.toDoubleOrNull() ?: 0.0
             return applyExcelTint(base, tint)
         }
+        OoxmlXml.attr(parser, "indexed")?.toIntOrNull()?.let { return indexedColor(it) }
         return null
     }
+
+    /** Resolves a legacy indexed color (BIFF8 default palette) to 0xFFRRGGBB. */
+    private fun indexedColor(idx: Int): Long? {
+        val rgb = INDEXED_PALETTE.getOrNull(idx) ?: when (idx) {
+            64 -> 0x000000L   // system foreground
+            65 -> 0xFFFFFFL   // system background
+            else -> return null
+        }
+        return 0xFF000000L or rgb
+    }
+
+    private val INDEXED_PALETTE = longArrayOf(
+        0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF,
+        0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF,
+        0x800000, 0x008000, 0x000080, 0x808000, 0x800080, 0x008080, 0xC0C0C0, 0x808080,
+        0x9999FF, 0x993366, 0xFFFFCC, 0xCCFFFF, 0x660066, 0xFF8080, 0x0066CC, 0xCCCCFF,
+        0x000080, 0xFF00FF, 0xFFFF00, 0x00FFFF, 0x800080, 0x800000, 0x008080, 0x0000FF,
+        0x00CCFF, 0xCCFFFF, 0xCCFFCC, 0xFFFF99, 0x99CCFF, 0xFF99CC, 0xCC99FF, 0xFFCC99,
+        0x3366FF, 0x33CCCC, 0x99CC00, 0xFFCC00, 0xFF9900, 0xFF6600, 0x666699, 0x969696,
+        0x003366, 0x339966, 0x003300, 0x333300, 0x993300, 0x993366, 0x333399, 0x333333
+    )
 
     private fun themeSlot(idx: Int): String = when (idx) {
         0 -> "lt1"; 1 -> "dk1"; 2 -> "lt2"; 3 -> "dk2"
@@ -323,7 +352,7 @@ internal object OoxmlXlsx {
         val hyperlinkRefs = mutableListOf<Triple<String, String?, String?>>() // ref, rId, location
         val condFormats = mutableListOf<Pair<String, List<CfRule>>>() // sqref -> rules
         val valRefs = mutableListOf<Pair<String, List<String>>>()
-        val sharedFormulas = HashMap<Int, String>()
+        val sharedFormulas = HashMap<Int, SharedFormulaDef>()
         var curCells: MutableList<Pair<Int, OdfCell>>? = null
         var curRowHidden = false
         var rowIndex = 0
@@ -363,7 +392,7 @@ internal object OoxmlXlsx {
                     "c" -> if (curCells != null) {
                         val ref = OoxmlXml.attr(parser, "r") ?: ""
                         val ci = if (ref.isNotEmpty()) OoxmlXml.colIndex(ref) else curCells.size
-                        curCells.add(ci to parseCell(parser, shared, styles, sharedFormulas))
+                        curCells.add(ci to parseCell(parser, shared, styles, sharedFormulas, rowIndex, ci))
                     }
                     "mergeCell" -> OoxmlXml.attr(parser, "ref")?.let { merges.add(it) }
                     "dataValidation" -> parseDataValidation(parser)?.let { (v, refs) ->
@@ -443,7 +472,13 @@ internal object OoxmlXlsx {
         return (0..maxCol).map { map[it] }
     }
 
-    private fun parseCell(parser: XmlPullParser, shared: List<String>, styles: StyleTable, sharedFormulas: MutableMap<Int, String>): OdfCell {
+    /** Master definition of a shared formula: the master's A1 body and its 0-based row/col. */
+    private class SharedFormulaDef(val a1: String, val row: Int, val col: Int)
+
+    private fun parseCell(
+        parser: XmlPullParser, shared: List<String>, styles: StyleTable,
+        sharedFormulas: MutableMap<Int, SharedFormulaDef>, cellRow: Int, cellCol: Int
+    ): OdfCell {
         val type = OoxmlXml.attr(parser, "t")
         val styleIdx = OoxmlXml.attr(parser, "s")?.toIntOrNull()
         val depth = parser.depth
@@ -460,8 +495,15 @@ internal object OoxmlXlsx {
                     val si = OoxmlXml.attr(parser, "si")?.toIntOrNull()
                     val f = OoxmlXml.readElementText(parser, "f")
                     formula = when {
-                        ft == "shared" && f.isNotBlank() -> ExcelFormula.toOdf(f).also { if (si != null) sharedFormulas[si] = it }
-                        ft == "shared" && f.isBlank() -> si?.let { sharedFormulas[it] }
+                        // Master of a shared formula: remember its A1 body + position for dependents.
+                        ft == "shared" && f.isNotBlank() -> {
+                            if (si != null) sharedFormulas[si] = SharedFormulaDef(f, cellRow, cellCol)
+                            ExcelFormula.toOdf(f)
+                        }
+                        // Dependent: re-base the master's relative refs to this cell before translating.
+                        ft == "shared" && f.isBlank() -> si?.let { sharedFormulas[it] }?.let { def ->
+                            ExcelFormula.toOdf(ExcelFormula.shift(def.a1, cellRow - def.row, cellCol - def.col))
+                        }
                         f.isNotBlank() -> ExcelFormula.toOdf(f)
                         else -> null
                     }
@@ -487,7 +529,14 @@ internal object OoxmlXlsx {
                 else OdfCell(text = value ?: "")
             }
         }
+        val resolvedFmt = xf?.let { if (it.applyNumberFormat || it.numFmtId != 0) styles.numberFormat(it.numFmtId) else null } ?: base.numberFormat
+        // Excel stores the raw number (e.g. a date serial "45292"); the display string must be
+        // formatted per the number format so dates/percent/currency don't show as bare numbers.
+        val fmtForDisplay = resolvedFmt ?: if (base.valueType == "date") OdfNumberFormat(isDate = true) else null
+        val displayText = if (base.numberValue != null && base.valueType != "boolean" && fmtForDisplay != null)
+            OdfFormulaEngine.formatWithStyle(base.numberValue!!, fmtForDisplay) else base.text
         return base.copy(
+            text = displayText,
             formula = formula ?: base.formula,
             backgroundColor = cellStyle.fill,
             textColor = cellStyle.fontColor,
@@ -496,7 +545,7 @@ internal object OoxmlXlsx {
             alignment = cellStyle.align,
             borders = cellStyle.borders?.takeIf { !it.isEmpty() },
             borderColor = cellStyle.borders?.let { OdfBorders.renderColor(it.top ?: it.left) },
-            numberFormat = xf?.let { if (it.applyNumberFormat || it.numFmtId != 0) styles.numberFormat(it.numFmtId) else null } ?: base.numberFormat,
+            numberFormat = resolvedFmt,
             wrap = cellStyle.wrap,
             textRotation = cellStyle.rotation,
             verticalAlign = cellStyle.valign

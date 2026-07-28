@@ -460,7 +460,15 @@ sealed class OdfSlideElement {
 /** Geometry (x, y, width, height) of a floating element, in px@96. (Phase 1) */
 fun OdfSlideElement.bounds(): FloatArray = when (this) {
     is OdfSlideElement.Frame -> floatArrayOf(frame.x, frame.y, frame.width, frame.height)
-    is OdfSlideElement.Shape -> floatArrayOf(shape.x, shape.y, shape.width, shape.height)
+    is OdfSlideElement.Shape -> when (val s = shape) {
+        // A line's (x,y) is its first endpoint, which may not be the top-left; position the
+        // bounding box at the min corner so it isn't drawn off to one side.
+        is OdfShape.Line -> floatArrayOf(
+            minOf(s.x, s.x2), minOf(s.y, s.y2),
+            kotlin.math.abs(s.x2 - s.x), kotlin.math.abs(s.y2 - s.y)
+        )
+        else -> floatArrayOf(s.x, s.y, s.width, s.height)
+    }
 }
 
 /** Returns a copy of the element repositioned/resized to the given bounds (px@96). (Phase 1) */
@@ -486,7 +494,9 @@ data class OdfFrame(
     val fillColor: Long? = null,
     val strokeColor: Long? = null,
     val strokeWidth: Float? = null,
-    val fillGradient: OdfGradient? = null
+    val fillGradient: OdfGradient? = null,
+    /** Rotation in degrees clockwise (from the shape/frame transform). */
+    val rotationDegrees: Float = 0f
 )
 
 sealed class OdfShape {

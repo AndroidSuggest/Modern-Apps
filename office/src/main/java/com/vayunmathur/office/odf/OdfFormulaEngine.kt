@@ -53,6 +53,9 @@ object OdfFormulaEngine {
     /** Formats a numeric value using an ODF number-format descriptor (H50). */
     fun formatWithStyle(v: Double, fmt: OdfNumberFormat?): String {
         if (fmt == null) return formatNumber(v)
+        // Date / date-time: render the exact token pattern (falls back to ISO for a bare date flag).
+        if (fmt.dateTimeTokens.isNotEmpty()) return formatDateTime(v, fmt.dateTimeTokens)
+        if (fmt.isDate) return formatDateIso(v)
         if (fmt.isTime) return formatTime(v)
         if (fmt.isScientific) {
             val decimals = (fmt.decimals ?: 2).coerceIn(0, 10)
@@ -67,6 +70,55 @@ object OdfFormulaEngine {
         if (fmt.percent) s += "%"
         if (fmt.currencySymbol != null) s = fmt.currencySymbol + s
         return s
+    }
+
+    private val MONTHS = arrayOf("January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December")
+    private val MONTHS_SHORT = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    private val WEEKDAYS = arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+    private val WEEKDAYS_SHORT = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+
+    /** Renders a date/time serial using an ordered [tokens] pattern (number:date-style children). */
+    private fun formatDateTime(serial: Double, tokens: List<OdfNumberToken>): String {
+        val cal = serialToCal(serial)
+        val year = cal.get(GregorianCalendar.YEAR)
+        val month = cal.get(GregorianCalendar.MONTH)                 // 0-based
+        val day = cal.get(GregorianCalendar.DAY_OF_MONTH)
+        val dow = cal.get(GregorianCalendar.DAY_OF_WEEK) - 1         // 0 = Sunday
+        val hour24 = cal.get(GregorianCalendar.HOUR_OF_DAY)
+        val minute = cal.get(GregorianCalendar.MINUTE)
+        val second = cal.get(GregorianCalendar.SECOND)
+        val ampm = tokens.any { it.kind == "am-pm" }
+        val sb = StringBuilder()
+        for (t in tokens) when (t.kind) {
+            "year" -> sb.append(if (t.style == "long") year.toString() else (year % 100).toString().padStart(2, '0'))
+            "month" -> sb.append(when {
+                t.textual && t.style == "long" -> MONTHS[month]
+                t.textual -> MONTHS_SHORT[month]
+                t.style == "long" -> (month + 1).toString().padStart(2, '0')
+                else -> (month + 1).toString()
+            })
+            "day" -> sb.append(if (t.style == "long") day.toString().padStart(2, '0') else day.toString())
+            "day-of-week" -> sb.append(if (t.style == "long") WEEKDAYS[dow] else WEEKDAYS_SHORT[dow])
+            "hours" -> {
+                val h = if (ampm) (hour24 % 12).let { if (it == 0) 12 else it } else hour24
+                sb.append(if (t.style == "long") h.toString().padStart(2, '0') else h.toString())
+            }
+            "minutes" -> sb.append(if (t.style == "long") minute.toString().padStart(2, '0') else minute.toString())
+            "seconds" -> sb.append(if (t.style == "long") second.toString().padStart(2, '0') else second.toString())
+            "am-pm" -> sb.append(if (hour24 < 12) "AM" else "PM")
+            "text" -> sb.append(t.text ?: "")
+        }
+        return sb.toString()
+    }
+
+    /** Formats a date serial as ISO yyyy-MM-dd (fallback when no explicit tokens are present). */
+    private fun formatDateIso(serial: Double): String {
+        val cal = serialToCal(serial)
+        return "%04d-%02d-%02d".format(
+            cal.get(GregorianCalendar.YEAR), cal.get(GregorianCalendar.MONTH) + 1, cal.get(GregorianCalendar.DAY_OF_MONTH)
+        )
     }
 
     /** Formats a day-fraction serial (0..1) as HH:MM:SS. */

@@ -26,7 +26,7 @@ class OfficeSharingE2ETest {
 
     private class MemStore : E2eeKeyStore {
         private val m = HashMap<String, ByteArray>()
-        override fun getBytes(name: String) = m[name]
+        override suspend fun getBytes(name: String) = m[name]
         override suspend fun setBytes(name: String, value: ByteArray, onlyIfAbsent: Boolean) {
             if (onlyIfAbsent && m.containsKey(name)) return
             m[name] = value

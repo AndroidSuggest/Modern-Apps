@@ -71,11 +71,15 @@ internal object OoxmlChart {
         if (series.isEmpty() || series.all { it.vals.isEmpty() }) return null
         if (type == ChartType.BAR && stacked) type = ChartType.STACKED_BAR
 
-        val categories = series.maxByOrNull { it.cats.size }?.cats?.values?.toList() ?: emptyList()
+        // Preserve idx alignment: densify by point index so a series missing a point (idx 0,1,3)
+        // stays aligned with its categories instead of shifting later points left.
+        val maxIdx = series.flatMap { it.cats.keys + it.vals.keys }.maxOrNull() ?: -1
+        val catSource = series.maxByOrNull { it.cats.size }?.cats ?: sortedMapOf()
+        val categories = (0..maxIdx).map { catSource[it] ?: "" }
         val odfSeries = series.mapIndexed { i, s ->
             OdfChartSeries(
                 name = s.name ?: "Series ${i + 1}",
-                values = s.vals.values.toList(),
+                values = (0..maxIdx).map { s.vals[it] ?: 0f },
                 color = s.color,
                 dataLabels = s.dataLabels
             )
@@ -123,7 +127,8 @@ internal object OoxmlChart {
                     }
                 }
                 "srgbClr", "schemeClr", "sysClr", "prstClr", "scrgbClr" ->
-                    if (inSpPr && !inLn && s.color == null) s.color = OoxmlColor.parse(parser, theme)
+                    // Capture the first color in spPr — for line/scatter series it lives inside <a:ln>.
+                    if (inSpPr && s.color == null) s.color = OoxmlColor.parse(parser, theme)
             } else if (e == XmlPullParser.END_TAG) when (parser.name) {
                 "tx" -> { inTx = false; if (s.name == null && txt.isNotBlank()) s.name = txt.toString(); txt.clear() }
                 "cat", "val", "xVal", "yVal" -> cache = null
