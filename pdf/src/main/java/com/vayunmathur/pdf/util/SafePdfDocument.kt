@@ -19,14 +19,19 @@ class SafePdfDocument private constructor(
     private val handle: Long,
     val pageCount: Int,
 ) {
-    // P3 fix: bounded LRU to avoid OOM on 1000-page docs with images (was unbounded ConcurrentHashMap).
+    // Bounded LRU to avoid OOM; P0 fix #2 critical: cachedPixels budget drift on auto-eviction
+    private var cachedPixels: Long = 0L
     private val cache: MutableMap<Int, SafePdfPage> = object : LinkedHashMap<Int, SafePdfPage>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, SafePdfPage>?): Boolean {
             if (size <= MAX_CACHED_PAGES) return false
-            // Evict oldest; bitmaps will be GC'd, but explicitly recycle if possible
+            // P0 fix #2 critical: previously recycled eldest bitmap but never subtracted cachedPixels, permanent drift
             eldest?.value?.let { page ->
                 page.primitives.forEach { prim ->
                     if (prim is PdfPrimitive.Image) {
+                        val b = prim.bitmap
+                        if (b != null) {
+                            cachedPixels = (cachedPixels - b.width.toLong() * b.height.toLong()).coerceAtLeast(0L)
+                        }
                         runCatching { prim.bitmap?.recycle() }
                     }
                 }
@@ -34,7 +39,6 @@ class SafePdfDocument private constructor(
             return true
         }
     }
-    private var cachedPixels: Long = 0L
 
     /** Decode page [index] (0-based), or `null` if the native render fails. */
     suspend fun renderPage(index: Int): SafePdfPage? = withContext(Dispatchers.IO) {
