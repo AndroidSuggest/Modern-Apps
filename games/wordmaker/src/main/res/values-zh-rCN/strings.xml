@@ -3,7 +3,7 @@
     <string name="close">关闭</string>
     <string name="app_name">Word Maker</string>
     <string name="error_parse_level">无法解析关卡数据。</string>
-    <string name="level_number">关卡 %1$d</string>
+    <string name="level_number">关卡 &lt;xliff:g id=\"level\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="next_level">下一关</string>
     <string name="bonus_words">奖励单词</string>
     <string name="settings">设置</string>
@@ -17,12 +17,12 @@
     <string name="difficulty_easy">简单</string>
     <string name="difficulty_medium">中等</string>
     <string name="difficulty_hard">困难</string>
-    <string name="competitive_score">得分：%1$d</string>
+    <string name="competitive_score">得分：&lt;xliff:g id=\"score\" example=\"150\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="competitive_start">开始</string>
     <string name="competitive_difficulty">难度</string>
-    <string name="competitive_time_limit">每关 %1$d 秒</string>
-    <string name="competitive_solved">通关！+%1$d 分</string>
-    <string name="competitive_timed_out">时间到！%1$d 分</string>
+    <string name="competitive_time_limit">每关 &lt;xliff:g id=\"seconds\" example=\"45\"&gt;%1$d&lt;/xliff:g&gt; 秒</string>
+    <string name="competitive_solved">通关！+&lt;xliff:g id=\"points\" example=\"50\"&gt;%1$d&lt;/xliff:g&gt; 分</string>
+    <string name="competitive_timed_out">时间到！&lt;xliff:g id=\"points\" example=\"-15\"&gt;%1$d&lt;/xliff:g&gt; 分</string>
     <string name="cd_hint">提示</string>
     <string name="cd_shuffle">随机排序</string>
     <string name="cd_submit">提交</string>
