@@ -1681,73 +1681,27 @@ pub(crate) fn apply_matte(rgba: &mut [u8], matte: [f64; 3]) {
     }
 }
 
-/// Decode an image's `/SMask` (soft mask) into a `w*h` 8-bit alpha buffer,
-/// now supporting DCT (JPEG) and JPX and low BPC.
+/// Decode an image's `/SMask` into w*h alpha via unified mask decoder (handles all filters)
 pub(crate) fn read_smask(doc: &Document, dict: &lopdf::Dictionary, w: u32, h: u32) -> Option<Vec<u8>> {
     let sm = dict.get(b"SMask").ok().and_then(|o| deref(doc, o))?;
     let s = match sm {
         Object::Stream(s) => s,
         _ => return None,
     };
-    let filters = filter_names(doc, &s.dict);
-    let is_dct = filters.iter().any(|f| f=="DCTDecode" || f=="DCT");
-    let is_jpx = filters.iter().any(|f| f=="JPXDecode");
-    let sw = s.dict.get(b"Width").ok().and_then(num)? as usize;
-    let sh = s.dict.get(b"Height").ok().and_then(num)? as usize;
-    if sw==0 || sh==0 || sw>20000 || sh>20000 { return None; }
-    let sbpc = s.dict.get(b"BitsPerComponent").ok().and_then(num).unwrap_or(8.0) as u32;
-
-    // Get mask data: if JPEG, decode via jpeg
-    let data_raw = stream_data(s);
-    let mask_bytes: Vec<u8> = if is_dct {
-        if let Some((_jw,_jh,gray)) = decode_jpeg_gray(&data_raw) {
-            gray
-        } else {
-            // fallback try to decode as RGBA JPEG and take gray?
-            if let Some((_jw,_jh,rgba)) = decode_jpeg_rgba(&data_raw) {
-                // take R channel as alpha approx
-                rgba.chunks(4).map(|c| c[0]).collect()
-            } else {
-                return None;
-            }
-        }
-    } else if is_jpx {
-        if let Some((jw,jh,rgba)) = jp2::decode(&s.content) {
-            // rgba is RGBA, take R as alpha? For JPX smask, it's gray; jp2 decode returns gray in R
-            let mut gray = vec![0u8; (jw*jh) as usize];
-            for i in 0..(jw*jh) as usize {
-                gray[i]=rgba[i*4];
-            }
-            // resample later if needed, but we already have sw,sh from dict which may differ from decoded? decoded dims should equal sw,sh
-            gray
-        } else {
-            return None;
-        }
-    } else {
-        // For other filters, decompressed content already in data_raw, but need to unpack based on BPC
-        let unpacked = unpack_samples_to_bytes(&data_raw, sw, sh, 1, sbpc)?;
-        unpacked
-    };
-
-    // Bilinear resample sw*sh -> w*h to avoid banding (P0 fix), using helper.
+    let sw = s.dict.get(b"Width").ok().and_then(num).unwrap_or(w as f64) as usize;
+    let sh = s.dict.get(b"Height").ok().and_then(num).unwrap_or(h as f64) as usize;
+    if sw == 0 || sh == 0 || sw > 20000 || sh > 20000 { return None; }
+    // P0 fix critical #1: previously DCT/JPX only; now uses unified decoder for all filters
+    let gray = decode_mask_stream_gray(doc, s, sw, sh)?;
+    // Bilinear resample sw*sh -> w*h
     let (w_us, h_us) = (w as usize, h as usize);
-    if sw == w_us && sh == h_us {
-        return Some(mask_bytes);
-    }
+    if sw == w_us && sh == h_us { return Some(gray); }
     let mut alpha = vec![255u8; w_us * h_us];
     for y in 0..h_us {
         for x in 0..w_us {
-            let sx = if w_us > 1 {
-                x as f64 * (sw - 1) as f64 / (w_us - 1).max(1) as f64
-            } else {
-                0.0
-            };
-            let sy = if h_us > 1 {
-                y as f64 * (sh - 1) as f64 / (h_us - 1).max(1) as f64
-            } else {
-                0.0
-            };
-            alpha[y * w_us + x] = bilinear_mask_sample(&mask_bytes, sw, sh, sx, sy);
+            let sx = if w_us > 1 { x as f64 * (sw - 1) as f64 / (w_us - 1).max(1) as f64 } else { 0.0 };
+            let sy = if h_us > 1 { y as f64 * (sh - 1) as f64 / (h_us - 1).max(1) as f64 } else { 0.0 };
+            alpha[y * w_us + x] = bilinear_mask_sample(&gray, sw, sh, sx, sy);
         }
     }
     Some(alpha)
