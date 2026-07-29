@@ -19,5 +19,4 @@ dependencies {
     implementation(project(":library:room"))
     implementation(project(":sdk:games"))
     implementRoom(libs)
-    implementation(libs.androidx.compose.material.icons.extended)
 }

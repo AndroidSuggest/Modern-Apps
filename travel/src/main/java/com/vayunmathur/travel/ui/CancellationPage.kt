@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,8 +20,8 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.Icon
-import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconCheckCircle
+import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -56,11 +53,9 @@ fun CancellationPage(
         ) {
             when {
                 state.done -> {
-                    Icon(
-                        Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                    IconCheckCircle(
                         modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                     Text(stringResource(R.string.order_cancelled), style = MaterialTheme.typography.headlineSmall)
                     state.quote?.let {
@@ -125,10 +120,6 @@ fun CancellationPage(
 private fun TopBar(onBack: () -> Unit) {
     com.vayunmathur.library.ui.TopAppBar(
         title = { Text(stringResource(R.string.cancel_order)) },
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
-            }
-        },
+        navigationIcon = { IconNavigation { onBack() } },
     )
 }

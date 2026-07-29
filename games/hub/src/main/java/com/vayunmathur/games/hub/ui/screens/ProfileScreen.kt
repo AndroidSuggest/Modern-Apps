@@ -10,10 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon as M3Icon
+import com.vayunmathur.library.ui.IconPerson
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,7 +71,7 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
                     editName = profile?.displayName ?: ""
                     selectedAvatar = profile?.avatarSymbol
                     showEditDialog = true
-                }) { M3Icon(Icons.Filled.Person, contentDescription = stringResource(R.string.cd_edit)) }
+                }) { IconPerson() }
             }
         )
     }) { padding ->

@@ -7,17 +7,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.vayunmathur.library.ui.IconDashboard
+import com.vayunmathur.library.ui.IconEmojiEvents
+import com.vayunmathur.library.ui.IconPerson
+import com.vayunmathur.library.ui.IconSportsEsports
 import com.vayunmathur.games.hub.data.DB_NAME
 import com.vayunmathur.games.hub.data.GamesHubDatabase
 import com.vayunmathur.games.hub.ui.screens.AchievementsScreen
@@ -99,18 +97,10 @@ fun HubNavigation(
     val current = backStack.last()
 
     val bottomBarItems: List<BottomBarItem<out MainRoute>> = listOf(
-        BottomBarItem("Home", MainRoute.Dashboard) {
-            Icon(Icons.Filled.Dashboard, contentDescription = stringResource(R.string.tab_dashboard))
-        },
-        BottomBarItem("Games", MainRoute.GamesList) {
-            Icon(Icons.Filled.SportsEsports, contentDescription = stringResource(R.string.tab_games))
-        },
-        BottomBarItem("Achievements", MainRoute.Achievements) {
-            Icon(Icons.Filled.EmojiEvents, contentDescription = stringResource(R.string.achievements_for))
-        },
-        BottomBarItem("Profile", MainRoute.Profile) {
-            Icon(Icons.Filled.Person, contentDescription = stringResource(R.string.profile_title))
-        },
+        BottomBarItem("Home", MainRoute.Dashboard) { IconDashboard() },
+        BottomBarItem("Games", MainRoute.GamesList) { IconSportsEsports() },
+        BottomBarItem("Achievements", MainRoute.Achievements) { IconEmojiEvents() },
+        BottomBarItem("Profile", MainRoute.Profile) { IconPerson() },
     )
 
     val showBottomBar = current is MainRoute.Dashboard

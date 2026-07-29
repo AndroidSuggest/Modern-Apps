@@ -12,9 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,8 +35,8 @@ import com.vayunmathur.library.ui.ExposedDropdownMenu
 import com.vayunmathur.library.ui.ExposedDropdownMenuDefaults
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.Icon
-import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconContacts
+import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -91,11 +88,7 @@ fun PassengersPage(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.passengers)) },
-                navigationIcon = {
-                    IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
-                    }
-                },
+                navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
@@ -200,11 +193,7 @@ private fun PassengerForm(
                 )
                 if (canImportContacts) {
                     OutlinedButton(onClick = { importFromContacts() }) {
-                        Icon(
-                            Icons.Filled.Contacts,
-                            contentDescription = null,
-                            modifier = Modifier.padding(end = 8.dp),
-                        )
+                        IconContacts(modifier = Modifier.padding(end = 8.dp))
                         Text(stringResource(R.string.contacts))
                     }
                 }

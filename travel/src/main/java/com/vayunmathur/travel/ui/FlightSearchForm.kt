@@ -22,13 +22,11 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.travel.util.FlightQuery
 import com.vayunmathur.travel.util.TravelViewModel
 import androidx.compose.ui.res.stringResource
@@ -209,7 +207,7 @@ private fun MultiCityLeg(
                 color = MaterialTheme.colorScheme.primary,
             )
             if (removable) {
-                IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cd_remove_flight)) }
+                IconButton(onClick = onRemove) { IconClose() }
             }
         }
         PlaceAutocompleteField("From", viewModel, onCodeChange = onOrigin)

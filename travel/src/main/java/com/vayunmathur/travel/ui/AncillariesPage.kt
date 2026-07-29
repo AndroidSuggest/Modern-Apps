@@ -9,10 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -24,8 +20,10 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.Icon
+import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconNavigation
+import com.vayunmathur.library.ui.IconRemove
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
@@ -55,11 +53,7 @@ fun AncillariesPage(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.add_extras)) },
-                navigationIcon = {
-                    IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
-                    }
-                },
+                navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
@@ -179,12 +173,12 @@ private fun BaggageRow(
             IconButton(
                 onClick = { onQuantity((quantity - 1).coerceAtLeast(0)) },
                 enabled = quantity > 0,
-            ) { Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.cd_fewer)) }
+            ) { IconRemove() }
             Text("$quantity", style = MaterialTheme.typography.titleMedium)
             IconButton(
                 onClick = { onQuantity((quantity + 1).coerceAtMost(max.toLong())) },
                 enabled = quantity < max,
-            ) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.cd_more)) }
+            ) { IconAdd() }
         }
     }
 }

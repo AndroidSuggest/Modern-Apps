@@ -157,11 +157,14 @@ data class DeArrowBranding(
 /**
  * SponsorBlock + DeArrow data APIs are mirrored on the self-hosted proxy
  * (see location_share_server `sb_build.sh` + handlers/sponsorblock.rs), served
- * from a local copy of the SponsorBlock database. The DeArrow *rendered
- * thumbnail frame* is not mirrored (it needs the actual video), so
- * [trustedThumbnailUrl] still points at dearrow-thumb.ajay.app directly.
+ * from a local copy of the SponsorBlock database. DeArrow thumbnail *frames*
+ * are now self-hosted via the same origin (yt-dlp + ffmpeg renderer implemented
+ * in `location_share_server/src/handlers/dearrow.rs`, inspired by
+ * ajayyy/DeArrowThumbnailCache but written from scratch), with fallback proxy
+ * to dearrow-thumb.ajay.app.
  */
 private const val SPONSORBLOCK_MIRROR = "https://api.vayunmathur.com"
+private const val DEARROW_THUMB_MIRROR = "https://api.vayunmathur.com/api/dearrow/thumbnail"
 
 suspend fun getDeArrowBranding(videoId: Long): DeArrowBranding? {
     val idString = decodeVideoID(videoId)
@@ -184,7 +187,8 @@ fun DeArrowBranding.trustedThumbnailUrl(videoId: Long): String? {
     if (thumb.original) return null
     if (!thumb.locked && thumb.votes < 0) return null
     val timestamp = thumb.timestamp ?: return null
-    return "https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID=${decodeVideoID(videoId)}&time=$timestamp"
+    // Self-hosted renderer on api.vayunmathur.com (yt-dlp + ffmpeg), fallback proxy to ajay.app server-side
+    return "$DEARROW_THUMB_MIRROR?videoID=${decodeVideoID(videoId)}&time=$timestamp"
 }
 
 suspend fun getSponsorSegments(videoId: Long): List<SponsorSegment> {

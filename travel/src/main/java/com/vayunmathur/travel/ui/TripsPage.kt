@@ -10,10 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Flight
-import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -23,8 +19,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AssistChip
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.Icon
-import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconFlight
+import com.vayunmathur.library.ui.IconHotel
+import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
@@ -52,11 +49,7 @@ fun TripsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.my_trips)) },
-                navigationIcon = {
-                    IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
-                    }
-                },
+                navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
@@ -116,11 +109,11 @@ private fun LocalTripCard(trip: BookedTrip, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clickable { onClick() },
     ) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (trip.type == "stay") Icons.Filled.Hotel else Icons.Filled.Flight,
-                contentDescription = null,
-                modifier = Modifier.padding(end = 12.dp),
-            )
+            if (trip.type == "stay") {
+                IconHotel(modifier = Modifier.padding(end = 12.dp))
+            } else {
+                IconFlight(modifier = Modifier.padding(end = 12.dp))
+            }
             Column(Modifier.weight(1f)) {
                 Text(trip.route, style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -150,7 +143,7 @@ private fun RemoteOrderCard(order: OrderDetailDto, hasUpdates: Boolean = false, 
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clickable { onClick() },
     ) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Flight, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
+            IconFlight(modifier = Modifier.padding(end = 12.dp))
             Column(Modifier.weight(1f)) {
                 Text(route, style = MaterialTheme.typography.titleMedium)
                 Text(

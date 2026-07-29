@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,8 +26,8 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.Icon
-import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconCheckCircle
+import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedCard
 import com.vayunmathur.library.ui.Scaffold
@@ -65,11 +62,7 @@ fun ChangePage(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.change_flights)) },
-                navigationIcon = {
-                    IconButton(onClick = { backStack.pop() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
-                    }
-                },
+                navigationIcon = { IconNavigation(backStack) },
             )
         },
     ) { padding ->
@@ -80,11 +73,9 @@ fun ChangePage(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (change.done) {
-                Icon(
-                    Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                IconCheckCircle(
                     modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 Text(stringResource(R.string.change_confirmed), style = MaterialTheme.typography.headlineSmall)
                 Button(
@@ -163,7 +154,7 @@ private fun SliceChoice(slice: SliceDto, selected: Boolean, onClick: () -> Unit)
                 )
             }
             if (selected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(R.string.cd_selected), tint = MaterialTheme.colorScheme.primary)
+                IconCheckCircle(tint = MaterialTheme.colorScheme.primary)
             }
         }
     }

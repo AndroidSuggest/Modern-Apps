@@ -10,9 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Flight
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,8 +22,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FilterChip
-import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconFlight
+import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedCard
 import com.vayunmathur.library.ui.Scaffold
@@ -60,7 +58,7 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                         TextButton(onClick = { backStack.add(Route.Trips) }) { Text(stringResource(R.string.my_trips)) }
                     }
                     IconButton(onClick = { backStack.add(Route.Settings) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings))
+                        IconSettings()
                     }
                 },
             )
@@ -171,7 +169,7 @@ private fun RecentSearchCard(recent: RecentSearch, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(Icons.Filled.Flight, contentDescription = null)
+            IconFlight()
             Text(recent.label, style = MaterialTheme.typography.bodyLarge)
         }
     }

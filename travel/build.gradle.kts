@@ -19,7 +19,6 @@ dependencies {
     implementation(project(":library:room"))
     implementation(project(":library:network"))
 
-    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
 }

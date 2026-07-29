@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -23,7 +21,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.Icon
+import com.vayunmathur.library.ui.IconCheckCircle
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
@@ -71,11 +69,9 @@ fun ConfirmationPage(
                 return@Column
             }
 
-            Icon(
-                Icons.Filled.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+            IconCheckCircle(
                 modifier = Modifier.size(64.dp).padding(top = 8.dp),
+                tint = MaterialTheme.colorScheme.primary,
             )
             Text(if (trip.awaitingPayment) stringResource(R.string.held_pay_to_confirm) else stringResource(R.string.you_re_booked), style = MaterialTheme.typography.headlineSmall)
 

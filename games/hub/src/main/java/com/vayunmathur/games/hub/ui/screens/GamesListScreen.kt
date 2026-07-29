@@ -7,11 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +23,7 @@ import com.vayunmathur.games.hub.util.GameIconResolver
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.library.ui.CommonSearchBar
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -80,7 +78,7 @@ fun GamesListScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.tab_games)) },
                 actions = {
-                    IconButton(onClick = { showSortMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.cd_sort)) }
+                    IconButton(onClick = { showSortMenu = true }) { IconMoreVert() }
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.sort_last_played)) }, onClick = { sort = GameSort.LAST_PLAYED; showSortMenu = false })
                         DropdownMenuItem(text = { Text(stringResource(R.string.sort_most_played)) }, onClick = { sort = GameSort.MOST_PLAYED; showSortMenu = false })

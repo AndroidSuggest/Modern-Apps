@@ -10,10 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Remove
+import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.IconCalendar
+import com.vayunmathur.library.ui.IconRemove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,7 +32,6 @@ import com.vayunmathur.library.ui.DatePicker
 import com.vayunmathur.library.ui.DatePickerDialog
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -147,7 +145,7 @@ fun DateField(
             readOnly = true,
             enabled = false,
             label = { Text(label) },
-            leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null) },
+            leadingIcon = { IconCalendar() },
             modifier = Modifier.fillMaxWidth(),
         )
         Box(
@@ -201,11 +199,11 @@ fun CountStepper(
         Text(label, style = MaterialTheme.typography.bodyLarge)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onCount((count - 1).coerceAtLeast(min)) }, enabled = count > min) {
-                Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.cd_fewer))
+                IconRemove()
             }
             Text("$count", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
             IconButton(onClick = { onCount((count + 1).coerceAtMost(max)) }, enabled = count < max) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.cd_more))
+                IconAdd()
             }
         }
     }
