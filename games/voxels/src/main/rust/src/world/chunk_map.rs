@@ -12,7 +12,7 @@ pub struct ChunkMap {
 
 impl ChunkMap {
     pub fn new(seed: u32, save_dir: String) -> Self {
-        Self { chunks: HashMap::new(), gen: TerrainGen::new(seed), save_dir, render_distance: 6 }
+        Self { chunks: HashMap::new(), gen: TerrainGen::new(seed), save_dir, render_distance: 12 }
     }
     pub fn get_block_world(&self, wx: i32, wy: i32, wz: i32) -> u8 {
         if wy < 0 || wy >= CHUNK_HEIGHT as i32 { return 0; }
@@ -37,11 +37,12 @@ impl ChunkMap {
     pub fn load_or_gen(&mut self, pos: ChunkPos) {
         if self.chunks.contains_key(&pos) { return; }
         let mut chunk = Chunk::new(pos);
-        if save::load_chunk(&self.save_dir, pos, &mut chunk).is_ok() && chunk.generated {
-            self.chunks.insert(pos, chunk);
-            return;
+        let loaded = save::load_chunk(&self.save_dir, pos, &mut chunk).is_ok() && chunk.generated;
+        if !loaded {
+            self.gen.fill_chunk(&mut chunk);
         }
-        self.gen.fill_chunk(&mut chunk);
+        // Water below sea level, for freshly generated AND older saved chunks (idempotent).
+        self.gen.ensure_water(&mut chunk);
         self.chunks.insert(pos, chunk);
     }
     pub fn ensure_radius(&mut self, center_x: i32, center_z: i32) {

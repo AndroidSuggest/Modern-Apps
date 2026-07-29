@@ -12,6 +12,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vayunmathur.games.voxels.ui.*
@@ -26,11 +27,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // World to load: passed by MenuActivity. Fall back to a default world if launched directly.
+        val worldDir = intent.getStringExtra("world_dir")
+            ?: java.io.File(filesDir, "worlds/default").apply { mkdirs() }.absolutePath
+        val worldSeed = intent.getIntExtra("world_seed", 0xB10CCA)
         if (VoxelsNative.isAvailable) {
-            try { VoxelsNative.nativeInit(filesDir.absolutePath) } catch (e: Exception) {
+            try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: Exception) {
                 android.util.Log.e("VoxelsMain", "nativeInit failed", e)
             }
         }
+        com.vayunmathur.games.voxels.util.SoundFx.init(this)
         setContent {
             VoxelsTheme {
                 var inventoryJson by remember { mutableStateOf("""{"selected":0,"slots":[{"id":3,"count":64},{"id":2,"count":64},{"id":1,"count":64},{"id":4,"count":16},{"id":10,"count":32},{"id":6,"count":32},{"id":7,"count":16},{"id":8,"count":16},{"id":9,"count":16}]}""") }
@@ -38,6 +44,12 @@ class MainActivity : ComponentActivity() {
                 var showDebug by remember { mutableStateOf(true) }
                 var flying by remember { mutableStateOf(false) }
                 var sneaking by remember { mutableStateOf(false) }
+                var inventoryOpen by remember { mutableStateOf(false) }
+                var paused by remember { mutableStateOf(false) }
+                val activity = LocalContext.current as? android.app.Activity
+                var invStartTab by remember { mutableStateOf(0) }
+                var recipesJson by remember { mutableStateOf("[]") }
+                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson() } catch (_: Exception) {} }
                 var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
                 val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
@@ -91,23 +103,19 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // World interaction: tap a block face to place adjacent, long-press to break.
-                    // This layer sits above the world surface but below the joysticks/hotbar, so those
-                    // controls consume their own touches while taps elsewhere hit the world.
-                    if (VoxelsNative.isAvailable) {
-                        Box(Modifier.fillMaxSize().pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { off -> try { VoxelsNative.placeBlockAt(off.x, off.y) } catch (_: Exception) {} },
-                                onLongPress = { off -> try { VoxelsNative.breakBlockAt(off.x, off.y) } catch (_: Exception) {} }
-                            )
-                        })
-                    }
-
-                    // Look: drag anywhere on the right half to spawn a floating look stick at the touch.
+                    // Fullscreen world interaction + floating look: drag on the right half looks around;
+                    // tap places a block and long-press breaks one — on either half of the screen.
                     if (VoxelsNative.isAvailable) {
                         FloatingLookJoystick(
-                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.5f),
-                            onLookRate = { ry, rp -> try { VoxelsNative.onLookInput(ry, rp) } catch (_: Exception) {} }
+                            modifier = Modifier.fillMaxSize(),
+                            onLookRate = { ry, rp -> try { VoxelsNative.onLookInput(ry, rp) } catch (_: Exception) {} },
+                            onPlace = { off -> try {
+                                when (VoxelsNative.placeBlockAt(off.x, off.y)) {
+                                    1 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace()
+                                    11, 12 -> { invStartTab = 2; inventoryOpen = true } // crafting table / furnace
+                                }
+                            } catch (_: Exception) {} },
+                            onBreak = { off -> try { if (VoxelsNative.breakBlockAt(off.x, off.y)) com.vayunmathur.games.voxels.util.SoundFx.playBreak() } catch (_: Exception) {} }
                         )
                     }
 
@@ -158,13 +166,15 @@ class MainActivity : ComponentActivity() {
 
                     Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)) {
                         Hotbar(inventoryJson = inventoryJson,
-                            onSelect = { slot -> if (VoxelsNative.isAvailable) try { VoxelsNative.selectSlot(slot) } catch (_: Exception) {} })
+                            onSelect = { slot -> if (VoxelsNative.isAvailable) try { VoxelsNative.selectSlot(slot) } catch (_: Exception) {} },
+                            onOpenInventory = { invStartTab = 0; inventoryOpen = true })
                     }
 
                     Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(top = 36.dp, start = 12.dp, end = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                IconButton(onClick = { paused = true }) { IconMenu() }
                                 IconButton(onClick = { showDebug = !showDebug }) { IconSettings() }
                             }
                         }
@@ -174,6 +184,28 @@ class MainActivity : ComponentActivity() {
                     newAchievement?.let { ach ->
                         Box(Modifier.align(Alignment.TopCenter).padding(top = 80.dp)) {
                             AchievementNotification(ach) { achievementsManager?.dismissNotification() }
+                        }
+                    }
+
+                    if (inventoryOpen && VoxelsNative.isAvailable) {
+                        InventoryOverlay(inventoryJson = inventoryJson, recipesJson = recipesJson, onClose = { inventoryOpen = false }, startTab = invStartTab)
+                    }
+
+                    if (paused) {
+                        Box(
+                            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f))
+                                .pointerInput(Unit) { detectTapGestures { } }, // swallow taps behind the menu
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Text("Paused", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                                Button(onClick = { paused = false }, modifier = Modifier.width(240.dp)) { Text("Resume") }
+                                Button(onClick = {
+                                    // onDestroy() saves the world and tears down the engine; finishing
+                                    // returns to MenuActivity (still on the back stack).
+                                    activity?.finish()
+                                }, modifier = Modifier.width(240.dp)) { Text("Save & Quit to Menu") }
+                            }
                         }
                     }
                 }

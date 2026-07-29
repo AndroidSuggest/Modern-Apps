@@ -32,7 +32,7 @@ fn engine_lock() -> &'static Mutex<Option<EngineState>> {
     ENGINE.get_or_init(|| Mutex::new(None))
 }
 
-pub fn init_engine(files_dir: String) -> bool {
+pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let mut guard = engine_lock().lock().unwrap();
     if guard.is_some() { return true; }
     let save_dir = files_dir.clone();
@@ -42,11 +42,9 @@ pub fn init_engine(files_dir: String) -> bool {
         let inv = {
             let mut inv = Inventory::default();
             inv.selected = ps.inventory.selected.min(8);
-            for (i, slot) in ps.inventory.slots.iter().enumerate().take(9) {
-                if i < inv.slots.len() {
-                    inv.slots[i].id = slot.id;
-                    inv.slots[i].count = slot.count;
-                }
+            for (i, slot) in ps.inventory.slots.iter().enumerate().take(inv.slots.len()) {
+                inv.slots[i].id = slot.id;
+                inv.slots[i].count = slot.count;
             }
             inv.placed = ps.stats.placed;
             inv.broken = ps.stats.broken;
@@ -61,7 +59,7 @@ pub fn init_engine(files_dir: String) -> bool {
     player.yaw = yaw;
     player.pitch = pitch;
 
-    let mut chunks = ChunkMap::new(0xB10CCA, save_dir.clone());
+    let mut chunks = ChunkMap::new(seed, save_dir.clone());
     chunks.ensure_radius(px as i32, pz as i32);
 
     if !had_save {
@@ -265,62 +263,67 @@ pub fn tick_and_render() {
             let view_proj = Mat4::from_rotation_z(pre_rot_angle) * vulkan_correction * proj * view;
             // Start at midday (day_t=0.5 -> sun overhead) so the world is lit when the app opens.
             let time = 60.0 + (Instant::now() - state.start_time).as_secs_f32();
+            let eb = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
+            let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
             unsafe {
-                renderer.update_ubo(view_proj, state.player.pos, time);
+                renderer.update_ubo(view_proj, state.player.pos, time, underwater);
                 let _ = renderer.draw_frame();
             }
         }
+        publish_ui(state);
     });
 }
 
-// UI-polled JSON getters. They use with_engine_try (never block on the render frame) and fall back to
-// the last cached value when the render thread holds the lock, so the Compose UI stays smooth.
+// UI state caches. The render thread PUBLISHES fresh JSON into these every tick (while it holds the
+// engine lock); the UI getters just read the cache. This avoids the UI ever contending with the render
+// thread for the engine lock (which it holds ~continuously), so inventory/debug update every frame.
 static DEBUG_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static INV_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static STATS_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+fn cref(c: &'static OnceLock<Mutex<String>>, default: &str) -> &'static Mutex<String> { c.get_or_init(|| Mutex::new(default.to_string())) }
 
-fn cached(cache: &'static OnceLock<Mutex<String>>, default: &str, fresh: Option<String>) -> String {
-    let m = cache.get_or_init(|| Mutex::new(default.to_string()));
-    match fresh {
-        Some(j) => { if let Ok(mut c) = m.lock() { *c = j.clone(); } j }
-        None => m.lock().map(|c| c.clone()).unwrap_or_else(|_| default.to_string()),
-    }
+// Called from the render tick (holds the engine lock) to refresh the UI caches.
+fn publish_ui(state: &EngineState) {
+    let fps = if let Some(r) = &state.renderer {
+        let elapsed = (Instant::now() - state.start_time).as_secs_f32();
+        if elapsed>0.1 { r.frame_count as f32 / elapsed } else { 0.0 }
+    } else { 0.0 };
+    let debug = serde_json::json!({
+        "fps": format!("{:.1}", fps),
+        "pos": format!("{:.1},{:.1},{:.1}", state.player.pos.x, state.player.pos.y, state.player.pos.z),
+        "yaw": format!("{:.1}", state.player.yaw.to_degrees()),
+        "chunks": state.chunks.len(),
+        "flying": state.player.flying,
+        "on_ground": state.player.on_ground,
+        "time": format!("{:.1}s", (Instant::now() - state.start_time).as_secs_f32()),
+        "meshes": state.renderer.as_ref().map(|r| r.gpu_meshes.len()).unwrap_or(0),
+        "drawn": state.renderer.as_ref().map(|r| r.drawn_sections).unwrap_or(0),
+        "gpu": state.renderer.as_ref().map(|r| {
+            let p = r.pass_ms;
+            format!("sh{:.1} main{:.1} bloom{:.1} comp{:.1}", p[0], p[1], p[2], p[3])
+        }).unwrap_or_default(),
+    }).to_string();
+    let time = (Instant::now() - state.start_time).as_secs_f32();
+    let day_t = (time / 120.0) % 1.0;
+    let stats = serde_json::json!({ "placed": state.inventory.placed, "broken": state.inventory.broken, "walked": state.player.walk_dist as i32, "night": day_t > 0.5 && day_t < 0.92 }).to_string();
+    let inv = state.inventory.to_json();
+    if let Ok(mut c) = cref(&DEBUG_CACHE, "{}").lock() { *c = debug; }
+    if let Ok(mut c) = cref(&STATS_CACHE, "{}").lock() { *c = stats; }
+    if let Ok(mut c) = cref(&INV_CACHE, r#"{"selected":0,"slots":[]}"#).lock() { *c = inv; }
 }
 
-pub fn get_debug_json() -> String {
-    let fresh = with_engine_try(|state| {
-        let fps = if let Some(r) = &state.renderer {
-            let elapsed = (Instant::now() - state.start_time).as_secs_f32();
-            if elapsed>0.1 { r.frame_count as f32 / elapsed } else { 0.0 }
-        } else { 0.0 };
-        serde_json::json!({
-            "fps": format!("{:.1}", fps),
-            "pos": format!("{:.1},{:.1},{:.1}", state.player.pos.x, state.player.pos.y, state.player.pos.z),
-            "yaw": format!("{:.1}", state.player.yaw.to_degrees()),
-            "chunks": state.chunks.len(),
-            "flying": state.player.flying,
-            "on_ground": state.player.on_ground,
-            "time": format!("{:.1}s", (Instant::now() - state.start_time).as_secs_f32()),
-            "meshes": state.renderer.as_ref().map(|r| r.gpu_meshes.len()).unwrap_or(0),
-        }).to_string()
-    });
-    cached(&DEBUG_CACHE, r#"{"error":"no engine"}"#, fresh)
-}
+pub fn get_debug_json() -> String { cref(&DEBUG_CACHE, r#"{"error":"no engine"}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
+pub fn get_inventory_json() -> String { cref(&INV_CACHE, r#"{"selected":0,"slots":[]}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| r#"{"selected":0,"slots":[]}"#.into()) }
+pub fn get_stats_json() -> String { cref(&STATS_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 
-pub fn get_inventory_json() -> String {
-    let fresh = with_engine_try(|state| state.inventory.to_json());
-    cached(&INV_CACHE, r#"{"selected":0,"slots":[]}"#, fresh)
-}
-
-pub fn get_stats_json() -> String {
-    let fresh = with_engine_try(|state| {
-        let walked = state.player.walk_dist as i32;
-        let time = (Instant::now() - state.start_time).as_secs_f32();
-        let day_t = (time / 120.0) % 1.0;
-        let night = day_t > 0.5 && day_t < 0.92;
-        serde_json::json!({ "placed": state.inventory.placed, "broken": state.inventory.broken, "walked": walked, "night": night }).to_string()
-    });
-    cached(&STATS_CACHE, "{}", fresh)
+pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
+pub fn inventory_give(id: u8) { with_engine(|s| s.inventory.give(id)); }
+pub fn inventory_craft(recipe: usize) -> bool { with_engine(|s| s.inventory.craft(recipe)).unwrap_or(false) }
+pub fn get_recipes_json() -> String {
+    let items: Vec<_> = crate::inventory::RECIPES.iter()
+        .map(|(iid, ic, oid, oc)| serde_json::json!({"in": iid, "inN": ic, "out": oid, "outN": oc}))
+        .collect();
+    serde_json::json!(items).to_string()
 }
 
 // Build a world-space pick ray from a tap at pixel (px, py) using a pinhole model matching the
@@ -394,9 +397,18 @@ pub fn break_block_at(px: f32, py: f32) -> bool {
     }).unwrap_or(false)
 }
 
-pub fn place_block_at(px: f32, py: f32) -> bool {
+// Returns: 0 = nothing, 1 = placed a block, 10+menu = tapped an interactive block (open its menu).
+pub fn place_block_at(px: f32, py: f32) -> i32 {
     with_engine(|state| {
         let (o, d) = screen_ray(state, px, py);
-        do_place(state, o, d)
-    }).unwrap_or(false)
+        // Tapping an interactive block opens its menu — unless sneaking, which places instead.
+        if !state.player.sneaking {
+            if let Some(hit) = crate::raycast::raycast(&state.chunks, o, d, 6.0) {
+                let (x, y, z) = hit.pos;
+                let m = crate::world::block::Block::from_id(state.chunks.get_block_world(x, y, z)).menu();
+                if m != 0 { return 10 + m; }
+            }
+        }
+        if do_place(state, o, d) { 1 } else { 0 }
+    }).unwrap_or(0)
 }

@@ -23,12 +23,13 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativ
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     files_dir: JString<'l>,
+    seed: jint,
 ) -> jboolean {
     let dir = match get_string(&mut env, &files_dir) {
         Some(d) => d,
         None => return 0,
     };
-    if engine::init_engine(dir) { 1 } else { 0 }
+    if engine::init_engine(dir, seed as u32) { 1 } else { 0 }
 }
 
 #[no_mangle]
@@ -171,8 +172,8 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_place
     _class: JClass<'l>,
     x: jfloat,
     y: jfloat,
-) -> jboolean {
-    if engine::place_block_at(x, y) { 1 } else { 0 }
+) -> jint {
+    engine::place_block_at(x, y)
 }
 
 #[no_mangle]
@@ -184,6 +185,35 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_selec
     engine::with_engine(|s| {
         s.inventory.select(slot.max(0).min(8) as usize);
     });
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_moveItem<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, from: jint, to: jint,
+) {
+    if from >= 0 && to >= 0 { engine::inventory_move(from as usize, to as usize); }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_giveBlock<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, id: jint,
+) {
+    if id > 0 { engine::inventory_give(id as u8); }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_craft<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, recipe: jint,
+) -> jboolean {
+    if recipe >= 0 && engine::inventory_craft(recipe as usize) { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getRecipesJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_recipes_json()) { Ok(s) => s.into_raw(), Err(_) => null }
 }
 
 #[no_mangle]

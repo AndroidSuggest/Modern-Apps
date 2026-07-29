@@ -1,10 +1,10 @@
 use ash::vk;
 use crate::vulkan::buffers::AllocatedBuffer;
 
-pub const ATLAS_TILES_PER_ROW: u32 = 4;
+pub const ATLAS_TILES_PER_ROW: u32 = 8;
 pub const ATLAS_TILE_ROWS: u32 = 8;
 pub const TILE_SIZE: u32 = 16;
-pub const ATLAS_W: u32 = ATLAS_TILES_PER_ROW * TILE_SIZE; // 64
+pub const ATLAS_W: u32 = ATLAS_TILES_PER_ROW * TILE_SIZE; // 128
 pub const ATLAS_H: u32 = ATLAS_TILE_ROWS * TILE_SIZE;     // 128
 
 pub struct TextureAtlas {

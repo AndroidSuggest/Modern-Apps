@@ -9,11 +9,12 @@ pub struct Player {
     pub on_ground: bool,
     pub flying: bool,
     pub walk_dist: f32,
+    pub sneaking: bool,
 }
 
 impl Player {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, walk_dist: 0.0 }
+        Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, walk_dist: 0.0, sneaking: false }
     }
     pub fn eye_pos(&self) -> Vec3 { self.pos + vec3(0.0, 1.62, 0.0) }
     pub fn forward(&self) -> Vec3 {
@@ -23,6 +24,7 @@ impl Player {
     pub fn right(&self) -> Vec3 { vec3(self.yaw.cos(), 0.0, -self.yaw.sin()).normalize_or_zero() }
 
     pub fn tick(&mut self, dt: f32, input: &crate::input::InputState, chunks: &ChunkMap) {
+        self.sneaking = input.sneak;
         let fwd = if self.flying {
             self.forward()
         } else {

@@ -13,6 +13,15 @@ fn main() {
     let sky_frag = shaders_dir.join("sky.frag");
     let sky_vert_spv = shaders_dir.join("sky.vert.spv");
     let sky_frag_spv = shaders_dir.join("sky.frag.spv");
+    let cloud_frag = shaders_dir.join("cloud.frag");
+    let cloud_frag_spv = shaders_dir.join("cloud.frag.spv");
+    let shadow_vert = shaders_dir.join("shadow.vert");
+    let shadow_vert_spv = shaders_dir.join("shadow.vert.spv");
+    let water_vert = shaders_dir.join("water.vert");
+    let water_frag = shaders_dir.join("water.frag");
+    let water_vert_spv = shaders_dir.join("water.vert.spv");
+    let water_frag_spv = shaders_dir.join("water.frag.spv");
+    let post = [("post.vert","post.vert.spv"), ("bright.frag","bright.frag.spv"), ("blur.frag","blur.frag.spv"), ("composite.frag","composite.frag.spv")];
     let atlas_bin = shaders_dir.join("atlas.bin");
 
     if !atlas_bin.exists() {
@@ -33,6 +42,13 @@ fn main() {
         let _ = Command::new(glslc_path).arg("-o").arg(&frag_spv).arg(&frag).status();
         let _ = Command::new(glslc_path).arg("-o").arg(&sky_vert_spv).arg(&sky_vert).status();
         let _ = Command::new(glslc_path).arg("-o").arg(&sky_frag_spv).arg(&sky_frag).status();
+        let _ = Command::new(glslc_path).arg("-o").arg(&cloud_frag_spv).arg(&cloud_frag).status();
+        let _ = Command::new(glslc_path).arg("-o").arg(&shadow_vert_spv).arg(&shadow_vert).status();
+        let _ = Command::new(glslc_path).arg("-o").arg(&water_vert_spv).arg(&water_vert).status();
+        let _ = Command::new(glslc_path).arg("-o").arg(&water_frag_spv).arg(&water_frag).status();
+        for (src, spv) in &post {
+            let _ = Command::new(glslc_path).arg("-o").arg(shaders_dir.join(spv)).arg(shaders_dir.join(src)).status();
+        }
     }
 
     if !vert_spv.exists() { std::fs::write(&vert_spv, minimal_vert_spv()).ok(); }
@@ -40,11 +56,27 @@ fn main() {
     // include_bytes! requires these to exist even if glslc is unavailable.
     if !sky_vert_spv.exists() { std::fs::write(&sky_vert_spv, minimal_vert_spv()).ok(); }
     if !sky_frag_spv.exists() { std::fs::write(&sky_frag_spv, minimal_frag_spv()).ok(); }
+    if !cloud_frag_spv.exists() { std::fs::write(&cloud_frag_spv, minimal_frag_spv()).ok(); }
+    if !shadow_vert_spv.exists() { std::fs::write(&shadow_vert_spv, minimal_vert_spv()).ok(); }
+    if !water_vert_spv.exists() { std::fs::write(&water_vert_spv, minimal_vert_spv()).ok(); }
+    if !water_frag_spv.exists() { std::fs::write(&water_frag_spv, minimal_frag_spv()).ok(); }
+    for (src, spv) in &post {
+        let p = shaders_dir.join(spv);
+        if !p.exists() { std::fs::write(&p, if src.ends_with(".vert") { minimal_vert_spv() } else { minimal_frag_spv() }).ok(); }
+    }
 
     println!("cargo:rerun-if-changed=shaders/block.vert");
     println!("cargo:rerun-if-changed=shaders/block.frag");
     println!("cargo:rerun-if-changed=shaders/sky.vert");
     println!("cargo:rerun-if-changed=shaders/sky.frag");
+    println!("cargo:rerun-if-changed=shaders/cloud.frag");
+    println!("cargo:rerun-if-changed=shaders/shadow.vert");
+    println!("cargo:rerun-if-changed=shaders/water.vert");
+    println!("cargo:rerun-if-changed=shaders/water.frag");
+    println!("cargo:rerun-if-changed=shaders/post.vert");
+    println!("cargo:rerun-if-changed=shaders/bright.frag");
+    println!("cargo:rerun-if-changed=shaders/blur.frag");
+    println!("cargo:rerun-if-changed=shaders/composite.frag");
     println!("cargo:rerun-if-changed=shaders/atlas.bin");
     println!("cargo:rerun-if-changed=build.rs");
 }

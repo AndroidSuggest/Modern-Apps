@@ -19,6 +19,7 @@ layout(binding=0) uniform Ubo {
     float cloudShadow;
     vec3 ambientColor;
     float _pad2;
+    mat4 lightViewProj;
 };
 
 layout(location=0) out vec2 fragUv;
@@ -28,6 +29,7 @@ layout(location=3) out float fragDist;
 layout(location=4) out vec3 fragWorldPos;
 layout(location=5) out vec3 fragNormal;
 layout(location=6) out float fragTile;
+layout(location=7) out vec4 fragLightPos;
 
 void main() {
     gl_Position = viewProj * vec4(inPos, 1.0);
@@ -38,4 +40,5 @@ void main() {
     fragNormal = inNormal;
     fragTile = inTileIdx;
     fragDist = length(inPos - playerPos.xyz);
+    fragLightPos = lightViewProj * vec4(inPos, 1.0);
 }

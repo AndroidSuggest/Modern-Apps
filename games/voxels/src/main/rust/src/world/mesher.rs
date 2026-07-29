@@ -1,4 +1,4 @@
-use super::block::{Block, GRASS_SIDE_OVERLAY};
+use super::block::{Block, GRASS_SIDE_TILE};
 use super::chunk::{Chunk, SECTION_SIZE, SECTIONS_PER_CHUNK};
 
 #[repr(C)]
@@ -17,11 +17,19 @@ pub struct Vertex {
 pub struct MeshData {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    // Water surface, rendered separately as a transparent, wavy pass.
+    pub water_vertices: Vec<Vertex>,
+    pub water_indices: Vec<u32>,
 }
 
-impl MeshData { pub fn is_empty(&self) -> bool { self.vertices.is_empty() } }
+impl MeshData { pub fn is_empty(&self) -> bool { self.vertices.is_empty() && self.water_vertices.is_empty() } }
+
+// Classic voxel corner AO: 0 (darkest) .. 3 (fully open) from the two edge neighbors + the diagonal.
+fn vao(s1: bool, s2: bool, c: bool) -> u8 { if s1 && s2 { 0 } else { 3 - (s1 as u8 + s2 as u8 + c as u8) } }
+fn aof(level: u8) -> f32 { level as f32 / 3.0 }
 
 pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8, grass_tint: &dyn Fn(i32,i32)->[f32;3]) -> Vec<Option<MeshData>> {
+    let occ = |ax: i32, ay: i32, az: i32| -> bool { let id = get_neighbor(ax, ay, az); id != 0 && Block::from_id(id).is_opaque() };
     let mut result: Vec<Option<MeshData>> = (0..SECTIONS_PER_CHUNK).map(|_| None).collect();
     for sec_idx in 0..SECTIONS_PER_CHUNK {
         let section = match &chunk.sections[sec_idx] {
@@ -31,123 +39,110 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8, grass_t
         let base_y = (sec_idx * SECTION_SIZE) as i32;
         let mut verts = Vec::with_capacity(1024);
         let mut indices = Vec::with_capacity(1536);
+        let ox = chunk.pos.world_origin().0;
+        let oz = chunk.pos.world_origin().1;
         let dirs = [(1,0,0,0), (-1,0,0,0), (0,1,0,1), (0,-1,0,1), (0,0,1,2), (0,0,-1,2)];
         for &(dx,dy,dz, axis) in &dirs {
             let nrm = [dx as f32, dy as f32, dz as f32];
+            // Mask entry: (block id, tile, per-corner AO in this direction's vertex order).
             match axis {
                 0 => {
                     for x in 0..SECTION_SIZE {
-                        let mut mask = [[None::<(u8,u32)>; 16]; 16];
+                        let mut mask = [[None::<(u8,u32,[u8;4])>; 16]; 16];
                         for y in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
                             let id = section.get(x,y,z);
-                            if id == 0 { continue; }
-                            let wx = chunk.pos.world_origin().0 + x as i32;
-                            let wy = base_y + y as i32;
-                            let wz = chunk.pos.world_origin().1 + z as i32;
+                            if id == 0 || id == Block::Water as u8 { continue; }
+                            let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                             let nid = get_neighbor(wx+dx, wy+dy, wz+dz);
                             let need = if nid != 0 { !Block::from_id(nid).is_opaque() } else { true };
                             if need {
                                 let tile = Block::from_id(id).tile_for_dir(dx,dy,dz);
-                                mask[y][z] = Some((id, tile));
+                                let nb = wx + dx;
+                                let ao = |ys: i32, zs: i32| vao(occ(nb, wy+ys, wz), occ(nb, wy, wz+zs), occ(nb, wy+ys, wz+zs));
+                                let ao4 = if dx==1 { [ao(-1,-1), ao(1,-1), ao(1,1), ao(-1,1)] }
+                                          else       { [ao(-1,1),  ao(1,1),  ao(1,-1), ao(-1,-1)] };
+                                mask[y][z] = Some((id, tile, ao4));
                             }
                         }}
                         let mut visited = [[false; 16]; 16];
                         for y in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
                             if visited[y][z] { continue; }
-                            let Some((bid, tile_idx)) = mask[y][z] else { continue; };
+                            let Some((bid, tile_idx, ao4)) = mask[y][z] else { continue; };
                             let mut w = 1;
-                            while z + w < SECTION_SIZE && !visited[y][z+w] && mask[y][z+w] == Some((bid, tile_idx)) { w+=1; }
+                            while z + w < SECTION_SIZE && !visited[y][z+w] && mask[y][z+w] == Some((bid, tile_idx, ao4)) { w+=1; }
                             let mut h = 1;
                             'outer: while y + h < SECTION_SIZE {
-                                for k in 0..w { if visited[y+h][z+k] || mask[y+h][z+k] != Some((bid, tile_idx)) { break 'outer; } }
+                                for k in 0..w { if visited[y+h][z+k] || mask[y+h][z+k] != Some((bid, tile_idx, ao4)) { break 'outer; } }
                                 h+=1;
                             }
                             for yy in y..y+h { for zz in z..z+w { visited[yy][zz]=true; } }
                             let x0 = x as f32 + if dx==1 { 1.0 } else { 0.0 };
-                            let y0 = y as f32; let z0 = z as f32;
-                            let ww = w as f32; let hh = h as f32;
-                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, ww, hh); // u: z (ww), v: y (hh)
-                            let color = Block::from_id(bid).color();
+                            let y0 = y as f32; let z0 = z as f32; let ww = w as f32; let hh = h as f32;
+                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, ww, hh);
+                            // Grass side: sentinel tile so the shader composites dirt + tinted overlay in one quad.
+                            let is_grass = bid == Block::Grass as u8;
+                            let color = if is_grass { grass_tint(ox + x as i32, oz + z as i32) } else { Block::from_id(bid).color() };
+                            let etile = if is_grass { GRASS_SIDE_TILE as f32 } else { tile_idx as f32 };
                             let quad = if dx==1 {
                                 [([x0, y0, z0], [u0, v1]), ([x0, y0+hh, z0], [u0, v0]), ([x0, y0+hh, z0+ww], [u1, v0]), ([x0, y0, z0+ww], [u1, v1])]
                             } else {
                                 [([x0, y0, z0+ww], [u0, v1]), ([x0, y0+hh, z0+ww], [u0, v0]), ([x0, y0+hh, z0], [u1, v0]), ([x0, y0, z0], [u1, v1])]
                             };
-                            let wx0 = chunk.pos.world_origin().0 as f32;
-                            let wz0 = chunk.pos.world_origin().1 as f32;
-                            let by = base_y as f32;
+                            let wx0 = ox as f32; let wz0 = oz as f32; let by = base_y as f32;
                             let start = verts.len() as u32;
-                            for (pos, uv) in quad.iter() {
-                                verts.push(Vertex{ pos: [wx0 + pos[0], by + pos[1], wz0 + pos[2]], uv: *uv, color, ao: 1.0, tile_idx: tile_idx as f32, normal: nrm });
+                            for (i,(pos, uv)) in quad.iter().enumerate() {
+                                verts.push(Vertex{ pos: [wx0 + pos[0], by + pos[1], wz0 + pos[2]], uv: *uv, color, ao: aof(ao4[i]), tile_idx: etile, normal: nrm });
                             }
                             indices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
-                            // Grass side: tinted grass_block_side_overlay just outside the dirt face.
-                            if bid == Block::Grass as u8 {
-                                let oc = grass_tint(chunk.pos.world_origin().0 + x as i32, chunk.pos.world_origin().1 + z as i32);
-                                let ex = 0.02 * dx as f32;
-                                let oquad = if dx==1 {
-                                    [([x0, y0, z0], [u0, v1]), ([x0, y0+hh, z0], [u0, v0]), ([x0, y0+hh, z0+ww], [u1, v0]), ([x0, y0, z0+ww], [u1, v1])]
-                                } else {
-                                    [([x0, y0, z0+ww], [u0, v1]), ([x0, y0+hh, z0+ww], [u0, v0]), ([x0, y0+hh, z0], [u1, v0]), ([x0, y0, z0], [u1, v1])]
-                                };
-                                let ostart = verts.len() as u32;
-                                for (pos, uv) in oquad.iter() {
-                                    verts.push(Vertex{ pos: [wx0 + pos[0] + ex, by + pos[1], wz0 + pos[2]], uv: *uv, color: oc, ao: 1.0, tile_idx: GRASS_SIDE_OVERLAY as f32, normal: nrm });
-                                }
-                                indices.extend_from_slice(&[ostart, ostart+1, ostart+2, ostart, ostart+2, ostart+3]);
-                            }
                         }}
                     }
                 }
                 1 => {
                     for y in 0..SECTION_SIZE {
-                        let mut mask = [[None::<(u8,u32)>; 16]; 16];
+                        let mut mask = [[None::<(u8,u32,[u8;4])>; 16]; 16];
                         for x in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
                             let id = section.get(x,y,z);
-                            if id==0 { continue; }
-                            let wx = chunk.pos.world_origin().0 + x as i32;
-                            let wy = base_y + y as i32;
-                            let wz = chunk.pos.world_origin().1 + z as i32;
+                            if id==0 || id==Block::Water as u8 { continue; }
+                            let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                             let nid = get_neighbor(wx+dx, wy+dy, wz+dz);
                             if nid==0 || !Block::from_id(nid).is_opaque() {
                                 if !(nid==id && Block::from_id(nid).is_opaque()) {
                                     let tile = Block::from_id(id).tile_for_dir(dx,dy,dz);
-                                    mask[x][z]=Some((id, tile));
+                                    let nb = wy + dy;
+                                    let ao = |xs: i32, zs: i32| vao(occ(wx+xs, nb, wz), occ(wx, nb, wz+zs), occ(wx+xs, nb, wz+zs));
+                                    let ao4 = if dy==1 { [ao(-1,-1), ao(1,-1), ao(1,1), ao(-1,1)] }
+                                              else       { [ao(-1,1),  ao(1,1),  ao(1,-1), ao(-1,-1)] };
+                                    mask[x][z]=Some((id, tile, ao4));
                                 }
                             }
                         }}
                         let mut visited = [[false; 16]; 16];
                         for x in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
                             if visited[x][z] { continue; }
-                            let Some((bid, tile_idx)) = mask[x][z] else { continue; };
+                            let Some((bid, tile_idx, ao4)) = mask[x][z] else { continue; };
                             let mut w = 1;
-                            while z+w < SECTION_SIZE && !visited[x][z+w] && mask[x][z+w]==Some((bid, tile_idx)) { w+=1; }
+                            while z+w < SECTION_SIZE && !visited[x][z+w] && mask[x][z+w]==Some((bid, tile_idx, ao4)) { w+=1; }
                             let mut h = 1;
                             'outer2: while x+h < SECTION_SIZE {
-                                for k in 0..w { if visited[x+h][z+k] || mask[x+h][z+k]!=Some((bid, tile_idx)) { break 'outer2; } }
+                                for k in 0..w { if visited[x+h][z+k] || mask[x+h][z+k]!=Some((bid, tile_idx, ao4)) { break 'outer2; } }
                                 h+=1;
                             }
                             for xx in x..x+h { for zz in z..z+w { visited[xx][zz]=true; } }
                             let y0 = y as f32 + if dy==1 { 1.0 } else { 0.0 };
-                            let x0 = x as f32; let z0 = z as f32;
-                            let ww = w as f32; let hh = h as f32;
-                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww); // u: x (hh), v: z (ww)
-                            // Grass tops use the grayscale grass_top tile tinted per biome; other faces
-                            // keep the block's base colour (dirt bottom stays brown).
+                            let x0 = x as f32; let z0 = z as f32; let ww = w as f32; let hh = h as f32;
+                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww);
                             let color = if bid == Block::Grass as u8 && dy == 1 {
-                                grass_tint(chunk.pos.world_origin().0 + x as i32, chunk.pos.world_origin().1 + z as i32)
+                                grass_tint(ox + x as i32, oz + z as i32)
                             } else { Block::from_id(bid).color() };
-                            let wx0 = chunk.pos.world_origin().0 as f32;
-                            let wz0 = chunk.pos.world_origin().1 as f32;
-                            let by = base_y as f32;
+                            let wx0 = ox as f32; let wz0 = oz as f32; let by = base_y as f32;
                             let quad = if dy==1 {
                                 [([x0, y0, z0], [u0, v0]), ([x0+hh, y0, z0], [u1, v0]), ([x0+hh, y0, z0+ww], [u1, v1]), ([x0, y0, z0+ww], [u0, v1])]
                             } else {
                                 [([x0, y0, z0+ww], [u0, v0]), ([x0+hh, y0, z0+ww], [u1, v0]), ([x0+hh, y0, z0], [u1, v1]), ([x0, y0, z0], [u0, v1])]
                             };
                             let start = verts.len() as u32;
-                            for (lp, uv) in quad.iter() {
-                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: if dy==1 { 1.0 } else { 0.75 }, tile_idx: tile_idx as f32, normal: nrm });
+                            for (i,(lp, uv)) in quad.iter().enumerate() {
+                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: aof(ao4[i]), tile_idx: tile_idx as f32, normal: nrm });
                             }
                             indices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
                         }}
@@ -155,71 +150,88 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &dyn Fn(i32,i32,i32)->u8, grass_t
                 }
                 2 => {
                     for z in 0..SECTION_SIZE {
-                        let mut mask = [[None::<(u8,u32)>; 16]; 16];
+                        let mut mask = [[None::<(u8,u32,[u8;4])>; 16]; 16];
                         for x in 0..SECTION_SIZE { for y in 0..SECTION_SIZE {
                             let id = section.get(x,y,z);
-                            if id==0 { continue; }
-                            let wx = chunk.pos.world_origin().0 + x as i32;
-                            let wy = base_y + y as i32;
-                            let wz = chunk.pos.world_origin().1 + z as i32;
+                            if id==0 || id==Block::Water as u8 { continue; }
+                            let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                             let nid = get_neighbor(wx+dx, wy+dy, wz+dz);
                             if nid==0 || !Block::from_id(nid).is_opaque() {
                                 let tile = Block::from_id(id).tile_for_dir(dx,dy,dz);
-                                mask[x][y]=Some((id, tile));
+                                let nb = wz + dz;
+                                let ao = |xs: i32, ys: i32| vao(occ(wx+xs, wy, nb), occ(wx, wy+ys, nb), occ(wx+xs, wy+ys, nb));
+                                let ao4 = if dz==1 { [ao(-1,-1), ao(1,-1), ao(1,1), ao(-1,1)] }
+                                          else       { [ao(1,-1),  ao(-1,-1), ao(-1,1), ao(1,1)] };
+                                mask[x][y]=Some((id, tile, ao4));
                             }
                         }}
                         let mut visited = [[false; 16]; 16];
                         for x in 0..SECTION_SIZE { for y in 0..SECTION_SIZE {
                             if visited[x][y] { continue; }
-                            let Some((bid, tile_idx)) = mask[x][y] else { continue; };
+                            let Some((bid, tile_idx, ao4)) = mask[x][y] else { continue; };
                             let mut w = 1;
-                            while y+w < SECTION_SIZE && !visited[x][y+w] && mask[x][y+w]==Some((bid, tile_idx)) { w+=1; }
+                            while y+w < SECTION_SIZE && !visited[x][y+w] && mask[x][y+w]==Some((bid, tile_idx, ao4)) { w+=1; }
                             let mut h = 1;
                             'outer3: while x+h < SECTION_SIZE {
-                                for k in 0..w { if visited[x+h][y+k] || mask[x+h][y+k]!=Some((bid, tile_idx)) { break 'outer3; } }
+                                for k in 0..w { if visited[x+h][y+k] || mask[x+h][y+k]!=Some((bid, tile_idx, ao4)) { break 'outer3; } }
                                 h+=1;
                             }
                             for xx in x..x+h { for yy in y..y+w { visited[xx][yy]=true; } }
                             let z0 = z as f32 + if dz==1 { 1.0 } else { 0.0 };
-                            let x0 = x as f32; let y0 = y as f32;
-                            let ww = w as f32; let hh = h as f32;
-                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww); // u: x (hh), v: y (ww)
-                            let color = Block::from_id(bid).color();
-                            let wx0 = chunk.pos.world_origin().0 as f32;
-                            let wz0 = chunk.pos.world_origin().1 as f32;
-                            let by = base_y as f32;
+                            let x0 = x as f32; let y0 = y as f32; let ww = w as f32; let hh = h as f32;
+                            let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww);
+                            let is_grass = bid == Block::Grass as u8;
+                            let color = if is_grass { grass_tint(ox + x as i32, oz + z as i32) } else { Block::from_id(bid).color() };
+                            let etile = if is_grass { GRASS_SIDE_TILE as f32 } else { tile_idx as f32 };
+                            let wx0 = ox as f32; let wz0 = oz as f32; let by = base_y as f32;
                             let quad = if dz==1 {
                                 [([x0, y0, z0], [u0, v1]), ([x0+hh, y0, z0], [u1, v1]), ([x0+hh, y0+ww, z0], [u1, v0]), ([x0, y0+ww, z0], [u0, v0])]
                             } else {
                                 [([x0+hh, y0, z0], [u0, v1]), ([x0, y0, z0], [u1, v1]), ([x0, y0+ww, z0], [u1, v0]), ([x0+hh, y0+ww, z0], [u0, v0])]
                             };
                             let start = verts.len() as u32;
-                            for (lp, uv) in quad.iter() {
-                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: 0.92, tile_idx: tile_idx as f32, normal: nrm });
+                            for (i,(lp, uv)) in quad.iter().enumerate() {
+                                verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2]], uv: *uv, color, ao: aof(ao4[i]), tile_idx: etile, normal: nrm });
                             }
                             indices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
-                            // Grass side: tinted grass_block_side_overlay just outside the dirt face.
-                            if bid == Block::Grass as u8 {
-                                let oc = grass_tint(chunk.pos.world_origin().0 + x as i32, chunk.pos.world_origin().1 + z as i32);
-                                let ez = 0.02 * dz as f32;
-                                let oquad = if dz==1 {
-                                    [([x0, y0, z0], [u0, v1]), ([x0+hh, y0, z0], [u1, v1]), ([x0+hh, y0+ww, z0], [u1, v0]), ([x0, y0+ww, z0], [u0, v0])]
-                                } else {
-                                    [([x0+hh, y0, z0], [u0, v1]), ([x0, y0, z0], [u1, v1]), ([x0, y0+ww, z0], [u1, v0]), ([x0+hh, y0+ww, z0], [u0, v0])]
-                                };
-                                let ostart = verts.len() as u32;
-                                for (lp, uv) in oquad.iter() {
-                                    verts.push(Vertex{ pos: [wx0 + lp[0], by + lp[1], wz0 + lp[2] + ez], uv: *uv, color: oc, ao: 0.92, tile_idx: GRASS_SIDE_OVERLAY as f32, normal: nrm });
-                                }
-                                indices.extend_from_slice(&[ostart, ostart+1, ostart+2, ostart, ostart+2, ostart+3]);
-                            }
                         }}
                     }
                 }
                 _ => {}
             }
         }
-        if !verts.is_empty() { result[sec_idx] = Some(MeshData{ vertices: verts, indices }); }
+        // --- Water surface pass: top faces of water columns exposed to air, greedy-merged. ---
+        let mut wverts: Vec<Vertex> = Vec::new();
+        let mut windices: Vec<u32> = Vec::new();
+        for y in 0..SECTION_SIZE {
+            let mut wmask = [[false; 16]; 16];
+            for x in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
+                if section.get(x,y,z) != Block::Water as u8 { continue; }
+                let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
+                let above = get_neighbor(wx, wy+1, wz);
+                if above != Block::Water as u8 && !(above != 0 && Block::from_id(above).is_opaque()) {
+                    wmask[x][z] = true;
+                }
+            }}
+            let mut visited = [[false; 16]; 16];
+            for x in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
+                if visited[x][z] || !wmask[x][z] { continue; }
+                let mut w = 1; while z+w < SECTION_SIZE && !visited[x][z+w] && wmask[x][z+w] { w+=1; }
+                let mut h = 1; 'ow: while x+h < SECTION_SIZE { for k in 0..w { if visited[x+h][z+k] || !wmask[x+h][z+k] { break 'ow; } } h+=1; }
+                for xx in x..x+h { for zz in z..z+w { visited[xx][zz]=true; } }
+                let y0 = (y+1) as f32;
+                let x0 = x as f32; let z0 = z as f32; let ww = w as f32; let hh = h as f32;
+                let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww);
+                let wx0 = ox as f32; let wz0 = oz as f32; let by = base_y as f32;
+                let quad = [([x0,y0,z0],[u0,v0]), ([x0+hh,y0,z0],[u1,v0]), ([x0+hh,y0,z0+ww],[u1,v1]), ([x0,y0,z0+ww],[u0,v1])];
+                let start = wverts.len() as u32;
+                for (pos,uv) in quad.iter() {
+                    wverts.push(Vertex{ pos: [wx0+pos[0], by+pos[1], wz0+pos[2]], uv: *uv, color: [1.0,1.0,1.0], ao: 1.0, tile_idx: 13.0, normal: [0.0,1.0,0.0] });
+                }
+                windices.extend_from_slice(&[start, start+1, start+2, start, start+2, start+3]);
+            }}
+        }
+        if !verts.is_empty() || !wverts.is_empty() { result[sec_idx] = Some(MeshData{ vertices: verts, indices, water_vertices: wverts, water_indices: windices }); }
     }
     result
 }

@@ -46,11 +46,13 @@ pub struct UboData {
     pub cloud_shadow: f32, // strength of cloud shadows cast on terrain (0..1)
     pub ambient_color: [f32; 3],
     pub _pad2: f32,
+    // Light-space view-projection for sun shadow mapping (orthographic, from the sun toward the scene).
+    pub light_view_proj: [[f32; 4]; 4],
 }
 
 impl Default for UboData {
     fn default() -> Self {
-        Self { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_dir: [0.2, -1.0, 0.3], time: 0.0, fog_color: [0.53, 0.81, 0.92], fog_density: 0.01, player_pos: [0.0, 70.0, 0.0, 0.0], day_factor: 1.0, _pad: [0.0;3], inv_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_color: [1.0, 0.97, 0.9], cloud_shadow: 0.6, ambient_color: [0.45, 0.55, 0.72], _pad2: 0.0 }
+        Self { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_dir: [0.2, -1.0, 0.3], time: 0.0, fog_color: [0.53, 0.81, 0.92], fog_density: 0.01, player_pos: [0.0, 70.0, 0.0, 0.0], day_factor: 1.0, _pad: [0.0;3], inv_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_color: [1.0, 0.97, 0.9], cloud_shadow: 0.6, ambient_color: [0.45, 0.55, 0.72], _pad2: 0.0, light_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d() }
     }
 }
 

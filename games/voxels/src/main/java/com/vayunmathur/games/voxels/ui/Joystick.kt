@@ -121,32 +121,48 @@ private fun lookCurve(v: Float): Float {
     return if (v < 0f) -shaped else shaped
 }
 
-// A floating look joystick: drag anywhere within this region and the stick materializes at the touch
-// origin, rotating the camera by displacement from there (rate-based, same curve as the move stick).
-// Non-drag touches are not consumed, so taps fall through to the world (place/break).
+// Fullscreen world-interaction + floating look stick. A drag that STARTS on the right half spawns a
+// look joystick at the touch origin; taps place a block and long-presses break one — anywhere on the
+// screen (so build/break works on both halves). Move joystick / buttons sit above this and take their
+// own touches.
 @Composable
-fun FloatingLookJoystick(modifier: Modifier, onLookRate: (Float, Float) -> Unit) {
+fun FloatingLookJoystick(
+    modifier: Modifier,
+    onLookRate: (Float, Float) -> Unit,
+    onPlace: (Offset) -> Unit,
+    onBreak: (Offset) -> Unit,
+) {
     var origin by remember { mutableStateOf(Offset.Zero) }
     var knob by remember { mutableStateOf(Offset.Zero) }
     var active by remember { mutableStateOf(false) }
-    Box(modifier.pointerInput(Unit) {
-        val maxR = 70.dp.toPx()
-        detectDragGestures(
-            onDragStart = { off -> origin = off; knob = Offset.Zero; active = true; onLookRate(0f, 0f) },
-            onDrag = { change, drag ->
-                change.consume()
-                val nk = knob + drag
-                val dist = hypot(nk.x, nk.y)
-                knob = if (dist > maxR && dist > 0.001f) nk * (maxR / dist) else nk
-                val nx = knob.x / maxR
-                val ny = knob.y / maxR
-                val mag = sqrt(nx * nx + ny * ny)
-                if (mag < 0.1f) onLookRate(0f, 0f) else onLookRate(lookCurve(-nx), lookCurve(ny))
-            },
-            onDragEnd = { active = false; knob = Offset.Zero; onLookRate(0f, 0f) },
-            onDragCancel = { active = false; knob = Offset.Zero; onLookRate(0f, 0f) }
-        )
-    }) {
+    Box(modifier
+        .pointerInput(Unit) {
+            val maxR = 70.dp.toPx()
+            detectDragGestures(
+                onDragStart = { off -> if (off.x > size.width / 2f) { origin = off; knob = Offset.Zero; active = true; onLookRate(0f, 0f) } },
+                onDrag = { change, drag ->
+                    if (active) {
+                        change.consume()
+                        val nk = knob + drag
+                        val dist = hypot(nk.x, nk.y)
+                        knob = if (dist > maxR && dist > 0.001f) nk * (maxR / dist) else nk
+                        val nx = knob.x / maxR
+                        val ny = knob.y / maxR
+                        val mag = sqrt(nx * nx + ny * ny)
+                        if (mag < 0.1f) onLookRate(0f, 0f) else onLookRate(lookCurve(-nx), lookCurve(ny))
+                    }
+                },
+                onDragEnd = { if (active) { active = false; knob = Offset.Zero; onLookRate(0f, 0f) } },
+                onDragCancel = { if (active) { active = false; knob = Offset.Zero; onLookRate(0f, 0f) } }
+            )
+        }
+        .pointerInput(Unit) {
+            detectTapGestures(
+                onTap = { off -> onPlace(off) },
+                onLongPress = { off -> onBreak(off) }
+            )
+        }
+    ) {
         if (active) {
             Canvas(Modifier.fillMaxSize()) {
                 drawCircle(color = Color.White.copy(alpha = 0.18f), radius = 70.dp.toPx(), center = origin)

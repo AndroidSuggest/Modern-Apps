@@ -78,12 +78,27 @@ const float SIGMA_V   = 0.12; // view-ray extinction per density-length
 const float SIGMA_L   = 0.02; // light-ray extinction per density-length
 
 float cloudDensity(vec3 p) {
-    vec3 q = p * 0.0045 + vec3(time * 0.010, 0.0, time * 0.006); // wind drift
+    // Fast wind drift (x,z) + moving vertical slice (y) so shapes race across and morph.
+    vec3 q = p * 0.0045 + vec3(time * 0.06, time * 0.04, time * 0.045);
+    // Domain warp: shift the sample position by a lower-frequency noise so clouds are billowy/rounded
+    // instead of grid-aligned rectangular lumps from the raw value noise (cheap 1-tap warp).
+    q += 0.7 * (fbm2(q * 0.55) - 0.5);
     float base = fbm2(q);
-    float d = smoothstep(1.0 - COVERAGE, 1.0, base);
-    d -= 0.20 * fbm2(q * 3.1 + 4.0);          // erode edges
+    float d = smoothstep(1.0 - COVERAGE, 1.0 - COVERAGE * 0.25, base); // softer, fluffier edges
+    d -= 0.15 * fbm2(q * 3.0 + vec3(0.0, time * 0.2, 0.0) + 4.0);       // evolving wispy detail
     float hn = (p.y - CLOUD_BOT) / (CLOUD_TOP - CLOUD_BOT);
-    float grad = smoothstep(0.0, 0.18, hn) * smoothstep(1.0, 0.6, hn); // feather top/bottom
+    float grad = smoothstep(0.0, 0.28, hn) * smoothstep(1.0, 0.5, hn);  // rounder top/bottom
+    return clamp(d, 0.0, 1.0) * grad;
+}
+
+// Cheap density for the sun-ward light march: base coverage only, no domain warp or detail octave.
+// Self-shadowing is low-frequency, so dropping the fine noise here is nearly invisible but ~3x cheaper.
+float cloudDensityLow(vec3 p) {
+    vec3 q = p * 0.0045 + vec3(time * 0.06, time * 0.04, time * 0.045);
+    float base = fbm2(q);
+    float d = smoothstep(1.0 - COVERAGE, 1.0 - COVERAGE * 0.25, base);
+    float hn = (p.y - CLOUD_BOT) / (CLOUD_TOP - CLOUD_BOT);
+    float grad = smoothstep(0.0, 0.28, hn) * smoothstep(1.0, 0.5, hn);
     return clamp(d, 0.0, 1.0) * grad;
 }
 
@@ -122,7 +137,7 @@ vec4 renderClouds(vec3 ro, vec3 rd, vec3 s, vec3 skyBg, float sunUp) {
             float od = 0.0;
             float ls = 45.0;
             for (int j = 0; j < 2; j++) {
-                od += cloudDensity(p + s * ls * (float(j) + 0.7)) * ls;
+                od += cloudDensityLow(p + s * ls * (float(j) + 0.7)) * ls;
             }
             float lightT = exp(-od * SIGMA_L);
             float powder = 1.0 - exp(-dens * 2.0);
@@ -145,11 +160,11 @@ void main() {
     vec3 s = normalize(sunDir);
     float sunUp = smoothstep(-0.10, 0.22, s.y);
 
+    // Sky background only. Clouds are a separate depth-tested volumetric pass (cloud.frag) so they
+    // sit at a real world altitude and interact with terrain depth.
     vec3 col = skyColor(dir, s);
-    vec4 clouds = renderClouds(playerPos.xyz, dir, s, col, sunUp);
-    col = col * clouds.a + clouds.rgb; // composite clouds over sky
 
-    col = col / (col + vec3(0.55)); // gentle tonemap
-    col = pow(col, vec3(0.85));
-    outColor = vec4(col, 1.0);
+    if (playerPos.w > 0.5) { col = mix(col, vec3(0.05, 0.20, 0.32), 0.85); } // underwater
+
+    outColor = vec4(col, 1.0); // linear HDR; tonemap in composite
 }
