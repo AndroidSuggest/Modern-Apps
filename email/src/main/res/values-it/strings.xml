@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">E-mail</string>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Email</string>
     <string name="all_accounts">Tutti gli account</string>
     <string name="add_account">Aggiungi account</string>
     <string name="logout_current_account">Disconnetti account attuale</string>
-    <string name="selected_count">%1$d selezionati</string>
+    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; selezionati</string>
     <string name="reply">Rispondi</string>
     <string name="forward">Inoltra</string>
     <string name="compose">Scrivi</string>
@@ -15,20 +15,43 @@
     <string name="subject_label">Oggetto</string>
     <string name="body_label">Testo</string>
     <string name="outbox">In uscita</string>
-    <string name="outbox_with_count">In uscita (%1$d)</string>
+    <string name="outbox_with_count">In uscita (&lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt;)</string>
     <string name="send_now">Invia ora</string>
-    <string name="email_address">Indirizzo e-mail</string>
+    <string name="email_address">Indirizzo email</string>
     <string name="testing_connection">Verifica della connessione…</string>
     <string name="test_connection_and_save">Verifica connessione e salva</string>
-    <string name="open_app_password_help">Apri la guida alle password per le app di %1$s</string>
+    <string name="open_app_password_help">Apri la guida per le password delle app di &lt;xliff:g id=\"provider\" example=\"Google\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="host_label">Host</string>
     <string name="port_label">Porta</string>
     <string name="ssl_tls">SSL/TLS</string>
     <string name="starttls">STARTTLS</string>
-    <string name="listening_for_new_mail">In attesa di nuove e-mail</string>
+    <string name="listening_for_new_mail">In attesa di nuove email</string>
     <string name="settings">Impostazioni</string>
     <string name="drafts">Bozze</string>
     <string name="save">Salva</string>
     <string name="cancel">Annulla</string>
     <string name="email_widget_description">I messaggi recenti dalla tua casella unificata — tocca per aprire Email</string>
+    <string name="sign_in_with_microsoft">Accedi con Microsoft</string>
+    <string name="account_added">Account aggiunto</string>
+    <string name="username">Nome utente</string>
+    <string name="username_is_not_my_email">Il nome utente non è la mia email</string>
+    <string name="smtp_outgoing">SMTP (in uscita)</string>
+    <string name="imap_incoming">IMAP (in entrata)</string>
+    <string name="how_to_get_your_app_password">Come ottenere la password dell\'app</string>
+    <string name="sign_in_with">Accesi con <xliff:g id="provider" example="Microsoft">%1$s</xliff:g></string>
+    <string name="security">Sicurezza:</string>
+    <string name="no_recent_emails">Nessuna email recente</string>
+    <string name="retry">Riprova</string>
+    <string name="couldn_t_open_this_eml_file">Impossibile aprire questo file .eml</string>
+    <string name="to">A: <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
+    <string name="open">Apri</string>
+    <string name="cc_1">Cc: <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
+    <string name="signature_saved">Firma salvata</string>
+    <string name="couldn_t_open_unsubscribe_page">Impossibile aprire la pagina di disiscrizione</string>
+    <string name="unread">Da leggere</string>
+    <string name="in_1_hour">Tra 1 ora</string>
+    <string name="later_today_6_pm">Più tardi oggi (18:00)</string>
+    <string name="sender_blocked">Mittente bloccato</string>
+    <string name="save_as_eml">Salva come .eml</string>
+    <string name="none">Nessuno</string>
 </resources>
