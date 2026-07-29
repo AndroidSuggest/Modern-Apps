@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Fotod</string>
     <string name="title_edit_photo">Muuda fotot</string>
     <string name="action_save">Salvesta</string>
@@ -51,4 +51,52 @@
     <string name="draw">Joonista</string>
     <string name="recent">Hiljutine</string>
     <string name="aspect_ratio">Kuvasuhe</string>
+    <string name="open_settings">Ava seadistused</string>
+    <string name="of_photos_processed">Töödeldud on <xliff:g id="percent" example="45">%1$d</xliff:g>%% fotot</string>
+    <string name="rotate_90">Pööra 90°</string>
+    <string name="rotate">Pööra</string>
+    <string name="font">Kirjatüüp</string>
+    <string name="tap_the_image_to_pick_a_color">Värvi valimiseks klõpsa pildil.</string>
+    <string name="brush_size">Pintsli mõõt</string>
+    <string name="set_source_point">Vali kloonimise lähtepunkt</string>
+    <string name="show_mask">Näita maski</string>
+    <string name="add_mask">Lisa mask</string>
+    <string name="size">Suurus</string>
+    <string name="brush">Pintsel</string>
+    <string name="in_black">Mustana</string>
+    <string name="in_white">Valgena</string>
+    <string name="reds">Punased</string>
+    <string name="yellows">Kollased</string>
+    <string name="greens">Rohelised</string>
+    <string name="cyans">Rohekassinised</string>
+    <string name="blues">Sinised</string>
+    <string name="magentas">Fuksiapunased</string>
+    <string name="amount">Kogus</string>
+    <string name="radius">Raadius</string>
+    <string name="length">Pikkus</string>
+    <string name="angle">Nurk</string>
+    <string name="cyan">Rohekassinine</string>
+    <string name="magenta">Fuksiapunane</string>
+    <string name="yellow">Kollane</string>
+    <string name="color_red">Punane</string>
+    <string name="color_orange">Oranž</string>
+    <string name="color_green">Roheline</string>
+    <string name="color_blue">Sinine</string>
+    <string name="color_purple">Purpurpunane</string>
+    <string name="blend_normal">Tavaline</string>
+    <string name="blend_saturation">Küllastus</string>
+    <string name="blend_luminosity">Kirkus</string>
+    <string name="tool_cat_adjust">Kohenda</string>
+    <string name="tool_cat_filters">Filtrid</string>
+    <string name="tool_cat_select">Vali</string>
+    <string name="tool_cat_transform">Kadreeri</string>
+    <string name="tool_cat_draw">Joonista</string>
+    <string name="tool_cat_paint">Värvi</string>
+    <string name="tool_cat_layers">Kihid</string>
+    <string name="tool_cat_desc_adjust">Säti heledust ja värve.</string>
+    <string name="wallpaper_home">Avaleht</string>
+    <string name="wallpaper_lock">Lukustusvaade</string>
+    <string name="wallpaper_both">Mõlemad</string>
+    <string name="wallpaper_static">Staatiline</string>
+    <string name="wallpaper_scrollable">Keritav</string>
 </resources>
