@@ -1,11 +1,11 @@
 use ash::vk;
 use crate::vulkan::buffers::AllocatedBuffer;
 
-pub const ATLAS_TILES_PER_ROW: u32 = 8;
-pub const ATLAS_TILE_ROWS: u32 = 8;
+pub const ATLAS_TILES_PER_ROW: u32 = 16;
+pub const ATLAS_TILE_ROWS: u32 = 16;
 pub const TILE_SIZE: u32 = 16;
-pub const ATLAS_W: u32 = ATLAS_TILES_PER_ROW * TILE_SIZE; // 128
-pub const ATLAS_H: u32 = ATLAS_TILE_ROWS * TILE_SIZE;     // 128
+pub const ATLAS_W: u32 = ATLAS_TILES_PER_ROW * TILE_SIZE; // 256
+pub const ATLAS_H: u32 = ATLAS_TILE_ROWS * TILE_SIZE;     // 256
 
 pub struct TextureAtlas {
     pub image: vk::Image,
@@ -23,10 +23,23 @@ impl TextureAtlas {
         queue: vk::Queue,
         atlas_pixels: &[u8],
     ) -> Result<Self, String> {
+        Self::new_sized(instance, device, phys, command_pool, queue, ATLAS_W, ATLAS_H, atlas_pixels)
+    }
+    // Generic RGBA sampled texture of arbitrary size (used for the block atlas and the entity atlas).
+    pub unsafe fn new_sized(
+        instance: &ash::Instance,
+        device: &ash::Device,
+        phys: vk::PhysicalDevice,
+        command_pool: vk::CommandPool,
+        queue: vk::Queue,
+        atlas_w: u32,
+        atlas_h: u32,
+        atlas_pixels: &[u8],
+    ) -> Result<Self, String> {
         let img_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(vk::Format::R8G8B8A8_SRGB)
-            .extent(vk::Extent3D { width: ATLAS_W, height: ATLAS_H, depth: 1 })
+            .extent(vk::Extent3D { width: atlas_w, height: atlas_h, depth: 1 })
             .mip_levels(1).array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
@@ -51,7 +64,7 @@ impl TextureAtlas {
         device.begin_command_buffer(cmd, &begin).map_err(|e| format!("begin atlas cmd failed: {e:?}"))?;
         let barrier_to_transfer = vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::UNDEFINED).new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL).image(image).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).src_access_mask(vk::AccessFlags::empty()).dst_access_mask(vk::AccessFlags::TRANSFER_WRITE);
         device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_transfer));
-        let region = vk::BufferImageCopy::default().image_subresource(vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 }).image_extent(vk::Extent3D { width: ATLAS_W, height: ATLAS_H, depth: 1 });
+        let region = vk::BufferImageCopy::default().image_subresource(vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 }).image_extent(vk::Extent3D { width: atlas_w, height: atlas_h, depth: 1 });
         device.cmd_copy_buffer_to_image(cmd, staging.buffer, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, std::slice::from_ref(&region));
         let barrier_to_shader = vk::ImageMemoryBarrier::default().old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL).new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image(image).subresource_range(vk::ImageSubresourceRange { aspect_mask: vk::ImageAspectFlags::COLOR, base_mip_level: 0, level_count: 1, base_array_layer: 0, layer_count: 1 }).src_access_mask(vk::AccessFlags::TRANSFER_WRITE).dst_access_mask(vk::AccessFlags::SHADER_READ);
         device.cmd_pipeline_barrier(cmd, vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER, vk::DependencyFlags::empty(), &[], &[], std::slice::from_ref(&barrier_to_shader));
@@ -84,4 +97,14 @@ pub fn load_atlas_bin() -> Vec<u8> {
         }}
         fallback
     }
+}
+
+// Entity (mob) skin atlas: 4x4 grid of 64px cells; cell index = row*4 + col matches MobKind order.
+pub const ENTITY_ATLAS_W: u32 = 256;
+pub const ENTITY_ATLAS_H: u32 = 256;
+pub const ENTITY_CELL: u32 = 64;
+pub fn load_entity_atlas_bin() -> Vec<u8> {
+    let maybe: &[u8] = include_bytes!("../shaders/entity_atlas.bin");
+    let expect = (ENTITY_ATLAS_W * ENTITY_ATLAS_H * 4) as usize;
+    if maybe.len() == expect { maybe.to_vec() } else { vec![255u8; expect] }
 }

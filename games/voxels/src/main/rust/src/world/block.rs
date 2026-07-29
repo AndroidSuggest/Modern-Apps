@@ -41,9 +41,54 @@ pub enum Block {
     Bookshelf = 33,
     CraftingTable = 34,
     Furnace = 35,
+    RedSand = 36,
+    RedSandstone = 37,
+    Sandstone = 38,
+    Podzol = 39,
+    CoarseDirt = 40,
+    Mycelium = 41,
+    PackedIce = 42,
+    Ice = 43,
+    BlueIce = 44,
+    Mud = 45,
+    RootedDirt = 46,
+    DarkOakLog = 47,
+    DarkOakLeaves = 48,
+    DarkOakPlanks = 49,
+    AcaciaLog = 50,
+    JungleLog = 51,
+    JunglePlanks = 52,
+    GraniteBricks = 53,
+    DeepslateBricks = 54,
+    NetherBricks = 55,
+    EndStoneBricks = 56,
+    CobbledDeepslate = 57,
+    HayBlock = 58,
+    Farmland = 59,
+    PackedDirt = 60,
+    TubeCoral = 61,
+    BrainCoral = 62,
+    BubbleCoral = 63,
+    FireCoral = 64,
+    HornCoral = 65,
+    Kelp = 66,
+    SeaLantern = 67,
+    Prismarine = 68,
+    DarkPrismarine = 69,
+    Dripstone = 70,
+    MossBlock = 71,
+    Sculk = 72,
+    Amethyst = 73,
+    Calcite = 74,
+    Tuff = 75,
+    Magma = 76,
+    Glowstone = 77,
+    Obsidian = 78,
+    Clay = 79,
+    AzaleaLeaves = 80,
 }
 
-pub const MAX_BLOCK_ID: u8 = 35;
+pub const MAX_BLOCK_ID: u8 = 80;
 
 impl Block {
     pub fn from_id(id: u8) -> Self {
@@ -53,7 +98,7 @@ impl Block {
     pub fn is_air(self) -> bool { matches!(self, Self::Air) }
     pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass) }
     pub fn is_transparent(self) -> bool {
-        matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves)
+        matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves | Self::DarkOakLeaves | Self::AzaleaLeaves)
     }
     pub fn is_opaque(self) -> bool { !self.is_transparent() }
 
@@ -101,6 +146,51 @@ impl Block {
             Self::Bookshelf => 10,
             Self::CraftingTable => 39,
             Self::Furnace => 42,
+            Self::RedSand => 64,
+            Self::RedSandstone => 66,
+            Self::Sandstone => 68,
+            Self::Podzol => 70,
+            Self::CoarseDirt => 72,
+            Self::Mycelium => 73,
+            Self::PackedIce => 74,
+            Self::Ice => 75,
+            Self::BlueIce => 76,
+            Self::Mud => 77,
+            Self::RootedDirt => 78,
+            Self::DarkOakLog => 80,
+            Self::DarkOakLeaves => 81,
+            Self::DarkOakPlanks => 82,
+            Self::AcaciaLog => 84,
+            Self::JungleLog => 86,
+            Self::JunglePlanks => 87,
+            Self::GraniteBricks => 88,
+            Self::DeepslateBricks => 89,
+            Self::NetherBricks => 90,
+            Self::EndStoneBricks => 91,
+            Self::CobbledDeepslate => 92,
+            Self::HayBlock => 94,
+            Self::Farmland => 95,
+            Self::PackedDirt => 96,
+            Self::TubeCoral => 97,
+            Self::BrainCoral => 98,
+            Self::BubbleCoral => 99,
+            Self::FireCoral => 100,
+            Self::HornCoral => 101,
+            Self::Kelp => 102,
+            Self::SeaLantern => 103,
+            Self::Prismarine => 104,
+            Self::DarkPrismarine => 105,
+            Self::Dripstone => 106,
+            Self::MossBlock => 107,
+            Self::Sculk => 108,
+            Self::Amethyst => 109,
+            Self::Calcite => 110,
+            Self::Tuff => 111,
+            Self::Magma => 112,
+            Self::Glowstone => 113,
+            Self::Obsidian => 114,
+            Self::Clay => 115,
+            Self::AzaleaLeaves => 116,
         }
     }
     pub fn tile_bottom(self) -> u32 {
@@ -112,6 +202,10 @@ impl Block {
             Self::Bookshelf => 10,
             Self::CraftingTable => 10,
             Self::Furnace => 43,
+            Self::Sandstone => 69,
+            Self::Podzol => 1,
+            Self::Mycelium => 1,
+            Self::Farmland => 1,
             _ => self.tile_top(),
         }
     }
@@ -124,6 +218,14 @@ impl Block {
             Self::Bookshelf => 38,
             Self::CraftingTable => 40,
             Self::Furnace => 43,
+            Self::RedSandstone => 65,
+            Self::Sandstone => 67,
+            Self::Podzol => 71,
+            Self::DarkOakLog => 79,
+            Self::AcaciaLog => 83,
+            Self::JungleLog => 85,
+            Self::HayBlock => 93,
+            Self::Farmland => 1,
             _ => self.tile_top(),
         }
     }
@@ -132,6 +234,7 @@ impl Block {
             Self::Leaves => [0.42, 0.72, 0.33],
             Self::BirchLeaves => [0.55, 0.72, 0.35],
             Self::SpruceLeaves => [0.32, 0.55, 0.34],
+            Self::DarkOakLeaves => [0.27, 0.45, 0.20],
             Self::Water => [0.6, 0.8, 1.0],
             _ => [1.0, 1.0, 1.0],
         }
@@ -141,15 +244,18 @@ impl Block {
     }
 }
 
-// Atlas is 8 tiles wide x 8 tall (128x128). Tiles 0..15 = base blocks, 16 = grass side overlay,
-// 17.. = extra blocks. GRASS_SIDE_TILE is a shader sentinel (dirt + tinted overlay composite).
-pub const ATLAS_COLS: f32 = 8.0;
-pub const ATLAS_ROWS: f32 = 8.0;
+// Atlas is 16 tiles wide x 16 tall (256x256). Tiles 0..15 = base blocks, 16 = grass side overlay,
+// 17..63 = the original extra blocks, 64.. = the biome/expansion blocks. GRASS_SIDE_TILE is a shader
+// sentinel (dirt + tinted overlay composite).
+pub const ATLAS_COLS: f32 = 16.0;
+pub const ATLAS_ROWS: f32 = 16.0;
 pub const GRASS_SIDE_OVERLAY: u32 = 16;
-pub const GRASS_SIDE_TILE: u32 = 100;
+// Shader sentinel (dirt + tinted overlay composite). Kept far above any real tile index so the
+// atlas can use tiles up to ~999.
+pub const GRASS_SIDE_TILE: u32 = 1000;
 pub fn tile_uv(tile_index: u32) -> (f32,f32,f32,f32) {
-    let tx = (tile_index % 8) as f32;
-    let ty = (tile_index / 8) as f32;
+    let tx = (tile_index % 16) as f32;
+    let ty = (tile_index / 16) as f32;
     let sx = 1.0 / ATLAS_COLS;
     let sy = 1.0 / ATLAS_ROWS;
     (tx*sx, ty*sy, (tx+1.0)*sx, (ty+1.0)*sy)

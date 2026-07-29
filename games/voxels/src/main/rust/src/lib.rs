@@ -1,4 +1,5 @@
 pub mod world;
+pub mod entity;
 pub mod player;
 pub mod raycast;
 pub mod input;

@@ -1,3 +1,6 @@
+# Standalone crate (built directly by Gradle); detached from any parent workspace Cargo.toml.
+[workspace]
+
 [package]
 name = "voxels_engine"
 version = "0.1.0"

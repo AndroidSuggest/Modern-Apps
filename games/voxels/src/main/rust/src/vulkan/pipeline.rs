@@ -5,6 +5,8 @@ const BLOCK_FRAG_SPV: &[u8] = include_bytes!("../../shaders/block.frag.spv");
 const SKY_VERT_SPV: &[u8] = include_bytes!("../../shaders/sky.vert.spv");
 const SKY_FRAG_SPV: &[u8] = include_bytes!("../../shaders/sky.frag.spv");
 const CLOUD_FRAG_SPV: &[u8] = include_bytes!("../../shaders/cloud.frag.spv");
+const ENTITY_VERT_SPV: &[u8] = include_bytes!("../../shaders/entity.vert.spv");
+const ENTITY_FRAG_SPV: &[u8] = include_bytes!("../../shaders/entity.frag.spv");
 const SHADOW_VERT_SPV: &[u8] = include_bytes!("../../shaders/shadow.vert.spv");
 const WATER_VERT_SPV: &[u8] = include_bytes!("../../shaders/water.vert.spv");
 const WATER_FRAG_SPV: &[u8] = include_bytes!("../../shaders/water.frag.spv");
@@ -17,6 +19,7 @@ pub struct Pipelines {
     pub pipeline: vk::Pipeline,
     pub sky_pipeline: vk::Pipeline,
     pub cloud_pipeline: vk::Pipeline,
+    pub entity_pipeline: vk::Pipeline,
     pub shadow_pipeline: vk::Pipeline,
     pub water_pipeline: vk::Pipeline,
     pub post_layout: vk::PipelineLayout,
@@ -29,26 +32,29 @@ pub struct Pipelines {
 }
 impl Pipelines {
     // Classic Vulkan 1.0 RenderPass path - no KHR_dynamic_rendering, avoids Unable to load cmd_begin_rendering
-    pub unsafe fn new(device: &ash::Device, render_pass: vk::RenderPass, shadow_render_pass: vk::RenderPass, composite_rp: vk::RenderPass, post_rp: vk::RenderPass, post_desc_layout: vk::DescriptorSetLayout, ubo_buffer: vk::Buffer, ubo_size: u64, atlas_view: vk::ImageView, atlas_sampler: vk::Sampler, shadow_view: vk::ImageView, shadow_sampler: vk::Sampler) -> Result<Self, String> {
+    pub unsafe fn new(device: &ash::Device, render_pass: vk::RenderPass, shadow_render_pass: vk::RenderPass, composite_rp: vk::RenderPass, post_rp: vk::RenderPass, post_desc_layout: vk::DescriptorSetLayout, ubo_buffer: vk::Buffer, ubo_size: u64, atlas_view: vk::ImageView, atlas_sampler: vk::Sampler, shadow_view: vk::ImageView, shadow_sampler: vk::Sampler, entity_view: vk::ImageView, entity_sampler: vk::Sampler) -> Result<Self, String> {
         let bindings = [
             vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT),
             vk::DescriptorSetLayoutBinding::default().binding(1).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT),
             vk::DescriptorSetLayoutBinding::default().binding(2).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT),
+            vk::DescriptorSetLayoutBinding::default().binding(3).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT),
         ];
         let dsl = device.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None).map_err(|e| format!("dsl {e:?}"))?;
         let layouts = [dsl];
         let layout = device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts), None).map_err(|e| format!("layout {e:?}"))?;
-        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(2), vk::DescriptorPoolSize::default().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(4)];
+        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(2), vk::DescriptorPoolSize::default().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(6)];
         let pool = device.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(2), None).map_err(|e| format!("pool {e:?}"))?;
         let sets = device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(pool).set_layouts(&layouts)).map_err(|e| format!("alloc {e:?}"))?;
         let set = sets[0];
         let buf_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer).offset(0).range(ubo_size);
         let img_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(atlas_view).sampler(atlas_sampler);
         let shadow_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(shadow_view).sampler(shadow_sampler);
+        let entity_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).image_view(entity_view).sampler(entity_sampler);
         let writes = [
             vk::WriteDescriptorSet::default().dst_set(set).dst_binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buf_info)),
             vk::WriteDescriptorSet::default().dst_set(set).dst_binding(1).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&img_info)),
-            vk::WriteDescriptorSet::default().dst_set(set).dst_binding(2).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&shadow_info))
+            vk::WriteDescriptorSet::default().dst_set(set).dst_binding(2).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&shadow_info)),
+            vk::WriteDescriptorSet::default().dst_set(set).dst_binding(3).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&entity_info)),
         ];
         device.update_descriptor_sets(&writes, &[]);
         let vert_mod = Self::create_module(device, BLOCK_VERT_SPV)?;
@@ -114,6 +120,22 @@ impl Pipelines {
         device.destroy_shader_module(cloud_vert_mod, None);
         device.destroy_shader_module(cloud_frag_mod, None);
 
+        // Entity pipeline: mob box models, opaque (alpha-tested in the shader), depth-tested + written,
+        // same block vertex format + descriptor set (samples the entity atlas at binding 3).
+        let entity_vert_mod = Self::create_module(device, ENTITY_VERT_SPV)?;
+        let entity_frag_mod = Self::create_module(device, ENTITY_FRAG_SPV)?;
+        let entity_stages = [
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(entity_vert_mod).name(&entry),
+            vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(entity_frag_mod).name(&entry)
+        ];
+        let entity_ds = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(true).depth_compare_op(vk::CompareOp::LESS);
+        let entity_att = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::RGBA).blend_enable(false);
+        let entity_cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&entity_att));
+        let entity_pi = vk::GraphicsPipelineCreateInfo::default().stages(&entity_stages).vertex_input_state(&vi).input_assembly_state(&ia).viewport_state(&vp_state).rasterization_state(&raster).multisample_state(&ms).depth_stencil_state(&entity_ds).color_blend_state(&entity_cb).dynamic_state(&dyn_state).layout(layout).render_pass(render_pass).subpass(0);
+        let entity_pipes = device.create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&entity_pi), None).map_err(|(_, e)| format!("entity pipe {e:?}"))?;
+        device.destroy_shader_module(entity_vert_mod, None);
+        device.destroy_shader_module(entity_frag_mod, None);
+
         // Shadow pipeline: depth-only, renders terrain from the sun into the shadow render pass. No
         // fragment shader / color attachment; depth bias reduces shadow acne.
         let shadow_vert_mod = Self::create_module(device, SHADOW_VERT_SPV)?;
@@ -173,7 +195,7 @@ impl Pipelines {
         device.destroy_shader_module(blur_mod, None);
         device.destroy_shader_module(composite_mod, None);
 
-        Ok(Self{layout, pipeline: pipes[0], sky_pipeline: sky_pipes[0], cloud_pipeline: cloud_pipes[0], shadow_pipeline: shadow_pipes[0], water_pipeline: water_pipes[0], post_layout, bright_pipeline, blur_pipeline, composite_pipeline, descriptor_set_layout: dsl, descriptor_pool: pool, descriptor_set: set})
+        Ok(Self{layout, pipeline: pipes[0], sky_pipeline: sky_pipes[0], cloud_pipeline: cloud_pipes[0], entity_pipeline: entity_pipes[0], shadow_pipeline: shadow_pipes[0], water_pipeline: water_pipes[0], post_layout, bright_pipeline, blur_pipeline, composite_pipeline, descriptor_set_layout: dsl, descriptor_pool: pool, descriptor_set: set})
     }
     unsafe fn create_module(device: &ash::Device, spv: &[u8]) -> Result<vk::ShaderModule, String> {
         let code = unsafe { std::slice::from_raw_parts(spv.as_ptr() as *const u32, spv.len()/4) };
@@ -183,6 +205,7 @@ impl Pipelines {
         device.destroy_pipeline(self.pipeline, None);
         device.destroy_pipeline(self.sky_pipeline, None);
         device.destroy_pipeline(self.cloud_pipeline, None);
+        device.destroy_pipeline(self.entity_pipeline, None);
         device.destroy_pipeline(self.shadow_pipeline, None);
         device.destroy_pipeline(self.water_pipeline, None);
         device.destroy_pipeline(self.bright_pipeline, None);

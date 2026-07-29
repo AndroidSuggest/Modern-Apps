@@ -86,13 +86,14 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
 
             // Right catalog (creative): tap a block to add a stack.
             Column(Modifier.width(236.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TabButton("Natural", catTab == 0) { catTab = 0 }
                     TabButton("Ores", catTab == 1) { catTab = 1 }
+                    TabButton("Ocean", catTab == 3) { catTab = 3 }
                     TabButton("Build", catTab == 2) { catTab = 2 }
                 }
                 Spacer(Modifier.height(8.dp))
-                val cat = when (catTab) { 0 -> catalogNatural; 1 -> catalogOres; else -> catalogBuilding }
+                val cat = when (catTab) { 0 -> catalogNatural; 1 -> catalogOres; 3 -> catalogOcean; else -> catalogBuilding }
                 CatalogGrid(cat) { id -> try { VoxelsNative.giveBlock(id) } catch (_: Exception) {} }
             }
         }

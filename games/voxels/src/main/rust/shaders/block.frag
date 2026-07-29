@@ -29,9 +29,9 @@ layout(binding=2) uniform sampler2D shadowMap;
 
 layout(location=0) out vec4 outColor;
 
-// Atlas is 8 cols x 8 rows.
-const vec2 TILE_SPAN = vec2(1.0/8.0, 1.0/8.0);
-const float ATLAS_COLS = 8.0;
+// Atlas is 16 cols x 16 rows.
+const vec2 TILE_SPAN = vec2(1.0/16.0, 1.0/16.0);
+const float ATLAS_COLS = 16.0;
 
 // --- Cloud coverage (matches sky.frag) for cloud shadows on the ground. ---
 const float CLOUD_MID = 165.0;
@@ -80,7 +80,7 @@ void main() {
     float tile = fragTile;
     vec4 texColor;
     vec3 albedo;
-    if (tile > 99.0) {
+    if (tile > 999.0) {
         // Grass side: dirt base + the tinted grass_block_side_overlay fringe, composited in one quad
         // (perfectly aligned with the top face, no z-fight offset).
         vec2 dirtUV = vec2(mod(1.0, ATLAS_COLS) * TILE_SPAN.x, floor(1.0 / ATLAS_COLS + 0.001) * TILE_SPAN.y) + fuv * TILE_SPAN;

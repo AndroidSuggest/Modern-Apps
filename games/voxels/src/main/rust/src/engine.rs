@@ -1,6 +1,7 @@
 use crate::world::{ChunkMap, block::Block};
 use crate::player::Player;
 use crate::inventory::Inventory;
+use crate::entity::{Mob, MobKind, build_entity_mesh};
 use crate::world::mesher;
 use crate::vulkan::context::{VulkanContext, ANativeWindow};
 use crate::vulkan::renderer::VulkanRenderer;
@@ -21,6 +22,9 @@ pub struct EngineState {
     pub window_ptr: Option<*mut ANativeWindow>,
     pub needs_resize: bool,
     pub running: bool,
+    pub mobs: Vec<Mob>,
+    pub spawn_timer: f32,
+    pub spawn_rng: u32,
 }
 
 unsafe impl Send for EngineState {}
@@ -84,6 +88,9 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         window_ptr: None,
         needs_resize: false,
         running: true,
+        mobs: Vec::new(),
+        spawn_timer: 2.0,
+        spawn_rng: seed ^ 0x9E3779B9,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -242,6 +249,50 @@ pub fn tick_and_render() {
             rebuild_chunk_meshes(state, pos);
         }
 
+        // --- Mobs: AI/physics tick, spawn/despawn near the player. ---
+        let player_pos = state.player.pos;
+        {
+            let chunks = &state.chunks;
+            let solid = |x: i32, y: i32, z: i32| { let id = chunks.get_block_world(x, y, z); id != 0 && Block::from_id(id).is_solid() };
+            for m in state.mobs.iter_mut() { m.tick(dt, player_pos, &solid); }
+        }
+        state.mobs.retain(|m| (m.pos - player_pos).length() < 96.0 && m.pos.y > -8.0);
+        state.spawn_timer -= dt;
+        if state.spawn_timer <= 0.0 {
+            state.spawn_timer = 2.5;
+            if state.mobs.len() < 22 {
+                use crate::world::chunk::CHUNK_HEIGHT;
+                let mut rng = state.spawn_rng;
+                let mut rand = |r: &mut u32| { let mut x = *r; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *r = x; (x >> 8) as f32 / 16_777_216.0 };
+                let ang = rand(&mut rng) * std::f32::consts::TAU;
+                let dist = 24.0 + rand(&mut rng) * 20.0;
+                let sx = player_pos.x + ang.cos() * dist;
+                let sz = player_pos.z + ang.sin() * dist;
+                let (bx, bz) = (sx.floor() as i32, sz.floor() as i32);
+                let mut gy = None;
+                for y in (2..CHUNK_HEIGHT as i32).rev() {
+                    let id = state.chunks.get_block_world(bx, y, bz);
+                    if id != 0 && Block::from_id(id).is_solid() { gy = Some(y); break; }
+                }
+                if let Some(gy) = gy {
+                    let world_time = 60.0 + (Instant::now() - state.start_time).as_secs_f32();
+                    let day_t = (world_time / 120.0) % 1.0;
+                    // Sun is below the horizon (night) near the ends of the cycle; ~noon at day_t=0.5.
+                    let night = day_t < 0.25 || day_t > 0.75;
+                    let kind = if night {
+                        if rand(&mut rng) < 0.5 { MobKind::Zombie } else { MobKind::Creeper }
+                    } else {
+                        match (rand(&mut rng) * 4.0) as u32 { 0 => MobKind::Pig, 1 => MobKind::Cow, 2 => MobKind::Sheep, _ => MobKind::Chicken }
+                    };
+                    let pos = vec3(sx, gy as f32 + 1.0, sz);
+                    let seed = rng ^ (bx as u32).wrapping_mul(2654435761) ^ (bz as u32).wrapping_mul(40503);
+                    state.mobs.push(Mob::new(kind, pos, seed));
+                }
+                state.spawn_rng = rng;
+            }
+        }
+        let (entity_verts, entity_indices) = build_entity_mesh(&state.mobs);
+
         if let Some(renderer) = state.renderer.as_mut() {
             if state.needs_resize {
                 let w = state.width; let h = state.height;
@@ -267,6 +318,7 @@ pub fn tick_and_render() {
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
             unsafe {
                 renderer.update_ubo(view_proj, state.player.pos, time, underwater);
+                renderer.upload_entity_mesh(&entity_verts, &entity_indices);
                 let _ = renderer.draw_frame();
             }
         }
@@ -297,6 +349,7 @@ fn publish_ui(state: &EngineState) {
         "on_ground": state.player.on_ground,
         "time": format!("{:.1}s", (Instant::now() - state.start_time).as_secs_f32()),
         "meshes": state.renderer.as_ref().map(|r| r.gpu_meshes.len()).unwrap_or(0),
+        "mobs": state.mobs.len(),
         "drawn": state.renderer.as_ref().map(|r| r.drawn_sections).unwrap_or(0),
         "gpu": state.renderer.as_ref().map(|r| {
             let p = r.pass_ms;

@@ -8,6 +8,10 @@ use crate::vulkan::pipeline::Pipelines;
 use crate::vulkan::buffers::{AllocatedBuffer, Vertex as VulkanVertex, UboData};
 use crate::texture_atlas::TextureAtlas;
 
+// Capacity of the per-frame mob mesh buffers (~a few hundred mobs worth of boxes).
+const MAX_ENTITY_VERTS: usize = 24000;
+const MAX_ENTITY_INDICES: usize = 36000;
+
 pub struct ChunkGpuMesh {
     pub vertex_buffer: AllocatedBuffer,
     pub index_buffer: AllocatedBuffer,
@@ -38,6 +42,10 @@ pub struct VulkanRenderer {
     pub ctx: VulkanContext,
     pub swapchain: Swapchain,
     pub atlas: TextureAtlas,
+    pub entity_atlas: TextureAtlas,
+    pub entity_vbuf: AllocatedBuffer,
+    pub entity_ibuf: AllocatedBuffer,
+    pub entity_index_count: u32,
     pub shadow: crate::vulkan::shadow::ShadowMap,
     pub postfx: crate::vulkan::postfx::PostFx,
     pub pipelines: Pipelines,
@@ -73,10 +81,15 @@ impl VulkanRenderer {
         let command_pool = device.create_command_pool(&pool_info, None).map_err(|e| format!("pool {e:?}"))?;
         let atlas_pixels = crate::texture_atlas::load_atlas_bin();
         let atlas = unsafe { TextureAtlas::new(&instance, &device, phys, command_pool, ctx.queue, &atlas_pixels)? };
+        let entity_pixels = crate::texture_atlas::load_entity_atlas_bin();
+        let entity_atlas = unsafe { TextureAtlas::new_sized(&instance, &device, phys, command_pool, ctx.queue, crate::texture_atlas::ENTITY_ATLAS_W, crate::texture_atlas::ENTITY_ATLAS_H, &entity_pixels)? };
+        // Dynamic host-visible buffers for the per-frame mob mesh.
+        let entity_vbuf = unsafe { AllocatedBuffer::new(&instance, &device, phys, (MAX_ENTITY_VERTS * std::mem::size_of::<VulkanVertex>()) as u64, vk::BufferUsageFlags::VERTEX_BUFFER, vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)? };
+        let entity_ibuf = unsafe { AllocatedBuffer::new(&instance, &device, phys, (MAX_ENTITY_INDICES * 4) as u64, vk::BufferUsageFlags::INDEX_BUFFER, vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)? };
         let shadow = unsafe { crate::vulkan::shadow::ShadowMap::new(&instance, &device, phys)? };
         let postfx = unsafe { crate::vulkan::postfx::PostFx::new(&instance, &device, phys, &swapchain, vk::Format::D32_SFLOAT)? };
         let ubo_buffer = unsafe { AllocatedBuffer::new(&instance, &device, phys, ubo_size, vk::BufferUsageFlags::UNIFORM_BUFFER, vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)? };
-        let pipelines = unsafe { Pipelines::new(&device, postfx.main_rp, shadow.render_pass, swapchain.render_pass, postfx.post_rp, postfx.desc_layout, ubo_buffer.buffer, ubo_size, atlas.view, atlas.sampler, shadow.view, shadow.sampler)? };
+        let pipelines = unsafe { Pipelines::new(&device, postfx.main_rp, shadow.render_pass, swapchain.render_pass, postfx.post_rp, postfx.desc_layout, ubo_buffer.buffer, ubo_size, atlas.view, atlas.sampler, shadow.view, shadow.sampler, entity_atlas.view, entity_atlas.sampler)? };
         let alloc_info = vk::CommandBufferAllocateInfo::default().command_pool(command_pool).level(vk::CommandBufferLevel::PRIMARY).command_buffer_count(swapchain.images.len() as u32);
         let command_buffers = device.allocate_command_buffers(&alloc_info).map_err(|e| format!("alloc cmd {e:?}"))?;
         let sem_info = vk::SemaphoreCreateInfo::default();
@@ -92,7 +105,7 @@ impl VulkanRenderer {
         let img_count = swapchain.images.len();
         let query_pool = device.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(img_count as u32 * 5), None).map_err(|e| format!("query pool {e:?}"))?;
         let ts_period = ctx.device_properties.limits.timestamp_period;
-        Ok(Self { ctx, swapchain, atlas, shadow, postfx, pipelines, command_pool, command_buffers, image_available, render_finished, in_flight_fences, ubo_buffer, ubo_data: UboData::default(), queued_meshes: HashMap::new(), gpu_meshes: HashMap::new(), current_frame: 0, frame_count: 0, width, height, query_pool, ts_period, ts_written: vec![false; img_count], pass_ms: [0.0;4], drawn_sections: 0 })
+        Ok(Self { ctx, swapchain, atlas, entity_atlas, entity_vbuf, entity_ibuf, entity_index_count: 0, shadow, postfx, pipelines, command_pool, command_buffers, image_available, render_finished, in_flight_fences, ubo_buffer, ubo_data: UboData::default(), queued_meshes: HashMap::new(), gpu_meshes: HashMap::new(), current_frame: 0, frame_count: 0, width, height, query_pool, ts_period, ts_written: vec![false; img_count], pass_ms: [0.0;4], drawn_sections: 0 })
     }
     pub unsafe fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         if width==0 || height==0 { return Ok(()); }
@@ -108,6 +121,17 @@ impl VulkanRenderer {
     }
     pub unsafe fn enqueue_mesh(&mut self, chunk_x: i32, sec_y: i32, chunk_z: i32, mesh: Option<MeshData>) {
         self.queued_meshes.insert((chunk_x, sec_y, chunk_z), mesh);
+    }
+    // Replace the mob mesh for this frame (host-visible buffers, clamped to capacity).
+    pub unsafe fn upload_entity_mesh(&mut self, verts: &[VulkanVertex], indices: &[u32]) {
+        let nv = verts.len().min(MAX_ENTITY_VERTS);
+        let ni = indices.len().min(MAX_ENTITY_INDICES);
+        if nv == 0 || ni == 0 { self.entity_index_count = 0; return; }
+        let vbytes = std::slice::from_raw_parts(verts.as_ptr() as *const u8, nv * std::mem::size_of::<VulkanVertex>());
+        let ibytes = std::slice::from_raw_parts(indices.as_ptr() as *const u8, ni * 4);
+        self.entity_vbuf.upload(&self.ctx.device, vbytes);
+        self.entity_ibuf.upload(&self.ctx.device, ibytes);
+        self.entity_index_count = ni as u32;
     }
     pub unsafe fn process_pending_uploads(&mut self) -> Result<(), String> {
         let mut processed=0;
@@ -256,6 +280,14 @@ impl VulkanRenderer {
                 device.cmd_bind_index_buffer(cmd, gpu_mesh.index_buffer.buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd, gpu_mesh.index_count, 1, 0, 0, 0);
             }
+            // Mobs (opaque, depth-tested) using the entity atlas.
+            if self.entity_index_count > 0 {
+                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.entity_pipeline);
+                let offs = [0u64];
+                device.cmd_bind_vertex_buffers(cmd, 0, std::slice::from_ref(&self.entity_vbuf.buffer), &offs);
+                device.cmd_bind_index_buffer(cmd, self.entity_ibuf.buffer, 0, vk::IndexType::UINT32);
+                device.cmd_draw_indexed(cmd, self.entity_index_count, 1, 0, 0, 0);
+            }
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.sky_pipeline);
             device.cmd_draw(cmd, 3, 1, 0, 0);
             // Volumetric clouds: depth-tested layer at fixed altitude, blended over sky + terrain.
@@ -349,6 +381,9 @@ impl VulkanRenderer {
         for &f in &self.in_flight_fences { self.ctx.device.destroy_fence(f, None); }
         self.ctx.device.destroy_command_pool(self.command_pool, None);
         self.ctx.device.destroy_query_pool(self.query_pool, None);
+        self.entity_vbuf.destroy(&self.ctx.device);
+        self.entity_ibuf.destroy(&self.ctx.device);
+        self.entity_atlas.destroy(&self.ctx.device);
         self.atlas.destroy(&self.ctx.device);
         self.shadow.destroy(&self.ctx.device);
         self.pipelines.destroy(&self.ctx.device);

@@ -38,7 +38,16 @@ val blockNames = mapOf(
     14 to "Gravel", 15 to "Mossy", 16 to "Diorite", 17 to "Pol. Diorite", 18 to "Coal Ore", 19 to "Iron Ore",
     20 to "Diamond Ore", 21 to "Redstone", 22 to "Emerald Ore", 23 to "Iron", 24 to "Diamond", 25 to "Emerald",
     26 to "Birch Log", 27 to "Birch Plank", 28 to "Birch Leaf", 29 to "Spruce Log", 30 to "Spruce Plank", 31 to "Spruce Leaf",
-    32 to "Netherrack", 33 to "Bookshelf", 34 to "Crafting Table", 35 to "Furnace"
+    32 to "Netherrack", 33 to "Bookshelf", 34 to "Crafting Table", 35 to "Furnace",
+    36 to "Red Sand", 37 to "Red Sandstone", 38 to "Sandstone", 39 to "Podzol", 40 to "Coarse Dirt", 41 to "Mycelium",
+    42 to "Packed Ice", 43 to "Ice", 44 to "Blue Ice", 45 to "Mud", 46 to "Rooted Dirt",
+    47 to "Dark Oak Log", 48 to "Dark Oak Leaf", 49 to "Dark Oak Plank", 50 to "Acacia Log", 51 to "Jungle Log", 52 to "Jungle Plank",
+    53 to "Granite Bricks", 54 to "Deepslate Bricks", 55 to "Nether Bricks", 56 to "End Stone Bricks", 57 to "Cobbled Deepslate",
+    58 to "Hay Bale", 59 to "Farmland", 60 to "Packed Dirt",
+    61 to "Tube Coral", 62 to "Brain Coral", 63 to "Bubble Coral", 64 to "Fire Coral", 65 to "Horn Coral",
+    66 to "Kelp", 67 to "Sea Lantern", 68 to "Prismarine", 69 to "Dark Prismarine",
+    70 to "Dripstone", 71 to "Moss Block", 72 to "Sculk", 73 to "Amethyst", 74 to "Calcite", 75 to "Tuff",
+    76 to "Magma", 77 to "Glowstone", 78 to "Obsidian", 79 to "Clay", 80 to "Azalea Leaves"
 )
 
 val blockIconFile = mapOf(
@@ -50,13 +59,25 @@ val blockIconFile = mapOf(
     23 to "iron_block.png", 24 to "diamond_block.png", 25 to "emerald_block.png",
     26 to "birch_log_top.png", 27 to "birch_planks.png", 28 to "birch_leaves.png",
     29 to "spruce_log_top.png", 30 to "spruce_planks.png", 31 to "spruce_leaves.png",
-    32 to "netherrack.png", 33 to "bookshelf.png", 34 to "crafting_table_top.png", 35 to "furnace_top.png"
+    32 to "netherrack.png", 33 to "bookshelf.png", 34 to "crafting_table_top.png", 35 to "furnace_top.png",
+    36 to "red_sand.png", 37 to "red_sandstone.png", 38 to "sandstone.png", 39 to "podzol_top.png", 40 to "coarse_dirt.png",
+    41 to "mycelium_side.png", 42 to "packed_ice.png", 43 to "ice.png", 44 to "blue_ice.png", 45 to "mud.png", 46 to "rooted_dirt.png",
+    47 to "dark_oak_log_top.png", 48 to "dark_oak_leaves.png", 49 to "dark_oak_planks.png",
+    50 to "acacia_log_top.png", 51 to "jungle_log_top.png", 52 to "jungle_planks.png",
+    53 to "granite_bricks.png", 54 to "deepslate_bricks.png", 55 to "nether_bricks.png", 56 to "end_stone_bricks.png",
+    57 to "cobbled_deepslate.png", 58 to "hay_block_top.png", 59 to "farmland.png", 60 to "packed_dirt.png",
+    61 to "tube_coral.png", 62 to "brain_coral.png", 63 to "bubble_coral.png", 64 to "fire_coral.png", 65 to "horn_coral.png",
+    66 to "kelp.png", 67 to "sea_lantern.png", 68 to "prismarine.png", 69 to "dark_prismarine.png",
+    70 to "dripstone.png", 71 to "moss_block.png", 72 to "sculk.png", 73 to "amethyst.png", 74 to "calcite.png",
+    75 to "tuff.png", 76 to "magma.png", 77 to "glowstone.png", 78 to "obsidian.png", 79 to "clay.png", 80 to "azalea_leaves.png"
 )
 
 // Creative catalog, split into tabs.
-val catalogNatural = listOf(3, 2, 1, 6, 14, 16, 17, 15, 4, 5, 26, 28, 29, 31, 11, 32, 13)
-val catalogOres = listOf(18, 19, 20, 21, 22, 23, 24, 25)
-val catalogBuilding = listOf(10, 27, 30, 8, 9, 7, 33, 34, 35)
+val catalogNatural = listOf(3, 2, 40, 46, 60, 39, 41, 71, 1, 6, 38, 36, 37, 14, 16, 17, 15, 45, 79, 75, 70,
+    4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 13)
+val catalogOres = listOf(18, 19, 20, 21, 22, 23, 24, 25, 73)
+val catalogOcean = listOf(61, 62, 63, 64, 65, 66, 67, 68, 69)
+val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 7, 33, 34, 35)
 
 @Composable
 fun rememberBlockIcon(id: Int): androidx.compose.ui.graphics.ImageBitmap? {

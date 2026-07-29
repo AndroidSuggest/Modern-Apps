@@ -25,10 +25,19 @@ void main() {
     vec3 viewDir = normalize(playerPos.xyz - fragWorldPos);
     vec3 wp = fragWorldPos;
 
-    // Detailed animated surface normal: coarse wave normal + fine moving ripples for sparkle.
+    // Animated surface normal from several NON-axis-aligned directional ripples. Summing waves that
+    // travel along diagonal directions avoids the plaid "square wave" look that axis-aligned
+    // sin(x)+sin(z) produces on the block grid.
+    vec2 pw = wp.xz;
     vec3 n = normalize(fragNormal);
-    n.x += 0.06 * sin(wp.x * 2.3 + time * 2.5) + 0.04 * sin(wp.z * 3.1 - time * 1.7);
-    n.z += 0.06 * sin(wp.z * 2.1 + time * 2.2) + 0.04 * sin(wp.x * 2.9 + time * 1.3);
+    vec2 d1 = vec2(0.936, 0.351);   // ~20 deg
+    vec2 d2 = vec2(-0.406, 0.914);  // ~114 deg
+    vec2 d3 = vec2(0.274, -0.962);  // ~-74 deg
+    float w1 = sin(dot(pw, d1) * 0.9 + time * 1.6);
+    float w2 = sin(dot(pw, d2) * 1.7 + time * 2.1);
+    float w3 = cos(dot(pw, d3) * 3.1 + time * 2.9);
+    n.x += 0.11 * w1 * d1.x + 0.07 * w2 * d2.x + 0.035 * w3 * d3.x;
+    n.z += 0.11 * w1 * d1.y + 0.07 * w2 * d2.y + 0.035 * w3 * d3.y;
     n = normalize(n);
 
     // Fresnel: near-transparent looking straight down, mirror-like at grazing angles.
