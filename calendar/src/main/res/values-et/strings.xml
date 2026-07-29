@@ -34,7 +34,7 @@
     <string name="go_to_date">Vaata kuupäeva</string>
     <string name="repeat">Korda</string>
     <string name="every">Iga</string>
-    <string name="dropdown_freq_format">%1$s ▼</string>
+    <string name="dropdown_freq_format">&lt;xliff:g id=\"frequency\" example=\"Iga nädal\"&gt;%1$s&lt;/xliff:g&gt; ▼</string>
     <string name="on_days_of_week">Nädalapäevadel</string>
     <string name="never">Ei iilagi</string>
     <string name="count">Kordusi</string>
