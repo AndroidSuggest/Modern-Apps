@@ -43,6 +43,8 @@ import com.vayunmathur.library.ui.IconLink
 import com.vayunmathur.library.ui.IconLocationOn
 import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconLock
+import com.vayunmathur.library.ui.IconLockOpen
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.MaterialTheme
@@ -57,6 +59,8 @@ import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.ToggleFloatingActionButton
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.dynamicLightColorScheme
 import com.vayunmathur.library.ui.rememberBottomSheetScaffoldState
 import com.vayunmathur.library.ui.rememberSliderState
@@ -697,17 +701,36 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
             stringResource(R.string.since_time_date, formattedTime, formattedDate)
         }
     }
+    // PQC status: show broken lock if peer lacks PQC key (not protected against quantum computers).
+    val isPqcProtected = user.id == Networking.userid || user.pqcEncryptionKey != null
+    var showPqcInfo by remember(user.id) { mutableStateOf(false) }
     Card(if (showSupportingContent) Modifier.clickable(onClick = onClick) else Modifier) {
         ListItem(
             leadingContent = { UserPicture(user, 40.dp) },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             content = {
-                Text(
-                    user.name,
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        user.name,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    // Lock icon: only in list view (supporting content shown) and for non-self.
+                    if (showSupportingContent && user.id != Networking.userid) {
+                        Box(Modifier.clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) { if (!isPqcProtected) showPqcInfo = true }) {
+                            if (isPqcProtected) {
+                                IconLock(tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
+                            } else {
+                                IconLockOpen(tint = Color(0xFFF44336), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
             },
             supportingContent = {
                 if (showSupportingContent) {
@@ -723,6 +746,14 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
                     }
                 }
             }
+        )
+    }
+    if (showPqcInfo) {
+        AlertDialog(
+            onDismissRequest = { showPqcInfo = false },
+            title = { Text(stringResource(R.string.pqc_unprotected_title)) },
+            text = { Text(stringResource(R.string.pqc_unprotected_message)) },
+            confirmButton = { TextButton(onClick = { showPqcInfo = false }) { Text(stringResource(R.string.ok)) } }
         )
     }
 }

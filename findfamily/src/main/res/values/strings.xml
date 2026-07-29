@@ -244,4 +244,9 @@
     <string name="el">   el: </string>
     <!-- UwbRangingScreen: Hint when azimuth null. Instruction sentence -->
     <string name="point_the_back_of_your_phone_toward_your">Point the back of your phone toward your contact</string>
+
+    <!-- PQC: Shown when tapping broken-lock icon for connections without PQC key. Sentence, explains quantum risk. -->
+    <string name="pqc_unprotected_title">Quantum protection</string>
+    <string name="pqc_unprotected_message">Unprotected against quantum computers: this person needs to update their app.</string>
+    <string name="ok">OK</string>
 </resources>

@@ -139,6 +139,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.GppBad
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Iso
@@ -710,6 +711,10 @@ fun IconKey(modifier: Modifier = Modifier, tint: Color = LocalContentColor.curre
 @Composable
 fun IconLock(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.Lock, "Lock", modifier, tint)
+
+@Composable
+fun IconLockOpen(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.GppBad, "Not PQC", modifier, tint)
 
 @Composable
 fun IconPlayCircle(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
