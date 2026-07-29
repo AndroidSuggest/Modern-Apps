@@ -16,7 +16,7 @@ import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     `java-library`
-    id("com.gradleup.shadow") version "9.0.0"
+    alias(libs.plugins.shadow)
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {

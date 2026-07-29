@@ -34,7 +34,7 @@ dependencies {
     implementation(libs.rhino.engine)
     implementation(libs.brotli.dec)
 
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
 }
 
 protobuf {

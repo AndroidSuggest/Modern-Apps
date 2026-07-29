@@ -12,6 +12,6 @@ dependencies {
     // NavigationSuiteScaffold / currentWindowAdaptiveInfo used (via the facade) by openassistant.
     api(libs.androidx.compose.material3.adaptive.navigation.suite)
     // Used only internally (editor toolbars); not re-exported to apps.
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.androidx.compose.material.icons.extended)
 
 }

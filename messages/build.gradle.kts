@@ -42,7 +42,7 @@ android {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
 
 // ----------------------------------------------------------------
@@ -56,8 +56,6 @@ dependencies {
 // Central and invoke it directly. The resulting Java classes (lite
 // runtime) are added to the variant's Java sources via the AGP
 // `androidComponents` extension below.
-
-val protocVersion = "4.28.3"
 
 val osClassifier: String = run {
     val osName = System.getProperty("os.name").lowercase(Locale.US)
@@ -81,7 +79,7 @@ val protocConfig: Configuration = configurations.create("protocBinary") {
 }
 
 dependencies {
-    "protocBinary"("com.google.protobuf:protoc:$protocVersion:$osClassifier@exe")
+    "protocBinary"("com.google.protobuf:protoc:${libs.versions.protoc.get()}:$osClassifier@exe")
 }
 
 val protoSrcDir = layout.projectDirectory.dir("src/main/proto")
