@@ -99,4 +99,16 @@
     <string name="wallpaper_both">Mõlemad</string>
     <string name="wallpaper_static">Staatiline</string>
     <string name="wallpaper_scrollable">Keritav</string>
+    <string name="edit_text">Muuda teksti</string>
+    <string name="blend_overlay">Ülekate</string>
+    <string name="blend_darken">Muuda tumedamaks</string>
+    <string name="blend_lighten">Muuda heledamaks</string>
+    <string name="set_wallpaper">Määra taustapildiks</string>
+    <string name="setting_wallpaper">Määran taustapildiks…</string>
+    <string name="wallpaper_set_success">Taustapilt on määratud!</string>
+    <string name="wallpaper_set_failed">Taustapildiks määramine ei õnnestunud: <xliff:g id="error" example="S/V viga">%1$s</xliff:g></string>
+    <string name="wallpaper_load_failed">Pildi laadimine ei õnnestunud</string>
+    <string name="editor_desc_shape_line">Joone joonistamiseks lohista.</string>
+    <string name="editor_desc_shape_ellipse">Täidetud ellipsi joonistamiseks lohista.</string>
+    <string name="editor_desc_shape_rect">Täidetud ristküliku joonistamiseks lohista.</string>
 </resources>
