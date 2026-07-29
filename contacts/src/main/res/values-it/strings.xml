@@ -61,7 +61,7 @@
     <string name="grant_calendar_permissions">Concedi autorizzazioni del calendario</string>
     <string name="delete_selected_contacts_title">Elimina i contatti selezionati</string>
     <string name="delete_selected_contacts_confirm">Sicuro di volere eliminare i %1$d contatti selezionati? Questa operazione è irreversibile.</string>
-    <string name="selected_count">%1$d selezionati</string>
+    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; selezionati</string>
     <string name="contact_photo_description">Foto di %1$s</string>
     <string name="show_account_labels">Mostra account del contatto</string>
     <string name="search_contacts">Cerca contatti</string>
