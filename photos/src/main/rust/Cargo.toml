@@ -1,0 +1,20 @@
+[package]
+name = "photos_fx"
+version = "0.1.0"
+edition = "2021"
+description = "Native pixel filters (blur/sharpen/liquify/stylize/inpaint) for the photos app, via JNI"
+license = "GPL-2.0-only"
+
+[lib]
+name = "photos_fx"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = "0.21"
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

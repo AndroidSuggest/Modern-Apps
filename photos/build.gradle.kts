@@ -24,6 +24,17 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// Native pixel filters (Rust). See photos/src/main/rust/.
+rustNativeLib("photos_fx", "photos")
+
 metadataScreenshots {
     permissions.addAll(
         "android.permission.READ_MEDIA_IMAGES",
