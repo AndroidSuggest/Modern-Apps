@@ -23,4 +23,8 @@
     <string name="competitive_timed_out">Aeg on täis! &lt;xliff:g id=\"points\" example=\"-15\"&gt;%1$d&lt;/xliff:g&gt; punkti</string>
     <string name="mode_casual">Lihtsustatud</string>
     <string name="mode_competitive">Konkurentsitihe</string>
+    <string name="cd_shuffle">Sega</string>
+    <string name="cd_hint">Vihje</string>
+    <string name="cd_submit">Saada</string>
+    <string name="cd_backspace">Tagasisammuklahv</string>
 </resources>
