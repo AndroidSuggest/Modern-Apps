@@ -15,4 +15,5 @@
     <string name="auto_detect">Rilevamento automatico</string>
     <string name="pdf_save">Salva</string>
     <string name="safe_pdf_error">Impossibile aprire questo PDF con il visualizzatore sicuro. Potrebbe essere danneggiato o utilizzare funzionalità non supportate.</string>
+    <string name="open">Apri</string>
 </resources>
