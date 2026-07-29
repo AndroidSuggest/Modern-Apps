@@ -1,5 +1,6 @@
 package com.vayunmathur.astronomy.domain.engine
 
+import com.vayunmathur.astronomy.domain.AstronomyNative
 import kotlin.math.*
 
 data class RaDec(val raRad: Double, val decRad: Double) {
@@ -57,21 +58,17 @@ object CoordinateTransforms {
         return acos(sd.coerceIn(-1.0, 1.0))
     }
 
+    // Native batch transform: marshal to an interleaved [ra,dec,...] DoubleArray,
+    // transform in Rust, rebuild the List<AltAz>.
     fun batchRaDecToAltAz(radecs: List<RaDec>, lstRad: Double, latRad: Double): List<AltAz> {
-        val sinLat = sin(latRad); val cosLat = cos(latRad)
-        return radecs.map { rd ->
-            val ha = (lstRad - rd.raRad).normalizePi()
-            val sinDec = sin(rd.decRad); val cosDec = cos(rd.decRad)
-            val sinAlt = sinDec * sinLat + cosDec * cosLat * cos(ha)
-            val alt = asin(sinAlt.coerceIn(-1.0, 1.0))
-            val cosAlt = cos(alt)
-            val az = if (abs(cosAlt) < 1e-10) 0.0 else {
-                val cosAz = (sinDec - sinAlt * sinLat) / (cosAlt * cosLat)
-                val sinAz = -cosDec * sin(ha) / cosAlt
-                atan2(sinAz, cosAz).normalize2Pi()
-            }
-            AltAz(az, alt)
+        if (radecs.isEmpty()) return emptyList()
+        val input = DoubleArray(radecs.size * 2)
+        for (i in radecs.indices) {
+            input[2 * i] = radecs[i].raRad
+            input[2 * i + 1] = radecs[i].decRad
         }
+        val out = AstronomyNative.batchRaDecToAltAz(input, lstRad, latRad)
+        return List(radecs.size) { i -> AltAz(out[2 * i], out[2 * i + 1]) }
     }
 
     fun atmosphericRefractionDeg(trueAltDeg: Double): Double {

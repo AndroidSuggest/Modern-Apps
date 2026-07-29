@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.vayunmathur.astronomy.domain.engine.AltAz
 import com.vayunmathur.astronomy.domain.projection.StereographicProjection
 import com.vayunmathur.astronomy.domain.projection.ViewState
+import com.vayunmathur.astronomy.domain.projection.projectAll
 import com.vayunmathur.astronomy.ui.TrajectoryPoint
 import com.vayunmathur.astronomy.ui.VisibleArt
 import com.vayunmathur.astronomy.ui.VisibleSky
@@ -76,7 +77,12 @@ fun SkyCanvas(
     val currentOnTap by rememberUpdatedState(onTap)
 
     val projectedStars = remember(visibleSky.stars, projection) {
-        visibleSky.stars.mapNotNull { vs -> projection.project(vs.altAz)?.let { Triple(vs, it, vs.star.mag) } }
+        // Stars are the largest list; batch-project them (native fast path when
+        // available) and zip results back positionally, dropping culled points.
+        val projected = projectAll(viewState, visibleSky.stars.map { it.altAz })
+        visibleSky.stars.mapIndexedNotNull { i, vs ->
+            projected[i]?.let { Triple(vs, it, vs.star.mag) }
+        }
     }
     val projectedPlanets = remember(visibleSky.planets, projection) {
         visibleSky.planets.mapNotNull { vp -> projection.project(vp.altAz)?.let { vp to it } }

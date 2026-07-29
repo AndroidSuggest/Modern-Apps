@@ -1,8 +1,37 @@
 package com.vayunmathur.astronomy.domain.projection
 
 import androidx.compose.ui.geometry.Offset
+import com.vayunmathur.astronomy.domain.AstronomyNative
 import com.vayunmathur.astronomy.domain.engine.AltAz
 import kotlin.math.*
+
+/**
+ * Batch-project a list of [AltAz] under [viewState] via the native
+ * `astronomy_engine` projection, returning one nullable screen point per input
+ * (`Float.NaN` from native == culled == null), positionally aligned with the
+ * input. Intended for the largest list (stars) on the render hot path.
+ */
+fun projectAll(viewState: ViewState, altAzList: List<AltAz>): List<Offset?> {
+    if (altAzList.isEmpty()) return emptyList()
+    val input = DoubleArray(altAzList.size * 2)
+    for (i in altAzList.indices) {
+        input[2 * i] = altAzList[i].azRad
+        input[2 * i + 1] = altAzList[i].altRad
+    }
+    val out = AstronomyNative.batchProject(
+        input,
+        viewState.centerAzRad,
+        viewState.centerAltRad,
+        viewState.fovDegDouble,
+        viewState.screenW.toDouble(),
+        viewState.screenH.toDouble(),
+        viewState.rotationRad,
+    )
+    return List(altAzList.size) { i ->
+        val x = out[2 * i]; val y = out[2 * i + 1]
+        if (x.isNaN() || y.isNaN()) null else Offset(x, y)
+    }
+}
 
 class StereographicProjection(private val viewState: ViewState) : SkyProjection {
     private val sinCenterAlt = sin(viewState.centerAltRad)

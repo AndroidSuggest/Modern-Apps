@@ -128,13 +128,12 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
         val jd = TimeEngine.instantToJulianDate(time)
         val lst = TimeEngine.lstRad(jd, obs.lonRad)
         val magLim = _magLimit.value.toDouble()
-        val stars = catalog.stars.asSequence()
-            .filter { it.mag <= magLim }
-            .map { s ->
-                val rd = RaDec(s.ra, s.dec)
-                val aa = CoordinateTransforms.raDecToAltAz(rd, lst, obs.latRad)
-                VisibleStar(s, aa, rd)
-            }.toList()
+        val visibleStars = catalog.stars.filter { it.mag <= magLim }
+        val starRaDecs = visibleStars.map { RaDec(it.ra, it.dec) }
+        val starAltAz = CoordinateTransforms.batchRaDecToAltAz(starRaDecs, lst, obs.latRad)
+        val stars = visibleStars.mapIndexed { i, s ->
+            VisibleStar(s, starAltAz[i], starRaDecs[i])
+        }
 
         val constLines = catalog.constellations.map { c ->
             ConstellationLine(c.abbr, c.name, c.lines)

@@ -13,6 +13,17 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// Native celestial transforms + sky projection (Rust). See astronomy/src/main/rust/.
+rustNativeLib("astronomy_engine", "astronomy")
+
 metadataScreenshots {
     // SkyMapPage gates behind location via PermissionsChecker — grant so first-run
     // system prompt doesn't hijack the screenshots. Camera is optional AR overlay.
