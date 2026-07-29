@@ -18,10 +18,10 @@ data class CreateLinkData(val name: String, val expiryMillis: Long)
 
 /**
  * Lets another app (e.g. the messages app) mint a FindFamily location-sharing
- * link. Reuses FindFamily's temporary-link mechanism: generate an RSA keypair,
- * persist a [TemporaryLink] (the background tracking service then publishes
- * encrypted location for it until it expires), and return the same recipient
- * URL the in-app copy button produces.
+ * link. Reuses FindFamily's temporary-link mechanism: generate an RSA keypair
+ * AND a PQC bundle, persist a [TemporaryLink] (the background tracking service
+ * then publishes encrypted location for it until it expires), and return the
+ * same recipient URL the in-app copy button produces. PQC included when available.
  */
 @OptIn(InternalSerializationApi::class)
 class CreateLinkIntent : AssistantIntent<CreateLinkData, String>(
@@ -30,14 +30,18 @@ class CreateLinkIntent : AssistantIntent<CreateLinkData, String>(
 ) {
     override suspend fun performCalculation(input: CreateLinkData): String {
         val keypair = Networking.generateKeyPair()
+        val pqcPair = runCatching { Networking.generatePqcKeyPair() }.getOrNull()
         val link = TemporaryLink(
-            input.name,
-            Base64.encode(keypair.privateKeyPem),
-            Base64.encode(keypair.publicKeyPem),
-            Clock.System.now() + input.expiryMillis.milliseconds,
+            name = input.name,
+            key = Base64.encode(keypair.privateKeyPem),
+            publicKey = Base64.encode(keypair.publicKeyPem),
+            deleteAt = Clock.System.now() + input.expiryMillis.milliseconds,
+            pqcPublicKey = pqcPair?.publicBundleB64,
+            pqcKey = pqcPair?.privateBundleB64,
         )
         val id = buildDatabase<FFDatabase>().temporaryLinkDao().upsert(link)
         // Must match the URL format produced by TemporaryLinkCard in MainPage.
-        return "https://findfamily.cc/view/$id#key=${link.key}"
+        val base = "https://findfamily.cc/view/$id#key=${link.key}"
+        return if (link.pqcKey != null) "$base&pqc_key=${link.pqcKey}" else base
     }
 }

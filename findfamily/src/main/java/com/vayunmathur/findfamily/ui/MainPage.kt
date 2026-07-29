@@ -632,7 +632,12 @@ fun TemporaryLinkCard(platform: Platform, ffViewModel: FindFamilyViewModel, temp
             trailingContent = {
                 Row {
                     IconButton({
-                        platform.copy("https://findfamily.cc/view/${temporaryLink.id}#key=${temporaryLink.key}")
+                        // PQC routing: if this link has a PQC key, include it in the fragment so a
+                        // PQC-capable viewer can decrypt via post-quantum path. The fragment never
+                        // hits the server; classic `#key=` still present for backward compat.
+                        val base = "https://findfamily.cc/view/${temporaryLink.id}#key=${temporaryLink.key}"
+                        val url = if (temporaryLink.pqcKey != null) "$base&pqc_key=${temporaryLink.pqcKey}" else base
+                        platform.copy(url)
                     }) {
                         IconCopy()
                     }

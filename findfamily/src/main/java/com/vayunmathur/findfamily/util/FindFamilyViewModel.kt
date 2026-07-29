@@ -401,17 +401,22 @@ class FindFamilyViewModel(
     // ------------------------------------------------------------------
 
     /**
-     * Generate an RSA key pair and persist a [TemporaryLink] for sharing.
+     * Generate an RSA key pair AND a PQC bundle (ML-KEM+ML-DSA) and persist a [TemporaryLink] for sharing.
+     * Uses the same Pqc key generation as Office (same library, same DER compatibility).
      * Calls [onDone] on the main thread once the upsert completes.
      */
     fun createTemporaryLink(name: String, expiry: Duration, onDone: () -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
-            val keypair = Networking.generateKeyPair()
+            val rsaPair = Networking.generateKeyPair()
+            // PQC ephemeral — best effort, may fail if native lib unavailable (fallback to RSA-only link).
+            val pqcPair = runCatching { Networking.generatePqcKeyPair() }.getOrNull()
             val newLink = TemporaryLink(
-                name,
-                Base64.encode(keypair.privateKeyPem),
-                Base64.encode(keypair.publicKeyPem),
-                Clock.System.now() + expiry,
+                name = name,
+                key = Base64.encode(rsaPair.privateKeyPem),
+                publicKey = Base64.encode(rsaPair.publicKeyPem),
+                deleteAt = Clock.System.now() + expiry,
+                pqcPublicKey = pqcPair?.publicBundleB64,
+                pqcKey = pqcPair?.privateBundleB64,
             )
             temporaryLinkDao.upsert(newLink)
             withContext(Dispatchers.Main) { onDone() }

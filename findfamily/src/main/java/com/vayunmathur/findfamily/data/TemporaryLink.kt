@@ -16,4 +16,8 @@ data class TemporaryLink(
     val deleteAt: Instant,
 
     @PrimaryKey(autoGenerate = true) override val id: Long = 0,
+    /** PQC ephemeral public bundle (base64 [4B kemLen][kemPub][dsaPub]), nullable for migration. */
+    val pqcPublicKey: String? = null,
+    /** PQC ephemeral private bundle (base64 [4B kemLen][kemPriv][dsaPriv] — kemPriv = seed+expanded via BC compat), nullable. */
+    val pqcKey: String? = null,
 ): DatabaseItem

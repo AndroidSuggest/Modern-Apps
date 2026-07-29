@@ -97,7 +97,7 @@ interface TemporaryLinkDao {
     suspend fun delete(value: TemporaryLink): Int
 }
 
-@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 6, exportSchema = false)
+@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 7, exportSchema = false)
 @TypeConverters(DefaultConverters::class)
 abstract class FFDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -124,6 +124,11 @@ abstract class FFDatabase : RoomDatabase() {
             },
             androidx.room.migration.Migration(5, 6) {
                 it.execSQL("ALTER TABLE `User` ADD COLUMN `sharingAutoToggleAt` INTEGER")
+            },
+            androidx.room.migration.Migration(6, 7) {
+                it.execSQL("ALTER TABLE `User` ADD COLUMN `pqcEncryptionKey` TEXT")
+                it.execSQL("ALTER TABLE `TemporaryLink` ADD COLUMN `pqcPublicKey` TEXT")
+                it.execSQL("ALTER TABLE `TemporaryLink` ADD COLUMN `pqcKey` TEXT")
             }
         )
     }
