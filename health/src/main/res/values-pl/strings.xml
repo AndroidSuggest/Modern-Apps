@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="cancel">Anuluj</string>
-    <string name="month_year_format">%1$s %2$d</string>
+    <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
     <string name="app_name">Zdrowie</string>
     <string name="grant_permissions">Przyznaj uprawnienia</string>
     <string name="tab_day">Dni</string>
     <string name="tab_week">Tygodnie</string>
     <string name="tab_month">Miesiące</string>
     <string name="tab_year">Lata</string>
-    <string name="week_range">%1$s – %2$s</string>
+    <string name="week_range"><xliff:g id="start_date" example="May 12">%1$s</xliff:g> – <xliff:g id="end_date" example="May 18">%2$s</xliff:g></string>
     <string name="no_data_available">Brak danych dotyczących tego okresu</string>
-    <string name="unit_per_day_avg_format">%1$s dziennie (średnio)</string>
-    <string name="unit_only_format">" %1$s"</string>
-    <string name="value_unit_space_format">%1$s %2$s</string>
-    <string name="k_format">%1$sk</string>
+    <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> dziennie (średnio)</string>
+    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
+    <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g> tyś</string>
     <string name="metric_energy_burned">Spalone kalorie</string>
     <string name="metric_active_calories">Aktywne kalorie</string>
     <string name="metric_basal_metabolic_rate">Tętno podstawowego metabolizmu</string>
@@ -46,10 +46,10 @@
     <string name="section_body_composition">Skład ciała</string>
     <string name="label_active">Aktywny</string>
     <string name="label_today">Dzisiaj</string>
-    <string name="slash_value_format">%1$s/%2$s</string>
-    <string name="dash_value_format">%1$s - %2$s</string>
-    <string name="hours_minutes_format">%1$dh %2$dm</string>
-    <string name="minutes_format">%1$dm</string>
+    <string name="slash_value_format"><xliff:g id="first" example="120">%1$s</xliff:g>/<xliff:g id="second" example="80">%2$s</xliff:g></string>
+    <string name="dash_value_format"><xliff:g id="min" example="60">%1$s</xliff:g> - <xliff:g id="max" example="140">%2$s</xliff:g></string>
+    <string name="hours_minutes_format"><xliff:g id="hours" example="7">%1$d</xliff:g>h <xliff:g id="minutes" example="30">%2$d</xliff:g>min</string>
+    <string name="minutes_format"><xliff:g id="minutes" example="25">%1$d</xliff:g>min</string>
     <string name="label_steps">Kroki</string>
     <string name="label_wheelchair_pushes">Pchnięcia wózka inwalidzkiego</string>
     <string name="label_mindfulness">rozumność</string>
@@ -100,7 +100,7 @@
     <string name="recipe_name">Nazwa przepisu</string>
     <string name="add">Dodaj</string>
     <string name="save_recipe">Zapisz przepis</string>
-    <string name="set_quantity_for_format">Ustaw ilość dla %1$s</string>
+    <string name="set_quantity_for_format">Ustaw ilość dla <xliff:g id="ingredient" example="Tomato">%1$s</xliff:g></string>
     <string name="quantity">Ilość</string>
     <string name="unit">Jednostka</string>
     <string name="confirm">Potwierdź</string>
@@ -111,4 +111,32 @@
     <string name="metric_exercise_duration">Ćwiczenia</string>
     <string name="label_exercise">Ćwiczenia</string>
     <string name="no_workouts">Brak zarejestrowanych treningów</string>
+    <string name="view_full_breakdown">Zobacz pełne zestawienie</string>
+    <string name="no_results_found">Nie znaleziono wyników</string>
+    <string name="online">Online</string>
+    <string name="downloaded">Pobrano</string>
+    <string name="saved_locally">Zapisane lokalnie</string>
+    <string name="segments">Segmenty</string>
+    <string name="laps">Okrążenia</string>
+    <string name="route_recorded">Trasa zarejestrowana</string>
+    <string name="ingredient">(Składnik)</string>
+    <string name="calories">Kalorie</string>
+    <string name="kcal"><xliff:g id="current_cal" example="1200">%1$s</xliff:g> / <xliff:g id="goal_cal" example="2000">%2$s</xliff:g> kcal</string>
+    <string name="create_recipe">Utwórz przepis</string>
+    <string name="add_your_first_ingredient">Dodaj pierwszy składnik</string>
+    <string name="create_your_first_recipe">Utwórz swój pierwszy przepis</string>
+    <string name="edit_recipe">Edytuj przepis</string>
+    <string name="no_meals_logged_today">Dziś nie zapisano żadnych posiłków</string>
+    <string name="hydration_liters">Litry</string>
+    <string name="hydration_milliliters">Mililitry</string>
+    <string name="hydration_ounces">Uncje</string>
+    <string name="hydration_cups">Szklanki</string>
+    <string name="select_recipe">Wybierz przepis</string>
+    <string name="quantity_x_100g">Ilość (x 100g)</string>
+    <string name="servings">Porcje</string>
+    <string name="log_body_metric">Zapisz <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
+    <string name="original_1">Oryginał: <xliff:g id="original_name" example="Tomato">%1$s</xliff:g></string>
+    <string name="lap">Okrążenie <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
+    <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> powtórzeń</string>
+    <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> posiłków · <xliff:g id="total_cal" example="850">%2$s</xliff:g> kcal</string>
 </resources>
