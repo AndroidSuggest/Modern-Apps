@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">PDF</string>
     <string name="search_label">Otsi</string>
     <string name="open_pdf">Ava PDF-fail</string>
@@ -33,4 +33,15 @@
     <string name="signing_failed">Allkirjastamine ei õnnestunud</string>
     <string name="done">Valmis</string>
     <string name="color">Värv</string>
+    <string name="searchable_ocr">Otsitav (tekstutuvastusega)</string>
+    <string name="append_image">Lisa pilt uueks leheks</string>
+    <string name="append_pdf">Lisa PDF-fail uueks leheks</string>
+    <string name="cut_glue">Lõika ja kleebi</string>
+    <string name="pdf_cut_and_glue">Lõika ja kleebi PDF-faili</string>
+    <string name="red">Punane</string>
+    <string name="green">Roheline</string>
+    <string name="blue">Sinine</string>
+    <string name="opacity">Läbipaistmatus <xliff:g id="value" example="75">%1$s</xliff:g>%</string>
+    <string name="note_text">Märke sisutekst</string>
+    <string name="text">tekst</string>
 </resources>
