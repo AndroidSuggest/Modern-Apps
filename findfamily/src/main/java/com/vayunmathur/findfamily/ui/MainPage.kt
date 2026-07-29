@@ -702,58 +702,80 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
         }
     }
     // PQC status: show broken lock if peer lacks PQC key (not protected against quantum computers).
+    // Self user never shows a badge.
     val isPqcProtected = user.id == Networking.userid || user.pqcEncryptionKey != null
     var showPqcInfo by remember(user.id) { mutableStateOf(false) }
-    Card(if (showSupportingContent) Modifier.clickable(onClick = onClick) else Modifier) {
-        ListItem(
-            leadingContent = { UserPicture(user, 40.dp) },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            content = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        user.name,
-                        style = MaterialTheme.typography.titleMediumEmphasized,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    // Lock icon: only in list view (supporting content shown) and for non-self.
-                    if (showSupportingContent && user.id != Networking.userid) {
-                        Box(Modifier.clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) { if (!isPqcProtected) showPqcInfo = true }) {
+    // Wrap Card + dialog so AlertDialog is not inside ListItem clickable area.
+    Box {
+        Card(if (showSupportingContent) Modifier.clickable(onClick = onClick) else Modifier) {
+            ListItem(
+                leadingContent = { UserPicture(user, 40.dp) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                content = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            user.name,
+                            style = MaterialTheme.typography.titleMediumEmphasized,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (showSupportingContent && user.id != Networking.userid) {
                             if (isPqcProtected) {
+                                // Protected: static green lock, not tappable.
                                 IconLock(tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
                             } else {
-                                IconLockOpen(tint = Color(0xFFF44336), modifier = Modifier.size(18.dp))
+                                // Unprotected: red broken lock, tappable -> info box.
+                                androidx.compose.material3.IconButton(
+                                    onClick = { showPqcInfo = true },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    IconLockOpen(
+                                        tint = Color(0xFFF44336),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            },
-            supportingContent = {
-                if (showSupportingContent) {
-                    Text(stringResource(R.string.user_card_status, lastUpdatedTime, user.locationName, sinceString))
-                }
-            },
-            trailingContent = {
-                if (showSupportingContent) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(speedString, style = MaterialTheme.typography.labelMedium)
-                        Spacer(Modifier.height(2.dp))
-                        locationValue?.battery?.let { BatteryBar(it) }
+                },
+                supportingContent = {
+                    if (showSupportingContent) {
+                        Text(
+                            stringResource(
+                                R.string.user_card_status,
+                                lastUpdatedTime,
+                                user.locationName,
+                                sinceString
+                            )
+                        )
+                    }
+                },
+                trailingContent = {
+                    if (showSupportingContent) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(speedString, style = MaterialTheme.typography.labelMedium)
+                            Spacer(Modifier.height(2.dp))
+                            locationValue?.battery?.let { BatteryBar(it) }
+                        }
                     }
                 }
-            }
-        )
+            )
+        }
     }
     if (showPqcInfo) {
         AlertDialog(
             onDismissRequest = { showPqcInfo = false },
             title = { Text(stringResource(R.string.pqc_unprotected_title)) },
             text = { Text(stringResource(R.string.pqc_unprotected_message)) },
-            confirmButton = { TextButton(onClick = { showPqcInfo = false }) { Text(stringResource(R.string.ok)) } }
+            confirmButton = {
+                TextButton(onClick = { showPqcInfo = false }) {
+                    Text(stringResource(R.string.done))
+                }
+            }
         )
     }
 }
