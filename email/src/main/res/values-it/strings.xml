@@ -54,4 +54,67 @@
     <string name="sender_blocked">Mittente bloccato</string>
     <string name="save_as_eml">Salva come .eml</string>
     <string name="none">Nessuno</string>
+    <string name="accounts">Account</string>
+    <string name="remote_images_blocked">Immagini remote bloccate</string>
+    <string name="cc_bcc">Cc/Bcc</string>
+    <string name="blocked_senders">Mittenti bloccati</string>
+    <string name="inline_images">Immagini incorporate (<xliff:g id="count" example="2">%1$s</xliff:g> - <xliff:g id="size" example="1.2 MB">%2$s</xliff:g>)</string>
+    <string name="snoozed">Posticipato</string>
+    <string name="download_failed">Download non riuscito: <xliff:g id="error" example="Network error">%1$s</xliff:g></string>
+    <string name="your_signature">La tua firma</string>
+    <string name="all">Tutti</string>
+    <string name="attachments">Allegati</string>
+    <string name="cc">Cc</string>
+    <string name="scheduled">Programmati</string>
+    <string name="no_drafts">Nessuna bozza</string>
+    <string name="message_sent">Messaggio inviato</string>
+    <string name="load_images">Carica immagini</string>
+    <string name="ai_summary">Riepilogo AI</string>
+    <string name="deleted_from_outbox">Eliminato da In uscita</string>
+    <string name="bcc">Bcc</string>
+    <string name="attachments_1">Allegati (<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>)</string>
+    <string name="attachments_2">Allegati:</string>
+    <string name="unified_inbox">Posta unificata</string>
+    <string name="saved_to_downloads">Salvato nei Download</string>
+    <string name="saved_to_outbox">Salvato in In uscita: <xliff:g id="reason" example="No network">%1$s</xliff:g></string>
+    <string name="generating_summary">Generazione riepilogo…</string>
+    <string name="block_sender">Blocca mittente</string>
+    <string name="added"><xliff:g id="email" example="user@example.com">%1$s</xliff:g> aggiunto</string>
+    <string name="microsoft_sign_in_failed">Accesso con Microsoft non riuscito</string>
+    <string name="choose_your_email_provider">Scegli il tuo provider di email</string>
+    <string name="enter_imap_smtp_server_details_manually">Inserisci manualmente i dettagli del server IMAP/SMTP</string>
+    <string name="oauth2">oauth2</string>
+    <string name="app_password">Password dell\'app</string>
+    <string name="password">Password</string>
+    <string name="hide">Nascondi</string>
+    <string name="show">Mostra</string>
+    <string name="e_mail_file">File email</string>
+    <string name="unknown_error">Errore sconosciuto</string>
+    <string name="no_content_1">(Nessun contenuto)</string>
+    <string name="no_messages_found_pull_down_to_refresh">Nessun messaggio trovato. Trascina verso il basso per ricaricare.</string>
+    <string name="conversation">Conversazione</string>
+    <string name="to_me">a me</string>
+    <string name="hide_quoted_text">Nascondi testi citati</string>
+    <string name="show_quoted_text">Mostra testi citati</string>
+    <string name="no_content">(Nessun contenuto)</string>
+    <string name="total_attachment_size_exceeds_25_mb_many">La dimensione totale degli allegati supera i 25 MB; molti provider rifiuteranno il messaggio.</string>
+    <string name="outbox_is_empty">In uscita è vuota</string>
+    <string name="no_subject">(nessun oggetto)</string>
+    <string name="from">Da <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
+    <string name="to_1">A <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
+    <string name="retrying_pending_message_s">Nuovo tentativo per <xliff:g id="count" example="3">%1$s</xliff:g> messaggi in attesa…</string>
+    <string name="unblock">Sblocca</string>
+    <string name="tomorrow_8_am">Domani (08:00)</string>
+    <string name="folders">Cartelle</string>
+    <string name="unsubscribe">Disiscriviti</string>
+    <string name="this_evening_6_pm">Questa sera (18:00)</string>
+    <string name="in_1_week">Tra 1 settimana</string>
+    <string name="no_app_can_open_this_file">Nessuna app può aprire questo file</string>
+    <string name="snooze">Posticipa</string>
+    <string name="signatures">Firme</string>
+    <string name="later">Più tardi</string>
+    <string name="unsubscribing">Disiscrizione…</string>
+    <string name="failed">Fallito: <xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
+    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> tentativi</string>
+    <string name="cd_insert_image">Inserisci immagine</string>
 </resources>
