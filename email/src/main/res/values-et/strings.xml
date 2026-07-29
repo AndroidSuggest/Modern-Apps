@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">E-post</string>
     <string name="all_accounts">Kõik kasutajakontod</string>
     <string name="add_account">Lisa kasutajakonto</string>
@@ -41,4 +41,70 @@
     <string name="app_password">Rakenduse salasõna</string>
     <string name="password">Salasõna</string>
     <string name="open">Ava</string>
+    <string name="your_signature">Sinu allkiri</string>
+    <string name="all">Kõik</string>
+    <string name="attachments">Manused</string>
+    <string name="cc">Koopia</string>
+    <string name="scheduled">Ajastatud</string>
+    <string name="no_drafts">Kavandeid pole</string>
+    <string name="message_sent">Kiri on saadetud</string>
+    <string name="load_images">Laadi pildid</string>
+    <string name="ai_summary">Tehisaru loodud kokkuvõte</string>
+    <string name="deleted_from_outbox">Kustutatud saadetud kirjade postkastist</string>
+    <string name="bcc">Pimekoopia</string>
+    <string name="attachments_1">Manused (<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>)</string>
+    <string name="attachments_2">Manused:</string>
+    <string name="hide">Peida</string>
+    <string name="show">Näita</string>
+    <string name="e_mail_file">E-kirja fail</string>
+    <string name="unknown_error">Tundmatu viga</string>
+    <string name="no_content_1">(Sisu puudub)</string>
+    <string name="no_messages_found_pull_down_to_refresh">Ühtegi kirja ei leidu. Andmete uuendamiseks viipa ülalt alla.</string>
+    <string name="conversation">Vestlus</string>
+    <string name="sign_in_with">Logi sisse teenusega: <xliff:g id="provider" example="Microsoft">%1$s</xliff:g></string>
+    <string name="security">Turvalisus:</string>
+    <string name="no_recent_emails">Hiljutisi e-kirju pole</string>
+    <string name="retry">Proovi uuesti</string>
+    <string name="couldn_t_open_this_eml_file">Selle eml-faili avamine ei õnenstunud</string>
+    <string name="to">Saaja: <xliff:g id="recipient" example="kadri@toredomeen.ee">%1$s</xliff:g></string>
+    <string name="cc_1">Koopia: <xliff:g id="recipient" example="kadri@toredomeen.ee">%1$s</xliff:g></string>
+    <string name="signature_saved">Allkiri on salvestatud</string>
+    <string name="couldn_t_open_unsubscribe_page">Tellimusest loobumise lehe avamine ei õnnestunud</string>
+    <string name="unread">Lugemata</string>
+    <string name="in_1_hour">1 tunni möödudes</string>
+    <string name="later_today_6_pm">Täna hiljem (18:00)</string>
+    <string name="sender_blocked">Saatja on blokeeritud</string>
+    <string name="save_as_eml">Salvesta eml-failina</string>
+    <string name="none">Puudub</string>
+    <string name="unblock">Lõpeta blokeerimine</string>
+    <string name="tomorrow_8_am">Homme (08:00)</string>
+    <string name="folders">Kaustad</string>
+    <string name="unsubscribe">Loobu tellimusest</string>
+    <string name="this_evening_6_pm">Täna õhtul (18:00)</string>
+    <string name="in_1_week">1 nädala pärast</string>
+    <string name="no_app_can_open_this_file">Ükski rakendus ei saa seda faili avada</string>
+    <string name="signatures">Allkirjad</string>
+    <string name="later">Hiljem</string>
+    <string name="snooze">Tukasta</string>
+    <string name="unsubscribing">Loobun tellimusest…</string>
+    <string name="accounts">Kasutajakontod</string>
+    <string name="remote_images_blocked">Kaugserverist laaditavad pildid on blokeeritud</string>
+    <string name="cc_bcc">Koopia/Pimekoopia</string>
+    <string name="blocked_senders">Blokeeritud saatjad</string>
+    <string name="inline_images">Lõimitud pildid (<xliff:g id="count" example="2">%1$s</xliff:g> - <xliff:g id="size" example="1.2 MB">%2$s</xliff:g>)</string>
+    <string name="snoozed">Tukastamas</string>
+    <string name="download_failed">Allalaadimine ei õnnestunud: <xliff:g id="error" example="Võrguühenduse viga">%1$s</xliff:g></string>
+    <string name="saved_to_downloads">Salvestatud allalaadimiste kausta</string>
+    <string name="generating_summary">Koostan kokkuvõtet…</string>
+    <string name="block_sender">Blokeeri saatja</string>
+    <string name="choose_your_email_provider">Vali oma e-posti teenusepakkuja</string>
+    <string name="oauth2">oauth2</string>
+    <string name="to_me">mulle</string>
+    <string name="enter_imap_smtp_server_details_manually">Sisesta IMAP/SMTP serveri andmed käsitsi</string>
+    <string name="hide_quoted_text">Peida tsiteeritud tekst</string>
+    <string name="show_quoted_text">Näita tsiteeritud teksti</string>
+    <string name="no_content">(Sisu pole)</string>
+    <string name="no_subject">(teemat pole)</string>
+    <string name="cd_insert_image">Lisa pilt</string>
+    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> katse(t)</string>
 </resources>
