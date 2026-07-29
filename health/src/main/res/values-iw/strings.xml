@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="cancel">ביטול</string>
     <string name="search">חיפוש</string>
     <string name="app_name">בריאות</string>
@@ -10,23 +10,58 @@
     <string name="tab_year">שנה</string>
     <string name="metric_steps">צעדים</string>
     <string name="metric_distance">מרחק</string>
-    <string name="metric_hydration">לחץ דם</string>
+    <string name="metric_hydration">שתייה</string>
     <string name="metric_blood_glucose">גלוקוז בדם</string>
     <string name="metric_breathing_rate">קצב נשימה</string>
-    <string name="metric_resting_heart_rate">קצב לב במנוחה</string>
-    <string name="metric_heart_rate">קצב לב</string>
+    <string name="metric_resting_heart_rate">דופק במנוחה</string>
+    <string name="metric_heart_rate">דופק</string>
     <string name="metric_height">גובה</string>
     <string name="metric_weight">משקל</string>
     <string name="metric_bone_mass">מסת עצם</string>
     <string name="metric_sleep">שינה</string>
-    <string name="metric_exercise_duration">אימון</string>
+    <string name="metric_exercise_duration">התעמלות</string>
     <string name="label_awake">ערות</string>
     <string name="label_deep">עמוקה</string>
     <string name="label_today">היום</string>
     <string name="label_distance">מרחק</string>
-    <string name="label_heart_rate">קצב לב</string>
+    <string name="label_heart_rate">דופק</string>
     <string name="label_sleep">שינה</string>
     <string name="label_blood_pressure">לחץ דם</string>
     <string name="save">שמירה</string>
     <string name="add">הוספה</string>
+    <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> ביום (בממוצע)</string>
+    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
+    <string name="label_steps">צעדים</string>
+    <string name="unit_steps">צעדים</string>
+    <string name="nav_today">היום</string>
+    <string name="section_today_activity">היום</string>
+    <string name="label_resting_heart_rate">דופק במנוחה</string>
+    <string name="metric_body_fat">שומן בגוף</string>
+    <string name="metric_body_water_mass">מסת מים בגוף</string>
+    <string name="label_body_fat">שומן בגוף</string>
+    <string name="label_body_water_mass">מסת מים בגוף</string>
+    <string name="log_body_metric">תיעוד <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
+    <string name="nav_body">מדדי גוף</string>
+    <string name="nav_activity">פעילות</string>
+    <string name="label_exercise">התעמלות</string>
+    <string name="label_floors">קומות</string>
+    <string name="metric_active_calories">קלוריות שנשרפו בפעילות</string>
+    <string name="label_active">פעילות</string>
+    <string name="section_this_week">השבוע</string>
+    <string name="section_last_night">מהלילה האחרון</string>
+    <string name="section_latest_vitals">מדדים אחרונים</string>
+    <string name="section_quick_stats">סטטיסטיקה מהירה</string>
+    <string name="label_hydration">שתייה</string>
+    <string name="log_hydration">תיעוד השתייה</string>
+    <string name="hydration_liters">ליטרים</string>
+    <string name="hydration_milliliters">מיליליטרים</string>
+    <string name="hydration_ounces">אונקיות</string>
+    <string name="hydration_cups">כוסות</string>
+    <string name="unit_cal">קל׳</string>
+    <string name="saved_locally">נשמר מקומית</string>
+    <string name="calories">קלוריות</string>
+    <string name="minutes_format"><xliff:g id="minutes" example="25">%1$d</xliff:g> דק׳</string>
+    <string name="label_mindfulness">קשיבות (מיינדפולנס)</string>
+    <string name="unit_min">דק׳</string>
 </resources>
