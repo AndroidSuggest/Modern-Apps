@@ -16,4 +16,82 @@
     <string name="max_min">Maks <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
     <string name="feels_like">Tundub nagu <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
     <string name="dew_point">Kastepunkt</string>
+    <string name="no_locations_yet">Ühtegi asukohta pole veel salvestatud</string>
+    <string name="add_a_city_or_use_your_current_location">Ennustuse nägemiseks lisa linn või luba tuvastada praegust asukohta.</string>
+    <string name="use_current_location">Kasuta praegust asukohta</string>
+    <string name="locating">Tuvastan asukohta…</string>
+    <string name="detect_your_device_s_current_location_au">Tuvasta automaatselt oma seadme praegune asukoht ja lisa oma loendisse</string>
+    <string name="current_location">Praegune asukoht</string>
+    <string name="locations">Asukohad</string>
+    <string name="from_gusts">Tuule suund <xliff:g id="direction" example="NW">%1$s</xliff:g> · Puhangud <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
+    <string name="not_enough_data_to_plot">Graafiku joonistamiseks pole piisavalt andmeid.</string>
+    <string name="condition_clear">Pilvitu</string>
+    <string name="condition_partly_cloudy">Vahelduv pilvisus</string>
+    <string name="condition_cloudy">Pilves</string>
+    <string name="condition_fog">Udu</string>
+    <string name="condition_drizzle">Uduvihm</string>
+    <string name="condition_rain">Vihm</string>
+    <string name="condition_snow">Lumesadu</string>
+    <string name="condition_thunderstorm">Äike</string>
+    <string name="condition_unknown">Pole teada</string>
+    <string name="metric_temperature">Temperatuur</string>
+    <string name="metric_feels_like">Tundub nagu</string>
+    <string name="metric_humidity">Õhuniiskus</string>
+    <string name="metric_precipitation">Sademed</string>
+    <string name="metric_wind_speed">Tuulekiirus</string>
+    <string name="metric_wind_gusts">Tuulepuhangud</string>
+    <string name="metric_pressure">Õhurõhk</string>
+    <string name="metric_visibility">Nähtavus</string>
+    <string name="metric_cloud_cover">Pilvisus</string>
+    <string name="metric_uv_index">UV-indeks</string>
+    <string name="block_sun">Päike</string>
+    <string name="block_pollen">Õietolm</string>
+    <string name="block_wind">Tuul</string>
+    <string name="block_air_quality">Õhukvaliteet</string>
+    <string name="hourly_forecast">Ennustus tundide kaupa</string>
+    <string name="daily_forecast">Järgmiste päevade ennustus</string>
+    <string name="now">Praegu</string>
+    <string name="today">Täna</string>
+    <string name="today_short">TÄNA</string>
+    <string name="tomorrow_short">HOMME</string>
+    <string name="level_none">Puudub</string>
+    <string name="level_low">Madal</string>
+    <string name="level_medium">Keskmine</string>
+    <string name="level_moderate">Mõõdukas</string>
+    <string name="level_high">Kõrge</string>
+    <string name="level_very_high">Väga kõrge</string>
+    <string name="level_extreme">Äärmuslik</string>
+    <string name="level_severe">Tõsine</string>
+    <string name="cloud_clear">Pilvitu</string>
+    <string name="cloud_mostly_clear">Enamuses pilvitu</string>
+    <string name="cloud_partly_cloudy">Vahelduv pilvisus</string>
+    <string name="cloud_mostly_cloudy">Enamasti pilves</string>
+    <string name="cloud_overcast">Lauspilves</string>
+    <string name="aqi_good">Hea</string>
+    <string name="aqi_moderate">Mõõdukas</string>
+    <string name="aqi_unhealthy_sensitive">Ebatervislik (ohustatutele)</string>
+    <string name="aqi_unhealthy">Ebatervislik</string>
+    <string name="aqi_very_unhealthy">Väga ebatervislik</string>
+    <string name="aqi_hazardous">Ohtlik</string>
+    <string name="precip_raining_now">Hetkel sajab</string>
+    <string name="precip_no_rain_next_2h">Järgmise 2 tunni jooksul vihma ei saja</string>
+    <string name="precip_rain_starting_now">Kohe hakkab sadama</string>
+    <string name="precip_rain_in_min">Saju algus ~<xliff:g id="minutes" example="15">%1$d</xliff:g> min</string>
+    <string name="last_updated">Viimati uuendatud <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
+    <string name="no_data_yet">Andmeid veel pole</string>
+    <string name="just_now">hetk tagasi</string>
+    <string name="minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g>min tagasi</string>
+    <string name="hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g>t tagasi</string>
+    <string name="days_ago"><xliff:g id="days" example="3">%1$d</xliff:g>pv tagasi</string>
+    <string name="duration_h_m"><xliff:g id="hours" example="11">%1$d</xliff:g> t <xliff:g id="minutes" example="30">%2$d</xliff:g> min</string>
+    <string name="summary_title">Kokkuvõte</string>
+    <string name="summary_mixed_conditions">vahelduvad olud</string>
+    <string name="summary_expect_conditions">Eeldatav ilm kogu päeva jooksul: <xliff:g id="conditions" example="kerge vihm">%1$s</xliff:g>.</string>
+    <string name="summary_high_low">Päeva maksimum on <xliff:g id="high" example="24°C">%1$s</xliff:g> ja miinimum on <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
+    <string name="summary_rain_likely">Ilmselt sajab ja palun võta vihmavari kaasa.</string>
+    <string name="summary_showers_possible">Hiljem võib tulla hoogvihma.</string>
+    <string name="summary_slight_chance_rain">Mõningase vihma võimalus.</string>
+    <string name="summary_winds_noticeable">Täna puhub märgatav tuul.</string>
+    <string name="weather_no_data">-</string>
+    <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
 </resources>
