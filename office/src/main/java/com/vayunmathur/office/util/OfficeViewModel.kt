@@ -307,7 +307,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         // Track (or clear) the online identity of the document now open.
         currentDocId = onlineDocId
         currentDocKey = onlineDocKey
-        currentTree = null
+        currentTree?.close(); currentTree = null
         currentCharKind = ""
         _isOnline.value = onlineDocId != null
         if (onlineDocId == null) {
@@ -358,7 +358,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         documentUri = null
         currentDocId = null
         currentDocKey = null
-        currentTree = null
+        currentTree?.close(); currentTree = null
         currentCharKind = ""
         OfficeSync.stopLive()
         livePollJob?.cancel()
@@ -373,7 +373,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     // --- Create new documents ---
 
     fun createNewTextDocument() {
-        currentDocId = null; currentDocKey = null; currentTree = null; currentCharKind = ""
+        currentDocId = null; currentDocKey = null; currentTree?.close(); currentTree = null; currentCharKind = ""
         currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); _isOnline.value = false
         undoStack.clear(); redoStack.clear()
         _canUndo.value = false; _canRedo.value = false
@@ -388,7 +388,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun createNewSpreadsheet() {
-        currentDocId = null; currentDocKey = null; currentTree = null; currentCharKind = ""
+        currentDocId = null; currentDocKey = null; currentTree?.close(); currentTree = null; currentCharKind = ""
         currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); _isOnline.value = false
         undoStack.clear(); redoStack.clear()
         _canUndo.value = false; _canRedo.value = false
@@ -404,7 +404,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun createNewPresentation() {
-        currentDocId = null; currentDocKey = null; currentTree = null; currentCharKind = ""
+        currentDocId = null; currentDocKey = null; currentTree?.close(); currentTree = null; currentCharKind = ""
         currentRole = OfficeRoles.OWNER; currentOwnerKey = null; currentMembers.clear(); _isOnline.value = false
         undoStack.clear(); redoStack.clear()
         _canUndo.value = false; _canRedo.value = false
@@ -2167,8 +2167,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         if (!allowed) return false
         val authorKey = memberKey(so.author) ?: return false
         if (!OfficeSync.verify(authorKey, so.ops.encodeToByteArray(), Base64.decode(so.sig))) return false
-        val ops = runCatching { syncJson.decodeFromString<List<DocumentTreeCrdt.Node>>(so.ops) }.getOrNull() ?: return false
-        tree.apply(ops)
+        tree.applyJson(so.ops)
         return true
     }
 
@@ -2182,14 +2181,14 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                     val localXml = exportFlat()
                     // Fold pending local edits into the tree FIRST (and push them), so an incoming or
                     // echoed op can't render a stale state and resurrect a char we just deleted.
-                    val localOps = tree.update(localXml)
-                    if (localOps.isNotEmpty() && OfficeRoles.canEdit(currentRole)) {
-                        val opsJson = syncJson.encodeToString(localOps)
+                    val opsJson = tree.updateJson(localXml)
+                    val hasLocal = opsJson != "[]"
+                    if (hasLocal && OfficeRoles.canEdit(currentRole)) {
                         val sig = Base64.encode(OfficeSync.sign(opsJson.encodeToByteArray()))
                         val signed = syncJson.encodeToString(SignedOp(OfficeSync.deviceId, sig, opsJson))
                         if (!OfficeSync.liveAppend(docId, key, listOf(signed))) OfficeSync.appendDocActions(docId, key, listOf(signed))
                     }
-                    var changed = localOps.isNotEmpty()
+                    var changed = hasLocal
                     for (blob in msg.actions) {
                         val plain = OfficeSync.decrypt(key, blob) ?: continue
                         if (applySignedOp(tree, plain)) changed = true
@@ -2320,10 +2319,9 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         val cursor = ds.getLong("crdtCursor:$docId")?.toInt() ?: 0
         val localXml = exportFlat()
         val startVersion = editVersion
-        val localOps = tree.update(localXml)
+        val opsJson = tree.updateJson(localXml)
         // Only push signed ops if we're allowed to edit; viewers never push.
-        if (localOps.isNotEmpty() && OfficeRoles.canEdit(currentRole)) {
-            val opsJson = syncJson.encodeToString(localOps)
+        if (opsJson != "[]" && OfficeRoles.canEdit(currentRole)) {
             val sig = Base64.encode(OfficeSync.sign(opsJson.encodeToByteArray()))
             val signed = syncJson.encodeToString(SignedOp(OfficeSync.deviceId, sig, opsJson))
             // Prefer the live WebSocket (peers get it instantly, like presence); HTTP is the fallback.
@@ -2463,6 +2461,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                 val mergedXml = crdt.render()
                 if (mergedXml.isBlank()) {
                     // No accepted content — usually ops from an older version that no longer verify.
+                    crdt.close() // never adopted as currentTree; free its native handle
                     withContext(Dispatchers.Main) {
                         _state.value = ViewState.Error("This shared document has no readable content. It was likely created with an older version — ask the owner to re-share a new copy.")
                     }
@@ -2476,6 +2475,8 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                     loadDocument(Uri.fromFile(file), "$safeTitle.fodt", meta.docId, key)
                     _isEditMode.value = OfficeRoles.canEdit(meta.role) // viewers are read-only
                 }
+                // loadDocument() above already closed+nulled any prior tree; guard defensively.
+                if (currentTree !== crdt) currentTree?.close()
                 currentTree = crdt
                 currentCharKind = meta.charKind.ifEmpty { if (meta.charMode) "text" else "" }
                 startLive(meta.docId, key)
@@ -2619,8 +2620,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         currentDocKey = newKey
         val crdt = currentTree
         if (crdt != null) {
-            val snapshot = crdt.toState().nodes
-            val opsJson = syncJson.encodeToString(snapshot)
+            val opsJson = crdt.toStateNodesJson()
             val opSig = Base64.encode(OfficeSync.sign(opsJson.encodeToByteArray()))
             OfficeSync.appendDocActions(docId, newKey, listOf(syncJson.encodeToString(SignedOp(OfficeSync.deviceId, opSig, opsJson))))
         }

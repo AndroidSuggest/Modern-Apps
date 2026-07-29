@@ -54,11 +54,13 @@ class OfficeSharingE2ETest {
 
         val docId = "doc-1"
         val docKey = E2ee.newContentKey()
-        val ownerXml = "<office:text><text:p>Shared heading</text:p><text:p>A paragraph of content</text:p></office:text>"
 
         // ---- Owner: push signed op + owner-signed roster + invite ----
-        val crdtO = DocumentTreeCrdt(ownerId)
-        val opsJson = json.encodeToString(crdtO.update(ownerXml))
+        // The signed-op wire carries an opaque ops-JSON string produced by the (now native) CRDT;
+        // the crypto + role pipeline exercised here is independent of its contents, so we use a
+        // representative payload. CRDT merge/reconstruction is covered by the Rust crate's tests.
+        val opsJson = "[{\"id\":\"1:$ownerId\",\"parent\":\"\",\"left\":\"\",\"kind\":\"e\"," +
+            "\"payload\":\"<office:text>\",\"lamport\":1,\"dev\":\"$ownerId\"}]"
         val signedOp = SignedOp(ownerId, Base64.encode(owner.sign(opsJson.encodeToByteArray())), opsJson)
         relay.append(docId, Base64.encode(E2ee.aesEncrypt(docKey, json.encodeToString(signedOp).encodeToByteArray())))
 
@@ -86,21 +88,21 @@ class OfficeSharingE2ETest {
         }
         assertEquals(OfficeRoles.OWNER, roleById[ownerId])
 
-        // ops: verify author signature + editor/owner role, then apply
-        val crdtR = DocumentTreeCrdt(editorId)
+        // ops: verify author signature + editor/owner role, then accept the (opaque) ops payload
+        var acceptedOps: String? = null
         for (blob in relay.pull(docId)) {
             val so = json.decodeFromString<SignedOp>(E2ee.aesDecrypt(recDocKey, Base64.decode(blob)).decodeToString())
             val authorKey = relay.directory[so.author] ?: continue
             val sigOk = Pqc.verify(authorKey, so.ops.encodeToByteArray(), Base64.decode(so.sig))
             val roleOk = OfficeRoles.canEdit(roleById[so.author] ?: OfficeRoles.VIEWER)
-            if (sigOk && roleOk) crdtR.apply(json.decodeFromString<List<DocumentTreeCrdt.Node>>(so.ops))
+            if (sigOk && roleOk) acceptedOps = so.ops
         }
-        assertEquals(ownerXml, crdtR.render()) // reconstructed identically
+        assertEquals("owner-signed op accepted and delivered byte-intact", opsJson, acceptedOps)
 
         // ---- Negative: a viewer's forged op is rejected ----
         roleById[editorId] = OfficeRoles.VIEWER
-        val forgedOps = DocumentTreeCrdt(editorId).update("<office:text><text:p>malicious edit</text:p></office:text>")
-        val forgedJson = json.encodeToString(forgedOps)
+        val forgedJson = "[{\"id\":\"9:$editorId\",\"parent\":\"\",\"left\":\"\",\"kind\":\"c\"," +
+            "\"payload\":\"x\",\"lamport\":9,\"dev\":\"$editorId\"}]"
         val forged = SignedOp(editorId, Base64.encode(editor.sign(forgedJson.encodeToByteArray())), forgedJson)
         val sigOk = Pqc.verify(relay.directory[editorId]!!, forged.ops.encodeToByteArray(), Base64.decode(forged.sig))
         val roleOk = OfficeRoles.canEdit(roleById[forged.author] ?: OfficeRoles.VIEWER)

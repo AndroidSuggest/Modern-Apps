@@ -2,6 +2,7 @@ package com.vayunmathur.office.odf
 
 import androidx.compose.ui.text.style.TextAlign
 import com.vayunmathur.library.ui.odf.*
+import com.vayunmathur.office.util.OfficeNative
 import org.xmlpull.v1.XmlPullParser
 
 /**
@@ -534,7 +535,7 @@ internal object OoxmlXlsx {
         // formatted per the number format so dates/percent/currency don't show as bare numbers.
         val fmtForDisplay = resolvedFmt ?: if (base.valueType == "date") OdfNumberFormat(isDate = true) else null
         val displayText = if (base.numberValue != null && base.valueType != "boolean" && fmtForDisplay != null)
-            OdfFormulaEngine.formatWithStyle(base.numberValue!!, fmtForDisplay) else base.text
+            OfficeNative.formatValue(base.numberValue!!, fmtForDisplay) else base.text
         return base.copy(
             text = displayText,
             formula = formula ?: base.formula,

@@ -16,6 +16,17 @@ android {
     sourceSets.getByName("androidTest").assets.directories.add(rootProject.file("metadata_data/assets").absolutePath)
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// Native ODF formula engine + document CRDT (Rust). See office/src/main/rust/.
+rustNativeLib("office_engine", "office")
+
 dependencies {
     implementation(project(":library:network"))
     implementation(project(":library:e2ee-p2p"))

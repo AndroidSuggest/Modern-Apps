@@ -61,6 +61,7 @@ import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -120,6 +121,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.vayunmathur.office.odf.*
+import com.vayunmathur.office.util.OfficeNative
 import com.vayunmathur.library.ui.odf.*
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.office.R
@@ -1360,7 +1362,10 @@ fun SpreadsheetView(
         }
 
         val sheet = doc.sheets[selectedSheet]
-        val workbook = remember(doc) { doc.sheets.associateBy { it.name } }
+        // Native formula workbook: built once per document snapshot over the SAME ordered sheet list
+        // (doc.sheets) whose index we pass as sheetIdx, so cross-sheet references resolve correctly.
+        val wbHandle = remember(doc) { OfficeNative.createWorkbook(doc.sheets, System.currentTimeMillis()) }
+        DisposableEffect(doc) { onDispose { OfficeNative.nativeFree(wbHandle) } }
         val maxCols = sheet.rows.maxOfOrNull { it.cells.count { c -> !c.isCovered } } ?: 0
         fun colWidthDp(start: Int, span: Int): androidx.compose.ui.unit.Dp {
             var w = 0f
@@ -1409,7 +1414,7 @@ fun SpreadsheetView(
                                         colspanSkip = if (cell.spannedColumns > 1) cell.spannedColumns - 1 else 0
                                         val isEditing = editingCell?.let { it.first == selectedSheet && it.second == rowIdx && it.third == cellIdx } == true
                                         val isMatch = searchQuery.isNotEmpty() && cell.text.contains(searchQuery, ignoreCase = true)
-                                        val displayText = OdfFormulaEngine.displayValue(sheet, rowIdx, cellIdx, workbook, sheet.name)
+                                        val displayText = OfficeNative.nativeDisplayValue(wbHandle, selectedSheet, rowIdx, cellIdx) ?: ""
                                         val cf = if (cell.condFormats.isEmpty()) null else evalCondFormat(cell.condFormats, cell.numberValue ?: displayText.toDoubleOrNull(), displayText)
                                         val effBg = cf?.backgroundColor ?: cell.backgroundColor
                                         Box(
@@ -1434,7 +1439,7 @@ fun SpreadsheetView(
                                                 } else Modifier)
                                                 .padding(8.dp, 4.dp)
                                         ) {
-                                            val cellAlign = cell.alignment ?: if (OdfFormulaEngine.isNumeric(sheet, rowIdx, cellIdx, workbook, sheet.name)) TextAlign.End else null
+                                            val cellAlign = cell.alignment ?: if (OfficeNative.nativeIsNumeric(wbHandle, selectedSheet, rowIdx, cellIdx)) TextAlign.End else null
                                             Text(displayText,
                                                 style = MaterialTheme.typography.bodyMedium.let { if (fontSizeMultiplier != 1f && it.fontSize != TextUnit.Unspecified) it.copy(fontSize = it.fontSize * fontSizeMultiplier) else it },
                                                 fontWeight = if (cell.bold) FontWeight.Bold else null,
