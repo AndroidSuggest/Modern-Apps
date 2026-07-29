@@ -10,13 +10,14 @@ pub struct Vertex {
     pub ao: f32,
     pub tile_idx: f32,
     pub normal: [f32; 3],
+    pub light: f32,
 }
 
 impl Vertex {
     pub fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription::default().binding(0).stride(mem::size_of::<Self>() as u32).input_rate(vk::VertexInputRate::VERTEX)
     }
-    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 6] {
+    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescription; 7] {
         [
             vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32B32_SFLOAT).offset(mem::offset_of!(Vertex, pos) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(1).format(vk::Format::R32G32_SFLOAT).offset(mem::offset_of!(Vertex, uv) as u32),
@@ -24,6 +25,7 @@ impl Vertex {
             vk::VertexInputAttributeDescription::default().binding(0).location(3).format(vk::Format::R32_SFLOAT).offset(mem::offset_of!(Vertex, ao) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(4).format(vk::Format::R32_SFLOAT).offset(mem::offset_of!(Vertex, tile_idx) as u32),
             vk::VertexInputAttributeDescription::default().binding(0).location(5).format(vk::Format::R32G32B32_SFLOAT).offset(mem::offset_of!(Vertex, normal) as u32),
+            vk::VertexInputAttributeDescription::default().binding(0).location(6).format(vk::Format::R32_SFLOAT).offset(mem::offset_of!(Vertex, light) as u32),
         ]
     }
 }

@@ -30,8 +30,11 @@ object VoxelsNative {
     external fun moveItem(from: Int, to: Int)
     external fun giveBlock(id: Int)
     external fun craft(recipe: Int): Boolean
+    external fun trade(index: Int): Boolean
     external fun getRecipesJson(): String
+    external fun getTradesJson(): String
     external fun getInventoryJson(): String
     external fun getDebugJson(): String
     external fun getStatsJson(): String
+    external fun getHealthJson(): String
 }

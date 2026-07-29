@@ -86,9 +86,11 @@ pub enum Block {
     Obsidian = 78,
     Clay = 79,
     AzaleaLeaves = 80,
+    WardingStone = 81,
+    Jukebox = 82,
 }
 
-pub const MAX_BLOCK_ID: u8 = 80;
+pub const MAX_BLOCK_ID: u8 = 82;
 
 impl Block {
     pub fn from_id(id: u8) -> Self {
@@ -104,7 +106,7 @@ impl Block {
 
     // Interactive block menu: 0 = none, 1 = crafting, 2 = furnace.
     pub fn menu(self) -> i32 {
-        match self { Self::CraftingTable => 1, Self::Furnace => 2, _ => 0 }
+        match self { Self::CraftingTable => 1, Self::Furnace => 2, Self::Jukebox => 3, _ => 0 }
     }
 
     // Atlas tile indices (8x8 atlas). See the atlas generator's TILES order.
@@ -191,6 +193,8 @@ impl Block {
             Self::Obsidian => 114,
             Self::Clay => 115,
             Self::AzaleaLeaves => 116,
+            Self::WardingStone => 117,
+            Self::Jukebox => 118,
         }
     }
     pub fn tile_bottom(self) -> u32 {
@@ -237,6 +241,25 @@ impl Block {
             Self::DarkOakLeaves => [0.27, 0.45, 0.20],
             Self::Water => [0.6, 0.8, 1.0],
             _ => [1.0, 1.0, 1.0],
+        }
+    }
+    // Stone/mineral blocks that only drop when mined with a pickaxe.
+    pub fn needs_pickaxe(self) -> bool {
+        matches!(self,
+            Self::Stone | Self::Cobble | Self::Brick | Self::MossyCobble | Self::Diorite | Self::PolishedDiorite
+            | Self::CoalOre | Self::IronOre | Self::DiamondOre | Self::RedstoneOre | Self::EmeraldOre
+            | Self::IronBlock | Self::DiamondBlock | Self::EmeraldBlock | Self::Netherrack | Self::Furnace
+            | Self::RedSandstone | Self::Sandstone | Self::GraniteBricks | Self::DeepslateBricks | Self::NetherBricks
+            | Self::EndStoneBricks | Self::CobbledDeepslate | Self::Prismarine | Self::DarkPrismarine | Self::Dripstone
+            | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce)
+    }
+    // Block light emitted (0..15) for dynamic lighting.
+    pub fn light_emission(self) -> u8 {
+        match self {
+            Self::Glowstone | Self::SeaLantern => 15,
+            Self::WardingStone => 13,
+            Self::Magma => 11,
+            _ => 0,
         }
     }
     pub fn tile_for_dir(self, _dx: i32, dy: i32, _dz: i32) -> u32 {

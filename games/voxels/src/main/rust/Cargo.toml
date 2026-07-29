@@ -1,5 +1,8 @@
-# Standalone crate (built directly by Gradle); detached from any parent workspace Cargo.toml.
 [workspace]
+
+[workspace.dependencies]
+# Mirrors root workspace catalog to avoid duplicate JNI/Walkdir/Windows pulling in voxels
+jni = { path = "../../../../../third_party/jni-android", version = "0.21" }
 
 [package]
 name = "voxels_engine"
@@ -13,7 +16,7 @@ name = "voxels_engine"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-jni = "0.21"
+jni.workspace = true
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
 hashbrown = "0.14"
 noise = "0.8"

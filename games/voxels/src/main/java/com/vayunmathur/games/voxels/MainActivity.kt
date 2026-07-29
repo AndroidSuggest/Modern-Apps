@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
             VoxelsTheme {
                 var inventoryJson by remember { mutableStateOf("""{"selected":0,"slots":[{"id":3,"count":64},{"id":2,"count":64},{"id":1,"count":64},{"id":4,"count":16},{"id":10,"count":32},{"id":6,"count":32},{"id":7,"count":16},{"id":8,"count":16},{"id":9,"count":16}]}""") }
                 var debugJson by remember { mutableStateOf("Voxels Engine\nInitializing Vulkan...\nMatcha Atlas 64x64") }
+                var healthJson by remember { mutableStateOf("{}") }
                 var showDebug by remember { mutableStateOf(true) }
                 var flying by remember { mutableStateOf(false) }
                 var sneaking by remember { mutableStateOf(false) }
@@ -49,7 +50,9 @@ class MainActivity : ComponentActivity() {
                 val activity = LocalContext.current as? android.app.Activity
                 var invStartTab by remember { mutableStateOf(0) }
                 var recipesJson by remember { mutableStateOf("[]") }
-                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson() } catch (_: Exception) {} }
+                var tradesJson by remember { mutableStateOf("[]") }
+                var tradeOpen by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson() } catch (_: Exception) {} }
                 var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
                 val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
@@ -61,11 +64,21 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
+                    var prevHp = 20f
                     while (isActive) {
                         if (VoxelsNative.isAvailable) {
                             try {
                                 inventoryJson = VoxelsNative.getInventoryJson()
                                 debugJson = VoxelsNative.getDebugJson()
+                                try {
+                                    healthJson = VoxelsNative.getHealthJson()
+                                    val hp = org.json.JSONObject(healthJson).optDouble("hp", prevHp.toDouble()).toFloat()
+                                    if (hp < prevHp - 0.5f) {
+                                        if (prevHp - hp > 6f) com.vayunmathur.games.voxels.util.SoundFx.playExplode()
+                                        else com.vayunmathur.games.voxels.util.SoundFx.playHurt()
+                                    }
+                                    prevHp = hp
+                                } catch (_: Exception) {}
                                 try { flying = org.json.JSONObject(debugJson).optBoolean("flying", flying) } catch (_: Exception) {}
                                 val stats = VoxelsNative.getStatsJson()
                                 try {
@@ -113,6 +126,12 @@ class MainActivity : ComponentActivity() {
                                 when (VoxelsNative.placeBlockAt(off.x, off.y)) {
                                     1 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace()
                                     11, 12 -> { invStartTab = 2; inventoryOpen = true } // crafting table / furnace
+                                    13 -> { // jukebox: play the held disc (or stop)
+                                        val inv = try { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<com.vayunmathur.games.voxels.ui.InventoryState>(inventoryJson) } catch (_: Exception) { null }
+                                        val held = inv?.slots?.getOrNull(inv.selected)?.id ?: 0
+                                        com.vayunmathur.games.voxels.util.MusicFx.toggle(this@MainActivity, com.vayunmathur.games.voxels.ui.discTrack[held])
+                                    }
+                                    20 -> tradeOpen = true // villager
                                 }
                             } catch (_: Exception) {} },
                             onBreak = { off -> try { if (VoxelsNative.breakBlockAt(off.x, off.y)) com.vayunmathur.games.voxels.util.SoundFx.playBreak() } catch (_: Exception) {} }
@@ -164,6 +183,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Health/effects HUD just above the hotbar.
+                    Box(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 78.dp)) {
+                        HealthOverlay(healthJson)
+                    }
+
                     Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)) {
                         Hotbar(inventoryJson = inventoryJson,
                             onSelect = { slot -> if (VoxelsNative.isAvailable) try { VoxelsNative.selectSlot(slot) } catch (_: Exception) {} },
@@ -191,6 +215,10 @@ class MainActivity : ComponentActivity() {
                         InventoryOverlay(inventoryJson = inventoryJson, recipesJson = recipesJson, onClose = { inventoryOpen = false }, startTab = invStartTab)
                     }
 
+                    if (tradeOpen && VoxelsNative.isAvailable) {
+                        TradeOverlay(tradesJson = tradesJson, onClose = { tradeOpen = false })
+                    }
+
                     if (paused) {
                         Box(
                             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f))
@@ -214,6 +242,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        com.vayunmathur.games.voxels.util.MusicFx.stop()
         if (VoxelsNative.isAvailable) { try { VoxelsNative.nativeOnDestroy() } catch (_: Exception) {} }
         super.onDestroy()
     }

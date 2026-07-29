@@ -7,6 +7,7 @@ layout(location=4) in vec3 fragWorldPos;
 layout(location=5) in vec3 fragNormal;
 layout(location=6) in float fragTile;
 layout(location=7) in vec4 fragLightPos;
+layout(location=8) in float fragLight;   // packed skylight + blocklight*16
 
 layout(binding=0) uniform Ubo {
     mat4 viewProj;
@@ -107,7 +108,14 @@ void main() {
     vec3 ambient = ambientColor * mix(0.55, 1.0, hemi);
     float aoFactor = mix(0.5, 1.0, fragAo); // per-corner ambient occlusion
 
-    vec3 lit = albedo * (sunColor * NdotL * shadow + ambient) * aoFactor;
+    // Dynamic lighting: sky exposure gates sun+ambient (so caves/overhangs go dark), block light is
+    // additive emissive (torches/glowstone glow warm). Tiny floor keeps unlit areas barely visible.
+    float sky = mod(fragLight, 16.0) / 15.0;
+    float blockL = floor(fragLight / 16.0) / 15.0;
+    vec3 blockLightCol = vec3(1.0, 0.82, 0.5) * (blockL * blockL);
+    vec3 lit = albedo * ((sunColor * NdotL * shadow + ambient) * sky + blockLightCol + vec3(0.02)) * aoFactor;
+    // Night Vision (_pad2): lift dark areas to a visible floor.
+    if (_pad2 > 0.5) { lit = max(lit, albedo * 0.62 * aoFactor); }
 
     float fog = 1.0 - exp(-fragDist * fogDensity);
     fog = clamp(fog, 0.0, 0.85);

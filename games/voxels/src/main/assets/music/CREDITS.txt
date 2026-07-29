@@ -1,0 +1,3 @@
+Music tracks under mcl_/ are from VoxeLibre (MineClone) mcl_music, by DarkReaven and Jester,
+licensed CC-BY-SA / see https://github.com/VoxeLibre/VoxeLibre (mods/PLAYER/mcl_music).
+golden.ogg / lullaby.ogg are from the Matcha Flavoured pack by Klei.

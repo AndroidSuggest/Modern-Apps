@@ -1,7 +1,7 @@
 use crate::world::{ChunkMap, block::Block};
 use crate::player::Player;
 use crate::inventory::Inventory;
-use crate::entity::{Mob, MobKind, build_entity_mesh};
+use crate::entity::{Mob, MobKind, Particle, build_entity_mesh, tick_particles, append_particles};
 use crate::world::mesher;
 use crate::vulkan::context::{VulkanContext, ANativeWindow};
 use crate::vulkan::renderer::VulkanRenderer;
@@ -25,6 +25,9 @@ pub struct EngineState {
     pub mobs: Vec<Mob>,
     pub spawn_timer: f32,
     pub spawn_rng: u32,
+    pub respawn: Option<Vec3>,
+    pub checkpoint_cd: f32,
+    pub particles: Vec<Particle>,
 }
 
 unsafe impl Send for EngineState {}
@@ -91,6 +94,9 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         mobs: Vec::new(),
         spawn_timer: 2.0,
         spawn_rng: seed ^ 0x9E3779B9,
+        respawn: None,
+        checkpoint_cd: 0.0,
+        particles: Vec::new(),
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -238,6 +244,30 @@ pub fn tick_and_render() {
         if move_len > 0.9 { input_mut.sprint = true; }
 
         state.player.tick(dt, &input_mut, &state.chunks);
+        state.player.tick_status(dt);
+
+        // Warding stone checkpoint: standing near one sets respawn + slowly refills Estus (bonfire).
+        state.checkpoint_cd = (state.checkpoint_cd - dt).max(0.0);
+        {
+            let p = state.player.pos;
+            let (bx, by, bz) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let mut near = None;
+            'scan: for dy in -2..=2 { for dx in -4..=4 { for dz in -4..=4 {
+                if state.chunks.get_block_world(bx + dx, by + dy, bz + dz) == 81 {
+                    near = Some(vec3((bx + dx) as f32 + 0.5, (by + dy) as f32 + 1.0, (bz + dz) as f32 + 0.5));
+                    break 'scan;
+                }
+            }}}
+            if let Some(cp) = near {
+                state.respawn = Some(cp);
+                if state.checkpoint_cd <= 0.0 {
+                    state.checkpoint_cd = 2.0;
+                    let have: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();
+                    if have < 4 { state.inventory.add_block(128); }
+                    state.player.add_effect(crate::item::Effect::Regeneration, 2.5, 0);
+                }
+            }
+        }
 
         let px = state.player.pos.x as i32;
         let pz = state.player.pos.z as i32;
@@ -256,6 +286,25 @@ pub fn tick_and_render() {
             let solid = |x: i32, y: i32, z: i32| { let id = chunks.get_block_world(x, y, z); id != 0 && Block::from_id(id).is_solid() };
             for m in state.mobs.iter_mut() { m.tick(dt, player_pos, &solid); }
         }
+        // Mob melee contact damage + creeper fuse.
+        let mut incoming = 0.0f32;
+        let mut explosions: Vec<Vec3> = Vec::new();
+        for m in state.mobs.iter_mut() {
+            m.attack_cd = (m.attack_cd - dt).max(0.0);
+            let d = (m.pos - player_pos).length();
+            if m.kind == MobKind::Creeper {
+                if d < 3.2 { m.fuse += dt; if m.fuse >= 1.4 { explosions.push(m.pos); m.health = 0.0; } }
+                else { m.fuse = (m.fuse - dt * 0.6).max(0.0); }
+            } else if m.kind.hostile() && d < 1.7 && m.attack_cd <= 0.0 {
+                m.attack_cd = 0.8; incoming += m.kind.contact_damage();
+            }
+        }
+        if incoming > 0.0 { hurt_player(state, incoming); }
+        for c in explosions { explode(state, c, 3.0); }
+        // Remove dead mobs and auto-collect their drops.
+        let mut loot: Vec<u8> = Vec::new();
+        state.mobs.retain(|m| if m.health <= 0.0 { loot.extend_from_slice(m.kind.loot()); false } else { true });
+        for id in loot { state.inventory.add_block(id); }
         state.mobs.retain(|m| (m.pos - player_pos).length() < 96.0 && m.pos.y > -8.0);
         state.spawn_timer -= dt;
         if state.spawn_timer <= 0.0 {
@@ -281,6 +330,8 @@ pub fn tick_and_render() {
                     let night = day_t < 0.25 || day_t > 0.75;
                     let kind = if night {
                         if rand(&mut rng) < 0.5 { MobKind::Zombie } else { MobKind::Creeper }
+                    } else if rand(&mut rng) < 0.18 {
+                        MobKind::Villager
                     } else {
                         match (rand(&mut rng) * 4.0) as u32 { 0 => MobKind::Pig, 1 => MobKind::Cow, 2 => MobKind::Sheep, _ => MobKind::Chicken }
                     };
@@ -291,7 +342,35 @@ pub fn tick_and_render() {
                 state.spawn_rng = rng;
             }
         }
-        let (entity_verts, entity_indices) = build_entity_mesh(&state.mobs);
+        // Death: burn one heart of max HP (floored) and respawn at world spawn — the "lives" system.
+        if state.player.dead {
+            use crate::world::chunk::CHUNK_HEIGHT;
+            state.player.max_health = (state.player.max_health - 2.0).max(crate::player::MIN_MAX_HEALTH);
+            state.player.pos = if let Some(rp) = state.respawn {
+                rp
+            } else {
+                state.chunks.ensure_radius(0, 0);
+                let mut ty = 80;
+                for y in (1..CHUNK_HEIGHT as i32).rev() {
+                    let id = state.chunks.get_block_world(0, y, 0);
+                    if id != 0 && Block::from_id(id).is_solid() { ty = y; break; }
+                }
+                vec3(0.5, ty as f32 + 1.1, 0.5)
+            };
+            state.player.vel = Vec3::ZERO;
+            state.player.health = state.player.max_health;
+            state.player.absorption = 0.0;
+            state.player.effects.clear();
+            state.player.dead = false;
+            state.player.air_max_y = state.player.pos.y;
+            state.mobs.clear();
+        }
+        tick_particles(&mut state.particles, dt);
+        let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
+        {
+            let right = state.player.right();
+            append_particles(&mut entity_verts, &mut entity_indices, &state.particles, right, Vec3::Y);
+        }
 
         if let Some(renderer) = state.renderer.as_mut() {
             if state.needs_resize {
@@ -316,8 +395,9 @@ pub fn tick_and_render() {
             let time = 60.0 + (Instant::now() - state.start_time).as_secs_f32();
             let eb = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
+            let nv = if state.player.night_vision() { 1.0 } else { 0.0 };
             unsafe {
-                renderer.update_ubo(view_proj, state.player.pos, time, underwater);
+                renderer.update_ubo(view_proj, state.player.pos, time, underwater, nv);
                 renderer.upload_entity_mesh(&entity_verts, &entity_indices);
                 let _ = renderer.draw_frame();
             }
@@ -332,6 +412,7 @@ pub fn tick_and_render() {
 static DEBUG_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static INV_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static STATS_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+static HEALTH_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 fn cref(c: &'static OnceLock<Mutex<String>>, default: &str) -> &'static Mutex<String> { c.get_or_init(|| Mutex::new(default.to_string())) }
 
 // Called from the render tick (holds the engine lock) to refresh the UI caches.
@@ -360,21 +441,36 @@ fn publish_ui(state: &EngineState) {
     let day_t = (time / 120.0) % 1.0;
     let stats = serde_json::json!({ "placed": state.inventory.placed, "broken": state.inventory.broken, "walked": state.player.walk_dist as i32, "night": day_t > 0.5 && day_t < 0.92 }).to_string();
     let inv = state.inventory.to_json();
+    let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
+    let estus: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();
+    let health = serde_json::json!({
+        "hp": state.player.health, "max": state.player.max_health, "absorb": state.player.absorption,
+        "dead": state.player.dead, "estus": estus, "effects": effects,
+    }).to_string();
     if let Ok(mut c) = cref(&DEBUG_CACHE, "{}").lock() { *c = debug; }
     if let Ok(mut c) = cref(&STATS_CACHE, "{}").lock() { *c = stats; }
     if let Ok(mut c) = cref(&INV_CACHE, r#"{"selected":0,"slots":[]}"#).lock() { *c = inv; }
+    if let Ok(mut c) = cref(&HEALTH_CACHE, "{}").lock() { *c = health; }
 }
 
 pub fn get_debug_json() -> String { cref(&DEBUG_CACHE, r#"{"error":"no engine"}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 pub fn get_inventory_json() -> String { cref(&INV_CACHE, r#"{"selected":0,"slots":[]}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| r#"{"selected":0,"slots":[]}"#.into()) }
 pub fn get_stats_json() -> String { cref(&STATS_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
+pub fn get_health_json() -> String { cref(&HEALTH_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 
 pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
 pub fn inventory_give(id: u8) { with_engine(|s| s.inventory.give(id)); }
 pub fn inventory_craft(recipe: usize) -> bool { with_engine(|s| s.inventory.craft(recipe)).unwrap_or(false) }
+pub fn do_trade(idx: usize) -> bool { with_engine(|s| s.inventory.trade(idx)).unwrap_or(false) }
+pub fn get_trades_json() -> String {
+    let items: Vec<_> = crate::inventory::TRADES.iter()
+        .map(|(c, cn, g, gn)| serde_json::json!({"cost": c, "costN": cn, "give": g, "giveN": gn}))
+        .collect();
+    serde_json::json!(items).to_string()
+}
 pub fn get_recipes_json() -> String {
     let items: Vec<_> = crate::inventory::RECIPES.iter()
-        .map(|(iid, ic, oid, oc)| serde_json::json!({"in": iid, "inN": ic, "out": oid, "outN": oc}))
+        .map(|(i1, c1, i2, c2, oid, oc)| serde_json::json!({"in": i1, "inN": c1, "in2": i2, "in2N": c2, "out": oid, "outN": oc}))
         .collect();
     serde_json::json!(items).to_string()
 }
@@ -398,6 +494,26 @@ fn screen_ray(state: &EngineState, px: f32, py: f32) -> (Vec3, Vec3) {
     (eye, dir)
 }
 
+// Apply damage to the player through equipped armor (each defense point cuts ~4%, capped), wearing
+// the armor down when a hit actually lands.
+fn hurt_player(state: &mut EngineState, amt: f32) {
+    let def = state.inventory.armor_defense();
+    let reduced = amt * (1.0 - (def * 0.04)).max(0.2);
+    let before = state.player.health;
+    state.player.damage(reduced);
+    if state.player.health < before { state.inventory.damage_armor(); }
+}
+
+// Spawn a small burst of particles (capped so the buffer never overflows).
+fn spawn_particles(rng: &mut u32, out: &mut Vec<Particle>, center: Vec3, n: usize, color: [f32; 3], speed: f32, life: f32, size: f32) {
+    let mut r = |s: &mut u32| { let mut x = *s; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *s = x; (x >> 8) as f32 / 16_777_216.0 * 2.0 - 1.0 };
+    for _ in 0..n {
+        if out.len() > 500 { break; }
+        let v = vec3(r(rng) * speed, r(rng).abs() * speed + 1.0, r(rng) * speed);
+        out.push(Particle { pos: center, vel: v, life, max_life: life, size, color });
+    }
+}
+
 fn mark_neighbors_dirty(state: &mut EngineState, x: i32, z: i32) {
     use crate::world::chunk::ChunkPos;
     let cp = ChunkPos::from_world(x, z);
@@ -409,22 +525,132 @@ fn mark_neighbors_dirty(state: &mut EngineState, x: i32, z: i32) {
     if lz==15 { if let Some(ch) = state.chunks.get_mut(ChunkPos(cp.0, cp.1+1)) { ch.mesh_dirty=true; } }
 }
 
+// Ray vs mob AABBs: index of the nearest mob hit within `reach` and nearer than `limit`.
+fn nearest_mob_hit(state: &EngineState, origin: Vec3, dir: Vec3, reach: f32, limit: f32) -> Option<usize> {
+    let mut best: Option<(usize, f32)> = None;
+    for (i, m) in state.mobs.iter().enumerate() {
+        let h = m.kind.height();
+        let min = vec3(m.pos.x - 0.45, m.pos.y, m.pos.z - 0.45);
+        let max = vec3(m.pos.x + 0.45, m.pos.y + h, m.pos.z + 0.45);
+        let mut tmin = 0.0f32; let mut tmax = reach.min(limit);
+        let mut hit = true;
+        for a in 0..3 {
+            let (o, d, lo, hi) = (origin[a], dir[a], min[a], max[a]);
+            if d.abs() < 1e-6 { if o < lo || o > hi { hit = false; break; } }
+            else {
+                let (mut t1, mut t2) = ((lo - o) / d, (hi - o) / d);
+                if t1 > t2 { std::mem::swap(&mut t1, &mut t2); }
+                tmin = tmin.max(t1); tmax = tmax.min(t2);
+                if tmin > tmax { hit = false; break; }
+            }
+        }
+        if hit && tmin >= 0.0 && best.map(|(_, t)| tmin < t).unwrap_or(true) { best = Some((i, tmin)); }
+    }
+    best.map(|(i, _)| i)
+}
+
 fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
-    if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 6.0) {
-        let (x,y,z) = hit.pos;
-        let id = state.chunks.get_block_world(x,y,z);
+    use crate::item::{self, Effect};
+    let sel = state.inventory.selected_block();
+    // Equip armor (hold): swap it into its slot, returning any displaced piece to the inventory.
+    if item::is_armor(sel) && state.player.eat_cd <= 0.0 {
+        if let Some((id, dur)) = state.inventory.take_selected() {
+            if let Some(old) = state.inventory.equip_armor(id, dur) { state.inventory.add_item_with_count(old.id, old.count); }
+            state.player.eat_cd = 0.4;
+            return true;
+        }
+    }
+    // Consumables (hold to use): eat food any time, drink estus / use heart container when applicable.
+    if state.player.eat_cd <= 0.0 {
+        // Food can be eaten any time (even at full health) to gain its effects.
+        if item::is_food(sel) {
+            if let Some(id) = state.inventory.consume_selected() {
+                if let Some(effs) = item::food_effects(id) { for &(k, s, a) in effs { state.player.add_effect(k, s, a); } }
+                state.player.eat_cd = 1.2;
+                return true;
+            }
+        } else if item::is_estus(sel) && state.player.health < state.player.max_health {
+            if state.inventory.consume_selected().is_some() {
+                state.player.heal(8.0);
+                state.player.add_effect(Effect::Regeneration, 3.0, 1);
+                state.player.add_effect(Effect::Resistance, 3.0, 0);
+                state.player.eat_cd = 0.8;
+                return true;
+            }
+        } else if item::is_heart_container(sel) && state.player.max_health < crate::player::CAP_MAX_HEALTH {
+            if state.inventory.consume_selected().is_some() {
+                state.player.max_health = (state.player.max_health + 2.0).min(crate::player::CAP_MAX_HEALTH);
+                state.player.heal(2.0);
+                state.player.eat_cd = 0.8;
+                return true;
+            }
+        }
+    }
+    // Attack a mob if one is under the cursor within reach and nearer than any block.
+    let block_hit = crate::raycast::raycast(&state.chunks, origin, dir, 6.0);
+    let block_dist = block_hit.as_ref().map(|h| (vec3(h.pos.0 as f32 + 0.5, h.pos.1 as f32 + 0.5, h.pos.2 as f32 + 0.5) - origin).length()).unwrap_or(f32::INFINITY);
+    if state.player.attack_cd <= 0.0 {
+        if let Some(idx) = nearest_mob_hit(state, origin, dir, 4.5, block_dist) {
+            state.player.attack_cd = 0.45;
+            let dmg = 4.0 + item::sword_damage(sel) + item::pick_damage(sel) + state.player.strength_bonus();
+            state.inventory.damage_selected();
+            let ppos = state.player.pos;
+            let mpos;
+            {
+                let m = &mut state.mobs[idx];
+                m.health -= dmg;
+                let kb = { let k = m.pos - ppos; vec3(k.x, 0.0, k.z).normalize_or_zero() };
+                m.pos += kb * 0.45; m.vel.y = 6.0;
+                mpos = m.pos + vec3(0.0, 0.5, 0.0);
+            }
+            spawn_particles(&mut state.spawn_rng, &mut state.particles, mpos, 6, [0.85, 0.12, 0.12], 3.0, 0.4, 0.09);
+            return true;
+        }
+    }
+    // Break a block.
+    if let Some(hit) = block_hit {
+        let (x, y, z) = hit.pos;
+        let id = state.chunks.get_block_world(x, y, z);
         if id != 0 {
-            state.chunks.set_block_world(x,y,z, 0);
-            state.inventory.add_block(id);
-            state.inventory.broken += 1;
+            // Stone/ore only drops when mined with a pickaxe; soft blocks always drop.
+            let drops = !Block::from_id(id).needs_pickaxe() || item::is_pickaxe(sel);
+            state.chunks.set_block_world(x, y, z, 0);
+            if drops { state.inventory.add_block(id); state.inventory.broken += 1; }
+            state.inventory.damage_selected();
             mark_neighbors_dirty(state, x, z);
+            let c = vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
+            spawn_particles(&mut state.spawn_rng, &mut state.particles, c, 7, [0.55, 0.45, 0.35], 2.6, 0.5, 0.11);
             return true;
         }
     }
     false
 }
 
+// Destroy blocks in a sphere and hurt the player — creeper explosions.
+fn explode(state: &mut EngineState, center: Vec3, radius: f32) {
+    let r = radius.ceil() as i32;
+    let (cx, cy, cz) = (center.x.floor() as i32, center.y.floor() as i32, center.z.floor() as i32);
+    let mut cols: Vec<(i32, i32)> = Vec::new();
+    for dx in -r..=r { for dy in -r..=r { for dz in -r..=r {
+        if ((dx*dx + dy*dy + dz*dz) as f32).sqrt() > radius { continue; }
+        let (x, y, z) = (cx + dx, cy + dy, cz + dz);
+        let id = state.chunks.get_block_world(x, y, z);
+        if id != 0 && id != 13 && Block::from_id(id).is_solid() {
+            state.chunks.set_block_world(x, y, z, 0);
+            cols.push((x, z));
+        }
+    }}}
+    for (x, z) in cols { mark_neighbors_dirty(state, x, z); }
+    let pd = (state.player.pos - center).length();
+    if pd < radius * 2.0 { hurt_player(state, (1.0 - pd / (radius * 2.0)).max(0.0) * 22.0); }
+    spawn_particles(&mut state.spawn_rng, &mut state.particles, center, 30, [0.28, 0.25, 0.22], 6.0, 0.9, 0.3);
+    spawn_particles(&mut state.spawn_rng, &mut state.particles, center, 12, [1.0, 0.55, 0.15], 5.0, 0.5, 0.22);
+}
+
 fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
+    // Items (food, estus, materials) are never placeable as blocks.
+    let sel = state.inventory.selected_block();
+    if sel == 0 || crate::item::is_item(sel) { return false; }
     if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 6.0) {
         let (px,py,pz) = hit.prev;
         if state.chunks.get_block_world(px,py,pz) != 0 { return false; }
@@ -454,9 +680,15 @@ pub fn break_block_at(px: f32, py: f32) -> bool {
 pub fn place_block_at(px: f32, py: f32) -> i32 {
     with_engine(|state| {
         let (o, d) = screen_ray(state, px, py);
-        // Tapping an interactive block opens its menu — unless sneaking, which places instead.
+        // Tapping a villager opens trade; tapping an interactive block opens its menu — unless
+        // sneaking, which places instead.
         if !state.player.sneaking {
-            if let Some(hit) = crate::raycast::raycast(&state.chunks, o, d, 6.0) {
+            let block_hit = crate::raycast::raycast(&state.chunks, o, d, 6.0);
+            let bdist = block_hit.as_ref().map(|h| (vec3(h.pos.0 as f32 + 0.5, h.pos.1 as f32 + 0.5, h.pos.2 as f32 + 0.5) - o).length()).unwrap_or(f32::INFINITY);
+            if let Some(idx) = nearest_mob_hit(state, o, d, 4.5, bdist) {
+                if state.mobs[idx].kind == MobKind::Villager { return 20; }
+            }
+            if let Some(hit) = block_hit {
                 let (x, y, z) = hit.pos;
                 let m = crate::world::block::Block::from_id(state.chunks.get_block_world(x, y, z)).menu();
                 if m != 0 { return 10 + m; }

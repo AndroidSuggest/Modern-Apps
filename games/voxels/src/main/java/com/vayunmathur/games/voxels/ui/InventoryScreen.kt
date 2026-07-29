@@ -79,7 +79,7 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
                             }
                             drag = null
                         }, onDragCancel = { drag = null })
-                    1 -> Text("Outfit — coming soon", color = Color.White.copy(0.7f), modifier = Modifier.padding(24.dp))
+                    1 -> OutfitView(inv.armor)
                     else -> CraftingTable(recipesJson)
                 }
             }
@@ -90,10 +90,13 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
                     TabButton("Natural", catTab == 0) { catTab = 0 }
                     TabButton("Ores", catTab == 1) { catTab = 1 }
                     TabButton("Ocean", catTab == 3) { catTab = 3 }
+                    TabButton("Items", catTab == 4) { catTab = 4 }
+                    TabButton("Gear", catTab == 6) { catTab = 6 }
+                    TabButton("Music", catTab == 7) { catTab = 7 }
                     TabButton("Build", catTab == 2) { catTab = 2 }
                 }
                 Spacer(Modifier.height(8.dp))
-                val cat = when (catTab) { 0 -> catalogNatural; 1 -> catalogOres; 3 -> catalogOcean; else -> catalogBuilding }
+                val cat = when (catTab) { 0 -> catalogNatural; 1 -> catalogOres; 3 -> catalogOcean; 4 -> catalogItems; 6 -> catalogGear; 7 -> catalogMusic; else -> catalogBuilding }
                 CatalogGrid(cat) { id -> try { VoxelsNative.giveBlock(id) } catch (_: Exception) {} }
             }
         }
@@ -212,7 +215,7 @@ private fun CraftingTable(recipesJson: String) {
             val arr = org.json.JSONArray(recipesJson)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Recipe(o.getInt("in"), o.getInt("inN"), o.getInt("out"), o.getInt("outN"))
+                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"))
             }
         } catch (_: Exception) { emptyList() }
     }
@@ -244,9 +247,12 @@ private fun CraftingTable(recipesJson: String) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             for (col in 0 until 2) {
                                 val idx = row * 2 + col
-                                if (r == null) { GridCell(0, 0) }
-                                else if (r.inN > 4) { GridCell(if (idx == 0) r.inId else 0, if (idx == 0) r.inN else 0) }
-                                else { GridCell(if (idx < r.inN) r.inId else 0, 0) }
+                                when {
+                                    r == null -> GridCell(0, 0)
+                                    idx == 0 -> GridCell(r.inId, r.inN)
+                                    idx == 1 && r.in2Id != 0 -> GridCell(r.in2Id, r.in2N)
+                                    else -> GridCell(0, 0)
+                                }
                             }
                         }
                     }
@@ -263,4 +269,27 @@ private fun CraftingTable(recipesJson: String) {
     }
 }
 
-private data class Recipe(val inId: Int, val inN: Int, val outId: Int, val outN: Int)
+private data class Recipe(val inId: Int, val inN: Int, val in2Id: Int, val in2N: Int, val outId: Int, val outN: Int)
+
+@Composable
+private fun OutfitView(armor: List<InvSlot>) {
+    val labels = listOf("Helmet", "Chestplate", "Leggings", "Boots")
+    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Equipped Armor", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text("Hold an armor piece in-hand to equip it.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+        for (i in 0 until 4) {
+            val s = armor.getOrNull(i) ?: InvSlot(0, 0)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(0.4f))
+                        .border(1.dp, Color.White.copy(0.15f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val icon = if (s.id != 0) rememberBlockIcon(s.id) else null
+                    if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp), filterQuality = FilterQuality.None)
+                }
+                Text(if (s.id != 0) (blockNames[s.id] ?: "?") else "${labels[i]}: empty", color = Color.White.copy(if (s.id != 0) 0.95f else 0.5f))
+            }
+        }
+    }
+}

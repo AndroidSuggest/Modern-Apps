@@ -9,7 +9,7 @@ const CELL: f32 = ENTITY_CELL as f32;
 const PX: f32 = 1.0 / 16.0; // one skin pixel in blocks
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum MobKind { Pig, Cow, Sheep, Chicken, Creeper, Zombie }
+pub enum MobKind { Pig, Cow, Sheep, Chicken, Creeper, Zombie, Villager }
 
 // A model part: an axis-aligned box textured from the skin.
 struct Part {
@@ -59,13 +59,23 @@ static CHICKEN: &[Part] = &[
 ];
 
 impl MobKind {
-    fn cell(self) -> u32 { match self { MobKind::Pig=>0, MobKind::Cow=>1, MobKind::Sheep=>2, MobKind::Chicken=>3, MobKind::Creeper=>4, MobKind::Zombie=>5 } }
+    fn cell(self) -> u32 { match self { MobKind::Pig=>0, MobKind::Cow=>1, MobKind::Sheep=>2, MobKind::Chicken=>3, MobKind::Creeper=>4, MobKind::Zombie=>5, MobKind::Villager=>6 } }
     pub fn hostile(self) -> bool { matches!(self, MobKind::Creeper | MobKind::Zombie) }
-    fn speed(self) -> f32 { match self { MobKind::Chicken=>1.6, MobKind::Creeper=>1.5, MobKind::Zombie=>1.7, _=>1.15 } }
+    pub fn max_health(self) -> f32 { match self { MobKind::Zombie | MobKind::Creeper => 20.0, MobKind::Villager => 20.0, _ => 10.0 } }
+    pub fn height(self) -> f32 { match self { MobKind::Zombie | MobKind::Villager => 1.9, MobKind::Creeper => 1.6, MobKind::Chicken => 0.7, _ => 0.9 } }
+    pub fn contact_damage(self) -> f32 { match self { MobKind::Zombie => 4.0, _ => 0.0 } }
+    // Item ids dropped on death (auto-collected into the inventory).
+    pub fn loot(self) -> &'static [u8] {
+        match self {
+            MobKind::Pig => &[132], MobKind::Cow => &[137, 132], MobKind::Sheep => &[130], MobKind::Chicken => &[135],
+            MobKind::Creeper => &[138], MobKind::Zombie => &[131], MobKind::Villager => &[],
+        }
+    }
+    fn speed(self) -> f32 { match self { MobKind::Chicken=>1.6, MobKind::Creeper=>1.5, MobKind::Zombie=>1.7, MobKind::Villager=>0.9, _=>1.15 } }
     fn parts(self) -> &'static [Part] {
         match self {
             MobKind::Pig | MobKind::Cow | MobKind::Sheep => QUAD,
-            MobKind::Zombie => BIPED,
+            MobKind::Zombie | MobKind::Villager => BIPED,
             MobKind::Creeper => CREEPER,
             MobKind::Chicken => CHICKEN,
         }
@@ -77,6 +87,9 @@ pub struct Mob {
     pub pos: Vec3,
     pub vel: Vec3,
     pub yaw: f32,
+    pub health: f32,
+    pub attack_cd: f32,
+    pub fuse: f32, // creeper explosion timer
     target_yaw: f32,
     wander: f32,
     anim: f32,
@@ -91,7 +104,8 @@ fn xorshift(s: &mut u32) -> f32 {
 
 impl Mob {
     pub fn new(kind: MobKind, pos: Vec3, seed: u32) -> Self {
-        Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1 }
+        Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: kind.max_health(), attack_cd: 0.0, fuse: 0.0,
+            target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1 }
     }
 
     pub fn tick(&mut self, dt: f32, player: Vec3, solid: &dyn Fn(i32, i32, i32) -> bool) {
@@ -212,7 +226,7 @@ impl Mob {
                     let (rx, rz) = (wp.x*yc - wp.z*ys, wp.x*ys + wp.z*yc);
                     wp = Vec3::new(rx, wp.y, rz) + self.pos;
                     let uv = [(col + uvc[c][0]) / ATLAS, (row + uvc[c][1]) / ATLAS];
-                    verts.push(Vertex { pos: [wp.x, wp.y, wp.z], uv, color: [1.0,1.0,1.0], ao: 1.0, tile_idx: 0.0, normal: nrm });
+                    verts.push(Vertex { pos: [wp.x, wp.y, wp.z], uv, color: [1.0,1.0,1.0], ao: 1.0, tile_idx: 0.0, normal: nrm, light: 0.0 });
                 }
                 indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
             }
@@ -226,4 +240,33 @@ pub fn build_entity_mesh(mobs: &[Mob]) -> (Vec<Vertex>, Vec<u32>) {
     let mut indices = Vec::new();
     for m in mobs { m.append_mesh(&mut verts, &mut indices); }
     (verts, indices)
+}
+
+// ---- Particles: short-lived billboarded quads (block break, hits, explosions). ----
+pub struct Particle { pub pos: Vec3, pub vel: Vec3, pub life: f32, pub max_life: f32, pub size: f32, pub color: [f32; 3] }
+
+pub fn tick_particles(ps: &mut Vec<Particle>, dt: f32) {
+    for p in ps.iter_mut() {
+        p.vel.y -= 14.0 * dt;
+        p.pos += p.vel * dt;
+        p.life -= dt;
+    }
+    ps.retain(|p| p.life > 0.0);
+}
+
+// UV of the white swatch baked into the entity atlas (cell 15); particles tint it via vertex color.
+const PARTICLE_UV: f32 = 0.766;
+pub fn append_particles(verts: &mut Vec<Vertex>, indices: &mut Vec<u32>, ps: &[Particle], right: Vec3, up: Vec3) {
+    for p in ps {
+        let f = (p.life / p.max_life).clamp(0.0, 1.0);
+        let s = p.size * (0.35 + 0.65 * f);
+        let c = [p.color[0] * (0.4 + 0.6 * f), p.color[1] * (0.4 + 0.6 * f), p.color[2] * (0.4 + 0.6 * f)];
+        let (r, u) = (right * s, up * s);
+        let corners = [p.pos - r - u, p.pos + r - u, p.pos + r + u, p.pos - r + u];
+        let base = verts.len() as u32;
+        for cc in corners {
+            verts.push(Vertex { pos: [cc.x, cc.y, cc.z], uv: [PARTICLE_UV, PARTICLE_UV], color: c, ao: 1.0, tile_idx: 0.0, normal: [0.0, 1.0, 0.0], light: 0.0 });
+        }
+        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
 }

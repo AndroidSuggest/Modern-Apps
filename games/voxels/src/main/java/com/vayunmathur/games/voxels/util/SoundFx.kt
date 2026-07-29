@@ -14,19 +14,28 @@ object SoundFx {
     private var pool: SoundPool? = null
     private var breakId = 0
     private var placeId = 0
+    private var hurtId = 0
+    private var eatId = 0
+    private var explodeId = 0
 
     fun init(ctx: Context) {
         if (pool != null) return
         try {
-            val p = SoundPool.Builder().setMaxStreams(4).build()
+            val p = SoundPool.Builder().setMaxStreams(6).build()
             breakId = p.load(wav(ctx, "vox_break.wav", gen(150.0, 0.14, 0.55, true)), 1)
             placeId = p.load(wav(ctx, "vox_place.wav", gen(520.0, 0.07, 0.4, false)), 1)
+            hurtId = p.load(wav(ctx, "vox_hurt.wav", gen(90.0, 0.22, 0.7, true)), 1)
+            eatId = p.load(wav(ctx, "vox_eat.wav", gen(200.0, 0.10, 0.4, true)), 1)
+            explodeId = p.load(wav(ctx, "vox_explode.wav", gen(60.0, 0.5, 0.9, true)), 1)
             pool = p
         } catch (_: Throwable) {}
     }
 
     fun playBreak() { try { pool?.play(breakId, 0.6f, 0.6f, 1, 0, 1f) } catch (_: Throwable) {} }
     fun playPlace() { try { pool?.play(placeId, 0.6f, 0.6f, 1, 0, 1f) } catch (_: Throwable) {} }
+    fun playHurt() { try { pool?.play(hurtId, 0.7f, 0.7f, 1, 0, 1f) } catch (_: Throwable) {} }
+    fun playEat() { try { pool?.play(eatId, 0.5f, 0.5f, 1, 0, 1f) } catch (_: Throwable) {} }
+    fun playExplode() { try { pool?.play(explodeId, 0.9f, 0.9f, 1, 0, 1f) } catch (_: Throwable) {} }
 
     // Decaying tone (or noise burst); mono 16-bit PCM.
     private fun gen(freq: Double, dur: Double, amp: Double, noise: Boolean): ShortArray {

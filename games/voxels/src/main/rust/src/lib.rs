@@ -1,5 +1,6 @@
 pub mod world;
 pub mod entity;
+pub mod item;
 pub mod player;
 pub mod raycast;
 pub mod input;
@@ -218,6 +219,21 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getRe
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_trade<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+) -> jboolean {
+    if idx >= 0 && engine::do_trade(idx as usize) { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getTradesJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_trades_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getInventoryJson<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
@@ -251,6 +267,18 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getSt
     let null = std::ptr::null_mut();
     let json = engine::get_stats_json();
     match env.new_string(json) {
+        Ok(s) => s.into_raw(),
+        Err(_) => null,
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getHealthJson<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_health_json()) {
         Ok(s) => s.into_raw(),
         Err(_) => null,
     }

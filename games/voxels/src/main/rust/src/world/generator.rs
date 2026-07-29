@@ -357,6 +357,21 @@ impl TerrainGen {
                         chunk.set_block(x as usize, cy, z as usize, id);
                     }}
                 }
+                Biome::Plains | Biome::Meadow | Biome::Forest | Biome::Savanna | Biome::FlowerForest if sr < 6 => {
+                    // Shrine: a small cobble platform topped with a Warding Stone (natural checkpoint).
+                    let cy = sh_top;
+                    for ddx in -1i32..=1 { for ddz in -1i32..=1 {
+                        let (x, z) = (bx as i32 + ddx, bz as i32 + ddz);
+                        if x < 0 || x >= 16 || z < 0 || z >= 16 { continue; }
+                        chunk.set_block(x as usize, cy, z as usize, 8); // cobble platform
+                    }}
+                    // Corner pillars + warding stone centre.
+                    for &(px, pz) in &[(-1i32, -1i32), (1, -1), (-1, 1), (1, 1)] {
+                        let (x, z) = (bx as i32 + px, bz as i32 + pz);
+                        if x >= 0 && x < 16 && z >= 0 && z < 16 && cy + 1 < CHUNK_HEIGHT { chunk.set_block(x as usize, cy + 1, z as usize, 1); }
+                    }
+                    if cy + 1 < CHUNK_HEIGHT { chunk.set_block(bx, cy + 1, bz, 81); } // warding stone
+                }
                 _ => {}
             }
         }

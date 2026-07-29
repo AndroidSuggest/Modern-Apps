@@ -173,7 +173,7 @@ impl VulkanRenderer {
         }
         Ok(())
     }
-    pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32) {
+    pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32, night_vision: f32) {
         let day_cycle=120.0; let day_t=(time/day_cycle)%1.0;
         let sun_angle=day_t*std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
         let sun_dir=Vec3::new(sun_angle.cos()*0.3, sun_angle.sin(), sun_angle.cos()*0.1).normalize_or_zero();
@@ -199,7 +199,7 @@ impl VulkanRenderer {
         let half = 90.0;
         let light_proj = Mat4::orthographic_rh(-half, half, -half, half, 1.0, light_dist * 2.0);
         let light_view_proj = light_proj * light_view;
-        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, underwater], day_factor, _pad: [0.0;3], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow: 0.6, ambient_color: ambient_color.to_array(), _pad2: 0.0, light_view_proj: light_view_proj.to_cols_array_2d() };
+        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, underwater], day_factor, _pad: [0.0;3], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow: 0.6, ambient_color: ambient_color.to_array(), _pad2: night_vision, light_view_proj: light_view_proj.to_cols_array_2d() };
         let bytes=unsafe { std::slice::from_raw_parts((&self.ubo_data as *const UboData) as *const u8, std::mem::size_of::<UboData>()) };
         self.ubo_buffer.upload(&self.ctx.device, bytes);
     }
