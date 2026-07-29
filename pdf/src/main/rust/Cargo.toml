@@ -10,34 +10,34 @@ name = "pdf_render"
 crate-type = ["cdylib"]
 
 [dependencies]
+# Root catalog pins single version per crate (see /Users/vayun/Documents/Modern-Apps/Cargo.toml)
+# armv8-only: aarch64-linux-android target, no windows/wasm deps in normal edges.
 lopdf = { version = "0.36", features = ["serde"] }
-# TrueType / CFF / OpenType glyph outline extraction (embedded font rendering).
-# no_std-capable, pure Rust, no transitive deps — keeps the .so lean.
 ttf-parser = { version = "0.25", default-features = false, features = ["std", "glyph-names"] }
-jni = "0.21"
-jpeg-decoder = "0.3"
-weezl = "0.1"
-fax = "0.3"
-flate2 = "1.1"
+jni.workspace = true
+jpeg-decoder.workspace = true
+weezl.workspace = true # LZW – single function, std rewrite landing: keep version pinned, later drop
+fax.workspace = true
+flate2.workspace = true
 hayro-jbig2 = { version = "0.3", default-features = false, features = ["std"] }
 
-openjp2 = "0.6"
-md-5 = "0.10"
-aes = "0.8"
-cbc = { version = "0.1", features = ["alloc"] }
+openjp2.workspace = true
+md-5.workspace = true # tiny MD5 – candidate for std vendor but keep feature intact for now
+aes.workspace = true
+cbc = { version = "0.1", features = ["alloc"] } # wrapper for aes CBC – tiny but keep
 sha2 = { version = "0.10", features = ["oid"] }
-indexmap = "2"
-# Use getrandom 0.2 to match rand 0.8 (avoids duplicate getrandom 0.2 + 0.3 in .so ~30KB bloat)
-getrandom = "0.2"
+indexmap.workspace = true # used for true LRU via shift_remove_index – keep
+getrandom.workspace = true # unified to 0.2.15 to match rand 0.8 chain, avoids duplicate 0.2+0.3+0.4
 
-# Detached CMS/PKCS#7 signing (replaces Bouncy Castle on the Kotlin side).
-rsa = { version = "0.9", features = ["sha2"] }
-rand = "0.8"
-x509-cert = { version = "0.2", features = ["builder"] }
-cms = { version = "0.2", features = ["builder"] }
-der = { version = "0.7", features = ["alloc", "oid"] }
-spki = "0.7"
-const-oid = { version = "0.9", features = ["db"] }
+# Detached CMS/PKCS#7 signing (must preserve feature per user constraint)
+# rsa etc use workspace = true so builder features unified in root Cargo.toml
+rsa.workspace = true
+rand.workspace = true
+x509-cert.workspace = true
+cms.workspace = true
+der.workspace = true
+spki.workspace = true
+const-oid.workspace = true
 
 [profile.release]
 opt-level = 3

@@ -4,10 +4,7 @@ version = "0.0.0"
 edition = "2024"
 license = "GPL-2.0-only"
 authors = ["Terraputix <terraputix@mailbox.org>"]
-readme = "README.md"
-categories = ["compression", "encoding"]
-keywords = ["meteo", "weather", "file-format", "bindings"]
-description = "Rust bindings for om-file-format C code"
+description = "Rust bindings for om-file-format C code (armv8-only, bindgen removed)"
 repository = "https://github.com/open-meteo/om-file-format"
 
 build = "build.rs"
@@ -17,7 +14,6 @@ include = [
     "src/**/*",
     "Cargo.toml",
     "build.rs",
-    "README.md",
 ]
 
 [dependencies]
@@ -25,4 +21,4 @@ libc = "0.2"
 
 [build-dependencies]
 cc = { version = "1.2", features = ["parallel"] }
-bindgen = "0.72"
+# bindgen removed – bindings pre-generated into src/bindings.rs to cut ~20 crates from weather lock

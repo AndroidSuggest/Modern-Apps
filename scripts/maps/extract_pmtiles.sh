@@ -1,14 +1,17 @@
 #!/bin/bash
 
 # Configuration
-SOURCE_URL="https://demo-bucket.protomaps.com/v4.pmtiles"
-OUTPUT_DIR="./zones"
+# After self-host migration the source is R2 itself at data.vayunmathur.com.
+# Original upstream: https://demo-bucket.protomaps.com/v4.pmtiles (137 GB)
+SOURCE_URL="${SOURCE_URL:-https://data.vayunmathur.com/v4.pmtiles}"
+OUTPUT_DIR="${OUTPUT_DIR:-./zones}"
 mkdir -p "$OUTPUT_DIR"
 
-# R2 Configuration
-# Note: Ensure your environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are set
-R2_ENDPOINT="https://<ACCOUNT_ID>.r2.cloudflarestorage.com"
-R2_BUCKET="maps-bucket"
+# R2 Configuration — bucket is `maps` (custom domain data.vayunmathur.com)
+# Env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY / R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY + R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+R2_ENDPOINT="${R2_ENDPOINT:-https://<ACCOUNT_ID>.r2.cloudflarestorage.com}"
+R2_BUCKET="${R2_BUCKET:-maps}"
 
 # --- Automatic go-pmtiles Installation ---
 if ! command -v pmtiles &> /dev/null; then

@@ -34,9 +34,9 @@ import java.util.concurrent.TimeUnit
  */
 object MapTileCache {
     const val BASEMAP_PMTILES_URL =
-        "pmtiles://https://demo-bucket.protomaps.com/v4.pmtiles"
+        "pmtiles://https://data.vayunmathur.com/v4.pmtiles"
 
-    private const val TILE_HOST = "demo-bucket.protomaps.com"
+    internal const val TILE_HOST = "data.vayunmathur.com"
     private val REFRESH_INTERVAL_MS = TimeUnit.HOURS.toMillis(24)
 
     @Volatile private var installed = false
@@ -53,6 +53,23 @@ object MapTileCache {
         // like the downloaded zone pmtiles) and fall back to internal files.
         val root = appContext.getExternalFilesDir(null) ?: appContext.filesDir
         val cacheDir = File(root, CACHE_DIR_NAME).apply { mkdirs() }
+        // Cache migration: old tilecache was keyed by SHA-256(demo-bucket URL+Range).
+        // After switching TILE_HOST to data.vayunmathur.com the hashes no longer
+        // match. Clear stale entries when the origin marker differs.
+        try {
+            val originFile = File(cacheDir, ".origin")
+            val currentOrigin = originFile.takeIf { it.exists() }?.readText()?.trim()
+            if (currentOrigin != null && currentOrigin != TILE_HOST) {
+                cacheDir.listFiles()?.forEach { f ->
+                    if (f.name != ".origin") f.deleteRecursively()
+                }
+            }
+            if (currentOrigin != TILE_HOST) {
+                originFile.writeText(TILE_HOST)
+            }
+        } catch (_: Exception) {
+            // Best-effort migration; a failure must not break map init.
+        }
         val client = OkHttpClient.Builder()
             .addInterceptor(TileCacheInterceptor(appContext, cacheDir))
             .build()
@@ -68,7 +85,12 @@ object MapTileCache {
     ) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
-            if (request.method != "GET" || request.url.host != TILE_HOST) {
+            // Only intercept PMTiles range requests — TILE_HOST now also serves
+            // amenities.db, road_names.bin etc which must NOT be cached here.
+            if (request.method != "GET" ||
+                request.url.host != TILE_HOST ||
+                !request.url.encodedPath.contains(".pmtiles")
+            ) {
                 return chain.proceed(request)
             }
 

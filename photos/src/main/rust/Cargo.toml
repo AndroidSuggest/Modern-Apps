@@ -2,7 +2,7 @@
 name = "photos_fx"
 version = "0.1.0"
 edition = "2021"
-description = "Native pixel filters (blur/sharpen/liquify/stylize/inpaint) for the photos app, via JNI"
+description = "Native pixel filters for photos, armv8-only stdlib"
 license = "GPL-2.0-only"
 
 [lib]
@@ -10,11 +10,14 @@ name = "photos_fx"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-jni = "0.21"
-rayon = "1"
+# jni local fork – no walkdir/windows build deps (saves 11 crates)
+jni.workspace = true
+# rayon removed – was 6 crates (crossbeam-deque/epoch/utils, either, rayon-core + rayon)
+# Replaced by std::thread::scope in blur.rs / stylize.rs preserving parallelism
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"

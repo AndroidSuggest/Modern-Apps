@@ -31,9 +31,39 @@ object OmTilesNative {
      * `wind_u_component_10m` / `wind_v_component_10m` children.
      *
      * Blocking; call off the main thread.
+     *
+     * Deprecated: use [decodeRegionBytes] – Rust no longer does HTTP (ureq removed)
+     * to cut ring/rustls/icu supply-chain. New path fetches .om bytes via
+     * [com.vayunmathur.library.network.NetworkClient] (HttpURLConnection, armv8-only)
+     * and passes them to Rust slice decoder.
      */
     external fun decodeRegion(
         omUrl: String,
+        variable: String,
+        nx: Int,
+        ny: Int,
+        lonMin: Double,
+        latMin: Double,
+        dx: Double,
+        dy: Double,
+        west: Double,
+        south: Double,
+        east: Double,
+        north: Double,
+        outW: Int,
+        outH: Int,
+    ): FloatArray?
+
+    /**
+     * New path: decode from in-memory `.om` bytes (fetched in Kotlin via
+     * NetworkClient/OkHttp, armv8-only std stack). Eliminates `ureq` crate
+     * (~100 crates including ring, rustls, webpki-roots, icu) from Rust.
+     *
+     * Returns row-major FloatArray length outW*outH, row 0 = north, NaN where no data,
+     * or null on parse/unsupported.
+     */
+    external fun decodeRegionBytes(
+        omData: ByteArray,
         variable: String,
         nx: Int,
         ny: Int,

@@ -1,7 +1,14 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+#![allow(dead_code)]
+// Bindings pre-generated to avoid pulling `bindgen` (and its heavy deps: clang-sys, regex,
+// prettyplease, etc – ~20 crates in weather lock). We keep both Android (armv8 NDK 29) and
+// host bindings, selected via cfg, so `cargo test` on host still works.
+#[cfg(target_os = "android")]
+include!("bindings_android.rs");
+#[cfg(not(target_os = "android"))]
+include!("bindings_host.rs");
 
 #[cfg(test)]
 mod tests {

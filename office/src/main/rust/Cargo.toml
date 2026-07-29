@@ -10,9 +10,9 @@ name = "office_engine"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-jni = "0.21"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+jni.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [profile.release]
 opt-level = 3

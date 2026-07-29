@@ -24,6 +24,16 @@ distribution_apks/
 __pycache__/
 scratch/LiteRT-LM/
 
+# Offline map assets and zone downloads (large binary, R2-hosted)
+*.pmtiles
+**/*.pmtiles
+zones/
+v4.pmtiles
+zone_*.pmtiles
+*.pmtiles.download
+
+# Network capture artifacts
 reverse-engineering/
 **/rust/target/
 tmp/
+target/

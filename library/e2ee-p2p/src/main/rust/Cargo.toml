@@ -10,10 +10,10 @@ name = "e2ee_pqc"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-fips203 = "0.4.3"
-fips204 = "0.4.6"
-sha2 = "0.10"
-jni = "0.21"
+fips203.workspace = true
+fips204.workspace = true
+sha2.workspace = true
+jni.workspace = true
 rand_core = { version = "0.6", features = ["getrandom"] }
 
 [profile.release]

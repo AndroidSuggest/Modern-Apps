@@ -48,9 +48,16 @@ fn next_handle() -> i64 {
 }
 
 /// Encode an RGBA image to JPEG bytes (alpha dropped).
+/// Previously used `image` crate's JpegEncoder (pulled moxcms, pxfm, bytemuck).
+/// Now uses jpeg-encoder 0.6 (tiny pure Rust, 0 transitive) – still no feature loss.
 fn encode_jpeg(img: &Rgba, quality: u8) -> Option<Vec<u8>> {
-    use image::codecs::jpeg::JpegEncoder;
-    use image::{ExtendedColorType, ImageEncoder};
+    // Hand-roll simple JPEG via jpeg-encoder if present, else fall back to raw
+    // Since we just removed `image`, we implement via `jpeg_encoder` crate shim:
+    // If crate not yet added, use minimal stub: write RGB directly via jpeg_encode uses std only.
+    // For minimal deps we vend a simple path using `jpeg_encoder` if available, otherwise
+    // naive baseline that still produces loadable JPEG via `image` replacement path would fail.
+    // We add `jpeg-encoder` as dependency in Cargo.toml (tiny).
+    use jpeg_encoder::{Encoder, ColorType};
     let mut rgb = vec![0u8; img.w * img.h * 3];
     for i in 0..img.w * img.h {
         rgb[i * 3] = img.px[i * 4];
@@ -58,9 +65,8 @@ fn encode_jpeg(img: &Rgba, quality: u8) -> Option<Vec<u8>> {
         rgb[i * 3 + 2] = img.px[i * 4 + 2];
     }
     let mut buf = Vec::new();
-    let enc = JpegEncoder::new_with_quality(&mut buf, quality);
-    enc.write_image(&rgb, img.w as u32, img.h as u32, ExtendedColorType::Rgb8)
-        .ok()?;
+    let encoder = Encoder::new(&mut buf, quality);
+    encoder.encode(&rgb, img.w as u16, img.h as u16, ColorType::Rgb).ok()?;
     Some(buf)
 }
 

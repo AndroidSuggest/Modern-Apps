@@ -11,14 +11,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 omfiles = { git = "https://github.com/open-meteo/rust-omfiles", rev = "8ce3f893f444239a9d0e5db9af40895ba11e5bfc" }
-ureq = "2.12"
-jni = "0.21"
+# ureq removed – it pulled ring 0.17 + rustls 0.23 + webpki-roots x2 + icu_* x4 + url/form_urlencoded/idna (~100 crates)
+# for a single Range GET. Now Kotlin NetworkClient (HttpURLConnection, armv8-only) fetches .om bytes and passes slice to Rust.
+jni.workspace = true
 
-# Reproducibility: patch upstream om-file-format-sys which had unsorted
-# read_dir() -> filesystem-order dependent archive/object order (ext4 vs APFS).
-# Vendor copy in third_party/om-file-format-sys fixes it with sorted file list.
-[patch."https://github.com/open-meteo/om-file-format"]
-om-file-format-sys = { path = "../../../../third_party/om-file-format-sys" }
+# Patch moved to workspace root Cargo.toml
 
 [profile.release]
 opt-level = 3

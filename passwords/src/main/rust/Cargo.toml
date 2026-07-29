@@ -10,10 +10,14 @@ name = "passwords_kdbx"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-keepass = { version = "0.13", default-features = false, features = ["save_kdbx4"] }
-jni = "0.21"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+keepass.workspace = true
+jni.workspace = true
+# serde_json now kept only for keepass internal serde, but passwords own flat map JSON was rewritten to std-only
+# (to_json_std/from_json_std) – single-function usage per "just write it ourselves" + "prefer stdlib".
+# serde is kept as feature dependency of keepass, not new crates. Removing serde_json direct would break keepass? Keepass deps serde alone?
+# keepass depends on serde derive feature? It uses serde for XML parsing, but not JSON in save_kdbx4 path? Keep both for now,
+# but passwords own lib.rs no longer uses serde_json.
+serde = { version = "1.0.228" }
 
 [profile.release]
 opt-level = 3

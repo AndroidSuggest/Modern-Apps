@@ -4,12 +4,12 @@
     "protomaps": {
       "type": "vector",
       "attribution": "<a href=\"https://github.com/protomaps/basemaps\">Protomaps</a> © <a href=\"https://openstreetmap.org\">OpenStreetMap</a>",
-      "url": "PLACEHOLDER_URL"
+      "url": "pmtiles://https://data.vayunmathur.com/v4.pmtiles"
     },
     "protomapsOnline": {
       "type": "vector",
       "attribution": "<a href=\"https://github.com/protomaps/basemaps\">Protomaps</a> © <a href=\"https://openstreetmap.org\">OpenStreetMap</a>",
-      "url": "pmtiles://https://demo-bucket.protomaps.com/v4.pmtiles"
+      "url": "pmtiles://https://data.vayunmathur.com/v4.pmtiles"
     }
   },
   "layers": [
@@ -3538,6 +3538,6 @@
       }
     }
   ],
-  "sprite": "https://protomaps.github.io/basemaps-assets/sprites/v4/light",
-  "glyphs": "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf"
+  "sprite": "https://data.vayunmathur.com/basemaps-assets/sprites/v4/light",
+  "glyphs": "https://data.vayunmathur.com/basemaps-assets/fonts/{fontstack}/{range}.pbf"
 }

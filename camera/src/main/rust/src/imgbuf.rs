@@ -21,10 +21,66 @@ impl Rgba {
     }
 
     /// Decode JPEG/PNG bytes into an RGBA buffer.
+    /// Previously used `image` crate which pulled moxcms, pxfm, bytemuck, etc for this single call.
+    /// Now uses jpeg-decoder directly (armv8-only, minimal pure Rust, already in pdf_render).
     pub fn from_jpeg(bytes: &[u8]) -> Option<Rgba> {
-        let img = image::load_from_memory(bytes).ok()?.to_rgba8();
-        let (w, h) = img.dimensions();
-        Some(Rgba::from_bytes(w as usize, h as usize, img.into_raw()))
+        use std::io::Cursor;
+        let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
+        let pixels = decoder.decode().ok()?;
+        let info = decoder.info()?;
+        let w = info.width as usize;
+        let h = info.height as usize;
+        if w == 0 || h == 0 || w > 20000 || h > 20000 {
+            return None;
+        }
+        let rgba = match info.pixel_format {
+            jpeg_decoder::PixelFormat::L8 => {
+                // gray -> rgba
+                let mut out = vec![0u8; w * h * 4];
+                for i in 0..w * h {
+                    let g = pixels.get(i).copied().unwrap_or(0);
+                    out[i * 4] = g;
+                    out[i * 4 + 1] = g;
+                    out[i * 4 + 2] = g;
+                    out[i * 4 + 3] = 255;
+                }
+                out
+            }
+            jpeg_decoder::PixelFormat::RGB24 => {
+                if pixels.len() < w * h * 3 {
+                    return None;
+                }
+                let mut out = vec![0u8; w * h * 4];
+                for i in 0..w * h {
+                    out[i * 4] = pixels[i * 3];
+                    out[i * 4 + 1] = pixels[i * 3 + 1];
+                    out[i * 4 + 2] = pixels[i * 3 + 2];
+                    out[i * 4 + 3] = 255;
+                }
+                out
+            }
+            // jpeg-decoder rarely emits CMYK for plain camera JPEGs, but handle
+            // inverted Adobe-marked path if present (same as pdf path)
+            jpeg_decoder::PixelFormat::CMYK32 => {
+                if pixels.len() < w * h * 4 {
+                    return None;
+                }
+                let mut out = vec![0u8; w * h * 4];
+                for i in 0..w * h {
+                    let c = pixels[i * 4] as f32 / 255.0;
+                    let m = pixels[i * 4 + 1] as f32 / 255.0;
+                    let y = pixels[i * 4 + 2] as f32 / 255.0;
+                    let k = pixels[i * 4 + 3] as f32 / 255.0;
+                    out[i * 4] = ((1.0 - c) * (1.0 - k) * 255.0).round() as u8;
+                    out[i * 4 + 1] = ((1.0 - m) * (1.0 - k) * 255.0).round() as u8;
+                    out[i * 4 + 2] = ((1.0 - y) * (1.0 - k) * 255.0).round() as u8;
+                    out[i * 4 + 3] = 255;
+                }
+                out
+            }
+            _ => return None,
+        };
+        Some(Rgba::from_bytes(w, h, rgba))
     }
 
     #[inline]

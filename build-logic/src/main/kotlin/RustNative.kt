@@ -77,8 +77,17 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
 
             inputs.dir("src/main/rust/src")
             inputs.file("src/main/rust/Cargo.toml")
-            inputs.file("src/main/rust/Cargo.lock")
-            inputs.file("src/main/rust/rust-toolchain.toml")
+            // Root workspace unified (Cargo.toml + Cargo.lock + rust-toolchain.toml)
+            inputs.file(rootProject.file("Cargo.toml"))
+            inputs.file(rootProject.file("Cargo.lock"))
+            inputs.file(rootProject.file("rust-toolchain.toml"))
+            // Only rust third_party crates – avoid pulling third_party:nanojson java outputs (was implicit dep failure)
+            inputs.dir(rootProject.file("third_party/jni-android/src"))
+            inputs.file(rootProject.file("third_party/jni-android/Cargo.toml"))
+            inputs.dir(rootProject.file("third_party/om-file-format-sys/src"))
+            inputs.file(rootProject.file("third_party/om-file-format-sys/Cargo.toml"))
+            inputs.file(rootProject.file("third_party/om-file-format-sys/build.rs"))
+            inputs.dir(rootProject.file("third_party/om-file-format-sys/c"))
             outputs.file(destSo)
 
             val cargoHome = System.getenv("CARGO_HOME") ?: "${System.getProperty("user.home")}/.cargo"
@@ -91,13 +100,10 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
             environment("SYSROOT", ndkSysroot)
             environment(linkerVar, clang)
             environment("HOST_CC", "/usr/bin/clang")
-            // bindgen (used by some crates, e.g. weather's om-file-format-sys) parses
-            // C headers with libclang — point it at the NDK target + sysroot. Harmless
-            // and ignored by crates that don't use bindgen.
-            environment(
-                "BINDGEN_EXTRA_CLANG_ARGS",
-                "--target=$triple$androidApiLevel --sysroot=$ndkSysroot",
-            )
+            // Pre-generated bindings (armv8-only): weather's om-file-format-sys no longer uses bindgen
+            // (bindings_android.rs/host checked in), so BINDGEN_EXTRA_CLANG_ARGS is no longer needed for build.
+            // Kept as comment for documentation if future C sys crates added.
+            // environment("BINDGEN_EXTRA_CLANG_ARGS", "--target=$triple$androidApiLevel --sysroot=$ndkSysroot")
             // Reproducible builds: remap $HOME-specific paths (cargo registry + crate
             // dir) to fixed constants so different machines produce identical .so bytes.
             environment(

@@ -2,22 +2,26 @@
 name = "camera_stitch"
 version = "0.1.0"
 edition = "2021"
-description = "Feature-based panorama stitcher + night burst aligner for the camera app, exposed to Kotlin via JNI (replaces OpenCV)"
+description = "Feature-based panorama stitcher + night burst aligner for the camera app, armv8-only"
 license = "GPL-2.0-only"
 
 [lib]
 name = "camera_stitch"
-# cdylib => libcamera_stitch.so for Android; rlib => host `cargo test`.
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-jni = "0.21"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
-nalgebra = "0.33"
-rayon = "1"
+jni.workspace = true
+# image crate removed – pulled moxcms 0.7 + pxfm 0.1 + bytemuck 1.x + byteorder-lite + zune-core etc for one JPEG decode+encode
+# Single function: Rgba::from_jpeg via image::load_from_memory + encode_jpeg via image::codecs::jpeg::JpegEncoder
+# Rewritten with jpeg-decoder (already in pdf) + zune-jpeg minimal if needed; we vend tiny JPEG decode/encode via std.
+jpeg-decoder.workspace = true
+jpeg-encoder = { version = "0.6.1", default-features = false }
+nalgebra = { version = "0.33.3" }
+rayon = "1.12"
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"

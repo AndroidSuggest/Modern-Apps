@@ -9,12 +9,15 @@ print_help() {
 Usage:
   ./install [dev|release] <module> [module...]
   ./install <module> [module...]            # defaults to dev
+  ./install [dev|release] all               # installs all app modules
+  ./install all                             # same, defaults to dev
 
 Description:
   Ergonomic wrapper around ./gradlew :module:installDev / installRelease.
   - Variant is swappable and optional (defaults to dev)
   - Supports both slash and colon notations: games/voxels == games:voxels
-  - Supports games shorthand: ./install voxels -> games:voxels (if games/<name> exists and root <name> does not)
+  - Supports games shorthand: ./install voxels -> games:voxels (auto-prefixed if games/<name> is a game)
+  - Supports "all" keyword: ./install all -> installs every app module
   - Supports multiple modules in one call (single gradlew invocation)
 
 Examples:
@@ -22,12 +25,16 @@ Examples:
   ./install release games:voxels            -> :games:voxels:installRelease
   ./install dev games/voxels                -> :games:voxels:installDev (slash normalized)
   ./install dev :games:voxels:              -> :games:voxels:installDev (colon trimming)
-  ./install voxels                          -> :games:voxels:installDev (shorthand)
+  ./install voxels                          -> :games:voxels:installDev (shorthand auto games:)
+  ./install chess                           -> :games:chess:installDev (shorthand auto games:)
+  ./install all                             -> :contacts:installDev :games:chess:installDev ... (all modules)
+  ./install dev all                         -> same as above with dev variant
   ./install contacts calendar               -> :contacts:installDev :calendar:installDev
   ./install release contacts                -> :contacts:installRelease
   ./install contacts dev                    -> :contacts:installDev (variant anywhere)
   ./install --help
   ./install --dry-run dev contacts          # prints what would run without executing gradle
+  ./install --dry-run all                   # preview all modules
 
 Variant rules (see .llms/rules/installing.md):
   - dev (default): always use installDev unless explicitly asked for release
@@ -89,7 +96,8 @@ print_valid_modules() {
   done <<< "$slash_modules"
   echo ""
   echo "Tip: Use either notation: ./install dev games/voxels  OR  ./install dev games:voxels"
-  echo "Shorthand: ./install dev voxels  (if games/voxels exists and ./voxels does not)"
+  echo "Shorthand: ./install dev voxels  (auto-expands to games:voxels if games/<name> exists)"
+  echo "All: ./install all  (installs every app module)"
 }
 
 array_contains() {
@@ -207,8 +215,9 @@ if [[ ${#MODULES_RAW[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# --- Normalization + Dedup + Shorthand ---
+# --- Normalization + Dedup + Shorthand + "all" + auto games: prefix ---
 NORMALIZED_MODULES=()
+ALL_EXPANDED=0
 
 idx=0
 while [[ $idx -lt ${#MODULES_RAW[@]} ]]; do
@@ -220,8 +229,49 @@ while [[ $idx -lt ${#MODULES_RAW[@]} ]]; do
     continue
   fi
 
+  # Handle "all" keyword - expand to every app module
+  if [[ "$norm" == "all" ]]; then
+    if [[ $ALL_EXPANDED -eq 0 ]]; then
+      echo "Info: Expanding 'all' to all app modules..."
+      all_slash="$(get_app_modules_slash)"
+      if [[ -z "$all_slash" ]]; then
+        echo "Error: Could not discover app modules for 'all' expansion."
+        print_valid_modules
+        exit 1
+      fi
+      while IFS= read -r sm; do
+        case "$sm" in "" ) continue;; esac
+        colon_mod="$(echo "$sm" | tr '/' ':')"
+        # dedup for expanded modules
+        dup=0
+        j=0
+        while [[ $j -lt ${#NORMALIZED_MODULES[@]} ]]; do
+          if [[ "${NORMALIZED_MODULES[$j]}" == "$colon_mod" ]]; then
+            dup=1
+            break
+          fi
+          j=$((j + 1))
+        done
+        if [[ $dup -eq 0 ]]; then
+          NORMALIZED_MODULES+=("$colon_mod")
+        fi
+      done <<< "$all_slash"
+      ALL_EXPANDED=1
+    fi
+    idx=$((idx + 1))
+    continue
+  fi
+
+  # Auto games: prefix - if token has no colon and games/<name> is a valid app module, prefix it
+  # This allows ./install voxels -> games:voxels and ./install chess -> games:chess etc.
   if [[ "$norm" != *":"* ]]; then
-    if [[ ! -e "$ROOT/$norm" && -e "$ROOT/games/$norm" ]]; then
+    games_path="$ROOT/games/$norm"
+    if [[ -f "$games_path/build.gradle.kts" ]] && grep -q "common-conventions-app" "$games_path/build.gradle.kts" 2>/dev/null; then
+      expanded="games:$norm"
+      echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found games/$norm)"
+      norm="$expanded"
+    elif [[ ! -e "$ROOT/$norm" && -e "$ROOT/games/$norm" ]]; then
+      # Fallback: if root/<name> doesn't exist but games/<name> does (backward compat)
       expanded="games:$norm"
       echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found games/$norm)"
       norm="$expanded"

@@ -196,6 +196,13 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Hotel
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.outlined.HighlightAlt
@@ -1059,3 +1066,31 @@ fun IconFormatColorFill(modifier: Modifier = Modifier, tint: Color = LocalConten
 @Composable
 fun IconFormatSize(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.FormatSize, "Font size", modifier, tint)
+
+@Composable
+fun IconCheckCircle(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.CheckCircle, "Check circle", modifier, tint)
+
+@Composable
+fun IconContacts(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Contacts, "Contacts", modifier, tint)
+
+@Composable
+fun IconFlight(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Flight, "Flight", modifier, tint)
+
+@Composable
+fun IconHotel(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Hotel, "Hotel", modifier, tint)
+
+@Composable
+fun IconRemove(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Remove, "Remove", modifier, tint)
+
+@Composable
+fun IconDashboard(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Dashboard, "Dashboard", modifier, tint)
+
+@Composable
+fun IconSportsEsports(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SportsEsports, "Games", modifier, tint)
