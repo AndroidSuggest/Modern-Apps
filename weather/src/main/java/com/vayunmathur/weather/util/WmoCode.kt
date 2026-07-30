@@ -13,6 +13,7 @@ import com.vayunmathur.weather.R
  */
 enum class WeatherCondition(@StringRes val label: Int) {
     Clear(R.string.condition_clear),
+    MostlyClear(R.string.condition_mostly_clear),
     PartlyCloudy(R.string.condition_partly_cloudy),
     Cloudy(R.string.condition_cloudy),
     Fog(R.string.condition_fog),
@@ -25,6 +26,8 @@ enum class WeatherCondition(@StringRes val label: Int) {
     /** Drawable id for this condition. `isDay` swaps clear/partly-cloudy night variants. */
     fun iconRes(isDay: Boolean): Int = when (this) {
         Clear -> if (isDay) R.drawable.outline_clear_day_24 else R.drawable.outline_clear_night_24
+        // Mostly/mainly clear shows the same sun / moon as fully clear.
+        MostlyClear -> if (isDay) R.drawable.outline_clear_day_24 else R.drawable.outline_clear_night_24
         PartlyCloudy -> if (isDay) R.drawable.outline_partly_cloudy_day_24 else R.drawable.outline_partly_cloudy_night_24
         Cloudy -> R.drawable.outline_cloudy_24
         Fog -> R.drawable.outline_fog_24
@@ -38,7 +41,8 @@ enum class WeatherCondition(@StringRes val label: Int) {
 
 fun weatherConditionForCode(code: Int): WeatherCondition = when (code) {
     0 -> WeatherCondition.Clear
-    1, 2 -> WeatherCondition.PartlyCloudy
+    1 -> WeatherCondition.MostlyClear
+    2 -> WeatherCondition.PartlyCloudy
     3 -> WeatherCondition.Cloudy
     45, 48 -> WeatherCondition.Fog
     51, 53, 55, 56, 57 -> WeatherCondition.Drizzle

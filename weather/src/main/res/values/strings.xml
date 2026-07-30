@@ -58,6 +58,8 @@
 
     <!-- Condition: clear sky. Adjective/noun -->
     <string name="condition_clear">Clear</string>
+    <!-- Condition: mainly/mostly clear sky. Adverb + adjective -->
+    <string name="condition_mostly_clear">Mostly clear</string>
     <!-- Condition: partly cloudy. Noun phrase -->
     <string name="condition_partly_cloudy">Partly cloudy</string>
     <!-- Condition: fully cloudy. Adjective -->
