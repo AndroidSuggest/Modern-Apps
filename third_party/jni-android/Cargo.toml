@@ -8,10 +8,13 @@ repository = "https://github.com/jni-rs/jni-rs"
 
 [dependencies]
 cesu8 = "1.1.0"
-combine = "4.1.0"
+# combine removed – JNI type-signature parsing is a hand-written recursive-descent
+# parser in wrapper/signature.rs (also drops the transitive `bytes` crate).
 jni-sys = "0.3.1"
 log = "0.4.4"
-thiserror = "1.0.20"
+# thiserror 2.x – unifies on the version already pulled by lopdf/keepass/omfiles,
+# removing the duplicate thiserror 1.x + thiserror-impl 1.x from the tree.
+thiserror = "2"
 
 [features]
 default = []

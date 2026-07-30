@@ -1,9 +1,5 @@
 use std::{fmt, str::FromStr};
 
-use combine::{
-    between, many, many1, parser, satisfy, token, ParseError, Parser, StdParseResult, Stream,
-};
-
 use crate::errors::*;
 
 /// A primitive java type. These are the things that can be represented without
@@ -52,10 +48,9 @@ impl FromStr for JavaType {
     type Err = Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        parser(parse_type)
-            .parse(s)
-            .map(|res| res.0)
-            .map_err(|e| Error::ParseFailed(e, s.to_owned()))
+        SigParser::new(s)
+            .parse_type()
+            .map_err(|_| Error::ParseFailed(s.to_owned()))
     }
 }
 
@@ -87,10 +82,9 @@ impl FromStr for ReturnType {
     type Err = Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        parser(parse_return)
-            .parse(s)
-            .map(|res| res.0)
-            .map_err(|e| Error::ParseFailed(e, s.to_owned()))
+        SigParser::new(s)
+            .parse_return()
+            .map_err(|_| Error::ParseFailed(s.to_owned()))
     }
 }
 
@@ -119,11 +113,11 @@ impl TypeSignature {
     // Clippy suggests implementing `FromStr` or renaming it which is not possible in our case.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str<S: AsRef<str>>(s: S) -> Result<TypeSignature> {
-        Ok(match parser(parse_sig).parse(s.as_ref()).map(|res| res.0) {
-            Ok(JavaType::Method(sig)) => *sig,
-            Err(e) => return Err(Error::ParseFailed(e, s.as_ref().to_owned())),
-            _ => unreachable!(),
-        })
+        let s = s.as_ref();
+        match SigParser::new(s).parse_sig() {
+            Ok(JavaType::Method(sig)) => Ok(*sig),
+            _ => Err(Error::ParseFailed(s.to_owned())),
+        }
     }
 }
 
@@ -139,98 +133,124 @@ impl fmt::Display for TypeSignature {
     }
 }
 
-fn parse_primitive<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<Primitive, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    let boolean = token('Z').map(|_| Primitive::Boolean);
-    let byte = token('B').map(|_| Primitive::Byte);
-    let char_type = token('C').map(|_| Primitive::Char);
-    let double = token('D').map(|_| Primitive::Double);
-    let float = token('F').map(|_| Primitive::Float);
-    let int = token('I').map(|_| Primitive::Int);
-    let long = token('J').map(|_| Primitive::Long);
-    let short = token('S').map(|_| Primitive::Short);
-    let void = token('V').map(|_| Primitive::Void);
-
-    (boolean
-        .or(byte)
-        .or(char_type)
-        .or(double)
-        .or(float)
-        .or(int)
-        .or(long)
-        .or(short)
-        .or(void))
-    .parse_stream(input)
-    .into()
+/// A tiny hand-written recursive-descent parser for JNI type signatures,
+/// replacing the previous `combine` dependency (which also pulled in `bytes`).
+///
+/// Grammar (identical to the old `combine` parser, including its behaviour of
+/// **not** requiring end-of-input — trailing characters after a complete type
+/// are ignored, matching `combine::Parser::parse` returning the remainder):
+///
+/// ```text
+/// primitive := 'Z'|'B'|'C'|'D'|'F'|'I'|'J'|'S'|'V'
+/// object    := 'L' <one-or-more chars != ';'> ';'
+/// array     := '[' type
+/// type      := array | object | sig | primitive
+/// return    := array | object | primitive          (array/object collapse to Array/Object)
+/// args      := '(' type* ')'
+/// sig       := args return
+/// ```
+struct SigParser<'a> {
+    it: std::iter::Peekable<std::str::Chars<'a>>,
 }
 
-fn parse_array<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<JavaType, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    let marker = token('[');
-    (marker, parser(parse_type))
-        .map(|(_, ty)| JavaType::Array(Box::new(ty)))
-        .parse_stream(input)
-        .into()
-}
+impl<'a> SigParser<'a> {
+    fn new(s: &'a str) -> Self {
+        Self {
+            it: s.chars().peekable(),
+        }
+    }
 
-fn parse_object<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<JavaType, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    let marker = token('L');
-    let end = token(';');
-    let obj = between(marker, end, many1(satisfy(|c| c != ';')));
+    fn peek(&mut self) -> Option<char> {
+        self.it.peek().copied()
+    }
 
-    obj.map(JavaType::Object).parse_stream(input).into()
-}
+    fn parse_primitive(&mut self) -> std::result::Result<Primitive, ()> {
+        let p = match self.peek() {
+            Some('Z') => Primitive::Boolean,
+            Some('B') => Primitive::Byte,
+            Some('C') => Primitive::Char,
+            Some('D') => Primitive::Double,
+            Some('F') => Primitive::Float,
+            Some('I') => Primitive::Int,
+            Some('J') => Primitive::Long,
+            Some('S') => Primitive::Short,
+            Some('V') => Primitive::Void,
+            _ => return Err(()),
+        };
+        self.it.next();
+        Ok(p)
+    }
 
-fn parse_type<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<JavaType, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    parser(parse_primitive)
-        .map(JavaType::Primitive)
-        .or(parser(parse_array))
-        .or(parser(parse_object))
-        .or(parser(parse_sig))
-        .parse_stream(input)
-        .into()
-}
+    /// Parses `L<name>;`, returning `<name>`. `<name>` must be non-empty
+    /// (mirrors `combine`'s `many1`).
+    fn parse_object(&mut self) -> std::result::Result<String, ()> {
+        if self.peek() != Some('L') {
+            return Err(());
+        }
+        self.it.next();
+        let mut name = String::new();
+        loop {
+            match self.it.next() {
+                Some(';') => break,
+                Some(c) => name.push(c),
+                None => return Err(()),
+            }
+        }
+        if name.is_empty() {
+            return Err(());
+        }
+        Ok(name)
+    }
 
-fn parse_return<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<ReturnType, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    parser(parse_primitive)
-        .map(ReturnType::Primitive)
-        .or(parser(parse_array).map(|_| ReturnType::Array))
-        .or(parser(parse_object).map(|_| ReturnType::Object))
-        .parse_stream(input)
-        .into()
-}
+    fn parse_array(&mut self) -> std::result::Result<JavaType, ()> {
+        if self.peek() != Some('[') {
+            return Err(());
+        }
+        self.it.next();
+        Ok(JavaType::Array(Box::new(self.parse_type()?)))
+    }
 
-fn parse_args<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<Vec<JavaType>, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    between(token('('), token(')'), many(parser(parse_type)))
-        .parse_stream(input)
-        .into()
-}
+    fn parse_type(&mut self) -> std::result::Result<JavaType, ()> {
+        match self.peek() {
+            Some('[') => self.parse_array(),
+            Some('L') => Ok(JavaType::Object(self.parse_object()?)),
+            Some('(') => self.parse_sig(),
+            _ => Ok(JavaType::Primitive(self.parse_primitive()?)),
+        }
+    }
 
-fn parse_sig<S: Stream<Token = char>>(input: &mut S) -> StdParseResult<JavaType, S>
-where
-    S::Error: ParseError<char, S::Range, S::Position>,
-{
-    (parser(parse_args), parser(parse_return))
-        .map(|(a, r)| TypeSignature { args: a, ret: r })
-        .map(|sig| JavaType::Method(Box::new(sig)))
-        .parse_stream(input)
-        .into()
+    fn parse_return(&mut self) -> std::result::Result<ReturnType, ()> {
+        match self.peek() {
+            Some('[') => self.parse_array().map(|_| ReturnType::Array),
+            Some('L') => self.parse_object().map(|_| ReturnType::Object),
+            _ => Ok(ReturnType::Primitive(self.parse_primitive()?)),
+        }
+    }
+
+    fn parse_args(&mut self) -> std::result::Result<Vec<JavaType>, ()> {
+        if self.peek() != Some('(') {
+            return Err(());
+        }
+        self.it.next();
+        let mut args = Vec::new();
+        loop {
+            match self.peek() {
+                Some(')') => {
+                    self.it.next();
+                    break;
+                }
+                None => return Err(()),
+                _ => args.push(self.parse_type()?),
+            }
+        }
+        Ok(args)
+    }
+
+    fn parse_sig(&mut self) -> std::result::Result<JavaType, ()> {
+        let args = self.parse_args()?;
+        let ret = self.parse_return()?;
+        Ok(JavaType::Method(Box::new(TypeSignature { args, ret })))
+    }
 }
 
 #[cfg(test)]
