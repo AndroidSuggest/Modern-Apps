@@ -24,6 +24,9 @@ distribution_apks/
 __pycache__/
 scratch/LiteRT-LM/
 
+# Personal / private app modules (kept out of the public repo)
+/personal/
+
 # Offline map assets and zone downloads (large binary, R2-hosted)
 *.pmtiles
 **/*.pmtiles

@@ -77,6 +77,8 @@ include(":everysync")
 include(":travel")
 include(":astronomy")
 
-if (file("dooraccess").exists()) {
-    include(":dooraccess")
+// Personal / private app modules live under personal/ (gitignored). Included only
+// when present so the public repo still configures without them.
+if (file("personal/dooraccess").exists()) {
+    include(":personal:dooraccess")
 }
