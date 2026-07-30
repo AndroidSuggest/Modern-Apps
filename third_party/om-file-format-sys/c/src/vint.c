@@ -345,9 +345,9 @@ unsigned char *TEMPLATE2(VBDDEC, USIZE)(unsigned char *__restrict in, unsigned n
         #endif
       #else
         #if VDELTA == 0
-    for(x = 0; x < n; x++) out[x] = start;
+    for(unsigned j = 0; j < n; j++) out[j] = start;
         #else
-    for(x = 0; x < n; x++) out[x] = start+x*VDELTA;
+    for(unsigned j = 0; j < n; j++) out[j] = start+(uint_t)j*VDELTA;
         #endif
       #endif
     return in;
