@@ -10,7 +10,10 @@ name = "weather_om"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-omfiles = { git = "https://github.com/open-meteo/rust-omfiles", rev = "8ce3f893f444239a9d0e5db9af40895ba11e5bfc" }
+# omfiles crate removed – it pulled an async runtime (async-executor/async-lock/futures/…)
+# + ndarray (~17 crates) for a synchronous 2D read. Replaced by src/om.rs, a thin sync
+# reader calling the vendored C lib directly. The C decode/parse lives in om-file-format-sys.
+om-file-format-sys = { path = "../../../../third_party/om-file-format-sys" }
 # ureq removed – it pulled ring 0.17 + rustls 0.23 + webpki-roots x2 + icu_* x4 + url/form_urlencoded/idna (~100 crates)
 # for a single Range GET. Now Kotlin NetworkClient (HttpURLConnection, armv8-only) fetches .om bytes and passes slice to Rust.
 jni.workspace = true

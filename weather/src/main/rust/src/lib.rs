@@ -1,76 +1,224 @@
 //! Native `.om` decoder for the Weather app map.
 //!
-//! Decodes Open-Meteo spatial `.om` files from an in-memory byte slice (fetched
-//! in Kotlin via the existing HttpURLConnection/Ktor client). This avoids pulling
-//! `ureq` + `rustls` + `ring` + `icu` + `url` (~90 crates) in Rust, reducing
-//! supply-chain attack surface. All features preserved: grid covering-window,
-//! bilinear resampling, wind_speed_10m derived measure, Web-Mercator row mapping.
+//! Decodes Open-Meteo spatial `.om` files from a keyless
+//! `map-tiles.open-meteo.com` bucket using **HTTP Range requests** initiated
+//! from Kotlin (`OmRangeFetcher`, HttpURLConnection) via a JNI callback
+//! backend. This restores the old `HttpRangeBackend` efficiency (64 KB blocks,
+//! only covering chunks) without pulling `ureq` + `rustls` + `ring` + `icu` + `url`
+//! (~90 crates) in Rust, which was the supply-chain motivation for the
+//! `SliceBackend` experiment.
+//!
+//! The `SliceBackend` experiment switched to full-file
+//! `NetworkClient.performRequestBytes` (~148 MB per pan/zoom) in
+//! `WeatherMapPage.kt`, causing OOM and map crash. This version keeps the
+//! supply-chain win but uses `JvmRangeBackend` that calls back to
+//! `com.vayunmathur.weather.map.OmRangeFetcher` for size + range fetches,
+//! with a process-wide LRU of backends (12 files) and per-backend 64 KB block
+//! cache, so panning reuses already-fetched blocks.
 //!
 //! Color mapping stays in Kotlin; this crate returns raw `f32` values (NaN where no data).
 //! Grid geometry and interpolation logic ported from open-meteo/weather-map-layer `src/grids/regular.ts`.
 
+use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
-use omfiles::reader::OmFileReader;
-use omfiles::traits::{OmFileReadable, OmFileReaderBackend};
-use omfiles::OmFilesError;
+mod om;
+
+use crate::om::{OmBackend, OmReader};
+
+use jni::objects::{JByteArray, JValue};
+use jni::JavaVM;
 
 // ---------------------------------------------------------------------------
-// In-memory backend – armv8-only
+// Global VM + block caching helpers
 // ---------------------------------------------------------------------------
 
-/// An [`OmFileReaderBackend`] that serves bytes from a fully-fetched `.om` slice.
-/// Kotlin (NetworkClient/HttpUrlEngine) does the HTTP fetch with range coalescing,
-///
-/// The previous `HttpRangeBackend` used `ureq` (ring+rustls+icu_url) which duplicated
-/// the Android HTTP stack and counted ~90 crates. Now the Rust side only decodes.
-struct SliceBackend {
-    data: Vec<u8>,
-}
+static GLOBAL_VM: OnceLock<JavaVM> = OnceLock::new();
 
-impl SliceBackend {
-    fn new(data: Vec<u8>) -> Self {
-        Self { data }
+/// Size of the HTTP Range block cache, aligned so nearby chunk reads reuse bytes.
+/// Mirrors old `BLOCK = 64 * 1024`.
+const BLOCK: u64 = 64 * 1024;
+
+/// Ensure GLOBAL_VM is populated from the current JNIEnv (called on first
+/// entry from Java). Subsequent `get_bytes` calls attach via this VM.
+fn ensure_global_vm(env: &mut jni::JNIEnv) {
+    if GLOBAL_VM.get().is_none() {
+        if let Ok(vm) = env.get_java_vm() {
+            let _ = GLOBAL_VM.set(vm);
+        }
     }
 }
 
-impl OmFileReaderBackend for SliceBackend {
-    type Bytes<'a> = &'a [u8] where Self: 'a;
+fn fetch_range_via_jvm(url: &str, offset: u64, len: u64) -> Result<Vec<u8>, String> {
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    let vm = GLOBAL_VM.get().ok_or_else(|| "GLOBAL_VM not initialized".to_string())?;
+    let mut guard = vm
+        .attach_current_thread()
+        .map_err(|e| format!("attach_current_thread failed: {e:?}"))?;
+    let env = &mut *guard;
+    // new_string for url
+    let jurl = env
+        .new_string(url)
+        .map_err(|e| format!("new_string url failed: {e:?}"))?;
+    let res = env
+        .call_static_method(
+            "com/vayunmathur/weather/map/OmRangeFetcher",
+            "fetchRange",
+            "(Ljava/lang/String;JJ)[B",
+            &[
+                JValue::Object(&jurl),
+                JValue::Long(offset as i64),
+                JValue::Long(len as i64),
+            ],
+        )
+        .map_err(|e| format!("fetchRange JNI call failed: {e:?}"))?;
+    let obj = res.l().map_err(|e| format!("fetchRange result l() failed: {e:?}"))?;
+    if obj.is_null() {
+        return Err("fetchRange returned null".to_string());
+    }
+    // SAFETY: we just got a [B from Java, so it is a byte array.
+    let jarr = unsafe { JByteArray::from_raw(obj.into_raw()) };
+    let bytes = env
+        .convert_byte_array(&jarr)
+        .map_err(|e| format!("convert_byte_array failed: {e:?}"))?;
+    // If server ignored Range and gave 200 full file, slice handled in Kotlin
+    // but also trim here if we asked for a sub-range of a 200 response that returned
+    // huge buffer (Kotlin already slices for 200 case). For safety, if bytes.len() > len
+    // and offset < bytes.len(), assume full file and slice from offset.
+    if bytes.len() as u64 > len && bytes.len() as u64 > 100 * 1024 * 1024 {
+        let from = offset as usize;
+        let to = (offset + len) as usize;
+        if from < bytes.len() {
+            return Ok(bytes[from..to.min(bytes.len())].to_vec());
+        }
+    }
+    Ok(bytes)
+}
 
+fn get_file_size_via_jvm(url: &str, env: &mut jni::JNIEnv) -> Result<usize, String> {
+    ensure_global_vm(env);
+    let jurl = env
+        .new_string(url)
+        .map_err(|e| format!("new_string url failed: {e:?}"))?;
+    let res = env
+        .call_static_method(
+            "com/vayunmathur/weather/map/OmRangeFetcher",
+            "getFileSize",
+            "(Ljava/lang/String;)J",
+            &[JValue::Object(&jurl)],
+        )
+        .map_err(|e| format!("getFileSize JNI call failed: {e:?}"))?;
+    let size = res
+        .j()
+        .map_err(|e| format!("getFileSize j() failed: {e:?}"))? as i64;
+    if size <= 0 {
+        return Err(format!("invalid file size {size} for {url}"));
+    }
+    Ok(size as usize)
+}
+
+// ---------------------------------------------------------------------------
+// Backends
+// ---------------------------------------------------------------------------
+
+/// JNI callback backend – fetches only needed 64 KB blocks via Kotlin
+/// `OmRangeFetcher`. Implements the same block-cache logic as the old
+/// `HttpRangeBackend` (which used `ureq`), but without any native HTTP crate.
+struct JvmRangeBackend {
+    url: String,
+    size: usize,
+    cache: Mutex<HashMap<u64, Vec<u8>>>,
+}
+
+impl JvmRangeBackend {
+    fn new(url: String, size: usize) -> Self {
+        Self {
+            url,
+            size,
+            cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn ensure_block(&self, block: u64) -> Result<(), String> {
+        if self.cache.lock().unwrap().contains_key(&block) {
+            return Ok(());
+        }
+        let start = block * BLOCK;
+        if start >= self.size as u64 {
+            return Ok(());
+        }
+        let len = BLOCK.min(self.size as u64 - start);
+        let data = fetch_range_via_jvm(&self.url, start, len)?;
+        self.cache.lock().unwrap().insert(block, data);
+        Ok(())
+    }
+}
+
+impl OmBackend for JvmRangeBackend {
     fn count(&self) -> usize {
-        self.data.len()
+        self.size
     }
 
-    fn prefetch_data(&self, _offset: usize, _count: usize) {}
-
-    fn get_bytes(&self, offset: u64, count: u64) -> Result<Self::Bytes<'_>, OmFilesError> {
+    fn get_bytes(&self, offset: u64, count: u64) -> Result<Vec<u8>, String> {
         if count == 0 {
-            return Ok(&[]);
+            return Ok(Vec::new());
         }
-        let start = offset as usize;
-        let end = (offset + count) as usize;
-        if end > self.data.len() {
-            return Err(OmFilesError::InvalidBackendRead {
-                offset,
-                count,
-                size: self.data.len(),
-            });
+        let first = offset / BLOCK;
+        let last = (offset + count - 1) / BLOCK;
+        for b in first..=last {
+            self.ensure_block(b)?;
         }
-        Ok(&self.data[start..end])
+        let mut out = Vec::with_capacity(count as usize);
+        let guard = self.cache.lock().unwrap();
+        for b in first..=last {
+            let block = guard
+                .get(&b)
+                .ok_or_else(|| "cache miss".to_string())?;
+            let block_start = b * BLOCK;
+            let from = offset.saturating_sub(block_start).min(block.len() as u64) as usize;
+            let block_end = block_start + block.len() as u64;
+            let to = (offset + count).min(block_end).saturating_sub(block_start) as usize;
+            if from < to {
+                out.extend_from_slice(&block[from..to]);
+            }
+        }
+        Ok(out)
     }
 }
 
-// Memory backend type for decoding: wraps SliceBackend in Arc for OmFileReader::new
-type Backend = SliceBackend;
+// Process-wide cache of open JvmRangeBackends keyed by .om URL, so panning /
+// measure / time scrubbing reuse file size + already-fetched blocks. Matches
+// old `cached_backend` cap of 12.
+fn cached_jvm_backend(
+    url: &str,
+    env: &mut jni::JNIEnv,
+) -> Result<Arc<JvmRangeBackend>, String> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<JvmRangeBackend>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    {
+        let guard = cache.lock().unwrap();
+        if let Some(b) = guard.get(url) {
+            return Ok(b.clone());
+        }
+    }
+    let size = get_file_size_via_jvm(url, env)?;
+    let backend = Arc::new(JvmRangeBackend::new(url.to_string(), size));
+    let mut guard = cache.lock().unwrap();
+    if guard.len() >= 12 {
+        guard.clear();
+    }
+    guard.insert(url.to_string(), backend.clone());
+    Ok(backend)
+}
 
 // ---------------------------------------------------------------------------
 // Grid geometry (regular lat/lon grid)
 // ---------------------------------------------------------------------------
 
 /// A regular lat/lon grid, mirroring `RegularGridData` from the JS lib.
-/// Grid node `(j, i)` sits at `lat = lat_min + dy*j`, `lon = lon_min + dx*i`.
-/// The `.om` array is stored `[ny, nx]` (dim 0 = latitude, dim 1 = longitude).
 struct Grid {
     nx: usize,
     ny: usize,
@@ -80,8 +228,6 @@ struct Grid {
     dy: f64,
 }
 
-/// Inclusive-exclusive index window into the grid for a bbox, padded by one
-/// cell so bilinear sampling has neighbours (see `getCoveringRanges`).
 struct Window {
     y0: usize,
     y1: usize,
@@ -108,9 +254,6 @@ impl Grid {
     }
 }
 
-/// Bilinear sample of a `[sub_ny, sub_nx]` row-major sub-grid at global
-/// fractional grid coordinates `(gy, gx)`. Returns NaN outside the sub-grid or
-/// when any of the four corners is missing.
 fn bilinear(
     data: &[f32],
     sub_nx: usize,
@@ -144,7 +287,6 @@ fn bilinear(
         let w11 = fx * fy;
         return p00 * w00 + p01 * w01 + p10 * w10 + p11 * w11;
     }
-    // Graceful fallback: nearest finite corner (handles coastal masks).
     let nearest = if fy < 0.5 {
         if fx < 0.5 { p00 } else { p01 }
     } else if fx < 0.5 {
@@ -163,14 +305,11 @@ fn bilinear(
 }
 
 // ---------------------------------------------------------------------------
-// Decode
+// Decode helpers
 // ---------------------------------------------------------------------------
 
-/// Read a single variable's covering sub-grid as a flat `[sub_ny, sub_nx]`
-/// row-major `Vec<f32>`. Handles the derived `wind_speed_10m` measure by
-/// combining the u/v components into wind magnitude.
-fn read_subgrid(
-    root: &OmFileReader<Backend>,
+fn read_subgrid_generic<B: OmBackend>(
+    root: &OmReader<B>,
     variable: &str,
     win: &Window,
 ) -> Result<Vec<f32>, String> {
@@ -183,13 +322,10 @@ fn read_subgrid(
         let child = root
             .get_child_by_name(name)
             .ok_or_else(|| format!("variable {name} not found"))?;
-        let array = child
-            .expect_array()
-            .map_err(|e| format!("{name} is not an array: {e:?}"))?;
-        let decoded = array
-            .read::<f32>(&ranges)
-            .map_err(|e| format!("read {name} failed: {e:?}"))?;
-        Ok(decoded.iter().copied().collect())
+        if !child.is_array() {
+            return Err(format!("{name} is not an array"));
+        }
+        child.read_f32(&ranges).map_err(|e| format!("read {name} failed: {e}"))
     };
 
     if root.get_child_by_name(variable).is_none() {
@@ -207,7 +343,6 @@ fn read_subgrid(
     read_one(variable)
 }
 
-/// For a derived wind-speed variable, the underlying u/v component names.
 fn wind_speed_components(variable: &str) -> Option<(&'static str, &'static str)> {
     match variable {
         "wind_speed_10m" => Some(("wind_u_component_10m", "wind_v_component_10m")),
@@ -215,13 +350,8 @@ fn wind_speed_components(variable: &str) -> Option<(&'static str, &'static str)>
     }
 }
 
-/// Decode `variable` from the `.om` byte slice over the bbox
-/// `[west, south, east, north]`, resampling into an `out_w * out_h` raster in
-/// row-major order with **row 0 = north** (top), suitable for a bitmap.
-/// Missing/out-of-coverage pixels are `NaN`.
-#[allow(clippy::too_many_arguments)]
-fn decode_region_bytes(
-    om_data: &[u8],
+fn decode_region_url_inner(
+    url: &str,
     variable: &str,
     grid: &Grid,
     west: f64,
@@ -230,6 +360,7 @@ fn decode_region_bytes(
     north: f64,
     out_w: usize,
     out_h: usize,
+    env: &mut jni::JNIEnv,
 ) -> Result<Vec<f32>, String> {
     if out_w == 0 || out_h == 0 {
         return Err("empty output size".to_string());
@@ -240,10 +371,10 @@ fn decode_region_bytes(
     let sub_nx = win.x1 - win.x0;
     let sub_ny = win.y1 - win.y0;
 
-    let backend = Arc::new(SliceBackend::new(om_data.to_vec()));
-    let root = OmFileReader::new(backend).map_err(|e| format!("open failed: {e:?}"))?;
+    let backend = cached_jvm_backend(url, env)?;
+    let root = OmReader::new(backend).map_err(|e| format!("open failed: {e}"))?;
 
-    let data = read_subgrid(&root, variable, &win)?;
+    let data = read_subgrid_generic(&root, variable, &win)?;
     if data.len() != sub_nx * sub_ny {
         return Err(format!(
             "unexpected sub-grid size: got {}, expected {}",
@@ -252,6 +383,22 @@ fn decode_region_bytes(
         ));
     }
 
+    Ok(resample(data, sub_nx, sub_ny, &win, grid, west, south, east, north, out_w, out_h))
+}
+
+fn resample(
+    data: Vec<f32>,
+    sub_nx: usize,
+    sub_ny: usize,
+    win: &Window,
+    grid: &Grid,
+    west: f64,
+    south: f64,
+    east: f64,
+    north: f64,
+    out_w: usize,
+    out_h: usize,
+) -> Vec<f32> {
     let mut out = vec![f32::NAN; out_w * out_h];
     let merc_y = |lat_deg: f64| {
         let lat = lat_deg.to_radians();
@@ -267,57 +414,31 @@ fn decode_region_bytes(
         for c in 0..out_w {
             let lon = west + (c as f64 + 0.5) * (east - west) / out_w as f64;
             let gx = (lon - grid.lon_min) / grid.dx;
-            out[r * out_w + c] = bilinear(&data, sub_nx, sub_ny, &win, gy, gx);
+            out[r * out_w + c] = bilinear(&data, sub_nx, sub_ny, win, gy, gx);
         }
     }
-    Ok(out)
+    out
 }
 
 // ---------------------------------------------------------------------------
-// JNI – armv8-only, no ureq
+// JNI – armv8-only, no ureq, callback via OmRangeFetcher
 // ---------------------------------------------------------------------------
 
 #[cfg(not(test))]
 mod jni_bindings {
     use super::*;
-    use jni::objects::{JByteArray, JClass, JString};
+    use jni::objects::{JClass, JString};
     use jni::sys::{jdouble, jfloatArray, jint};
     use jni::JNIEnv;
 
-    /// Legacy entry point kept for compatibility: previously took om_url String and fetched via ureq.
-    /// Now it returns null so callers migrate to decodeRegionBytes.
-    #[no_mangle]
-    pub extern "system" fn Java_com_vayunmathur_weather_map_OmTilesNative_decodeRegion<'local>(
-        _env: JNIEnv<'local>,
-        _class: JClass<'local>,
-        _om_url: JString<'local>,
-        _variable: JString<'local>,
-        _nx: jint,
-        _ny: jint,
-        _lon_min: jdouble,
-        _lat_min: jdouble,
-        _dx: jdouble,
-        _dy: jdouble,
-        _west: jdouble,
-        _south: jdouble,
-        _east: jdouble,
-        _north: jdouble,
-        _out_w: jint,
-        _out_h: jint,
-    ) -> jfloatArray {
-        // Deprecated – use decodeRegionBytes. Returning null forces Kotlin to use new path.
-        std::ptr::null_mut()
-    }
-
-    /// New JNI entry point backing `OmTilesNative.decodeRegionBytes(ByteArray, ...)`.
-    /// Returns a `float[]` of length `out_w*out_h` (row-major, row 0 = north; NaN where no data),
-    /// or `null` on error.
+    /// Restored efficient path: fetches only needed `.om` blocks via
+    /// `OmRangeFetcher` (HttpURLConnection) instead of full 148 MB file.
     #[no_mangle]
     #[allow(clippy::too_many_arguments)]
-    pub extern "system" fn Java_com_vayunmathur_weather_map_OmTilesNative_decodeRegionBytes<'local>(
+    pub extern "system" fn Java_com_vayunmathur_weather_map_OmTilesNative_decodeRegion<'local>(
         mut env: JNIEnv<'local>,
         _class: JClass<'local>,
-        om_data: JByteArray<'local>,
+        om_url: JString<'local>,
         variable: JString<'local>,
         nx: jint,
         ny: jint,
@@ -334,13 +455,10 @@ mod jni_bindings {
     ) -> jfloatArray {
         let null = std::ptr::null_mut();
 
-        let data: Vec<u8> = match env.convert_byte_array(&om_data) {
-            Ok(d) => d,
+        let url: String = match env.get_string(&om_url) {
+            Ok(s) => s.into(),
             Err(_) => return null,
         };
-        if data.is_empty() || data.len() > 200 * 1024 * 1024 {
-            return null;
-        }
         let var: String = match env.get_string(&variable) {
             Ok(s) => s.into(),
             Err(_) => return null,
@@ -355,17 +473,21 @@ mod jni_bindings {
             dy,
         };
 
-        let result = decode_region_bytes(
-            &data,
-            &var,
-            &grid,
-            west,
-            south,
-            east,
-            north,
-            out_w.max(0) as usize,
-            out_h.max(0) as usize,
-        );
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            decode_region_url_inner(
+                &url,
+                &var,
+                &grid,
+                west,
+                south,
+                east,
+                north,
+                out_w.max(0) as usize,
+                out_h.max(0) as usize,
+                &mut env,
+            )
+        }))
+        .unwrap_or_else(|_| Err("panic in decode_region".to_string()));
 
         let values = match result {
             Ok(v) => v,
@@ -392,7 +514,6 @@ mod jni_bindings {
 mod tests {
     use super::*;
 
-    /// dwd_icon global regular grid, per weather-map-layer/src/domains.ts.
     fn dwd_icon() -> Grid {
         Grid {
             nx: 2879,
@@ -402,24 +523,6 @@ mod tests {
             dx: 0.125,
             dy: 0.125,
         }
-    }
-
-    fn json_string(body: &str, key: &str) -> String {
-        let needle = format!("\"{key}\"");
-        let start = body.find(&needle).unwrap() + needle.len();
-        let colon = body[start..].find(':').unwrap() + start + 1;
-        let q1 = body[colon..].find('"').unwrap() + colon + 1;
-        let q2 = body[q1..].find('"').unwrap() + q1;
-        body[q1..q2].to_string()
-    }
-
-    fn first_valid_time(body: &str) -> String {
-        let key = "\"valid_times\"";
-        let start = body.find(key).unwrap() + key.len();
-        let br = body[start..].find('[').unwrap() + start + 1;
-        let q1 = body[br..].find('"').unwrap() + br + 1;
-        let q2 = body[q1..].find('"').unwrap() + q1;
-        body[q1..q2].to_string()
     }
 
     #[test]
@@ -436,5 +539,29 @@ mod tests {
         let win = Window { y0: 0, y1: 2, x0: 0, x1: 2 };
         let v = bilinear(&data, 2, 2, &win, 0.5, 0.5);
         assert!(v > 2.0 && v < 3.0);
+    }
+
+    #[test]
+    fn resample_produces_finite_values() {
+        // Full `.om` decode needs a live file; here we exercise the covering-window +
+        // resample path with a synthetic local grid that exactly spans the bbox, so
+        // the covering window aligns with the data we hand in (unlike a global grid,
+        // where a 2x2 window at the origin would never intersect a mid-latitude bbox).
+        let grid = Grid {
+            nx: 2,
+            ny: 2,
+            lon_min: 5.0,
+            lat_min: 47.0,
+            dx: 10.0,
+            dy: 8.0,
+        };
+        let win = grid.covering_window(5.0, 47.0, 15.0, 55.0).expect("window");
+        let sub_nx = win.x1 - win.x0;
+        let sub_ny = win.y1 - win.y0;
+        let data: Vec<f32> = (0..sub_nx * sub_ny).map(|i| i as f32 * 10.0).collect();
+        let out = resample(data, sub_nx, sub_ny, &win, &grid, 5.0, 47.0, 15.0, 55.0, 4, 4);
+        assert_eq!(out.len(), 16);
+        // Every output pixel falls inside the covered window, so all must be finite.
+        assert!(out.iter().all(|v| v.is_finite()));
     }
 }
