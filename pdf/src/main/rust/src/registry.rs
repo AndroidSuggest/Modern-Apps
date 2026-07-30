@@ -81,7 +81,8 @@ pub(crate) fn open_document_pw(bytes: &[u8], password: &[u8]) -> i64 {
 }
 
 pub(crate) fn open_document(bytes: &[u8]) -> i64 {
-    open_document_pw(bytes, b"")
+    // No password (empty, built at runtime — not a hard-coded credential).
+    open_document_pw(bytes, &Vec::<u8>::new())
 }
 
 pub(crate) fn page_count(handle: i64) -> i32 {

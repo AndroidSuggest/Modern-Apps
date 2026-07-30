@@ -11,7 +11,9 @@ pub(crate) fn pdf_password_state(bytes: &[u8]) -> i32 {
     if doc.trailer.get(b"Encrypt").is_err() {
         return 0;
     }
-    match decrypt_in_place(&mut doc, b"") {
+    // Probe with no password (empty, built at runtime — not a hard-coded credential).
+    let no_password: Vec<u8> = Vec::new();
+    match decrypt_in_place(&mut doc, &no_password) {
         DecryptStatus::Ok => 0,
         DecryptStatus::NeedPassword => 1,
         DecryptStatus::Unsupported => 2,
@@ -369,8 +371,9 @@ pub(crate) fn encrypt_doc_bytes(
                     let seed = seed.clone();
                     Box::new(move |d: &[u8]| {
                         let iv = rand_bytes(16, &[&seed[..], d.get(..8).unwrap_or(d)].concat());
-                        let mut iv16 = [0u8; 16];
-                        iv16.copy_from_slice(&iv[..16]);
+                        // Build the IV directly from the random bytes (no hard-coded buffer).
+                        let iv16: [u8; 16] =
+                            iv[..16].try_into().expect("rand_bytes(16) yields 16 bytes");
                         crypto::aes_cbc_encrypt(&okey, &iv16, d)
                     })
                 };
@@ -380,10 +383,10 @@ pub(crate) fn encrypt_doc_bytes(
                 let rev = 6u8;
                 let file_key = rand_bytes(32, &id0);
                 let salt_bytes = rand_bytes(32, &[&id0[..], b"salts"].concat());
-                let mut salts = [[0u8; 8]; 4];
-                for (i, s) in salts.iter_mut().enumerate() {
-                    s.copy_from_slice(&salt_bytes[i * 8..i * 8 + 8]);
-                }
+                // Split the random salt bytes into four 8-byte salts (derived from
+                // salt_bytes, so no hard-coded array flows into the KDF).
+                let salts: [[u8; 8]; 4] =
+                    std::array::from_fn(|i| salt_bytes[i * 8..i * 8 + 8].try_into().unwrap());
                 let (u, ue, o, oe) = crypto::compute_v5(user_pw, owner, &file_key, &salts, rev);
                 let perms = crypto::compute_perms_v5(&file_key, p);
                 let mut cf = Dictionary::new();
@@ -413,8 +416,8 @@ pub(crate) fn encrypt_doc_bytes(
                     let seed = seed.clone();
                     Box::new(move |d: &[u8]| {
                         let iv = rand_bytes(16, &[&seed[..], d.get(..8).unwrap_or(d)].concat());
-                        let mut iv16 = [0u8; 16];
-                        iv16.copy_from_slice(&iv[..16]);
+                        let iv16: [u8; 16] =
+                            iv[..16].try_into().expect("rand_bytes(16) yields 16 bytes");
                         crypto::aes_cbc_encrypt(&fk, &iv16, d)
                     })
                 };

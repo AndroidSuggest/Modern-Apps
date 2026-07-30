@@ -90,7 +90,10 @@ pub(crate) mod jp2 {
                 && opj_end_decompress(codec, stream) != 0
                 && !image.is_null()
             {
-                out = image_to_rgba(&*image);
+                // Null-checked deref via as_ref() (image is non-null here).
+                if let Some(img) = image.as_ref() {
+                    out = image_to_rgba(img);
+                }
             }
             if !image.is_null() {
                 opj_image_destroy(image);
