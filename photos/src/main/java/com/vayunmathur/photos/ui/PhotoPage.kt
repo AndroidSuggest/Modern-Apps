@@ -44,6 +44,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,22 +104,36 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
     val photosAll by galleryViewModel.photos.collectAsState()
     val photos = overridePhotosList ?: photosAll.filter { !it.isTrashed }
     val context = LocalContext.current
-    val photosSorted = remember(photos) { photos.sortedByDescending { it.date } }
+    // Photos deleted from within this viewer, hidden immediately so the pager
+    // advances to the next photo without waiting for the MediaStore resync.
+    val locallyDeleted = remember { mutableStateListOf<Long>() }
+    val photosSorted = remember(photos, locallyDeleted.toList()) {
+        photos.asSequence()
+            .filter { it.id !in locallyDeleted }
+            .sortedByDescending { it.date }
+            .toList()
+    }
     val matchedCounts by galleryViewModel.faceCountByPhoto.collectAsState()
 
     // In-viewer delete: move the current photo to the system trash via the same
     // MediaStore IntentSender flow the grid uses. MANAGE_MEDIA (enforced at app
-    // start) means no per-item confirmation popup. On success we resync; if the
-    // photo just deleted was the only one on screen, leave the viewer.
+    // start) means no per-item confirmation popup. On success we hide it locally
+    // (the pager falls through to the next photo) and trash it in the DB.
+    var pendingDelete by remember { mutableStateOf<Photo?>(null) }
     val deleteLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
+            pendingDelete?.let { p ->
+                locallyDeleted.add(p.id)
+                galleryViewModel.trashPhotoLocally(p)
+            }
             galleryViewModel.runSync()
-            if (photosSorted.size <= 1) backStack?.pop()
         }
+        pendingDelete = null
     }
     val onDeletePhoto: (Photo) -> Unit = { p ->
+        pendingDelete = p
         val pendingIntent = MediaStore.createTrashRequest(
             context.contentResolver, listOf(p.uri.toUri()), true
         )
@@ -137,14 +152,25 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
                 index
             }
 
+    // Once the pager is showing, stay in it even if the originally-opened photo
+    // leaves the list (e.g. the user just deleted it) — otherwise deleting the
+    // current photo would blank the screen instead of advancing to the next.
+    var hasEntered by remember { mutableStateOf(false) }
+    if (initialIndex != -1) hasEntered = true
+
     // Not in the library yet: show the incoming image directly so the viewer
     // opens instantly. Once indexing adds the row, this recomposes into the
     // swipeable pager below (initialIndex becomes valid).
-    if (initialIndex == -1) {
+    if (!hasEntered) {
         if (pendingUri != null) {
             PendingPhotoView(uri = pendingUri, context = context)
         }
         return
+    }
+
+    // Deleting the last remaining photo empties the list — leave the viewer.
+    LaunchedEffect(photosSorted.isEmpty()) {
+        if (photosSorted.isEmpty()) backStack?.pop()
     }
 
     var isMetadataVisible by remember { mutableStateOf(true) }
@@ -168,7 +194,7 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
 
     if (photosSorted.isNotEmpty()) {
         val pagerState =
-                rememberPagerState(initialPage = initialIndex, pageCount = { photosSorted.size })
+                rememberPagerState(initialPage = initialIndex.coerceAtLeast(0), pageCount = { photosSorted.size })
 
         Scaffold(containerColor = Color.Black) { paddingValues ->
             HorizontalPager(

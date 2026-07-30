@@ -245,6 +245,17 @@ class GalleryViewModel(
         }
     }
 
+    /**
+     * Move a photo to trash in the DB immediately (so the viewer/grid drop it
+     * without waiting for the MediaStore resync). The file itself is trashed via
+     * the MediaStore request in the UI; [runSync] later reconciles the rest.
+     */
+    fun trashPhotoLocally(photo: Photo) {
+        viewModelScope.launch(Dispatchers.IO) {
+            photoDao.setTrashed(photo.id)
+        }
+    }
+
     fun runSync() {
         SyncWorker.runOnce(getApplication())
     }

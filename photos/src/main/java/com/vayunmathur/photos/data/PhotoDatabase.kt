@@ -36,6 +36,9 @@ interface PhotoDao {
     @Query("DELETE FROM Photo WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    @Query("UPDATE Photo SET isTrashed = 1 WHERE id = :id")
+    suspend fun setTrashed(id: Long)
+
     @Query("SELECT * FROM Photo WHERE isTrashed = 0 AND (ocrText LIKE '%' || :query || '%' OR name LIKE '%' || :query || '%') ORDER BY date DESC")
     suspend fun searchPhotos(query: String): List<Photo>
 
