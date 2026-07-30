@@ -1,0 +1,92 @@
+package com.vayunmathur.keyboard.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.vayunmathur.keyboard.util.Emojis
+import com.vayunmathur.library.ui.IconBackspace
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
+
+/**
+ * The emoji page: a scrollable grid of the selected category plus a bottom bar with the
+ * category tabs, an "ABC" return key and a backspace. Emoji are committed as plain text.
+ */
+@Composable
+fun EmojiPage(
+    keyHeight: Dp,
+    rows: Int,
+    onEmoji: (String) -> Unit,
+    onBackspace: () -> Unit,
+    onBack: () -> Unit,
+) {
+    var category by remember { mutableIntStateOf(0) }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(8),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(keyHeight * rows),
+    ) {
+        items(Emojis.CATEGORIES[category].emojis) { emoji ->
+            Box(
+                modifier = Modifier
+                    .aspectRatio(1f)
+                    .clickable { onEmoji(emoji) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = emoji, fontSize = 24.sp)
+            }
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SpecialKey(height = keyHeight, weight = 1.4f, onClick = onBack) {
+            Text("ABC", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
+        }
+        Emojis.CATEGORIES.forEachIndexed { index, cat ->
+            CategoryTab(
+                label = cat.label,
+                selected = index == category,
+                onClick = { category = index },
+            )
+        }
+        RepeatKey(height = keyHeight, weight = 1.4f, onRepeat = onBackspace) {
+            IconBackspace()
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CategoryTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    val bg = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .height(44.dp)
+            .background(bg)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = label, fontSize = 18.sp)
+    }
+}
