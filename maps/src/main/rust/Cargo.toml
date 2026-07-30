@@ -1,0 +1,29 @@
+[package]
+name = "offlinerouter"
+version = "0.1.0"
+edition = "2021"
+description = "Offline routing engine + traffic MVT tile encoder for the Maps app, exposed to Kotlin via JNI"
+license = "GPL-2.0-only"
+
+[lib]
+name = "offlinerouter"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# JNI surface (armv8-only, in-repo jni-android – see third_party/jni-android).
+jni.workspace = true
+# mmap of the whole-world graph (nodes/edges/intermediate/…), mirroring the old
+# C++ router's mmap loader. Direct libc rather than memmap2 to keep the dep tree
+# minimal (memmap2 was intentionally dropped from the workspace).
+libc.workspace = true
+# gzip for the traffic MVT tiles served to MapLibre (replaces the C++ zlib deflate).
+flate2.workspace = true
+
+# Patch inherited from workspace root Cargo.toml.
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

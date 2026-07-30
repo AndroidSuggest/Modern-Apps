@@ -860,6 +860,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "offlinerouter"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "jni",
+ "libc",
+]
+
+[[package]]
 name = "om-file-format-sys"
 version = "0.0.0"
 dependencies = [

@@ -12,14 +12,19 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.maps"
     }
+}
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "4.1.2"
-        }
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
     }
 }
+
+// Native offline routing engine + traffic MVT tile encoder (Rust). See
+// maps/src/main/rust/. Replaces the previous CMake/C++ libofflinerouter.
+rustNativeLib("offlinerouter", "maps")
 
 dependencies {
     implementation(libs.maplibre.compose)

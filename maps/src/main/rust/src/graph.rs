@@ -1,0 +1,517 @@
+//! Whole-world routing graph: mmap loader, on-disk packed structs, derived
+//! cost tables, spatial (Morton) indexing and delta-decoded edge geometry.
+//!
+//! Faithful port of the data model in the old `native-lib.cpp` (`NodeMaster`,
+//! `Edge`, `TransitVoyageCompact`, `TransitAttribute`, the `m_file` mmap loader
+//! in `init`, and the geometry helpers around it). The graph is loaded once and
+//! is read-only afterwards, so it is shared behind an `Arc` (see `lib.rs`).
+
+use std::collections::HashSet;
+use std::ffi::CString;
+use std::ptr;
+
+// --- Travel modes (must match Kotlin RouteService.TravelMode.ordinal) ---
+pub const DRIVING: i32 = 0;
+pub const PUBLIC_TRANSIT: i32 = 1;
+pub const WALK: i32 = 2;
+pub const BICYCLE: i32 = 3;
+
+// --- OSM-derived road types ---
+pub const MOTORWAY: u8 = 1;
+pub const LIVING_STREET: u8 = 9;
+pub const STEPS: u8 = 15;
+
+pub const REVERSE_GEOMETRY_FLAG: u8 = 0x40;
+pub const TRANSIT_FLAG: u8 = 0x80;
+
+/// Sentinel for "no edge" where a u64 global edge index is expected.
+pub const INVALID_EDGE: u64 = 0xFFFF_FFFF_FFFF_FFFF;
+
+pub const WALK_SPEED_M_S: f64 = 4.5 / 3.6;
+pub const BICYCLE_SPEED_M_S: f64 = 16.0 / 3.6;
+pub const DEG_TO_RAD: f64 = std::f64::consts::PI / 180.0;
+
+// --- On-disk packed structs ---
+// `#[repr(C, packed)]` reproduces the exact byte strides the generator writes
+// (notably `Edge` is 14 bytes, not the 16 a naturally-aligned layout would give).
+// All reads go through `read_unaligned`, so element pointers need no alignment.
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub struct NodeMaster {
+    pub lat_e7: i32,
+    pub lon_e7: i32,
+    pub edge_ptr: u64,
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub struct Edge {
+    pub target: u32,
+    pub dist_mm: u32,
+    pub name_offset: u32,
+    pub type_: u8,
+    pub speed_limit: u8,
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub struct TransitVoyageCompact {
+    pub dep_delta: u16,
+    pub duration: u16,
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub struct TransitAttribute {
+    pub stop_code_off: u32,
+    pub feed_name_off: u32,
+}
+
+#[derive(Clone, Copy)]
+pub struct LatLon {
+    pub lat_e7: i32,
+    pub lon_e7: i32,
+}
+
+/// Owns a read-only `mmap` region and unmaps it on drop.
+struct MmapRegion {
+    ptr: *mut libc::c_void,
+    len: usize,
+}
+
+// The graph is only ever read after init, so sharing the raw pointer across
+// threads is sound.
+unsafe impl Send for MmapRegion {}
+unsafe impl Sync for MmapRegion {}
+
+impl MmapRegion {
+    /// mmap `path` read-only. Returns `None` for missing/empty/unreadable files,
+    /// mirroring the C++ `m_file` lambda.
+    fn map(path: &str) -> Option<MmapRegion> {
+        let c = CString::new(path).ok()?;
+        unsafe {
+            let fd = libc::open(c.as_ptr(), libc::O_RDONLY);
+            if fd < 0 {
+                return None;
+            }
+            let end = libc::lseek(fd, 0, libc::SEEK_END);
+            if end <= 0 {
+                libc::close(fd);
+                return None;
+            }
+            let len = end as usize;
+            let ptr = libc::mmap(
+                ptr::null_mut(),
+                len,
+                libc::PROT_READ,
+                libc::MAP_SHARED,
+                fd,
+                0,
+            );
+            libc::close(fd);
+            if ptr == libc::MAP_FAILED {
+                return None;
+            }
+            Some(MmapRegion { ptr, len })
+        }
+    }
+
+    #[inline]
+    fn base(&self) -> *const u8 {
+        self.ptr as *const u8
+    }
+}
+
+impl Drop for MmapRegion {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.ptr, self.len);
+        }
+    }
+}
+
+/// Read a `Copy` value of type `T` from `base` at element index `idx`
+/// (byte offset `idx * size_of::<T>()`), tolerating any alignment.
+#[inline(always)]
+unsafe fn read_at<T: Copy>(base: *const u8, idx: usize) -> T {
+    (base.add(idx * std::mem::size_of::<T>()) as *const T).read_unaligned()
+}
+
+/// The whole-world routing dataset. Immutable after construction.
+pub struct Graph {
+    // mmap regions kept alive for the lifetime of the graph.
+    _nodes_region: MmapRegion,
+    _edges_region: MmapRegion,
+    _transit_voyages_region: Option<MmapRegion>,
+    _transit_attributes_region: Option<MmapRegion>,
+    _intermediate_region: Option<MmapRegion>,
+    _road_names_region: Option<MmapRegion>,
+
+    nodes: *const u8,
+    pub node_count: u32, // real nodes; nodes.bin has node_count + 1 (sentinel)
+    edges: *const u8,
+    pub edge_count: u64,
+    transit_voyages: *const u8,
+    #[allow(dead_code)]
+    transit_voyage_count: u64,
+    transit_attributes: *const u8,
+
+    intermediate_edge_offsets: *const u8, // u64[edge_count + 1] byte offsets
+    intermediate_data: *const u8,         // delta-encoded coordinate bytes
+    has_intermediate: bool,
+
+    road_names: *const u8,
+    pub road_names_size: usize,
+
+    pub present_feeds: HashSet<String>,
+
+    // Derived cost tables (computed in `load`, matching the C++ `init`).
+    pub lon_to_mm_scale: [u32; 4096],
+    pub time_scale_fixed: [u64; 4],
+    pub edge_time_multipliers: [[u64; 16]; 4],
+}
+
+unsafe impl Send for Graph {}
+unsafe impl Sync for Graph {}
+
+impl Graph {
+    /// Load the graph from `base` (a directory path, trailing slash optional).
+    /// Returns `None` if the mandatory nodes/edges/metadata files are absent,
+    /// mirroring the failure cases of the C++ `init`.
+    pub fn load(base: &str, present_feeds: HashSet<String>) -> Option<Graph> {
+        let mut base = base.to_string();
+        if !base.is_empty() && !base.ends_with('/') {
+            base.push('/');
+        }
+
+        // metadata.bin is a single u64 node_count.
+        let meta = MmapRegion::map(&format!("{base}metadata.bin"))?;
+        if meta.len < std::mem::size_of::<u64>() {
+            return None;
+        }
+        let node_count = unsafe { read_at::<u64>(meta.base(), 0) } as u32;
+        drop(meta);
+
+        let nodes_region = MmapRegion::map(&format!("{base}nodes.bin"))?;
+        let edges_region = MmapRegion::map(&format!("{base}edges.bin"))?;
+        let edge_count = (edges_region.len / std::mem::size_of::<Edge>()) as u64;
+
+        let transit_voyages_region = MmapRegion::map(&format!("{base}transit_voyages.bin"));
+        let transit_voyage_count = transit_voyages_region
+            .as_ref()
+            .map(|r| (r.len / std::mem::size_of::<TransitVoyageCompact>()) as u64)
+            .unwrap_or(0);
+        let transit_attributes_region = MmapRegion::map(&format!("{base}transit_attributes.bin"));
+
+        // intermediate.bin: [ u64 edge_offsets[edge_count + 1] ][ coord blob ].
+        let intermediate_region = MmapRegion::map(&format!("{base}intermediate.bin"));
+        let (intermediate_edge_offsets, intermediate_data, has_intermediate) =
+            match &intermediate_region {
+                Some(r) => {
+                    let offsets = r.base();
+                    let data = unsafe {
+                        r.base()
+                            .add(((edge_count + 1) * std::mem::size_of::<u64>() as u64) as usize)
+                    };
+                    (offsets, data, true)
+                }
+                None => (ptr::null(), ptr::null(), false),
+            };
+
+        let road_names_region = MmapRegion::map(&format!("{base}road_names.bin"));
+        let (road_names, road_names_size) = match &road_names_region {
+            Some(r) => (r.base(), r.len),
+            None => (ptr::null(), 0),
+        };
+
+        let nodes = nodes_region.base();
+        let edges = edges_region.base();
+        let transit_voyages = transit_voyages_region
+            .as_ref()
+            .map(|r| r.base())
+            .unwrap_or(ptr::null());
+        let transit_attributes = transit_attributes_region
+            .as_ref()
+            .map(|r| r.base())
+            .unwrap_or(ptr::null());
+
+        // --- Derived tables (identical formulas to the C++ init) ---
+        let mut lon_to_mm_scale = [0u32; 4096];
+        for i in 0..4096usize {
+            let lat_deg = (((i as i64 - 2048) << 19) as f64) / 1e7;
+            lon_to_mm_scale[i] =
+                ((111_139_000.0 / 1e7) * (lat_deg * DEG_TO_RAD).cos() * 1024.0) as u32;
+        }
+
+        let calc_scale =
+            |speed_m_s: f64| -> u64 { ((100.0 / (speed_m_s * 1000.0)) * 4_294_967_296.0) as u64 };
+
+        let mut time_scale_fixed = [0u64; 4];
+        time_scale_fixed[WALK as usize] = calc_scale(WALK_SPEED_M_S);
+        time_scale_fixed[BICYCLE as usize] = calc_scale(BICYCLE_SPEED_M_S);
+        time_scale_fixed[DRIVING as usize] = calc_scale(105.0 / 3.6);
+        // Optimistic 80 km/h transit velocity keeps the heuristic admissible.
+        time_scale_fixed[PUBLIC_TRANSIT as usize] = calc_scale(80.0 / 3.6);
+
+        let mut edge_time_multipliers = [[0u64; 16]; 4];
+        for m in 0..4usize {
+            for r in 0..16usize {
+                let speed_m_s = if m == DRIVING as usize {
+                    match r as u8 {
+                        1 => 105.0 / 3.6, // MOTORWAY
+                        2 => 85.0 / 3.6,  // TRUNK
+                        3 => 65.0 / 3.6,  // PRIMARY
+                        4 => 55.0 / 3.6,  // SECONDARY
+                        5 => 45.0 / 3.6,  // TERTIARY
+                        _ => 30.0 / 3.6,
+                    }
+                } else if m == BICYCLE as usize {
+                    BICYCLE_SPEED_M_S
+                } else {
+                    WALK_SPEED_M_S
+                };
+                edge_time_multipliers[m][r] =
+                    ((100.0 / (speed_m_s * 1000.0)) * 4_294_967_296.0) as u64;
+            }
+        }
+
+        Some(Graph {
+            _nodes_region: nodes_region,
+            _edges_region: edges_region,
+            _transit_voyages_region: transit_voyages_region,
+            _transit_attributes_region: transit_attributes_region,
+            _intermediate_region: intermediate_region,
+            _road_names_region: road_names_region,
+            nodes,
+            node_count,
+            edges,
+            edge_count,
+            transit_voyages,
+            transit_voyage_count,
+            transit_attributes,
+            intermediate_edge_offsets,
+            intermediate_data,
+            has_intermediate,
+            road_names,
+            road_names_size,
+            present_feeds,
+            lon_to_mm_scale,
+            time_scale_fixed,
+            edge_time_multipliers,
+        })
+    }
+
+    // --- Raw accessors (all unaligned-safe) ---
+
+    #[inline]
+    pub fn node(&self, id: u32) -> NodeMaster {
+        // Callers guarantee id <= node_count (sentinel index is valid).
+        unsafe { read_at::<NodeMaster>(self.nodes, id as usize) }
+    }
+
+    /// Safe node fetch: returns a zeroed node for out-of-range ids, mirroring
+    /// the C++ `get_node` fallback.
+    #[inline]
+    pub fn get_node(&self, id: u32) -> NodeMaster {
+        if self.nodes.is_null() || id >= self.node_count {
+            return NodeMaster {
+                lat_e7: 0,
+                lon_e7: 0,
+                edge_ptr: 0,
+            };
+        }
+        self.node(id)
+    }
+
+    #[inline]
+    pub fn edge(&self, idx: u64) -> Edge {
+        unsafe { read_at::<Edge>(self.edges, idx as usize) }
+    }
+
+    #[inline]
+    fn intermediate_offset(&self, idx: u64) -> u64 {
+        unsafe { read_at::<u64>(self.intermediate_edge_offsets, idx as usize) }
+    }
+
+    #[inline]
+    fn transit_voyage(&self, idx: u64) -> TransitVoyageCompact {
+        unsafe { read_at::<TransitVoyageCompact>(self.transit_voyages, idx as usize) }
+    }
+
+    #[inline]
+    pub fn has_transit_voyages(&self) -> bool {
+        !self.transit_voyages.is_null()
+    }
+
+    #[inline]
+    pub fn get_node_transit_attr(&self, node_id: u32) -> TransitAttribute {
+        if !self.transit_attributes.is_null() && node_id < self.node_count {
+            unsafe { read_at::<TransitAttribute>(self.transit_attributes, node_id as usize) }
+        } else {
+            TransitAttribute {
+                stop_code_off: 0xFFFF_FFFF,
+                feed_name_off: 0xFFFF_FFFF,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn get_node_feed_name_off(&self, node_id: u32) -> u32 {
+        self.get_node_transit_attr(node_id).feed_name_off
+    }
+
+    #[inline]
+    pub fn get_node_stop_code_off(&self, node_id: u32) -> u32 {
+        self.get_node_transit_attr(node_id).stop_code_off
+    }
+
+    /// Borrow a NUL-terminated road/feed/stop name from the string pool at
+    /// `offset`. Returns `None` for the sentinel or out-of-range offsets.
+    pub fn road_name(&self, offset: u32) -> Option<String> {
+        if offset == 0xFFFF_FFFF || (offset as usize) >= self.road_names_size {
+            return None;
+        }
+        Some(self.cstr_at(offset as usize))
+    }
+
+    /// Read the NUL-terminated string starting at byte `offset` in the pool.
+    fn cstr_at(&self, offset: usize) -> String {
+        unsafe {
+            let start = self.road_names.add(offset);
+            let mut len = 0usize;
+            while offset + len < self.road_names_size && *start.add(len) != 0 {
+                len += 1;
+            }
+            let slice = std::slice::from_raw_parts(start, len);
+            String::from_utf8_lossy(slice).into_owned()
+        }
+    }
+
+    /// Largest node index whose `edge_ptr <= edge_idx` (edge_ptr is monotonic).
+    pub fn find_node_idx_for_edge(&self, edge_idx: u64) -> u32 {
+        let mut low: i64 = 0;
+        let mut high: i64 = self.node_count as i64 - 1;
+        let mut res: u32 = 0;
+        while low <= high {
+            let mid = low + (high - low) / 2;
+            if self.node(mid as u32).edge_ptr <= edge_idx {
+                res = mid as u32;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        res
+    }
+
+    /// 64-bit Morton code from lat/lon degrees (matches C++ `latlng_to_spatial`).
+    pub fn latlng_to_spatial(lat: f64, lon: f64) -> u64 {
+        let x = (lon + 180.0) / 360.0;
+        let y = (lat + 90.0) / 180.0;
+        let ix = (x * 4_294_967_295.0) as u32;
+        let iy = (y * 4_294_967_295.0) as u32;
+        let mut res: u64 = 0;
+        for i in 0..32u64 {
+            res |= (((ix >> i) & 1) as u64) << (2 * i);
+            res |= (((iy >> i) & 1) as u64) << (2 * i + 1);
+        }
+        res
+    }
+
+    #[inline]
+    pub fn node_spatial_id(node: &NodeMaster) -> u64 {
+        Graph::latlng_to_spatial(node.lat_e7 as f64 * 1e-7, node.lon_e7 as f64 * 1e-7)
+    }
+
+    /// Decode the delta-encoded coordinate blob for `edge_idx` into `out`.
+    /// Returns `Some((count, is_reversed))` when geometry is available,
+    /// mirroring `get_edge_coordinates`. `out` must hold at least 256 points.
+    pub fn get_edge_coordinates(&self, edge_idx: u64, out: &mut [LatLon]) -> Option<(u32, bool)> {
+        if self.edges.is_null() || edge_idx >= self.edge_count {
+            return None;
+        }
+        let e = self.edge(edge_idx);
+
+        if e.type_ & REVERSE_GEOMETRY_FLAG != 0 {
+            let u_global = self.find_node_idx_for_edge(edge_idx);
+            let v_global = e.target;
+            if v_global < self.node_count && self.has_intermediate {
+                let s = self.node(v_global).edge_ptr;
+                let e_ptr = self.node(v_global + 1).edge_ptr; // sentinel valid
+                for k in s..e_ptr {
+                    if self.edge(k).target == u_global {
+                        let start_byte = self.intermediate_offset(k);
+                        let end_byte = self.intermediate_offset(k + 1);
+                        let cnt =
+                            self.decode_edge_coords(start_byte, (end_byte - start_byte) as u32, out);
+                        return Some((cnt, true));
+                    }
+                }
+            }
+            None
+        } else if self.has_intermediate {
+            let start_byte = self.intermediate_offset(edge_idx);
+            let end_byte = self.intermediate_offset(edge_idx + 1);
+            let cnt = self.decode_edge_coords(start_byte, (end_byte - start_byte) as u32, out);
+            Some((cnt, false))
+        } else {
+            None
+        }
+    }
+
+    /// Delta-decode `byte_len` bytes at byte offset `data_off` in the
+    /// intermediate blob into `out`. Returns the number of decoded points.
+    fn decode_edge_coords(&self, data_off: u64, byte_len: u32, out: &mut [LatLon]) -> u32 {
+        if byte_len < 8 {
+            return 0;
+        }
+        let data = unsafe { self.intermediate_data.add(data_off as usize) };
+        // First point is absolute (int32 lat_e7, int32 lon_e7).
+        let mut lat = unsafe { (data as *const i32).read_unaligned() };
+        let mut lon = unsafe { (data.add(4) as *const i32).read_unaligned() };
+        out[0] = LatLon {
+            lat_e7: lat,
+            lon_e7: lon,
+        };
+
+        let mut count: u32 = 1;
+        let mut off: u32 = 8;
+        while off + 4 <= byte_len && count < 256 {
+            let d_lat = unsafe { (data.add(off as usize) as *const i16).read_unaligned() };
+            let d_lon = unsafe { (data.add(off as usize + 2) as *const i16).read_unaligned() };
+            lat = lat.wrapping_add(d_lat as i32);
+            lon = lon.wrapping_add(d_lon as i32);
+            out[count as usize] = LatLon {
+                lat_e7: lat,
+                lon_e7: lon,
+            };
+            count += 1;
+            off += 4;
+        }
+        count
+    }
+
+    /// Voyage record at absolute index `idx` (used for durations / deltas).
+    #[inline]
+    pub fn transit_voyage_at(&self, idx: u64) -> TransitVoyageCompact {
+        self.transit_voyage(idx)
+    }
+
+    /// The first 4 bytes at voyage index `idx` reinterpreted as a u32 — the
+    /// absolute departure time of voyage 0 (`*(uint32_t*)base` in the C++).
+    #[inline]
+    pub fn transit_dep_u32(&self, idx: u64) -> u32 {
+        unsafe { read_at::<u32>(self.transit_voyages, idx as usize) }
+    }
+}
+
+/// Fetch point `idx` from a decoded coordinate buffer, honouring reversal.
+#[inline]
+pub fn get_pt_at(coords: &[LatLon], count: u32, is_reversed: bool, idx: u32) -> LatLon {
+    if is_reversed {
+        coords[(count - 1 - idx) as usize]
+    } else {
+        coords[idx as usize]
+    }
+}
