@@ -17,6 +17,7 @@ Description:
   - Variant is swappable and optional (defaults to dev)
   - Supports both slash and colon notations: games/voxels == games:voxels
   - Supports games shorthand: ./install voxels -> games:voxels (auto-prefixed if games/<name> is a game)
+  - Supports personal shorthand: ./install dooraccess -> personal:dooraccess (auto-prefixed if personal/<name> is a personal app)
   - Supports "all" keyword: ./install all -> installs every app module
   - Supports multiple modules in one call (single gradlew invocation)
 
@@ -27,6 +28,7 @@ Examples:
   ./install dev :games:voxels:              -> :games:voxels:installDev (colon trimming)
   ./install voxels                          -> :games:voxels:installDev (shorthand auto games:)
   ./install chess                           -> :games:chess:installDev (shorthand auto games:)
+  ./install dooraccess                      -> :personal:dooraccess:installDev (shorthand auto personal:)
   ./install all                             -> :contacts:installDev :games:chess:installDev ... (all modules)
   ./install dev all                         -> same as above with dev variant
   ./install contacts calendar               -> :contacts:installDev :calendar:installDev
@@ -97,6 +99,7 @@ print_valid_modules() {
   echo ""
   echo "Tip: Use either notation: ./install dev games/voxels  OR  ./install dev games:voxels"
   echo "Shorthand: ./install dev voxels  (auto-expands to games:voxels if games/<name> exists)"
+  echo "           ./install dev dooraccess  (auto-expands to personal:dooraccess if personal/<name> exists)"
   echo "All: ./install all  (installs every app module)"
 }
 
@@ -262,20 +265,24 @@ while [[ $idx -lt ${#MODULES_RAW[@]} ]]; do
     continue
   fi
 
-  # Auto games: prefix - if token has no colon and games/<name> is a valid app module, prefix it
-  # This allows ./install voxels -> games:voxels and ./install chess -> games:chess etc.
+  # Auto games:/personal: prefix - if token has no colon and games/<name> or personal/<name> is a valid app module, prefix it
+  # This allows ./install voxels -> games:voxels, ./install chess -> games:chess, ./install dooraccess -> personal:dooraccess etc.
   if [[ "$norm" != *":"* ]]; then
-    games_path="$ROOT/games/$norm"
-    if [[ -f "$games_path/build.gradle.kts" ]] && grep -q "common-conventions-app" "$games_path/build.gradle.kts" 2>/dev/null; then
-      expanded="games:$norm"
-      echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found games/$norm)"
-      norm="$expanded"
-    elif [[ ! -e "$ROOT/$norm" && -e "$ROOT/games/$norm" ]]; then
-      # Fallback: if root/<name> doesn't exist but games/<name> does (backward compat)
-      expanded="games:$norm"
-      echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found games/$norm)"
-      norm="$expanded"
-    fi
+    for auto_prefix in games personal; do
+      pref_path="$ROOT/$auto_prefix/$norm"
+      if [[ -f "$pref_path/build.gradle.kts" ]] && grep -q "common-conventions-app" "$pref_path/build.gradle.kts" 2>/dev/null; then
+        expanded="$auto_prefix:$norm"
+        echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found $auto_prefix/$norm)"
+        norm="$expanded"
+        break
+      elif [[ ! -e "$ROOT/$norm" && -e "$ROOT/$auto_prefix/$norm" ]]; then
+        # Fallback: if root/<name> doesn't exist but <prefix>/<name> does (backward compat)
+        expanded="$auto_prefix:$norm"
+        echo "Info: Expanding shorthand '$raw' ($norm) -> $expanded (found $auto_prefix/$norm)"
+        norm="$expanded"
+        break
+      fi
+    done
   fi
 
   # Dedup via index loop (bash 3.2 safe)
