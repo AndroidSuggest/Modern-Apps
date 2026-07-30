@@ -45,7 +45,6 @@ import com.vayunmathur.weather.R
 import com.vayunmathur.weather.Route
 import com.vayunmathur.weather.network.RegionTimezone
 import com.vayunmathur.weather.network.WeatherApi
-import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.weather.map.DwdIconGlobal
 import com.vayunmathur.weather.map.OmMapMetadata
 import com.vayunmathur.weather.map.OmTilesNative
@@ -255,18 +254,11 @@ fun WeatherMapPage(
                         val (w, h) = rasterSize(bbox)
                         val url = omFileUrl(domain, meta.referenceTime, validTime)
                         val t0 = System.currentTimeMillis()
-                        // Fetch .om bytes in Kotlin (stdlib HttpURLConnection) instead of Rust ureq
-                        // to remove ring/rustls/icu/url (~90 crates)
-                        val omBytes = try {
-                            val (code, bytes) = NetworkClient.performRequestBytes(url)
-                            if (code in 200..299 && bytes.isNotEmpty()) bytes else null
-                        } catch (_: Exception) { null }
-                        if (omBytes == null) {
-                            android.util.Log.w("OmMap", "fetch .om failed for $url")
-                            return@withContext null
-                        }
-                        val values = OmTilesNative.decodeRegionBytes(
-                            omBytes,
+                        // Fixed: use range-fetching decodeRegion(url) via OmRangeFetcher
+                        // (HttpURLConnection 64KB blocks, LRU) instead of full-file
+                        // performRequestBytes (~148 MB) which caused OOM crash.
+                        val values = OmTilesNative.decodeRegion(
+                            url,
                             variable,
                             domain.nx, domain.ny, domain.lonMin, domain.latMin, domain.dx, domain.dy,
                             bbox.west, bbox.south, bbox.east, bbox.north,

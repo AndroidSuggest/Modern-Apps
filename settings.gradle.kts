@@ -93,3 +93,6 @@ if (file("personal/dooraccess").exists()) {
 if (file("personal/amazon").exists()) {
     include(":personal:amazon")
 }
+if (file("personal/bites").exists()) {
+    include(":personal:bites")
+}

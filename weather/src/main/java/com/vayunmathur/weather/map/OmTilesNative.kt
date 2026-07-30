@@ -22,48 +22,18 @@ object OmTilesNative {
      * Decode [variable] from the `.om` file at [omUrl] over the bounding box
      * [west]/[south]/[east]/[north], resampling into an [outW] × [outH] raster.
      *
-     * Returns a row-major `FloatArray` of length `outW * outH` with **row 0 =
-     * north** (top of the image) and `NaN` where there is no data, or `null`
-     * on any error (network, parse, unsupported variable). Grid geometry is
-     * passed in from [OmDomain] so the native side stays model-agnostic.
+     * Restored efficient path (fixed crash): Rust no longer embeds `ureq`
+     * (~90 crates) for HTTP – it now calls back to
+     * `OmRangeFetcher.getFileSize` / `fetchRange` via JNI (HttpURLConnection
+     * + 64KB block cache + LRU of 12 files). Only covering chunks are fetched,
+     * avoiding OOM from full 148 MB file downloads that the `decodeRegionBytes`
+     * experiment caused.
      *
-     * The derived measure `wind_speed_10m` is computed natively from the
-     * `wind_u_component_10m` / `wind_v_component_10m` children.
-     *
-     * Blocking; call off the main thread.
-     *
-     * Deprecated: use [decodeRegionBytes] – Rust no longer does HTTP (ureq removed)
-     * to cut ring/rustls/icu supply-chain. New path fetches .om bytes via
-     * [com.vayunmathur.library.network.NetworkClient] (HttpURLConnection, armv8-only)
-     * and passes them to Rust slice decoder.
+     * Blocking; call off the main thread. Returns null on any error so callers
+     * degrade gracefully instead of crashing.
      */
     external fun decodeRegion(
         omUrl: String,
-        variable: String,
-        nx: Int,
-        ny: Int,
-        lonMin: Double,
-        latMin: Double,
-        dx: Double,
-        dy: Double,
-        west: Double,
-        south: Double,
-        east: Double,
-        north: Double,
-        outW: Int,
-        outH: Int,
-    ): FloatArray?
-
-    /**
-     * New path: decode from in-memory `.om` bytes (fetched in Kotlin via
-     * NetworkClient/OkHttp, armv8-only std stack). Eliminates `ureq` crate
-     * (~100 crates including ring, rustls, webpki-roots, icu) from Rust.
-     *
-     * Returns row-major FloatArray length outW*outH, row 0 = north, NaN where no data,
-     * or null on parse/unsupported.
-     */
-    external fun decodeRegionBytes(
-        omData: ByteArray,
         variable: String,
         nx: Int,
         ny: Int,

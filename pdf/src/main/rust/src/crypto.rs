@@ -6,6 +6,9 @@
 //! SHA-2 hashes they need. Enough to open, remove a password from, and set a
 //! password on RC4- and AES-encrypted PDFs. Public-key / certificate security
 //! handlers are not implemented (they require the recipient's private key).
+//!
+//! `cbc` crate removed – it was a single-function wrapper around `aes` (per user rule).
+//! Now own CBC impl in `pdf_cbc.rs` using `aes` crate only.
 
 use md5::{Digest, Md5};
 
@@ -192,10 +195,9 @@ pub fn authenticate_owner_fallback(
 }
 
 /// AES-256-CBC encrypt without padding, IV = zeros (used to build /UE and /OE).
+/// Inlines `cbc` crate (tiny wrapper around `aes::Aes128/192/256`)
 pub fn aes256_cbc_encrypt_nopad_zeroiv(key: &[u8], data: &[u8]) -> Vec<u8> {
-    let iv = [0u8; 16];
-    cbc::Encryptor::<aes::Aes256>::new(key.into(), (&iv).into())
-        .encrypt_padded_vec_mut::<NoPadding>(data)
+    crate::pdf_cbc::enc_aes256_nopad_zeroiv(key, data)
 }
 
 /// The R5/R6 password hash (algorithm 2.B for R6, plain SHA-256 for R5).
@@ -254,11 +256,9 @@ pub fn compute_perms_v5(file_key: &[u8], p: i32) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// AES support (V4 AESV2 / V5 AESV3)
+// AES support (V4 AESV2 / V5 AESV3) – own CBC impl, cbc crate dropped
 // ---------------------------------------------------------------------------
 
-use aes::cipher::block_padding::{NoPadding, Pkcs7};
-use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use sha2::{Sha256, Sha384, Sha512};
 
 fn sha256(data: &[u8]) -> Vec<u8> {
@@ -278,56 +278,25 @@ fn sha512(data: &[u8]) -> Vec<u8> {
 }
 
 /// AES-CBC decrypt with PKCS#7 padding; the 16-byte IV is prepended to `data`.
-/// Key length selects AES-128/192/256. Returns empty on failure.
+/// Inlines cbc crate using aes crate only (single function wrapper)
 pub fn aes_cbc_decrypt(key: &[u8], data: &[u8]) -> Vec<u8> {
-    if data.len() < 16 {
-        return Vec::new();
-    }
-    let (iv, ct) = data.split_at(16);
-    match key.len() {
-        16 => cbc::Decryptor::<aes::Aes128>::new(key.into(), iv.into())
-            .decrypt_padded_vec_mut::<Pkcs7>(ct)
-            .unwrap_or_default(),
-        24 => cbc::Decryptor::<aes::Aes192>::new(key.into(), iv.into())
-            .decrypt_padded_vec_mut::<Pkcs7>(ct)
-            .unwrap_or_default(),
-        32 => cbc::Decryptor::<aes::Aes256>::new(key.into(), iv.into())
-            .decrypt_padded_vec_mut::<Pkcs7>(ct)
-            .unwrap_or_default(),
-        _ => Vec::new(),
-    }
+    crate::pdf_cbc::cbc_dec(key, data)
 }
 
 /// AES-CBC encrypt with PKCS#7 padding; a random 16-byte IV is prepended.
-/// Supports AES-128/192/256 (critical fix: previously missing 192).
+/// Inlines cbc crate using aes crate only
 pub fn aes_cbc_encrypt(key: &[u8], iv: &[u8; 16], data: &[u8]) -> Vec<u8> {
-    let ct = match key.len() {
-        16 => cbc::Encryptor::<aes::Aes128>::new(key.into(), iv.into())
-            .encrypt_padded_vec_mut::<Pkcs7>(data),
-        24 => cbc::Encryptor::<aes::Aes192>::new(key.into(), iv.into())
-            .encrypt_padded_vec_mut::<Pkcs7>(data),
-        32 => cbc::Encryptor::<aes::Aes256>::new(key.into(), iv.into())
-            .encrypt_padded_vec_mut::<Pkcs7>(data),
-        _ => return Vec::new(),
-    };
-    let mut out = Vec::with_capacity(16 + ct.len());
-    out.extend_from_slice(iv);
-    out.extend_from_slice(&ct);
-    out
+    crate::pdf_cbc::cbc_enc(key, iv, data)
 }
 
 /// AES-256-CBC decrypt without padding, IV = zeros (used for /UE, /OE).
 fn aes256_cbc_decrypt_nopad_zeroiv(key: &[u8], ct: &[u8]) -> Vec<u8> {
-    let iv = [0u8; 16];
-    cbc::Decryptor::<aes::Aes256>::new(key.into(), (&iv).into())
-        .decrypt_padded_vec_mut::<NoPadding>(ct)
-        .unwrap_or_default()
+    crate::pdf_cbc::dec_aes256_nopad_zeroiv(key, ct)
 }
 
 /// AES-128-CBC encrypt without padding (algorithm 2.B inner step).
 fn aes128_cbc_encrypt_nopad(key: &[u8], iv: &[u8], data: &[u8]) -> Vec<u8> {
-    cbc::Encryptor::<aes::Aes128>::new(key.into(), iv.into())
-        .encrypt_padded_vec_mut::<NoPadding>(data)
+    crate::pdf_cbc::aes128_cbc_enc_nopad(key, iv, data)
 }
 
 /// Per-object AES key: md5(fileKey + obj + gen + "sAlT") (AESV2 only).

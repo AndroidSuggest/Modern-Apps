@@ -73,7 +73,6 @@
                 <data android:scheme="https" />
                 <data android:mimeType="text/calendar" />
                 <data android:mimeType="application/calendar" />
-                <data android:mimeType="text/x-vcalendar" />
                 <data android:mimeType="application/x-icalendar" />
                 <data android:mimeType="text/x-icalendar" />
                 <data android:mimeType="text/icalendar" />
@@ -93,10 +92,8 @@
                 <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.ics" />
                 <data android:pathPattern=".*\\.ical" />
-                <data android:pathPattern=".*\\.ifb" />
                 <data android:pathPattern=".*\\..*\\.ics" />
                 <data android:pathPattern=".*\\..*\\.ical" />
-                <data android:pathPattern=".*\\..*\\.ifb" />
             </intent-filter>
         </activity>
 

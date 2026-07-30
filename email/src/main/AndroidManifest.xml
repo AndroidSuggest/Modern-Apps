@@ -55,13 +55,6 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="content" android:mimeType="application/mbox" />
-                <data android:scheme="file" android:mimeType="application/mbox" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.eml" />
                 <data android:scheme="content" android:host="*" android:mimeType="application/octet-stream" android:pathPattern=".*\\.eml" />
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.eml" />

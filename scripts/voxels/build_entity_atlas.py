@@ -41,6 +41,48 @@ def main():
                 d = ((cy + y) * W + (cx + x)) * 4
                 atlas[d:d+4] = rgba[s:s+4]
         print("cell %d <- %s (%dx%d)" % (idx, rel, w, h))
+    # Cell 7: procedural dark-purple Ender Dragon skin (uniform, sampled at the cell centre).
+    dx7, dy7 = (7 % COLS) * CELL, (7 // COLS) * CELL
+    for y in range(CELL):
+        for x in range(CELL):
+            n = ((x * 7 + y * 13) % 11) - 5
+            d = ((dy7 + y) * W + (dx7 + x)) * 4
+            atlas[d:d+4] = bytes([max(0, 34 + n), max(0, 12 + n), max(0, 48 + n), 255])
+    # Cell 8: procedural dark Wither skin (charcoal grey).
+    dx8, dy8 = (8 % COLS) * CELL, (8 // COLS) * CELL
+    for y in range(CELL):
+        for x in range(CELL):
+            n = ((x * 5 + y * 11) % 9) - 4
+            d = ((dy8 + y) * W + (dx8 + x)) * 4
+            atlas[d:d+4] = bytes([max(0, 34 + n), max(0, 34 + n), max(0, 38 + n), 255])
+    # Cell 9: procedural glowing Blaze skin (orange-yellow).
+    dx9, dy9 = (9 % COLS) * CELL, (9 // COLS) * CELL
+    for y in range(CELL):
+        for x in range(CELL):
+            n = ((x * 9 + y * 7) % 41) - 12
+            d = ((dy9 + y) * W + (dx9 + x)) * 4
+            atlas[d:d+4] = bytes([min(255, 236 + n // 3), max(0, 150 + n), max(0, 24 + n // 2), 255])
+    # Cell 10: procedural Wither Skeleton skin (near-black charcoal).
+    dx10, dy10 = (10 % COLS) * CELL, (10 // COLS) * CELL
+    for y in range(CELL):
+        for x in range(CELL):
+            n = ((x * 3 + y * 13) % 7) - 3
+            d = ((dy10 + y) * W + (dx10 + x)) * 4
+            atlas[d:d+4] = bytes([max(0, 22 + n), max(0, 22 + n), max(0, 24 + n), 255])
+    # Cell 11: procedural Shulker skin (muted purple, matching purpur).
+    dx11, dy11 = (11 % COLS) * CELL, (11 // COLS) * CELL
+    for y in range(CELL):
+        for x in range(CELL):
+            n = ((x * 7 + y * 5) % 21) - 10
+            d = ((dy11 + y) * W + (dx11 + x)) * 4
+            atlas[d:d+4] = bytes([max(0, 150 + n), max(0, 116 + n), max(0, 172 + n), 255])
+    # Cell 12: procedural Ghast skin (pale off-white).
+    dx12, dy12 = (12 % COLS) * CELL, (12 // COLS) * CELL
+    for y in range(CELL):
+        for x in range(CELL):
+            n = ((x * 5 + y * 9) % 13) - 6
+            d = ((dy12 + y) * W + (dx12 + x)) * 4
+            atlas[d:d+4] = bytes([min(255, 224 + n), min(255, 224 + n), min(255, 218 + n), 255])
     # White swatch in the last cell (index 15) for tinted particle quads. Rust samples its centre.
     wx, wy = (15 % COLS) * CELL, (15 // COLS) * CELL
     for y in range(8):

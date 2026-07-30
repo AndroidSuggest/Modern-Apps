@@ -200,26 +200,8 @@ pub fn decode_runlength(data: &[u8]) -> Vec<u8> {
 }
 
 pub fn decode_lzw(data: &[u8], early_change: bool) -> Option<Vec<u8>> {
-    // weezl crate previously pulled for this single function – now std-only LZW.
-    // Prefer stdlib per user request: inline decode using pure Rust, no external fetch.
-    // For now keep weezl path but note it's removable; we already unified workspace version to 0.1.7.
-    // To fully remove attack surface, vendor minimal LZW decoder here.
-    // Keeping fallback to std implementation if early_change handling fails.
-    use weezl::{decode::Decoder, BitOrder};
-    let mut decoder = if early_change { Decoder::with_tiff_size_switch(BitOrder::Msb, 8) } else { Decoder::new(BitOrder::Msb, 8) };
-    match decoder.decode(data) {
-        Ok(v) => Some(v),
-        Err(_) => {
-            // Try streaming path (same as before)
-            let mut d2 = if early_change { Decoder::with_tiff_size_switch(BitOrder::Msb, 8) } else { Decoder::new(BitOrder::Msb, 8) };
-            let mut out = Vec::new();
-            let res = d2.into_stream(&mut out).decode_all(data);
-            match res.status { Ok(_) => Some(out), Err(_) => {
-                // std-only fallback: minimal TIFF LZW decoder for 8-bit
-                lzw_decode_std(data, early_change)
-            }}
-        }
-    }
+    // weezl crate removed – pure std LZW decoder (single function we use, prefer stdlib)
+    lzw_decode_std(data, early_change)
 }
 
 /// Minimal std-only LZW decoder for PDF's LZWDecode (MSB-first, 8-bit symbols).

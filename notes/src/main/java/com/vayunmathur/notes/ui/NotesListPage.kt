@@ -32,10 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.room.SqlCipherDbCodec
 import com.vayunmathur.library.ui.CommonSearchBar
@@ -48,8 +50,8 @@ import com.vayunmathur.notes.data.Note
 import com.vayunmathur.notes.data.noteDbConfigs
 import com.vayunmathur.notes.util.NotesViewModel
 import com.vayunmathur.library.ui.ReorderableItem
-import com.vayunmathur.library.ui.draggableHandle
 import com.vayunmathur.library.ui.rememberReorderableLazyListState
+import com.vayunmathur.library.ui.reorderDragHandle
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -200,11 +202,19 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
             contentPadding = paddingValues
         ) {
             items(localData, key = { it.id }) { note ->
-                ReorderableItem(reorderState, key = note.id) { isDragging ->
-                    val itemIndex = localData.indexOf(note)
-                    val elevation by animateDpAsState(if (isDragging) 4.dp else 0.dp)
+                val dragging = reorderState.draggingKey == note.id
+                // Item root: follow the finger 1:1 while dragging; otherwise glide into place.
+                val itemMod = if (dragging) {
+                    Modifier
+                        .zIndex(1f)
+                        .graphicsLayer { translationY = reorderState.draggingItemTranslation }
+                } else {
+                    Modifier.animateItem()
+                }
+                ReorderableItem(reorderState, key = note.id, modifier = itemMod) { isDragging ->
+                    val elevation by animateDpAsState(if (isDragging) 8.dp else 0.dp)
                     val isSelected = note.id in selectedIds
-                    Surface(Modifier.animateItem(), shadowElevation = elevation) {
+                    Surface(shadowElevation = elevation) {
                         ListItem(
                             content = { Text(note.title) },
                             modifier = Modifier.combinedClickable(
@@ -229,10 +239,9 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (localData.size > 1 && selectedIds.size < localData.size && (!isSelectionMode || isContiguous)) {
                                         IconButton(
-                                            modifier = Modifier.draggableHandle(
+                                            modifier = Modifier.reorderDragHandle(
                                                 reorderState = reorderState,
                                                 key = note.id,
-                                                index = itemIndex,
                                                 onDragStarted = {
                                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                                                 },

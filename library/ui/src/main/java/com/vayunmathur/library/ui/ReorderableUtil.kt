@@ -1,11 +1,14 @@
 package com.vayunmathur.library.ui
 
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -44,6 +50,23 @@ class ReorderableLazyListState(
     var draggingIndex by mutableIntStateOf(-1)
         internal set
 
+    /** Accumulated finger delta (px) since the drag started. */
+    internal var draggingItemOffset by mutableFloatStateOf(0f)
+    /** Layout offset (px) of the dragged item at drag start. */
+    internal var draggingItemInitialOffset = 0f
+
+    /**
+     * Y translation (px) that keeps the dragged item under the finger while the list
+     * reflows it to new slots. Read this from a `graphicsLayer { translationY = ... }`
+     * on the dragged item (see [reorderDragHandle]). 0 when nothing is dragging.
+     */
+    val draggingItemTranslation: Float
+        get() {
+            val key = draggingKey ?: return 0f
+            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } ?: return 0f
+            return draggingItemInitialOffset + draggingItemOffset - info.offset
+        }
+
     fun startDrag(key: Any, index: Int) {
         draggingKey = key
         draggingIndex = index
@@ -62,6 +85,42 @@ class ReorderableLazyListState(
         if (toIndex < 0) return
         onMoveInternal(from, toIndex)
         draggingIndex = toIndex
+    }
+
+    /** Re-evaluate which item the dragged item's centre is over and swap if needed. */
+    internal fun updateDragTarget() {
+        val key = draggingKey ?: return
+        val items = listState.layoutInfo.visibleItemsInfo
+        val dragging = items.firstOrNull { it.key == key } ?: return
+        val center = draggingItemInitialOffset + draggingItemOffset + dragging.size / 2f
+        val target = items.firstOrNull {
+            it.key != key && center >= it.offset && center <= it.offset + it.size
+        }
+        if (target != null && target.index != dragging.index) move(target.index)
+    }
+
+    /**
+     * One tick of edge auto-scroll: if the dragged item is within a row of the
+     * viewport's top/bottom edge, scroll the list in that direction so the user can
+     * keep dragging past what's currently visible, then re-check for a swap.
+     */
+    internal suspend fun autoScrollStep() {
+        val key = draggingKey ?: return
+        val layout = listState.layoutInfo
+        val dragging = layout.visibleItemsInfo.firstOrNull { it.key == key } ?: return
+        val top = draggingItemInitialOffset + draggingItemOffset
+        val bottom = top + dragging.size
+        val edge = dragging.size.toFloat().coerceAtLeast(64f)
+        val step = 24f
+        val delta = when {
+            top < layout.viewportStartOffset + edge -> -step
+            bottom > layout.viewportEndOffset - edge -> step
+            else -> 0f
+        }
+        if (delta != 0f) {
+            listState.scrollBy(delta)
+            updateDragTarget()
+        }
     }
 }
 
@@ -249,3 +308,65 @@ fun Modifier.draggableHandle(): Modifier = this
 
 @Deprecated("Use version with state param")
 fun Modifier.longPressDraggableHandle(): Modifier = this
+
+/**
+ * Immediate (no long-press) drag handle with **true finger-following**: while you
+ * drag, the item translates 1:1 with your finger via
+ * [ReorderableLazyListState.draggingItemTranslation], and it swaps with whichever
+ * item its centre is currently over (using the live [LazyListState] layout). The
+ * gesture is consumed so it never fights the list's own vertical scroll.
+ *
+ * Apply to a small handle element, and give the dragged item root
+ * `Modifier.zIndex(1f).graphicsLayer { translationY = state.draggingItemTranslation }`
+ * while it's dragging, and `Modifier.animateItem()` otherwise (so the others glide).
+ */
+fun Modifier.reorderDragHandle(
+    reorderState: ReorderableLazyListState,
+    key: Any,
+    onDragStarted: () -> Unit = {},
+    onDragStopped: () -> Unit = {},
+): Modifier = composed {
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
+    pointerInput(key) {
+        detectDragGestures(
+            onDragStart = {
+                reorderState.listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.key == key }
+                    ?.let { info ->
+                        reorderState.startDrag(key, info.index)
+                        reorderState.draggingItemInitialOffset = info.offset.toFloat()
+                        reorderState.draggingItemOffset = 0f
+                        onDragStarted()
+                        // Keep scrolling while the dragged item is held near an edge.
+                        scrollJob?.cancel()
+                        scrollJob = scope.launch {
+                            while (isActive && reorderState.draggingKey != null) {
+                                reorderState.autoScrollStep()
+                                delay(16)
+                            }
+                        }
+                    }
+            },
+            onDragEnd = {
+                scrollJob?.cancel(); scrollJob = null
+                reorderState.stopDrag()
+                reorderState.draggingItemOffset = 0f
+                onDragStopped()
+            },
+            onDragCancel = {
+                scrollJob?.cancel(); scrollJob = null
+                reorderState.stopDrag()
+                reorderState.draggingItemOffset = 0f
+                onDragStopped()
+            },
+            onDrag = { change, dragAmount ->
+                change.consume()
+                if (reorderState.draggingKey != null) {
+                    reorderState.draggingItemOffset += dragAmount.y
+                    reorderState.updateDragTarget()
+                }
+            },
+        )
+    }
+}

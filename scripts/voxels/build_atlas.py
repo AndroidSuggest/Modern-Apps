@@ -89,6 +89,15 @@ PROC_TILES = {
     115: (158, 166, 178),  # clay (light gray-blue)
     117: (86, 214, 190),   # warding stone (glowing teal checkpoint)
     118: (74, 50, 30),     # jukebox (dark wood box)
+    119: (139, 94, 52),    # chest (brown wood)
+    120: (214, 92, 24),    # lava (glowing orange)
+    121: (222, 226, 165),  # end stone (pale)
+    122: (146, 52, 214),   # nether portal (purple)
+    123: (36, 18, 66),     # end portal (dark starry)
+    124: (150, 236, 240),  # beacon (bright glowing cyan)
+    125: (170, 116, 172),  # purpur (muted purple)
+    126: (214, 66, 66),    # firework rocket icon (red) — item only, tile unused by any block
+    127: (226, 238, 250),  # snowball icon (near-white) — item only
 }
 
 
@@ -98,7 +107,8 @@ PROC_ICON = {
     101: "horn_coral.png", 102: "kelp.png", 103: "sea_lantern.png", 104: "prismarine.png",
     105: "dark_prismarine.png", 106: "dripstone.png", 107: "moss_block.png", 108: "sculk.png",
     109: "amethyst.png", 110: "calcite.png", 111: "tuff.png", 112: "magma.png", 113: "glowstone.png",
-    114: "obsidian.png", 115: "clay.png", 117: "warding_stone.png", 118: "jukebox.png",
+    114: "obsidian.png", 115: "clay.png", 117: "warding_stone.png", 118: "jukebox.png", 119: "chest.png",
+    120: "lava.png", 121: "end_stone.png", 124: "beacon.png", 125: "purpur_block.png", 126: "firework_rocket.png", 127: "snowball.png",
 }
 
 

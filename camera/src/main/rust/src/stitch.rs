@@ -16,7 +16,6 @@ use crate::seam::seam_masks;
 use crate::sphere::{warp_one, warped_bounds, WarpedTile};
 use crate::warp::mean_luma;
 use crate::wave::wave_correct_horizontal;
-use rayon::prelude::*;
 
 const MAX_FEATURES: usize = 3000; // keep upper bound but distributed via pyramid, ORB default 500 but we keep 3000 for quality
 const FAST_THRESHOLD: i32 = 20; // ORB default 20, was 12 – matches OpenCV
@@ -130,7 +129,7 @@ pub fn estimate_pano(frames_jpeg: &[Vec<u8>], yaw: &[f32], pitch: &[f32]) -> Opt
     let reg_w = ((full_w as f64 * reg_scale).round() as usize).max(1);
     let reg_h = ((full_h as f64 * reg_scale).round() as usize).max(1);
     let reg: Vec<(Features, f32)> = frames_jpeg
-        .par_iter()
+        .iter()
         .map(|j| {
             let full = Rgba::from_jpeg(j).unwrap_or_else(|| Rgba::new(1, 1));
             let small = if reg_scale < 0.999 { full.resized(reg_w, reg_h) } else { full };
@@ -263,7 +262,7 @@ pub fn stitch_panorama(frames_jpeg: &[Vec<u8>], yaw: &[f32], pitch: &[f32]) -> O
     let reg_w = ((full_w as f64 * reg_scale).round() as usize).max(1);
     let reg_h = ((full_h as f64 * reg_scale).round() as usize).max(1);
     let feats: Vec<Features> = frames_jpeg
-        .par_iter()
+        .iter()
         .map(|j| {
             let full = Rgba::from_jpeg(j).unwrap_or_else(|| Rgba::new(1, 1));
             let small = if reg_scale < 0.999 { full.resized(reg_w, reg_h) } else { full };
@@ -334,8 +333,8 @@ pub fn stitch_panorama(frames_jpeg: &[Vec<u8>], yaw: &[f32], pitch: &[f32]) -> O
     // the full-res compose tile from it, then drop the decoded frame — so at most a
     // few full-res frames are in RAM at a time even at maximum capture resolution.
     let warped: Vec<(WarpedTile, WarpedTile)> = kept
-        .par_iter()
-        .zip(cams.par_iter())
+        .iter()
+        .zip(cams.iter())
         .map(|(&i, c)| {
             let full = Rgba::from_jpeg(&frames_jpeg[i])?;
             let seam = warp_one(&full, &c.k(), &c.r, seam_scale)?;

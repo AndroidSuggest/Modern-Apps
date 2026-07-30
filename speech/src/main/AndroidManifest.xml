@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- As a system RecognitionService we run the framework's caller permission check in
+         OUR process: it verifies the CALLING app's RECORD_AUDIO via AppOps. On Android 11+
+         package visibility hides other apps, so that lookup fails ("caller without
+         permission RECORD_AUDIO") even when the caller holds it. A recognizer serves
+         arbitrary apps, so we need to see all of them. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
