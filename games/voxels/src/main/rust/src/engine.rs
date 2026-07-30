@@ -1,7 +1,7 @@
 use crate::world::{ChunkMap, block::Block};
 use crate::player::Player;
 use crate::inventory::Inventory;
-use crate::entity::{Mob, MobKind, Particle, build_entity_mesh, tick_particles, append_particles};
+use crate::entity::{Mob, MobKind, Particle, Projectile, ProjKind, build_entity_mesh, tick_particles, append_particles, append_projectiles};
 use crate::world::mesher;
 use crate::vulkan::context::{VulkanContext, ANativeWindow};
 use crate::vulkan::renderer::VulkanRenderer;
@@ -27,7 +27,20 @@ pub struct EngineState {
     pub spawn_rng: u32,
     pub respawn: Option<Vec3>,
     pub checkpoint_cd: f32,
+    pub beacon_cd: f32,
     pub particles: Vec<Particle>,
+    pub projectiles: Vec<Projectile>,
+    // Dimensions: 0 overworld, 1 nether, 2 end. `chunks` is the active dimension; the others are
+    // stashed here while inactive.
+    pub dim: u8,
+    pub seed: u32,
+    pub stored: [Option<ChunkMap>; 3],
+    pub dim_pos: [Vec3; 3],
+    pub dim_visited: [bool; 3],
+    pub portal_armed: bool, // must step out of a portal before it fires again (no auto-bounce)
+    pub portal_charge: f32,
+    pub end_dragon_dead: bool,
+    pub nether_wither_dead: bool,
 }
 
 unsafe impl Send for EngineState {}
@@ -96,7 +109,18 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         spawn_rng: seed ^ 0x9E3779B9,
         respawn: None,
         checkpoint_cd: 0.0,
+        beacon_cd: 0.0,
         particles: Vec::new(),
+        projectiles: Vec::new(),
+        dim: 0,
+        seed,
+        stored: [None, None, None],
+        dim_pos: [Vec3::ZERO; 3],
+        dim_visited: [true, false, false],
+        portal_armed: true,
+        portal_charge: 0.0,
+        end_dragon_dead: false,
+        nether_wither_dead: false,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -141,6 +165,8 @@ pub fn destroy_engine() {
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
         state.chunks.save_all();
+        // Persist the stashed dimensions too (each writes to its own save subdir).
+        for m in state.stored.iter().flatten() { m.save_all(); }
         if let Some(mut renderer) = state.renderer.take() {
             unsafe {
                 renderer.destroy();
@@ -243,8 +269,35 @@ pub fn tick_and_render() {
         let move_len = (input.move_forward*input.move_forward + input.move_right*input.move_right).sqrt();
         if move_len > 0.9 { input_mut.sprint = true; }
 
+        // Elytra equipped in the chest slot enables gliding.
+        state.player.elytra = state.inventory.armor[1].id == 188;
         state.player.tick(dt, &input_mut, &state.chunks);
         state.player.tick_status(dt);
+        // Lava burns (Fire Resistance negates it).
+        {
+            let p = state.player.pos;
+            let feet = state.chunks.get_block_world(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let head = state.chunks.get_block_world(p.x.floor() as i32, (p.y + 1.0).floor() as i32, p.z.floor() as i32);
+            if (feet == 84 || head == 84) && !state.player.has_effect(crate::item::Effect::FireResistance) {
+                state.player.health -= 6.0 * dt;
+                if state.player.health <= 0.0 { state.player.health = 0.0; state.player.dead = true; }
+            }
+        }
+        // Portal traversal: step out to re-arm, dwell inside to travel.
+        {
+            let p = state.player.pos;
+            let bl = state.chunks.get_block_world(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            if bl != 86 && bl != 87 {
+                state.portal_armed = true;
+                state.portal_charge = 0.0;
+            } else if state.portal_armed {
+                state.portal_charge += dt;
+                if state.portal_charge > 0.4 {
+                    let target = if bl == 86 { if state.dim == 1 { 0 } else { 1 } } else if state.dim == 2 { 0 } else { 2 };
+                    switch_dimension(state, target);
+                }
+            }
+        }
 
         // Warding stone checkpoint: standing near one sets respawn + slowly refills Estus (bonfire).
         state.checkpoint_cd = (state.checkpoint_cd - dt).max(0.0);
@@ -269,6 +322,35 @@ pub fn tick_and_render() {
             }
         }
 
+        // Beacon: a lit beacon standing on a pyramid of mineral blocks projects buffs to nearby players.
+        // Scan (throttled) for the nearest beacon around the player, grade its pyramid, and grant effects.
+        state.beacon_cd = (state.beacon_cd - dt).max(0.0);
+        if state.beacon_cd <= 0.0 {
+            state.beacon_cd = 0.5;
+            let p = state.player.pos;
+            let (bx, by, bz) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+            let mut best: Option<(i32, i32)> = None; // (tier, dist2) of the nearest in-range beacon
+            for dy in -12..=12 { for dx in -16..=16 { for dz in -16..=16 {
+                if state.chunks.get_block_world(bx + dx, by + dy, bz + dz) == 88 {
+                    let tier = beacon_tier(&state.chunks, bx + dx, by + dy, bz + dz);
+                    if tier == 0 { continue; }
+                    let d2 = dx * dx + dz * dz;
+                    let range = tier * 10 + 10;
+                    if d2 <= range * range && best.map_or(true, |b| d2 < b.1) {
+                        best = Some((tier, d2));
+                    }
+                }
+            }}}
+            if let Some((tier, _)) = best {
+                use crate::item::Effect::*;
+                let e = &mut state.player;
+                e.add_effect(Speed, 6.0, 0);
+                if tier >= 2 { e.add_effect(Haste, 6.0, 0); }
+                if tier >= 3 { e.add_effect(Resistance, 6.0, 0); }
+                if tier >= 4 { e.add_effect(Strength, 6.0, 0); e.add_effect(Regeneration, 3.0, 0); e.add_effect(JumpBoost, 6.0, 0); }
+            }
+        }
+
         let px = state.player.pos.x as i32;
         let pz = state.player.pos.z as i32;
         state.chunks.ensure_radius(px, pz);
@@ -286,21 +368,50 @@ pub fn tick_and_render() {
             let solid = |x: i32, y: i32, z: i32| { let id = chunks.get_block_world(x, y, z); id != 0 && Block::from_id(id).is_solid() };
             for m in state.mobs.iter_mut() { m.tick(dt, player_pos, &solid); }
         }
-        // Mob melee contact damage + creeper fuse.
+        // Mob melee contact damage + creeper fuse + ranged fire.
         let mut incoming = 0.0f32;
         let mut explosions: Vec<Vec3> = Vec::new();
+        let mut new_shots: Vec<Projectile> = Vec::new();
+        let eye = player_pos + vec3(0.0, 1.2, 0.0);
         for m in state.mobs.iter_mut() {
             m.attack_cd = (m.attack_cd - dt).max(0.0);
             let d = (m.pos - player_pos).length();
+            let ranged = matches!(m.kind, MobKind::Blaze | MobKind::Shulker | MobKind::Ghast);
+            let max_range = if m.kind == MobKind::Ghast { 42.0 } else { 30.0 };
             if m.kind == MobKind::Creeper {
                 if d < 3.2 { m.fuse += dt; if m.fuse >= 1.4 { explosions.push(m.pos); m.health = 0.0; } }
                 else { m.fuse = (m.fuse - dt * 0.6).max(0.0); }
-            } else if m.kind.hostile() && d < 1.7 && m.attack_cd <= 0.0 {
+            } else if ranged && d > 3.0 && d < max_range && m.attack_cd <= 0.0 {
+                // Fire a projectile at the player's chest.
+                m.attack_cd = match m.kind { MobKind::Blaze => 1.6, MobKind::Ghast => 3.0, _ => 2.2 };
+                let origin = m.pos + vec3(0.0, m.kind.height() * 0.6, 0.0);
+                let dir = (eye - origin).normalize_or_zero();
+                let (kind, spd, dmg, explosive) = match m.kind {
+                    MobKind::Blaze => (ProjKind::Fireball, 16.0, 5.0, false),
+                    MobKind::Ghast => (ProjKind::Fireball, 12.0, 7.0, true),
+                    _ => (ProjKind::ShulkerBullet, 9.0, 4.0, false),
+                };
+                new_shots.push(Projectile { pos: origin, vel: dir * spd, life: 5.0, kind, from_player: false, damage: dmg, explosive });
+            } else if m.kind.is_boss() && d < 5.0 && m.attack_cd <= 0.0 {
+                m.attack_cd = 1.0; incoming += m.kind.contact_damage();
+            } else if m.kind.hostile() && !m.kind.is_boss() && !ranged && d < 1.7 && m.attack_cd <= 0.0 {
                 m.attack_cd = 0.8; incoming += m.kind.contact_damage();
             }
         }
+        state.projectiles.extend(new_shots);
+        tick_projectiles(state, dt);
         if incoming > 0.0 { hurt_player(state, incoming); }
         for c in explosions { explode(state, c, 3.0); }
+        // Slain Ender Dragon: mark defeated + a victory burst of particles.
+        if let Some(dpos) = state.mobs.iter().find(|m| m.kind == MobKind::Dragon && m.health <= 0.0).map(|m| m.pos) {
+            state.end_dragon_dead = true;
+            spawn_particles(&mut state.spawn_rng, &mut state.particles, dpos, 60, [0.7, 0.3, 0.95], 8.0, 1.4, 0.4);
+        }
+        // Slain Wither: mark defeated + drop the Nether Star (via loot) + a dark burst.
+        if let Some(wpos) = state.mobs.iter().find(|m| m.kind == MobKind::Wither && m.health <= 0.0).map(|m| m.pos) {
+            state.nether_wither_dead = true;
+            spawn_particles(&mut state.spawn_rng, &mut state.particles, wpos, 60, [0.15, 0.15, 0.2], 8.0, 1.4, 0.4);
+        }
         // Remove dead mobs and auto-collect their drops.
         let mut loot: Vec<u8> = Vec::new();
         state.mobs.retain(|m| if m.health <= 0.0 { loot.extend_from_slice(m.kind.loot()); false } else { true });
@@ -328,7 +439,13 @@ pub fn tick_and_render() {
                     let day_t = (world_time / 120.0) % 1.0;
                     // Sun is below the horizon (night) near the ends of the cycle; ~noon at day_t=0.5.
                     let night = day_t < 0.25 || day_t > 0.75;
-                    let kind = if night {
+                    let kind = if state.dim == 1 {
+                        // Nether: hostile natives only (Ghasts are rarer floating threats).
+                        match (rand(&mut rng) * 8.0) as u32 { 0 => MobKind::Ghast, 1 | 2 => MobKind::Blaze, 3 | 4 => MobKind::WitherSkeleton, _ => MobKind::Zombie }
+                    } else if state.dim == 2 {
+                        // Sparse End hostiles: End-city Shulker guardians + wandering wither skeletons.
+                        if rand(&mut rng) < 0.4 { MobKind::Shulker } else { MobKind::WitherSkeleton }
+                    } else if night {
                         if rand(&mut rng) < 0.5 { MobKind::Zombie } else { MobKind::Creeper }
                     } else if rand(&mut rng) < 0.18 {
                         MobKind::Villager
@@ -365,11 +482,22 @@ pub fn tick_and_render() {
             state.player.air_max_y = state.player.pos.y;
             state.mobs.clear();
         }
+        // Elytra glide vapor trail: white streaks off both shoulders (the visible "wings" in 1st person).
+        if state.player.gliding {
+            let base = state.player.pos + vec3(0.0, 1.25, 0.0);
+            let r = state.player.right();
+            for &side in &[-1.0f32, 1.0] {
+                if state.particles.len() < 400 {
+                    state.particles.push(Particle { pos: base + r * (0.55 * side), vel: Vec3::ZERO, life: 0.5, max_life: 0.5, size: 0.09, color: [0.88, 0.95, 1.0] });
+                }
+            }
+        }
         tick_particles(&mut state.particles, dt);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
             append_particles(&mut entity_verts, &mut entity_indices, &state.particles, right, Vec3::Y);
+            append_projectiles(&mut entity_verts, &mut entity_indices, &state.projectiles, right, Vec3::Y);
         }
 
         if let Some(renderer) = state.renderer.as_mut() {
@@ -396,8 +524,9 @@ pub fn tick_and_render() {
             let eb = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
             let nv = if state.player.night_vision() { 1.0 } else { 0.0 };
+            let dim = state.dim;
             unsafe {
-                renderer.update_ubo(view_proj, state.player.pos, time, underwater, nv);
+                renderer.update_ubo(view_proj, state.player.pos, time, underwater, nv, dim);
                 renderer.upload_entity_mesh(&entity_verts, &entity_indices);
                 let _ = renderer.draw_frame();
             }
@@ -443,9 +572,13 @@ fn publish_ui(state: &EngineState) {
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
     let estus: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();
+    let boss_mob = state.mobs.iter().find(|m| m.kind.is_boss());
+    let boss: f32 = boss_mob.map(|m| (m.health / m.kind.max_health()).clamp(0.0, 1.0)).unwrap_or(-1.0);
+    let boss_name = match boss_mob.map(|m| m.kind) { Some(MobKind::Dragon) => "Ender Dragon", Some(MobKind::Wither) => "The Wither", _ => "" };
     let health = serde_json::json!({
         "hp": state.player.health, "max": state.player.max_health, "absorb": state.player.absorption,
-        "dead": state.player.dead, "estus": estus, "effects": effects,
+        "dead": state.player.dead, "estus": estus, "effects": effects, "boss": boss, "bossName": boss_name,
+        "elytra": state.player.elytra, "gliding": state.player.gliding,
     }).to_string();
     if let Ok(mut c) = cref(&DEBUG_CACHE, "{}").lock() { *c = debug; }
     if let Ok(mut c) = cref(&STATS_CACHE, "{}").lock() { *c = stats; }
@@ -494,6 +627,157 @@ fn screen_ray(state: &EngineState, px: f32, py: f32) -> (Vec3, Vec3) {
     (eye, dir)
 }
 
+fn dim_dir(base: &str, dim: u8) -> String {
+    match dim { 1 => format!("{}/nether", base), 2 => format!("{}/end", base), _ => base.to_string() }
+}
+
+// Travel to another dimension: stash the current world, swap in the target, place the player on a
+// safe landing (or their saved position), and rebuild all chunk meshes (mesh keys are per-coord).
+// A beacon's power tier = how many complete pyramid layers of mineral blocks sit beneath it.
+// Layer k (k=1..4) at depth k must be a full (2k+1)x(2k+1) square of iron/diamond/emerald blocks
+// centred under the beacon. Tier stops at the first incomplete layer.
+fn beacon_tier(chunks: &ChunkMap, x: i32, y: i32, z: i32) -> i32 {
+    let is_mineral = |id: u8| matches!(id, 23 | 24 | 25);
+    let mut tier = 0;
+    for k in 1..=4i32 {
+        let mut full = true;
+        'layer: for dx in -k..=k { for dz in -k..=k {
+            if !is_mineral(chunks.get_block_world(x + dx, y - k, z + dz)) { full = false; break 'layer; }
+        }}
+        if full { tier = k; } else { break; }
+    }
+    tier
+}
+
+fn switch_dimension(state: &mut EngineState, target: u8) {
+    if target == state.dim { return; }
+    let from = state.dim;
+    state.dim_pos[from as usize] = state.player.pos;
+    let placeholder = ChunkMap::new_dim(state.seed, dim_dir(&state.save_dir, target), target);
+    let cur = std::mem::replace(&mut state.chunks, placeholder);
+    state.stored[from as usize] = Some(cur);
+    if let Some(m) = state.stored[target as usize].take() { state.chunks = m; }
+    state.dim = target;
+
+    let prev = state.player.pos;
+    let (mut ax, mut az) = (prev.x, prev.z);
+    if target == 1 { ax /= 8.0; az /= 8.0; }               // nether is 8x compressed
+    else if target == 0 && from == 1 { ax *= 8.0; az *= 8.0; }
+    if target == 2 { ax = 0.0; az = 0.0; }                 // end: central island
+    state.chunks.ensure_radius(ax as i32, az as i32);
+
+    if state.dim_visited[target as usize] {
+        state.player.pos = state.dim_pos[target as usize];
+    } else {
+        let (bx, bz) = (ax as i32, az as i32);
+        let py: i32 = match target { 1 => 42, 2 => 66, _ => 70 };
+        let mat = if target == 2 { 85 } else { 32 };
+        for dx in -2..=2 { for dz in -2..=2 {
+            state.chunks.set_block_world(bx + dx, py - 1, bz + dz, mat);
+            state.chunks.set_block_world(bx + dx, py, bz + dz, 0);
+            state.chunks.set_block_world(bx + dx, py + 1, bz + dz, 0);
+            state.chunks.set_block_world(bx + dx, py + 2, bz + dz, 0);
+        }}
+        // Build a return portal beside the landing so the player can travel back.
+        if target == 1 || target == 0 {
+            build_nether_portal(&mut state.chunks, bx + 2, py, bz);
+        } else if target == 2 {
+            state.chunks.set_block_world(bx + 2, py - 1, bz, 85);
+            state.chunks.set_block_world(bx + 2, py, bz, 87); // end return portal
+        }
+        state.player.pos = vec3(bx as f32 + 0.5, py as f32 + 0.2, bz as f32 + 0.5);
+        state.dim_pos[target as usize] = state.player.pos;
+    }
+    state.dim_visited[target as usize] = true;
+    state.portal_armed = false;
+    state.portal_charge = 0.0;
+    state.player.vel = Vec3::ZERO;
+    state.player.air_max_y = state.player.pos.y;
+    state.mobs.clear();
+    state.particles.clear();
+    state.projectiles.clear();
+    // Summon the Ender Dragon on arrival in the End (once).
+    if target == 2 && !state.end_dragon_dead {
+        state.mobs.push(Mob::new(MobKind::Dragon, vec3(0.0, 86.0, 30.0), 0xD2A6));
+    }
+    // Summon the Wither on arrival in the Nether (once).
+    if target == 1 && !state.nether_wither_dead {
+        let wpos = vec3(state.player.pos.x, state.player.pos.y + 12.0, state.player.pos.z - 16.0);
+        state.mobs.push(Mob::new(MobKind::Wither, wpos, 0x175E));
+    }
+
+    if let Some(r) = state.renderer.as_mut() { unsafe { r.clear_meshes(); } }
+    let positions: Vec<_> = state.chunks.chunks_iter().map(|(p, _)| *p).collect();
+    for pos in positions { rebuild_chunk_meshes(state, pos); }
+}
+
+// Build a small obsidian nether-portal frame (interior filled with portal blocks) in the X-Y plane.
+fn build_nether_portal(chunks: &mut ChunkMap, x: i32, y: i32, z: i32) {
+    for gx in -1..=2 { for gy in -1..=3 {
+        let border = gx == -1 || gx == 2 || gy == -1 || gy == 3;
+        chunks.set_block_world(x + gx, y + gy, z, if border { 78 } else { 86 });
+    }}
+}
+
+// Flood the air interior enclosed by obsidian in a vertical plane (axis 0 = X-Y, 1 = Z-Y).
+fn portal_interior(chunks: &ChunkMap, sx: i32, sy: i32, sz: i32, axis: u8) -> Option<Vec<(i32, i32, i32)>> {
+    if chunks.get_block_world(sx, sy, sz) != 0 { return None; }
+    let mut region: Vec<(i32, i32, i32)> = Vec::new();
+    let mut stack = vec![(sx, sy, sz)];
+    while let Some(c) = stack.pop() {
+        if region.contains(&c) { continue; }
+        if chunks.get_block_world(c.0, c.1, c.2) != 0 { continue; }
+        if region.len() > 18 { return None; } // not enclosed
+        region.push(c);
+        let nbrs = if axis == 0 {
+            [(c.0 + 1, c.1, c.2), (c.0 - 1, c.1, c.2), (c.0, c.1 + 1, c.2), (c.0, c.1 - 1, c.2)]
+        } else {
+            [(c.0, c.1, c.2 + 1), (c.0, c.1, c.2 - 1), (c.0, c.1 + 1, c.2), (c.0, c.1 - 1, c.2)]
+        };
+        for n in nbrs {
+            let nb = chunks.get_block_world(n.0, n.1, n.2);
+            if nb == 0 { if !region.contains(&n) && !stack.contains(&n) { stack.push(n); } }
+            else if nb != 78 { return None; } // border must be obsidian
+        }
+    }
+    if (2..=15).contains(&region.len()) { Some(region) } else { None }
+}
+
+// Ignite a nether portal by tapping its obsidian frame: fill the enclosed interior with portal blocks.
+fn light_portal(state: &mut EngineState, x: i32, y: i32, z: i32) -> bool {
+    for axis in 0..2u8 {
+        if let Some(cells) = portal_interior(&state.chunks, x, y + 1, z, axis) {
+            for (cx, cy, cz) in &cells {
+                state.chunks.set_block_world(*cx, *cy, *cz, 86);
+                mark_neighbors_dirty(state, *cx, *cz);
+            }
+            return true;
+        }
+    }
+    false
+}
+
+// Loot a chest deterministically from its position (each chest is consumed after one open).
+fn loot_chest(state: &mut EngineState, x: i32, y: i32, z: i32) {
+    let mut r = ((x as u64).wrapping_mul(73856093) ^ (y as u64).wrapping_mul(19349663) ^ (z as u64).wrapping_mul(83492791)) | 1;
+    let mut next = |r: &mut u64| { *r ^= *r << 13; *r ^= *r >> 7; *r ^= *r << 17; *r };
+    // (item id, max stack from this chest). The End's chests (dim 2) hold the endgame reward pool:
+    // an elytra, diamond gear, a heart container and gems.
+    let end_pool: [(u8, i32); 9] = [(188, 1), (176, 1), (175, 1), (170, 1), (129, 1), (155, 3), (156, 4), (133, 2), (24, 2)];
+    let over_pool: [(u8, i32); 10] = [(157, 8), (154, 4), (155, 1), (156, 2), (131, 4), (133, 1), (168, 1), (128, 1), (138, 3), (137, 2)];
+    let pool: &[(u8, i32)] = if state.dim == 2 { &end_pool } else { &over_pool };
+    let n = 2 + (next(&mut r) % 3) as usize; // 2..4 stacks
+    for _ in 0..n {
+        let (id, maxc) = pool[(next(&mut r) as usize) % pool.len()];
+        if crate::item::has_durability(id) {
+            state.inventory.add_item_with_count(id, crate::item::max_durability(id));
+        } else {
+            let c = 1 + (next(&mut r) % maxc as u64) as i32;
+            for _ in 0..c { state.inventory.add_block(id); }
+        }
+    }
+}
+
 // Apply damage to the player through equipped armor (each defense point cuts ~4%, capped), wearing
 // the armor down when a hit actually lands.
 fn hurt_player(state: &mut EngineState, amt: f32) {
@@ -502,6 +786,73 @@ fn hurt_player(state: &mut EngineState, amt: f32) {
     let before = state.player.health;
     state.player.damage(reduced);
     if state.player.health < before { state.inventory.damage_armor(); }
+}
+
+// Advance projectiles: move, home (shulker bullets), trail sparks, and resolve block/mob/player hits.
+// Player-thrown projectiles damage mobs; ender pearls teleport the player; ghast fireballs explode.
+fn tick_projectiles(state: &mut EngineState, dt: f32) {
+    let eye = state.player.pos + vec3(0.0, 1.0, 0.0);
+    let mut projs = std::mem::take(&mut state.projectiles);
+    let mut survivors: Vec<Projectile> = Vec::with_capacity(projs.len());
+    let mut explosions: Vec<Vec3> = Vec::new();
+    let mut teleport: Option<Vec3> = None;
+    let mut bursts: Vec<(Vec3, [f32; 3], bool)> = Vec::new(); // (pos, color, big)
+    let mut incoming = 0.0f32;
+    for mut p in projs.drain(..) {
+        p.life -= dt;
+        // Motion: shulker bullets home; fireworks rise; snowballs/pearls fall; fireballs fly straight.
+        match p.kind {
+            ProjKind::ShulkerBullet => {
+                let want = (eye - p.pos).normalize_or_zero() * p.vel.length();
+                p.vel = (p.vel * 0.90 + want * 0.10).normalize_or_zero() * p.vel.length();
+            }
+            ProjKind::Firework => { p.vel.y += 6.0 * dt; }
+            _ => { p.vel.y -= p.gravity() * dt; }
+        }
+        p.pos += p.vel * dt;
+        // Block collision.
+        let (bx, by, bz) = (p.pos.x.floor() as i32, p.pos.y.floor() as i32, p.pos.z.floor() as i32);
+        let solid = { let id = state.chunks.get_block_world(bx, by, bz); id != 0 && Block::from_id(id).is_solid() };
+        let mut hit = p.life <= 0.0 || solid;
+        // Player-thrown projectiles hit mobs.
+        if !hit && p.from_player {
+            for m in state.mobs.iter_mut() {
+                let center = m.pos + vec3(0.0, m.kind.height() * 0.5, 0.0);
+                if (center - p.pos).length() < m.kind.hit_radius() + 0.4 {
+                    let dmg = match p.kind { ProjKind::Fireball => 6.0, ProjKind::Snowball => 1.0, _ => 0.0 };
+                    if dmg > 0.0 { m.health -= dmg; }
+                    hit = true; break;
+                }
+            }
+        }
+        // Enemy projectiles hit the player.
+        if !hit && !p.from_player && (p.pos - eye).length() < 0.8 { incoming += p.damage; hit = true; }
+        if hit {
+            match p.kind {
+                ProjKind::EnderPearl => teleport = Some(p.pos),
+                ProjKind::Fireball if p.explosive => explosions.push(p.pos),
+                _ => bursts.push((p.pos, p.color(), matches!(p.kind, ProjKind::Fireball | ProjKind::Firework))),
+            }
+            continue;
+        }
+        // Trail spark.
+        if state.particles.len() < 400 { state.particles.push(Particle { pos: p.pos, vel: Vec3::ZERO, life: 0.3, max_life: 0.3, size: p.size() * 0.7, color: p.color() }); }
+        survivors.push(p);
+    }
+    state.projectiles = survivors;
+    if incoming > 0.0 { hurt_player(state, incoming); }
+    for c in explosions { explode(state, c, 2.5); }
+    if let Some(tp) = teleport {
+        state.player.pos = tp + vec3(0.0, 0.5, 0.0);
+        state.player.vel = Vec3::ZERO;
+        state.player.air_max_y = state.player.pos.y; // no fall damage from the teleport
+        state.player.damage(2.0); // ender pearls jar you a little
+        spawn_particles(&mut state.spawn_rng, &mut state.particles, tp, 16, [0.25, 0.85, 0.7], 4.0, 0.6, 0.14);
+    }
+    for (pos, color, big) in bursts {
+        let n = if big { 24 } else { 10 };
+        spawn_particles(&mut state.spawn_rng, &mut state.particles, pos, n, color, if big { 5.0 } else { 3.0 }, 0.6, if big { 0.22 } else { 0.13 });
+    }
 }
 
 // Spawn a small burst of particles (capped so the buffer never overflows).
@@ -530,8 +881,9 @@ fn nearest_mob_hit(state: &EngineState, origin: Vec3, dir: Vec3, reach: f32, lim
     let mut best: Option<(usize, f32)> = None;
     for (i, m) in state.mobs.iter().enumerate() {
         let h = m.kind.height();
-        let min = vec3(m.pos.x - 0.45, m.pos.y, m.pos.z - 0.45);
-        let max = vec3(m.pos.x + 0.45, m.pos.y + h, m.pos.z + 0.45);
+        let hr = m.kind.hit_radius();
+        let min = vec3(m.pos.x - hr, m.pos.y, m.pos.z - hr);
+        let max = vec3(m.pos.x + hr, m.pos.y + h, m.pos.z + hr);
         let mut tmin = 0.0f32; let mut tmax = reach.min(limit);
         let mut hit = true;
         for a in 0..3 {
@@ -557,6 +909,46 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
         if let Some((id, dur)) = state.inventory.take_selected() {
             if let Some(old) = state.inventory.equip_armor(id, dur) { state.inventory.add_item_with_count(old.id, old.count); }
             state.player.eat_cd = 0.4;
+            return true;
+        }
+    }
+    // Firework rocket: consume one to launch a burst; boosts the player forward while gliding.
+    if item::is_firework(sel) && state.player.eat_cd <= 0.0 {
+        if state.inventory.consume_selected().is_some() {
+            state.player.firework_boost();
+            let f = state.player.forward();
+            let origin = state.player.eye_pos() + f * 0.5;
+            state.projectiles.push(Projectile { pos: origin, vel: f * 5.0 + vec3(0.0, 7.0, 0.0), life: 1.1, kind: ProjKind::Firework, from_player: true, damage: 0.0, explosive: false });
+            state.player.eat_cd = 0.4;
+            return true;
+        }
+    }
+    // Throwables: snowball (light damage/knock) and ender pearl (teleport to impact).
+    if (sel == 190 || sel == 191) && state.player.eat_cd <= 0.0 {
+        if state.inventory.consume_selected().is_some() {
+            let f = state.player.forward();
+            let origin = state.player.eye_pos() + f * 0.5;
+            let (kind, spd) = if sel == 191 { (ProjKind::EnderPearl, 16.0) } else { (ProjKind::Snowball, 20.0) };
+            state.projectiles.push(Projectile { pos: origin, vel: f * spd, life: 5.0, kind, from_player: true, damage: 0.0, explosive: false });
+            state.player.eat_cd = 0.4;
+            return true;
+        }
+    }
+    // Deflect an incoming fireball by attacking it — bats it back (now player-owned) at the shooter.
+    {
+        let eye_pos = state.player.eye_pos();
+        let f = state.player.forward();
+        let mut best: Option<(usize, f32)> = None;
+        for (i, p) in state.projectiles.iter().enumerate() {
+            if p.from_player || p.kind != ProjKind::Fireball { continue; }
+            let to = p.pos - eye_pos;
+            let d = to.length();
+            if d < 4.5 && to.normalize_or_zero().dot(f) > 0.5 && best.map_or(true, |b| d < b.1) { best = Some((i, d)); }
+        }
+        if let Some((i, _)) = best {
+            let p = &mut state.projectiles[i];
+            p.vel = -p.vel * 1.15;
+            p.from_player = true;
             return true;
         }
     }
@@ -611,6 +1003,12 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     if let Some(hit) = block_hit {
         let (x, y, z) = hit.pos;
         let id = state.chunks.get_block_world(x, y, z);
+        if id == 83 { // chest: breaking it loots it (never yields a placeable chest item)
+            loot_chest(state, x, y, z);
+            state.chunks.set_block_world(x, y, z, 0);
+            mark_neighbors_dirty(state, x, z);
+            return true;
+        }
         if id != 0 {
             // Stone/ore only drops when mined with a pickaxe; soft blocks always drop.
             let drops = !Block::from_id(id).needs_pickaxe() || item::is_pickaxe(sel);
@@ -690,7 +1088,18 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
             }
             if let Some(hit) = block_hit {
                 let (x, y, z) = hit.pos;
-                let m = crate::world::block::Block::from_id(state.chunks.get_block_world(x, y, z)).menu();
+                let id = state.chunks.get_block_world(x, y, z);
+                if id == 83 { // chest: one-time loot, then it's consumed
+                    loot_chest(state, x, y, z);
+                    state.chunks.set_block_world(x, y, z, 0);
+                    mark_neighbors_dirty(state, x, z);
+                    return 30;
+                }
+                // Tap an obsidian frame with flint & steel to ignite a nether portal.
+                if id == 78 && state.dim != 2 && crate::item::is_flint_steel(state.inventory.selected_block()) {
+                    if light_portal(state, x, y, z) { state.inventory.damage_selected(); return 41; }
+                }
+                let m = crate::world::block::Block::from_id(id).menu();
                 if m != 0 { return 10 + m; }
             }
         }

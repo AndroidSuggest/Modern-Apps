@@ -19,11 +19,12 @@ crate-type = ["cdylib", "rlib"]
 jni.workspace = true
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
 hashbrown = "0.14"
-noise = "0.8"
+# noise removed – replaced by src/world/perlin.rs (exact-math Perlin), which also
+# drops the whole stale rand 0.7 stack noise pulled (8 crates total).
 glam = { version = "0.27", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-once_cell = "1.19"
+# once_cell removed – it was declared but never used in src
 
 [profile.release]
 opt-level = 3

@@ -88,9 +88,16 @@ pub enum Block {
     AzaleaLeaves = 80,
     WardingStone = 81,
     Jukebox = 82,
+    Chest = 83,
+    Lava = 84,
+    EndStone = 85,
+    NetherPortal = 86,
+    EndPortal = 87,
+    Beacon = 88,
+    Purpur = 89,
 }
 
-pub const MAX_BLOCK_ID: u8 = 82;
+pub const MAX_BLOCK_ID: u8 = 89;
 
 impl Block {
     pub fn from_id(id: u8) -> Self {
@@ -98,9 +105,9 @@ impl Block {
     }
     pub fn id(self) -> u8 { self as u8 }
     pub fn is_air(self) -> bool { matches!(self, Self::Air) }
-    pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass) }
+    pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass | Self::Lava | Self::NetherPortal | Self::EndPortal) }
     pub fn is_transparent(self) -> bool {
-        matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves | Self::DarkOakLeaves | Self::AzaleaLeaves)
+        matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves | Self::DarkOakLeaves | Self::AzaleaLeaves | Self::Lava | Self::NetherPortal | Self::EndPortal)
     }
     pub fn is_opaque(self) -> bool { !self.is_transparent() }
 
@@ -195,6 +202,13 @@ impl Block {
             Self::AzaleaLeaves => 116,
             Self::WardingStone => 117,
             Self::Jukebox => 118,
+            Self::Chest => 119,
+            Self::Lava => 120,
+            Self::EndStone => 121,
+            Self::NetherPortal => 122,
+            Self::EndPortal => 123,
+            Self::Beacon => 124,
+            Self::Purpur => 125,
         }
     }
     pub fn tile_bottom(self) -> u32 {
@@ -251,13 +265,14 @@ impl Block {
             | Self::IronBlock | Self::DiamondBlock | Self::EmeraldBlock | Self::Netherrack | Self::Furnace
             | Self::RedSandstone | Self::Sandstone | Self::GraniteBricks | Self::DeepslateBricks | Self::NetherBricks
             | Self::EndStoneBricks | Self::CobbledDeepslate | Self::Prismarine | Self::DarkPrismarine | Self::Dripstone
-            | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce)
+            | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce | Self::Purpur)
     }
     // Block light emitted (0..15) for dynamic lighting.
     pub fn light_emission(self) -> u8 {
         match self {
-            Self::Glowstone | Self::SeaLantern => 15,
+            Self::Glowstone | Self::SeaLantern | Self::Lava | Self::Beacon => 15,
             Self::WardingStone => 13,
+            Self::NetherPortal | Self::EndPortal => 12,
             Self::Magma => 11,
             _ => 0,
         }

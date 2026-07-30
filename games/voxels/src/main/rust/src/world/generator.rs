@@ -1,6 +1,6 @@
 use super::chunk::{Chunk, CHUNK_SIZE, CHUNK_HEIGHT};
-use noise::NoiseFn;
-use noise::Perlin;
+use crate::world::perlin::NoiseFn;
+use crate::world::perlin::Perlin;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -17,22 +17,281 @@ pub enum Biome {
     JaggedPeaks, FrozenPeaks, StonyPeaks,
 }
 
+// ---- Multi-chunk villages (deterministic region grid) ----
+const VILLAGE_REGION: i32 = 6; // chunks per region side; at most one village per region
+
+const B_HOUSE: u8 = 0;
+const B_WELL: u8 = 1;
+const B_LAMP: u8 = 2;
+const B_BIGHOUSE: u8 = 3;
+const B_FARM: u8 = 4;
+const B_BLACKSMITH: u8 = 5;
+const B_CHURCH: u8 = 6;
+
+// Level a village column: dirt foundation down a few blocks, clear terrain above up to `clear_to`.
+fn level_column(chunk: &mut Chunk, lx: usize, lz: usize, base: usize, clear_to: usize, floor: u8) {
+    for dyb in 1..=3 { if base >= dyb { chunk.set_block(lx, base - dyb, lz, 2); } } // dirt foundation
+    chunk.set_block(lx, base, lz, floor);
+    for dy in 1..=clear_to { if base + dy < CHUNK_HEIGHT { chunk.set_block(lx, base + dy, lz, 0); } }
+}
+
+fn hash3(a: i32, b: i32, c: u32) -> u64 {
+    let mut h = DefaultHasher::new();
+    (a, b, c).hash(&mut h);
+    h.finish()
+}
+fn in_chunk(wx: i32, wz: i32, ox: i32, oz: i32) -> bool { wx >= ox && wx < ox + 16 && wz >= oz && wz < oz + 16 }
+
+// Render a single village building, writing only the columns that fall inside this chunk (so a
+// building straddling a chunk border is completed by whichever chunks overlap it).
+fn render_building(chunk: &mut Chunk, ox: i32, oz: i32, bx: i32, bz: i32, w: i32, d: i32, base: usize, kind: u8) {
+    if base + 7 >= CHUNK_HEIGHT { return; }
+    match kind {
+        B_WELL => {
+            for gx in 0..3 { for gz in 0..3 {
+                let (wx, wz) = (bx + gx, bz + gz);
+                if !in_chunk(wx, wz, ox, oz) { continue; }
+                let (lx, lz) = ((wx - ox) as usize, (wz - oz) as usize);
+                let id = if gx == 1 && gz == 1 { 12 } else { 8 };
+                chunk.set_block(lx, base, lz, id);
+                let corner = (gx == 0 || gx == 2) && (gz == 0 || gz == 2);
+                if corner { for dy in 1..=2 { chunk.set_block(lx, base + dy, lz, 8); } }
+            }}
+        }
+        B_LAMP => {
+            if in_chunk(bx, bz, ox, oz) {
+                let (lx, lz) = ((bx - ox) as usize, (bz - oz) as usize);
+                for dy in 1..=3 { chunk.set_block(lx, base + dy, lz, 4); }
+                chunk.set_block(lx, base + 4, lz, 77); // glowstone lamp
+            }
+        }
+        B_FARM => {
+            for gx in 0..w { for gz in 0..d {
+                let (wx, wz) = (bx + gx, bz + gz);
+                if !in_chunk(wx, wz, ox, oz) { continue; }
+                let (lx, lz) = ((wx - ox) as usize, (wz - oz) as usize);
+                let water = gx == w / 2; // central irrigation channel
+                level_column(chunk, lx, lz, base, 3, if water { 12 } else { 59 }); // water / farmland
+                if !water && (gx + gz) % 2 == 0 && base + 1 < CHUNK_HEIGHT {
+                    chunk.set_block(lx, base + 1, lz, 58); // hay = ripe crop stand-in
+                }
+            }}
+        }
+        _ => {
+            let height: usize = match kind { B_BIGHOUSE => 6, B_CHURCH => 9, _ => 4 };
+            for gx in 0..w { for gz in 0..d {
+                let (wx, wz) = (bx + gx, bz + gz);
+                if !in_chunk(wx, wz, ox, oz) { continue; }
+                let (lx, lz) = ((wx - ox) as usize, (wz - oz) as usize);
+                level_column(chunk, lx, lz, base, height + 2, 8); // foundation + cobble floor + clear
+                let edge = gx == 0 || gx == w - 1 || gz == 0 || gz == d - 1;
+                if edge {
+                    for dy in 1..height {
+                        let door = gz == 0 && gx == w / 2 && dy <= 2;
+                        if door { continue; }
+                        let window = dy == 2 && (((gx == 0 || gx == w - 1) && gz == d / 2) || (gz == d - 1 && gx == w / 2));
+                        chunk.set_block(lx, base + dy, lz, if window { 7 } else { 10 });
+                    }
+                }
+                chunk.set_block(lx, base + height, lz, 10); // roof
+            }}
+            let (cxw, czw) = (bx + w / 2, bz + d / 2);
+            if in_chunk(cxw, czw, ox, oz) {
+                chunk.set_block((cxw - ox) as usize, base, (czw - oz) as usize, if kind == B_BIGHOUSE { 81 } else { 77 });
+            }
+            // Blacksmith forge: furnace + magma fire + iron-block anvil inside.
+            if kind == B_BLACKSMITH {
+                for &(dx, dz, dy, id) in &[(1i32, 1i32, 1usize, 35u8), (2, 1, 0, 76), (3, 1, 1, 23)] {
+                    let (wx, wz) = (bx + dx, bz + dz);
+                    if in_chunk(wx, wz, ox, oz) { chunk.set_block((wx - ox) as usize, base + dy, (wz - oz) as usize, id); }
+                }
+            }
+            // Church spire: a sea-lantern beacon above the roof.
+            if kind == B_CHURCH && in_chunk(cxw, czw, ox, oz) && base + height + 2 < CHUNK_HEIGHT {
+                chunk.set_block((cxw - ox) as usize, base + height + 1, (czw - oz) as usize, 67);
+            }
+        }
+    }
+}
+
+// A partial obsidian ruined-portal frame standing at the surface.
+fn build_ruined_portal(chunk: &mut Chunk, cx: usize, cz: usize, base: usize) {
+    if cx + 4 >= 16 || base + 6 >= CHUNK_HEIGHT { return; }
+    for gx in 0..4i32 { for gy in 0..5i32 {
+        let edge = gx == 0 || gx == 3 || gy == 0 || gy == 4;
+        if !edge { continue; }
+        // Broken: skip a few frame blocks pseudo-randomly.
+        if (gx * 7 + gy * 13) % 5 == 0 { continue; }
+        chunk.set_block(cx + gx as usize, base + gy as usize, cz, 78); // obsidian
+    }}
+    // A little rubble at the base, with scattered magma and glowstone.
+    for gx in -1i32..=4 {
+        let x = cx as i32 + gx;
+        if x >= 0 && x < 16 {
+            let rub = match (gx.rem_euclid(3), gx.rem_euclid(5)) { (0, _) => 76, (_, 0) => 77, _ => 78 }; // magma/glowstone/obsidian
+            chunk.set_block(x as usize, base, cz, rub);
+        }
+    }
+    // Loot chest beside the ruined frame.
+    if cx + 4 < 16 { chunk.set_block(cx + 4, base + 1, cz, 83); }
+}
+
+// Carve one 3-wide mineshaft corridor arm from a centre along (dirx,dirz), with a plank floor,
+// periodic wood support frames, and only the columns inside this chunk written.
+fn carve_corridor(chunk: &mut Chunk, ox: i32, oz: i32, cx: i32, cz: i32, dirx: i32, dirz: i32, len: i32, fy: usize) {
+    for i in 0..len {
+        let (ax, az) = (cx + dirx * i, cz + dirz * i);
+        for p in -1..=1 {
+            let wx = ax + if dirx != 0 { 0 } else { p };
+            let wz = az + if dirz != 0 { 0 } else { p };
+            if !in_chunk(wx, wz, ox, oz) { continue; }
+            let (lx, lz) = ((wx - ox) as usize, (wz - oz) as usize);
+            chunk.set_block(lx, fy, lz, 10); // plank floor
+            for dy in 1..=2 { if fy + dy < CHUNK_HEIGHT { chunk.set_block(lx, fy + dy, lz, 0); } }
+        }
+        if i % 6 == 0 {
+            for &p in &[-1i32, 1] {
+                let wx = ax + if dirx != 0 { 0 } else { p };
+                let wz = az + if dirz != 0 { 0 } else { p };
+                if in_chunk(wx, wz, ox, oz) { let (lx, lz) = ((wx - ox) as usize, (wz - oz) as usize); for dy in 1..=2 { if fy + dy < CHUNK_HEIGHT { chunk.set_block(lx, fy + dy, lz, 4); } } } // posts
+            }
+            for p in -1..=1 {
+                let wx = ax + if dirx != 0 { 0 } else { p };
+                let wz = az + if dirz != 0 { 0 } else { p };
+                if in_chunk(wx, wz, ox, oz) && fy + 3 < CHUNK_HEIGHT { chunk.set_block((wx - ox) as usize, fy + 3, (wz - oz) as usize, 4); } // beam
+            }
+        }
+    }
+}
+
+// A small underground dungeon room: mossy-cobble shell, a light, and a couple of loot blocks.
+fn build_dungeon(chunk: &mut Chunk, cx: usize, cz: usize, y: usize, r: u64) {
+    if cx + 4 >= 16 || cz + 4 >= 16 || y + 5 >= CHUNK_HEIGHT || y < 2 { return; }
+    for gx in 0..5 { for gz in 0..5 { for gy in 0..5 {
+        let edge = gx == 0 || gx == 4 || gz == 0 || gz == 4 || gy == 0 || gy == 4;
+        let id = if edge { if (gx + gz + gy) % 3 == 0 { 15 } else { 8 } } else { 0 };
+        chunk.set_block(cx + gx, y + gy, cz + gz, id);
+    }}}
+    chunk.set_block(cx + 2, y + 3, cz + 2, 77); // glowstone light
+    let _ = r;
+    // Loot chests in the corners.
+    chunk.set_block(cx + 1, y + 1, cz + 1, 83);
+    chunk.set_block(cx + 3, y + 1, cz + 3, 83);
+}
+
+// A stepped sandstone desert temple with a small hidden chamber of loot chests underneath.
+fn build_temple(chunk: &mut Chunk, cx: usize, cz: usize, base: usize) {
+    let (c, cz2) = (cx as i32, cz as i32);
+    if c - 4 < 0 || c + 4 >= 16 || cz2 - 4 < 0 || cz2 + 4 >= 16 || base + 6 >= CHUNK_HEIGHT { return; }
+    for gy in 0..6i32 {
+        let r = 4 - gy;
+        for gx in -r..=r { for gz in -r..=r {
+            chunk.set_block((c + gx) as usize, base + gy as usize, (cz2 + gz) as usize, 38); // sandstone
+        }}
+    }
+    for gy in 1..=3 { for gx in -1i32..=1 { for gz in -1i32..=1 {
+        let y = base as i32 - gy;
+        if y >= 1 { chunk.set_block((c + gx) as usize, y as usize, (cz2 + gz) as usize, 0); }
+    }}}
+    let fy = base as i32 - 3;
+    if fy >= 1 {
+        chunk.set_block((c - 1) as usize, fy as usize, (cz2 - 1) as usize, 83);
+        chunk.set_block((c + 1) as usize, fy as usize, (cz2 + 1) as usize, 83);
+        if base >= 1 { chunk.set_block(cx, base - 1, cz, 77); }
+    }
+}
+
+// An underground stronghold room: brick/cobble shell, loot chests, and a decorative obsidian frame.
+fn build_stronghold(chunk: &mut Chunk, cx: usize, cz: usize, y: usize) {
+    if cx + 6 >= 16 || cz + 6 >= 16 || y + 5 >= CHUNK_HEIGHT || y < 2 { return; }
+    for gx in 0..7 { for gz in 0..7 { for gy in 0..5 {
+        let edge = gx == 0 || gx == 6 || gz == 0 || gz == 6 || gy == 0 || gy == 4;
+        let id = if edge { if (gx + gz + gy) % 4 == 0 { 54 } else { 8 } } else { 0 };
+        chunk.set_block(cx + gx, y + gy, cz + gz, id);
+    }}}
+    chunk.set_block(cx + 1, y + 1, cz + 1, 83);
+    chunk.set_block(cx + 5, y + 1, cz + 5, 83);
+    chunk.set_block(cx + 3, y + 3, cz + 3, 77); // glowstone
+    for gx in 2..=4 { chunk.set_block(cx + gx, y + 1, cz + 3, 78); chunk.set_block(cx + gx, y + 3, cz + 3, 78); }
+    for gy in 1..=3 { chunk.set_block(cx + 2, y + gy, cz + 3, 78); chunk.set_block(cx + 4, y + gy, cz + 3, 78); }
+    // Active End portal: a 2x2 pool of end-portal blocks on the floor — walk in to reach the End.
+    for gx in 2..=3 { for gz in 2..=3 {
+        chunk.set_block(cx + gx, y, cz + gz, 85);       // end-stone rim under the portal
+        chunk.set_block(cx + gx, y + 1, cz + gz, 87);   // end portal
+    }}
+}
+
+// A nether-brick fortress bridge section carved into the netherrack: a walkway with railings,
+// arched pillars, glowstone lamps and loot chests. Built above the lava line in the Nether.
+fn build_nether_fortress(chunk: &mut Chunk, cx: usize, cz: usize, base: usize, r: u64) {
+    if cx + 8 >= 16 || cz + 8 >= 16 || base + 8 >= CHUNK_HEIGHT || base < 2 { return; }
+    // Hollow out a hall.
+    for gx in 0..9 { for gz in 0..9 { for gy in 1..7 { chunk.set_block(cx + gx, base + gy, cz + gz, 0); }}}
+    // Nether-brick floor + surrounding railing.
+    for gx in 0..9 { for gz in 0..9 {
+        chunk.set_block(cx + gx, base, cz + gz, 55);
+        let edge = gx == 0 || gx == 8 || gz == 0 || gz == 8;
+        if edge && (gx + gz) % 2 == 0 { chunk.set_block(cx + gx, base + 1, cz + gz, 55); } // low railing
+    }}
+    // Four arched corner pillars up to the ceiling beam.
+    for &(px, pz) in &[(0usize, 0usize), (8, 0), (0, 8), (8, 8)] {
+        for gy in 1..=6 { chunk.set_block(cx + px, base + gy, cz + pz, 55); }
+    }
+    // Ceiling beams across the top.
+    for gx in 0..9 { chunk.set_block(cx + gx, base + 6, cz, 55); chunk.set_block(cx + gx, base + 6, cz + 8, 55); }
+    for gz in 0..9 { chunk.set_block(cx, base + 6, cz + gz, 55); chunk.set_block(cx + 8, base + 6, cz + gz, 55); }
+    // Glowstone lamps hung under the beams + loot chests along the walkway.
+    chunk.set_block(cx + 4, base + 6, cz + 4, 77);
+    chunk.set_block(cx + 2, base + 5, cz + 2, 77);
+    chunk.set_block(cx + 6, base + 5, cz + 6, 77);
+    chunk.set_block(cx + 1, base + 1, cz + 4, 83);
+    chunk.set_block(cx + 7, base + 1, cz + 4, 83);
+    let _ = r;
+}
+
+// An End City: a tall purpur tower on an end-stone island, capped with a loot chest. Simple and
+// deterministic (single chunk), rising from the island surface.
+fn build_end_city(chunk: &mut Chunk, cx: usize, cz: usize, base: usize, r: u64) {
+    if cx + 4 >= 16 || cz + 4 >= 16 || base + 18 >= CHUNK_HEIGHT { return; }
+    let height = 12 + (r % 6) as usize;
+    // Hollow purpur tower shell (5x5) with a room every few floors.
+    for gy in 0..height { for gx in 0..5 { for gz in 0..5 {
+        let edge = gx == 0 || gx == 4 || gz == 0 || gz == 4;
+        let floor = gy % 5 == 0;
+        chunk.set_block(cx + gx, base + gy, cz + gz, if edge || floor { 89 } else { 0 });
+    }}}
+    // Battlement crown of end-stone bricks.
+    for gx in 0..5 { for gz in 0..5 {
+        if (gx == 0 || gx == 4 || gz == 0 || gz == 4) && (gx + gz) % 2 == 0 {
+            chunk.set_block(cx + gx, base + height, cz + gz, 56);
+        }
+    }}
+    // Glowstone lantern + loot chest in the top room.
+    let top = base + height - 4;
+    chunk.set_block(cx + 2, base + height - 1, cz + 2, 77);
+    chunk.set_block(cx + 1, top, cz + 1, 83);
+    chunk.set_block(cx + 3, top, cz + 3, 83);
+}
+
 pub struct TerrainGen {
     perlin_height: Perlin,
     perlin_detail: Perlin,
     perlin_cave: Perlin,
     perlin_biome: Perlin,
     seed: u32,
+    pub dim: u8, // 0 overworld, 1 nether, 2 end
 }
 
 impl TerrainGen {
-    pub fn new(seed: u32) -> Self {
+    pub fn new(seed: u32) -> Self { Self::new_dim(seed, 0) }
+    pub fn new_dim(seed: u32, dim: u8) -> Self {
         Self {
             perlin_height: Perlin::new(seed),
             perlin_detail: Perlin::new(seed.wrapping_add(101)),
             perlin_cave: Perlin::new(seed.wrapping_add(202)),
             perlin_biome: Perlin::new(seed.wrapping_add(303)),
             seed,
+            dim,
         }
     }
     // Per-biome grass tint (multiplied over the grayscale grass_top / grass_side textures). Uses the
@@ -180,6 +439,89 @@ impl TerrainGen {
         if t < 0.28 { 0 } else if t < 0.5 { 1 } else if t < 0.72 { 2 } else { 3 }
     }
     pub fn fill_chunk(&self, chunk: &mut Chunk) {
+        match self.dim {
+            1 => self.fill_nether(chunk),
+            2 => self.fill_end(chunk),
+            _ => self.fill_overworld(chunk),
+        }
+        chunk.generated = true;
+        chunk.mesh_dirty = true;
+    }
+
+    // Nether: netherrack shell riddled with large 3D-noise caverns, a lava sea in the low y range,
+    // glowstone clusters on ceilings, and magma patches. No sky (solid roof + floor).
+    fn fill_nether(&self, chunk: &mut Chunk) {
+        let (ox, oz) = chunk.pos.world_origin();
+        const ROOF: i32 = 120;
+        const LAVA: i32 = 31;
+        for dz in 0..CHUNK_SIZE { for dx in 0..CHUNK_SIZE {
+            let wx = (ox + dx as i32) as f64;
+            let wz = (oz + dz as i32) as f64;
+            for y in 0..=ROOF {
+                let yy = y as usize;
+                // Solid bedrock cap at floor/roof.
+                if y <= 2 || y >= ROOF - 2 { chunk.set_block(dx, yy, dz, 13); continue; }
+                // Carve big caverns with 3D noise; solid netherrack elsewhere.
+                let n = self.perlin_cave.get([wx * 0.035, y as f64 * 0.045, wz * 0.035])
+                    + 0.5 * self.perlin_detail.get([wx * 0.07, y as f64 * 0.09, wz * 0.07]);
+                if n > 0.15 {
+                    if y <= LAVA { chunk.set_block(dx, yy, dz, 84); } // lava sea in the open low area
+                } else {
+                    // Magma near the lava line, netherrack elsewhere.
+                    let id = if y <= LAVA + 1 && n > 0.02 { 76 } else { 32 };
+                    chunk.set_block(dx, yy, dz, id);
+                }
+            }
+            // Glowstone clusters hanging from the ceiling.
+            let g = self.perlin_biome.get([wx * 0.08, wz * 0.08]);
+            if g > 0.72 {
+                for k in 0..3 { let y = (ROOF - 3 - k) as usize; if chunk.get_block(dx, y, dz) == 32 { chunk.set_block(dx, y, dz, 77); } }
+            }
+        }}
+        // Nether-brick fortress section (~1/60 chunks), sitting on a platform above the lava sea.
+        let fh = hash3(chunk.pos.0, chunk.pos.1, self.seed ^ 0x0F02417E);
+        if fh % 60 == 0 {
+            let base = LAVA as usize + 6 + (fh % 20) as usize;
+            build_nether_fortress(chunk, 4, 4, base, fh);
+        }
+    }
+
+    // End: floating end-stone islands in a void (no floor). A guaranteed central island near origin.
+    fn fill_end(&self, chunk: &mut Chunk) {
+        let (ox, oz) = chunk.pos.world_origin();
+        for dz in 0..CHUNK_SIZE { for dx in 0..CHUNK_SIZE {
+            let wx = (ox + dx as i32) as f64;
+            let wz = (oz + dz as i32) as f64;
+            let dist = (wx * wx + wz * wz).sqrt();
+            for y in 40..90 {
+                // Island mass: 3D noise thresholded, biased to a slab around y=64; central island guaranteed.
+                let slab = 1.0 - ((y as f64 - 64.0).abs() / 22.0);
+                let n = self.perlin_cave.get([wx * 0.02, y as f64 * 0.03, wz * 0.02]) + slab * 0.6;
+                let central = dist < 34.0 && (y as f64 - 62.0).abs() < 6.0;
+                if n > 0.55 || central { chunk.set_block(dx, y as usize, dz, 85); }
+            }
+        }}
+        // Obsidian pillars on the central island.
+        if ox.abs() < 16 && oz.abs() < 16 {
+            for &(px, pz) in &[(2i32, 2i32), (12, 3), (4, 12), (11, 11)] {
+                if px >= 0 && px < 16 && pz >= 0 && pz < 16 {
+                    for y in 63..70 { chunk.set_block(px as usize, y, pz as usize, 78); }
+                }
+            }
+        }
+        // End City (~1/40 outer chunks): a purpur tower rising from the island top, away from origin
+        // so it never clashes with the dragon-fight central island.
+        let dist0 = ((ox + 8) as f64).hypot((oz + 8) as f64);
+        let ch = hash3(chunk.pos.0, chunk.pos.1, self.seed ^ 0x0E7DC17E);
+        if dist0 > 80.0 && ch % 40 == 0 {
+            // Find the island surface at local (6,6): topmost end-stone in the column.
+            let mut top = None;
+            for y in (40..90).rev() { if chunk.get_block(6, y, 6) == 85 { top = Some(y); break; } }
+            if let Some(sy) = top { build_end_city(chunk, 6, 6, sy + 1, ch); }
+        }
+    }
+
+    fn fill_overworld(&self, chunk: &mut Chunk) {
         let (ox, oz) = chunk.pos.world_origin();
         let mut heightmap = [[0i32; CHUNK_SIZE]; CHUNK_SIZE];
         for dz in 0..CHUNK_SIZE { for dx in 0..CHUNK_SIZE {
@@ -375,8 +717,137 @@ impl TerrainGen {
                 _ => {}
             }
         }
+        // Multi-chunk villages + mineshafts (deterministic across their region grids).
+        self.place_villages(chunk);
+        self.place_mineshafts(chunk);
+        // Ruined portal (surface) + dungeon (underground) — independent rare rolls.
+        let ph = hash3(chunk.pos.0, chunk.pos.1, self.seed ^ 0x0B51D1A4);
+        if ph % 130 == 0 {
+            let (bx, bz) = (ox + 6, oz + 8);
+            let sh = self.height_at(bx as f64, bz as f64);
+            if sh >= Self::SEA_LEVEL as i32 { build_ruined_portal(chunk, 6, 8, sh as usize); }
+        }
+        let dh = hash3(chunk.pos.0, chunk.pos.1, self.seed ^ 0x0D0465E0);
+        if dh % 80 == 0 {
+            let (cxw, czw) = (ox + 5, oz + 5);
+            let surf = self.height_at(cxw as f64, czw as f64);
+            let y = 16 + (dh % 22) as i32;
+            if y + 6 < surf { build_dungeon(chunk, 5, 5, y as usize, dh); }
+        }
+        // Desert temple (surface, desert/badlands).
+        let te = hash3(chunk.pos.0, chunk.pos.1, self.seed ^ 0x7E0917E5);
+        if te % 150 == 0 {
+            let (bx, bz) = (ox + 8, oz + 8);
+            let sh = self.height_at(bx as f64, bz as f64);
+            if sh >= Self::SEA_LEVEL as i32 && matches!(self.biome_at(bx as f64, bz as f64, sh), Biome::Desert | Biome::Badlands) {
+                build_temple(chunk, 8, 8, sh as usize);
+            }
+        }
+        // Stronghold (deep underground).
+        let st = hash3(chunk.pos.0, chunk.pos.1, self.seed ^ 0x0517A011);
+        if st % 240 == 0 {
+            let surf = self.height_at((ox + 7) as f64, (oz + 7) as f64);
+            let y = 10 + (st % 12) as i32;
+            if y + 6 < surf { build_stronghold(chunk, 4, 4, y as usize); }
+        }
         chunk.generated = true;
         chunk.mesh_dirty = true;
+    }
+
+    // Deterministic building list for a village centred at world (cx, cz): (bx, bz, w, d, kind).
+    fn village_layout(&self, cx: i32, cz: i32) -> Vec<(i32, i32, i32, i32, u8)> {
+        let mut list = vec![(cx - 1, cz - 1, 3, 3, B_WELL)];
+        let plots = [(-22, -18), (6, -22), (20, -6), (-20, 8), (8, 18), (-8, -20), (22, 14), (-24, -4), (4, 8)];
+        for (i, (dx, dz)) in plots.iter().enumerate() {
+            let hh = hash3(cx + dx, cz + dz, self.seed ^ 0x8171A6E);
+            match i {
+                0 => list.push((cx + dx, cz + dz, 7, 7, B_BIGHOUSE)),
+                1 => list.push((cx + dx, cz + dz, 6, 6, B_BLACKSMITH)),
+                4 => list.push((cx + dx, cz + dz, 5, 5, B_CHURCH)),
+                3 | 6 => list.push((cx + dx, cz + dz, 7, 5, B_FARM)),
+                _ => {
+                    if hh % 10 < 7 {
+                        let (w, d) = (5 + (hh % 3) as i32, 5 + ((hh / 3) % 3) as i32);
+                        list.push((cx + dx, cz + dz, w, d, B_HOUSE));
+                    } else if hh % 10 == 8 {
+                        list.push((cx + dx, cz + dz, 1, 1, B_LAMP));
+                    }
+                }
+            }
+        }
+        list
+    }
+
+    // Render any village buildings/roads that overlap this chunk (checking the 3x3 nearby regions).
+    fn place_villages(&self, chunk: &mut Chunk) {
+        let (ox, oz) = chunk.pos.world_origin();
+        let crx = chunk.pos.0.div_euclid(VILLAGE_REGION);
+        let crz = chunk.pos.1.div_euclid(VILLAGE_REGION);
+        for rrx in (crx - 1)..=(crx + 1) { for rrz in (crz - 1)..=(crz + 1) {
+            let hv = hash3(rrx, rrz, self.seed ^ 0x5A11A6E);
+            if hv % 100 >= 30 { continue; } // 30% of regions hold a village
+            let ccx = rrx * VILLAGE_REGION + (hv % VILLAGE_REGION as u64) as i32;
+            let ccz = rrz * VILLAGE_REGION + ((hv / 7) % VILLAGE_REGION as u64) as i32;
+            let (cx, cz) = (ccx * 16 + 8, ccz * 16 + 8);
+            let base_i = self.height_at(cx as f64, cz as f64);
+            if base_i < Self::SEA_LEVEL as i32 + 1 { continue; }
+            if !matches!(self.biome_at(cx as f64, cz as f64, base_i), Biome::Plains | Biome::Meadow | Biome::Savanna) { continue; }
+            let base = base_i as usize;
+            if base + 7 >= CHUNK_HEIGHT { continue; }
+            // Crossroads (packed-dirt), bounded to the village footprint.
+            for wz in oz..oz + 16 {
+                if (wz - cz).abs() > 28 { continue; }
+                for w in -1..=1 { let wx = cx + w; if in_chunk(wx, wz, ox, oz) {
+                    level_column(chunk, (wx - ox) as usize, (wz - oz) as usize, base, 3, 60);
+                }}
+            }
+            for wx in ox..ox + 16 {
+                if (wx - cx).abs() > 28 { continue; }
+                for w in -1..=1 { let wz = cz + w; if in_chunk(wx, wz, ox, oz) {
+                    level_column(chunk, (wx - ox) as usize, (wz - oz) as usize, base, 3, 60);
+                }}
+            }
+            for (bx, bz, w, d, kind) in self.village_layout(cx, cz) {
+                render_building(chunk, ox, oz, bx, bz, w, d, base, kind);
+            }
+        }}
+    }
+
+    // Render mineshaft corridors (deterministic region grid, ~7 chunks) overlapping this chunk.
+    fn place_mineshafts(&self, chunk: &mut Chunk) {
+        const MINE_REGION: i32 = 7;
+        let (ox, oz) = chunk.pos.world_origin();
+        let crx = chunk.pos.0.div_euclid(MINE_REGION);
+        let crz = chunk.pos.1.div_euclid(MINE_REGION);
+        for rrx in (crx - 1)..=(crx + 1) { for rrz in (crz - 1)..=(crz + 1) {
+            let hv = hash3(rrx, rrz, self.seed ^ 0x319E5417);
+            if hv % 100 >= 25 { continue; } // 25% of regions
+            let ccx = rrx * MINE_REGION + (hv % MINE_REGION as u64) as i32;
+            let ccz = rrz * MINE_REGION + ((hv / 5) % MINE_REGION as u64) as i32;
+            let (cx, cz) = (ccx * 16 + 8, ccz * 16 + 8);
+            let fy = 16 + (hv % 14) as usize; // depth 16..29
+            let surf = self.height_at(cx as f64, cz as f64);
+            if (surf as usize) < fy + 6 { continue; } // must be underground
+            // Central junction room (5x5).
+            for gx in -2..=2 { for gz in -2..=2 {
+                let (wx, wz) = (cx + gx, cz + gz);
+                if !in_chunk(wx, wz, ox, oz) { continue; }
+                let (lx, lz) = ((wx - ox) as usize, (wz - oz) as usize);
+                chunk.set_block(lx, fy, lz, 10);
+                for dy in 1..=2 { if fy + dy < CHUNK_HEIGHT { chunk.set_block(lx, fy + dy, lz, 0); } }
+            }}
+            for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                carve_corridor(chunk, ox, oz, cx, cz, dx, dz, 44, fy);
+            }
+            // A bit of loot + light in the junction.
+            if in_chunk(cx, cz, ox, oz) {
+                let (lx, lz) = ((cx - ox) as usize, (cz - oz) as usize);
+                if fy + 3 < CHUNK_HEIGHT { chunk.set_block(lx, fy + 3, lz, 77); } // glowstone
+            }
+            if in_chunk(cx + 2, cz + 2, ox, oz) {
+                chunk.set_block((cx + 2 - ox) as usize, fy + 1, (cz + 2 - oz) as usize, 83); // loot chest
+            }
+        }}
     }
 
     pub const SEA_LEVEL: usize = 62;
@@ -386,6 +857,7 @@ impl TerrainGen {
     // oceans/lakes. Using height_at (not the scanned solid top) means cave shafts carved into high
     // land are NOT flooded — only genuine lowland columns (surface below sea) hold water.
     pub fn ensure_water(&self, chunk: &mut Chunk) {
+        if self.dim != 0 { return; }
         let (ox, oz) = chunk.pos.world_origin();
         for dz in 0..CHUNK_SIZE { for dx in 0..CHUNK_SIZE {
             let wx = (ox + dx as i32) as f64;

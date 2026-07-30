@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         com.vayunmathur.games.voxels.util.SoundFx.init(this)
+        com.vayunmathur.games.voxels.util.MusicFx.startAmbient(this)
         setContent {
             VoxelsTheme {
                 var inventoryJson by remember { mutableStateOf("""{"selected":0,"slots":[{"id":3,"count":64},{"id":2,"count":64},{"id":1,"count":64},{"id":4,"count":16},{"id":10,"count":32},{"id":6,"count":32},{"id":7,"count":16},{"id":8,"count":16},{"id":9,"count":16}]}""") }
@@ -132,6 +133,8 @@ class MainActivity : ComponentActivity() {
                                         com.vayunmathur.games.voxels.util.MusicFx.toggle(this@MainActivity, com.vayunmathur.games.voxels.ui.discTrack[held])
                                     }
                                     20 -> tradeOpen = true // villager
+                                    30 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace() // looted a chest
+                                    41 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace() // ignited a portal
                                 }
                             } catch (_: Exception) {} },
                             onBreak = { off -> try { if (VoxelsNative.breakBlockAt(off.x, off.y)) com.vayunmathur.games.voxels.util.SoundFx.playBreak() } catch (_: Exception) {} }
@@ -186,6 +189,14 @@ class MainActivity : ComponentActivity() {
                     // Health/effects HUD just above the hotbar.
                     Box(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 78.dp)) {
                         HealthOverlay(healthJson)
+                    }
+                    // Boss health bar (Ender Dragon) at the top.
+                    Box(Modifier.align(Alignment.TopCenter).padding(top = 70.dp)) {
+                        BossBar(healthJson)
+                    }
+                    // Elytra glide indicator, above the hotbar.
+                    Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp)) {
+                        GlideIndicator(healthJson)
                     }
 
                     Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)) {

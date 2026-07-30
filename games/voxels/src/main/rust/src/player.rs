@@ -12,6 +12,11 @@ pub struct Player {
     pub pitch: f32,
     pub on_ground: bool,
     pub flying: bool,
+    pub elytra: bool,      // an elytra is equipped (gliding is possible)
+    pub gliding: bool,     // currently in an elytra glide (published for UI/animation)
+    glide_armed: bool,     // wings deployed: toggled with a mid-air jump tap
+    prev_jump: bool,       // for edge-detecting jump taps
+    glide_boost: f32,      // extra glide speed from a firework rocket (decays)
     pub walk_dist: f32,
     pub sneaking: bool,
     // Survival state.
@@ -28,7 +33,7 @@ pub struct Player {
 
 impl Player {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, walk_dist: 0.0, sneaking: false,
+        Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, elytra: false, gliding: false, glide_armed: false, prev_jump: false, glide_boost: 0.0, walk_dist: 0.0, sneaking: false,
             health: 20.0, max_health: 20.0, absorption: 0.0, effects: Vec::new(), hurt_cd: 0.0, attack_cd: 0.0, eat_cd: 0.0, air_max_y: y, dead: false }
     }
 
@@ -54,6 +59,14 @@ impl Player {
         }
     }
     pub fn heal(&mut self, amt: f32) { self.health = (self.health + amt).min(self.max_health); }
+    // Firework rocket: while gliding, surge forward and gain a little altitude.
+    pub fn firework_boost(&mut self) {
+        if self.gliding {
+            self.glide_boost = (self.glide_boost + 16.0).min(26.0);
+            self.vel.y = self.vel.y.max(0.0) + 5.0;
+            self.air_max_y = self.pos.y;
+        }
+    }
     pub fn damage(&mut self, amt: f32) {
         if self.dead || self.hurt_cd > 0.0 || amt <= 0.0 { return; }
         let amt = amt * self.resistance_mult();
@@ -86,6 +99,12 @@ impl Player {
 
     pub fn tick(&mut self, dt: f32, input: &crate::input::InputState, chunks: &ChunkMap) {
         self.sneaking = input.sneak;
+        let jump_edge = input.jump_held && !self.prev_jump;
+        self.prev_jump = input.jump_held;
+        // Deploy/retract elytra wings with a mid-air jump tap; retract automatically on the ground.
+        if self.elytra && jump_edge && !self.on_ground && !self.flying { self.glide_armed = !self.glide_armed; }
+        if self.on_ground || !self.elytra { self.glide_armed = false; }
+        self.glide_boost = (self.glide_boost - 10.0 * dt).max(0.0);
         let fwd = if self.flying {
             self.forward()
         } else {
@@ -116,7 +135,15 @@ impl Player {
                 while lift < 3.0 && self.collides_at(self.pos, chunks) { self.pos.y += 0.1; lift += 0.1; }
                 self.vel.y = 0.0;
             }
-            let horiz_vel = vec3(wish.x * speed, 0.0, wish.z * speed);
+            // Elytra glide: once wings are deployed (mid-air jump tap), sail forward along the look
+            // direction with a slow, controlled fall instead of walking control.
+            self.gliding = self.glide_armed && !self.on_ground;
+            let horiz_vel = if self.gliding {
+                let f = self.forward();
+                vec3(f.x, 0.0, f.z).normalize_or_zero() * (11.0 + self.glide_boost)
+            } else {
+                vec3(wish.x * speed, 0.0, wish.z * speed)
+            };
             let mut new_pos = self.pos;
             // X axis: step up small ledges when grounded; when sneaking, refuse to walk off edges.
             let try_x = vec3(new_pos.x + horiz_vel.x * dt, new_pos.y, new_pos.z);
@@ -138,6 +165,7 @@ impl Player {
             // Vertical: gravity + collision, resting at whatever height horizontal step-up left us at.
             let base_y = new_pos.y;
             self.vel.y -= 28.0 * dt;
+            if self.gliding { self.vel.y = self.vel.y.max(-3.5); } // slow, gliding descent
             new_pos.y = base_y + self.vel.y * dt;
             if self.collides_at(new_pos, chunks) {
                 new_pos.y = base_y;
@@ -157,7 +185,8 @@ impl Player {
         }
         if self.pos.y < 0.1 { self.pos.y = 0.1; self.vel.y = 0.0; self.on_ground = true; }
         // Fall damage: track peak airborne height, hurt on landing beyond a safe margin.
-        if self.flying {
+        // Flying and elytra gliding never accrue fall damage.
+        if self.flying || self.gliding {
             self.air_max_y = self.pos.y;
         } else if !self.on_ground {
             if self.pos.y > self.air_max_y { self.air_max_y = self.pos.y; }

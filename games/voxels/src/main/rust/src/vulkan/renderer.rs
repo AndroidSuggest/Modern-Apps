@@ -68,6 +68,7 @@ pub struct VulkanRenderer {
     pub ts_written: Vec<bool>,
     pub pass_ms: [f32; 4],
     pub drawn_sections: u32,
+    pub dim: u8, // active dimension (0 overworld, 1 nether, 2 end) — gates sky/cloud passes
 }
 
 impl VulkanRenderer {
@@ -105,7 +106,7 @@ impl VulkanRenderer {
         let img_count = swapchain.images.len();
         let query_pool = device.create_query_pool(&vk::QueryPoolCreateInfo::default().query_type(vk::QueryType::TIMESTAMP).query_count(img_count as u32 * 5), None).map_err(|e| format!("query pool {e:?}"))?;
         let ts_period = ctx.device_properties.limits.timestamp_period;
-        Ok(Self { ctx, swapchain, atlas, entity_atlas, entity_vbuf, entity_ibuf, entity_index_count: 0, shadow, postfx, pipelines, command_pool, command_buffers, image_available, render_finished, in_flight_fences, ubo_buffer, ubo_data: UboData::default(), queued_meshes: HashMap::new(), gpu_meshes: HashMap::new(), current_frame: 0, frame_count: 0, width, height, query_pool, ts_period, ts_written: vec![false; img_count], pass_ms: [0.0;4], drawn_sections: 0 })
+        Ok(Self { ctx, swapchain, atlas, entity_atlas, entity_vbuf, entity_ibuf, entity_index_count: 0, shadow, postfx, pipelines, command_pool, command_buffers, image_available, render_finished, in_flight_fences, ubo_buffer, ubo_data: UboData::default(), queued_meshes: HashMap::new(), gpu_meshes: HashMap::new(), current_frame: 0, frame_count: 0, width, height, query_pool, ts_period, ts_written: vec![false; img_count], pass_ms: [0.0;4], drawn_sections: 0, dim: 0 })
     }
     pub unsafe fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         if width==0 || height==0 { return Ok(()); }
@@ -121,6 +122,17 @@ impl VulkanRenderer {
     }
     pub unsafe fn enqueue_mesh(&mut self, chunk_x: i32, sec_y: i32, chunk_z: i32, mesh: Option<MeshData>) {
         self.queued_meshes.insert((chunk_x, sec_y, chunk_z), mesh);
+    }
+    // Destroy all chunk meshes (used when switching dimensions — mesh keys are per chunk coord).
+    pub unsafe fn clear_meshes(&mut self) {
+        self.ctx.device.device_wait_idle().ok();
+        for (_, mut m) in self.gpu_meshes.drain() {
+            m.vertex_buffer.destroy(&self.ctx.device);
+            m.index_buffer.destroy(&self.ctx.device);
+            if let Some(mut wb) = m.water_vertex_buffer.take() { wb.destroy(&self.ctx.device); }
+            if let Some(mut wb) = m.water_index_buffer.take() { wb.destroy(&self.ctx.device); }
+        }
+        self.queued_meshes.clear();
     }
     // Replace the mob mesh for this frame (host-visible buffers, clamped to capacity).
     pub unsafe fn upload_entity_mesh(&mut self, verts: &[VulkanVertex], indices: &[u32]) {
@@ -173,11 +185,12 @@ impl VulkanRenderer {
         }
         Ok(())
     }
-    pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32, night_vision: f32) {
+    pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32, night_vision: f32, dim: u8) {
+        self.dim = dim;
         let day_cycle=120.0; let day_t=(time/day_cycle)%1.0;
         let sun_angle=day_t*std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
         let sun_dir=Vec3::new(sun_angle.cos()*0.3, sun_angle.sin(), sun_angle.cos()*0.1).normalize_or_zero();
-        let day_factor=(sun_dir.y*0.5+0.5).clamp(0.0,1.0).powf(0.6);
+        let mut day_factor=(sun_dir.y*0.5+0.5).clamp(0.0,1.0).powf(0.6);
         // Horizon sky colour approximating the sky shader, so distance fog melts terrain into the sky.
         let sun_up = smoothstep(-0.10, 0.22, sun_dir.y);
         let day_sky = Vec3::new(0.52, 0.66, 0.86);
@@ -199,7 +212,17 @@ impl VulkanRenderer {
         let half = 90.0;
         let light_proj = Mat4::orthographic_rh(-half, half, -half, half, 1.0, light_dist * 2.0);
         let light_view_proj = light_proj * light_view;
-        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, underwater], day_factor, _pad: [0.0;3], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow: 0.6, ambient_color: ambient_color.to_array(), _pad2: night_vision, light_view_proj: light_view_proj.to_cols_array_2d() };
+        // Per-dimension atmosphere: red haze in the Nether, dark void in the End (no sun there).
+        let (mut fog_color, mut sun_color, mut ambient_color, mut cloud_shadow) = (fog_color, sun_color, ambient_color, 0.6f32);
+        if dim == 1 {
+            fog_color = Vec3::new(0.32, 0.09, 0.07); ambient_color = Vec3::new(0.52, 0.30, 0.24);
+            sun_color = Vec3::ZERO; day_factor = 1.0; cloud_shadow = 0.0;
+        } else if dim == 2 {
+            fog_color = Vec3::new(0.05, 0.03, 0.09); ambient_color = Vec3::new(0.44, 0.38, 0.54);
+            sun_color = Vec3::ZERO; day_factor = 0.9; cloud_shadow = 0.0;
+        }
+        let _ = (&mut fog_color, &mut sun_color, &mut ambient_color, &mut cloud_shadow);
+        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, underwater], day_factor, _pad: [0.0;3], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow, ambient_color: ambient_color.to_array(), _pad2: night_vision, light_view_proj: light_view_proj.to_cols_array_2d() };
         let bytes=unsafe { std::slice::from_raw_parts((&self.ubo_data as *const UboData) as *const u8, std::mem::size_of::<UboData>()) };
         self.ubo_buffer.upload(&self.ctx.device, bytes);
     }
@@ -288,11 +311,13 @@ impl VulkanRenderer {
                 device.cmd_bind_index_buffer(cmd, self.entity_ibuf.buffer, 0, vk::IndexType::UINT32);
                 device.cmd_draw_indexed(cmd, self.entity_index_count, 1, 0, 0, 0);
             }
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.sky_pipeline);
-            device.cmd_draw(cmd, 3, 1, 0, 0);
-            // Volumetric clouds: depth-tested layer at fixed altitude, blended over sky + terrain.
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.cloud_pipeline);
-            device.cmd_draw(cmd, 3, 1, 0, 0);
+            // Sky + volumetric clouds only in the overworld; Nether/End use the flat fog clear colour.
+            if self.dim == 0 {
+                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.sky_pipeline);
+                device.cmd_draw(cmd, 3, 1, 0, 0);
+                device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.cloud_pipeline);
+                device.cmd_draw(cmd, 3, 1, 0, 0);
+            }
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.water_pipeline);
             for ((cx,sec_y,cz), gpu_mesh) in self.gpu_meshes.iter() {
                 if gpu_mesh.water_index_count == 0 { continue; }

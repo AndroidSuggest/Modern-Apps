@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -34,7 +37,23 @@ data class InvSlot(val id: Int, val count: Int)
 data class InventoryState(val selected: Int = 0, val slots: List<InvSlot> = List(9) { InvSlot(0, 0) }, val armor: List<InvSlot> = emptyList())
 
 // Ids 163..178 are tools/armor whose slot `count` is durability (not a stack size).
-fun isDurabilityItem(id: Int) = id in 163..178
+fun isDurabilityItem(id: Int) = id in 163..178 || id == 186 || id == 188
+
+val maxDurability = mapOf(
+    163 to 60, 164 to 60, 165 to 132, 166 to 132, 167 to 250, 168 to 250, 169 to 1562, 170 to 1562,
+    171 to 240, 172 to 240, 173 to 240, 174 to 240, 175 to 528, 176 to 528, 177 to 528, 178 to 528,
+    186 to 64, 188 to 432
+)
+
+@Composable
+fun DurabilityBar(id: Int, count: Int, modifier: Modifier = Modifier) {
+    val max = maxDurability[id] ?: return
+    if (count <= 0 || count >= max) return
+    val frac = (count.toFloat() / max).coerceIn(0f, 1f)
+    Box(modifier.fillMaxWidth(0.78f).height(3.dp).background(Color.Black.copy(0.65f), RoundedCornerShape(1.dp))) {
+        Box(Modifier.fillMaxWidth(frac).fillMaxHeight().background(Color(1f - frac, frac, 0.15f), RoundedCornerShape(1.dp)))
+    }
+}
 
 val blockNames = mapOf(
     0 to "·", 1 to "Stone", 2 to "Dirt", 3 to "Grass", 4 to "Wood", 5 to "Leaves",
@@ -63,9 +82,11 @@ val blockNames = mapOf(
     167 to "Iron Pickaxe", 168 to "Iron Sword", 169 to "Diamond Pickaxe", 170 to "Diamond Sword",
     171 to "Iron Helmet", 172 to "Iron Chestplate", 173 to "Iron Leggings", 174 to "Iron Boots",
     175 to "Diamond Helmet", 176 to "Diamond Chestplate", 177 to "Diamond Leggings", 178 to "Diamond Boots",
-    82 to "Jukebox",
+    82 to "Jukebox", 83 to "Chest", 84 to "Lava", 85 to "End Stone", 88 to "Beacon", 89 to "Purpur",
     179 to "Disc: Golden", 180 to "Disc: Lullaby", 181 to "Disc: Forest", 182 to "Disc: Deep Mining",
-    183 to "Disc: Winter", 184 to "Disc: Piano", 185 to "Disc: Gift"
+    183 to "Disc: Winter", 184 to "Disc: Piano", 185 to "Disc: Gift",
+    186 to "Flint & Steel", 187 to "Nether Star", 188 to "Elytra", 189 to "Firework Rocket",
+    190 to "Snowball", 191 to "Ender Pearl"
 )
 
 // Music disc item id -> track asset in assets/music/.
@@ -104,23 +125,25 @@ val blockIconFile = mapOf(
     167 to "iron_pickaxe.png", 168 to "iron_sword.png", 169 to "diamond_pickaxe.png", 170 to "diamond_sword.png",
     171 to "iron_helmet.png", 172 to "iron_chestplate.png", 173 to "iron_leggings.png", 174 to "iron_boots.png",
     175 to "diamond_helmet.png", 176 to "diamond_chestplate.png", 177 to "diamond_leggings.png", 178 to "diamond_boots.png",
-    82 to "jukebox.png",
+    82 to "jukebox.png", 83 to "chest.png", 84 to "lava.png", 85 to "end_stone.png", 88 to "beacon.png", 89 to "purpur_block.png",
     179 to "music_disc_13.png", 180 to "music_disc_cat.png", 181 to "music_disc_blocks.png", 182 to "music_disc_chirp.png",
-    183 to "music_disc_5.png", 184 to "music_disc_11.png", 185 to "music_disc_bounce.png"
+    183 to "music_disc_5.png", 184 to "music_disc_11.png", 185 to "music_disc_bounce.png",
+    186 to "flint_and_steel.png", 187 to "nether_star.png", 188 to "elytra.png", 189 to "firework_rocket.png",
+    190 to "snowball.png", 191 to "ender_pearl.png"
 )
 
 // Creative catalog, split into tabs.
 val catalogNatural = listOf(3, 2, 40, 46, 60, 39, 41, 71, 1, 6, 38, 36, 37, 14, 16, 17, 15, 45, 79, 75, 70,
-    4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 13)
+    4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 84, 85, 13)
 val catalogOres = listOf(18, 19, 20, 21, 22, 23, 24, 25, 73)
 val catalogOcean = listOf(61, 62, 63, 64, 65, 66, 67, 68, 69)
 val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
     146, 147, 148, 149, 150, 151, 152, 153,
-    154, 155, 156, 157, 158, 159, 160, 161, 162)
+    154, 155, 156, 157, 158, 159, 160, 161, 162, 187, 189, 190, 191)
 val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,
-    171, 172, 173, 174, 175, 176, 177, 178)
+    171, 172, 173, 174, 175, 176, 177, 178, 186, 188)
 val catalogMusic = listOf(82, 179, 180, 181, 182, 183, 184, 185)
-val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35)
+val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 88, 89)
 
 @Composable
 fun rememberBlockIcon(id: Int): androidx.compose.ui.graphics.ImageBitmap? {
@@ -181,6 +204,7 @@ fun Hotbar(
                             Text(text = "${slot.count}", style = MaterialTheme.typography.labelSmall, color = Color.White)
                         }
                     }
+                    if (isDurabilityItem(slot.id)) DurabilityBar(slot.id, slot.count, Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp))
                 }
             }
         }
@@ -199,7 +223,37 @@ fun Hotbar(
 data class EffJson(val k: String = "", val amp: Int = 0, val t: Int = 0)
 
 @Serializable
-data class HealthJson(val hp: Float = 20f, val max: Float = 20f, val absorb: Float = 0f, val dead: Boolean = false, val estus: Int = 0, val effects: List<EffJson> = emptyList())
+data class HealthJson(val hp: Float = 20f, val max: Float = 20f, val absorb: Float = 0f, val dead: Boolean = false, val estus: Int = 0, val effects: List<EffJson> = emptyList(), val boss: Float = -1f, val bossName: String = "", val elytra: Boolean = false, val gliding: Boolean = false)
+
+// Small chip shown while an elytra is equipped: prompts to deploy, or confirms gliding.
+@Composable
+fun GlideIndicator(healthJson: String, modifier: Modifier = Modifier) {
+    val hj = remember(healthJson) {
+        try { Json { ignoreUnknownKeys = true }.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
+    }
+    if (!hj.elytra) return
+    val (label, tint) = if (hj.gliding) "Gliding" to Color(0xFF7CE0FF) else "Tap ▲ mid-air to glide" to Color.White.copy(0.75f)
+    Box(modifier.background(Color.Black.copy(0.45f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Text(label, color = tint, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
+fun BossBar(healthJson: String, modifier: Modifier = Modifier) {
+    val hj = remember(healthJson) {
+        try { Json { ignoreUnknownKeys = true }.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
+    }
+    if (hj.boss < 0f) return
+    val wither = hj.bossName == "The Wither"
+    val textColor = if (wither) Color(0xFFBDBDBD) else Color(0xFFB388FF)
+    val barColor = if (wither) Color(0xFF4A4A55) else Color(0xFF9B30FF)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(hj.bossName.ifEmpty { "Boss" }, color = textColor, style = MaterialTheme.typography.labelMedium)
+        Box(Modifier.width(220.dp).height(7.dp).background(Color.Black.copy(0.6f), RoundedCornerShape(3.dp))) {
+            Box(Modifier.fillMaxWidth(hj.boss.coerceIn(0f, 1f)).fillMaxHeight().background(barColor, RoundedCornerShape(3.dp)))
+        }
+    }
+}
 
 private val effectNames = mapOf(
     "regen" to "Regen", "poison" to "Poison", "resist" to "Resist", "strength" to "Strength",

@@ -24,7 +24,11 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Crafting and smelting both flow through this table
 // (the Furnace menu opens the same crafting UI).
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 34] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 38] = [
+    (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
+    (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
+    (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
+    (Block::Snow as u8, 1, 0, 0, 190, 4), // snow -> snowballs
     (Block::Wood as u8,      1, 0, 0, Block::Planks as u8,      4),
     (Block::BirchLog as u8,  1, 0, 0, Block::BirchPlanks as u8, 4),
     (Block::SpruceLog as u8, 1, 0, 0, Block::SprucePlanks as u8,4),

@@ -39,9 +39,12 @@ pub fn is_food(id: u8) -> bool { food_effects(id).is_some() }
 pub fn is_tool(id: u8) -> bool { (163..=170).contains(&id) }
 pub fn is_pickaxe(id: u8) -> bool { matches!(id, 163 | 165 | 167 | 169) }
 pub fn is_sword(id: u8) -> bool { matches!(id, 164 | 166 | 168 | 170) }
-pub fn is_armor(id: u8) -> bool { (171..=178).contains(&id) }
-pub fn armor_slot(id: u8) -> usize { ((id - 171) % 4) as usize } // 0 helm, 1 chest, 2 legs, 3 boots
-pub fn has_durability(id: u8) -> bool { is_tool(id) || is_armor(id) }
+pub fn is_elytra(id: u8) -> bool { id == 188 }
+pub fn is_armor(id: u8) -> bool { (171..=178).contains(&id) || id == 188 } // elytra occupies the chest slot
+pub fn armor_slot(id: u8) -> usize { if id == 188 { 1 } else { ((id - 171) % 4) as usize } } // 0 helm, 1 chest, 2 legs, 3 boots
+pub fn is_flint_steel(id: u8) -> bool { id == 186 }
+pub fn is_firework(id: u8) -> bool { id == 189 }
+pub fn has_durability(id: u8) -> bool { is_tool(id) || is_armor(id) || id == 186 }
 
 pub fn sword_damage(id: u8) -> f32 { match id { 164 => 5.0, 166 => 6.0, 168 => 7.0, 170 => 9.0, _ => 0.0 } }
 pub fn pick_damage(id: u8) -> f32 { match id { 163 => 2.0, 165 => 3.0, 167 => 4.0, 169 => 5.0, _ => 0.0 } }
@@ -49,6 +52,7 @@ pub fn armor_defense(id: u8) -> f32 {
     match id {
         171 => 2.0, 172 => 6.0, 173 => 5.0, 174 => 2.0, // iron helm/chest/legs/boots
         175 => 3.0, 176 => 8.0, 177 => 6.0, 178 => 3.0, // diamond
+        188 => 1.0,                                     // elytra (mostly for mobility, minor defense)
         _ => 0.0,
     }
 }
@@ -56,6 +60,8 @@ pub fn max_durability(id: u8) -> i32 {
     match id {
         163 | 164 => 60, 165 | 166 => 132, 167 | 168 => 250, 169 | 170 => 1562, // wood/stone/iron/diamond tools
         171..=174 => 240, 175..=178 => 528,                                       // iron/diamond armor
+        186 => 64,                                                                // flint & steel
+        188 => 432,                                                               // elytra
         _ => 0,
     }
 }

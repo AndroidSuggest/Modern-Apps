@@ -11,9 +11,11 @@ pub struct ChunkMap {
 }
 
 impl ChunkMap {
-    pub fn new(seed: u32, save_dir: String) -> Self {
-        Self { chunks: HashMap::new(), gen: TerrainGen::new(seed), save_dir, render_distance: 12 }
+    pub fn new(seed: u32, save_dir: String) -> Self { Self::new_dim(seed, save_dir, 0) }
+    pub fn new_dim(seed: u32, save_dir: String, dim: u8) -> Self {
+        Self { chunks: HashMap::new(), gen: TerrainGen::new_dim(seed, dim), save_dir, render_distance: 12 }
     }
+    pub fn dim(&self) -> u8 { self.gen.dim }
     pub fn get_block_world(&self, wx: i32, wy: i32, wz: i32) -> u8 {
         if wy < 0 || wy >= CHUNK_HEIGHT as i32 { return 0; }
         let cp = ChunkPos::from_world(wx, wz);

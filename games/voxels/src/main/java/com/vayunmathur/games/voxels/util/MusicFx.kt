@@ -3,33 +3,66 @@ package com.vayunmathur.games.voxels.util
 import android.content.Context
 import android.media.MediaPlayer
 
-// Looping jukebox music played from assets/music/*.ogg. Best-effort; never throws into the UI.
+// Background music manager. Cycles the track playlist ambiently at a low volume; a jukebox disc
+// temporarily takes over (pausing ambient) until stopped. Best-effort; never throws into the UI.
 object MusicFx {
-    private var mp: MediaPlayer? = null
-    private var current: String? = null
+    private var ambient: MediaPlayer? = null
+    private var disc: MediaPlayer? = null
+    private var currentDisc: String? = null
+    private var ctx: Context? = null
+    private var idx = 0
+    private val playlist = listOf(
+        "mcl_forest.ogg", "mcl_piano.ogg", "mcl_winter.ogg", "mcl_gift.ogg",
+        "golden.ogg", "mcl_mining.ogg", "lullaby.ogg"
+    )
 
-    // Toggle a track: tapping the jukebox with the same disc stops it; a different disc switches;
-    // a null asset (holding no disc) stops.
-    fun toggle(ctx: Context, asset: String?) {
-        if (asset == null || asset == current) { stop(); return }
-        stop()
-        try {
-            val afd = ctx.assets.openFd("music/$asset")
+    private fun make(c: Context, asset: String, loop: Boolean, vol: Float, onDone: (() -> Unit)?): MediaPlayer? {
+        return try {
+            val afd = c.assets.openFd("music/$asset")
             val p = MediaPlayer()
             p.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
             afd.close()
-            p.isLooping = true
+            p.isLooping = loop
+            p.setVolume(vol, vol)
             p.setOnPreparedListener { it.start() }
-            p.setOnErrorListener { _, _, _ -> stop(); true }
+            p.setOnErrorListener { _, _, _ -> true }
+            if (onDone != null) p.setOnCompletionListener { onDone() }
             p.prepareAsync()
-            mp = p
-            current = asset
-        } catch (_: Throwable) { stop() }
+            p
+        } catch (_: Throwable) { null }
     }
 
-    fun stop() {
-        try { mp?.let { if (it.isPlaying) it.stop(); it.release() } } catch (_: Throwable) {}
-        mp = null
-        current = null
+    fun startAmbient(c: Context) {
+        ctx = c.applicationContext
+        if (ambient == null && disc == null) playNextAmbient()
     }
+
+    private fun playNextAmbient() {
+        val c = ctx ?: return
+        val asset = playlist[idx % playlist.size]
+        idx++
+        ambient?.let { try { it.release() } catch (_: Throwable) {} }
+        ambient = make(c, asset, loop = false, vol = 0.45f, onDone = { playNextAmbient() })
+    }
+
+    // Jukebox: same disc again -> stop and resume ambient; a new disc -> take over; null -> resume.
+    fun toggle(c: Context, asset: String?) {
+        if (asset == null || asset == currentDisc) { stopDisc(); resumeAmbient(); return }
+        stopDisc()
+        try { ambient?.pause() } catch (_: Throwable) {}
+        disc = make(c, asset, loop = true, vol = 0.8f, onDone = null)
+        currentDisc = asset
+    }
+
+    private fun stopDisc() {
+        disc?.let { try { it.release() } catch (_: Throwable) {} }
+        disc = null; currentDisc = null
+    }
+
+    private fun resumeAmbient() {
+        val a = ambient
+        if (a != null) { try { a.start() } catch (_: Throwable) { playNextAmbient() } } else playNextAmbient()
+    }
+
+    fun stop() { stopDisc(); ambient?.let { try { it.release() } catch (_: Throwable) {} }; ambient = null }
 }

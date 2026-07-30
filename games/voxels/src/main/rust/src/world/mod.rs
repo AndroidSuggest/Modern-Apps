@@ -1,5 +1,6 @@
 pub mod block;
 pub mod chunk;
+pub mod perlin;
 pub mod chunk_map;
 pub mod mesher;
 pub mod generator;

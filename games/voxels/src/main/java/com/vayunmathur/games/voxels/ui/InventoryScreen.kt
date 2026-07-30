@@ -145,7 +145,8 @@ private fun SlotBox(index: Int, slot: InvSlot, bounds: MutableMap<Int, Rect>, dr
         if (slot.id != 0) {
             if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(30.dp), filterQuality = FilterQuality.None)
             else Text(blockNames[slot.id]?.take(2) ?: "", color = Color.White, fontSize = 10.sp)
-            if (slot.count > 1) Box(Modifier.align(Alignment.BottomEnd)) { Text("${slot.count}", color = Color.White, fontSize = 10.sp) }
+            if (slot.count > 1 && !isDurabilityItem(slot.id)) Box(Modifier.align(Alignment.BottomEnd)) { Text("${slot.count}", color = Color.White, fontSize = 10.sp) }
+            if (isDurabilityItem(slot.id)) DurabilityBar(slot.id, slot.count, Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp))
         }
     }
 }

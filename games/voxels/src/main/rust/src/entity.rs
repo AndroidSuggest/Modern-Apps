@@ -9,7 +9,7 @@ const CELL: f32 = ENTITY_CELL as f32;
 const PX: f32 = 1.0 / 16.0; // one skin pixel in blocks
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum MobKind { Pig, Cow, Sheep, Chicken, Creeper, Zombie, Villager }
+pub enum MobKind { Pig, Cow, Sheep, Chicken, Creeper, Zombie, Villager, Dragon, Wither, Blaze, WitherSkeleton, Shulker, Ghast }
 
 // A model part: an axis-aligned box textured from the skin.
 struct Part {
@@ -50,6 +50,53 @@ static CREEPER: &[Part] = &[
     p([4.,6.,4.],  [-0.125, 0.1875, 0.125],  [0.,16.], 0.0, -1.0),
     p([4.,6.,4.],  [0.125, 0.1875, 0.125],   [0.,16.], 0.0,  1.0),
 ];
+// Ender Dragon: a large flyer — head, body, two broad wings, tail. Uniform purple skin.
+static DRAGON: &[Part] = &[
+    p([12.,10.,16.], [0.0, 3.1, -1.9], [0.,0.], 0.0, 0.0),  // head
+    p([16.,14.,26.], [0.0, 2.8, 0.4],  [0.,0.], 0.0, 0.0),  // body
+    p([40.,3.,20.],  [-1.7, 3.3, 0.3], [0.,0.], 0.0, 1.0),  // left wing (flaps)
+    p([40.,3.,20.],  [1.7, 3.3, 0.3],  [0.,0.], 0.0, -1.0), // right wing
+    p([8.,8.,24.],   [0.0, 2.9, 2.2],  [0.,0.], 0.0, 0.0),  // tail
+];
+
+// Wither: a floating three-headed boss (central + two side heads on a ribcage body).
+static WITHER: &[Part] = &[
+    p([8.,8.,8.],   [0.0, 2.6, 0.0],  [0.,0.], 0.0, 0.0),  // central head
+    p([6.,6.,6.],   [-0.55, 2.4, 0.0], [0.,0.], 0.0, 0.0), // left head
+    p([6.,6.,6.],   [0.55, 2.4, 0.0],  [0.,0.], 0.0, 0.0), // right head
+    p([4.,14.,4.],  [0.0, 1.7, 0.0],  [0.,0.], 0.0, 0.0),  // spine
+    p([18.,3.,3.],  [0.0, 2.0, 0.0],  [0.,0.], 0.0, 0.0),  // ribs
+];
+
+// Blaze: a floating head ringed by spinning rods (no legs). Uniform procedural skin.
+static BLAZE: &[Part] = &[
+    p([8.,8.,8.],  [0.0, 1.4, 0.0],  [0.,0.], 0.0, 0.0), // head
+    p([2.,8.,2.],  [-0.2, 0.9, -0.2], [0.,0.], 0.0, 1.0),
+    p([2.,8.,2.],  [0.2, 0.9, 0.2],   [0.,0.], 0.0, -1.0),
+    p([2.,8.,2.],  [0.2, 0.9, -0.2],  [0.,0.], 0.0, -1.0),
+    p([2.,8.,2.],  [-0.2, 0.9, 0.2],  [0.,0.], 0.0, 1.0),
+];
+
+// Ghast: a big floating pale body with nine dangling tentacles. Uniform white skin.
+static GHAST: &[Part] = &[
+    p([16.,16.,16.], [0.0, 2.0, 0.0], [0.,0.], 0.0, 0.0), // body
+    p([2.,10.,2.], [-0.4, 0.6, -0.4], [0.,0.], 0.0, 1.0),
+    p([2.,10.,2.], [0.0, 0.6, -0.4],  [0.,0.], 0.0, -1.0),
+    p([2.,10.,2.], [0.4, 0.6, -0.4],  [0.,0.], 0.0, 1.0),
+    p([2.,10.,2.], [-0.4, 0.6, 0.0],  [0.,0.], 0.0, -1.0),
+    p([2.,10.,2.], [0.4, 0.6, 0.0],   [0.,0.], 0.0, 1.0),
+    p([2.,10.,2.], [-0.4, 0.6, 0.4],  [0.,0.], 0.0, -1.0),
+    p([2.,10.,2.], [0.0, 0.6, 0.4],   [0.,0.], 0.0, 1.0),
+    p([2.,10.,2.], [0.4, 0.6, 0.4],   [0.,0.], 0.0, -1.0),
+];
+
+// Shulker: a stationary boxy End-city turret — a thick shell with a small head peeking out.
+static SHULKER: &[Part] = &[
+    p([12.,8.,12.], [0.0, 0.25, 0.0], [0.,0.], 0.0, 0.0), // shell base
+    p([8.,8.,8.],   [0.0, 0.75, 0.0], [0.,0.], 0.0, 0.0), // shell lid
+    p([6.,6.,6.],   [0.0, 0.65, 0.0], [0.,0.], 0.0, 0.0), // head peeking out
+];
+
 // Chicken: small body, head, two thin legs.
 static CHICKEN: &[Part] = &[
     p([6.,8.,6.],  [0.0, 0.38, 0.0],  [0.,9.],  0.0, 0.0),
@@ -59,25 +106,38 @@ static CHICKEN: &[Part] = &[
 ];
 
 impl MobKind {
-    fn cell(self) -> u32 { match self { MobKind::Pig=>0, MobKind::Cow=>1, MobKind::Sheep=>2, MobKind::Chicken=>3, MobKind::Creeper=>4, MobKind::Zombie=>5, MobKind::Villager=>6 } }
-    pub fn hostile(self) -> bool { matches!(self, MobKind::Creeper | MobKind::Zombie) }
-    pub fn max_health(self) -> f32 { match self { MobKind::Zombie | MobKind::Creeper => 20.0, MobKind::Villager => 20.0, _ => 10.0 } }
-    pub fn height(self) -> f32 { match self { MobKind::Zombie | MobKind::Villager => 1.9, MobKind::Creeper => 1.6, MobKind::Chicken => 0.7, _ => 0.9 } }
-    pub fn contact_damage(self) -> f32 { match self { MobKind::Zombie => 4.0, _ => 0.0 } }
+    fn cell(self) -> u32 { match self { MobKind::Pig=>0, MobKind::Cow=>1, MobKind::Sheep=>2, MobKind::Chicken=>3, MobKind::Creeper=>4, MobKind::Zombie=>5, MobKind::Villager=>6, MobKind::Dragon=>7, MobKind::Wither=>8, MobKind::Blaze=>9, MobKind::WitherSkeleton=>10, MobKind::Shulker=>11, MobKind::Ghast=>12 } }
+    pub fn hostile(self) -> bool { matches!(self, MobKind::Creeper | MobKind::Zombie | MobKind::Dragon | MobKind::Wither | MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Shulker | MobKind::Ghast) }
+    pub fn is_boss(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither) }
+    pub fn flies(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither | MobKind::Ghast) }
+    // Procedurally-skinned mobs sample their cell centre uniformly (no real texture map).
+    pub fn uniform_skin(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither | MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Shulker | MobKind::Ghast) }
+    pub fn max_health(self) -> f32{ match self { MobKind::Dragon => 200.0, MobKind::Wither => 150.0, MobKind::Shulker | MobKind::Ghast => 30.0, MobKind::Zombie | MobKind::Creeper | MobKind::Villager | MobKind::Blaze | MobKind::WitherSkeleton => 20.0, _ => 10.0 } }
+    pub fn height(self) -> f32 { match self { MobKind::Dragon => 4.0, MobKind::Ghast => 4.0, MobKind::Wither => 3.2, MobKind::WitherSkeleton => 2.4, MobKind::Zombie | MobKind::Villager => 1.9, MobKind::Blaze => 1.8, MobKind::Creeper => 1.6, MobKind::Shulker => 1.0, MobKind::Chicken => 0.7, _ => 0.9 } }
+    pub fn hit_radius(self) -> f32 { match self { MobKind::Dragon => 2.2, MobKind::Ghast => 2.0, MobKind::Wither => 1.3, MobKind::Shulker => 0.55, _ => 0.45 } }
+    pub fn contact_damage(self) -> f32 { match self { MobKind::Zombie => 4.0, MobKind::Dragon => 7.0, MobKind::Wither => 6.0, MobKind::Blaze | MobKind::WitherSkeleton => 5.0, MobKind::Shulker => 4.0, _ => 0.0 } }
     // Item ids dropped on death (auto-collected into the inventory).
     pub fn loot(self) -> &'static [u8] {
         match self {
             MobKind::Pig => &[132], MobKind::Cow => &[137, 132], MobKind::Sheep => &[130], MobKind::Chicken => &[135],
-            MobKind::Creeper => &[138], MobKind::Zombie => &[131], MobKind::Villager => &[],
+            MobKind::Creeper => &[138], MobKind::Zombie => &[131], MobKind::Villager => &[], MobKind::Dragon => &[85, 25, 25],
+            MobKind::Wither => &[187, 155, 155],
+            MobKind::Blaze => &[157], MobKind::WitherSkeleton => &[157, 154], MobKind::Shulker => &[89, 191],
+            MobKind::Ghast => &[138, 138],
         }
     }
-    fn speed(self) -> f32 { match self { MobKind::Chicken=>1.6, MobKind::Creeper=>1.5, MobKind::Zombie=>1.7, MobKind::Villager=>0.9, _=>1.15 } }
+    fn speed(self) -> f32 { match self { MobKind::Chicken=>1.6, MobKind::Creeper=>1.5, MobKind::Zombie=>1.7, MobKind::Blaze=>1.4, MobKind::WitherSkeleton=>1.8, MobKind::Shulker=>0.0, MobKind::Villager=>0.9, _=>1.15 } }
     fn parts(self) -> &'static [Part] {
         match self {
             MobKind::Pig | MobKind::Cow | MobKind::Sheep => QUAD,
-            MobKind::Zombie | MobKind::Villager => BIPED,
+            MobKind::Zombie | MobKind::Villager | MobKind::WitherSkeleton => BIPED,
             MobKind::Creeper => CREEPER,
             MobKind::Chicken => CHICKEN,
+            MobKind::Dragon => DRAGON,
+            MobKind::Wither => WITHER,
+            MobKind::Blaze => BLAZE,
+            MobKind::Shulker => SHULKER,
+            MobKind::Ghast => GHAST,
         }
     }
 }
@@ -109,6 +169,30 @@ impl Mob {
     }
 
     pub fn tick(&mut self, dt: f32, player: Vec3, solid: &dyn Fn(i32, i32, i32) -> bool) {
+        // Flying bosses (Dragon/Wither): no gravity/collision; orbit + periodic swoop at the player.
+        if self.kind.flies() {
+            let _ = solid;
+            self.attack_cd = (self.attack_cd - dt).max(0.0);
+            self.wander -= dt;
+            if self.wander <= 0.0 { self.wander = 9.0; }
+            // Ghasts hover high and never dive (they attack purely at range); bosses swoop.
+            let (center, radius, spd, diving) = match self.kind {
+                MobKind::Dragon => (Vec3::new(0.0, 86.0, 0.0), 30.0, 13.0, self.wander < 2.0),
+                MobKind::Ghast => (player + Vec3::new(0.0, 14.0, 0.0), 20.0, 6.0, false),
+                _ => (player + Vec3::new(0.0, 6.0, 0.0), 9.0, 9.0, self.wander < 2.0),
+            };
+            let target = if diving {
+                player + Vec3::new(0.0, 1.0, 0.0)
+            } else {
+                let a = self.anim * 0.5;
+                center + Vec3::new(a.cos() * radius, (a * 1.3).sin() * 3.0, a.sin() * radius)
+            };
+            let dir = target - self.pos;
+            let d = dir.length();
+            if d > 0.5 { let v = dir / d; self.pos += v * spd * dt; self.yaw = v.x.atan2(-v.z); }
+            self.anim += dt * 3.0;
+            return;
+        }
         self.wander -= dt;
         let to_player = player - self.pos;
         let pdist = to_player.length();
@@ -177,6 +261,8 @@ impl Mob {
     fn append_mesh(&self, verts: &mut Vec<Vertex>, indices: &mut Vec<u32>) {
         let col = (self.kind.cell() % 4) as f32 * CELL;
         let row = (self.kind.cell() / 4) as f32 * CELL;
+        // Procedural skins are uniform, so sample the cell centre for every face.
+        let uniform = self.kind.uniform_skin();
         let (yc, ys) = (self.yaw.cos(), self.yaw.sin());
         for part in self.kind.parts() {
             let swing = if part.leg != 0.0 { self.anim.sin() * 0.55 * part.leg } else { 0.0 };
@@ -225,7 +311,8 @@ impl Mob {
                     // yaw about Y through the mob origin.
                     let (rx, rz) = (wp.x*yc - wp.z*ys, wp.x*ys + wp.z*yc);
                     wp = Vec3::new(rx, wp.y, rz) + self.pos;
-                    let uv = [(col + uvc[c][0]) / ATLAS, (row + uvc[c][1]) / ATLAS];
+                    let uv = if uniform { [(col + 32.0) / ATLAS, (row + 32.0) / ATLAS] }
+                             else { [(col + uvc[c][0]) / ATLAS, (row + uvc[c][1]) / ATLAS] };
                     verts.push(Vertex { pos: [wp.x, wp.y, wp.z], uv, color: [1.0,1.0,1.0], ao: 1.0, tile_idx: 0.0, normal: nrm, light: 0.0 });
                 }
                 indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
@@ -240,6 +327,50 @@ pub fn build_entity_mesh(mobs: &[Mob]) -> (Vec<Vertex>, Vec<u32>) {
     let mut indices = Vec::new();
     for m in mobs { m.append_mesh(&mut verts, &mut indices); }
     (verts, indices)
+}
+
+// ---- Projectiles: flying attacks (blaze fireballs, shulker bullets) and firework rockets. ----
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ProjKind { Fireball, ShulkerBullet, Firework, Snowball, EnderPearl }
+
+pub struct Projectile {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub life: f32,
+    pub kind: ProjKind,
+    pub from_player: bool, // fired by the player (doesn't hurt the player)
+    pub damage: f32,
+    pub explosive: bool,   // fireball detonates terrain on impact (ghast) vs. just bursting (blaze)
+}
+
+impl Projectile {
+    pub fn color(&self) -> [f32; 3] {
+        match self.kind {
+            ProjKind::Fireball => [1.0, 0.55, 0.12],
+            ProjKind::ShulkerBullet => [0.75, 0.55, 0.85],
+            ProjKind::Firework => [1.0, 0.9, 0.5],
+            ProjKind::Snowball => [0.95, 0.98, 1.0],
+            ProjKind::EnderPearl => [0.25, 0.85, 0.7],
+        }
+    }
+    pub fn size(&self) -> f32 { match self.kind { ProjKind::Fireball => 0.28, ProjKind::ShulkerBullet => 0.18, ProjKind::Firework => 0.16, ProjKind::Snowball => 0.14, ProjKind::EnderPearl => 0.16 } }
+    // Snowballs/ender pearls fall under gravity; the rest fly straight.
+    pub fn gravity(&self) -> f32 { match self.kind { ProjKind::Snowball | ProjKind::EnderPearl => 14.0, _ => 0.0 } }
+}
+
+// Render projectiles as bright, un-fading billboard quads (reuses the particle white-swatch UV).
+pub fn append_projectiles(verts: &mut Vec<Vertex>, indices: &mut Vec<u32>, ps: &[Projectile], right: Vec3, up: Vec3) {
+    for p in ps {
+        let s = p.size();
+        let c = p.color();
+        let (r, u) = (right * s, up * s);
+        let corners = [p.pos - r - u, p.pos + r - u, p.pos + r + u, p.pos - r + u];
+        let base = verts.len() as u32;
+        for cc in corners {
+            verts.push(Vertex { pos: [cc.x, cc.y, cc.z], uv: [PARTICLE_UV, PARTICLE_UV], color: c, ao: 1.0, tile_idx: 0.0, normal: [0.0, 1.0, 0.0], light: 0.0 });
+        }
+        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
 }
 
 // ---- Particles: short-lived billboarded quads (block break, hits, explosions). ----
