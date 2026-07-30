@@ -203,6 +203,26 @@ import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.FindReplace
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.WrapText
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mood
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.SpaceBar
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.outlined.HighlightAlt
@@ -1094,3 +1114,96 @@ fun IconDashboard(modifier: Modifier = Modifier, tint: Color = LocalContentColor
 @Composable
 fun IconSportsEsports(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.SportsEsports, "Games", modifier, tint)
+
+// --- Translate ---
+@Composable
+fun IconTranslate(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Translate, "Translate", modifier, tint)
+
+@Composable
+fun IconSwapLanguages(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SwapHoriz, "Swap languages", modifier, tint)
+
+@Composable
+fun IconSpeak(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.AutoMirrored.Filled.VolumeUp, "Speak", modifier, tint)
+
+// --- Calculator ---
+@Composable
+fun IconCalculate(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Calculate, "Calculator", modifier, tint)
+
+@Composable
+fun IconFunctions(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Functions, "Graph", modifier, tint)
+
+@Composable
+fun IconBackspace(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.AutoMirrored.Filled.Backspace, "Backspace", modifier, tint)
+
+// --- Code editor ---
+@Composable
+fun IconCode(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Code, "Code", modifier, tint)
+
+@Composable
+fun IconFolderOpen(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.FolderOpen, "Open folder", modifier, tint)
+
+@Composable
+fun IconNewFile(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.NoteAdd, "New file", modifier, tint)
+
+@Composable
+fun IconNewFolder(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.CreateNewFolder, "New folder", modifier, tint)
+
+@Composable
+fun IconFindReplace(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.FindReplace, "Find and replace", modifier, tint)
+
+@Composable
+fun IconTerminal(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Terminal, "Terminal", modifier, tint)
+
+@Composable
+fun IconWrapText(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.WrapText, "Wrap lines", modifier, tint)
+
+// --- Keyboard (IME) ---
+@Composable
+fun IconKeyboard(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Keyboard, "Keyboard", modifier, tint)
+
+@Composable
+fun IconEmoji(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Mood, "Emoji", modifier, tint)
+
+@Composable
+fun IconLanguage(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Language, "Language", modifier, tint)
+
+@Composable
+fun IconSpaceBar(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SpaceBar, "Space", modifier, tint)
+
+@Composable
+fun IconShift(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.ArrowUpward, "Shift", modifier, tint)
+
+@Composable
+fun IconReturn(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.AutoMirrored.Filled.KeyboardReturn, "Return", modifier, tint)
+
+// --- Shopping ---
+@Composable
+fun IconShoppingCart(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.ShoppingCart, "Cart", modifier, tint)
+
+@Composable
+fun IconLocalOffer(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.LocalOffer, "Deals", modifier, tint)
+
+@Composable
+fun IconPackage(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Inventory2, "Orders", modifier, tint)

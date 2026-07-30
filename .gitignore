@@ -40,3 +40,6 @@ reverse-engineering/
 **/rust/target/
 tmp/
 target/
+
+# Small100 quantized binaries > 100MB — do not commit, fetch via quantize_small100.sh or R2
+scripts/translate/quantized/

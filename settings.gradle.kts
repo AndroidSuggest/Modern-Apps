@@ -17,6 +17,9 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // Local maven first so freshly built ncnn-android:1.4.0 (Small100) resolves
+        // even when JitPack is rate-limited (429) or hasn't yet built the tag.
+        mavenLocal()
         google()
         mavenCentral()
         // JitPack kept only for Stockfish-Library (games:chess) — nanojson vendored to :third_party:nanojson
@@ -76,9 +79,17 @@ include(":education")
 include(":everysync")
 include(":travel")
 include(":astronomy")
+include(":translate")
+include(":calculator")
+include(":code")
+include(":keyboard")
+include(":speech")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
 if (file("personal/dooraccess").exists()) {
     include(":personal:dooraccess")
+}
+if (file("personal/amazon").exists()) {
+    include(":personal:amazon")
 }
