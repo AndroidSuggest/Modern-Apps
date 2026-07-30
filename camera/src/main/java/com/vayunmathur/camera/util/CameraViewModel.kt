@@ -668,7 +668,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             }
         }
         ds.getString("camera_location")?.let { _locationEnabled.value = it.toBoolean() }
-        ds.getString("camera_last_capture")?.let { _lastCaptureUri.value = Uri.parse(it) }
+        // Guard against a blank persisted value: Uri.parse("") yields a non-null
+        // but invalid URI, making the app think an image exists when none does.
+        ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { _lastCaptureUri.value = Uri.parse(it) }
         ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }
         ds.getString("camera_level")?.let { _levelEnabled.value = it.toBoolean() }
         ds.getString("camera_mic_muted")?.let { _micMuted.value = it.toBoolean() }

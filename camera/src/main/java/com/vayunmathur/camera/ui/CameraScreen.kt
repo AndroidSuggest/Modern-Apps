@@ -685,7 +685,10 @@ fun CameraScreen(
                             implementationMode = ImplementationMode.EMBEDDED,
                             coordinateTransformer = coordinateTransformer,
                             alignment = Alignment.Center,
-                            contentScale = if (isSloMo) ContentScale.Crop else ContentScale.Fit,
+                            // Crop (fill) so the camera feed fills the ratio-shaped box for the
+                            // selected aspect ratio (1:1 / 16:9 / 4:3). Fit letterboxed the native
+                            // 4:3 frame inside the box, making the preview shrink instead of reshape.
+                            contentScale = ContentScale.Crop,
                             // Built-in tap-to-focus and pinch-to-zoom (1.7.0-alpha02). The viewfinder
                             // applies focus/zoom on the SurfaceRequest's camera; we just sync the
                             // displayed zoom ratio so the zoom bar stays in step.
@@ -840,13 +843,23 @@ fun CameraScreen(
                     onSnapshot = { viewModel.captureVideoSnapshot() },
                     onFlipCamera = { viewModel.flipCamera() },
                     onGallery = {
-                        val intent = lastCaptureUri?.let { uri ->
-                            Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, context.contentResolver.getType(uri) ?: "image/*")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        // A last-capture URI can be stale (image deleted) or absent (nothing shot
+                        // this session). Verify it still resolves, else open the gallery collection;
+                        // wrap the whole launch so a missing image never crashes the app.
+                        runCatching {
+                            val uri = lastCaptureUri?.takeIf {
+                                runCatching { context.contentResolver.getType(it) }.getOrNull() != null
                             }
-                        } ?: Intent(Intent.ACTION_VIEW, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-                        context.startActivity(Intent.createChooser(intent, null))
+                            val intent = if (uri != null) {
+                                Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, context.contentResolver.getType(uri) ?: "image/*")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                            } else {
+                                Intent(Intent.ACTION_VIEW, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                            }
+                            context.startActivity(Intent.createChooser(intent, null))
+                        }.onFailure { Log.w("CameraScreen", "Could not open image viewer", it) }
                     },
                     iconRotation = animatedRotation,
                     flipEnabled = !isSloMo
