@@ -1,0 +1,30 @@
+# Standalone-workspace crate (like games/voxels) so it is detached from the root
+# Cargo workspace and the rustNativeLib gradle task can `cargo build` in place.
+[workspace]
+
+[workspace.dependencies]
+# Mirror the root catalog's JNI fork by relative path. Depth is 4 `../` because
+# translate/src/main/rust -> (rust,main,src,translate) -> repo root, then
+# third_party/jni-android. (games/voxels needs 5 `../` due to the extra games/ dir.)
+jni = { path = "../../../../third_party/jni-android", version = "0.21" }
+
+[package]
+name = "translate_engine"
+version = "0.1.0"
+edition = "2021"
+description = "On-device translation / speech engine JNI boundary for the Translate app (model inference honestly stubbed — no bundled weights)"
+license = "GPL-2.0-only"
+
+[lib]
+name = "translate_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+jni.workspace = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
