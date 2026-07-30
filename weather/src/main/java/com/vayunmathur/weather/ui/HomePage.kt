@@ -207,7 +207,14 @@ private fun LocationPage(
                 )
             }
             Column(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp),
+                // Include the navigation-bar inset so the last cards (Air quality /
+                // Pollen) clear the system nav bar and can scroll fully into view.
+                modifier = Modifier.padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 24.dp,
+                    bottom = paddingValues.calculateBottomPadding(),
+                ),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (selected == null) {
