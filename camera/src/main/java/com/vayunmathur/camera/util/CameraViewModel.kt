@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Rect
+import android.util.Rational
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -693,7 +695,33 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun setAspectRatio(ratio: AspectRatioOption) {
         _aspectRatio.value = ratio
+        // Re-apply the crop to the live capture use case so the next shot (and
+        // its preview cropRect) matches the newly selected ratio without a rebind.
+        imageCapture?.setCropAspectRatio(currentCropAspectRatio())
         viewModelScope.launch { ds.setString("camera_aspect_ratio", ratio.name) }
+    }
+
+    /**
+     * Still-capture crop aspect ratio, expressed width:height in the portrait UI
+     * orientation (the activity is portrait-locked) so it matches the on-screen
+     * preview box. CameraX crops OutputFileOptions saves to this and sets the
+     * ImageProxy cropRect for in-memory captures.
+     */
+    private fun currentCropAspectRatio(): Rational = when (_aspectRatio.value) {
+        AspectRatioOption.RATIO_1_1 -> Rational(1, 1)
+        AspectRatioOption.RATIO_4_3 -> Rational(3, 4)
+        AspectRatioOption.RATIO_16_9 -> Rational(9, 16)
+    }
+
+    /** Center-crop [src] to [rect] (the ImageProxy cropRect), returning [src] unchanged for a
+     *  full-frame/empty rect. Recycles the pre-crop bitmap when a new one is produced. */
+    private fun cropToRect(src: Bitmap, rect: Rect): Bitmap {
+        val left = rect.left.coerceIn(0, src.width)
+        val top = rect.top.coerceIn(0, src.height)
+        val w = rect.width().coerceAtMost(src.width - left)
+        val h = rect.height().coerceAtMost(src.height - top)
+        if (w <= 0 || h <= 0 || (left == 0 && top == 0 && w == src.width && h == src.height)) return src
+        return Bitmap.createBitmap(src, left, top, w, h).also { if (it != src) src.recycle() }
     }
 
     /** Cycles the aspect ratio 4:3 → 16:9 → 1:1 → 4:3 (top-bar icon). */
@@ -1231,6 +1259,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     }
                     val capture = captureBuilder.build()
                     imageCapture = capture
+                    // Crop stills to the selected aspect ratio (1:1 / 16:9 / 4:3). CameraX crops
+                    // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
+                    capture.setCropAspectRatio(currentCropAspectRatio())
                     val analysisBuilder = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     if (maxRes) {
@@ -1590,6 +1621,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     }
                     val capture = captureBuilder.build()
                     imageCapture = capture
+                    // Crop stills to the selected aspect ratio (1:1 / 16:9 / 4:3). CameraX crops
+                    // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
+                    capture.setCropAspectRatio(currentCropAspectRatio())
 
                     val analysisBuilder = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -2151,9 +2185,13 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             _nightPreviewActive.value -> captureSinglePhoto()
             // Multi-frame night capture only when night mode is active and exposure is fully auto.
             nightModeActive.value && isExposureAuto() -> captureNightPhoto()
-            // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a caller).
+            // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a
+            // caller). Only at the native 4:3 ratio: the motion still is saved as raw JPEG bytes
+            // (to preserve the Ultra HDR gain map + motion trailer), which can't carry CameraX's
+            // crop. For 1:1/16:9 fall through to the single-shot path, which saves a cropped JPEG.
             _cameraMode.value == CameraMode.PHOTO && !captureForResult &&
-                _warmth.value == 0f && _shadows.value == 0f -> captureMotionPhoto()
+                _warmth.value == 0f && _shadows.value == 0f &&
+                _aspectRatio.value == AspectRatioOption.RATIO_4_3 -> captureMotionPhoto()
             else -> captureSinglePhoto()
         }
     }
@@ -2373,6 +2411,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     object : ImageCapture.OnImageCapturedCallback() {
                         override fun onCaptureSuccess(image: ImageProxy) {
                             val degrees = image.imageInfo.rotationDegrees
+                            // cropRect reflects setCropAspectRatio; apply it to the decoded bitmap
+                            // since the raw JPEG buffer is always full-frame for in-memory captures.
+                            val cropRect = Rect(image.cropRect)
                             val sourceJpeg = try {
                                 image.planes[0].buffer.let { buf ->
                                     ByteArray(buf.remaining()).also { buf.get(it) }
@@ -2382,7 +2423,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                             }
                             viewModelScope.launch {
                                 val uri = withContext(Dispatchers.IO) {
-                                    val decoded = BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size)
+                                    val decoded = cropToRect(
+                                        BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size),
+                                        cropRect
+                                    )
                                     val adjusted = applyColorAdjustments(decoded, warmth, shadows, mirror)
                                     val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
                                     MediaStoreSaver.saveBitmap(app.contentResolver, values, adjusted)
