@@ -27,6 +27,7 @@ import com.vayunmathur.library.ui.IconList
 import com.vayunmathur.library.ui.IconSubscriptions
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.BottomBarItem
+import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.room.buildDatabase
@@ -101,9 +102,22 @@ class MainActivity : ComponentActivity() {
         youPipeViewModel
         setContent {
             DynamicTheme {
-                Navigation(getRoute(intent.data), youPipeViewModel)
+                Navigation(resolveInitialBackStack(intent.data), youPipeViewModel)
             }
         }
+    }
+
+    /**
+     * Decide the initial backstack at launch. A `watch` deep-link always wins;
+     * otherwise fall back to the user's chosen default page (see
+     * [DEFAULT_PAGE_KEY]), defaulting to Home. Read synchronously here because
+     * this runs in [onCreate] before `setContent`.
+     */
+    private fun resolveInitialBackStack(uri: Uri?): List<Route> {
+        if (uri != null && "watch" in uri.pathSegments && "v" in uri.queryParameterNames) {
+            return listOf(Route.VideoPage(videoURLtoID(uri.toString())))
+        }
+        return defaultBackStack(DataStoreUtils.getInstance(this).getString(DEFAULT_PAGE_KEY))
     }
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
@@ -125,10 +139,44 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-fun getRoute(uri: Uri?): Route =
-    if (uri != null && "watch" in uri.pathSegments && "v" in uri.queryParameterNames)
-        Route.VideoPage(videoURLtoID(uri.toString()))
-    else Route.SearchPage
+// --- Default startup page ("Open to" setting) ---
+
+/** DataStore key holding the persisted default-page choice. */
+const val DEFAULT_PAGE_KEY = "default_page"
+
+const val DEFAULT_PAGE_HOME = "home"
+const val DEFAULT_PAGE_SUBSCRIPTIONS = "subscriptions"
+const val DEFAULT_PAGE_ALL_SUBSCRIPTIONS = "all_subscriptions"
+const val DEFAULT_PAGE_HISTORY = "history"
+const val DEFAULT_PAGE_DOWNLOADS = "downloads"
+const val DEFAULT_PAGE_SETTINGS = "settings"
+
+/**
+ * Ordered options for the "Open to" picker: (persisted key, label string res).
+ * Stable string keys are used instead of [Route] objects so the choice
+ * serializes cleanly and survives refactors.
+ */
+val DEFAULT_PAGE_OPTIONS: List<Pair<String, Int>> = listOf(
+    DEFAULT_PAGE_HOME to R.string.page_home,
+    DEFAULT_PAGE_SUBSCRIPTIONS to R.string.title_subscriptions,
+    DEFAULT_PAGE_ALL_SUBSCRIPTIONS to R.string.label_all_subscriptions,
+    DEFAULT_PAGE_HISTORY to R.string.title_history,
+    DEFAULT_PAGE_DOWNLOADS to R.string.page_downloads,
+    DEFAULT_PAGE_SETTINGS to R.string.title_settings,
+)
+
+/** Map a persisted default-page key to the initial backstack to launch with. */
+fun defaultBackStack(key: String?): List<Route> = when (key) {
+    DEFAULT_PAGE_SUBSCRIPTIONS -> listOf(Route.SubscriptionsPage)
+    // Seed the Subscriptions root beneath the all-subscriptions feed so Back
+    // returns to the Subscriptions list instead of exiting the app.
+    DEFAULT_PAGE_ALL_SUBSCRIPTIONS ->
+        listOf(Route.SubscriptionsPage, Route.SubscriptionVideosPage(null))
+    DEFAULT_PAGE_HISTORY -> listOf(Route.History)
+    DEFAULT_PAGE_DOWNLOADS -> listOf(Route.Downloads)
+    DEFAULT_PAGE_SETTINGS -> listOf(Route.Settings)
+    else -> listOf(Route.SearchPage) // home / unset / unknown
+}
 
 @Serializable
 sealed interface Route: NavKey {
@@ -164,8 +212,8 @@ sealed interface Route: NavKey {
 }
 
 @Composable
-fun Navigation(initialRoute: Route, ypvm: YouPipeViewModel) {
-    val backStack = rememberNavBackStack(initialRoute)
+fun Navigation(initialBackStack: List<Route>, ypvm: YouPipeViewModel) {
+    val backStack = rememberNavBackStack(initialBackStack)
     MainNavigation(backStack) {
         entry<Route.SearchPage> {
             SearchPage(backStack, ypvm)

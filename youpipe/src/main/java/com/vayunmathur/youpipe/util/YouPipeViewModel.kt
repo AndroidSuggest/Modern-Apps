@@ -10,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.youpipe.DEFAULT_PAGE_HOME
+import com.vayunmathur.youpipe.DEFAULT_PAGE_KEY
 import com.vayunmathur.youpipe.data.CachedRelatedVideo
 import com.vayunmathur.youpipe.data.CachedRelatedVideoDao
 import com.vayunmathur.youpipe.data.ChannelPreference
@@ -934,6 +936,18 @@ class YouPipeViewModel(
         viewModelScope.launch {
             DataStoreUtils.getInstance(getApplication()).setString("youtube_language", code)
             NewPipe.setupLocalization(youtubeLocalization(code))
+        }
+    }
+
+    /** Which screen the app opens to at launch. See [DEFAULT_PAGE_KEY]; default Home. */
+    val defaultPage: StateFlow<String> = DataStoreUtils
+        .getInstance(application)
+        .stringFlow(DEFAULT_PAGE_KEY)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_PAGE_HOME)
+
+    fun setDefaultPage(key: String) {
+        viewModelScope.launch {
+            DataStoreUtils.getInstance(getApplication()).setString(DEFAULT_PAGE_KEY, key)
         }
     }
 

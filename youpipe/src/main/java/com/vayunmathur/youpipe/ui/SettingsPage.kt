@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.youpipe.DEFAULT_PAGE_OPTIONS
 import com.vayunmathur.youpipe.MAIN_BOTTOM_BAR_ITEMS
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
@@ -79,6 +80,33 @@ private fun LanguageSelector(selectedCode: String, onSelect: (String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DefaultPageSelector(selectedKey: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabelRes = (DEFAULT_PAGE_OPTIONS.firstOrNull { it.first == selectedKey }
+        ?: DEFAULT_PAGE_OPTIONS.first()).second
+
+    Box {
+        ListItem(
+            content = { Text(stringResource(R.string.label_default_page)) },
+            supportingContent = { Text(stringResource(currentLabelRes)) },
+            trailingContent = {
+                IconArrowDropDown()
+            },
+            modifier = Modifier.padding(start = 16.dp).clickable { expanded = true },
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DEFAULT_PAGE_OPTIONS.forEach { (key, labelRes) ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(labelRes)) },
+                    onClick = { onSelect(key); expanded = false },
+                )
+            }
+        }
+    }
+}
+
 private val SOURCE_TOGGLES = listOf(
     RecSource.RELATED to R.string.label_source_related,
     RecSource.TRENDING to R.string.label_source_trending,
@@ -96,6 +124,7 @@ fun SettingsPage(
     val sponsorBlockCategories by ypvm.sponsorBlockCategories.collectAsState()
     val deArrowEnabled by ypvm.deArrowEnabled.collectAsState()
     val youtubeLanguage by ypvm.youtubeLanguage.collectAsState()
+    val defaultPage by ypvm.defaultPage.collectAsState()
     val recPrefs by ypvm.recommendationPreferences.collectAsState()
     val isLoading by ypvm.isImporting.collectAsState()
     val progress by ypvm.importProgress.collectAsState()
@@ -122,6 +151,18 @@ fun SettingsPage(
     ) { paddingValues ->
         if (!isLoading) {
             LazyColumn(Modifier.padding(paddingValues)) {
+                item {
+                    ListItem(
+                        content = { Text(stringResource(R.string.label_general)) }
+                    )
+                }
+                item {
+                    DefaultPageSelector(
+                        selectedKey = defaultPage,
+                        onSelect = { ypvm.setDefaultPage(it) },
+                    )
+                }
+                item { HorizontalDivider() }
                 item {
                     ListItem(
                         content = { Text(stringResource(R.string.label_sponsorblock)) }

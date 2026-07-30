@@ -95,6 +95,15 @@
     <!-- Button: update category. Verb -->
     <string name="action_update">Update</string>
 
+    <!-- Settings section header: general app options. Noun, Title Case -->
+    <string name="label_general">General</string>
+    <!-- Settings row: choose which screen the app opens to at launch. Verb phrase -->
+    <string name="label_default_page">Open to</string>
+    <!-- Default-page option: the home/search feed. Noun -->
+    <string name="page_home">Home</string>
+    <!-- Default-page option: the downloads list. Noun plural -->
+    <string name="page_downloads">Downloads</string>
+
     <!-- TopAppBar title for watch history. Noun -->
     <string name="title_history">History</string>
     <!-- Selection mode badge: number selected (lowercase s in this variant). %1$s = count e.g. 3 -->
