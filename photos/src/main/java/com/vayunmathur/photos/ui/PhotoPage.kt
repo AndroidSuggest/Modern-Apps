@@ -1,8 +1,14 @@
 package com.vayunmathur.photos.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
+import android.text.format.Formatter
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -67,6 +73,7 @@ import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconEdit
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconWallpaper
@@ -81,8 +88,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.absoluteValue
 import kotlin.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -96,6 +105,25 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
     val context = LocalContext.current
     val photosSorted = remember(photos) { photos.sortedByDescending { it.date } }
     val matchedCounts by galleryViewModel.faceCountByPhoto.collectAsState()
+
+    // In-viewer delete: move the current photo to the system trash via the same
+    // MediaStore IntentSender flow the grid uses. MANAGE_MEDIA (enforced at app
+    // start) means no per-item confirmation popup. On success we resync; if the
+    // photo just deleted was the only one on screen, leave the viewer.
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            galleryViewModel.runSync()
+            if (photosSorted.size <= 1) backStack?.pop()
+        }
+    }
+    val onDeletePhoto: (Photo) -> Unit = { p ->
+        val pendingIntent = MediaStore.createTrashRequest(
+            context.contentResolver, listOf(p.uri.toUri()), true
+        )
+        deleteLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+    }
 
     // Resolve the page to open by id, falling back to the incoming view-intent
     // URI. A freshly received photo may not be indexed into the DB yet, so it
@@ -174,7 +202,8 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
                         },
                         onSetWallpaper = { p ->
                             backStack?.add(Route.Wallpaper(p.id, p.uri))
-                        }
+                        },
+                        onDelete = onDeletePhoto
                 )
             }
         }
@@ -214,10 +243,26 @@ fun PhotoDetailView(
         onToggleMetadata: () -> Unit,
         refreshKey: Int = 0,
         onEditPhoto: () -> Unit,
-        onSetWallpaper: (Photo) -> Unit = {}
+        onSetWallpaper: (Photo) -> Unit = {},
+        onDelete: (Photo) -> Unit = {}
 ) {
     val countryNames by photoMapViewModel.countryNames.collectAsState()
     val countryName = countryNames[photo.id]
+
+    // File size for the metadata bar, read lazily from MediaStore off the UI
+    // thread (no schema change needed; mirrors how countryName is fetched).
+    var fileSize by remember(photo.id) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(photo.id) {
+        fileSize = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(
+                    photo.uri.toUri(),
+                    arrayOf(MediaStore.MediaColumns.SIZE),
+                    null, null, null
+                )?.use { c -> if (c.moveToFirst()) c.getLong(0) else null }
+            }.getOrNull()
+        }
+    }
     var size by remember { mutableStateOf(IntSize.Zero) }
 
     val updatedZoomState by rememberUpdatedState(currentZoom)
@@ -419,6 +464,15 @@ fun PhotoDetailView(
                         text = stringResource(R.string.resolution, photo.width, photo.height),
                         color = Color.LightGray
                 )
+                fileSize?.takeIf { it > 0 }?.let { bytes ->
+                    Text(
+                            text = stringResource(
+                                    R.string.file_size,
+                                    Formatter.formatShortFileSize(context, bytes)
+                            ),
+                            color = Color.LightGray
+                    )
+                }
                 if (photo.panoData != null) {
                     Text(text = if (isSphere) "360°" else stringResource(R.string.panorama), color = Color.LightGray)
                 }
@@ -452,6 +506,9 @@ fun PhotoDetailView(
                                 context.startActivity(Intent.createChooser(intent, "Share"))
                             }
                     ) { IconShare(tint = Color.White) }
+                    IconButton(onClick = { onDelete(photo) }) {
+                        IconDelete(tint = Color.White)
+                    }
                 }
             }
         }

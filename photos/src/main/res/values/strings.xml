@@ -77,6 +77,8 @@
     <string name="location">Location: <xliff:g id="place" example="Paris, France">%1$s</xliff:g></string>
     <!-- Metadata row: image resolution. %1$d = width e.g. 4000, %2$d = height e.g. 3000, keep 'x' separator -->
     <string name="resolution">Resolution: <xliff:g id="width" example="4000">%1$d</xliff:g> x <xliff:g id="height" example="3000">%2$d</xliff:g></string>
+    <!-- Metadata row: file size on disk. %1$s = formatted size e.g. 2.5 MB -->
+    <string name="file_size">Size: <xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
     <!-- Metadata overlay placeholder while reverse geocoding pending. Verb present participle -->
     <string name="detecting">Detecting&#8230;</string>
     <!-- Button to open 360 degree photo viewer. Verb phrase with degree symbol -->
