@@ -97,9 +97,4 @@
     <string name="outline">Outline</string>
     <!-- Button: add signature annotation -->
     <string name="sign">Sign</string>
-
-    <!-- Toast after signature saved -->
-    <string name="signed_and_saved">Signed &amp; saved</string>
-    <!-- Toast when signing failed -->
-    <string name="signing_failed">Signing failed</string>
 </resources>

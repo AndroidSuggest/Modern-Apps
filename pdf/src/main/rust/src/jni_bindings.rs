@@ -210,41 +210,6 @@ fn save_encrypted_inner<'local>(
     bytes_or_null_mut(env, save_encrypted(handle as i64, u.as_bytes(), o.as_bytes()))
 }
 
-fn sign_cms_inner<'local>(
-    env: &mut JNIEnv<'local>,
-    content: JByteArray<'local>,
-    name: JString<'local>,
-) -> jbyteArray {
-    if content.is_null() {
-        throw_iae(env, "content is null");
-        return std::ptr::null_mut();
-    }
-    let len = env.get_array_length(&content).unwrap_or(0);
-    if len as usize > MAX_JAVA_BYTE_ARRAY_BYTES {
-        throw_oom(env, "Content too large (>200MB)");
-        return std::ptr::null_mut();
-    }
-    let data = match env.convert_byte_array(&content) {
-        Ok(b) => b,
-        Err(_) => {
-            let _ = env.exception_clear();
-            return std::ptr::null_mut();
-        }
-    };
-    let nm = match jstr_safe(env, &name) {
-        Ok(s) => s,
-        Err(e) => {
-            throw_iae(env, &e);
-            return std::ptr::null_mut();
-        }
-    };
-    if env.ensure_local_capacity(4).is_err() {
-        let _ = env.exception_clear();
-        return std::ptr::null_mut();
-    }
-    bytes_or_null_mut(env, crate::signing::sign_cms(&data, &nm))
-}
-
 fn render_page_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong, index: jint) -> jbyteArray {
     if env.ensure_local_capacity(4).is_err() {
         let _ = env.exception_clear();
@@ -572,29 +537,6 @@ fn save_document_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong) -> jbyte
     bytes_or_null_mut(env, save_document(handle as i64))
 }
 
-fn prepare_signature_inner<'local>(
-    env: &mut JNIEnv<'local>,
-    handle: jlong,
-    name: JString<'local>,
-    contents_bytes: jint,
-) -> jbyteArray {
-    let n = match jstr_safe(env, &name) {
-        Ok(s) => s,
-        Err(e) => {
-            throw_iae(env, &e);
-            return std::ptr::null_mut();
-        }
-    };
-    if env.ensure_local_capacity(4).is_err() {
-        let _ = env.exception_clear();
-        return std::ptr::null_mut();
-    }
-    bytes_or_null_mut(
-        env,
-        prepare_signature(handle as i64, &n, contents_bytes.max(0) as usize),
-    )
-}
-
 fn save_compressed_inner<'local>(env: &mut JNIEnv<'local>, handle: jlong) -> jbyteArray {
     if env.ensure_local_capacity(4).is_err() {
         let _ = env.exception_clear();
@@ -753,26 +695,6 @@ pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveEncrypted<'lo
                 "java/lang/RuntimeException",
                 "Native panic in saveEncrypted",
             );
-            std::ptr::null_mut()
-        }
-    }
-}
-
-/// `PdfNative.signCms(byte[], String) -> byte[]`. Detached CMS/PKCS#7
-/// signature (fresh self-signed RSA-2048, SHA-256 with RSA) over `content`,
-/// or null on failure. Replaces the Bouncy Castle path on the Kotlin side.
-#[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_signCms<'local>(
-    mut env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    content: JByteArray<'local>,
-    name: JString<'local>,
-) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| sign_cms_inner(&mut env, content, name))) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
-            let _ = env.throw_new("java/lang/RuntimeException", "Native panic in signCms");
             std::ptr::null_mut()
         }
     }
@@ -1505,26 +1427,6 @@ pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_saveDocument<'loc
                 "java/lang/RuntimeException",
                 "Native panic in saveDocument",
             );
-            std::ptr::null_mut()
-        }
-    }
-}
-
-/// `PdfNative.prepareSignature(long, String, int) -> byte[]`.
-#[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_pdf_util_PdfNative_prepareSignature<'local>(
-    mut env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    handle: jlong,
-    name: JString<'local>,
-    contents_bytes: jint,
-) -> jbyteArray {
-    match catch_unwind(AssertUnwindSafe(|| {
-        prepare_signature_inner(&mut env, handle, name, contents_bytes)
-    })) {
-        Ok(v) => v,
-        Err(_) => {
-            let _ = env.exception_clear();
             std::ptr::null_mut()
         }
     }

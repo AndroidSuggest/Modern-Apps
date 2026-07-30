@@ -10,41 +10,36 @@ name = "pdf_render"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Root catalog pins single version per crate (see /Users/vayun/Documents/Modern-Apps/Cargo.toml)
+# Root catalog pins single version per crate (see /Cargo.toml)
 # armv8-only: aarch64-linux-android target, no windows/wasm deps in normal edges.
-lopdf = { version = "0.36", features = ["serde"] }
+# lopdf default includes chrono->windows-link + jiff + time + rayon – not needed for core filter/crypto/image extraction path we use in safe viewer.
+# Trim default to only serde (still safe for XObject parsing). Date fields fallback to None if feature disabled.
+lopdf = { version = "0.36", default-features = false, features = ["serde"] }
 ttf-parser = { version = "0.25", default-features = false, features = ["std", "glyph-names"] }
 jni.workspace = true
-jpeg-decoder.workspace = true
-weezl.workspace = true # LZW – single function, std rewrite landing: keep version pinned, later drop
+jpeg-decoder = { version = "0.3.2", default-features = false }
 fax.workspace = true
 flate2.workspace = true
 hayro-jbig2 = { version = "0.3", default-features = false, features = ["std"] }
 
 openjp2.workspace = true
-md-5.workspace = true # tiny MD5 – candidate for std vendor but keep feature intact for now
+md-5.workspace = true
 aes.workspace = true
-cbc = { version = "0.1", features = ["alloc"] } # wrapper for aes CBC – tiny but keep
 sha2 = { version = "0.10", features = ["oid"] }
-indexmap.workspace = true # used for true LRU via shift_remove_index – keep
-getrandom.workspace = true # unified to 0.2.15 to match rand 0.8 chain, avoids duplicate 0.2+0.3+0.4
+indexmap = { version = "2.10.0" }
+getrandom.workspace = true
 
-# Detached CMS/PKCS#7 signing (must preserve feature per user constraint)
-# rsa etc use workspace = true so builder features unified in root Cargo.toml
-rsa.workspace = true
+# Signing (features preserved per no-feature-loss)
+# PDF signature *creation* removed as a feature – dropped rsa/cms/x509-cert/spki/const-oid
+# (and their num-bigint-dig/pkcs1/pkcs8/signature/sha1/spin/lazy_static/num-iter subtree).
+# der + rand stay: der is used pervasively for ASN.1 (fonts/filters/decrypt), rand is used
+# by decrypt.rs (OsRng) for encryption. const-oid still comes in transitively via der.
 rand.workspace = true
-x509-cert.workspace = true
-cms.workspace = true
 der.workspace = true
-spki.workspace = true
-const-oid.workspace = true
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
-# Must be unwind for JNI – abort would kill JVM process on any panic. Panics are caught
-# via catch_unwind in jni_bindings.rs and translated to Java null/0 returns.
 panic = "unwind"
-# Keep debuginfo for Play Console stack traces, strip only debug symbols not needed at runtime
 strip = "debuginfo"

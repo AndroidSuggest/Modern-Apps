@@ -12,7 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -92,10 +92,14 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -105,6 +109,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.compose.ui.unit.IntSize
+import com.vayunmathur.library.ocr.OcrEngine
+import kotlinx.coroutines.withTimeoutOrNull
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconClose
@@ -132,7 +138,6 @@ import com.vayunmathur.library.ui.IconLine
 import com.vayunmathur.library.ui.IconPolyline
 import com.vayunmathur.library.ui.IconRedact
 import com.vayunmathur.library.ui.IconSelect
-import com.vayunmathur.library.ui.IconSignature
 import com.vayunmathur.library.ui.IconSquiggly
 import com.vayunmathur.library.ui.IconStrikethrough
 import com.vayunmathur.library.ui.IconStyle
@@ -447,6 +452,12 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     // Prebuild the search index in the background so the first query is instant.
     LaunchedEffect(document) { document?.prewarmSearch() }
 
+    // On-device OCR engine (PP-OCRv5 / ncnn), shared across all pages so that
+    // scanned PDFs with no embedded text layer still become selectable. Lazy:
+    // native models only load on the first page that actually needs OCR.
+    val ocrEngine = remember { OcrEngine(context.applicationContext) }
+    DisposableEffect(Unit) { onDispose { ocrEngine.close() } }
+
     var editMode by remember { mutableStateOf(false) }
     var showSaveMenu by remember { mutableStateOf(false) }
     // Set once any edit is made; keeps the Save control visible thereafter.
@@ -579,6 +590,11 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
+    // True while ≥2 fingers are down. The LazyColumn's scroll is a descendant of
+    // the transformable, so it can otherwise claim a two-finger drag as a scroll
+    // before the pinch is recognized; disabling scroll during multi-touch makes a
+    // pinch always zoom.
+    var multiTouch by remember { mutableStateOf(false) }
     val transformState = rememberTransformableState { centroid, zoomChange, panChange, _ ->
         val zoomOld = zoom
         zoom = (zoom * zoomChange).coerceIn(1f, 6f)
@@ -667,25 +683,6 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
 
     var showEncrypt by remember { mutableStateOf(false) }
     var pendingEncryptPw by remember { mutableStateOf<String?>(null) }
-    val signLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/pdf")
-    ) { outUri ->
-        val doc = document
-        if (outUri != null && doc != null) scope.launch {
-            val signerName = android.os.Build.MODEL ?: "PDF Signer"
-            val bytes = doc.sign(signerName)
-            withContext(Dispatchers.IO) {
-                if (bytes != null) {
-                    runCatching { context.contentResolver.openOutputStream(outUri)?.use { it.write(bytes) } }
-                }
-            }
-            android.widget.Toast.makeText(
-                context,
-                if (bytes != null) context.getString(R.string.signed_and_saved) else context.getString(R.string.signing_failed),
-                android.widget.Toast.LENGTH_SHORT,
-            ).show()
-        }
-    }
     val encryptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
     ) { outUri ->
@@ -832,9 +829,6 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                             IconButton({ showEncrypt = true }) {
                                 IconLock()
                             }
-                            IconButton({ signLauncher.launch((uri.lastPathSegment ?: "document") + "-signed.pdf") }) {
-                                IconSignature()
-                            }
                         }
                         if (editMode) {
                             IconButton({ undo() }, enabled = undoStack.isNotEmpty()) {
@@ -954,6 +948,16 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 .padding(innerPadding)
                 .fillMaxSize()
                 .onSizeChanged { viewportSize = it }
+                // Track finger count in the Initial pass (before the LazyColumn's
+                // scroll reacts in the Main pass) so multi-touch disables scroll.
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val e = awaitPointerEvent(PointerEventPass.Initial)
+                            multiTouch = e.changes.count { it.pressed } >= 2
+                        }
+                    }
+                }
                 .graphicsLayer {
                     scaleX = zoom
                     scaleY = zoom
@@ -972,6 +976,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 is LoadState.Loaded -> LazyColumn(
                     Modifier.fillMaxSize(),
                     state = listState,
+                    userScrollEnabled = !multiTouch,
                 ) {
                     items((0 until pageCount).toList()) { index ->
                         val pageHighlights = matches.filter { it.first == index }.map { it.second }
@@ -981,6 +986,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                             document = state.document,
                             index = index,
                             version = (pageVersions[index] ?: 0) + pageMgrVersion,
+                            ocr = ocrEngine,
                             editMode = editMode,
                             tool = tool,
                             shape = shape,
@@ -1105,6 +1111,7 @@ private fun SafePdfPageItem(
     document: SafePdfDocument,
     index: Int,
     version: Int,
+    ocr: OcrEngine?,
     editMode: Boolean,
     tool: EditTool,
     shape: ShapeKind,
@@ -1191,6 +1198,7 @@ private fun SafePdfPageItem(
                 cw = cw,
                 ch = ch,
                 scale = scale,
+                ocr = ocr,
                 onLinkPage = onLinkPage,
             )
         }
@@ -1267,12 +1275,13 @@ private fun NonEditOverlay(
     cw: Float,
     ch: Float,
     scale: Float,
+    ocr: OcrEngine?,
     onLinkPage: (Int) -> Unit,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
     // Text selection underneath so link Boxes get hit-test priority.
-    TextSelectionLayer(page = page, ch = ch, scale = scale)
+    TextSelectionLayer(page = page, ch = ch, scale = scale, ocr = ocr)
     for (link in links) {
         val leftDp = with(density) { (link.x0 * scale).toDp() }
         val topDp = with(density) { (ch - link.y1 * scale).toDp() }
@@ -1321,136 +1330,360 @@ private fun pdfTypeface(family: Int, bold: Boolean, italic: Boolean): android.gr
     return android.graphics.Typeface.create(base, style)
 }
 
+/** A glyph plus its page-space ordering keys (baseline-Y desc, X asc) for merge+sort. */
+private data class OrderedGlyph(val orderY: Float, val orderX: Float, val glyph: SelGlyph)
+
+/** Pages with fewer than this many embedded glyphs are treated as scanned → OCR. */
+private const val MIN_EMBEDDED_GLYPHS_FOR_TEXT = 6
+
+/** Max distance (page px) a long-press may be from a glyph to start a selection. */
+private const val SELECT_HIT_PX = 80f
+
 /**
- * Glyph-level selection over a page's text primitives: drag to select a range in
- * reading order, adjust with the two handles, and copy the exact substring.
- * Uses accurate glyph advances via Text.advance and Paint.measureText for ligatures/multi-char.
+ * Build ordered selectable glyphs from a page's embedded Text primitives. Uses
+ * accurate glyph advances via Text.advance and Paint.measureText for ligatures /
+ * multi-char runs, with bold/italic so measured widths match the painted glyphs.
+ */
+private fun buildEmbeddedGlyphs(page: SafePdfPage, ch: Float, scale: Float): List<OrderedGlyph> {
+    val list = ArrayList<OrderedGlyph>()
+    val tmpPaint = android.graphics.Paint().apply {
+        isAntiAlias = true
+        isSubpixelText = true
+        isLinearText = true
+    }
+    for (prim in page.primitives) {
+        if (prim !is PdfPrimitive.Text || prim.text.isEmpty()) continue
+        val selTf = pdfTypeface(prim.fontFamily, prim.isBold, prim.isItalic)
+        tmpPaint.typeface = selTf
+        tmpPaint.isFakeBoldText = prim.isBold && !selTf.isBold
+        tmpPaint.textSkewX = if (prim.isItalic && !selTf.isItalic) -0.25f else 0f
+        tmpPaint.textScaleX = prim.hScale.coerceIn(0.2f, 4f)
+        tmpPaint.textSize = prim.size * scale
+        val textStr = prim.text
+        val measuredTotal = if (textStr.isNotEmpty()) tmpPaint.measureText(textStr) else prim.size * 0.5f
+        val perGlyphMeasured = if (textStr.isNotEmpty()) measuredTotal / textStr.length else prim.size * 0.5f * scale
+        var curPxPage = prim.origin.x
+        for (c in textStr) {
+            val px = curPxPage
+            val singleGlyph = textStr.length == 1
+            val cw = if (singleGlyph) prim.advance * scale else perGlyphMeasured
+            val stepPage = if (singleGlyph) prim.advance else perGlyphMeasured / scale
+            val left = px * scale
+            val right = left + cw
+            val baseline = ch - prim.origin.y * scale
+            val top = baseline - prim.size * scale
+            list.add(OrderedGlyph(-prim.origin.y, px, SelGlyph(c.toString(), left, top, right, baseline)))
+            curPxPage += stepPage
+        }
+    }
+    return list
+}
+
+/**
+ * Run OCR on the page's largest raster image and synthesize selectable glyphs
+ * from the recognized line boxes, so scanned PDFs with no embedded text layer
+ * become selectable. Characters are distributed evenly across each line box
+ * (monospace approximation) which is enough for word-level and range selection.
+ * Returns empty if OCR is unavailable or the page has no decodable image.
+ */
+private suspend fun ocrPageGlyphs(page: SafePdfPage, ch: Float, scale: Float, ocr: OcrEngine): List<OrderedGlyph> {
+    if (!ocr.isAvailable()) return emptyList()
+    val img = page.primitives.filterIsInstance<PdfPrimitive.Image>()
+        .mapNotNull { p -> p.bitmap?.let { p to it } }
+        .maxByOrNull { (p, _) -> kotlin.math.abs(p.ctm[0] * p.ctm[3] - p.ctm[1] * p.ctm[2]) }
+        ?: return emptyList()
+    val (prim, bmp) = img
+    val result = ocr.recognizeDetailed(bmp)
+    if (result.boxes.isEmpty()) return emptyList()
+
+    val a = prim.ctm[0]; val b = prim.ctm[1]; val c = prim.ctm[2]
+    val d = prim.ctm[3]; val e = prim.ctm[4]; val f = prim.ctm[5]
+    val bw = bmp.width.toFloat().coerceAtLeast(1f)
+    val bh = bmp.height.toFloat().coerceAtLeast(1f)
+    // Bitmap pixel (px,py) → page space via the image CTM on the unit square.
+    // Image row 0 is the top, so v (unit-square, bottom-up) = 1 - py/bh.
+    fun pageX(px: Float, py: Float): Float { val u = px / bw; val v = 1f - py / bh; return a * u + c * v + e }
+    fun pageY(px: Float, py: Float): Float { val u = px / bw; val v = 1f - py / bh; return b * u + d * v + f }
+
+    val out = ArrayList<OrderedGlyph>()
+    for (box in result.boxes) {
+        val text = box.text
+        if (text.isEmpty()) continue
+        val n = text.length
+        val pxL = box.left.toFloat(); val pxR = box.right.toFloat()
+        val pyT = box.top.toFloat(); val pyB = box.bottom.toFloat()
+        val sxA = pageX(pxL, pyB) * scale; val sxB = pageX(pxR, pyB) * scale
+        val yA = ch - pageY(pxL, pyT) * scale; val yB = ch - pageY(pxL, pyB) * scale
+        val left = minOf(sxA, sxB); val right = maxOf(sxA, sxB)
+        val top = minOf(yA, yB); val bottom = maxOf(yA, yB)
+        if (right <= left || bottom <= top) continue
+        val stepX = (right - left) / n
+        val orderY = -pageY(pxL, pyB)
+        for (k in 0 until n) {
+            val gl = left + k * stepX
+            out.add(
+                OrderedGlyph(
+                    orderY,
+                    pageX(pxL + (pxR - pxL) * (k.toFloat() / n), pyB),
+                    SelGlyph(text[k].toString(), gl, top, gl + stepX, bottom),
+                )
+            )
+        }
+    }
+    return out
+}
+
+/** Nearest glyph index to [p], or null if none within [maxDist] page px. */
+private fun nearestGlyph(g: List<SelGlyph>, p: Offset, maxDist: Float = Float.MAX_VALUE): Int? {
+    var best = -1
+    var bestD = Float.MAX_VALUE
+    for (i in g.indices) {
+        val gg = g[i]
+        val cx = (gg.left + gg.right) / 2f
+        val cy = (gg.top + gg.bottom) / 2f
+        val dd = (cx - p.x) * (cx - p.x) + (cy - p.y) * (cy - p.y)
+        if (dd < bestD) { bestD = dd; best = i }
+    }
+    return if (best >= 0 && bestD <= maxDist * maxDist) best else null
+}
+
+/** True when [a] and [b] belong to the same word (same line, no gap between them). */
+private fun sameWord(a: SelGlyph, b: SelGlyph): Boolean {
+    val h = maxOf(a.bottom - a.top, b.bottom - b.top, 1f)
+    val vA = (a.top + a.bottom) / 2f
+    val vB = (b.top + b.bottom) / 2f
+    if (kotlin.math.abs(vA - vB) > 0.6f * h) return false // different line
+    val gap = b.left - a.right
+    return gap <= 0.4f * h
+}
+
+/** Expand the glyph index [i] to the whole word it belongs to (reading order). */
+private fun wordRangeAt(g: List<SelGlyph>, i: Int): IntRange {
+    if (i !in g.indices) return i..i
+    if (g[i].ch.isBlank()) return i..i
+    var lo = i
+    var hi = i
+    while (lo - 1 in g.indices && g[lo - 1].ch.isNotBlank() && sameWord(g[lo - 1], g[lo])) lo--
+    while (hi + 1 in g.indices && g[hi + 1].ch.isNotBlank() && sameWord(g[hi], g[hi + 1])) hi++
+    return lo..hi
+}
+
+/** Which selection handle (0 = start, 1 = end) is within grab range of [p], else null. */
+private fun handleAt(g: List<SelGlyph>, p: Offset, r: IntRange): Int? {
+    if (r.first !in g.indices || r.last !in g.indices) return null
+    val s = g[r.first]
+    val e = g[r.last]
+    val dStart = kotlin.math.hypot(s.left - p.x, s.bottom - p.y)
+    val dEnd = kotlin.math.hypot(e.right - p.x, e.bottom - p.y)
+    val grab = 48f
+    return when {
+        dStart <= grab && dStart <= dEnd -> 0
+        dEnd <= grab -> 1
+        else -> null
+    }
+}
+
+/** The selected substring for range [r] over [g] (empty if out of bounds). */
+private fun selectionText(g: List<SelGlyph>, r: IntRange): String {
+    if (g.isEmpty() || r.first !in g.indices || r.last !in g.indices || r.last < r.first) return ""
+    return g.subList(r.first, r.last + 1).joinToString("") { it.ch }
+}
+
+/**
+ * Text selection over a page's embedded text plus (for scanned pages) OCR text:
+ *
+ *  - **Long-press** selects the word under the finger; continuing the drag in the
+ *    same motion extends the selection glyph-by-glyph.
+ *  - The two **endpoint handles** can be dragged directly (no long-press) to grow
+ *    or shrink the selection.
+ *  - Selecting no longer auto-copies; the standard Android selection context
+ *    menu (Copy / Select all) is shown via [LocalTextToolbar] — the real OS
+ *    floating [android.view.ActionMode]. A quick tap dismisses the selection.
  */
 @Composable
-private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float) {
+private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float, ocr: OcrEngine?) {
     val context = LocalContext.current
     val clipboard = androidx.compose.ui.platform.LocalClipboard.current
     val scope = rememberCoroutineScope()
-    // Build ordered glyphs once per page/scale using accurate advance + Tz handling (Phase 7).
-    // v8: include bold/italic for accurate measured width so spacing/melting is correct.
-    // pointerInput is keyed only on page identity to avoid cancelling gesture on scale change.
-    val glyphs = remember(page, ch, scale) {
-        val list = ArrayList<Triple<Float, Float, SelGlyph>>() // (orderY, orderX, glyph)
-        val tmpPaint = android.graphics.Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            isLinearText = true
+    val textToolbar = LocalTextToolbar.current
+
+    val embedded = remember(page, ch, scale) { buildEmbeddedGlyphs(page, ch, scale) }
+    val needsOcr = remember(embedded) {
+        embedded.count { it.glyph.ch.isNotBlank() } < MIN_EMBEDDED_GLYPHS_FOR_TEXT
+    }
+    var ocrGlyphs by remember(page, ch, scale) { mutableStateOf<List<OrderedGlyph>>(emptyList()) }
+    LaunchedEffect(page, ch, scale, needsOcr, ocr) {
+        ocrGlyphs = emptyList()
+        if (ocr != null && needsOcr) {
+            ocrGlyphs = runCatching { ocrPageGlyphs(page, ch, scale, ocr) }.getOrDefault(emptyList())
         }
-        for (prim in page.primitives) {
-            if (prim !is PdfPrimitive.Text || prim.text.isEmpty()) continue
-            val selTf = pdfTypeface(prim.fontFamily, prim.isBold, prim.isItalic)
-            tmpPaint.typeface = selTf
-            tmpPaint.isFakeBoldText = prim.isBold && !selTf.isBold
-            tmpPaint.textSkewX = if (prim.isItalic && !selTf.isItalic) -0.25f else 0f
-            tmpPaint.textScaleX = prim.hScale.coerceIn(0.2f, 4f)
-            tmpPaint.textSize = prim.size * scale
-            val textStr = prim.text
-            // Rust emits one glyph per Text prim with `advance` = that glyph's
-            // true device-space advance (from /Widths|/W, Tc/Tw/Tz). Use it for
-            // both stepping and glyph width; fall back to measured width only for
-            // multi-char runs (the font-less fallback path).
-            // For styled text, measure with the same bold/italic paint so per-glyph
-            // measured fallback matches visual, avoiding overlap "melting".
-            val measuredTotal = if (textStr.isNotEmpty()) tmpPaint.measureText(textStr) else prim.size * 0.5f
-            val perGlyphMeasured = if (textStr.isNotEmpty()) measuredTotal / textStr.length else prim.size * 0.5f * scale
-            var curPxPage = prim.origin.x
-            for (c in textStr) {
-                val px = curPxPage
-                val singleGlyph = textStr.length == 1
-                val cw = if (singleGlyph) prim.advance * scale else perGlyphMeasured
-                val stepPage = if (singleGlyph) prim.advance else perGlyphMeasured / scale
-                val left = px * scale
-                val right = left + cw
-                val baseline = ch - prim.origin.y * scale
-                val top = baseline - prim.size * scale
-                list.add(Triple(-prim.origin.y, px, SelGlyph(c.toString(), left, top, right, baseline)))
-                curPxPage += stepPage
-            }
-        }
-        list.sortWith(compareBy({ it.first }, { it.second }))
-        list.map { it.third }
+    }
+
+    val glyphs = remember(embedded, ocrGlyphs) {
+        (embedded + ocrGlyphs).sortedWith(compareBy({ it.orderY }, { it.orderX })).map { it.glyph }
     }
     if (glyphs.isEmpty()) return
 
     var range by remember(page) { mutableStateOf<IntRange?>(null) }
-    var dragEnd by remember(page) { mutableStateOf(true) } // which handle is moving
-
-    fun nearest(p: Offset): Int {
-        var best = 0
-        var bestD = Float.MAX_VALUE
-        glyphs.forEachIndexed { i, g ->
-            val cx = (g.left + g.right) / 2f
-            val cy = (g.top + g.bottom) / 2f
-            val d = (cx - p.x) * (cx - p.x) + (cy - p.y) * (cy - p.y)
-            if (d < bestD) { bestD = d; best = i }
-        }
-        return best
-    }
-
+    // True while a handle/word drag is in progress → the OS menu is hidden until
+    // the gesture settles (mirrors native selection behavior).
+    var isAdjusting by remember(page) { mutableStateOf(false) }
+    // This layer's position in the composition root, tracked so the menu's anchor
+    // rect follows scroll/zoom; recomputed whenever the layout is re-positioned.
+    var selCoords by remember(page) { mutableStateOf<LayoutCoordinates?>(null) }
+    var rootAnchor by remember(page) { mutableStateOf(Offset.Zero) }
+    // Whether *this* page currently owns the (window-global) toolbar, so pages
+    // without a selection never hide another page's menu during scroll.
+    var showing by remember(page) { mutableStateOf(false) }
     val latestGlyphs by rememberUpdatedState(glyphs)
 
-    Canvas(
-        Modifier.fillMaxSize().pointerInput(page) {
-            detectDragGesturesAfterLongPress(
-                onDragStart = { pos ->
-                    val g = latestGlyphs
-                    val r = range
-                    if (r != null && r.first in g.indices && r.last in g.indices) {
-                        val startG = g[r.first]
-                        val endG = g[r.last]
-                        val dStart = kotlin.math.hypot(startG.left - pos.x, startG.bottom - pos.y)
-                        val dEnd = kotlin.math.hypot(endG.right - pos.x, endG.bottom - pos.y)
-                        if (minOf(dStart, dEnd) < 60f) {
-                            dragEnd = dEnd <= dStart
-                            return@detectDragGesturesAfterLongPress
-                        }
-                    }
-                    val i = nearest(pos)
-                    range = i..i
-                    dragEnd = true
-                },
-                onDrag = { change, _ ->
-                    change.consume()
-                    val g = latestGlyphs
-                    if (g.isEmpty()) return@detectDragGesturesAfterLongPress
-                    val i = nearest(change.position)
-                    val r = range ?: (i..i)
-                    range = if (dragEnd) minOf(r.first, i)..maxOf(r.first, i)
-                    else minOf(i, r.last)..maxOf(i, r.last)
-                },
-                onDragEnd = {
-                    val g = latestGlyphs
-                    val r = range
-                    if (r != null && g.isNotEmpty() && r.first in g.indices && r.last in g.indices) {
-                        val text = g.subList(r.first, r.last + 1).joinToString("") { it.ch }
-                        if (text.isNotBlank()) {
-                            scope.launch { clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText(context.getString(R.string.text), text))) }
-                            android.widget.Toast.makeText(context, context.getString(R.string.copied), android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-            )
-        },
-    ) {
-        val r = range ?: return@Canvas
+    DisposableEffect(Unit) {
+        onDispose { if (showing) textToolbar.hide() }
+    }
+
+    // Drive the real OS floating ActionMode: show it anchored to the selection's
+    // bounding rect (in root coordinates) whenever there's a settled selection.
+    LaunchedEffect(range, isAdjusting, rootAnchor, glyphs) {
+        val r = range
+        val coords = selCoords
+        if (r == null || isAdjusting || coords == null || !coords.isAttached ||
+            r.first !in glyphs.indices || r.last !in glyphs.indices) {
+            if (showing) { textToolbar.hide(); showing = false }
+            return@LaunchedEffect
+        }
+        var left = Float.MAX_VALUE
+        var top = Float.MAX_VALUE
+        var right = -Float.MAX_VALUE
+        var bottom = -Float.MAX_VALUE
         for (i in r) {
             val g = glyphs[i]
+            if (g.left < left) left = g.left
+            if (g.top < top) top = g.top
+            if (g.right > right) right = g.right
+            if (g.bottom > bottom) bottom = g.bottom
+        }
+        val tl = coords.localToRoot(Offset(left, top))
+        val br = coords.localToRoot(Offset(right, bottom))
+        val rootRect = Rect(minOf(tl.x, br.x), minOf(tl.y, br.y), maxOf(tl.x, br.x), maxOf(tl.y, br.y))
+        textToolbar.showMenu(
+            rect = rootRect,
+            onCopyRequested = {
+                val text = selectionText(glyphs, r)
+                if (text.isNotBlank()) {
+                    scope.launch {
+                        clipboard.setClipEntry(
+                            androidx.compose.ui.platform.ClipEntry(
+                                android.content.ClipData.newPlainText(context.getString(R.string.text), text)
+                            )
+                        )
+                    }
+                }
+                range = null
+            },
+            onSelectAllRequested = { range = 0..glyphs.lastIndex },
+        )
+        showing = true
+    }
+
+    Canvas(
+        // Keyed on page only so zoom/scale changes don't cancel an in-progress
+        // selection; latest glyphs are read via rememberUpdatedState.
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { c -> selCoords = c; rootAnchor = c.localToRoot(Offset.Zero) }
+            .pointerInput(page) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+
+                    // (A) If a selection exists and the finger lands on a handle,
+                    //     drag it immediately (no long-press needed).
+                    val existing = range
+                    if (existing != null) {
+                        val which = handleAt(latestGlyphs, down.position, existing)
+                        if (which != null) {
+                            down.consume()
+                            isAdjusting = true
+                            val anchor = if (which == 0) existing.last else existing.first
+                            drag(down.id) { change ->
+                                nearestGlyph(latestGlyphs, change.position)?.let { i ->
+                                    range = minOf(i, anchor)..maxOf(i, anchor)
+                                }
+                                change.consume()
+                            }
+                            isAdjusting = false
+                            return@awaitEachGesture
+                        }
+                    }
+
+                    // (B) Otherwise classify the gesture: a long-press starts a word
+                    //     selection; a quick tap dismisses; movement is a scroll (we
+                    //     don't consume, so the parent list/zoom handles it).
+                    val slop = viewConfiguration.touchSlop
+                    val outcome = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        var moved = 0f
+                        var last = down.position
+                        var res = "hold"
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            // A second finger means a pinch/zoom: bail without consuming
+                            // so the parent transformable handles it even when the first
+                            // finger is resting on text.
+                            if (ev.changes.count { it.pressed } > 1) { res = "multitouch"; break }
+                            val cpc = ev.changes.firstOrNull { it.id == down.id }
+                            if (cpc == null) { res = "cancel"; break }
+                            if (!cpc.pressed) { res = "tap"; break }
+                            moved += (cpc.position - last).getDistance()
+                            last = cpc.position
+                            if (moved > slop) { res = "scroll"; break }
+                        }
+                        res
+                    }
+
+                    when (outcome) {
+                        null -> {
+                            // Long-press: select the word, then allow drag-to-extend.
+                            val i = nearestGlyph(latestGlyphs, down.position, SELECT_HIT_PX)
+                            if (i != null) {
+                                down.consume()
+                                val w = wordRangeAt(latestGlyphs, i)
+                                range = w
+                                // Keep the whole first word selected; extend outward
+                                // toward the finger in either direction.
+                                val wLo = w.first
+                                val wHi = w.last
+                                isAdjusting = true
+                                drag(down.id) { change ->
+                                    nearestGlyph(latestGlyphs, change.position)?.let { j ->
+                                        range = minOf(j, wLo)..maxOf(j, wHi)
+                                    }
+                                    change.consume()
+                                }
+                                isAdjusting = false
+                            }
+                        }
+                        "tap" -> if (range != null) range = null
+                        else -> { /* scroll / multitouch / cancel: don't consume, let the parent scroll or pinch-zoom */ }
+                    }
+                }
+            },
+    ) {
+        val r = range ?: return@Canvas
+        val g = latestGlyphs
+        for (i in r) {
+            if (i !in g.indices) continue
+            val gg = g[i]
             drawRect(
                 color = Color(0x553F51B5),
-                topLeft = Offset(g.left, g.top),
-                size = Size(g.right - g.left, g.bottom - g.top),
+                topLeft = Offset(gg.left, gg.top),
+                size = Size(gg.right - gg.left, gg.bottom - gg.top),
             )
         }
-        // Handles at the two ends.
-        val s = glyphs[r.first]
-        val e = glyphs[r.last]
-        drawCircle(Color(0xFF3F51B5), radius = 14f, center = Offset(s.left, s.bottom))
-        drawCircle(Color(0xFF3F51B5), radius = 14f, center = Offset(e.right, e.bottom))
+        if (r.first in g.indices && r.last in g.indices) {
+            val s = g[r.first]
+            val e = g[r.last]
+            drawCircle(Color(0xFF3F51B5), radius = 16f, center = Offset(s.left, s.bottom))
+            drawCircle(Color(0xFF3F51B5), radius = 16f, center = Offset(e.right, e.bottom))
+        }
     }
 }
 
