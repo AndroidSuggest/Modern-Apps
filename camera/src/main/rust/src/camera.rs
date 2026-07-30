@@ -1,7 +1,7 @@
 //! Camera parameters and helpers, mirroring cv::detail::CameraParams and the
 //! Rodrigues rotation conversions used by the estimators / bundle adjuster.
 
-use nalgebra::{Matrix3, Vector3};
+use crate::linalg::{Matrix3, Vector3};
 
 #[derive(Clone)]
 pub struct CameraParams {

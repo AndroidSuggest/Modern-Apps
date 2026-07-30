@@ -8,8 +8,7 @@
 use crate::camera::{rodrigues_to_mat, CameraParams};
 use crate::geometry::Pt;
 use crate::matching::MatchInfo;
-use nalgebra::{DMatrix, DVector, Matrix3, Vector3};
-use rayon::prelude::*;
+use crate::linalg::{DMatrix, DVector, Matrix3, Vector3};
 
 /// BundleAdjusterRay conf_thresh matches stitch.rs CONF_THRESH – must be 0.3 not 1.0,
 /// otherwise bundle drops all edges while biggest_component keeps them.
@@ -87,7 +86,7 @@ fn edge_res(ci: &CameraParams, cj: &CameraParams, corr: &[(Pt, Pt)]) -> Vec<f64>
 
 fn total_cost(cams: &[CameraParams], edges: &[Edge]) -> f64 {
     edges
-        .par_iter()
+        .iter()
         .map(|e| edge_res(&cams[e.i], &cams[e.j], &e.corr).iter().map(|v| v * v).sum::<f64>())
         .sum()
 }
@@ -111,9 +110,9 @@ pub fn bundle_adjust(cams: &mut Vec<CameraParams>, matches: &[MatchInfo]) {
 
     for _ in 0..MAX_ITERS {
         let cost_before = cost;
-        // Block-sparse normal equations, accumulated per edge in parallel.
+        // Block-sparse normal equations, accumulated per edge — was rayon reduce, now std fold (prefer stdlib)
         let (jtj, jtr) = edges
-            .par_iter()
+            .iter()
             .map(|e| {
                 let ca = &cams[e.i];
                 let cb = &cams[e.j];
@@ -160,8 +159,8 @@ pub fn bundle_adjust(cams: &mut Vec<CameraParams>, matches: &[MatchInfo]) {
                 }
                 (jtj, jtr)
             })
-            .reduce(
-                || (DMatrix::<f64>::zeros(nparams, nparams), DVector::<f64>::zeros(nparams)),
+            .fold(
+                (DMatrix::<f64>::zeros(nparams, nparams), DVector::<f64>::zeros(nparams)),
                 |(mut a, mut b), (ja, jb)| {
                     a += ja;
                     b += jb;
@@ -185,11 +184,11 @@ pub fn bundle_adjust(cams: &mut Vec<CameraParams>, matches: &[MatchInfo]) {
             if cost_new < cost {
                 *cams = trial;
                 cost = cost_new;
-                lambda = (lambda * 0.1).max(1e-12);
+                lambda = (lambda * 0.1_f64).max(1e-12);
                 improved = true;
                 break;
             } else {
-                lambda = (lambda * 10.0).min(1e12);
+                lambda = (lambda * 10.0_f64).min(1e12);
             }
         }
         if !improved {

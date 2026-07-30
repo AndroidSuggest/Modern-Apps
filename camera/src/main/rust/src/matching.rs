@@ -13,8 +13,7 @@
 
 use crate::features::{match_features, Features};
 use crate::geometry::{find_homography_ransac, transfer_inliers, Pt};
-use nalgebra::Matrix3;
-use rayon::prelude::*;
+use crate::linalg::Matrix3;
 use std::collections::HashSet;
 
 const RATIO: f32 = 0.7; // 1 - match_conf (0.3)
@@ -155,7 +154,7 @@ pub fn match_all(feats: &[Features], yaw: &[f32], pitch: &[f32], max_angle: f32)
         }
     }
     pairs
-        .par_iter()
+        .iter()
         .filter_map(|&(i, j)| match_pair(i, j, &feats[i], &feats[j]))
         .collect()
 }

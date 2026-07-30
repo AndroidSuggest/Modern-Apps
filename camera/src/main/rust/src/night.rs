@@ -4,7 +4,7 @@
 use crate::features::{detect_and_describe, match_features};
 use crate::geometry::{find_homography_ransac, Pt};
 use crate::imgbuf::{to_gray, Rgba};
-use nalgebra::{Matrix3, Vector3};
+use crate::linalg::{Matrix3, Vector3};
 
 // Tuned for low-light: lower FAST threshold, more features, more RANSAC,
 // lower min-inliers. Registration runs at reduced res for speed.

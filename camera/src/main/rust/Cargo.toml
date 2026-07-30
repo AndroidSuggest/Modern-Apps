@@ -2,7 +2,7 @@
 name = "camera_stitch"
 version = "0.1.0"
 edition = "2021"
-description = "Feature-based panorama stitcher + night burst aligner for the camera app, armv8-only"
+description = "Feature-based panorama stitcher + night burst aligner for the camera app, armv8-only stdlib"
 license = "GPL-2.0-only"
 
 [lib]
@@ -11,13 +11,15 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
-# image crate removed – pulled moxcms 0.7 + pxfm 0.1 + bytemuck 1.x + byteorder-lite + zune-core etc for one JPEG decode+encode
-# Single function: Rgba::from_jpeg via image::load_from_memory + encode_jpeg via image::codecs::jpeg::JpegEncoder
-# Rewritten with jpeg-decoder (already in pdf) + zune-jpeg minimal if needed; we vend tiny JPEG decode/encode via std.
-jpeg-decoder.workspace = true
+# image crate 0.25 removed – pulled moxcms/pxfm/bytemuck; now jpeg-decoder + jpeg-encoder (trivial 1-function)
+jpeg-decoder = { version = "0.3.2", default-features = false }
 jpeg-encoder = { version = "0.6.1", default-features = false }
-nalgebra = { version = "0.33.3" }
-rayon = "1.12"
+# nalgebra removed – replaced by a tiny in-crate linalg module (src/linalg.rs):
+# fixed 3×3 Matrix3/Vector3, closed-form inverse, Jacobi symmetric-eigen, SVD
+# (3×3 + dense DLT null-space), and partial-pivot LU solve. Drops ~9 transitive
+# crates (simba, wide, safe_arch, bytemuck, approx, paste, num-rational,
+# num-iter, nalgebra-macros).
+# rayon removed – was 6 crates (crossbeam-deque/epoch/utils/either/rayon-core) for par_iter in bundle/matching/stitch – now std iter (prefer stdlib)
 
 [profile.release]
 opt-level = 3

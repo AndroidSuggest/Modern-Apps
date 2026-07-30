@@ -6,7 +6,7 @@
 use crate::camera::CameraParams;
 use crate::matching::MatchInfo;
 use crate::sphere::{estimate_focal, k_matrix, orthonormalize};
-use nalgebra::Matrix3;
+use crate::linalg::Matrix3;
 
 pub fn estimate_cameras(n: usize, w: usize, h: usize, matches: &[MatchInfo]) -> Vec<CameraParams> {
     let hs: Vec<Matrix3<f64>> = matches.iter().map(|m| m.h).collect();

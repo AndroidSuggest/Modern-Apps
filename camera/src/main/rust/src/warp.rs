@@ -2,7 +2,7 @@
 //! blending and simple gain compensation.
 
 use crate::imgbuf::Rgba;
-use nalgebra::{Matrix3, Vector3};
+use crate::linalg::{Matrix3, Vector3};
 
 /// Precomputed edge-distance feather weight for a w×h frame.
 pub(crate) fn feather_weights(w: usize, h: usize) -> Vec<f32> {

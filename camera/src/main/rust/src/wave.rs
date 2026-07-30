@@ -2,7 +2,7 @@
 //! "wave" by re-aligning all camera rotations to a common up/right frame.
 
 use crate::camera::CameraParams;
-use nalgebra::{Matrix3, Vector3};
+use crate::linalg::{Matrix3, Vector3};
 
 pub fn wave_correct_horizontal(cams: &mut [CameraParams]) {
     if cams.len() <= 1 {

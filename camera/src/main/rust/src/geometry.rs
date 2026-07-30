@@ -1,6 +1,6 @@
 //! Homography estimation (normalized DLT) with RANSAC.
 
-use nalgebra::{DMatrix, Matrix3, Vector3};
+use crate::linalg::{DMatrix, Matrix3, Vector3};
 
 pub type Pt = (f32, f32);
 

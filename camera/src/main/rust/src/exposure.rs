@@ -7,7 +7,7 @@
 //!   getGainMap CV_32F, smoothing kernel [0.25 0.5 0.25] sepFilter2D iter=2
 
 use crate::sphere::WarpedTile;
-use nalgebra::{DMatrix, DVector};
+use crate::linalg::{DMatrix, DVector};
 
 const ALPHA: f64 = 0.01;
 const BETA: f64 = 100.0;

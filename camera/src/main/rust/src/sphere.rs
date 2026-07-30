@@ -9,7 +9,7 @@
 
 use crate::imgbuf::Rgba;
 use crate::warp::feather_weights;
-use nalgebra::{Matrix3, Vector3};
+use crate::linalg::{Matrix3, Vector3};
 
 /// OpenCV `focalsFromHomography` (autocalib.cpp): recover the two focal-length
 /// estimates implied by a homography. Returns (f0, f1), each Some if valid.

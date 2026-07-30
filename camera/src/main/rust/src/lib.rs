@@ -1,6 +1,7 @@
 //! Camera stitching native library: feature-based panorama stitcher + night
 //! burst aligner, exposed to Kotlin via JNI. Replaces the OpenCV dependency.
 
+mod linalg;
 mod imgbuf;
 mod features;
 mod geometry;
