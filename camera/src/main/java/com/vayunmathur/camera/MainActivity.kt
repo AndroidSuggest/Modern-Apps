@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -36,7 +37,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Force a black three-button navigation bar even in light mode (the
+        // camera UI is always dark), instead of the default light/transparent
+        // scrim a bare enableEdgeToEdge() gives in light mode.
+        enableEdgeToEdge(
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK)
+        )
 
         // Honor the system "take a photo" intent (MediaStore.ACTION_IMAGE_CAPTURE) so other apps
         // can request a photo via startActivityForResult. Default to CANCELED so back/cancel
