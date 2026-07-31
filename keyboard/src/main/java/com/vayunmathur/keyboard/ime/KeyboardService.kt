@@ -201,8 +201,10 @@ class KeyboardService : InputMethodService(),
                 variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
                 variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
             (cls == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        // Phone gets its own dial-pad layout (FUTO phone.yaml); number/datetime share the
+        // numeric layout (FUTO number.yaml). Everything else uses letters.
+        val isPhone = cls == InputType.TYPE_CLASS_PHONE
         val isNumeric = cls == InputType.TYPE_CLASS_NUMBER ||
-            cls == InputType.TYPE_CLASS_PHONE ||
             cls == InputType.TYPE_CLASS_DATETIME
 
         kbState.passwordField = isPassword
@@ -214,7 +216,11 @@ class KeyboardService : InputMethodService(),
                 variation == InputType.TYPE_TEXT_VARIATION_URI -> TextVariation.URL
             else -> TextVariation.NORMAL
         }
-        kbState.basePage = if (isNumeric) KeyboardPage.NUMERIC else KeyboardPage.LETTERS
+        kbState.basePage = when {
+            isPhone -> KeyboardPage.PHONE
+            isNumeric -> KeyboardPage.NUMERIC
+            else -> KeyboardPage.LETTERS
+        }
         kbState.page = kbState.basePage
         kbState.shift = ShiftState.OFF
 

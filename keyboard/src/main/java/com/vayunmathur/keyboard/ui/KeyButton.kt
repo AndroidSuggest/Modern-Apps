@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
@@ -65,12 +66,17 @@ fun specialKeyColor(): Color = MaterialTheme.colorScheme.surfaceContainer
 @Composable
 fun pressedKeyColor(): Color = MaterialTheme.colorScheme.surfaceBright
 
-/** A letter/symbol key: tap commits, optional long-press commits an alternate. */
+/**
+ * A letter/symbol key: tap commits, optional long-press commits an alternate. An optional
+ * [hint] draws a small secondary label beneath the main one (the ABC/DEF letters on the
+ * phone dial-pad, matching FUTO's phone layout).
+ */
 @Composable
 fun RowScope.CharKey(
     label: String,
     height: Dp,
     weight: Float = 1f,
+    hint: String? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -91,7 +97,14 @@ fun RowScope.CharKey(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp)
+        if (hint != null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = label, color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp)
+                Text(text = hint, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+            }
+        } else {
+            Text(text = label, color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp)
+        }
         // FUTO/AOSP-style preview: while held, balloon the character above the key so
         // the finger doesn't hide it. clippingEnabled=false lets it float above the
         // top row (outside the keyboard bounds).

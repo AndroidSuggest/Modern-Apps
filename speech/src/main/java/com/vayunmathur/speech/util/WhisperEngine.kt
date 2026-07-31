@@ -5,29 +5,31 @@ import android.util.Log
 import com.vayunmathur.ncnn.Whisper
 
 /**
- * Thin wrapper around the ncnn AAR [Whisper]: loads the bundled whisper-tiny model
- * **directly from the APK assets** (via [Whisper]'s AssetManager constructor — no
- * extraction) once, lazily, and transcribes 16 kHz mono PCM. Reused across recognition
- * sessions by [com.vayunmathur.speech.service.WhisperRecognitionService]. Not
- * thread-safe — call [transcribe] from a single worker thread.
+ * Thin wrapper around the ncnn AAR [Whisper]: loads the whisper-tiny model from the
+ * runtime-downloaded files (see [WhisperModel]) via [Whisper]'s filesystem-directory
+ * constructor, once and lazily, and transcribes 16 kHz mono PCM. Reused across recognition
+ * sessions by [com.vayunmathur.speech.service.WhisperRecognitionService]. Not thread-safe —
+ * call [transcribe] from a single worker thread.
  */
 class WhisperEngine(private val context: Context) {
 
     private var whisper: Whisper? = null
     private var loadFailed = false
 
-    /** Whether the bundled model assets are present. */
+    /** Whether the downloaded model files are present. */
     fun isModelPresent(): Boolean = WhisperModel.isReady(context)
 
-    /** Load the model now (e.g. to warm up off the main thread). */
-    fun preload() { ensure() }
+    /** Load the model now (e.g. to warm up off the main thread). Returns true if ready. */
+    fun preload(): Boolean = ensure()
 
     @Synchronized
     private fun ensure(): Boolean {
         whisper?.let { return true }
         if (loadFailed) return false
+        // Don't try to load a partially-downloaded model; wait until all files are present.
+        if (!isModelPresent()) return false
         return try {
-            val w = Whisper(context.assets, WhisperModel.DIR)
+            val w = Whisper(WhisperModel.modelDir(context).absolutePath)
             if (w.isAvailable) { whisper = w; true } else { w.close(); loadFailed = true; false }
         } catch (t: Throwable) {
             Log.e(TAG, "Whisper load failed", t)

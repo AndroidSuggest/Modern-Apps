@@ -1,7 +1,7 @@
 package com.vayunmathur.keyboard.util
 
 /** Which page of keys is currently shown. */
-enum class KeyboardPage { LETTERS, SYMBOLS, MORE_SYMBOLS, NUMERIC, EMOJI }
+enum class KeyboardPage { LETTERS, SYMBOLS, MORE_SYMBOLS, NUMERIC, PHONE, PHONE_SYMBOLS, EMOJI }
 
 /** Shift/caps state for the letter page. */
 enum class ShiftState { OFF, SHIFTED, CAPS_LOCK }
@@ -58,6 +58,7 @@ object Layouts {
         KeyboardPage.SYMBOLS -> SYMBOL_ROWS
         KeyboardPage.MORE_SYMBOLS -> MORE_SYMBOL_ROWS
         KeyboardPage.NUMERIC -> NUMERIC_ROWS
-        KeyboardPage.EMOJI -> null
+        // Phone/emoji pages are laid out directly by the UI (special keys, hints, grid).
+        KeyboardPage.PHONE, KeyboardPage.PHONE_SYMBOLS, KeyboardPage.EMOJI -> null
     }
 }

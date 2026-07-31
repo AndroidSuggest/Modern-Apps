@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #
-# Fetch the multilingual Whisper-tiny ncnn model (13 files, ~113 MB) and drop them into
-# the :speech app assets so they get bundled in the APK and loaded by the ncnn AAR's
-# com.vayunmathur.ncnn.Whisper (AssetManager) — no runtime download, no extraction.
+# Stage the multilingual Whisper-tiny ncnn model (13 files, ~113 MB) for upload to the model
+# mirror. The :speech app downloads these at runtime — they are NOT bundled in the APK — from
+#   https://data.vayunmathur.com/models/whisper-tiny/<file>
+# (see WhisperModel.FILES). Upload the staged files under that path, preserving names.
 #
 # Source: nihui/ncnn-android-whisper release tag "models" (pre-converted by nihui).
-# The model is committed with the app, so this is only needed to re-fetch / restore it:
 #
 #   ./scripts/speech/fetch_whisper_model.sh
 #
 set -euo pipefail
 
 BASE="https://github.com/nihui/ncnn-android-whisper/releases/download/models"
-DEST="speech/src/main/assets/whisper-tiny"
+DEST="dist/speech-mirror/whisper-tiny"
 
 FILES=(
   whisper_tiny_decoder.ncnn.bin        whisper_tiny_decoder.ncnn.param
@@ -29,18 +29,15 @@ if [ ! -f settings.gradle.kts ]; then
   exit 1
 fi
 
-if [ "$(ls -1 "$DEST" 2>/dev/null | wc -l | tr -d ' ')" = "13" ]; then
-  echo "Model already present at ${DEST} (13 files) — nothing to do."
-  exit 0
-fi
-
 mkdir -p "$DEST"
 for f in "${FILES[@]}"; do
-  echo "Downloading $f…"
-  curl -fL "$BASE/$f" -o "$DEST/$f"
+  echo "Downloading ${f}..."
+  curl -fL "${BASE}/${f}" -o "${DEST}/${f}"
 done
 
-echo "Done. Bundled ${#FILES[@]} files:"
-du -sh "$DEST"
 echo
-echo "Now: ./install dev speech"
+echo "Staged ${#FILES[@]} files in ${DEST}"
+du -sh "${DEST}"
+echo "Upload them to: https://data.vayunmathur.com/models/whisper-tiny/"
+echo "SHA-256 (must match WhisperModel.FILES):"
+( cd "${DEST}" && shasum -a 256 * 2>/dev/null || sha256sum * )

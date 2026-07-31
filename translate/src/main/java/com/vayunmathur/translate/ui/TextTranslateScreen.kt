@@ -58,6 +58,13 @@ import kotlinx.coroutines.delay
 private const val TRANSLATE_DEBOUNCE_MS = 400L
 
 /**
+ * Mic button phases. TRANSCRIBING exists because the offline recognizer keeps working for
+ * a moment after the mic stops; showing it (and ignoring taps) avoids the "stuck on Stop"
+ * / double-start / "recognizer busy" confusion.
+ */
+private enum class MicState { IDLE, LISTENING, TRANSCRIBING }
+
+/**
  * Home screen. The SMaLL-100 model (~1.2 GB) is now auto-installed on open via
  * [com.vayunmathur.library.downloadservice.InitialModelDownloadChecker] in
  * MainActivity (like OpenAssistant), so this screen never needs to show a
@@ -84,24 +91,27 @@ fun TextTranslateScreen(
     val speech: SpeechRecognizerEngine = remember(context) {
         NativeSpeech().takeIf { it.isAvailable() } ?: AndroidSpeechRecognizer(context)
     }
-    var listening by remember { mutableStateOf(false) }
+    var micState by remember { mutableStateOf(MicState.IDLE) }
     var speechError by remember { mutableStateOf<String?>(null) }
     DisposableEffect(speech) { onDispose { speech.destroy() } }
 
     fun startListening() {
         speechError = null
-        listening = true
+        micState = MicState.LISTENING
         speech.start(
             languageCode = sourceLang,
             onPartial = { inputText = it },
             onFinal = {
-                inputText = it
-                listening = false
+                if (it.isNotBlank()) inputText = it
+                micState = MicState.IDLE
             },
             onError = {
                 speechError = it
-                listening = false
+                micState = MicState.IDLE
             },
+            // Mic closed; the model is now transcribing. Only advance from LISTENING so a
+            // late callback can't resurrect the button after we're already idle.
+            onEndOfSpeech = { if (micState == MicState.LISTENING) micState = MicState.TRANSCRIBING },
         )
     }
 
@@ -137,24 +147,31 @@ fun TextTranslateScreen(
             )
         },
         floatingActionButton = {
-            // While listening the button is a Stop: tap ends capture (stopListening)
-            // and the recognizer still delivers its last result via onFinal — it does
-            // not cancel. Idle, it's a Mic that starts a new session.
+            // Idle → Mic (starts). Listening → Stop (ends capture; the recognizer still
+            // delivers its last result via onFinal — it does not cancel). Transcribing →
+            // a spinner that ignores taps, so the user can't double-start or hit "busy".
             FloatingActionButton(
                 onClick = {
-                    if (listening) {
-                        speech.stop()
-                    } else {
-                        micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    when (micState) {
+                        MicState.LISTENING -> speech.stop()
+                        MicState.TRANSCRIBING -> {} // busy finishing; ignore taps
+                        MicState.IDLE -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
-                containerColor = if (listening) {
-                    MaterialTheme.colorScheme.errorContainer
-                } else {
-                    MaterialTheme.colorScheme.primaryContainer
+                containerColor = when (micState) {
+                    MicState.LISTENING -> MaterialTheme.colorScheme.errorContainer
+                    MicState.TRANSCRIBING -> MaterialTheme.colorScheme.surfaceVariant
+                    MicState.IDLE -> MaterialTheme.colorScheme.primaryContainer
                 },
             ) {
-                if (listening) IconStop() else IconMic()
+                when (micState) {
+                    MicState.LISTENING -> IconStop()
+                    MicState.TRANSCRIBING -> CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    MicState.IDLE -> IconMic()
+                }
             }
         },
     ) { padding ->
@@ -184,9 +201,14 @@ fun TextTranslateScreen(
                 minLines = 4,
             )
 
-            if (listening) {
+            val micStatus = when (micState) {
+                MicState.LISTENING -> "Listening…"
+                MicState.TRANSCRIBING -> "Transcribing…"
+                MicState.IDLE -> null
+            }
+            micStatus?.let {
                 Text(
-                    text = "Listening…",
+                    text = it,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium,
                 )

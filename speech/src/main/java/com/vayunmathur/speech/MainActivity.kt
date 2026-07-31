@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -22,6 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +44,14 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.speech.service.WhisperRecognitionService
+import com.vayunmathur.speech.util.PiperModel
 import com.vayunmathur.speech.util.WhisperModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,13 +81,18 @@ private fun SetupScreen() {
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
     }
-    val modelReady = WhisperModel.isReady(context)
+    val ds = remember { DataStoreUtils.getInstance(context) }
+    val modelReady = remember(refresh) { WhisperModel.isReady(context) }
+    val ttsModelReady = remember(refresh) { PiperModel.isReady(context) }
+    val isTtsDefault = remember(refresh) {
+        Settings.Secure.getString(context.contentResolver, "tts_default_synth") == context.packageName
+    }
 
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { refresh++ }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Speech Recognizer") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("MA Speech") }) }) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -87,22 +102,32 @@ private fun SetupScreen() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                "Offline, on-device speech recognition (Whisper, ~99 languages) for the whole " +
-                    "system. No internet, no Google — works on GrapheneOS.",
+                "Offline, on-device speech (Whisper recognition + Piper voice, ~99 languages) for " +
+                    "the whole system via MA Speech. Models download once, then everything runs with no internet, " +
+                    "no Google — works on GrapheneOS.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // 1) Bundled offline model
+            // 1) Download the offline recognition model
             StepCard(
                 index = 1,
-                title = "Offline model",
+                title = "Speech recognition model",
                 done = modelReady,
                 body = if (modelReady) {
-                    "The Whisper model is bundled with the app and ready — no download, runs fully offline."
+                    "The Whisper model is installed — recognition runs fully offline."
                 } else {
-                    "Model missing from this build. Run scripts/speech/fetch_whisper_model.sh and reinstall."
+                    "Download the multilingual Whisper model (~113 MB) once. Runs offline afterward."
                 },
-            ) {}
+            ) {
+                if (!modelReady) {
+                    ModelDownloadButton(
+                        label = "Download model (~113 MB)",
+                        progressOf = { WhisperModel.progress(ds) },
+                        download = { WhisperModel.download(context, ds) },
+                        onDone = { refresh++ },
+                    )
+                }
+            }
 
             // 2) Microphone permission
             StepCard(
@@ -126,7 +151,7 @@ private fun SetupScreen() {
                 body = if (isDefault) {
                     "This app is your device's speech recognizer. Other apps' voice input now runs offline."
                 } else {
-                    "Open voice-input settings and choose \"Speech Recognizer\" as the on-device / " +
+                    "Open voice-input settings and choose \"MA Speech\" as the on-device / " +
                         "voice-input service so other apps (like Translate) use it."
                 },
             ) {
@@ -141,6 +166,53 @@ private fun SetupScreen() {
 
             // 3) Try it
             TestSection(enabled = hasMic)
+
+            // 4) Download the offline TTS voice
+            StepCard(
+                index = 4,
+                title = "Text-to-speech voice",
+                done = ttsModelReady,
+                body = if (ttsModelReady) {
+                    "The offline Piper voice is installed — apps can speak fully offline."
+                } else {
+                    "Download the Piper voice (~64 MB) once. Runs offline afterward."
+                },
+            ) {
+                if (!ttsModelReady) {
+                    ModelDownloadButton(
+                        label = "Download voice (~64 MB)",
+                        progressOf = { PiperModel.progress(ds) },
+                        download = {
+                            PiperModel.download(context, ds)
+                            // Unzip the voice off the main thread before marking done.
+                            withContext(Dispatchers.IO) { PiperModel.installIfNeeded(context) }
+                        },
+                        onDone = { refresh++ },
+                    )
+                }
+            }
+
+            // 5) Set as the device's TTS engine
+            StepCard(
+                index = 5,
+                title = "Set as text-to-speech engine",
+                done = isTtsDefault,
+                body = if (isTtsDefault) {
+                    "This app is your device's text-to-speech engine. Other apps' read-aloud now runs offline."
+                } else {
+                    "Open text-to-speech settings and choose \"MA Speech\" as the preferred engine."
+                },
+            ) {
+                OutlinedButton(onClick = {
+                    runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
+                        .onFailure {
+                            runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
+                        }
+                    refresh++
+                }) { Text("Open text-to-speech settings") }
+            }
+
+            TtsTestSection(enabled = ttsModelReady)
         }
     }
 }
@@ -164,6 +236,40 @@ private fun StepCard(
             action()
         }
     }
+}
+
+/**
+ * A button that runs a suspending model [download] (progress polled from DataStore via
+ * [progressOf]) and calls [onDone] when finished so the caller can refresh its "installed"
+ * status. Disabled while downloading.
+ */
+@Composable
+private fun ModelDownloadButton(
+    label: String,
+    progressOf: () -> Float,
+    download: suspend () -> Unit,
+    onDone: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var pct by remember { mutableIntStateOf(0) }
+    LaunchedEffect(busy) {
+        while (busy) {
+            pct = (progressOf() * 100f).toInt().coerceIn(0, 100)
+            delay(500)
+        }
+    }
+    Button(
+        enabled = !busy,
+        onClick = {
+            busy = true
+            scope.launch {
+                runCatching { download() }
+                busy = false
+                onDone()
+            }
+        },
+    ) { Text(if (busy) "Downloading… $pct%" else label) }
 }
 
 @Composable
@@ -209,6 +315,50 @@ private fun TestSection(enabled: Boolean) {
             ) { Text("Test microphone") }
             if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary)
             if (result.isNotBlank()) Text("Heard: $result")
+        }
+    }
+}
+
+@Composable
+private fun TtsTestSection(enabled: Boolean) {
+    val context = LocalContext.current
+    var status by remember { mutableStateOf("") }
+    // Hold the engine across recompositions and release it when leaving the screen.
+    val engine = remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(Unit) {
+        onDispose { engine.value?.shutdown(); engine.value = null }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Try the voice", fontWeight = FontWeight.Bold)
+            Button(
+                enabled = enabled,
+                onClick = {
+                    status = "Loading…"
+                    engine.value?.shutdown()
+                    // Force OUR engine (by package) so this tests Piper, not the system default.
+                    var tts: TextToSpeech? = null
+                    tts = TextToSpeech(
+                        context,
+                        { st ->
+                            if (st == TextToSpeech.SUCCESS) {
+                                tts?.setLanguage(java.util.Locale.US)
+                                tts?.speak(
+                                    "Hello, this is the offline Piper voice.",
+                                    TextToSpeech.QUEUE_FLUSH, null, "sample",
+                                )
+                                status = ""
+                            } else {
+                                status = "Engine failed to start."
+                            }
+                        },
+                        context.packageName,
+                    )
+                    engine.value = tts
+                },
+            ) { Text("Speak sample") }
+            if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
