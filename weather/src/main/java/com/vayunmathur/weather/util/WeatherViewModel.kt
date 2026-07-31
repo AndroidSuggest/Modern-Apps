@@ -58,8 +58,15 @@ class WeatherViewModel(
     private val dao: WeatherDao,
 ) : AndroidViewModel(application) {
 
-    val savedLocations: StateFlow<List<SavedLocation>> = dao.observeLocations()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /**
+     * Saved locations, or null until Room's first emission lands. The null
+     * state matters: seeding this with `emptyList()` made a cold start render
+     * the "no locations yet" chooser for a frame or two before the real rows
+     * arrived, so the UI must be able to tell "still loading" apart from
+     * "genuinely empty".
+     */
+    val savedLocations: StateFlow<List<SavedLocation>?> = dao.observeLocations()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Per-location forecast state, keyed by [SavedLocation.id]. */
     private val _forecasts = MutableStateFlow<Map<Long, ForecastUiState>>(emptyMap())
@@ -243,7 +250,7 @@ class WeatherViewModel(
      * network.
      */
     fun refreshAll(force: Boolean = false) {
-        for (location in savedLocations.value) {
+        for (location in savedLocations.value.orEmpty()) {
             ensureForecast(location, force)
         }
     }

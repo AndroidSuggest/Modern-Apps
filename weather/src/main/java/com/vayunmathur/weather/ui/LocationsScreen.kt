@@ -149,7 +149,7 @@ fun LocationsScreen(
     onLocationSelect: (SavedLocation) -> Unit,
     onClose: () -> Unit,
 ) {
-    val locations by viewModel.savedLocations.collectAsState()
+    val locations = viewModel.savedLocations.collectAsState().value.orEmpty()
     val forecasts by viewModel.forecasts.collectAsState()
 
     // Ticks every 30s so the "Last updated Xm ago" labels advance over time

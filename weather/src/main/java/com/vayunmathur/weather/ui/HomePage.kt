@@ -63,7 +63,15 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomePage(backStack: NavBackStack<Route>, viewModel: WeatherViewModel) {
-    val locations by viewModel.savedLocations.collectAsState()
+    val locations = viewModel.savedLocations.collectAsState().value
+
+    if (locations == null) {
+        // Room hasn't answered yet. Hold a plain surface rather than falling
+        // through to EmptyHome, which would flash the location chooser on
+        // every cold start before the saved rows arrive.
+        Scaffold(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {}
+        return
+    }
 
     if (locations.isEmpty()) {
         EmptyHome(
