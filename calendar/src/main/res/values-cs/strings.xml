@@ -102,10 +102,10 @@
     <string name="add_public_holidays_for_countries">Přidat veřejné svátky států</string>
     <string name="reminder_at_time_of_event">V čas události</string>
     <plurals name="reminder_days_before">
-        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> den nazpět</item>
-        <item quantity="few"><xliff:g id="count" example="3">%1$d</xliff:g> dny nazpět</item>
-        <item quantity="many"><xliff:g id="count" example="5">%1$d</xliff:g> dnů nazpět</item>
-        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> dnů nazpět</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> den předem</item>
+        <item quantity="few"><xliff:g id="count" example="3">%1$d</xliff:g> dny předem</item>
+        <item quantity="many"><xliff:g id="count" example="5">%1$d</xliff:g> dnů předem</item>
+        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> dnů předem</item>
     </plurals>
     <string name="widget_preview_event_3_time">3:00 – 4:00 odp.</string>
     <string name="widget_preview_event_2_time">12:30 – 1:30 odp.</string>
@@ -114,4 +114,51 @@
     <string name="widget_preview_event_1_time">9:00 – 9:30 dop.</string>
     <string name="widget_preview_event_1_title">Týmové vystoupení</string>
     <string name="rrule_until_suffix">, Do <xliff:g id="date" example="31. 12. 2025">%1$s</xliff:g></string>
+    <plurals name="reminder_hours_before">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> hodinu předem</item>
+        <item quantity="few"><xliff:g id="count" example="2">%1$d</xliff:g> hodiny předem</item>
+        <item quantity="many"><xliff:g id="count" example="5">%1$d</xliff:g> hodin předem</item>
+        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> hodin předem</item>
+    </plurals>
+    <plurals name="reminder_minutes_before">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> minutu předem</item>
+        <item quantity="few"><xliff:g id="count" example="2">%1$d</xliff:g> minuty předem</item>
+        <item quantity="many"><xliff:g id="count" example="5">%1$d</xliff:g> minut předem</item>
+        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> minut předem</item>
+    </plurals>
+    <string name="rrule_daily">Denně</string>
+    <plurals name="rrule_every_days">
+        <item quantity="one">Každý <xliff:g id="count" example="1">%1$d</xliff:g> den</item>
+        <item quantity="few">Každé <xliff:g id="count" example="2">%1$d</xliff:g> dny</item>
+        <item quantity="many">Každý <xliff:g id="count" example="5">%1$d</xliff:g> den</item>
+        <item quantity="other">Každý <xliff:g id="count" example="5">%1$d</xliff:g> den</item>
+    </plurals>
+    <string name="rrule_weekly">Týdně</string>
+    <plurals name="rrule_every_weeks">
+        <item quantity="one">Každý <xliff:g id="count" example="1">%1$d</xliff:g> týden</item>
+        <item quantity="few">Každé <xliff:g id="count" example="2">%1$d</xliff:g> týdny</item>
+        <item quantity="many">Každý <xliff:g id="count" example="5">%1$d</xliff:g> týden</item>
+        <item quantity="other">Každý <xliff:g id="count" example="5">%1$d</xliff:g> týden</item>
+    </plurals>
+    <string name="rrule_monthly">Měsíčně</string>
+    <plurals name="rrule_every_months">
+        <item quantity="one">Every <xliff:g id="count" example="1">%1$d</xliff:g> month</item>
+        <item quantity="few">Every <xliff:g id="count" example="2">%1$d</xliff:g> month</item>
+        <item quantity="many">Every <xliff:g id="count" example="5">%1$d</xliff:g> month</item>
+        <item quantity="other">Every <xliff:g id="count" example="5">%1$d</xliff:g> month</item>
+    </plurals>
+    <string name="rrule_yearly">Ročně</string>
+    <plurals name="rrule_every_years">
+        <item quantity="one">Každý <xliff:g id="count" example="1">%1$d</xliff:g> rok</item>
+        <item quantity="few">Každé <xliff:g id="count" example="2">%1$d</xliff:g> roky</item>
+        <item quantity="many">Každých <xliff:g id="count" example="5">%1$d</xliff:g> let</item>
+        <item quantity="other">Každých <xliff:g id="count" example="5">%1$d</xliff:g> let</item>
+    </plurals>
+    <string name="rrule_on_days"><xliff:g id="frequency" example="Týdně">%1$s</xliff:g> v <xliff:g id="days" example="Po, St">%2$s</xliff:g></string>
+    <plurals name="rrule_count_suffix">
+        <item quantity="one">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
+        <item quantity="few">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
+        <item quantity="many">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
+        <item quantity="other">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
+    </plurals>
 </resources>
