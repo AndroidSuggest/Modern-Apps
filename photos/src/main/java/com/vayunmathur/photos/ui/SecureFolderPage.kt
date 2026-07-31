@@ -167,7 +167,10 @@ fun VaultPhotoItem(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
+        // Guard against recycled bitmaps - defense in depth for the LRU cache bug.
+        // When column count >=4, more thumbnails are visible and cache eviction
+        // previously recycled bitmaps still being drawn by Compose.
+        if (bitmap != null && !bitmap.isRecycled) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = null,

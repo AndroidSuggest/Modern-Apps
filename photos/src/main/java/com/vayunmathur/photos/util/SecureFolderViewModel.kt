@@ -60,16 +60,18 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
 
     private val sfm: SecureFolderManager by lazy { SecureFolderManager(application) }
 
-    // Bounded LRU cache for decrypted thumbnails. Cap 32 to prevent unbounded
-    // bitmap retention while scrolling large vaults. Eldest entries are recycled
-    // synchronously on eviction.
-    private val thumbCache = object : LinkedHashMap<String, Bitmap>(32, 0.75f, true) {
+    // Bounded LRU cache for decrypted thumbnails. Cap 64 to prevent unbounded
+    // bitmap retention while scrolling large vaults.
+    // NOTE: Previous implementation recycled bitmaps synchronously in
+    // removeEldestEntry while _thumbnails and Compose UI still held references,
+    // causing "Canvas: trying to use a recycled bitmap" when column count >=4
+    // (more thumbnails visible -> cache overflow -> recycled while drawing).
+    // Fix: No recycling on eviction; let LRU evict without recycle and keep
+    // _thumbnails in sync with cache (snapshot). Recycling only happens in
+    // onCleared() after _thumbnails is emptied.
+    private val thumbCache = object : LinkedHashMap<String, Bitmap>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
-            if (size > 32) {
-                try { eldest.value.recycle() } catch (e: Exception) { Log.w(TAG, "Failed to recycle evicted thumbnail", e) }
-                return true
-            }
-            return false
+            return size > 64
         }
     }
 
@@ -110,27 +112,40 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
      */
     fun requestThumbnail(thumbnailPath: String, password: String) {
         synchronized(thumbCache) {
-            thumbCache[thumbnailPath]?.let { cached ->
-                if (_thumbnails.value[thumbnailPath] !== cached) {
-                    _thumbnails.update { it + (thumbnailPath to cached) }
+            val cached = thumbCache[thumbnailPath]
+            if (cached != null) {
+                if (!cached.isRecycled) {
+                    if (_thumbnails.value[thumbnailPath] !== cached) {
+                        // Keep _thumbnails in sync with cache snapshot
+                        _thumbnails.value = thumbCache.toMap()
+                    }
+                    return
+                } else {
+                    // Drop recycled entry if it somehow ended up recycled
+                    thumbCache.remove(thumbnailPath)
                 }
-                return
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bmp = sfm.decryptThumbnail(thumbnailPath, password) ?: return@launch
+                val snapshot: Map<String, Bitmap>
                 synchronized(thumbCache) {
                     val existing = thumbCache[thumbnailPath]
-                    if (existing != null) {
+                    if (existing != null && !existing.isRecycled) {
+                        // Another thread already inserted, recycle the duplicate we just decrypted
                         try { bmp.recycle() } catch (e: Exception) { Log.w(TAG, "Failed to recycle duplicate thumbnail", e) }
+                        snapshot = thumbCache.toMap()
                     } else {
+                        if (existing != null) {
+                            // Existing was recycled, remove it
+                            thumbCache.remove(thumbnailPath)
+                        }
                         thumbCache[thumbnailPath] = bmp
+                        snapshot = thumbCache.toMap()
                     }
                 }
-                _thumbnails.update { current ->
-                    current + (thumbnailPath to synchronized(thumbCache) { thumbCache[thumbnailPath]!! })
-                }
+                _thumbnails.value = snapshot
             } catch (e: Exception) {
                 Log.e(TAG, "decryptThumbnail failed for $thumbnailPath", e)
             }
@@ -224,13 +239,14 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
 
     override fun onCleared() {
         super.onCleared()
+        // Clear _thumbnails first so Compose no longer holds references, then recycle
+        _thumbnails.value = emptyMap()
         synchronized(thumbCache) {
             thumbCache.values.forEach { bmp ->
                 try { if (!bmp.isRecycled) bmp.recycle() } catch (e: Exception) { Log.w(TAG, "Failed to recycle thumbnail on clear", e) }
             }
             thumbCache.clear()
         }
-        _thumbnails.value = emptyMap()
     }
 
     companion object {
