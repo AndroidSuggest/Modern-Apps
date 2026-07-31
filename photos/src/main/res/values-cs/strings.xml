@@ -35,4 +35,8 @@
         <item quantity="many">%1$d lidí</item>
         <item quantity="other">%1$d lidí</item>
     </plurals>
+    <string name="cancel">Zrušit</string>
+    <string name="color">Barva</string>
+    <string name="done">Hotovo</string>
+    <string name="level">Úroveň</string>
 </resources>
