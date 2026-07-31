@@ -3,7 +3,7 @@
     <string name="cancel">Zrušit</string>
     <string name="settings">Nastavení</string>
     <string name="save">Uložit</string>
-    <string name="selected_count">%1$d vybráno</string>
+    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; vybráno</string>
     <string name="app_name">E-mail</string>
     <string name="email_widget_description">Nedávné zprávy ze sjednocené schránky - klepnutím otevřete E-mail</string>
     <string name="all_accounts">Všechny účty</string>
@@ -31,4 +31,6 @@
     <string name="ssl_tls">SSL/TLS</string>
     <string name="starttls">STARTTLS</string>
     <string name="listening_for_new_mail">Čekání na novou poštu</string>
+    <string name="open">Otevřít</string>
+    <string name="password">Heslo</string>
 </resources>
