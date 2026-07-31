@@ -1,0 +1,188 @@
+package com.vayunmathur.web.ui
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.IconNavigation
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Scaffold
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.web.Route
+import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.web.data.HistoryEntry
+import com.vayunmathur.web.util.BrowserUtils
+import com.vayunmathur.web.util.WebViewModel
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun HistoryPage(
+    viewModel: WebViewModel,
+    backStack: NavBackStack<Route>,
+) {
+    val history by viewModel.history.collectAsStateWithLifecycle()
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    val grouped = remember(history) {
+        groupByDate(history)
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("History") },
+                navigationIcon = { IconNavigation(backStack) },
+                actions = {
+                    if (history.isNotEmpty()) {
+                        IconButton(onClick = { showClearConfirm = true }) {
+                            IconDelete()
+                        }
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        if (history.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                Text("No history yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                grouped.forEach { (dateLabel, entries) ->
+                    stickyHeader {
+                        Text(
+                            dateLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    items(entries, key = { it.id }) { entry ->
+                        HistoryRow(
+                            entry = entry,
+                            onClick = {
+                                viewModel.externalIntentUrl(entry.url)
+                                backStack.pop()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Clear history?") },
+            text = { Text("This will permanently delete your browsing history.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearHistory()
+                    showClearConfirm = false
+                }) { Text("Clear") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun HistoryRow(
+    entry: HistoryEntry,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(0.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                entry.title.ifBlank { entry.url },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                BrowserUtils.prettyUrl(entry.url),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            formatTime(entry.visitedAt),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun formatTime(millis: Long): String {
+    return try {
+        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(millis))
+    } catch (_: Exception) {
+        ""
+    }
+}
+
+private fun groupByDate(entries: List<HistoryEntry>): List<Pair<String, List<HistoryEntry>>> {
+    val tz = TimeZone.currentSystemDefault()
+    val now = Instant.fromEpochMilliseconds(System.currentTimeMillis()).toLocalDateTime(tz).date
+    return entries.groupBy { entry ->
+        val date = Instant.fromEpochMilliseconds(entry.visitedAt).toLocalDateTime(tz).date
+        when {
+            date == now -> "Today"
+            (now.toEpochDays() - date.toEpochDays()) == 1L -> "Yesterday"
+            else -> "${date.month.name.lowercase().replaceFirstChar { it.uppercase() }} ${date.dayOfMonth}, ${date.year}"
+        }
+    }.toList()
+}

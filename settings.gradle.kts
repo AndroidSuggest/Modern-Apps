@@ -88,6 +88,7 @@ include(":code")
 include(":keyboard")
 include(":speech")
 include(":vpn")
+include(":web")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
