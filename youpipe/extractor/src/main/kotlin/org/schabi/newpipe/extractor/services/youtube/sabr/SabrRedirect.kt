@@ -1,6 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-final class SabrRedirect private constructor(
+class SabrRedirect private constructor(
     private val url: String?
 ) {
     internal companion object {
@@ -9,7 +9,7 @@ final class SabrRedirect private constructor(
         fun decode(data: ByteArray): SabrRedirect {
             var url: String? = null
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     url = field.getString()
                 }
             }
@@ -19,7 +19,5 @@ final class SabrRedirect private constructor(
 
     fun getUrl(): String? = url
 
-    fun summarize(): String {
-        return "urlLength=" + (url?.length ?: 0)
-    }
+    fun summarize(): String = "urlLength=" + (url?.length ?: 0)
 }

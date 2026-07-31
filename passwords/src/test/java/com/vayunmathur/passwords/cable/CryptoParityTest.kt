@@ -1,9 +1,9 @@
 package com.vayunmathur.passwords.cable
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import java.math.BigInteger
 import java.security.interfaces.ECPublicKey
 
@@ -30,7 +30,7 @@ class CryptoParityTest {
     @Test
     fun hkdf_matches_rfc5869_basic_vector() {
         // A.1: IKM 22x0b, 13-byte salt, 10-byte info, L = 42.
-        assertArrayEquals(
+        assertContentEquals(
             hex("3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf" +
                 "34007208d5b887185865"),
             CableKeys.hkdf(
@@ -45,7 +45,7 @@ class CryptoParityTest {
     @Test
     fun hkdf_matches_rfc5869_long_input_vector() {
         // A.2: 80-byte IKM, 80-byte salt, 80-byte info, L = 82 — spans several expand rounds.
-        assertArrayEquals(
+        assertContentEquals(
             hex("b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c" +
                 "59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71" +
                 "cc30c58179ec3e87c14c01d5c1f3434f1d87"),
@@ -65,10 +65,10 @@ class CryptoParityTest {
             "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8"
         )
         val ikm = ByteArray(22) { 0x0b }
-        assertArrayEquals(expected, CableKeys.hkdf(ikm, ByteArray(0), ByteArray(0), 42))
+        assertContentEquals(expected, CableKeys.hkdf(ikm, ByteArray(0), ByteArray(0), 42))
         // A null salt must be treated as the RFC's zero salt, identically to an empty one
         // (BoringSSL parity — Chromium relies on this for the QR secret).
-        assertArrayEquals(expected, CableKeys.hkdf(ikm, null, ByteArray(0), 42))
+        assertContentEquals(expected, CableKeys.hkdf(ikm, null, ByteArray(0), 42))
     }
 
     @Test
@@ -79,10 +79,10 @@ class CryptoParityTest {
         for (salt in listOf<ByteArray?>(null, ByteArray(0), "some-salt".toByteArray())) {
             val full = CableKeys.hkdf(ikm, salt, info, 100)
             for (len in intArrayOf(10, 16, 32, 64, 100)) {
-                assertArrayEquals(
-                    "salt=${salt?.size} len=$len",
+                assertContentEquals(
                     full.copyOf(len),
                     CableKeys.hkdf(ikm, salt, info, len),
+                    "salt=${salt?.size} len=$len",
                 )
             }
         }
@@ -138,8 +138,8 @@ class CryptoParityTest {
             assertEquals(original.w.affineY, fromUncompressed.w.affineY)
 
             assertTrue(
+                fromCompressed.w.affineX.let { _ -> onCurve(fromCompressed.w.affineX, fromCompressed.w.affineY) },
                 "decompressed point off curve",
-                onCurve(fromCompressed.w.affineX, fromCompressed.w.affineY),
             )
             // The recovered Y's parity must match the prefix that was encoded.
             val prefix = P256.toCompressed(kp.public)[0].toInt() and 0xff
@@ -153,7 +153,7 @@ class CryptoParityTest {
         val b = P256.generateKeyPair()
         val ab = P256.ecdh(a.private, P256.decodePoint(P256.toUncompressed(b.public)))
         val ba = P256.ecdh(b.private, P256.decodePoint(P256.toUncompressed(a.public)))
-        assertArrayEquals(ab, ba)
+        assertContentEquals(ab, ba)
         assertEquals(P256.DH_OUTPUT_SIZE, ab.size)
     }
 }

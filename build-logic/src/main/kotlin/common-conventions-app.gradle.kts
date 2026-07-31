@@ -187,7 +187,8 @@ dependencies {
     implementation(project(":library"))
     implementation(project(":library:ui"))
 
-    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.test.junit)
 }
 
 fun DependencyHandlerScope.justSoItShowsAsUsedSomewhere() {

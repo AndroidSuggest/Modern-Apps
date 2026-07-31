@@ -39,7 +39,4 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.compose)
     implementation(libs.androidx.datastore.preferences)
-
-    // Unit tests for Phase 7 (JVM, no Android)
-    testImplementation(libs.kotlin.test)
 }

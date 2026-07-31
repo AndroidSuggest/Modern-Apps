@@ -3,8 +3,7 @@ package com.vayunmathur.calendar.util
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import org.junit.Assert.*
-import org.junit.Test
+import kotlin.test.*
 
 class RRuleTest {
 

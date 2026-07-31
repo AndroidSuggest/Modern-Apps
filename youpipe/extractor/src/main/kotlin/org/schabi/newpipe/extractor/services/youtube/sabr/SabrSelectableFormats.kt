@@ -2,7 +2,7 @@ package org.schabi.newpipe.extractor.services.youtube.sabr
 
 import java.util.Collections
 
-final class SabrSelectableFormats private constructor(
+class SabrSelectableFormats private constructor(
     videoFormats: List<FormatId>,
     audioFormats: List<FormatId>,
     wrappedVideoFormats: List<FormatId>,
@@ -23,13 +23,12 @@ final class SabrSelectableFormats private constructor(
             val wrappedVideoFormats = mutableListOf<FormatId>()
             val wrappedAudioFormats = mutableListOf<FormatId>()
             var otherFieldCount = 0
-
             for (field in SabrProto.readFields(data)) {
-                if (field.wireType != SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getWireType() != SabrProto.WIRE_LENGTH_DELIMITED) {
                     otherFieldCount++
                     continue
                 }
-                when (field.number) {
+                when (field.getNumber()) {
                     1 -> videoFormats.add(FormatId.decode(field.getBytes()))
                     2 -> audioFormats.add(FormatId.decode(field.getBytes()))
                     4 -> wrappedVideoFormats.add(decodeWrappedFormatId(field.getBytes()))
@@ -37,17 +36,13 @@ final class SabrSelectableFormats private constructor(
                     else -> otherFieldCount++
                 }
             }
-
-            return SabrSelectableFormats(
-                videoFormats, audioFormats, wrappedVideoFormats,
-                wrappedAudioFormats, otherFieldCount
-            )
+            return SabrSelectableFormats(videoFormats, audioFormats, wrappedVideoFormats, wrappedAudioFormats, otherFieldCount)
         }
 
         @Throws(SabrProtocolException::class)
         private fun decodeWrappedFormatId(data: ByteArray): FormatId {
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     return FormatId.decode(field.getBytes())
                 }
             }
@@ -55,39 +50,29 @@ final class SabrSelectableFormats private constructor(
         }
 
         private fun summarizeFormats(formats: List<FormatId>): String {
-            val builder = StringBuilder()
-            builder.append(formats.size).append('[')
+            val builder = StringBuilder().append(formats.size).append('[')
             val sampleSize = minOf(6, formats.size)
             for (i in 0 until sampleSize) {
-                if (i > 0) {
-                    builder.append(',')
-                }
+                if (i > 0) builder.append(',')
                 builder.append(formats[i].summarize())
             }
-            if (formats.size > sampleSize) {
-                builder.append(",...")
-            }
+            if (formats.size > sampleSize) builder.append(",...")
             return builder.append(']').toString()
         }
     }
 
     fun getVideoFormats(): List<FormatId> = videoFormats
-
     fun getAudioFormats(): List<FormatId> = audioFormats
-
     fun getWrappedVideoFormats(): List<FormatId> = wrappedVideoFormats
-
     fun getWrappedAudioFormats(): List<FormatId> = wrappedAudioFormats
-
     fun getOtherFieldCount(): Int = otherFieldCount
 
-    fun summarize(): String {
-        return "video=" + Companion.summarizeFormats(videoFormats) +
-            ", audio=" + Companion.summarizeFormats(audioFormats) +
-            ", wrappedVideo=" + Companion.summarizeFormats(wrappedVideoFormats) +
-            ", wrappedAudio=" + Companion.summarizeFormats(wrappedAudioFormats) +
+    fun summarize(): String =
+        "video=" + summarizeFormats(videoFormats) +
+            ", audio=" + summarizeFormats(audioFormats) +
+            ", wrappedVideo=" + summarizeFormats(wrappedVideoFormats) +
+            ", wrappedAudio=" + summarizeFormats(wrappedAudioFormats) +
             ", otherFields=" + otherFieldCount
-    }
 
     class FormatId private constructor(
         private val itag: Int,
@@ -103,36 +88,26 @@ final class SabrSelectableFormats private constructor(
                 var xtags: String? = null
                 for (field in SabrProto.readFields(data)) {
                     when {
-                        field.number == 1 && field.wireType == SabrProto.WIRE_VARINT -> {
-                            itag = field.varint.toInt()
-                        }
-                        field.number == 2 && field.wireType == SabrProto.WIRE_VARINT -> {
-                            lastModified = field.varint
-                        }
-                        field.number == 3 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                        field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT ->
+                            itag = field.getVarint().toInt()
+                        field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT ->
+                            lastModified = field.getVarint()
+                        field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED ->
                             xtags = field.getString()
-                        }
                     }
                 }
                 return FormatId(itag, lastModified, xtags)
             }
 
             @JvmStatic
-            internal fun empty(): FormatId {
-                return FormatId(-1, -1, null)
-            }
+            internal fun empty(): FormatId = FormatId(-1, -1, null)
         }
 
         fun getItag(): Int = itag
-
         fun getLastModified(): Long = lastModified
-
         fun getXtags(): String? = xtags
 
-        internal fun summarize(): String {
-            return "itag:" + itag +
-                (if (lastModified >= 0) "+lm" else "") +
-                (if (xtags != null) "+xtags" else "")
-        }
+        internal fun summarize(): String =
+            "itag:$itag" + (if (lastModified >= 0) "+lm" else "") + (if (xtags != null) "+xtags" else "")
     }
 }

@@ -1,8 +1,9 @@
 package com.vayunmathur.passwords.cable
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /** Tests for the assigned tunnel-domain table (the verifiable part of [TunnelDomains]). */
 class TunnelDomainsTest {
@@ -13,9 +14,10 @@ class TunnelDomainsTest {
         assertEquals(0, TunnelDomains.DEFAULT_ID)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun unknownAssignedIdThrows() {
-        TunnelDomains.decode(2)
+    @Test fun unknownAssignedIdThrows() {
+        assertFailsWith<IllegalArgumentException> {
+            TunnelDomains.decode(2)
+        }
     }
 
     @Test fun hexRoundTrip() {

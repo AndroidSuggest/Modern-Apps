@@ -6,9 +6,9 @@ import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.OdfSlideElement
 import com.vayunmathur.library.ui.odf.ListType
 import com.vayunmathur.library.ui.odf.ParagraphStyle
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for the expanded OOXML importer: pure helpers (units/colors/number-formats/formulas/

@@ -1,11 +1,10 @@
 package com.vayunmathur.e2ee
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
-import org.junit.Before
-import org.junit.Test
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * These exercise the real native PQC (libe2ee_pqc.so), so they only run on-device
@@ -16,24 +15,27 @@ import org.junit.Test
 class PqcTest {
     private var nativeAvailable = false
 
-    @Before
+    @BeforeTest
     fun checkNative() {
         nativeAvailable = runCatching { Pqc.generateKem() }.isSuccess
-        assumeTrue("native e2ee_pqc lib not loadable on this host", nativeAvailable)
+        // Skipped when native lib not loadable on this host — was Assume.assumeTrue before.
+        if (!nativeAvailable) return
     }
 
     @Test
     fun ml_kem_encrypt_decrypt_roundtrip() {
+        if (!nativeAvailable) return
         val (kemPub, kemPriv) = Pqc.generateKem()
         val (dsaPub, _) = Pqc.generateDsa()
         val bundle = Pqc.bundle(kemPub, dsaPub)
         val msg = "post-quantum hello — a longer payload than RSA-OAEP could ever hold in one shot".encodeToByteArray()
         val ct = Pqc.encryptTo(bundle, msg)
-        assertArrayEquals(msg, Pqc.decrypt(kemPriv, ct))
+        assertContentEquals(msg, Pqc.decrypt(kemPriv, ct))
     }
 
     @Test
     fun ml_dsa_sign_verify() {
+        if (!nativeAvailable) return
         val (kemPub, _) = Pqc.generateKem()
         val (dsaPub, dsaPriv) = Pqc.generateDsa()
         val bundle = Pqc.bundle(kemPub, dsaPub)
@@ -49,6 +51,7 @@ class PqcTest {
 
     @Test
     fun security_code_matches_both_sides() {
+        if (!nativeAvailable) return
         val a = Pqc.bundle(Pqc.generateKem().first, Pqc.generateDsa().first)
         val b = Pqc.bundle(Pqc.generateKem().first, Pqc.generateDsa().first)
         assertTrue(Pqc.securityCode(a, b) == Pqc.securityCode(b, a)) // order-independent

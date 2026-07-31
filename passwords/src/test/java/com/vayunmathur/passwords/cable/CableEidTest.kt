@@ -1,8 +1,8 @@
 package com.vayunmathur.passwords.cable
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -17,8 +17,8 @@ class CableEidTest {
 
         assertEquals(CableEid.EID_SIZE, eid.size)
         assertEquals(0, eid[0].toInt())
-        assertArrayEquals(nonce, eid.copyOfRange(1, 11))
-        assertArrayEquals(routing, eid.copyOfRange(11, 14))
+        assertContentEquals(nonce, eid.copyOfRange(1, 11))
+        assertContentEquals(routing, eid.copyOfRange(11, 14))
         assertEquals(0x02.toByte(), eid[14]) // low byte of domain, little-endian
         assertEquals(0x01.toByte(), eid[15]) // high byte
     }
@@ -39,14 +39,14 @@ class CableEidTest {
         // AES-256 single block decrypts back to the plaintext EID.
         val cipher = Cipher.getInstance("AES/ECB/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(eidKey.copyOfRange(0, 32), "AES"))
-        assertArrayEquals(plaintext, cipher.doFinal(ciphertext))
+        assertContentEquals(plaintext, cipher.doFinal(ciphertext))
 
         // HMAC tag verifies.
         val expectedTag = Mac.getInstance("HmacSHA256").run {
             init(SecretKeySpec(eidKey.copyOfRange(32, 64), "HmacSHA256"))
             doFinal(ciphertext)
         }.copyOfRange(0, CableEid.TAG_SIZE)
-        assertArrayEquals(expectedTag, tag)
+        assertContentEquals(expectedTag, tag)
     }
 
     @Test fun uuid16Expansion() {

@@ -2,7 +2,7 @@ package org.schabi.newpipe.extractor.services.youtube.sabr
 
 import java.util.Collections
 
-final class SabrRequestCancellationPolicy private constructor(
+class SabrRequestCancellationPolicy private constructor(
     private val field1: Int,
     private val field3: Int,
     items: List<Item>
@@ -17,12 +17,12 @@ final class SabrRequestCancellationPolicy private constructor(
             var field3 = 0
             val items = mutableListOf<Item>()
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_VARINT) {
-                    field1 = field.varint.toInt()
-                } else if (field.number == 2 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT) {
+                    field1 = field.getVarint().toInt()
+                } else if (field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     items.add(Item.decode(field.getBytes()))
-                } else if (field.number == 3 && field.wireType == SabrProto.WIRE_VARINT) {
-                    field3 = field.varint.toInt()
+                } else if (field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_VARINT) {
+                    field3 = field.getVarint().toInt()
                 }
             }
             return SabrRequestCancellationPolicy(field1, field3, items)
@@ -30,9 +30,7 @@ final class SabrRequestCancellationPolicy private constructor(
     }
 
     fun getField1(): Int = field1
-
     fun getField3(): Int = field3
-
     fun getItems(): List<Item> = items
 
     fun summarize(): String {
@@ -41,14 +39,10 @@ final class SabrRequestCancellationPolicy private constructor(
             .append(", items=").append(items.size).append('[')
         val sampleSize = minOf(4, items.size)
         for (i in 0 until sampleSize) {
-            if (i > 0) {
-                builder.append(',')
-            }
+            if (i > 0) builder.append(',')
             builder.append(items[i].summarize())
         }
-        if (items.size > sampleSize) {
-            builder.append(",...")
-        }
+        if (items.size > sampleSize) builder.append(",...")
         builder.append(']').append(", field3=").append(field3)
         return builder.toString()
     }
@@ -66,13 +60,11 @@ final class SabrRequestCancellationPolicy private constructor(
                 var field2 = 0
                 var minReadaheadMs = 0
                 for (field in SabrProto.readFields(data)) {
-                    if (field.wireType != SabrProto.WIRE_VARINT) {
-                        continue
-                    }
-                    when (field.number) {
-                        1 -> field1 = field.varint.toInt()
-                        2 -> field2 = field.varint.toInt()
-                        3 -> minReadaheadMs = field.varint.toInt()
+                    if (field.getWireType() != SabrProto.WIRE_VARINT) continue
+                    when (field.getNumber()) {
+                        1 -> field1 = field.getVarint().toInt()
+                        2 -> field2 = field.getVarint().toInt()
+                        3 -> minReadaheadMs = field.getVarint().toInt()
                     }
                 }
                 return Item(field1, field2, minReadaheadMs)
@@ -80,13 +72,9 @@ final class SabrRequestCancellationPolicy private constructor(
         }
 
         fun getField1(): Int = field1
-
         fun getField2(): Int = field2
-
         fun getMinReadaheadMs(): Int = minReadaheadMs
 
-        fun summarize(): String {
-            return "field1=$field1/field2=$field2/minReadaheadMs=$minReadaheadMs"
-        }
+        fun summarize(): String = "field1=$field1/field2=$field2/minReadaheadMs=$minReadaheadMs"
     }
 }

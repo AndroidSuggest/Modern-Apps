@@ -13,11 +13,10 @@ import java.util.Base64
 /**
  * Human-readable delivery document for a signed SABR JavaScript policy.
  *
- * <p>The signature covers the canonical payload returned by
- * {@link SabrScriptPolicy#serialize()}, not the JSON representation itself. A decoder therefore
- * reconstructs that payload from the signed metadata and source before verification.</p>
+ * The signature covers the canonical payload returned by
+ * [SabrScriptPolicy.serialize], not the JSON representation itself.
  */
-final class SabrScriptPolicyDocument private constructor() {
+class SabrScriptPolicyDocument private constructor() {
 
     companion object {
         private const val FORMAT_VERSION = 1
@@ -63,10 +62,8 @@ final class SabrScriptPolicyDocument private constructor() {
                 ) {
                     throw IllegalArgumentException("Unsupported SABR policy document")
                 }
-                val sourceElement = document["source"]
-                val signatureElement = document["signature"]
-                val source = (sourceElement as? JsonPrimitive)?.contentOrNull
-                val encodedSignature = (signatureElement as? JsonPrimitive)?.contentOrNull
+                val source = document["source"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+                val encodedSignature = document["signature"]?.let { (it as? JsonPrimitive)?.contentOrNull }
                 if (source == null || encodedSignature == null) {
                     throw IllegalArgumentException("Invalid SABR policy document fields")
                 }
@@ -89,35 +86,25 @@ final class SabrScriptPolicyDocument private constructor() {
         private fun requireLong(document: JsonObject, field: String): Long {
             val value = document[field]
                 ?: throw IllegalArgumentException("SABR policy document field is not an exact integer: $field")
-
-            if (value is JsonPrimitive) {
-                // Handle numeric values
-                if (value.isString) {
-                    throw IllegalArgumentException("SABR policy document field is not an exact integer: $field")
-                }
-                // Try to extract as long
-                val longVal = value.longOrNull
-                if (longVal != null) {
-                    return longVal
-                }
-                // Try parsing content as BigInteger -> long exact
-                val content = value.content
-                try {
-                    val bigInt = java.math.BigInteger(content)
-                    try {
-                        return bigInt.longValueExact()
-                    } catch (ae: ArithmeticException) {
-                        throw IllegalArgumentException(
-                            "SABR policy document integer is out of range: $field", ae
-                        )
-                    }
-                } catch (nfe: NumberFormatException) {
-                    // fall through
-                }
-                // Also handle case where it's a decimal that happens to be integer-valued? Keep strict.
+            if (value !is JsonPrimitive) {
                 throw IllegalArgumentException("SABR policy document field is not an exact integer: $field")
             }
-            throw IllegalArgumentException("SABR policy document field is not an exact integer: $field")
+            if (value.isString) {
+                throw IllegalArgumentException("SABR policy document field is not an exact integer: $field")
+            }
+            value.longOrNull?.let { return it }
+            // Fallback for numbers that overflow JSON long parsing path or were written as BigInteger
+            val content = value.content
+            try {
+                val bigInt = java.math.BigInteger(content)
+                try {
+                    return bigInt.longValueExact()
+                } catch (ae: ArithmeticException) {
+                    throw IllegalArgumentException("SABR policy document integer is out of range: $field", ae)
+                }
+            } catch (nfe: NumberFormatException) {
+                throw IllegalArgumentException("SABR policy document field is not an exact integer: $field")
+            }
         }
 
         private fun validateSignature(signature: ByteArray) {
@@ -133,7 +120,6 @@ final class SabrScriptPolicyDocument private constructor() {
         private val signature: ByteArray
     ) {
         fun getPayload(): ByteArray = payload.clone()
-
         fun getSignature(): ByteArray = signature.clone()
     }
 }

@@ -4,7 +4,7 @@ import java.security.PublicKey
 import java.util.Arrays
 
 /** Thread-safe verifier and monotonic activation boundary for signed JavaScript source. */
-final class SabrScriptPolicyManager {
+class SabrScriptPolicyManager {
 
     private val publicKey: PublicKey?
     private val rawPublicKey: ByteArray?
@@ -20,9 +20,7 @@ final class SabrScriptPolicyManager {
     }
 
     constructor(key: ByteArray, minimumRevision: Long) {
-        if (key.size != 32 || minimumRevision < 0) {
-            throw IllegalArgumentException("Invalid policy verifier")
-        }
+        if (key.size != 32 || minimumRevision < 0) throw IllegalArgumentException("Invalid policy verifier")
         publicKey = null
         rawPublicKey = key.clone()
         highestRevision = minimumRevision
@@ -39,9 +37,7 @@ final class SabrScriptPolicyManager {
 
     @Synchronized
     fun activate(verified: SabrScriptPolicy) {
-        if (verified.getRevision() < highestRevision) {
-            throw IllegalArgumentException("SABR policy rollback rejected")
-        }
+        if (verified.getRevision() < highestRevision) throw IllegalArgumentException("SABR policy rollback rejected")
         val currentActive = active
         if (currentActive != null && currentActive.getRevision() == verified.getRevision() &&
             !Arrays.equals(currentActive.serialize(), verified.serialize())
@@ -61,11 +57,7 @@ final class SabrScriptPolicyManager {
 
     fun current(nowMs: Long): SabrScriptPolicy? {
         val value = active
-        return if (value != null && nowMs >= value.getValidFromMs() && nowMs < value.getValidUntilMs()) {
-            value
-        } else {
-            null
-        }
+        return if (value != null && nowMs >= value.getValidFromMs() && nowMs < value.getValidUntilMs()) value else null
     }
 
     @Synchronized

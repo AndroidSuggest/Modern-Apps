@@ -1,9 +1,9 @@
 package com.vayunmathur.games.chess.data
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Pure-JVM checks for the Learn coordinate helpers and lesson board building. */
 class LearnDataTest {

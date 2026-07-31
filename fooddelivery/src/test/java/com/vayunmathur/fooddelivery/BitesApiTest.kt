@@ -8,7 +8,8 @@ import com.vayunmathur.fooddelivery.data.MerchantsWrapper
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertTrue
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -33,7 +34,7 @@ class BitesApiTest {
         val raw = httpGet("https://api.deliverycollective.com/api/v1/merchants/all/stores")
         println("RAW response length: ${raw.length}")
         println("RAW first 500 chars: ${raw.take(500)}")
-        assert(raw.isNotEmpty()) { "Response was empty" }
+        assertTrue(raw.isNotEmpty(), "Response was empty")
     }
 
     @Test
@@ -74,9 +75,9 @@ class BitesApiTest {
 
         val merchant = json.decodeFromString<Merchant>(singleMerchantJson)
         println("Parsed merchant: ${merchant.name}, id=${merchant.id}")
-        assert(merchant.name == "Test Restaurant")
-        assert(merchant.averageRating == null)
-        assert(merchant.brandColor == null)
+        assertTrue(merchant.name == "Test Restaurant")
+        assertTrue(merchant.averageRating == null)
+        assertTrue(merchant.brandColor == null)
     }
 
     @Test
@@ -117,8 +118,8 @@ class BitesApiTest {
 
         val resp = json.decodeFromString<ApiResponse<MerchantsWrapper>>(wrappedJson)
         println("Parsed wrapper: message=${resp.message}, merchants=${resp.data?.merchants?.size}")
-        assert(resp.data?.merchants?.size == 1)
-        assert(resp.data?.merchants?.first()?.name == "Restaurant A")
+        assertTrue(resp.data?.merchants?.size == 1)
+        assertTrue(resp.data?.merchants?.first()?.name == "Restaurant A")
     }
 
     @Test
@@ -133,7 +134,7 @@ class BitesApiTest {
             merchants.take(3).forEach { m ->
                 println("  - ${m.name} (id=${m.id}, rating=${m.averageRating}, tags=${m.merchantTags})")
             }
-            assert(merchants.isNotEmpty()) { "No merchants parsed!" }
+            assertTrue(merchants.isNotEmpty(), "No merchants parsed!")
         } catch (e: Exception) {
             println("PARSE FAILED: ${e::class.simpleName}: ${e.message}")
             e.printStackTrace()

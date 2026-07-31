@@ -1,8 +1,8 @@
 package com.vayunmathur.passwords.cable
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import java.security.KeyPair
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -21,13 +21,13 @@ class NoiseTest {
         val kp = P256.generateKeyPair()
         val compressed = P256.toCompressed(kp.public)
         assertEquals(P256.COMPRESSED_SIZE, compressed.size)
-        assertArrayEquals(P256.toUncompressed(kp.public), P256.toUncompressed(P256.decodePoint(compressed)))
+        assertContentEquals(P256.toUncompressed(kp.public), P256.toUncompressed(P256.decodePoint(compressed)))
     }
 
     @Test fun p256EcdhIsSymmetric() {
         val a = P256.generateKeyPair()
         val b = P256.generateKeyPair()
-        assertArrayEquals(P256.ecdh(a.private, b.public), P256.ecdh(b.private, a.public))
+        assertContentEquals(P256.ecdh(a.private, b.public), P256.ecdh(b.private, a.public))
     }
 
     @Test fun crypterRoundTripAndPadding() {
@@ -38,8 +38,8 @@ class NoiseTest {
         val b = Crypter(writeKey, readKey)
         for (i in 0 until 4) {
             val msg = "msg-$i".toByteArray()
-            assertArrayEquals(msg, b.decrypt(a.encrypt(msg)))
-            assertArrayEquals(msg, a.decrypt(b.encrypt(msg)))
+            assertContentEquals(msg, b.decrypt(a.encrypt(msg)))
+            assertContentEquals(msg, a.decrypt(b.encrypt(msg)))
         }
     }
 
@@ -48,7 +48,7 @@ class NoiseTest {
             val msg = ByteArray(len) { it.toByte() }
             val padded = Crypter.pad(msg)
             assertEquals(0, padded.size % 32)
-            assertArrayEquals(msg, Crypter.unpad(padded))
+            assertContentEquals(msg, Crypter.unpad(padded))
         }
     }
 
@@ -66,10 +66,10 @@ class NoiseTest {
 
         // initiator -> responder
         val req = "ctap request".toByteArray()
-        assertArrayEquals(req, respCrypter.decrypt(initCrypter.encrypt(req)))
+        assertContentEquals(req, respCrypter.decrypt(initCrypter.encrypt(req)))
         // responder -> initiator
         val resp = "ctap response".toByteArray()
-        assertArrayEquals(resp, initCrypter.decrypt(respCrypter.encrypt(resp)))
+        assertContentEquals(resp, initCrypter.decrypt(respCrypter.encrypt(resp)))
     }
 
     /** KNpsk0 initiator mirroring Chromium HandshakeInitiator (QR variant). */

@@ -7,7 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -18,7 +18,6 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import okhttp3.OkHttpClient
 import com.vayunmathur.youpipe.util.sabr.SabrDashMediaSource
 import com.vayunmathur.youpipe.util.sabr.SabrSessionStore
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isAndroidStreamingUrl
@@ -44,27 +43,31 @@ class PlaybackService : MediaSessionService() {
 
         val defaultUserAgent = "Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0"
 
-        val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                val request = chain.request()
-                val url = request.url.toString()
-                val userAgent = when {
-                    isAndroidStreamingUrl(url) -> getAndroidUserAgent(null)
-                    isIosStreamingUrl(url) -> getIosUserAgent(null)
-                    isVisionOsStreamingUrl(url) -> getVisionOsUserAgent(null)
-                    else -> defaultUserAgent
-                }
-                chain.proceed(
-                    request.newBuilder()
-                        .header("User-Agent", userAgent)
-                        .build()
-                )
+        // Prefer HttpURLConnection-backed default datasource; SABR path uses library:network.
+        // Inject per-request User-Agent via ResolvingDataSource so range/redirect code still inherits it.
+        val httpFactory = DefaultHttpDataSource.Factory().apply {
+            setUserAgent(defaultUserAgent)
+            setConnectTimeoutMs(30_000)
+            setReadTimeoutMs(30_000)
+            setAllowCrossProtocolRedirects(true)
+        }
+
+        val resolvingFactory = androidx.media3.datasource.ResolvingDataSource.Factory(httpFactory) { dataSpec ->
+            val url = dataSpec.uri.toString()
+            val userAgent = when {
+                isAndroidStreamingUrl(url) -> getAndroidUserAgent(null)
+                isIosStreamingUrl(url) -> getIosUserAgent(null)
+                isVisionOsStreamingUrl(url) -> getVisionOsUserAgent(null)
+                else -> defaultUserAgent
             }
-            .build()
+            val headers = buildMap {
+                put("User-Agent", userAgent)
+                dataSpec.httpRequestHeaders.forEach { (k, v) -> if (!k.equals("User-Agent", ignoreCase = true)) put(k, v) }
+            }
+            dataSpec.withRequestHeaders(headers)
+        }
 
-        val okHttpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
-
-        val dataSourceFactory = DefaultDataSource.Factory(this, okHttpDataSourceFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(this, resolvingFactory)
 
         // 1. Use delegation instead of inheritance
         val defaultMediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -86,9 +89,6 @@ class PlaybackService : MediaSessionService() {
                     val videoId = vUri.host
                         ?: throw RuntimeException("SABR media item is missing a video id: $vUri")
                     val vitag = vUri.getQueryParameter("v")?.toIntOrNull() ?: 0
-                    // Audio selection for SABR: user may have picked a different language/track.
-                    // The audio URI is sabr://videoId?a=itag or progressive https://... ; we parse
-                    // itag here. We also honor explicit track id if provided.
                     val extras = mediaItem.mediaMetadata.extras
                     val rawAudioUri = mediaItem.localConfiguration?.tag as? String
                         ?: extras?.getString(EXTRA_AUDIO_URI)
@@ -104,7 +104,6 @@ class PlaybackService : MediaSessionService() {
                     }
                     val info = SabrSessionStore.getExtractorInfo(videoId)
                     val sabrSource = try {
-                        // Blocking network bootstrap; media3 calls this off the main thread.
                         val spec = SabrSessionStore.createSourceSpec(
                             videoId, vitag, audioItag, audioTrackIdOverride, info
                         )
@@ -119,8 +118,6 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
 
-                // Check if we passed an audio URI in the tag (via onAddMediaItems)
-                // or in the extras (fallback)
                 val audioUriString = mediaItem.localConfiguration?.tag as? String
                     ?: mediaItem.mediaMetadata.extras?.getString(EXTRA_AUDIO_URI)
 
@@ -132,8 +129,6 @@ class PlaybackService : MediaSessionService() {
 
                     MergingMediaSource(videoSource, audioSource, *subtitleSources.toTypedArray())
                 } else {
-                    // Even without separate audio, we need to merge subtitles explicitly
-                    // because default factory may not handle them reliably through MediaSession
                     val videoSource = defaultMediaSourceFactory.createMediaSource(mediaItem)
                     if (subtitleSources.isNotEmpty()) {
                         MergingMediaSource(videoSource, *subtitleSources.toTypedArray())
@@ -143,7 +138,6 @@ class PlaybackService : MediaSessionService() {
                 }
             }
 
-            // Delegate required interface methods to the default factory
             override fun setDrmSessionManagerProvider(drmSessionManagerProvider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider) =
                 apply { defaultMediaSourceFactory.setDrmSessionManagerProvider(drmSessionManagerProvider) }
 
@@ -158,16 +152,9 @@ class PlaybackService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
-        // Enable legacy text decoding for TTML/VTT/SRT subtitles via reflection
-        // Media3 1.11+ disables legacy text decoding by default, but SingleSampleMediaSource requires it
         try {
-            val textRendererClass = Class.forName("androidx.media3.exoplayer.text.TextRenderer")
-            // Try to find and set any static flag that enables legacy decoding
-            // If no public API, we'll rely on DefaultRenderersFactory properly configuring TextOutput
             android.util.Log.d("YouPipeSubs", "Attempting to enable legacy text decoding")
-        } catch (e: Exception) {
-            android.util.Log.w("YouPipeSubs", "Could not configure text renderer via reflection", e)
-        }
+        } catch (_: Exception) {}
 
         val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
             override fun buildTextRenderers(
@@ -177,19 +164,13 @@ class PlaybackService : MediaSessionService() {
                 extensionRendererMode: Int,
                 out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>
             ) {
-                // In Media3 1.11+, TextRenderer requires explicit legacy decoding enabled for TTML/VTT/SRT
                 super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, out)
-                // Enable legacy decoding on all text renderers via experimental API
                 out.filterIsInstance<androidx.media3.exoplayer.text.TextRenderer>().forEach { textRenderer ->
                     try {
                         //noinspection ExperimentalApiUsageError
                         textRenderer.experimentalSetLegacyDecodingEnabled(true)
-                        android.util.Log.d("YouPipeSubs", "Enabled legacy decoding on TextRenderer")
-                    } catch (e: Exception) {
-                        android.util.Log.w("YouPipeSubs", "Failed to enable legacy decoding", e)
-                    }
+                    } catch (_: Exception) {}
                 }
-                // Fallback: ensure text renderer exists
                 if (out.none { it.trackType == androidx.media3.common.C.TRACK_TYPE_TEXT }) {
                     val tr = androidx.media3.exoplayer.text.TextRenderer(output, outputLooper)
                     try {
@@ -209,9 +190,6 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        // 2. Set up the MediaSession Callback to ensure the Audio URI reaches the Factory
-        // We preserve the full extras bundle (audio URI + trackId + itag) so SABR can pick the
-        // correct audio track when language is changed.
         val callback = object : MediaSession.Callback {
             override fun onAddMediaItems(
                 mediaSession: MediaSession,
@@ -221,7 +199,6 @@ class PlaybackService : MediaSessionService() {
                 val updatedItems = mediaItems.map { item ->
                     val extras = item.mediaMetadata.extras
                     val audioUri = extras?.getString(EXTRA_AUDIO_URI)
-                    // Keep extras intact; tag is fallback for progressive path
                     item.buildUpon()
                         .setTag(audioUri)
                         .build()
@@ -239,7 +216,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         mediaSession?.run {
-            player.stop() // Stop playback first
+            player.stop()
             player.release()
             release()
         }
@@ -249,16 +226,12 @@ class PlaybackService : MediaSessionService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = mediaSession?.player
-        // When app is swiped away while playing, keep audio-only background playback.
-        // User request: video should keep playing even if PiP is closed (audio only).
-        // So don't stop here; switch to audio-only to save bandwidth.
         if (player?.isPlaying == true) {
             try {
                 player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
                     .build()
             } catch (_: Exception) {}
-            // Don't stopSelf() - keep foreground notification for audio
             return
         }
         player?.let {
@@ -269,8 +242,6 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
-        // If the player is stopped or the activity has disconnected and not playing,
-        // we stop the service from being a foreground service.
         if (session.player.playbackState == Player.STATE_IDLE ||
             session.player.playbackState == Player.STATE_ENDED) {
             stopForeground(STOP_FOREGROUND_REMOVE)

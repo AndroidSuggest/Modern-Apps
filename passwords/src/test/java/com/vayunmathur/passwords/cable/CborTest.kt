@@ -1,11 +1,11 @@
 package com.vayunmathur.passwords.cable
 
 import com.vayunmathur.passwords.util.Cbor
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Round-trip tests for the CBOR encoder ([Cbor]) + decoder ([CborReader]) and the CTAP2 models. */
 class CborTest {
@@ -24,7 +24,7 @@ class CborTest {
 
     @Test fun byteStringRoundTrip() {
         val data = byteArrayOf(1, 2, 3, 0, -1, 42)
-        assertArrayEquals(data, CborReader.decode(Cbor.encode(data)) as ByteArray)
+        assertContentEquals(data, CborReader.decode(Cbor.encode(data)) as ByteArray)
     }
 
     @Test fun textStringRoundTrip() {
@@ -37,7 +37,7 @@ class CborTest {
         val decoded = CborReader.decode(Cbor.encode(list)) as List<*>
         assertEquals(1L, decoded[0])
         assertEquals("two", decoded[1])
-        assertArrayEquals(byteArrayOf(3), decoded[2] as ByteArray)
+        assertContentEquals(byteArrayOf(3), decoded[2] as ByteArray)
     }
 
     @Test fun mapRoundTrip() {
@@ -45,7 +45,7 @@ class CborTest {
         val decoded = CborReader.decode(Cbor.encode(map)) as Map<*, *>
         assertEquals("a", decoded[1L])
         assertEquals(100L, decoded[2L])
-        assertArrayEquals(byteArrayOf(9), decoded[3L] as ByteArray)
+        assertContentEquals(byteArrayOf(9), decoded[3L] as ByteArray)
     }
 
     @Test fun booleanValues() {
@@ -64,8 +64,8 @@ class CborTest {
         assertEquals(2L, decoded[1L])
         assertEquals(-7L, decoded[3L])
         assertEquals(1L, decoded[-1L])
-        assertArrayEquals(x, decoded[-2L] as ByteArray)
-        assertArrayEquals(y, decoded[-3L] as ByteArray)
+        assertContentEquals(x, decoded[-2L] as ByteArray)
+        assertContentEquals(y, decoded[-3L] as ByteArray)
     }
 
     @Test fun getAssertionRequestParse() {
@@ -80,9 +80,9 @@ class CborTest {
 
         val req = CtapGetAssertionRequest.parse(payload)
         assertEquals("example.com", req.rpId)
-        assertArrayEquals(clientDataHash, req.clientDataHash)
+        assertContentEquals(clientDataHash, req.clientDataHash)
         assertEquals(1, req.allowList.size)
-        assertArrayEquals(credId, req.allowList[0].id)
+        assertContentEquals(credId, req.allowList[0].id)
         assertTrue(req.userPresenceRequired)
         assertTrue(req.userVerificationRequired)
     }
@@ -109,11 +109,11 @@ class CborTest {
         val decoded = CborReader.decode(resp.encode()) as Map<*, *>
         val cred = decoded[1L] as Map<*, *>
         assertEquals("public-key", cred["type"])
-        assertArrayEquals(byteArrayOf(1, 2, 3), cred["id"] as ByteArray)
-        assertArrayEquals(resp.authData, decoded[2L] as ByteArray)
-        assertArrayEquals(byteArrayOf(9, 8, 7), decoded[3L] as ByteArray)
+        assertContentEquals(byteArrayOf(1, 2, 3), cred["id"] as ByteArray)
+        assertContentEquals(resp.authData, decoded[2L] as ByteArray)
+        assertContentEquals(byteArrayOf(9, 8, 7), decoded[3L] as ByteArray)
         val user = decoded[4L] as Map<*, *>
-        assertArrayEquals(byteArrayOf(4, 5, 6), user["id"] as ByteArray)
+        assertContentEquals(byteArrayOf(4, 5, 6), user["id"] as ByteArray)
         assertEquals("alice", user["name"])
     }
 
@@ -122,7 +122,7 @@ class CborTest {
         val decoded = CborReader.decode(CtapGetInfoResponse(aaguid = aaguid).encode()) as Map<*, *>
         val versions = decoded[1L] as List<*>
         assertTrue(versions.contains("FIDO_2_0"))
-        assertArrayEquals(aaguid, decoded[3L] as ByteArray)
+        assertContentEquals(aaguid, decoded[3L] as ByteArray)
         val options = decoded[4L] as Map<*, *>
         assertEquals(true, options["rk"])
     }

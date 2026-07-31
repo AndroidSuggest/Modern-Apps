@@ -46,9 +46,8 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             if (ustreamerConfig.isNullOrEmpty()) {
                 throw SabrProtocolException("Missing video playback ustreamer config")
             }
-
-            val playerTimeMs = streamState?.requestPlayerTimeMs ?: 0L
-            val bufferedRanges = streamState?.bufferedRanges ?: emptyList()
+            val playerTimeMs = streamState?.getRequestPlayerTimeMs() ?: 0L
+            val bufferedRanges = streamState?.getBufferedRanges() ?: emptyList()
             val includeInitialPlaybackState = playerTimeMs > 0 || bufferedRanges.isNotEmpty()
             val request = SabrProto.Writer()
             request.writeMessage(
@@ -58,7 +57,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
                     videoFormat,
                     playerTimeMs,
                     includeInitialPlaybackState,
-                    streamState?.enabledTrackTypesBitfield ?: ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO,
+                    streamState?.getEnabledTrackTypesBitfield() ?: ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO,
                     streamState
                 )
             )
@@ -119,8 +118,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             if (ustreamerConfig.isNullOrEmpty()) {
                 throw SabrProtocolException("Missing video playback ustreamer config")
             }
-
-            val playerTimeMs = streamState.requestPlayerTimeMs
+            val playerTimeMs = streamState.getRequestPlayerTimeMs()
             val request = SabrProto.Writer()
             request.writeMessage(
                 1,
@@ -129,7 +127,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
                     videoFormat,
                     playerTimeMs,
                     true,
-                    streamState.enabledTrackTypesBitfield,
+                    streamState.getEnabledTrackTypesBitfield(),
                     streamState
                 )
             )
@@ -148,7 +146,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             ) {
                 request.writeMessage(2, SabrProto.formatId(videoFormat))
             }
-            val bufferedRanges = streamState.bufferedRanges
+            val bufferedRanges = streamState.getBufferedRanges()
             for (range in bufferedRanges) {
                 request.writeMessage(3, range.toProto(streamState.shouldWriteBufferedRangeTimeRange()))
             }
@@ -164,24 +162,17 @@ internal class YoutubeSabrRequestBuilder private constructor() {
         private fun buildClientAbrState(
             audioFormat: YoutubeSabrFormat,
             videoFormat: YoutubeSabrFormat
-        ): ByteArray {
-            return buildClientAbrState(audioFormat, videoFormat, 0, false)
-        }
+        ): ByteArray = buildClientAbrState(audioFormat, videoFormat, 0, false)
 
         private fun buildClientAbrState(
             audioFormat: YoutubeSabrFormat,
             videoFormat: YoutubeSabrFormat,
             playerTimeMs: Long,
             includeFollowUpState: Boolean
-        ): ByteArray {
-            return buildClientAbrState(
-                audioFormat,
-                videoFormat,
-                playerTimeMs,
-                includeFollowUpState,
-                ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO
-            )
-        }
+        ): ByteArray = buildClientAbrState(
+            audioFormat, videoFormat, playerTimeMs, includeFollowUpState,
+            ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO
+        )
 
         private fun buildClientAbrState(
             audioFormat: YoutubeSabrFormat,
@@ -189,16 +180,10 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             playerTimeMs: Long,
             includeFollowUpState: Boolean,
             enabledTrackTypesBitfield: Int
-        ): ByteArray {
-            return buildClientAbrState(
-                audioFormat,
-                videoFormat,
-                playerTimeMs,
-                includeFollowUpState,
-                enabledTrackTypesBitfield,
-                null
-            )
-        }
+        ): ByteArray = buildClientAbrState(
+            audioFormat, videoFormat, playerTimeMs, includeFollowUpState,
+            enabledTrackTypesBitfield, null
+        )
 
         private fun buildClientAbrState(
             audioFormat: YoutubeSabrFormat,
@@ -209,8 +194,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             streamState: YoutubeSabrStreamState?
         ): ByteArray {
             val state = SabrProto.Writer()
-            val officialWebClientAbrFields = streamState != null
-                && streamState.shouldWriteOfficialWebClientAbrFields()
+            val officialWebClientAbrFields = streamState != null && streamState.shouldWriteOfficialWebClientAbrFields()
 
             if ((includeFollowUpState || officialWebClientAbrFields) && streamState != null
                 && streamState.shouldWriteLastManualSelectedResolution()
@@ -220,93 +204,61 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             if (includeFollowUpState || officialWebClientAbrFields) {
                 state.writeInt32(
                     18,
-                    if (streamState != null && streamState.clientViewportWidth > 0)
-                        streamState.clientViewportWidth
+                    if (streamState != null && streamState.getClientViewportWidth() > 0)
+                        streamState.getClientViewportWidth()
                     else maxOf(videoFormat.width, 640)
                 )
                 state.writeInt32(
                     19,
-                    if (streamState != null && streamState.clientViewportHeight > 0)
-                        streamState.clientViewportHeight
+                    if (streamState != null && streamState.getClientViewportHeight() > 0)
+                        streamState.getClientViewportHeight()
                     else maxOf(videoFormat.height, 360)
                 )
             }
-            val stickyResolutionOverride = streamState?.stickyResolutionOverride
-            state.writeInt32(
-                21,
-                stickyResolutionOverride ?: maxOf(videoFormat.height, 360)
-            )
+            val stickyResolutionOverride = streamState?.getStickyResolutionOverride()
+            state.writeInt32(21, stickyResolutionOverride ?: maxOf(videoFormat.height, 360))
+
             if (includeFollowUpState || officialWebClientAbrFields) {
-                val bandwidthEstimate: Long = if (streamState != null && streamState.bandwidthEstimate > 0)
-                    streamState.bandwidthEstimate
+                val bandwidthEstimate: Long = if (streamState != null && streamState.getBandwidthEstimate() > 0)
+                    streamState.getBandwidthEstimate()
                 else if (audioFormat.bitrate > 0 && videoFormat.bitrate > 0)
                     (audioFormat.bitrate + videoFormat.bitrate) * 2L
-                else
-                    -1
-                if (bandwidthEstimate > 0) {
-                    state.writeUInt64(23, bandwidthEstimate)
-                }
+                else -1
+                if (bandwidthEstimate > 0) state.writeUInt64(23, bandwidthEstimate)
             }
-            val visibility = if (streamState == null) 1 else streamState.clientAbrVisibility
-            if (visibility != null) {
-                state.writeInt32(34, visibility)
-            }
-            state.writeFloat(35, streamState?.playbackRate ?: 1.0f)
+            val visibility: Int? = if (streamState == null) 1 else streamState.getClientAbrVisibility()
+            if (visibility != null) state.writeInt32(34, visibility)
+            state.writeFloat(35, streamState?.getPlaybackRate() ?: 1.0f)
+
             if (enabledTrackTypesBitfield != ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO) {
                 state.writeInt32(40, enabledTrackTypesBitfield)
             }
-            if (audioFormat.isDrc) {
-                state.writeBool(46, true)
-            }
-            if (streamState?.sabrReportRequestCancellationInfoOverride != null) {
-                state.writeInt32(54, streamState.sabrReportRequestCancellationInfoOverride!!)
+            if (audioFormat.isDrc) state.writeBool(46, true)
+
+            if (streamState?.getSabrReportRequestCancellationInfoOverride() != null) {
+                state.writeInt32(54, streamState.getSabrReportRequestCancellationInfoOverride()!!)
             }
             if (officialWebClientAbrFields && streamState != null) {
                 if (includeFollowUpState) {
-                    state.writeUInt64(
-                        29,
-                        longOverride(streamState.officialTimeSinceLastSeekOverride, 48)
-                    )
-                    state.writeUInt64(
-                        36,
-                        longOverride(streamState.officialElapsedWallTimeOverride, 1406)
-                    )
-                    state.writeUInt64(
-                        39,
-                        longOverride(streamState.officialTimeSinceLastActionOverride, 1446)
-                    )
-                    state.writeUInt64(57, longOverride(streamState.officialField57Override, 59))
+                    state.writeUInt64(29, longOverride(streamState.getOfficialTimeSinceLastSeekOverride(), 48))
+                    state.writeUInt64(36, longOverride(streamState.getOfficialElapsedWallTimeOverride(), 1406))
+                    state.writeUInt64(39, longOverride(streamState.getOfficialTimeSinceLastActionOverride(), 1446))
+                    state.writeUInt64(57, longOverride(streamState.getOfficialField57Override(), 59))
                 } else {
-                    state.writeUInt64(
-                        29,
-                        longOverride(streamState.officialTimeSinceLastSeekOverride, 9)
-                    )
-                    state.writeUInt64(
-                        36,
-                        longOverride(streamState.officialElapsedWallTimeOverride, 41)
-                    )
-                    state.writeUInt64(
-                        39,
-                        longOverride(streamState.officialTimeSinceLastActionOverride, 80)
-                    )
-                    val officialField57Override = streamState.officialField57Override
-                    if (officialField57Override != null) {
-                        state.writeUInt64(57, officialField57Override)
-                    }
+                    state.writeUInt64(29, longOverride(streamState.getOfficialTimeSinceLastSeekOverride(), 9))
+                    state.writeUInt64(36, longOverride(streamState.getOfficialElapsedWallTimeOverride(), 41))
+                    state.writeUInt64(39, longOverride(streamState.getOfficialTimeSinceLastActionOverride(), 80))
+                    val officialField57Override = streamState.getOfficialField57Override()
+                    if (officialField57Override != null) state.writeUInt64(57, officialField57Override)
                 }
                 state.writeBool(58, false)
                 state.writeInt32(59, maxOf(videoFormat.height, 1080))
-                state.writeUInt64(68, longOverride(streamState.officialField68Override, 0))
+                state.writeUInt64(68, longOverride(streamState.getOfficialField68Override(), 0))
                 state.writeBool(71, true)
-                state.writeMessage(
-                    72,
-                    buildOfficialWebQualityConstraints(maxOf(videoFormat.height, 1080))
-                )
+                state.writeMessage(72, buildOfficialWebQualityConstraints(maxOf(videoFormat.height, 1080)))
                 state.writeInt32(76, 0)
                 state.writeMessage(79, buildOfficialWebPlaybackAuthorization())
-                if (!includeFollowUpState) {
-                    state.writeInt32(80, 1)
-                }
+                if (!includeFollowUpState) state.writeInt32(80, 1)
             }
             state.writeUInt64(28, playerTimeMs)
             state.writeStringIfNotEmpty(69, audioFormat.audioTrackId)
@@ -345,10 +297,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             }
         }
 
-        private fun writeOfficialWebPreferredFormats(
-            request: SabrProto.Writer,
-            info: YoutubeSabrInfo
-        ) {
+        private fun writeOfficialWebPreferredFormats(request: SabrProto.Writer, info: YoutubeSabrInfo) {
             writeAudioFormatByItagAndXtagsLength(request, info, 251, 12)
             writeAudioFormatByItagAndXtagsLength(request, info, 251, 14)
             writeAudioFormatByItagAndXtagsLength(request, info, 251, 0)
@@ -370,37 +319,20 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             xtagsLength: Int
         ) {
             for (format in info.formats) {
-                val xtags = format.xtags
-                val currentXtagsLength = xtags?.length ?: 0
+                val currentXtagsLength = format.xtags?.length ?: 0
                 if (format.isAudio && format.itag == itag && currentXtagsLength == xtagsLength) {
                     request.writeMessage(16, SabrProto.formatId(format))
                 }
             }
         }
 
-        private fun writeVideoFormatByItag(
-            request: SabrProto.Writer,
-            info: YoutubeSabrInfo,
-            itag: Int
-        ) {
+        private fun writeVideoFormatByItag(request: SabrProto.Writer, info: YoutubeSabrInfo, itag: Int) {
             for (format in info.formats) {
                 if (format.isVideo && format.itag == itag) {
                     request.writeMessage(17, SabrProto.formatId(format))
                     return
                 }
             }
-        }
-
-        @Suppress("unused")
-        private fun isOfficialWebPreferredAudio(format: YoutubeSabrFormat): Boolean {
-            val mimeType = format.mimeType
-            return mimeType != null && mimeType.contains("webm") && format.itag != 249
-        }
-
-        @Suppress("unused")
-        private fun isOfficialWebPreferredVideo(format: YoutubeSabrFormat): Boolean {
-            val mimeType = format.mimeType
-            return mimeType != null && mimeType.contains("webm")
         }
 
         private fun buildOfficialWebQualityConstraints(height: Int): ByteArray {
@@ -429,23 +361,13 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             return track.toByteArray()
         }
 
-        private fun buildStreamerContext(info: YoutubeSabrInfo): ByteArray {
-            return buildStreamerContext(info, null as ByteArray?)
-        }
+        private fun buildStreamerContext(info: YoutubeSabrInfo): ByteArray = buildStreamerContext(info, null as ByteArray?)
 
-        private fun buildStreamerContext(
-            info: YoutubeSabrInfo,
-            streamState: YoutubeSabrStreamState
-        ): ByteArray {
-            return buildStreamerContext(info, streamState.rawPlaybackCookie, streamState)
-        }
+        private fun buildStreamerContext(info: YoutubeSabrInfo, streamState: YoutubeSabrStreamState): ByteArray =
+            buildStreamerContext(info, streamState.getRawPlaybackCookie(), streamState)
 
-        private fun buildStreamerContext(
-            info: YoutubeSabrInfo,
-            playbackCookie: ByteArray?
-        ): ByteArray {
-            return buildStreamerContext(info, playbackCookie, null)
-        }
+        private fun buildStreamerContext(info: YoutubeSabrInfo, playbackCookie: ByteArray?): ByteArray =
+            buildStreamerContext(info, playbackCookie, null)
 
         private fun buildStreamerContext(
             info: YoutubeSabrInfo,
@@ -454,32 +376,23 @@ internal class YoutubeSabrRequestBuilder private constructor() {
         ): ByteArray {
             val context = SabrProto.Writer()
             context.writeMessage(1, buildClientInfo(info, streamState))
-            val poToken = streamState?.rawPoToken
-            if (poToken != null && poToken.isNotEmpty()) {
-                context.writeBytes(2, poToken)
-            }
-            if (playbackCookie != null && playbackCookie.isNotEmpty()) {
-                context.writeBytes(3, playbackCookie)
-            }
+            val poToken = streamState?.getRawPoToken()
+            if (poToken != null && poToken.isNotEmpty()) context.writeBytes(2, poToken)
+            if (playbackCookie != null && playbackCookie.isNotEmpty()) context.writeBytes(3, playbackCookie)
             if (streamState != null) {
-                for (contextUpdate in streamState.activeSabrContexts) {
-                    context.writeMessage(5, contextUpdate.toStreamerContextProto())
+                for (cu in streamState.getActiveSabrContexts()) {
+                    context.writeMessage(5, cu.toStreamerContextProto())
                 }
-                for (type in streamState.unsentSabrContextTypes) {
+                for (type in streamState.getUnsentSabrContextTypes()) {
                     context.writeInt32(6, type)
                 }
             }
             return context.toByteArray()
         }
 
-        private fun buildClientInfo(info: YoutubeSabrInfo): ByteArray {
-            return buildClientInfo(info, null)
-        }
+        private fun buildClientInfo(info: YoutubeSabrInfo): ByteArray = buildClientInfo(info, null)
 
-        private fun buildClientInfo(
-            info: YoutubeSabrInfo,
-            streamState: YoutubeSabrStreamState?
-        ): ByteArray {
+        private fun buildClientInfo(info: YoutubeSabrInfo, streamState: YoutubeSabrStreamState?): ByteArray {
             val client = SabrProto.Writer()
             if (streamState != null && streamState.shouldWriteOfficialWebClientAbrFields()) {
                 client.writeStringIfNotEmpty(1, "en_US")
@@ -512,24 +425,17 @@ internal class YoutubeSabrRequestBuilder private constructor() {
 
         private fun padBase64(value: String): String {
             val padding = (4 - value.length % 4) % 4
-            val builder = StringBuilder(value)
-            for (i in 0 until padding) {
-                builder.append('=')
+            return buildString {
+                append(value)
+                repeat(padding) { append('=') }
             }
-            return builder.toString()
         }
 
         private fun parseInt(value: String?, fallback: Int): Int {
             if (value == null) return fallback
-            return try {
-                value.toInt()
-            } catch (ignored: NumberFormatException) {
-                fallback
-            }
+            return try { value.toInt() } catch (ignored: NumberFormatException) { fallback }
         }
 
-        private fun longOverride(override: Long?, fallback: Long): Long {
-            return override ?: fallback
-        }
+        private fun longOverride(override: Long?, fallback: Long): Long = override ?: fallback
     }
 }

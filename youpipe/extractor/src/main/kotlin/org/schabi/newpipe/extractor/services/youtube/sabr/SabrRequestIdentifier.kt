@@ -1,6 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-final class SabrRequestIdentifier private constructor(
+class SabrRequestIdentifier private constructor(
     private val token: String?
 ) {
     internal companion object {
@@ -9,7 +9,7 @@ final class SabrRequestIdentifier private constructor(
         fun decode(data: ByteArray): SabrRequestIdentifier {
             var token: String? = null
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     token = field.getString()
                 }
             }
@@ -19,7 +19,5 @@ final class SabrRequestIdentifier private constructor(
 
     fun getToken(): String? = token
 
-    fun summarize(): String {
-        return "tokenLength=" + (token?.length ?: 0)
-    }
+    fun summarize(): String = "tokenLength=" + (token?.length ?: 0)
 }

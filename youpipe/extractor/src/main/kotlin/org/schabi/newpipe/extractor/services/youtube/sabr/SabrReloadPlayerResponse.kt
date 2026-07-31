@@ -1,6 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-final class SabrReloadPlayerResponse private constructor(
+class SabrReloadPlayerResponse private constructor(
     private val reloadPlaybackParamsToken: String?
 ) {
     internal companion object {
@@ -9,7 +9,7 @@ final class SabrReloadPlayerResponse private constructor(
         fun decode(data: ByteArray): SabrReloadPlayerResponse {
             var token: String? = null
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     token = decodeReloadPlaybackContext(field.getBytes())
                 }
             }
@@ -19,7 +19,7 @@ final class SabrReloadPlayerResponse private constructor(
         @Throws(SabrProtocolException::class)
         private fun decodeReloadPlaybackContext(data: ByteArray): String? {
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     return decodeReloadPlaybackParams(field.getBytes())
                 }
             }
@@ -29,7 +29,7 @@ final class SabrReloadPlayerResponse private constructor(
         @Throws(SabrProtocolException::class)
         private fun decodeReloadPlaybackParams(data: ByteArray): String? {
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     return field.getString()
                 }
             }
@@ -39,7 +39,6 @@ final class SabrReloadPlayerResponse private constructor(
 
     fun getReloadPlaybackParamsToken(): String? = reloadPlaybackParamsToken
 
-    fun summarize(): String {
-        return "reloadPlaybackParamsTokenLength=" + (reloadPlaybackParamsToken?.length ?: 0)
-    }
+    fun summarize(): String =
+        "reloadPlaybackParamsTokenLength=" + (reloadPlaybackParamsToken?.length ?: 0)
 }

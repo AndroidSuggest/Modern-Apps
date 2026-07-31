@@ -3,10 +3,10 @@ package com.vayunmathur.youpipe.util
 import com.vayunmathur.youpipe.data.HistoryVideo
 import com.vayunmathur.youpipe.data.RecommendationPreferences
 import com.vayunmathur.youpipe.ui.VideoInfo
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant

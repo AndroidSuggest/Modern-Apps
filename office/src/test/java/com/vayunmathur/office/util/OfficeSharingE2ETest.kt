@@ -6,11 +6,11 @@ import com.vayunmathur.e2ee.Pqc
 import com.vayunmathur.e2ee.PqcIdentity
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.io.encoding.Base64
 
 /**
@@ -76,7 +76,7 @@ class OfficeSharingE2ETest {
             editor.decrypt(Base64.decode(relay.pull("inbox:$editorId").single())).decodeToString()
         )
         assertEquals(OfficeRoles.EDITOR, inv.role)
-        assertTrue("invite must carry owner key", inv.ownerKey.isNotBlank())
+        assertTrue(inv.ownerKey.isNotBlank(), "invite must carry owner key")
         val recDocKey = Base64.decode(inv.key)
         val ownerKey = Base64.decode(inv.ownerKey)
 
@@ -97,7 +97,7 @@ class OfficeSharingE2ETest {
             val roleOk = OfficeRoles.canEdit(roleById[so.author] ?: OfficeRoles.VIEWER)
             if (sigOk && roleOk) acceptedOps = so.ops
         }
-        assertEquals("owner-signed op accepted and delivered byte-intact", opsJson, acceptedOps)
+        assertEquals(opsJson, acceptedOps, "owner-signed op accepted and delivered byte-intact")
 
         // ---- Negative: a viewer's forged op is rejected ----
         roleById[editorId] = OfficeRoles.VIEWER
@@ -106,14 +106,14 @@ class OfficeSharingE2ETest {
         val forged = SignedOp(editorId, Base64.encode(editor.sign(forgedJson.encodeToByteArray())), forgedJson)
         val sigOk = Pqc.verify(relay.directory[editorId]!!, forged.ops.encodeToByteArray(), Base64.decode(forged.sig))
         val roleOk = OfficeRoles.canEdit(roleById[forged.author] ?: OfficeRoles.VIEWER)
-        assertTrue("signature itself is valid", sigOk)
-        assertFalse("but a viewer's edit must be rejected by the role gate", sigOk && roleOk)
+        assertTrue(sigOk, "signature itself is valid")
+        assertFalse(sigOk && roleOk, "but a viewer's edit must be rejected by the role gate")
 
         // ---- Negative: an op that lies about authorship fails signature verification ----
         val liar = SignedOp(ownerId, Base64.encode(editor.sign(forgedJson.encodeToByteArray())), forgedJson)
         assertFalse(
+            Pqc.verify(relay.directory[ownerId]!!, liar.ops.encodeToByteArray(), Base64.decode(liar.sig)),
             "editor cannot forge an op as the owner (wrong signing key)",
-            Pqc.verify(relay.directory[ownerId]!!, liar.ops.encodeToByteArray(), Base64.decode(liar.sig))
         )
     }
 
@@ -129,7 +129,7 @@ class OfficeSharingE2ETest {
             "editor" to Base64.encode(Pqc.encryptTo(editor.publicBundle, newKey)),
         )
         // The remaining editor recovers the new key; the revoked member has no wrap for it.
-        assertArrayEquals(newKey, editor.decrypt(Base64.decode(wraps.getValue("editor"))))
+        assertContentEquals(newKey, editor.decrypt(Base64.decode(wraps.getValue("editor"))))
         assertTrue(wraps["revoked"] == null)
         // New content encrypted under the new key is readable by the editor but not by the revoked
         // member (who only ever held the old key).

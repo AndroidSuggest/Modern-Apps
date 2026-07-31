@@ -1,7 +1,7 @@
 package com.vayunmathur.library.ui.odf
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class RemapCaretTest {
     @Test fun insert_after_caret_leaves_it() {

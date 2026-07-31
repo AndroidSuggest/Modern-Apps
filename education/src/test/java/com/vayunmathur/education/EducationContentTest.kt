@@ -18,10 +18,10 @@ import com.vayunmathur.education.content.TraceAnswer
 import com.vayunmathur.education.content.TracingQuestion
 import com.vayunmathur.education.content.isCorrect
 import kotlinx.serialization.json.Json
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import java.io.File
 
 private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -30,9 +30,9 @@ class EducationContentTest {
 
     private fun allPacks(): List<Pair<String, ContentPack>> {
         val dir = File("src/main/assets/content")
-        assertTrue("content dir missing at ${dir.absolutePath}", dir.isDirectory)
+        assertTrue(dir.isDirectory, "content dir missing at ${dir.absolutePath}")
         val files = dir.listFiles { f -> f.extension == "json" }?.sortedBy { it.name } ?: emptyList()
-        assertTrue("expected at least one content pack", files.isNotEmpty())
+        assertTrue(files.isNotEmpty(), "expected at least one content pack")
         return files.map { it.name to json.decodeFromString<ContentPack>(it.readText()) }
     }
 
@@ -40,7 +40,7 @@ class EducationContentTest {
     fun allPacks_parseAndValidate() {
         allPacks().forEach { (name, pack) ->
             val errors = ContentValidator.validate(pack)
-            assertTrue("$name has validation errors: $errors", errors.isEmpty())
+            assertTrue(errors.isEmpty(), "$name has validation errors: $errors")
         }
     }
 
@@ -57,7 +57,7 @@ class EducationContentTest {
                     }
                 }
             }
-            assertTrue("$name: all referenced questions must exist", questionIds.containsAll(referenced))
+            assertTrue(questionIds.containsAll(referenced), "$name: all referenced questions must exist")
         }
     }
 
@@ -65,9 +65,9 @@ class EducationContentTest {
     fun packs_haveNoCrossPackIdCollisions() {
         val packs = allPacks().map { it.second }
         fun <T> dupes(items: List<T>) = items.groupingBy { it }.eachCount().filter { it.value > 1 }.keys
-        assertTrue("duplicate course ids", dupes(packs.flatMap { it.courses.map { c -> c.id } }).isEmpty())
-        assertTrue("duplicate skill ids", dupes(packs.flatMap { it.skills.map { s -> s.id } }).isEmpty())
-        assertTrue("duplicate question ids", dupes(packs.flatMap { it.questions.map { q -> q.id } }).isEmpty())
+        assertTrue(dupes(packs.flatMap { it.courses.map { c -> c.id } }).isEmpty(), "duplicate course ids")
+        assertTrue(dupes(packs.flatMap { it.skills.map { s -> s.id } }).isEmpty(), "duplicate skill ids")
+        assertTrue(dupes(packs.flatMap { it.questions.map { q -> q.id } }).isEmpty(), "duplicate question ids")
     }
 
     @Test

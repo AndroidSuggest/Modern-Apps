@@ -6,7 +6,7 @@ import java.util.Locale
 /**
  * Sanitized diagnostics for local SABR request-shape experiments.
  */
-final class SabrRequestDumper private constructor() {
+class SabrRequestDumper private constructor() {
 
     companion object {
         @JvmStatic
@@ -34,11 +34,11 @@ final class SabrRequestDumper private constructor() {
             val unknownFields = mutableListOf<String>()
 
             for (field in fields) {
-                when (field.number) {
+                when (field.getNumber()) {
                     1 -> clientAbrState = describeClientAbrState(field.getBytes())
                     2 -> selectedFormats.add(describeFormatId(field.getBytes()))
                     3 -> bufferedRanges.add(describeBufferedRange(field.getBytes()))
-                    4 -> topLevelPlayerTimeMs = field.varint
+                    4 -> topLevelPlayerTimeMs = field.getVarint()
                     5 -> ustreamerConfigBytes = field.getBytes().size
                     16 -> preferredAudioFormats.add(describeFormatId(field.getBytes()))
                     17 -> preferredVideoFormats.add(describeFormatId(field.getBytes()))
@@ -68,9 +68,9 @@ final class SabrRequestDumper private constructor() {
         private fun describeClientAbrState(data: ByteArray): String {
             val values = mutableListOf<String>()
             for (field in SabrProto.readFields(data)) {
-                val name = clientAbrStateFieldName(field.number)
+                val name = clientAbrStateFieldName(field.getNumber())
                 when {
-                    field.number == 35 && field.wireType == SabrProto.WIRE_FIXED32 -> {
+                    field.getNumber() == 35 && field.getWireType() == SabrProto.WIRE_FIXED32 -> {
                         values.add(
                             name + '=' + String.format(
                                 Locale.ROOT, "%.3f",
@@ -78,24 +78,17 @@ final class SabrRequestDumper private constructor() {
                             )
                         )
                     }
-                    field.number == 72 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.getNumber() == 72 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED ->
                         values.add(name + "={" + SabrProto.summarizeFields(field.getBytes()) + '}')
-                    }
-                    field.number == 79 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.getNumber() == 79 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED ->
                         values.add(name + "={" + describePlaybackAuthorization(field.getBytes()) + '}')
-                    }
-                    field.number == 69 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.getNumber() == 69 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED ->
                         values.add(name + "=present(len=" + field.getBytes().size + ')')
-                    }
-                    field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED ->
                         values.add(name + "=bytes(" + field.getBytes().size + ')')
-                    }
-                    isBoolClientAbrStateField(field.number) -> {
-                        values.add(name + '=' + (field.varint != 0L))
-                    }
-                    else -> {
-                        values.add(name + '=' + field.varint)
-                    }
+                    isBoolClientAbrStateField(field.getNumber()) ->
+                        values.add(name + '=' + (field.getVarint() != 0L))
+                    else -> values.add(name + '=' + field.getVarint())
                 }
             }
             return join(values)
@@ -110,19 +103,17 @@ final class SabrRequestDumper private constructor() {
             var endSegmentIndex = -1
             var timeRange = "null"
             val unknown = mutableListOf<String>()
-
             for (field in SabrProto.readFields(data)) {
-                when (field.number) {
+                when (field.getNumber()) {
                     1 -> formatId = describeFormatId(field.getBytes())
-                    2 -> startTimeMs = field.varint
-                    3 -> durationMs = field.varint
-                    4 -> startSegmentIndex = field.varint.toInt()
-                    5 -> endSegmentIndex = field.varint.toInt()
+                    2 -> startTimeMs = field.getVarint()
+                    3 -> durationMs = field.getVarint()
+                    4 -> startSegmentIndex = field.getVarint().toInt()
+                    5 -> endSegmentIndex = field.getVarint().toInt()
                     6 -> timeRange = describeTimeRange(field.getBytes())
                     else -> unknown.add(describeUnknownField(field))
                 }
             }
-
             return formatId + ":seq=" + startSegmentIndex + '-' + endSegmentIndex +
                 ":time=" + startTimeMs + '+' + durationMs +
                 ":tr=" + timeRange +
@@ -135,10 +126,10 @@ final class SabrRequestDumper private constructor() {
             var durationTicks: Long = -1
             var timescale = -1
             for (field in SabrProto.readFields(data)) {
-                when (field.number) {
-                    1 -> startTicks = field.varint
-                    2 -> durationTicks = field.varint
-                    3 -> timescale = field.varint.toInt()
+                when (field.getNumber()) {
+                    1 -> startTicks = field.getVarint()
+                    2 -> durationTicks = field.getVarint()
+                    3 -> timescale = field.getVarint().toInt()
                 }
             }
             return "$startTicks+$durationTicks@$timescale"
@@ -155,17 +146,16 @@ final class SabrRequestDumper private constructor() {
             var field7Bytes = -1
             var field8Bytes = -1
             val unknown = mutableListOf<String>()
-
             for (field in SabrProto.readFields(data)) {
-                when (field.number) {
+                when (field.getNumber()) {
                     1 -> clientInfo = describeClientInfo(field.getBytes())
                     2 -> poTokenBytes = field.getBytes().size
                     3 -> playbackCookie = describePlaybackCookie(field.getBytes())
                     4 -> field4Bytes = field.getBytes().size
                     5 -> contexts.add(describeSabrContext(field.getBytes()))
                     6 -> {
-                        if (field.wireType == SabrProto.WIRE_VARINT) {
-                            unsentContexts.add(field.varint)
+                        if (field.getWireType() == SabrProto.WIRE_VARINT) {
+                            unsentContexts.add(field.getVarint())
                         } else {
                             unsentContexts.addAll(readRawVarints(field.getBytes()))
                         }
@@ -175,7 +165,6 @@ final class SabrRequestDumper private constructor() {
                     else -> unknown.add(describeUnknownField(field))
                 }
             }
-
             return "client=" + clientInfo +
                 ", poToken=bytes(" + poTokenBytes + ')' +
                 ", playbackCookie=" + playbackCookie +
@@ -191,8 +180,8 @@ final class SabrRequestDumper private constructor() {
         private fun describeClientInfo(data: ByteArray): String {
             val values = mutableListOf<String>()
             for (field in SabrProto.readFields(data)) {
-                when (field.number) {
-                    16 -> values.add("clientName=" + field.varint)
+                when (field.getNumber()) {
+                    16 -> values.add("clientName=" + field.getVarint())
                     17 -> values.add("clientVersion=" + field.getString())
                     18 -> values.add("osName=" + field.getString())
                     19 -> values.add("osVersion=" + field.getString())
@@ -209,9 +198,9 @@ final class SabrRequestDumper private constructor() {
             var type = -1
             var valueBytes = -1
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 1 && field.wireType == SabrProto.WIRE_VARINT) {
-                    type = field.varint.toInt()
-                } else if (field.number == 2 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT) {
+                    type = field.getVarint().toInt()
+                } else if (field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                     valueBytes = field.getBytes().size
                 }
             }
@@ -232,9 +221,9 @@ final class SabrRequestDumper private constructor() {
                 var licenseConstraintBytes = -1
                 val unknown = mutableListOf<String>()
                 for (field in SabrProto.readFields(data)) {
-                    if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                    if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                         authorizedFormats++
-                    } else if (field.number == 2 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                    } else if (field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                         licenseConstraintBytes = field.getBytes().size
                     } else {
                         unknown.add(describeUnknownField(field))
@@ -253,17 +242,15 @@ final class SabrRequestDumper private constructor() {
                 var lastModified: Long = -1
                 var xtagsLength = -1
                 for (field in SabrProto.readFields(data)) {
-                    if (field.number == 1 && field.wireType == SabrProto.WIRE_VARINT) {
-                        itag = field.varint.toInt()
-                    } else if (field.number == 2 && field.wireType == SabrProto.WIRE_VARINT) {
-                        lastModified = field.varint
-                    } else if (field.number == 3 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
+                    if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT) {
+                        itag = field.getVarint().toInt()
+                    } else if (field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT) {
+                        lastModified = field.getVarint()
+                    } else if (field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
                         xtagsLength = field.getBytes().size
                     }
                 }
-                if (itag < 0) {
-                    return "bytes(" + data.size + ')'
-                }
+                if (itag < 0) return "bytes(" + data.size + ')'
                 "itag:" + itag +
                     (if (lastModified >= 0) "+lm=$lastModified" else "") +
                     (if (xtagsLength >= 0) "+xtagsLen=$xtagsLength" else "")
@@ -275,36 +262,25 @@ final class SabrRequestDumper private constructor() {
         private fun describeFieldCounts(fields: List<SabrProto.Field>): String {
             val counts = LinkedHashMap<Int, Int>()
             for (field in fields) {
-                val count = counts[field.number]
-                counts[field.number] = if (count == null) 1 else count + 1
+                counts[field.getNumber()] = (counts[field.getNumber()] ?: 0) + 1
             }
-            val values = mutableListOf<String>()
-            for (entry in counts.entries) {
-                values.add(entry.key.toString() + "x" + entry.value)
-            }
-            return values.toString()
+            return counts.entries.map { "${it.key}x${it.value}" }.toString()
         }
 
         @Throws(SabrProtocolException::class)
-        private fun describeUnknownField(field: SabrProto.Field): String {
-            return if (field.wireType == SabrProto.WIRE_VARINT) {
-                field.number.toString() + "=" + field.varint
-            } else {
-                field.number.toString() + "=bytes(" + field.getBytes().size + ')'
-            }
-        }
+        private fun describeUnknownField(field: SabrProto.Field): String =
+            if (field.getWireType() == SabrProto.WIRE_VARINT) "${field.getNumber()}=${field.getVarint()}"
+            else "${field.getNumber()}=bytes(${field.getBytes().size})"
 
         @Throws(SabrProtocolException::class)
         private fun readRawVarints(data: ByteArray): List<Long> {
             val values = mutableListOf<Long>()
             var offset = 0
             while (offset < data.size) {
-                var result: Long = 0
+                var result = 0L
                 var shift = 0
                 while (shift < 64) {
-                    if (offset >= data.size) {
-                        throw SabrProtocolException("Unexpected EOF in packed varint")
-                    }
+                    if (offset >= data.size) throw SabrProtocolException("Unexpected EOF in packed varint")
                     val current = data[offset++].toInt() and 0xff
                     result = result or ((current and 0x7f).toLong() shl shift)
                     if ((current and 0x80) == 0) {
@@ -313,87 +289,73 @@ final class SabrRequestDumper private constructor() {
                     }
                     shift += 7
                 }
-                if (shift >= 64) {
-                    throw SabrProtocolException("Packed varint is too long")
-                }
+                if (shift >= 64) throw SabrProtocolException("Packed varint is too long")
             }
             return values
         }
 
-        private fun clientAbrStateFieldName(fieldNumber: Int): String {
-            return when (fieldNumber) {
-                13 -> "timeSinceLastManualFormatSelectionMs"
-                14 -> "lastManualDirection"
-                16 -> "lastManualSelectedResolution"
-                17 -> "detailedNetworkType"
-                18 -> "clientViewportWidth"
-                19 -> "clientViewportHeight"
-                20 -> "clientBitrateCapBytesPerSec"
-                21 -> "stickyResolution"
-                22 -> "clientViewportIsFlexible"
-                23 -> "bandwidthEstimate"
-                24 -> "minAudioQuality"
-                25 -> "maxAudioQuality"
-                26 -> "videoQualitySetting"
-                27 -> "audioRoute"
-                28 -> "playerTimeMs"
-                29 -> "timeSinceLastSeek"
-                30 -> "dataSaverMode"
-                32 -> "networkMeteredState"
-                34 -> "visibility"
-                35 -> "playbackRate"
-                36 -> "elapsedWallTimeMs"
-                38 -> "mediaCapabilities"
-                39 -> "timeSinceLastActionMs"
-                40 -> "enabledTrackTypesBitfield"
-                43 -> "maxPacingRate"
-                44 -> "playerState"
-                46 -> "drcEnabled"
-                48 -> "field48"
-                50 -> "field50"
-                51 -> "field51"
-                54 -> "sabrReportRequestCancellationInfo"
-                55 -> "field55"
-                56 -> "disableStreamingXhr"
-                57 -> "field57"
-                58 -> "preferVp9"
-                59 -> "av1QualityThreshold"
-                60 -> "field60"
-                61 -> "isPrefetch"
-                62 -> "sabrSupportQualityConstraints"
-                63 -> "sabrLicenseConstraint"
-                64 -> "allowProximaLiveLatency"
-                66 -> "sabrForceProxima"
-                67 -> "field67"
-                68 -> "sabrForceMaxNetworkInterruptionDurationMs"
-                69 -> "audioTrackId"
-                71 -> "field71"
-                72 -> "field72"
-                73 -> "field73"
-                74 -> "field74"
-                75 -> "field75"
-                76 -> "enableVoiceBoost"
-                79 -> "playbackAuthorization"
-                80 -> "field80"
-                else -> "field$fieldNumber"
-            }
+        private fun clientAbrStateFieldName(fieldNumber: Int): String = when (fieldNumber) {
+            13 -> "timeSinceLastManualFormatSelectionMs"
+            14 -> "lastManualDirection"
+            16 -> "lastManualSelectedResolution"
+            17 -> "detailedNetworkType"
+            18 -> "clientViewportWidth"
+            19 -> "clientViewportHeight"
+            20 -> "clientBitrateCapBytesPerSec"
+            21 -> "stickyResolution"
+            22 -> "clientViewportIsFlexible"
+            23 -> "bandwidthEstimate"
+            24 -> "minAudioQuality"
+            25 -> "maxAudioQuality"
+            26 -> "videoQualitySetting"
+            27 -> "audioRoute"
+            28 -> "playerTimeMs"
+            29 -> "timeSinceLastSeek"
+            30 -> "dataSaverMode"
+            32 -> "networkMeteredState"
+            34 -> "visibility"
+            35 -> "playbackRate"
+            36 -> "elapsedWallTimeMs"
+            38 -> "mediaCapabilities"
+            39 -> "timeSinceLastActionMs"
+            40 -> "enabledTrackTypesBitfield"
+            43 -> "maxPacingRate"
+            44 -> "playerState"
+            46 -> "drcEnabled"
+            48 -> "field48"
+            50 -> "field50"
+            51 -> "field51"
+            54 -> "sabrReportRequestCancellationInfo"
+            55 -> "field55"
+            56 -> "disableStreamingXhr"
+            57 -> "field57"
+            58 -> "preferVp9"
+            59 -> "av1QualityThreshold"
+            60 -> "field60"
+            61 -> "isPrefetch"
+            62 -> "sabrSupportQualityConstraints"
+            63 -> "sabrLicenseConstraint"
+            64 -> "allowProximaLiveLatency"
+            66 -> "sabrForceProxima"
+            67 -> "field67"
+            68 -> "sabrForceMaxNetworkInterruptionDurationMs"
+            69 -> "audioTrackId"
+            71 -> "field71"
+            72 -> "field72"
+            73 -> "field73"
+            74 -> "field74"
+            75 -> "field75"
+            76 -> "enableVoiceBoost"
+            79 -> "playbackAuthorization"
+            80 -> "field80"
+            else -> "field$fieldNumber"
         }
 
-        private fun isBoolClientAbrStateField(fieldNumber: Int): Boolean {
-            return fieldNumber == 22 || fieldNumber == 30 || fieldNumber == 46 ||
+        private fun isBoolClientAbrStateField(fieldNumber: Int): Boolean =
+            fieldNumber == 22 || fieldNumber == 30 || fieldNumber == 46 ||
                 fieldNumber == 56 || fieldNumber == 58 || fieldNumber == 61 ||
                 fieldNumber == 62 || fieldNumber == 71
-        }
 
-        private fun join(values: List<String>): String {
-            val builder = StringBuilder()
-            for (i in values.indices) {
-                if (i > 0) {
-                    builder.append(", ")
-                }
-                builder.append(values[i])
-            }
-            return builder.toString()
-        }
+        private fun join(values: List<String>): String = values.joinToString(", ")
     }
 }

@@ -1,10 +1,10 @@
 package com.vayunmathur.passwords.cable
 
 import com.vayunmathur.passwords.util.Cbor
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /** Tests for the caBLE QR digit codec, CBOR field parse, and HKDF derivations. */
 class CableQrTest {
@@ -35,7 +35,7 @@ class CableQrTest {
         for (len in 0..40) {
             val data = ByteArray(len) { ((it * 37 + 11) and 0xFF).toByte() }
             val encoded = digitEncode(data)
-            assertArrayEquals("len=$len", data, CableQrData.digitDecode(encoded))
+            assertContentEquals(data, CableQrData.digitDecode(encoded), "len=$len")
         }
     }
 
@@ -43,7 +43,7 @@ class CableQrTest {
     @Test fun digitKnownAnswerVector() {
         val bytes = byteArrayOf(0x61, 0x62, 0xFF.toByte())
         assertEquals("16736865", digitEncode(bytes))
-        assertArrayEquals(bytes, CableQrData.digitDecode("16736865"))
+        assertContentEquals(bytes, CableQrData.digitDecode("16736865"))
     }
 
     @Test fun parseFidoUri() {
@@ -59,8 +59,8 @@ class CableQrTest {
         val uri = CableQrData.URI_PREFIX + digitEncode(cbor)
 
         val qr = CableQrData.parse(uri)
-        assertArrayEquals(peerKey, qr.peerPublicKey)
-        assertArrayEquals(secret, qr.qrSecret)
+        assertContentEquals(peerKey, qr.peerPublicKey)
+        assertContentEquals(secret, qr.qrSecret)
         assertEquals(2, qr.numKnownDomains)
         assertEquals(1_700_000_000L, qr.timestampSeconds)
         assertEquals("ga", qr.requestTypeHint)
@@ -78,11 +78,11 @@ class CableQrTest {
             "2d2d0a90cf1a5a4c5db02d56ecc4c5bf" +
             "34007208d5b887185865"
         )
-        assertArrayEquals(expected, CableKeys.hkdf(ikm, salt, info, 42))
+        assertContentEquals(expected, CableKeys.hkdf(ikm, salt, info, 42))
     }
 
     @Test fun deriveInfoIsLittleEndianUint32() {
-        assertArrayEquals(byteArrayOf(3, 0, 0, 0), CableKeys.leUint32(CableKeys.Purpose.PSK.value))
+        assertContentEquals(byteArrayOf(3, 0, 0, 0), CableKeys.leUint32(CableKeys.Purpose.PSK.value))
         // Derived values are deterministic and length-correct.
         val secret = ByteArray(16) { it.toByte() }
         assertEquals(CableKeys.PSK_SIZE, CableKeys.psk(secret, ByteArray(16)).size)

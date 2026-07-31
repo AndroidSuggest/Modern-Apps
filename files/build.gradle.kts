@@ -14,6 +14,6 @@ android {
 }
 
 dependencies {
-    implementation(libs.okio) // isolated: zip/unzip workers, FileSystem facade – not networking
+    // Zip/unzip workers now use java.io.File + java.util.zip – no okio needed
     implementation(libs.androidx.work.runtime.ktx)
 }

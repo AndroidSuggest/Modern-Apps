@@ -12,8 +12,6 @@ class YoutubeSabrStreamState(
         const val TRACK_MODE_VIDEO_AND_AUDIO: Int = YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO
         const val TRACK_MODE_AUDIO_ONLY: Int = YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_AUDIO_ONLY
         const val TRACK_MODE_VIDEO_ONLY: Int = YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_ONLY
-
-        // how close to the head counts as "at the live edge" (segments of slack before we wait)
         private const val LIVE_EDGE_MARGIN_SEGMENTS: Long = 2
     }
 
@@ -23,48 +21,35 @@ class YoutubeSabrStreamState(
     private val sabrContexts: MutableMap<Int, SabrContextUpdate> = LinkedHashMap()
     private val activeSabrContextTypes: MutableSet<Int> = LinkedHashSet()
 
-    @Volatile
-    private var playbackCookie: ByteArray? = null
-
-    @Volatile
-    private var poToken: ByteArray? = null
-
-    @Volatile
-    private var nextRequestPolicy: SabrNextRequestPolicy? = null
+    @Volatile private var playbackCookie: ByteArray? = null
+    @Volatile private var poToken: ByteArray? = null
+    @Volatile private var nextRequestPolicy: SabrNextRequestPolicy? = null
 
     private var playerTimeMsOverride: Long = -1
-
     private var audioFullyBuffered: Boolean = false
     private var videoFullyBuffered: Boolean = false
     private var audioLastOnlyRange: Boolean = false
     private var videoLastOnlyRange: Boolean = false
     private var lastOnlyRangesUseObservedTiming: Boolean = false
 
-    @Volatile
-    internal var enabledTrackTypesBitfield: Int = YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO
+    @Volatile private var enabledTrackTypesBitfieldInternal: Int =
+        YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO
+    @Volatile private var selectAudioFormatInternal: Boolean = true
+    @Volatile private var selectVideoFormatInternal: Boolean = true
 
-    @Volatile
-    private var selectAudioFormat: Boolean = true
-
-    @Volatile
-    private var selectVideoFormat: Boolean = true
-
-    private var writeTopLevelPlayerTimeMs: Boolean = true
+    private var writeTopLevelPlayerTimeMsInternal: Boolean = true
     private var clientViewportWidthInternal: Int = -1
     private var clientViewportHeightInternal: Int = -1
     private var bandwidthEstimateInternal: Long = -1
     private var playbackRateInternal: Float = 1.0f
-
-    // Experimental knobs used by local SABR probes. Defaults preserve the normal request shape.
     private var bufferedRangeStartSegmentIndexOffset: Int = 0
     private var bufferedRangeEndSegmentIndexOffset: Int = 0
-
     private var clientAbrVisibilityInternal: Int? = 1
-    private var writeLastManualSelectedResolution: Boolean = false
-    private var writeAllPreferredFormats: Boolean = false
-    private var writeOfficialWebPreferredFormats: Boolean = false
-    private var selectVideoFormatBeforeAudio: Boolean = false
-    private var writeBufferedRangeTimeRange: Boolean = true
+    private var writeLastManualSelectedResolutionInternal: Boolean = false
+    private var writeAllPreferredFormatsInternal: Boolean = false
+    private var writeOfficialWebPreferredFormatsInternal: Boolean = false
+    private var selectVideoFormatBeforeAudioInternal: Boolean = false
+    private var writeBufferedRangeTimeRangeInternal: Boolean = true
     private var stickyResolutionOverrideInternal: Int? = null
     private var officialTimeSinceLastSeekOverrideInternal: Long? = null
     private var officialElapsedWallTimeOverrideInternal: Long? = null
@@ -72,75 +57,16 @@ class YoutubeSabrStreamState(
     private var officialField57OverrideInternal: Long? = null
     private var officialField68OverrideInternal: Long? = null
     private var sabrReportRequestCancellationInfoOverrideInternal: Int? = null
-    private var writeOfficialWebClientAbrFields: Boolean = false
+    private var writeOfficialWebClientAbrFieldsInternal: Boolean = false
     private var bufferedRangesOverride: List<SabrBufferedRange>? = null
 
-    // live: foundation only. we record what the server tells us about the live edge (via LIVE_METADATA)
     private var live: Boolean = false
     private var postLiveDvr: Boolean = false
     private var liveHeadSequenceNumber: Long = -1
     private var liveHeadTimeMs: Long = -1
 
     // ------------------------------------------------------------------
-    // internal properties exposed to request builder (Kotlin property access)
-    // ------------------------------------------------------------------
-
-    internal val bufferedRanges: List<SabrBufferedRange>
-        get() = getBufferedRanges()
-
-    internal val requestPlayerTimeMs: Long
-        get() = getRequestPlayerTimeMsInternal()
-
-    internal val rawPlaybackCookie: ByteArray?
-        get() = playbackCookie
-
-    internal val rawPoToken: ByteArray?
-        get() = poToken
-
-    internal val activeSabrContexts: Collection<SabrContextUpdate>
-        get() = getActiveSabrContexts()
-
-    internal val unsentSabrContextTypes: Collection<Int>
-        get() = getUnsentSabrContextTypes()
-
-    internal val clientViewportWidth: Int
-        get() = getClientViewportWidth()
-
-    internal val clientViewportHeight: Int
-        get() = getClientViewportHeight()
-
-    internal val bandwidthEstimate: Long
-        get() = getBandwidthEstimateInternal()
-
-    internal val playbackRate: Float
-        get() = getPlaybackRateInternal()
-
-    internal val stickyResolutionOverride: Int?
-        get() = getStickyResolutionOverride()
-
-    internal val officialTimeSinceLastSeekOverride: Long?
-        get() = getOfficialTimeSinceLastSeekOverride()
-
-    internal val officialElapsedWallTimeOverride: Long?
-        get() = getOfficialElapsedWallTimeOverride()
-
-    internal val officialTimeSinceLastActionOverride: Long?
-        get() = getOfficialTimeSinceLastActionOverride()
-
-    internal val officialField57Override: Long?
-        get() = getOfficialField57Override()
-
-    internal val officialField68Override: Long?
-        get() = getOfficialField68Override()
-
-    internal val sabrReportRequestCancellationInfoOverride: Int?
-        get() = getSabrReportRequestCancellationInfoOverride()
-
-    internal val clientAbrVisibility: Int?
-        get() = getClientAbrVisibility()
-
-    // ------------------------------------------------------------------
-    // public API – same signatures as Java for interop
+    // ingest
     // ------------------------------------------------------------------
 
     fun ingest(response: SabrDecodedResponse): Boolean {
@@ -149,41 +75,30 @@ class YoutubeSabrStreamState(
 
     fun ingest(patch: SabrResponseStatePatch): Boolean {
         var progressed = false
-        val nextRequestPolicy = patch.nextRequestPolicy
-        if (nextRequestPolicy != null) {
-            this.nextRequestPolicy = nextRequestPolicy
+        val nextPolicy = patch.getNextRequestPolicy()
+        if (nextPolicy != null) {
+            this.nextRequestPolicy = nextPolicy
         }
-        if (nextRequestPolicy?.rawPlaybackCookie != null) {
-            playbackCookie = nextRequestPolicy.rawPlaybackCookie!!.clone()
+        if (nextPolicy?.rawPlaybackCookie != null) {
+            playbackCookie = nextPolicy.rawPlaybackCookie!!.clone()
         }
-        for (meta in patch.liveMetadata) {
+        for (meta in patch.getLiveMetadata()) {
             live = true
             postLiveDvr = meta.isPostLiveDvr
-            if (meta.headSequenceNumber >= 0) {
-                liveHeadSequenceNumber = meta.headSequenceNumber
-            }
-            if (meta.headTimeMs >= 0) {
-                liveHeadTimeMs = meta.headTimeMs
-            }
+            if (meta.headSequenceNumber >= 0) liveHeadSequenceNumber = meta.headSequenceNumber
+            if (meta.headTimeMs >= 0) liveHeadTimeMs = meta.headTimeMs
         }
-        for (metadata in patch.formatMetadata) {
+        for (metadata in patch.getFormatMetadata()) {
             val progress = findProgressForItag(metadata.itag)
-            if (progress != null) {
-                progressed = progress.observeMetadata(metadata) || progressed
-            }
+            if (progress != null) progressed = progress.observeMetadata(metadata) || progressed
         }
-        for (header in patch.mediaHeaders) {
+        for (header in patch.getMediaHeaders()) {
             val progress = findProgressForItag(header.itag)
-            if (progress != null) {
-                progressed = progress.observeHeader(header) || progressed
-            }
+            if (progress != null) progressed = progress.observeHeader(header) || progressed
         }
-        for (contextUpdate in patch.contextUpdates) {
-            ingestContextUpdate(contextUpdate)
-        }
-        if (patch.contextSendingPolicy != null) {
-            ingestContextSendingPolicy(patch.contextSendingPolicy!!)
-        }
+        for (contextUpdate in patch.getContextUpdates()) ingestContextUpdate(contextUpdate)
+        val ctxPolicy = patch.getContextSendingPolicy()
+        if (ctxPolicy != null) ingestContextSendingPolicy(ctxPolicy)
         return progressed
     }
 
@@ -203,30 +118,12 @@ class YoutubeSabrStreamState(
         bufferedRangesOverride?.let { return ArrayList(it) }
         val ranges = mutableListOf<SabrBufferedRange>()
         if (isAudioEnabled()) {
-            if (audioFullyBuffered) {
-                ranges.add(SabrBufferedRange.full(audio.format))
-            } else {
-                audio.addBufferedRange(
-                    ranges,
-                    audioLastOnlyRange,
-                    lastOnlyRangesUseObservedTiming,
-                    bufferedRangeStartSegmentIndexOffset,
-                    bufferedRangeEndSegmentIndexOffset
-                )
-            }
+            if (audioFullyBuffered) ranges.add(SabrBufferedRange.full(audio.format))
+            else audio.addBufferedRange(ranges, audioLastOnlyRange, lastOnlyRangesUseObservedTiming, bufferedRangeStartSegmentIndexOffset, bufferedRangeEndSegmentIndexOffset)
         }
         if (isVideoEnabled()) {
-            if (videoFullyBuffered) {
-                ranges.add(SabrBufferedRange.full(video.format))
-            } else {
-                video.addBufferedRange(
-                    ranges,
-                    videoLastOnlyRange,
-                    lastOnlyRangesUseObservedTiming,
-                    bufferedRangeStartSegmentIndexOffset,
-                    bufferedRangeEndSegmentIndexOffset
-                )
-            }
+            if (videoFullyBuffered) ranges.add(SabrBufferedRange.full(video.format))
+            else video.addBufferedRange(ranges, videoLastOnlyRange, lastOnlyRangesUseObservedTiming, bufferedRangeStartSegmentIndexOffset, bufferedRangeEndSegmentIndexOffset)
         }
         return ranges
     }
@@ -240,26 +137,19 @@ class YoutubeSabrStreamState(
         return maxOf(audio.getBufferedEndMs(), video.getBufferedEndMs())
     }
 
-    private fun getRequestPlayerTimeMsInternal(): Long {
+    internal fun getRequestPlayerTimeMs(): Long {
         if (playerTimeMsOverride >= 0) return playerTimeMsOverride
-        if ((isAudioEnabled() && !audio.initReceived) || (isVideoEnabled() && !video.initReceived)) {
-            return 0
-        }
+        if ((isAudioEnabled() && !audio.initReceived) || (isVideoEnabled() && !video.initReceived)) return 0
         return getPlayerTimeMs()
     }
 
-    internal fun getRequestPlayerTimeMs(): Long = getRequestPlayerTimeMsInternal()
-
-    /** buffered end (ms) of the slower track = how far we can actually play. the weakest link wins. */
     fun getMinBufferedEndMs(): Long {
         if (!isVideoEnabled()) return audio.getBufferedEndMs()
         if (!isAudioEnabled()) return video.getBufferedEndMs()
         return minOf(audio.getBufferedEndMs(), video.getBufferedEndMs())
     }
 
-    fun getBufferedEndMs(format: YoutubeSabrFormat): Long {
-        return progressForItag(format.itag).getBufferedEndMs()
-    }
+    fun getBufferedEndMs(format: YoutubeSabrFormat): Long = progressForItag(format.itag).getBufferedEndMs()
 
     fun setPlayerTimeMs(playerTimeMs: Long) {
         playerTimeMsOverride = maxOf(0, playerTimeMs)
@@ -273,24 +163,16 @@ class YoutubeSabrStreamState(
         playbackCookie = null
     }
 
-    internal fun isInitialized(format: YoutubeSabrFormat): Boolean {
-        return progressForItag(format.itag).initReceived
-    }
+    internal fun isInitialized(format: YoutubeSabrFormat): Boolean = progressForItag(format.itag).initReceived
 
     internal fun resetInitialization(format: YoutubeSabrFormat) {
         progressForItag(format.itag).initReceived = false
     }
 
     fun getPlaybackCookie(): ByteArray? = playbackCookie?.clone()
-
-    fun setPoToken(poToken: ByteArray?) {
-        this.poToken = poToken?.clone()
-    }
-
+    fun setPoToken(poToken: ByteArray?) { this.poToken = poToken?.clone() }
     fun getPoToken(): ByteArray? = poToken?.clone()
-
     internal fun getRawPlaybackCookie(): ByteArray? = playbackCookie
-
     internal fun getRawPoToken(): ByteArray? = poToken
 
     internal fun getActiveSabrContexts(): Collection<SabrContextUpdate> {
@@ -304,31 +186,16 @@ class YoutubeSabrStreamState(
 
     internal fun getUnsentSabrContextTypes(): Collection<Int> {
         val unsent = mutableListOf<Int>()
-        for (type in sabrContexts.keys) {
-            if (!activeSabrContextTypes.contains(type)) unsent.add(type)
-        }
+        for (type in sabrContexts.keys) if (!activeSabrContextTypes.contains(type)) unsent.add(type)
         return unsent
     }
 
-    fun isComplete(): Boolean {
-        return (!isAudioEnabled() || audio.isComplete()) && (!isVideoEnabled() || video.isComplete())
-    }
-
-    /** True once the server has sent live metadata for this stream (foundation for live support). */
+    fun isComplete(): Boolean = (!isAudioEnabled() || audio.isComplete()) && (!isVideoEnabled() || video.isComplete())
     fun isLive(): Boolean = live
-
-    /** True for an ended live stream still seekable as DVR. */
     fun isPostLiveDvr(): Boolean = postLiveDvr
-
-    /** Latest segment the live edge has reached, or -1 if unknown / not live. */
     fun getLiveHeadSequenceNumber(): Long = liveHeadSequenceNumber
-
-    /** Live head position in ms, or -1 if unknown / not live. */
     fun getLiveHeadTimeMs(): Long = liveHeadTimeMs
 
-    /**
-     * True when we have fetched up to (within a small margin of) the live head.
-     */
     fun isAtLiveEdge(audioFormat: YoutubeSabrFormat, videoFormat: YoutubeSabrFormat): Boolean {
         if (!live || liveHeadSequenceNumber < 0) return false
         val slowerTrack = minOf(getMaxSegment(audioFormat), getMaxSegment(videoFormat)).toLong()
@@ -336,29 +203,16 @@ class YoutubeSabrStreamState(
     }
 
     fun getMaxSegment(format: YoutubeSabrFormat): Int = progressForItag(format.itag).maxSegment
-
     fun getEndSegment(format: YoutubeSabrFormat): Long = progressForItag(format.itag).endSegment
-
-    /** True only after initialization bytes yielded an exact per-segment time index. */
-    fun hasSegmentIndex(format: YoutubeSabrFormat): Boolean =
-        progressForItag(format.itag).segmentIndex != null
-
+    fun hasSegmentIndex(format: YoutubeSabrFormat): Boolean = progressForItag(format.itag).segmentIndex != null
     fun isComplete(format: YoutubeSabrFormat): Boolean = progressForItag(format.itag).isComplete()
 
     fun assumeBufferedUntil(format: YoutubeSabrFormat, endSegment: Int) {
         if (endSegment > 0) progressForItag(format.itag).assumeBufferedUntil(endSegment)
     }
-
-    /**
-     * Backward seek: forget buffered segments at/after [fromSegment].
-     */
     fun rewindBufferedTo(format: YoutubeSabrFormat, fromSegment: Int) {
         if (fromSegment > 0) progressForItag(format.itag).rewindBufferedTo(fromSegment)
     }
-
-    /**
-     * Forward jump (cold seek far past the buffered edge).
-     */
     fun jumpBufferedTo(format: YoutubeSabrFormat, fromSegment: Int) {
         if (fromSegment > 0) progressForItag(format.itag).jumpBufferedTo(fromSegment)
     }
@@ -367,186 +221,110 @@ class YoutubeSabrStreamState(
         when (format.itag) {
             audio.itag -> audioFullyBuffered = fullyBuffered
             video.itag -> videoFullyBuffered = fullyBuffered
-            else -> throw IllegalArgumentException("Unknown SABR itag: " + format.itag)
+            else -> throw IllegalArgumentException("Unknown SABR itag: ${format.itag}")
         }
     }
-
     fun setLastOnlyRange(format: YoutubeSabrFormat, lastOnlyRange: Boolean) {
         when (format.itag) {
             audio.itag -> audioLastOnlyRange = lastOnlyRange
             video.itag -> videoLastOnlyRange = lastOnlyRange
-            else -> throw IllegalArgumentException("Unknown SABR itag: " + format.itag)
+            else -> throw IllegalArgumentException("Unknown SABR itag: ${format.itag}")
         }
     }
-
     fun setLastOnlyRangesUseObservedTiming(useObservedTiming: Boolean) {
         lastOnlyRangesUseObservedTiming = useObservedTiming
     }
-
-    fun setBufferedRangeSegmentIndexOffset(bufferedRangeSegmentIndexOffset: Int) {
-        bufferedRangeStartSegmentIndexOffset = bufferedRangeSegmentIndexOffset
-        bufferedRangeEndSegmentIndexOffset = bufferedRangeSegmentIndexOffset
+    fun setBufferedRangeSegmentIndexOffset(offset: Int) {
+        bufferedRangeStartSegmentIndexOffset = offset
+        bufferedRangeEndSegmentIndexOffset = offset
     }
-
-    fun setBufferedRangeSegmentIndexOffsets(startSegmentIndexOffset: Int, endSegmentIndexOffset: Int) {
-        bufferedRangeStartSegmentIndexOffset = startSegmentIndexOffset
-        bufferedRangeEndSegmentIndexOffset = endSegmentIndexOffset
+    fun setBufferedRangeSegmentIndexOffsets(start: Int, end: Int) {
+        bufferedRangeStartSegmentIndexOffset = start
+        bufferedRangeEndSegmentIndexOffset = end
     }
 
     @Synchronized
     fun setRequestTrackMode(enabledTrackTypesBitfield: Int, selectAudioFormat: Boolean, selectVideoFormat: Boolean) {
-        this.enabledTrackTypesBitfield = enabledTrackTypesBitfield
-        this.selectAudioFormat = selectAudioFormat
-        this.selectVideoFormat = selectVideoFormat
+        this.enabledTrackTypesBitfieldInternal = enabledTrackTypesBitfield
+        this.selectAudioFormatInternal = selectAudioFormat
+        this.selectVideoFormatInternal = selectVideoFormat
     }
 
     fun setActiveTrackTypes(videoActive: Boolean, audioActive: Boolean) {
-        if (audioActive && !videoActive) {
-            setRequestTrackMode(YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_AUDIO_ONLY, true, false)
-        } else if (videoActive && !audioActive) {
-            setRequestTrackMode(YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_ONLY, false, true)
-        } else if (videoActive) {
-            setRequestTrackMode(YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO, true, true)
-        }
+        if (audioActive && !videoActive) setRequestTrackMode(YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_AUDIO_ONLY, true, false)
+        else if (videoActive && !audioActive) setRequestTrackMode(YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_ONLY, false, true)
+        else if (videoActive) setRequestTrackMode(YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_AND_AUDIO, true, true)
     }
+    fun setAudioOnlyRequestMode() { setRequestTrackMode(TRACK_MODE_AUDIO_ONLY, true, false) }
+    fun setVideoOnlyRequestMode() { setRequestTrackMode(TRACK_MODE_VIDEO_ONLY, false, true) }
+    fun setVideoAndAudioRequestMode() { setRequestTrackMode(TRACK_MODE_VIDEO_AND_AUDIO, true, true) }
 
-    fun setAudioOnlyRequestMode() {
-        setRequestTrackMode(TRACK_MODE_AUDIO_ONLY, true, false)
-    }
-
-    fun setVideoOnlyRequestMode() {
-        setRequestTrackMode(TRACK_MODE_VIDEO_ONLY, false, true)
-    }
-
-    fun setVideoAndAudioRequestMode() {
-        setRequestTrackMode(TRACK_MODE_VIDEO_AND_AUDIO, true, true)
-    }
-
-    private fun isAudioEnabled(): Boolean =
-        enabledTrackTypesBitfield != YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_ONLY
-
-    private fun isVideoEnabled(): Boolean =
-        enabledTrackTypesBitfield != YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_AUDIO_ONLY
+    private fun isAudioEnabled(): Boolean = enabledTrackTypesBitfieldInternal != YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_VIDEO_ONLY
+    private fun isVideoEnabled(): Boolean = enabledTrackTypesBitfieldInternal != YoutubeSabrRequestBuilder.ENABLED_TRACK_TYPES_AUDIO_ONLY
 
     fun setClientViewport(clientViewportWidth: Int, clientViewportHeight: Int) {
         this.clientViewportWidthInternal = clientViewportWidth
         this.clientViewportHeightInternal = clientViewportHeight
     }
-
     internal fun getClientViewportWidth(): Int = clientViewportWidthInternal
-
     internal fun getClientViewportHeight(): Int = clientViewportHeightInternal
 
-    fun setBandwidthEstimate(bandwidthEstimate: Long) {
-        this.bandwidthEstimateInternal = bandwidthEstimate
-    }
-
-    private fun getBandwidthEstimateInternal(): Long = bandwidthEstimateInternal
-
+    fun setBandwidthEstimate(bandwidthEstimate: Long) { this.bandwidthEstimateInternal = bandwidthEstimate }
     fun getBandwidthEstimate(): Long = bandwidthEstimateInternal
+    internal fun getBandwidthEstimateInternalMethod(): Long = bandwidthEstimateInternal
 
     fun getNextRequestPolicy(): SabrNextRequestPolicy? = nextRequestPolicy
 
-    fun setPlaybackRate(playbackRate: Float) {
-        if (playbackRate > 0.0f) this.playbackRateInternal = playbackRate
-    }
-
-    private fun getPlaybackRateInternal(): Float = playbackRateInternal
-
+    fun setPlaybackRate(playbackRate: Float) { if (playbackRate > 0.0f) this.playbackRateInternal = playbackRate }
     fun getPlaybackRate(): Float = playbackRateInternal
+    internal fun getPlaybackRateInternalMethod(): Float = playbackRateInternal
 
-    internal fun getEnabledTrackTypesBitfield(): Int = enabledTrackTypesBitfield
+    internal fun getEnabledTrackTypesBitfield(): Int = enabledTrackTypesBitfieldInternal
+    internal fun shouldSelectAudioFormat(): Boolean = selectAudioFormatInternal
+    internal fun shouldSelectVideoFormat(): Boolean = selectVideoFormatInternal
 
-    internal fun shouldSelectAudioFormat(): Boolean = selectAudioFormat
+    fun setWriteTopLevelPlayerTimeMs(writeTopLevelPlayerTimeMs: Boolean) { this.writeTopLevelPlayerTimeMsInternal = writeTopLevelPlayerTimeMs }
+    internal fun shouldWriteTopLevelPlayerTimeMs(): Boolean = writeTopLevelPlayerTimeMsInternal
 
-    internal fun shouldSelectVideoFormat(): Boolean = selectVideoFormat
-
-    fun setWriteTopLevelPlayerTimeMs(writeTopLevelPlayerTimeMs: Boolean) {
-        this.writeTopLevelPlayerTimeMs = writeTopLevelPlayerTimeMs
-    }
-
-    internal fun shouldWriteTopLevelPlayerTimeMs(): Boolean = writeTopLevelPlayerTimeMs
-
-    fun setClientAbrVisibility(clientAbrVisibility: Int?) {
-        this.clientAbrVisibilityInternal = clientAbrVisibility
-    }
-
+    fun setClientAbrVisibility(clientAbrVisibility: Int?) { this.clientAbrVisibilityInternal = clientAbrVisibility }
     internal fun getClientAbrVisibility(): Int? = clientAbrVisibilityInternal
 
-    fun setWriteLastManualSelectedResolution(writeLastManualSelectedResolution: Boolean) {
-        this.writeLastManualSelectedResolution = writeLastManualSelectedResolution
-    }
+    fun setWriteLastManualSelectedResolution(write: Boolean) { this.writeLastManualSelectedResolutionInternal = write }
+    internal fun shouldWriteLastManualSelectedResolution(): Boolean = writeLastManualSelectedResolutionInternal
 
-    internal fun shouldWriteLastManualSelectedResolution(): Boolean = writeLastManualSelectedResolution
+    fun setWriteAllPreferredFormats(write: Boolean) { this.writeAllPreferredFormatsInternal = write }
+    internal fun shouldWriteAllPreferredFormats(): Boolean = writeAllPreferredFormatsInternal
 
-    fun setWriteAllPreferredFormats(writeAllPreferredFormats: Boolean) {
-        this.writeAllPreferredFormats = writeAllPreferredFormats
-    }
+    fun setWriteOfficialWebPreferredFormats(write: Boolean) { this.writeOfficialWebPreferredFormatsInternal = write }
+    internal fun shouldWriteOfficialWebPreferredFormats(): Boolean = writeOfficialWebPreferredFormatsInternal
 
-    internal fun shouldWriteAllPreferredFormats(): Boolean = writeAllPreferredFormats
+    fun setSelectVideoFormatBeforeAudio(select: Boolean) { this.selectVideoFormatBeforeAudioInternal = select }
+    internal fun shouldSelectVideoFormatBeforeAudio(): Boolean = selectVideoFormatBeforeAudioInternal
 
-    fun setWriteOfficialWebPreferredFormats(writeOfficialWebPreferredFormats: Boolean) {
-        this.writeOfficialWebPreferredFormats = writeOfficialWebPreferredFormats
-    }
+    fun setWriteBufferedRangeTimeRange(write: Boolean) { this.writeBufferedRangeTimeRangeInternal = write }
+    internal fun shouldWriteBufferedRangeTimeRange(): Boolean = writeBufferedRangeTimeRangeInternal
 
-    internal fun shouldWriteOfficialWebPreferredFormats(): Boolean = writeOfficialWebPreferredFormats
-
-    fun setSelectVideoFormatBeforeAudio(selectVideoFormatBeforeAudio: Boolean) {
-        this.selectVideoFormatBeforeAudio = selectVideoFormatBeforeAudio
-    }
-
-    internal fun shouldSelectVideoFormatBeforeAudio(): Boolean = selectVideoFormatBeforeAudio
-
-    fun setWriteBufferedRangeTimeRange(writeBufferedRangeTimeRange: Boolean) {
-        this.writeBufferedRangeTimeRange = writeBufferedRangeTimeRange
-    }
-
-    internal fun shouldWriteBufferedRangeTimeRange(): Boolean = writeBufferedRangeTimeRange
-
-    fun setStickyResolutionOverride(stickyResolutionOverride: Int?) {
-        this.stickyResolutionOverrideInternal = stickyResolutionOverride
-    }
-
+    fun setStickyResolutionOverride(sticky: Int?) { this.stickyResolutionOverrideInternal = sticky }
     internal fun getStickyResolutionOverride(): Int? = stickyResolutionOverrideInternal
 
-    fun setOfficialWebClientAbrTimingOverrides(
-        timeSinceLastSeek: Long?,
-        elapsedWallTime: Long?,
-        timeSinceLastAction: Long?,
-        field57: Long?
-    ) {
+    fun setOfficialWebClientAbrTimingOverrides(timeSinceLastSeek: Long?, elapsedWallTime: Long?, timeSinceLastAction: Long?, field57: Long?) {
         officialTimeSinceLastSeekOverrideInternal = timeSinceLastSeek
         officialElapsedWallTimeOverrideInternal = elapsedWallTime
         officialTimeSinceLastActionOverrideInternal = timeSinceLastAction
         officialField57OverrideInternal = field57
     }
-
-    fun setOfficialField68Override(field68: Long?) {
-        officialField68OverrideInternal = field68
-    }
-
+    fun setOfficialField68Override(field68: Long?) { officialField68OverrideInternal = field68 }
     internal fun getOfficialTimeSinceLastSeekOverride(): Long? = officialTimeSinceLastSeekOverrideInternal
-
     internal fun getOfficialElapsedWallTimeOverride(): Long? = officialElapsedWallTimeOverrideInternal
-
     internal fun getOfficialTimeSinceLastActionOverride(): Long? = officialTimeSinceLastActionOverrideInternal
-
     internal fun getOfficialField57Override(): Long? = officialField57OverrideInternal
-
     internal fun getOfficialField68Override(): Long? = officialField68OverrideInternal
 
-    fun setSabrReportRequestCancellationInfoOverride(sabrReportRequestCancellationInfoOverride: Int?) {
-        this.sabrReportRequestCancellationInfoOverrideInternal = sabrReportRequestCancellationInfoOverride
-    }
+    fun setSabrReportRequestCancellationInfoOverride(v: Int?) { this.sabrReportRequestCancellationInfoOverrideInternal = v }
+    internal fun getSabrReportRequestCancellationInfoOverride(): Int? = sabrReportRequestCancellationInfoOverrideInternal
 
-    internal fun getSabrReportRequestCancellationInfoOverride(): Int? =
-        sabrReportRequestCancellationInfoOverrideInternal
-
-    fun setWriteOfficialWebClientAbrFields(writeOfficialWebClientAbrFields: Boolean) {
-        this.writeOfficialWebClientAbrFields = writeOfficialWebClientAbrFields
-    }
-
-    internal fun shouldWriteOfficialWebClientAbrFields(): Boolean = writeOfficialWebClientAbrFields
+    fun setWriteOfficialWebClientAbrFields(write: Boolean) { this.writeOfficialWebClientAbrFieldsInternal = write }
+    internal fun shouldWriteOfficialWebClientAbrFields(): Boolean = writeOfficialWebClientAbrFieldsInternal
 
     fun summarizeBufferedRanges(): String {
         val ranges = getBufferedRanges()
@@ -558,22 +336,12 @@ class YoutubeSabrStreamState(
         return builder.toString()
     }
 
-    fun getAverageSegmentDurationMs(format: YoutubeSabrFormat): Long =
-        progressForItag(format.itag).averageDurationMs
+    fun getAverageSegmentDurationMs(format: YoutubeSabrFormat): Long = progressForItag(format.itag).averageDurationMs
+    fun getSegmentStartMs(format: YoutubeSabrFormat, sequenceNumber: Int): Long = progressForItag(format.itag).getSegmentStartMs(sequenceNumber)
+    fun getSegmentEndMs(format: YoutubeSabrFormat, sequenceNumber: Int): Long = progressForItag(format.itag).getSegmentEndMs(sequenceNumber)
+    fun getSegmentNumberAtOrAfterTimeMs(format: YoutubeSabrFormat, timeMs: Long): Int = progressForItag(format.itag).getSegmentNumberAtOrAfterTimeMs(timeMs)
 
-    fun getSegmentStartMs(format: YoutubeSabrFormat, sequenceNumber: Int): Long =
-        progressForItag(format.itag).getSegmentStartMs(sequenceNumber)
-
-    fun getSegmentEndMs(format: YoutubeSabrFormat, sequenceNumber: Int): Long =
-        progressForItag(format.itag).getSegmentEndMs(sequenceNumber)
-
-    fun getSegmentNumberAtOrAfterTimeMs(format: YoutubeSabrFormat, timeMs: Long): Int =
-        progressForItag(format.itag).getSegmentNumberAtOrAfterTimeMs(timeMs)
-
-    private fun progressForItag(itag: Int): FormatProgress {
-        return findProgressForItag(itag) ?: throw IllegalArgumentException("Unknown SABR itag: $itag")
-    }
-
+    private fun progressForItag(itag: Int): FormatProgress = findProgressForItag(itag) ?: throw IllegalArgumentException("Unknown SABR itag: $itag")
     private fun findProgressForItag(itag: Int): FormatProgress? {
         if (audio.itag == itag) return audio
         if (video.itag == itag) return video
@@ -582,15 +350,9 @@ class YoutubeSabrStreamState(
 
     private fun ingestContextUpdate(contextUpdate: SabrContextUpdate) {
         if (contextUpdate.type < 0 || contextUpdate.valueLength == 0) return
-        if (contextUpdate.writePolicy == SabrContextUpdate.WRITE_POLICY_KEEP_EXISTING
-            && sabrContexts.containsKey(contextUpdate.type)
-        ) {
-            return
-        }
+        if (contextUpdate.writePolicy == SabrContextUpdate.WRITE_POLICY_KEEP_EXISTING && sabrContexts.containsKey(contextUpdate.type)) return
         sabrContexts[contextUpdate.type] = contextUpdate
-        if (contextUpdate.isSendByDefault) {
-            activeSabrContextTypes.add(contextUpdate.type)
-        }
+        if (contextUpdate.isSendByDefault) activeSabrContextTypes.add(contextUpdate.type)
     }
 
     private fun ingestContextSendingPolicy(policy: SabrContextSendingPolicy) {
@@ -602,19 +364,12 @@ class YoutubeSabrStreamState(
         }
     }
 
-    // ------------------------------------------------------------------
-    // FormatProgress inner class
-    // ------------------------------------------------------------------
-
     private class FormatProgress(val format: YoutubeSabrFormat) {
         val itag: Int = format.itag
         val lastModified: Long = format.lastModified
         val xtags: String? = format.xtags
-
-        // pump thread writes it, ExoPlayer loader threads read it. volatile so they actually see it.
         @Volatile var initReceived: Boolean = false
         @Volatile var maxSegment: Int = 0
-        // Highest segment with NO gap from the start.
         @Volatile var contiguousMaxSegment: Int = 0
         val aheadOfContiguous: MutableSet<Int> = HashSet()
         var observedMaxSegment: Int = 0
@@ -636,9 +391,6 @@ class YoutubeSabrStreamState(
                 val totalMs = metadata.durationUnits * 1000L / metadata.durationTimescale
                 averageDurationMs = maxOf(1L, totalMs / metadata.endSegmentNumber)
             } else if (endSegment > 0 && format.approxDurationMs > 0) {
-                // The init metadata gives the segment count but no per-segment timing for this
-                // format (seen on some YouTube responses). Derive the average from the format's
-                // total duration so a cold seek maps the time to the right segment.
                 averageDurationMs = maxOf(1L, format.approxDurationMs / endSegment)
             }
             return previousEndSegment != endSegment
@@ -654,46 +406,28 @@ class YoutubeSabrStreamState(
             val mimeType = metadata?.mimeType ?: format.mimeType ?: return false
             try {
                 if (mimeType.contains("mp4")) {
-                    segmentIndex = if (metadata == null)
-                        SabrMp4SegmentIndexParser.parse(data, format)
-                    else
-                        SabrMp4SegmentIndexParser.parse(data, metadata!!)
+                    segmentIndex = if (metadata == null) SabrMp4SegmentIndexParser.parse(data, format) else SabrMp4SegmentIndexParser.parse(data, metadata!!)
                 } else if (mimeType.contains("webm")) {
-                    segmentIndex = if (metadata == null)
-                        SabrWebmSegmentIndexParser.parse(data, format)
-                    else
-                        SabrWebmSegmentIndexParser.parse(data, metadata!!)
-                } else {
-                    return false
-                }
+                    segmentIndex = if (metadata == null) SabrWebmSegmentIndexParser.parse(data, format) else SabrWebmSegmentIndexParser.parse(data, metadata!!)
+                } else return false
                 observeSegmentIndex()
                 return true
             } catch (ignored: SabrProtocolException) {
                 if (metadata == null) return false
                 try {
-                    if (mimeType.contains("mp4")) {
-                        segmentIndex = SabrMp4SegmentIndexParser.parse(data, format)
-                    } else if (mimeType.contains("webm")) {
-                        segmentIndex = SabrWebmSegmentIndexParser.parse(data, format)
-                    } else {
-                        return false
-                    }
+                    if (mimeType.contains("mp4")) segmentIndex = SabrMp4SegmentIndexParser.parse(data, format)
+                    else if (mimeType.contains("webm")) segmentIndex = SabrWebmSegmentIndexParser.parse(data, format)
+                    else return false
                     observeSegmentIndex()
                     return true
-                } catch (ignoredFallback: SabrProtocolException) {
-                    return false
-                }
-            } catch (ignored: Exception) {
-                return false
-            }
+                } catch (ignoredFallback: SabrProtocolException) { return false }
+            } catch (ignored: Exception) { return false }
         }
 
         fun observeSegmentIndex() {
             val idx = segmentIndex ?: return
             if (endSegment <= 0) endSegment = idx.size().toLong()
-            if (format.approxDurationMs > 0 && endSegment > 0) {
-                averageDurationMs = maxOf(1L, format.approxDurationMs / endSegment)
-            }
+            if (format.approxDurationMs > 0 && endSegment > 0) averageDurationMs = maxOf(1L, format.approxDurationMs / endSegment)
         }
 
         fun observeHeader(header: SabrMediaHeader): Boolean {
@@ -706,16 +440,10 @@ class YoutubeSabrStreamState(
             val seq = header.sequenceNumber
             if (seq == contiguousMaxSegment + 1) {
                 contiguousMaxSegment = seq
-                while (aheadOfContiguous.remove(contiguousMaxSegment + 1)) {
-                    contiguousMaxSegment++
-                }
-            } else if (seq > contiguousMaxSegment + 1) {
-                aheadOfContiguous.add(seq)
-            }
+                while (aheadOfContiguous.remove(contiguousMaxSegment + 1)) contiguousMaxSegment++
+            } else if (seq > contiguousMaxSegment + 1) aheadOfContiguous.add(seq)
             if (header.sequenceNumber > observedMaxSegment) observedMaxSegment = header.sequenceNumber
-            if (firstObservedSegment < 0 || header.sequenceNumber < firstObservedSegment) {
-                firstObservedSegment = header.sequenceNumber
-            }
+            if (firstObservedSegment < 0 || header.sequenceNumber < firstObservedSegment) firstObservedSegment = header.sequenceNumber
             if (header.sequenceNumber >= lastObservedSegment) {
                 lastObservedSegment = header.sequenceNumber
                 lastObservedDurationMs = header.durationMs
@@ -727,124 +455,65 @@ class YoutubeSabrStreamState(
             return header.sequenceNumber == maxSegment
         }
 
-        fun addBufferedRange(
-            ranges: MutableList<SabrBufferedRange>,
-            lastOnlyRange: Boolean,
-            lastOnlyRangeUseObservedTiming: Boolean,
-            startSegmentIndexOffset: Int,
-            endSegmentIndexOffset: Int
-        ) {
+        fun addBufferedRange(ranges: MutableList<SabrBufferedRange>, lastOnlyRange: Boolean, lastOnlyRangeUseObservedTiming: Boolean, startOffset: Int, endOffset: Int) {
             if (!initReceived || maxSegment <= 0) return
             if (lastOnlyRange && lastObservedSegment > 0) {
                 val durationMs = if (lastObservedDurationMs > 0) lastObservedDurationMs else averageDurationMs
                 val startTimeMs = if (lastOnlyRangeUseObservedTiming) getSegmentStartMs(lastObservedSegment) else 0
-                ranges.add(
-                    SabrBufferedRange(
-                        itag, lastModified, xtags, startTimeMs, durationMs,
-                        applySegmentIndexOffset(lastObservedSegment, startSegmentIndexOffset),
-                        applySegmentIndexOffset(lastObservedSegment, endSegmentIndexOffset),
-                        1000
-                    )
-                )
+                ranges.add(SabrBufferedRange(itag, lastModified, xtags, startTimeMs, durationMs, applyOffset(lastObservedSegment, startOffset), applyOffset(lastObservedSegment, endOffset), 1000))
                 return
             }
-            // Only trust observed timing when there is NO hole (contiguous == max)
-            val canUseObservedTiming = observedStartMs >= 0 && observedEndMs > observedStartMs
-                && observedMaxSegment >= maxSegment && firstObservedSegment > 0
-                && contiguousMaxSegment >= maxSegment
-            ranges.add(
-                SabrBufferedRange(
-                    itag, lastModified, xtags,
-                    if (canUseObservedTiming) observedStartMs else 0,
-                    if (canUseObservedTiming) observedEndMs - observedStartMs else getBufferedEndMs(),
-                    applySegmentIndexOffset(
-                        if (canUseObservedTiming) firstObservedSegment else 1,
-                        startSegmentIndexOffset
-                    ),
-                    applySegmentIndexOffset(contiguousMaxSegment, endSegmentIndexOffset),
-                    1000
-                )
-            )
+            val canUseObservedTiming = observedStartMs >= 0 && observedEndMs > observedStartMs && observedMaxSegment >= maxSegment && firstObservedSegment > 0 && contiguousMaxSegment >= maxSegment
+            ranges.add(SabrBufferedRange(itag, lastModified, xtags, if (canUseObservedTiming) observedStartMs else 0, if (canUseObservedTiming) observedEndMs - observedStartMs else getBufferedEndMs(), applyOffset(if (canUseObservedTiming) firstObservedSegment else 1, startOffset), applyOffset(contiguousMaxSegment, endOffset), 1000))
         }
 
-        private fun applySegmentIndexOffset(segmentIndex: Int, segmentIndexOffset: Int): Int {
-            return maxOf(0, segmentIndex + segmentIndexOffset)
-        }
+        private fun applyOffset(segmentIndex: Int, offset: Int): Int = maxOf(0, segmentIndex + offset)
 
         fun getBufferedEndMs(): Long {
-            // contiguous, not maxSegment: a hole means we are NOT really buffered past it.
             val indexedEndMs = getSegmentEndMs(contiguousMaxSegment)
             if (indexedEndMs >= 0) return indexedEndMs
             return contiguousMaxSegment * averageDurationMs
         }
-
         fun getSegmentStartMs(sequenceNumber: Int): Long {
             if (sequenceNumber <= 1) return 0
             val idx = segmentIndex
-            if (idx != null) {
-                val entry = idx.getEntry(sequenceNumber)
-                if (entry != null) return entry.startMs
-            }
+            if (idx != null) { val entry = idx.getEntry(sequenceNumber); if (entry != null) return entry.startMs }
             return maxOf(0, sequenceNumber - 1L) * averageDurationMs
         }
-
         fun getSegmentEndMs(sequenceNumber: Int): Long {
             val idx = segmentIndex
-            if (idx != null) {
-                val entry = idx.getEntry(sequenceNumber)
-                if (entry != null) return entry.endMs
-            }
+            if (idx != null) { val entry = idx.getEntry(sequenceNumber); if (entry != null) return entry.endMs }
             if (sequenceNumber <= 0) return -1
             return sequenceNumber * averageDurationMs
         }
-
         fun getSegmentNumberAtOrAfterTimeMs(timeMs: Long): Int {
             if (timeMs <= 0) return 1
             val idx = segmentIndex
             if (idx != null) {
-                for (i in 1..idx.size()) {
-                    val entry = idx.getEntry(i)
-                    if (entry != null && entry.endMs > timeMs) return entry.sequenceNumber
-                }
+                for (i in 1..idx.size()) { val entry = idx.getEntry(i); if (entry != null && entry.endMs > timeMs) return entry.sequenceNumber }
                 return if (idx.size() == Int.MAX_VALUE) Int.MAX_VALUE else maxOf(1, idx.size() + 1)
             }
             val durationMs = maxOf(1, averageDurationMs)
             val sequenceNumber = timeMs / durationMs + 1
             return if (sequenceNumber > Int.MAX_VALUE) Int.MAX_VALUE else maxOf(1, sequenceNumber.toInt())
         }
-
-        fun assumeBufferedUntil(endSegment: Int) {
-            maxSegment = maxOf(maxSegment, endSegment)
-        }
-
+        fun assumeBufferedUntil(endSegment: Int) { maxSegment = maxOf(maxSegment, endSegment) }
         fun rewindBufferedTo(fromSegment: Int) {
             val last = maxOf(0, fromSegment - 1)
             if (last >= contiguousMaxSegment) return
-            maxSegment = last
-            contiguousMaxSegment = last
-            observedMaxSegment = minOf(observedMaxSegment, last)
-            firstObservedSegment = -1
-            lastObservedSegment = -1
-            observedStartMs = -1
-            observedEndMs = -1
+            maxSegment = last; contiguousMaxSegment = last; observedMaxSegment = minOf(observedMaxSegment, last)
+            firstObservedSegment = -1; lastObservedSegment = -1; observedStartMs = -1; observedEndMs = -1
         }
-
         fun jumpBufferedTo(fromSegment: Int) {
             val last = maxOf(0, fromSegment - 1)
             if (last <= contiguousMaxSegment) return
             contiguousMaxSegment = last
             aheadOfContiguous.removeIf { it <= last }
-            while (aheadOfContiguous.remove(contiguousMaxSegment + 1)) {
-                contiguousMaxSegment++
-            }
+            while (aheadOfContiguous.remove(contiguousMaxSegment + 1)) contiguousMaxSegment++
             maxSegment = maxOf(maxSegment, contiguousMaxSegment)
             observedMaxSegment = minOf(observedMaxSegment, contiguousMaxSegment)
-            firstObservedSegment = -1
-            lastObservedSegment = -1
-            observedStartMs = -1
-            observedEndMs = -1
+            firstObservedSegment = -1; lastObservedSegment = -1; observedStartMs = -1; observedEndMs = -1
         }
-
         fun isComplete(): Boolean = initReceived && endSegment > 0 && maxSegment >= endSegment
     }
 }

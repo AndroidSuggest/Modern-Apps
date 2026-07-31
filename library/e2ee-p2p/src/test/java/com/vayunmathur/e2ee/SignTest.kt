@@ -1,9 +1,9 @@
 package com.vayunmathur.e2ee
 
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SignTest {
     @Test
@@ -11,10 +11,10 @@ class SignTest {
         val kp = E2ee.generateKeyPair() // OAEP-generated key, reused for PSS signatures
         val data = "the quick brown fox".encodeToByteArray()
         val sig = E2ee.sign(kp.privateKeyPem, data)
-        assertTrue("valid signature verifies", E2ee.verify(kp.publicKeyPem, data, sig))
-        assertFalse("tampered data fails", E2ee.verify(kp.publicKeyPem, "different".encodeToByteArray(), sig))
+        assertTrue(E2ee.verify(kp.publicKeyPem, data, sig), "valid signature verifies")
+        assertFalse(E2ee.verify(kp.publicKeyPem, "different".encodeToByteArray(), sig), "tampered data fails")
 
         val other = E2ee.generateKeyPair()
-        assertFalse("wrong key fails", E2ee.verify(other.publicKeyPem, data, sig))
+        assertFalse(E2ee.verify(other.publicKeyPem, data, sig), "wrong key fails")
     }
 }

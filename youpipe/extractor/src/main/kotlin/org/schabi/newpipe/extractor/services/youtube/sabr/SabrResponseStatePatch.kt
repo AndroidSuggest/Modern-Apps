@@ -3,9 +3,8 @@ package org.schabi.newpipe.extractor.services.youtube.sabr
 import java.util.Collections
 
 /** Normalized protocol state produced by a policy and applied by the bounded Host. */
-final class SabrResponseStatePatch private constructor(builder: Builder) {
+class SabrResponseStatePatch private constructor(builder: Builder) {
 
-    @Suppress("unused")
     companion object {
         private const val MAX_FORMATS = 64
         private const val MAX_LIVE_METADATA = 16
@@ -16,27 +15,18 @@ final class SabrResponseStatePatch private constructor(builder: Builder) {
 
         @JvmStatic
         internal fun builtin(response: SabrDecodedResponse): SabrResponseStatePatch {
-            val builder = builder().setNextRequestPolicy(response.getNextRequestPolicy())
-            for (metadata in response.getLiveMetadata()) {
-                builder.addLiveMetadata(metadata)
-            }
-            for (metadata in response.getFormatInitializationMetadata()) {
-                builder.addFormatMetadata(metadata)
-            }
-            for (header in response.getMediaHeaders()) {
-                builder.addMediaHeader(header)
-            }
-            for (update in response.getSabrContextUpdates()) {
-                builder.addContextUpdate(update)
-            }
-            builder.setContextSendingPolicy(response.getSabrContextSendingPolicy())
-            return builder.build()
+            val b = builder().setNextRequestPolicy(response.getNextRequestPolicy())
+            for (m in response.getLiveMetadata()) b.addLiveMetadata(m)
+            for (m in response.getFormatInitializationMetadata()) b.addFormatMetadata(m)
+            for (h in response.getMediaHeaders()) b.addMediaHeader(h)
+            for (u in response.getSabrContextUpdates()) b.addContextUpdate(u)
+            b.setContextSendingPolicy(response.getSabrContextSendingPolicy())
+            return b.build()
         }
 
         @JvmStatic
-        private fun <T> immutableCopy(values: List<T>): List<T> {
-            return Collections.unmodifiableList(ArrayList(values))
-        }
+        private fun <T> immutableCopy(values: List<T>): List<T> =
+            Collections.unmodifiableList(ArrayList(values))
     }
 
     private val nextRequestPolicy: SabrNextRequestPolicy? = builder.nextRequestPolicy
@@ -100,8 +90,6 @@ final class SabrResponseStatePatch private constructor(builder: Builder) {
             return this
         }
 
-        fun build(): SabrResponseStatePatch {
-            return SabrResponseStatePatch(this)
-        }
+        fun build(): SabrResponseStatePatch = SabrResponseStatePatch(this)
     }
 }

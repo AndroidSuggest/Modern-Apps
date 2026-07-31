@@ -11,7 +11,7 @@ import java.security.PublicKey
 import java.security.Signature
 
 /** Signed metadata and ordinary JavaScript source. This is a container, not a policy language. */
-final class SabrScriptPolicy {
+class SabrScriptPolicy {
 
     companion object {
         private const val MAGIC = 0x534A5331
@@ -30,9 +30,7 @@ final class SabrScriptPolicy {
                 val verifier = Signature.getInstance("Ed25519")
                 verifier.initVerify(key)
                 verifier.update(payload)
-                if (!verifier.verify(signature)) throw IllegalArgumentException(
-                    "Invalid SABR JavaScript policy signature"
-                )
+                if (!verifier.verify(signature)) throw IllegalArgumentException("Invalid SABR JavaScript policy signature")
             } catch (error: GeneralSecurityException) {
                 throw IllegalArgumentException("Could not verify SABR JavaScript policy", error)
             }
@@ -47,9 +45,7 @@ final class SabrScriptPolicy {
             nowMs: Long,
             minimumRevision: Long
         ): SabrScriptPolicy {
-            if (rawKey.size != 32) {
-                throw IllegalArgumentException("Invalid Ed25519 public key")
-            }
+            if (rawKey.size != 32) throw IllegalArgumentException("Invalid Ed25519 public key")
             if (!Ed25519Verify.verify(signature, payload, rawKey)) {
                 throw IllegalArgumentException("Invalid SABR JavaScript policy signature")
             }
@@ -69,19 +65,13 @@ final class SabrScriptPolicy {
                 val from = input.readLong()
                 val until = input.readLong()
                 val size = input.readInt()
-                if (revision < minimumRevision || from < 0 || until <= from ||
-                    size <= 0 || size > MAX_SOURCE_BYTES
-                ) {
+                if (revision < minimumRevision || from < 0 || until <= from || size <= 0 || size > MAX_SOURCE_BYTES) {
                     throw IllegalArgumentException("Invalid SABR JavaScript policy metadata")
                 }
                 val source = ByteArray(size)
                 input.readFully(source)
-                if (input.available() != 0) throw IllegalArgumentException(
-                    "Trailing SABR JavaScript policy bytes"
-                )
-                if (nowMs < from || nowMs >= until) throw IllegalArgumentException(
-                    "SABR JavaScript policy is not currently valid"
-                )
+                if (input.available() != 0) throw IllegalArgumentException("Trailing SABR JavaScript policy bytes")
+                if (nowMs < from || nowMs >= until) throw IllegalArgumentException("SABR JavaScript policy is not currently valid")
                 return SabrScriptPolicy(
                     revision, from, until,
                     String(source, StandardCharsets.UTF_8), payload.clone()
@@ -131,13 +121,7 @@ final class SabrScriptPolicy {
         this.payload = encode(revision, validFromMs, validUntilMs, source)
     }
 
-    private constructor(
-        revision: Long,
-        validFromMs: Long,
-        validUntilMs: Long,
-        source: String,
-        payload: ByteArray
-    ) {
+    private constructor(revision: Long, validFromMs: Long, validUntilMs: Long, source: String, payload: ByteArray) {
         this.revision = revision
         this.validFromMs = validFromMs
         this.validUntilMs = validUntilMs

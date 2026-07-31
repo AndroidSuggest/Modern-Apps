@@ -6,10 +6,10 @@ import com.vayunmathur.passwords.util.Cbor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.Signature
@@ -72,11 +72,11 @@ class CtapProcessorTest {
         val map = CborReader.decode(response.copyOfRange(1, response.size)) as Map<*, *>
 
         val cred = map[1L] as Map<*, *>
-        assertArrayEquals(credIdBytes, cred["id"] as ByteArray)
+        assertContentEquals(credIdBytes, cred["id"] as ByteArray)
         val authData = map[2L] as ByteArray
         val signature = map[3L] as ByteArray
         val user = map[4L] as Map<*, *>
-        assertArrayEquals(userIdBytes, user["id"] as ByteArray)
+        assertContentEquals(userIdBytes, user["id"] as ByteArray)
 
         // The signature must verify over authData || clientDataHash against the stored public key.
         val verifier = Signature.getInstance("SHA256withECDSA").apply {
@@ -84,7 +84,7 @@ class CtapProcessorTest {
             update(authData)
             update(clientDataHash)
         }
-        assertTrue("assertion signature must verify", verifier.verify(signature))
+        assertTrue(verifier.verify(signature), "assertion signature must verify")
 
         // signCount was bumped and persisted.
         assertEquals(6, dao.getByCredentialId(passkey.credentialId)!!.signCount)
@@ -104,7 +104,7 @@ class CtapProcessorTest {
         val response = processor.process(byteArrayOf(Ctap.CMD_GET_INFO.toByte()))
         assertEquals(Ctap.OK.toByte(), response[0])
         val map = CborReader.decode(response.copyOfRange(1, response.size)) as Map<*, *>
-        assertArrayEquals(ByteArray(16), map[3L] as ByteArray)          // all-zero AAGUID
+        assertContentEquals(ByteArray(16), map[3L] as ByteArray)          // all-zero AAGUID
         assertEquals(listOf("cable", "hybrid", "internal"), map[9L])    // transports at key 9
         val options = map[4L] as Map<*, *>
         assertEquals(true, options["uv"])

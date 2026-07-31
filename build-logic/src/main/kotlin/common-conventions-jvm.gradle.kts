@@ -32,6 +32,9 @@ tasks.withType<JavaCompile> {
 dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.datetime)
+
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.test.junit)
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {

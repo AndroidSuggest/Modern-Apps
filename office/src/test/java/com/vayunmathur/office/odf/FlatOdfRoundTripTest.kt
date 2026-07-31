@@ -11,7 +11,7 @@ import com.vayunmathur.library.ui.odf.OdfSlide
 import com.vayunmathur.library.ui.odf.OdfSlideElement
 import com.vayunmathur.library.ui.odf.OdfFrame
 import com.vayunmathur.library.ui.odf.OdfSpan
-import org.junit.Test
+import kotlin.test.Test
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader

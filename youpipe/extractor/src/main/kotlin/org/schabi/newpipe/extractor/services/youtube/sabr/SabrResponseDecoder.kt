@@ -1,6 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-final class SabrResponseDecoder private constructor() {
+class SabrResponseDecoder private constructor() {
 
     companion object {
         const val ONESIE_HEADER = 10
@@ -47,59 +47,38 @@ final class SabrResponseDecoder private constructor() {
 
         @JvmStatic
         @Throws(SabrProtocolException::class)
-        fun decode(data: ByteArray): SabrDecodedResponse {
-            return decodeParts(UmpReader.readAll(data))
-        }
-
-        /**
-         * Decode an already-parsed list of UMP parts. Used by the streaming path, which collects the
-         * small control parts (everything except the big MEDIA payloads) and decodes them here, while
-         * the MEDIA segments are assembled separately so the whole body is never held at once.
-         */
-        @JvmStatic
-        @Throws(SabrProtocolException::class)
-        fun decodeParts(parts: List<UmpPart>): SabrDecodedResponse {
-            return decodeParts(parts, SabrMediaProtocol.builtin())
-        }
+        fun decode(data: ByteArray): SabrDecodedResponse = decodeParts(UmpReader.readAll(data))
 
         @JvmStatic
         @Throws(SabrProtocolException::class)
-        internal fun decodeParts(
-            parts: List<UmpPart>,
-            mediaProtocol: SabrMediaProtocol
-        ): SabrDecodedResponse {
+        fun decodeParts(parts: List<UmpPart>): SabrDecodedResponse =
+            decodeParts(parts, SabrMediaProtocol.builtin())
+
+        @JvmStatic
+        @Throws(SabrProtocolException::class)
+        internal fun decodeParts(parts: List<UmpPart>, mediaProtocol: SabrMediaProtocol): SabrDecodedResponse {
             val decoded = SabrDecodedResponse()
             var currentOnesieHeader: SabrOnesieHeader? = null
             for (part in parts) {
                 val partData = part.rawData
                 decoded.addPart(part)
-                if (part.type != mediaProtocol.mediaPartType
-                    && part.type != mediaProtocol.endPartType
-                ) {
+                if (part.type != mediaProtocol.getMediaPartType() && part.type != mediaProtocol.getEndPartType()) {
                     try {
-                        decoded.addWireFieldSummary(
-                            part.type,
-                            SabrProto.summarizeFields(partData)
-                        )
+                        decoded.addWireFieldSummary(part.type, SabrProto.summarizeFields(partData))
                     } catch (ignored: SabrProtocolException) {
-                        decoded.addWireFieldSummary(
-                            part.type,
-                            "opaqueBytes=" + partData.size
-                        )
+                        decoded.addWireFieldSummary(part.type, "opaqueBytes=" + partData.size)
                     }
                 }
                 try {
-                    if (part.type == mediaProtocol.headerPartType) {
+                    if (part.type == mediaProtocol.getHeaderPartType()) {
                         decoded.addMediaHeader(mediaProtocol.decodeHeader(partData))
                         continue
                     }
-                    if (part.type == mediaProtocol.mediaPartType) {
-                        if (partData.isNotEmpty()) {
-                            decoded.addMediaBytes(partData[0].toInt() and 0xff, partData.size - 1L)
-                        }
+                    if (part.type == mediaProtocol.getMediaPartType()) {
+                        if (partData.isNotEmpty()) decoded.addMediaBytes(partData[0].toInt() and 0xff, partData.size - 1L)
                         continue
                     }
-                    if (part.type == mediaProtocol.endPartType) {
+                    if (part.type == mediaProtocol.getEndPartType()) {
                         if (partData.isNotEmpty()) decoded.addMediaEndHeaderId(partData[0].toInt() and 0xff)
                         continue
                     }
@@ -110,11 +89,9 @@ final class SabrResponseDecoder private constructor() {
                             decoded.addOnesieHeader(onesieHeader)
                             decoded.addGenericPartDescription(part.type, onesieHeader.summarize())
                         }
-                        ONESIE_DATA,
-                        ONESIE_ENCRYPTED_MEDIA -> {
+                        ONESIE_DATA, ONESIE_ENCRYPTED_MEDIA -> {
                             val onesieData = SabrOnesieData.fromPart(
-                                partData,
-                                part.type == ONESIE_ENCRYPTED_MEDIA, currentOnesieHeader
+                                partData, part.type == ONESIE_ENCRYPTED_MEDIA, currentOnesieHeader
                             )
                             decoded.addOnesieData(onesieData)
                             decoded.addGenericPartDescription(part.type, onesieData.summarize())
@@ -124,19 +101,9 @@ final class SabrResponseDecoder private constructor() {
                             decoded.addFormatInitializationMetadata(metadata)
                             decoded.addGenericPartDescription(part.type, metadata.summarize())
                         }
-                        MEDIA_HEADER -> {
-                            decoded.addMediaHeader(SabrMediaHeader.decode(partData))
-                        }
-                        MEDIA -> {
-                            if (partData.isNotEmpty()) {
-                                decoded.addMediaBytes(partData[0].toInt() and 0xff, partData.size - 1L)
-                            }
-                        }
-                        MEDIA_END -> {
-                            if (partData.isNotEmpty()) {
-                                decoded.addMediaEndHeaderId(partData[0].toInt() and 0xff)
-                            }
-                        }
+                        MEDIA_HEADER -> decoded.addMediaHeader(SabrMediaHeader.decode(partData))
+                        MEDIA -> if (partData.isNotEmpty()) decoded.addMediaBytes(partData[0].toInt() and 0xff, partData.size - 1L)
+                        MEDIA_END -> if (partData.isNotEmpty()) decoded.addMediaEndHeaderId(partData[0].toInt() and 0xff)
                         LIVE_METADATA -> {
                             val liveMetadata = SabrLiveMetadata.decode(partData)
                             decoded.addLiveMetadata(liveMetadata)
@@ -144,10 +111,7 @@ final class SabrResponseDecoder private constructor() {
                         }
                         NEXT_REQUEST_POLICY -> {
                             val nextRequestPolicy = decodeNextRequestPolicy(partData, decoded)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                nextRequestPolicy.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, nextRequestPolicy.summarize())
                         }
                         SABR_REDIRECT -> {
                             val redirect = SabrRedirect.decode(partData)
@@ -170,44 +134,29 @@ final class SabrResponseDecoder private constructor() {
                             val reloadPlayerResponse = SabrReloadPlayerResponse.decode(partData)
                             decoded.setReloadRequested(true)
                             decoded.setReloadPlayerResponse(reloadPlayerResponse)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                reloadPlayerResponse.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, reloadPlayerResponse.summarize())
                         }
                         STREAM_PROTECTION_STATUS -> {
                             val streamProtection = SabrStreamProtectionStatus.decode(partData)
                             decoded.setStreamProtection(streamProtection)
                             decoded.setStreamProtectionStatus(streamProtection.getStatus())
                             decoded.setStreamProtectionMaxRetries(streamProtection.getMaxRetries())
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                streamProtection.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, streamProtection.summarize())
                         }
                         PLAYBACK_START_POLICY -> {
                             val playbackStartPolicy = SabrPlaybackStartPolicy.decode(partData)
                             decoded.setPlaybackStartPolicy(playbackStartPolicy)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                playbackStartPolicy.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, playbackStartPolicy.summarize())
                         }
                         SABR_CONTEXT_UPDATE -> {
                             val sabrContextUpdate = SabrContextUpdate.decode(partData)
                             decoded.addSabrContextUpdate(sabrContextUpdate)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                sabrContextUpdate.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, sabrContextUpdate.summarize())
                         }
                         SABR_CONTEXT_SENDING_POLICY -> {
                             val sabrContextSendingPolicy = SabrContextSendingPolicy.decode(partData)
                             decoded.setSabrContextSendingPolicy(sabrContextSendingPolicy)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                sabrContextSendingPolicy.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, sabrContextSendingPolicy.summarize())
                         }
                         SNACKBAR_MESSAGE -> {
                             val snackbarMessage = SabrSnackbarMessage.decode(partData)
@@ -217,80 +166,41 @@ final class SabrResponseDecoder private constructor() {
                         FORMAT_SELECTION_CONFIG -> {
                             val formatSelectionConfig = SabrFormatSelectionConfig.decode(partData)
                             decoded.setFormatSelectionConfig(formatSelectionConfig)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                formatSelectionConfig.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, formatSelectionConfig.summarize())
                         }
                         PREWARM_CONNECTION -> {
                             val prewarmConnection = SabrPrewarmConnection.decode(partData)
                             decoded.setPrewarmConnection(prewarmConnection)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                prewarmConnection.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, prewarmConnection.summarize())
                         }
-                        START_BW_SAMPLING_HINT,
-                        CONFIG,
-                        HOSTNAME_CHANGE_HINT_DEPRECATED,
-                        LIVE_METADATA_PROMISE,
-                        LIVE_METADATA_PROMISE_CANCELLATION,
-                        USTREAMER_VIDEO_AND_FORMAT_METADATA,
-                        USTREAMER_SELECTED_MEDIA_STREAM,
-                        ALLOWED_CACHED_FORMATS,
-                        PAUSE_BW_SAMPLING_HINT,
-                        ONESIE_PREFETCH_REJECTION,
-                        TIMELINE_CONTEXT,
-                        REQUEST_PIPELINING,
-                        LAWNMOWER_POLICY,
-                        SABR_ACK,
-                        END_OF_TRACK,
-                        CACHE_LOAD_POLICY,
-                        LAWNMOWER_MESSAGING_POLICY,
-                        PLAYBACK_DEBUG_INFO -> {
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                describeGenericMessage(partData)
-                            )
-                        }
+                        START_BW_SAMPLING_HINT, CONFIG, HOSTNAME_CHANGE_HINT_DEPRECATED,
+                        LIVE_METADATA_PROMISE, LIVE_METADATA_PROMISE_CANCELLATION,
+                        USTREAMER_VIDEO_AND_FORMAT_METADATA, USTREAMER_SELECTED_MEDIA_STREAM,
+                        ALLOWED_CACHED_FORMATS, PAUSE_BW_SAMPLING_HINT, ONESIE_PREFETCH_REJECTION,
+                        TIMELINE_CONTEXT, REQUEST_PIPELINING, LAWNMOWER_POLICY, SABR_ACK,
+                        END_OF_TRACK, CACHE_LOAD_POLICY, LAWNMOWER_MESSAGING_POLICY,
+                        PLAYBACK_DEBUG_INFO -> decoded.addGenericPartDescription(part.type, describeGenericMessage(partData))
                         REQUEST_IDENTIFIER -> {
                             val requestIdentifier = SabrRequestIdentifier.decode(partData)
                             decoded.setRequestIdentifier(requestIdentifier)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                requestIdentifier.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, requestIdentifier.summarize())
                         }
                         REQUEST_CANCELLATION_POLICY -> {
                             val requestCancellationPolicy = SabrRequestCancellationPolicy.decode(partData)
                             decoded.setRequestCancellationPolicy(requestCancellationPolicy)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                requestCancellationPolicy.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, requestCancellationPolicy.summarize())
                         }
                         SELECTABLE_FORMATS -> {
                             val selectableFormats = SabrSelectableFormats.decode(partData)
                             decoded.setSelectableFormats(selectableFormats)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                selectableFormats.summarize()
-                            )
+                            decoded.addGenericPartDescription(part.type, selectableFormats.summarize())
                         }
                         else -> {
                             decoded.addUnknownPartType(part.type)
-                            decoded.addGenericPartDescription(
-                                part.type,
-                                describeGenericMessage(partData)
-                            )
+                            decoded.addGenericPartDescription(part.type, describeGenericMessage(partData))
                         }
                     }
                 } catch (e: SabrProtocolException) {
-                    // One malformed protobuf message must not discard valid MEDIA from the rest of the
-                    // UMP response. Wire types 6/7 are invalid protobuf, and have been observed in a
-                    // transient NEXT_REQUEST_POLICY response. Ignore only that part and retain a
-                    // bounded diagnostic. MEDIA_HEADER corruption is still detected by the media
-                    // integrity checks (media-without-header) and goes through bounded recovery.
                     decoded.addMalformedPart(part.type, part.getSize(), e)
                 }
             }
@@ -298,27 +208,22 @@ final class SabrResponseDecoder private constructor() {
         }
 
         @Throws(SabrProtocolException::class)
-        private fun decodeNextRequestPolicy(
-            data: ByteArray,
-            decoded: SabrDecodedResponse
-        ): SabrNextRequestPolicy {
+        private fun decodeNextRequestPolicy(data: ByteArray, decoded: SabrDecodedResponse): SabrNextRequestPolicy {
             val policy = SabrNextRequestPolicy.decode(data)
             decoded.setNextRequestPolicy(policy)
             decoded.setBackoffTimeMs(policy.getBackoffTimeMs())
             for (field in SabrProto.readFields(data)) {
-                if (field.number == 4 && field.wireType == SabrProto.WIRE_VARINT) {
-                    decoded.setBackoffTimeMs(field.varint.toInt())
+                if (field.getNumber() == 4 && field.getWireType() == SabrProto.WIRE_VARINT) {
+                    decoded.setBackoffTimeMs(field.getVarint().toInt())
                 }
             }
             return policy
         }
 
-        private fun describeGenericMessage(data: ByteArray): String {
-            return try {
-                SabrProto.summarizeFields(data)
-            } catch (e: Exception) {
-                "undecodable(" + data.size + " bytes)"
-            }
+        private fun describeGenericMessage(data: ByteArray): String = try {
+            SabrProto.summarizeFields(data)
+        } catch (e: Exception) {
+            "undecodable(" + data.size + " bytes)"
         }
     }
 }

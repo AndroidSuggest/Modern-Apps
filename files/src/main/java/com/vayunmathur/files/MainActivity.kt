@@ -83,6 +83,7 @@ import android.text.format.Formatter
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
+import com.vayunmathur.files.util.FileBrowserItem
 import com.vayunmathur.files.util.FilesViewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconArchive
@@ -94,10 +95,7 @@ import com.vayunmathur.library.ui.IconFile
 import com.vayunmathur.library.ui.IconFolder
 import com.vayunmathur.library.ui.IconSave
 import com.vayunmathur.library.ui.IconUnarchive
-import okio.FileSystem
-import okio.Path
-import okio.Path.Companion.toOkioPath
-import okio.Path.Companion.toPath
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private val viewModel: FilesViewModel by viewModels()
@@ -206,38 +204,40 @@ fun HomeDirectoryPage(viewModel: FilesViewModel) {
     }
 }
 
-val fs = FileSystem.SYSTEM
-
-fun Path.listFiles(fileSystem: FileSystem = fs): List<Path> =
-    fileSystem.listOrNull(this) ?: emptyList()
-
-fun Path.isDirectory(fileSystem: FileSystem = fs): Boolean =
-    fileSystem.metadataOrNull(this)?.isDirectory ?: false
-
-fun Path.size(fileSystem: FileSystem = fs): Long? = fileSystem.metadataOrNull(this)?.size
-
-fun Path.deleteRecursively(fileSystem: FileSystem = fs) {
-    fileSystem.deleteRecursively(this)
-}
-
-fun pathAncestors(from: Path?, upTo: Path?): List<Path> = buildList {
+private fun fileAncestors(from: File?, upTo: File?): List<File> = buildList {
     var p = from
     while (p != null) {
         add(0, p)
-        if (p == upTo) break
-        p = p.parent
+        if (upTo != null && p.absolutePath == upTo.absolutePath) break
+        p = p.parentFile
+        // Prevent infinite if upTo not in chain: stop when p becomes child of upTo? We'll just keep going up
+        // but avoid adding files above upTo by breaking if upTo != null and p != null and !from!!.absolutePath.startsWith(p.absolutePath) etc not needed
+        // Simpler: if upTo != null and p != null and !p.absolutePath.startsWith(upTo.absolutePath) and upTo.absolutePath != p.absolutePath? then break after adding upTo?
+        // For our external storage use case it's fine.
     }
 }
 
+private data class Crumb(
+    val displayName: String,
+    val realFile: File?,
+    val zipInternalPath: String?, // non-null = zip mode crumb
+)
+
 fun dropTarget(
     onDragStateChange: (Boolean) -> Unit,
-    onDrop: (List<Path>) -> Unit
+    onDrop: (List<File>) -> Unit
 ) = object : DragAndDropTarget {
     override fun onDrop(event: DragAndDropEvent): Boolean {
         onDragStateChange(false)
         val clipData = event.toAndroidDragEvent().clipData ?: return false
         if (clipData.itemCount == 0) return false
-        onDrop((0 until clipData.itemCount).map { clipData.getItemAt(it).text.toString().toPath() })
+        val files = (0 until clipData.itemCount).mapNotNull {
+            val txt = clipData.getItemAt(it).text?.toString() ?: return@mapNotNull null
+            val f = File(txt)
+            if (f.exists()) f else null
+        }
+        if (files.isEmpty()) return false
+        onDrop(files)
         return true
     }
     override fun onEntered(event: DragAndDropEvent) { onDragStateChange(true) }
@@ -252,28 +252,25 @@ fun DirectoryPage(viewModel: FilesViewModel) {
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val currentFileSystem by viewModel.currentFileSystem.collectAsState()
     val currentDirectory by viewModel.currentDirectory.collectAsState()
     val zipPath by viewModel.zipPath.collectAsState()
+    val zipInternalPath by viewModel.zipInternalPath.collectAsState()
     val selectedPaths by viewModel.selectedPaths.collectAsState()
     val entries by viewModel.entries.collectAsState()
     val incomingUris by viewModel.incomingUris.collectAsState()
 
     val isReadOnly = zipPath != null
 
-    // UI-only state (kept in compose)
-    var pathBeingRenamed by remember { mutableStateOf<Path?>(null) }
+    var pathBeingRenamed by remember { mutableStateOf<FileBrowserItem?>(null) }
     var showArchiveDialog by remember { mutableStateOf(false) }
     var archiveName by remember { mutableStateOf("archive.zip") }
 
-    // Forward VM messages to the local SnackbarHostState.
     LaunchedEffect(snackbarHostState) {
         viewModel.snackbarMessages.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
 
-    // Launch ACTION_VIEW intents emitted by the VM (with no-app-found fallback).
     LaunchedEffect(Unit) {
         viewModel.intents.collect { intent ->
             try {
@@ -284,7 +281,6 @@ fun DirectoryPage(viewModel: FilesViewModel) {
         }
     }
 
-    // Reset selection-dependent UI state when the VM's selection clears.
     LaunchedEffect(selectedPaths) {
         if (selectedPaths.isEmpty()) pathBeingRenamed = null
     }
@@ -315,9 +311,9 @@ fun DirectoryPage(viewModel: FilesViewModel) {
             })
     }
 
-    val zipToUnzip = remember(selectedPaths, currentFileSystem) {
+    val zipToUnzip = remember(selectedPaths) {
         selectedPaths.singleOrNull()?.takeIf {
-            !it.isDirectory(currentFileSystem) && it.name.endsWith(".zip", ignoreCase = true)
+            !it.isDirectory && it.realFile != null && it.name.endsWith(".zip", ignoreCase = true)
         }
     }
 
@@ -325,7 +321,7 @@ fun DirectoryPage(viewModel: FilesViewModel) {
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri != null && zipToUnzip != null) {
                 val path = uri.path?.split(":")?.lastOrNull()?.let {
-                    Environment.getExternalStorageDirectory().resolve(it).toOkioPath()
+                    File(Environment.getExternalStorageDirectory(), it)
                 } ?: currentDirectory
                 viewModel.unzip(zipToUnzip, path)
             }
@@ -337,19 +333,29 @@ fun DirectoryPage(viewModel: FilesViewModel) {
 
     val root = viewModel.rootDirectory
 
-    val breadcrumbs = remember(currentDirectory, zipPath, currentFileSystem) {
+    val breadcrumbs = remember(currentDirectory, zipPath, zipInternalPath) {
+        val crumbs = mutableListOf<Crumb>()
         if (zipPath == null) {
-            pathAncestors(currentDirectory, root)
-                .map { Triple(it, fs, if (it == root) Build.MODEL else it.name) }
+            fileAncestors(currentDirectory, root).forEach { f ->
+                crumbs.add(Crumb(displayName = if (f.absolutePath == root.absolutePath) Build.MODEL else f.name, realFile = f, zipInternalPath = null))
+            }
         } else {
-            pathAncestors(zipPath?.parent, root)
-                .map { Triple(it, fs, if (it == root) Build.MODEL else it.name) } +
-            pathAncestors(currentDirectory, null)
-                .map { Triple(it, currentFileSystem, it.name.ifEmpty { zipPath!!.name }) }
+            val zp = zipPath!!
+            val parent = zp.parentFile ?: root
+            fileAncestors(parent, root).forEach { f ->
+                crumbs.add(Crumb(displayName = if (f.absolutePath == root.absolutePath) Build.MODEL else f.name, realFile = f, zipInternalPath = null))
+            }
+            crumbs.add(Crumb(displayName = zp.name, realFile = null, zipInternalPath = ""))
+            var accum = ""
+            for (seg in zipInternalPath.split("/").filter { it.isNotEmpty() }) {
+                accum = if (accum.isEmpty()) seg else "$accum/$seg"
+                crumbs.add(Crumb(displayName = seg, realFile = null, zipInternalPath = accum))
+            }
         }
+        crumbs
     }
 
-    BackHandler(currentDirectory != root || selectedPaths.isNotEmpty() || zipPath != null) {
+    BackHandler(currentDirectory.absolutePath != root.absolutePath || selectedPaths.isNotEmpty() || zipPath != null) {
         pathBeingRenamed = null
         viewModel.handleBack()
     }
@@ -369,10 +375,12 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
-                    breadcrumbs.forEachIndexed { index, (path, fileSystem, displayName) ->
-                        var isBreadcrumbDraggingOver by remember {
+                    breadcrumbs.forEachIndexed { index, crumb ->
+                        var isBreadcrumbDraggingOver by remember(crumb) {
                             mutableStateOf(false)
                         }
+
+                        val canDrop = !isReadOnly && crumb.realFile != null && crumb.zipInternalPath == null
 
                         Box(
                             modifier = Modifier
@@ -382,24 +390,34 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                                     )
                                     else Color.Transparent, shape = MaterialTheme.shapes.small
                                 )
-                                .dragAndDropTarget(
-                                    shouldStartDragAndDrop = { event ->
-                                        !isReadOnly && event.mimeTypes().contains(
-                                            ClipDescription.MIMETYPE_TEXT_PLAIN
-                                        )
-                                    },
-                                    target = remember(path, fileSystem) {
-                                        dropTarget(
-                                            onDragStateChange = { isBreadcrumbDraggingOver = it },
-                                            onDrop = { sources -> viewModel.moveToBreadcrumb(sources, path) }
-                                        )
-                                    })
+                                .then(
+                                    if (canDrop) {
+                                        Modifier.dragAndDropTarget(
+                                            shouldStartDragAndDrop = { event ->
+                                                event.mimeTypes().contains(
+                                                    ClipDescription.MIMETYPE_TEXT_PLAIN
+                                                )
+                                            },
+                                            target = remember(crumb.realFile!!.absolutePath) {
+                                                dropTarget(
+                                                    onDragStateChange = { isBreadcrumbDraggingOver = it },
+                                                    onDrop = { sources -> viewModel.moveToBreadcrumb(sources, crumb.realFile) }
+                                                )
+                                            })
+                                    } else Modifier
+                                )
                                 .clickable {
-                                    viewModel.navigateTo(path, fileSystem)
+                                    val rf = crumb.realFile
+                                    if (rf != null) {
+                                        if (zipPath != null) viewModel.navigateToZipParentRealFolder(rf)
+                                        else viewModel.navigateTo(rf)
+                                    } else {
+                                        viewModel.navigateToZipInternalPath(crumb.zipInternalPath ?: "")
+                                    }
                                 }
                                 .padding(4.dp)) {
                             Text(
-                                text = displayName, style = MaterialTheme.typography.titleLarge
+                                text = crumb.displayName, style = MaterialTheme.typography.titleLarge
                             )
                         }
                         if (index < breadcrumbs.size - 1) {
@@ -431,12 +449,10 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                             IconUnarchive()
                         }
                     }
-                    // Show Rename Button if exactly 1 is selected
                     if (selectedPaths.size == 1) {
                         IconButton(
                             onClick = { pathBeingRenamed = selectedPaths.first() }) { IconEdit() }
                     }
-                    // Delete Button
                     if (selectedPaths.isNotEmpty()) {
                         IconButton(
                             onClick = { viewModel.deleteSelection() }) { IconDelete() }
@@ -448,15 +464,14 @@ fun DirectoryPage(viewModel: FilesViewModel) {
             val allItems =
                 directories.sortedBy { it.name.lowercase() } + files.sortedBy { it.name.lowercase() }
 
-            items(allItems, key = { it.toString() }) { child ->
-                val isSelected = selectedPaths.contains(child)
-                val isEditing = pathBeingRenamed == child
+            items(allItems, key = { it.key }) { child ->
+                val isSelected = selectedPaths.any { it.key == child.key }
+                val isEditing = pathBeingRenamed?.key == child.key
 
                 DirectoryItem(
                     file = child,
                     isEditing = isEditing,
                     isSelected = isSelected,
-                    fileSystem = currentFileSystem,
                     isReadOnly = isReadOnly,
                     onRename = { newName ->
                         pathBeingRenamed = null
@@ -471,27 +486,28 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                     },
                     onClick = {
                         if (selectedPaths.isNotEmpty()) {
-                            if (isSelected && pathBeingRenamed == child) {
+                            if (isSelected && pathBeingRenamed?.key == child.key) {
                                 pathBeingRenamed = null
                             }
                             viewModel.toggleSelection(child)
-                        } else if (child.isDirectory(currentFileSystem)) {
-                            viewModel.navigateTo(child, currentFileSystem)
-                        } else if (child.name.endsWith(".zip", ignoreCase = true)) {
+                        } else if (child.isDirectory) {
+                            if (child.realFile != null) viewModel.navigateTo(child.realFile)
+                            else viewModel.navigateIntoZipDir(child.name)
+                        } else if (child.name.endsWith(".zip", ignoreCase = true) && child.realFile != null) {
                             viewModel.openZipFile(child)
                         } else {
                             viewModel.openFile(child)
                         }
                     },
                     onMove = { sources ->
-                        if (!isReadOnly && child.isDirectory(currentFileSystem)) {
-                            viewModel.moveInto(sources, child)
+                        if (!isReadOnly && child.isDirectory && child.realFile != null) {
+                            viewModel.moveInto(sources, child.realFile)
                         }
                     },
                     onStartDrag = {
                         if (isReadOnly) emptyList()
-                        else if (selectedPaths.contains(child)) selectedPaths.toList()
-                        else listOf(child)
+                        else if (selectedPaths.any { it.key == child.key }) selectedPaths.mapNotNull { it.realFile }.toList()
+                        else listOfNotNull(child.realFile)
                     })
                 HorizontalDivider(
                     thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant
@@ -504,16 +520,15 @@ fun DirectoryPage(viewModel: FilesViewModel) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DirectoryItem(
-    file: Path,
+    file: FileBrowserItem,
     isEditing: Boolean,
     isSelected: Boolean,
-    fileSystem: FileSystem,
     isReadOnly: Boolean,
     onRename: (String) -> Unit,
     onToggleSelection: () -> Unit,
     onClick: () -> Unit,
-    onMove: (List<Path>) -> Unit,
-    onStartDrag: () -> List<Path>
+    onMove: (List<File>) -> Unit,
+    onStartDrag: () -> List<File>
 ) {
     var editedName by remember(isEditing) { mutableStateOf(file.name) }
     val focusRequester = remember { FocusRequester() }
@@ -537,7 +552,7 @@ fun DirectoryItem(
 
                 val uris = paths.map { path ->
                     FileProvider.getUriForFile(
-                        context, "${context.packageName}.fileprovider", path.toFile()
+                        context, "${context.packageName}.fileprovider", path
                     )
                 }
                 val mimeTypes = paths.map { path ->
@@ -556,13 +571,13 @@ fun DirectoryItem(
 
                 val clipData = ClipData(
                     paths.first().name, mimeTypes, ClipData.Item(
-                        paths.first().toString(), null, null, uris.first()
+                        paths.first().absolutePath, null, null, uris.first()
                     )
                 )
                 for (i in 1 until uris.size) {
                     clipData.addItem(
                         ClipData.Item(
-                            paths[i].toString(), null, null, uris[i]
+                            paths[i].absolutePath, null, null, uris[i]
                         )
                     )
                 }
@@ -573,12 +588,12 @@ fun DirectoryItem(
                 )
             }
             .then(
-                if (file.isDirectory(fileSystem) && !isReadOnly) {
+                if (file.isDirectory && !isReadOnly && file.realFile != null) {
                     Modifier.dragAndDropTarget(shouldStartDragAndDrop = { event ->
                         event.mimeTypes().contains(
                             ClipDescription.MIMETYPE_TEXT_PLAIN
                         )
-                    }, target = remember(file) {
+                    }, target = remember(file.key) {
                         dropTarget(
                             onDragStateChange = { isDraggingOver = it },
                             onDrop = { currentOnMove(it) }
@@ -611,11 +626,11 @@ fun DirectoryItem(
             }, leadingContent = {
                 val iconTint = if (isSelected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.outline
-                if (file.isDirectory(fileSystem)) IconFolder(tint = iconTint)
+                if (file.isDirectory) IconFolder(tint = iconTint)
                 else IconFile(tint = iconTint)
             }, supportingContent = {
-                if (!file.isDirectory(fileSystem)) {
-                    file.size(fileSystem)?.let { size -> Text(Formatter.formatShortFileSize(context, size)) }
+                if (!file.isDirectory) {
+                    file.size?.let { size -> Text(Formatter.formatShortFileSize(context, size)) }
                 }
             }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)
         )

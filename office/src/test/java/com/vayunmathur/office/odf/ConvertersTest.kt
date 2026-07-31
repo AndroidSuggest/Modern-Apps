@@ -1,9 +1,9 @@
 package com.vayunmathur.office.odf
 
 import com.vayunmathur.library.ui.odf.*
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Tests for the document-format converters (HTML/RTF round-trip, EPUB/LaTeX/PDF export) and the

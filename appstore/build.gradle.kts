@@ -22,7 +22,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(project(":library:image"))
     implementation(libs.jsoup)
-    implementation(libs.okhttp)
+    // HttpURLConnection-based PlayHttpClient/AnonymousAuthRepository/PlayDownloader – no okhttp
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.auroraoss.gplayapi)
 }

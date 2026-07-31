@@ -12,7 +12,8 @@ dependencies {
     implementation(libs.rhino.engine)
     implementation(libs.brotli.dec)
 
-    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.test.junit)
 }
 
 protobuf {

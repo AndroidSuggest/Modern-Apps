@@ -1,6 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-final class SabrSeek private constructor(
+class SabrSeek private constructor(
     private val seekMediaTime: Long,
     private val seekMediaTimescale: Int,
     private val seekSource: Int
@@ -14,15 +14,12 @@ final class SabrSeek private constructor(
             var seekSource = -1
             for (field in SabrProto.readFields(data)) {
                 when {
-                    field.number == 1 && field.wireType == SabrProto.WIRE_VARINT -> {
-                        seekMediaTime = field.varint
-                    }
-                    field.number == 2 && field.wireType == SabrProto.WIRE_VARINT -> {
-                        seekMediaTimescale = field.varint.toInt()
-                    }
-                    field.number == 3 && field.wireType == SabrProto.WIRE_VARINT -> {
-                        seekSource = field.varint.toInt()
-                    }
+                    field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT ->
+                        seekMediaTime = field.getVarint()
+                    field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT ->
+                        seekMediaTimescale = field.getVarint().toInt()
+                    field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_VARINT ->
+                        seekSource = field.getVarint().toInt()
                 }
             }
             return SabrSeek(seekMediaTime, seekMediaTimescale, seekSource)
@@ -30,12 +27,8 @@ final class SabrSeek private constructor(
     }
 
     fun getSeekMediaTime(): Long = seekMediaTime
-
     fun getSeekMediaTimescale(): Int = seekMediaTimescale
-
     fun getSeekSource(): Int = seekSource
 
-    fun summarize(): String {
-        return "seek=$seekMediaTime/$seekMediaTimescale, source=$seekSource"
-    }
+    fun summarize(): String = "seek=$seekMediaTime/$seekMediaTimescale, source=$seekSource"
 }

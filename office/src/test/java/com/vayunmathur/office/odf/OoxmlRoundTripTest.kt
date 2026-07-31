@@ -1,9 +1,9 @@
 package com.vayunmathur.office.odf
 
 import com.vayunmathur.library.ui.odf.*
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Round-trip tests: build an ODF model, export to OOXML via [OoxmlExporter], re-import via

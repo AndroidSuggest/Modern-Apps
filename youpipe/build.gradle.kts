@@ -36,8 +36,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.androidx.media3.session)
-    // media3-datasource-okhttp transitively brings OkHttp – keep for player per plan exception
-    implementation(libs.androidx.media3.datasource.okhttp)
+    // DefaultHttpDataSource (HttpURLConnection) for progressive; SABR via library:network – no okhttp
 
     implementation(libs.androidx.work.runtime.ktx)
     implementation(project(":library:work"))
