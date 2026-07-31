@@ -37,6 +37,7 @@ data class CachedAppEntity(
     val versionCode: Long,
     val sizeBytes: Long,
     val apkUrl: String?,
+    val targetSdk: Int?,
     val repoUrl: String?,
     val lastUpdated: Long
 )
@@ -85,7 +86,7 @@ interface CachedAppDao {
 
 @Database(
     entities = [RepoEntity::class, CachedAppEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -97,6 +98,11 @@ abstract class AppDatabase : RoomDatabase() {
             object : Migration(1, 2) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("DROP TABLE IF EXISTS FavoriteEntity")
+                }
+            },
+            object : Migration(2, 3) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN targetSdk INTEGER")
                 }
             }
         )

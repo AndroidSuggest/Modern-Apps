@@ -3,11 +3,8 @@ package com.vayunmathur.appstore.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -16,9 +13,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * F-Droid index v2 client — inspired by Droid-ify's sync logic but simplified
- * for this unified store. Fetches https://f-droid.org/repo/index-v2.json and
- * IzzyOnDroid, merges into [UnifiedApp] list.
+ * F-Droid index v2 client — Droid-ify style. Fetches index-v2.json then v1.
+ * Filters targetSdk < AppProvider.MIN_TARGET_SDK when manifest provides it.
  */
 object FDroidRepository {
 
@@ -26,13 +22,13 @@ object FDroidRepository {
 
     suspend fun fetchRepoIndex(repoUrl: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
         val base = repoUrl.trimEnd('/')
-        // Try index-v2.json first (faster, structured), fallback to index-v1.json
         val urls = listOf("$base/index-v2.json", "$base/index-v1.json")
         var lastErr: Exception? = null
         for (url in urls) {
             try {
-                return@withContext if (url.endsWith("v2.json")) fetchV2(url, base)
-                else fetchV1(url, base)
+                val apps = if (url.endsWith("v2.json")) fetchV2(url, base) else fetchV1(url, base)
+                // Filter targetSdk < 35 for both sources requirement
+                return@withContext AppProvider.filterTargetSdk(apps)
             } catch (e: Exception) {
                 lastErr = e
             }
@@ -59,16 +55,14 @@ object FDroidRepository {
                 val versions = pkgObj["versions"]?.jsonObject ?: continue
                 if (versions.isEmpty()) continue
 
-                // pick latest version by added timestamp
-                val latestEntry = versions.values.mapNotNull {
-                    it.jsonObject
-                }.maxByOrNull { it["added"]?.jsonPrimitive?.longOrNull ?: 0L } ?: continue
+                val latestEntry = versions.values.mapNotNull { it.jsonObject }
+                    .maxByOrNull { it["added"]?.jsonPrimitive?.longOrNull ?: 0L } ?: continue
 
                 val fileObj = latestEntry["file"]?.jsonObject
                 val manifest = latestEntry["manifest"]?.jsonObject
+                val usesSdk = manifest?.get("usesSdk")?.jsonObject
 
-                val name = extractLocalized(meta["name"])
-                    ?: pkg.substringAfterLast('.')
+                val name = extractLocalized(meta["name"]) ?: pkg.substringAfterLast('.')
                 val summary = extractLocalized(meta["summary"]) ?: ""
                 val desc = extractLocalized(meta["description"]) ?: ""
                 val author = meta["authorName"]?.jsonPrimitive?.contentOrNull
@@ -84,8 +78,8 @@ object FDroidRepository {
                 val whatsNew = extractLocalized(latestEntry["whatsNew"])
                 val added = meta["added"]?.jsonPrimitive?.longOrNull ?: 0L
                 val lastUpdated = meta["lastUpdated"]?.jsonPrimitive?.longOrNull ?: added
+                val targetSdk = usesSdk?.get("targetSdkVersion")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
 
-                // icon url: metadata.icon["en-US"]?.name -> repoBase/icons/...
                 val iconName = runCatching {
                     meta["icon"]?.jsonObject?.values?.firstOrNull()
                         ?.jsonObject?.values?.firstOrNull()
@@ -106,6 +100,7 @@ object FDroidRepository {
                     versionCode = versionCode,
                     sizeBytes = sizeBytes,
                     apkUrl = apkUrl,
+                    targetSdk = targetSdk,
                     license = license,
                     website = website,
                     sourceCode = source,
@@ -114,13 +109,12 @@ object FDroidRepository {
                     lastUpdated = lastUpdated,
                     repoUrl = repoBase
                 )
-            } catch (_: Exception) { /* skip broken entry */ }
+            } catch (_: Exception) { }
         }
         return result
     }
 
     private fun fetchV1(url: String, repoBase: String): List<UnifiedApp> {
-        // v1 is JSON with "apps" array and "packages" map — simplified parse
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20000
             readTimeout = 60000
@@ -156,6 +150,7 @@ object FDroidRepository {
                 val vName = latestVer?.get("versionName")?.jsonPrimitive?.contentOrNull
                 val vCode = latestVer?.get("versionCode")?.jsonPrimitive?.longOrNull ?: 0L
                 val size = latestVer?.get("size")?.jsonPrimitive?.longOrNull ?: 0L
+                val targetSdk = latestVer?.get("targetSdkVersion")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
 
                 result += UnifiedApp(
                     packageName = pkg,
@@ -170,6 +165,7 @@ object FDroidRepository {
                     versionCode = vCode,
                     sizeBytes = size,
                     apkUrl = apkUrl,
+                    targetSdk = targetSdk,
                     website = website,
                     sourceCode = src,
                     license = license,

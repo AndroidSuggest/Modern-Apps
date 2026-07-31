@@ -2,36 +2,14 @@ package com.vayunmathur.appstore.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import org.jsoup.Jsoup
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/**
- * Play Store scraping data source — lightweight, no gplayapi dependency.
- * Inspired by Aurora Store's browsing but uses public Play Store web pages
- * plus anonymous token for search. This avoids requiring Google account login
- * while still listing Play Store apps alongside F-Droid.
- *
- * For install we delegate to browser / market intent (user's existing Play
- * Store or Aurora already handles installs). For direct APK we leave apkUrl null
- * and surface Play listing — same as Aurora's "manual download" path.
- */
 object PlayStoreDataSource {
 
-    private const val PLAY_BASE = "https://play.google.com"
-    private val jsonLoose = Json { ignoreUnknownKeys = true; isLenient = true }
-
-    data class PlaySearchResult(
-        val packageName: String,
-        val name: String,
-        val developer: String,
-        val iconUrl: String?,
-        val rating: Float?,
-        val summary: String,
-        val isFree: Boolean
-    )
+    const val PLAY_BASE = "https://play.google.com"
 
     suspend fun search(query: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
@@ -45,10 +23,8 @@ object PlayStoreDataSource {
                 setRequestProperty("Accept-Language", "en-US,en;q=0.9")
             }
             val html = conn.inputStream.bufferedReader().readText()
-            parseSearchHtml(html)
-        } catch (e: Exception) {
-            emptyList()
-        }
+            AppProvider.filterTargetSdk(parseSearchHtml(html))
+        } catch (_: Exception) { emptyList() }
     }
 
     suspend fun topCharts(category: String = ""): List<UnifiedApp> = withContext(Dispatchers.IO) {
@@ -61,7 +37,7 @@ object PlayStoreDataSource {
                 setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
             }
             val html = conn.inputStream.bufferedReader().readText()
-            parseSearchHtml(html).take(30)
+            AppProvider.filterTargetSdk(parseSearchHtml(html).take(30))
         } catch (_: Exception) { emptyList() }
     }
 
@@ -87,7 +63,12 @@ object PlayStoreDataSource {
             val ratingText = doc.selectFirst("div.TT9eCd")?.text()
             val rating = ratingText?.toFloatOrNull()
 
-            UnifiedApp(
+            // Try to infer targetSdk from page text (best effort)
+            val pageText = doc.text()
+            val targetSdk = Regex("Target.*API.*?(\\d{2})|targetSdk.*?(\\d{2})", RegexOption.IGNORE_CASE)
+                .find(pageText)?.groupValues?.filter { it.toIntOrNull() != null }?.lastOrNull()?.toIntOrNull()
+
+            val app = UnifiedApp(
                 packageName = packageName,
                 source = AppSource.PLAYSTORE,
                 name = name,
@@ -97,8 +78,10 @@ object PlayStoreDataSource {
                 author = developer,
                 categories = emptyList(),
                 rating = rating,
+                targetSdk = targetSdk,
                 website = "$PLAY_BASE/store/apps/details?id=$packageName"
             )
+            if (targetSdk != null && targetSdk < AppProvider.MIN_TARGET_SDK) null else app
         } catch (_: Exception) { null }
     }
 
@@ -106,7 +89,6 @@ object PlayStoreDataSource {
         val results = mutableListOf<UnifiedApp>()
         try {
             val doc = Jsoup.parse(html)
-            // Play Store uses very dynamic layout — try multiple selectors
             val candidates = doc.select("a[href*=/store/apps/details?id=]")
             val seen = mutableSetOf<String>()
             for (a in candidates) {
@@ -114,12 +96,9 @@ object PlayStoreDataSource {
                 val pkg = Regex("[?&]id=([^&]+)").find(href)?.groupValues?.get(1) ?: continue
                 if (!seen.add(pkg)) continue
                 if (results.size >= 40) break
-
                 val title = a.attr("title").ifBlank { a.text().ifBlank { pkg } }
-                // icon nearby
                 val img = a.selectFirst("img")?.attr("src")
                     ?: a.parent()?.selectFirst("img")?.attr("src")
-
                 results += UnifiedApp(
                     packageName = pkg,
                     source = AppSource.PLAYSTORE,
@@ -134,5 +113,4 @@ object PlayStoreDataSource {
     }
 
     fun playStoreUrl(pkg: String): String = "$PLAY_BASE/store/apps/details?id=$pkg"
-    fun marketUrl(pkg: String): String = "market://details?id=$pkg"
 }

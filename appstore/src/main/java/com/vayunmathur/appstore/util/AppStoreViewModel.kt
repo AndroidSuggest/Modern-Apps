@@ -12,14 +12,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.data.AppDatabase
+import com.vayunmathur.appstore.data.AppProvider
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.CachedAppEntity
 import com.vayunmathur.appstore.data.DefaultRepos
-import com.vayunmathur.appstore.data.FDroidRepository
+import com.vayunmathur.appstore.data.FDroidAppProvider
 import com.vayunmathur.appstore.data.InstalledInfo
-import com.vayunmathur.appstore.data.PlayStoreDataSource
+import com.vayunmathur.appstore.data.PlayStoreAppProvider
 import com.vayunmathur.appstore.data.RepoEntity
 import com.vayunmathur.appstore.data.UnifiedApp
+import com.vayunmathur.appstore.data.PlayStoreDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,10 +35,21 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+enum class InstalledFilter {
+    ALL,
+    FDROID,
+    PLAYSTORE
+}
+
 class AppStoreViewModel(
     private val context: Context,
     private val db: AppDatabase
 ) : ViewModel() {
+
+    // Providers — app registers 2 providers, fdroid base repo + play store
+    private val fdroidProvider = FDroidAppProvider(db)
+    private val playProvider = PlayStoreAppProvider()
+    private val providers: List<AppProvider> = listOf(fdroidProvider, playProvider)
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing
@@ -64,6 +77,13 @@ class AppStoreViewModel(
 
     private val _activeRepo = MutableStateFlow<String?>(null)
 
+    // Installed filtering: presence-resolved source per package, order F-Droid -> Play Store
+    private val _installedSourceMap = MutableStateFlow<Map<String, AppSource>>(emptyMap())
+    val installedSourceMap: StateFlow<Map<String, AppSource>> = _installedSourceMap
+
+    private val _installedFilter = MutableStateFlow(InstalledFilter.ALL)
+    val installedFilter: StateFlow<InstalledFilter> = _installedFilter
+
     val repos = db.repoDao().allFlow()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -74,35 +94,38 @@ class AppStoreViewModel(
         cachedApps, _playSearchResults, _topCharts, _searchQuery, _activeRepo
     ) { cached, playSearch, topCharts, query, activeRepo ->
         val fdroidAll = cached.map { it.toUnifiedApp() }
-        val fdroid = if (activeRepo != null) fdroidAll.filter { it.repoUrl == activeRepo || activeRepo == "all" } else fdroidAll
-        // Infer overlay: if package exists in any F-Droid repo, force FDROID source; otherwise PLAYSTORE
+        val fdroidFiltered = if (activeRepo != null) fdroidAll.filter { it.repoUrl == activeRepo } else fdroidAll
         val fdroidPkgs = fdroidAll.map { it.packageName }.toSet()
-        val infPlaySearch = playSearch.map { it.copy(source = inferSource(it.packageName, fdroidPkgs)) }
-        val infTop = topCharts.map { it.copy(source = inferSource(it.packageName, fdroidPkgs)) }
 
-        if (query.isBlank()) {
-            val all = fdroid + (if (infPlaySearch.isEmpty()) infTop else infPlaySearch)
-            all.distinctBy { it.packageName }.sortedBy { it.name.lowercase() }
+        fun infer(pkg: String): AppSource = if (fdroidPkgs.contains(pkg)) AppSource.FDROID else AppSource.PLAYSTORE
+
+        val infSearch = playSearch.map { it.copy(source = infer(it.packageName)) }
+        val infCharts = topCharts.map { it.copy(source = infer(it.packageName)) }
+
+        val list = if (query.isBlank()) {
+            fdroidFiltered + (if (infSearch.isEmpty()) infCharts else infSearch)
         } else {
             val q = query.lowercase()
-            val filteredFdroid = fdroid.filter {
+            val fd = fdroidFiltered.filter {
                 it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q) || it.summary.lowercase().contains(q)
             }
-            val combined = (filteredFdroid + infPlaySearch).distinctBy { it.packageName }.map {
-                it.copy(source = inferSource(it.packageName, fdroidPkgs))
-            }
-            combined.sortedBy { it.name.lowercase() }
+            (fd + infSearch).distinctBy { it.packageName }.map { it.copy(source = infer(it.packageName)) }
         }
+        // Filter targetSdk < 35 for both sources (defense in depth)
+        AppProvider.filterTargetSdk(list.distinctBy { it.packageName }).sortedBy { it.name.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    private fun inferSource(pkg: String, fdroidPkgs: Set<String>): AppSource {
-        return if (fdroidPkgs.contains(pkg)) AppSource.FDROID else AppSource.PLAYSTORE
-    }
-
-    fun inferSourceForInstalled(pkg: String): AppSource {
-        val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
-        return inferSource(pkg, fdroidPkgs)
-    }
+    // Presence-resolved installed list: only apps present in fdroid or play (order checked), with counts
+    val filteredInstalled: StateFlow<List<InstalledInfo>> = combine(
+        _installedApps, _installedSourceMap, _installedFilter
+    ) { installed, srcMap, filter ->
+        val inStore = installed.filter { srcMap.containsKey(it.packageName) }
+        when (filter) {
+            InstalledFilter.ALL -> inStore
+            InstalledFilter.FDROID -> inStore.filter { srcMap[it.packageName] == AppSource.FDROID }
+            InstalledFilter.PLAYSTORE -> inStore.filter { srcMap[it.packageName] == AppSource.PLAYSTORE }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     var searchJob: Job? = null
     var topJob: Job? = null
@@ -112,6 +135,12 @@ class AppStoreViewModel(
             ensureDefaultRepos()
             refreshInstalled()
             loadTopCharts()
+        }
+        // Keep fdroid provider cache synced with DB flow
+        viewModelScope.launch {
+            cachedApps.collect { list ->
+                fdroidProvider.cachedPackageNames = list.map { it.packageName }.toSet()
+            }
         }
     }
 
@@ -128,7 +157,7 @@ class AppStoreViewModel(
         topJob?.cancel()
         topJob = viewModelScope.launch {
             _syncMessage.value = "Loading top charts..."
-            val charts = PlayStoreDataSource.topCharts()
+            val charts = playProvider.fetchAll()
             _topCharts.value = charts
             _syncMessage.value = ""
         }
@@ -144,8 +173,8 @@ class AppStoreViewModel(
         searchJob = viewModelScope.launch {
             kotlinx.coroutines.delay(400)
             _syncMessage.value = "Searching Play Store..."
-            val play = PlayStoreDataSource.search(q)
-            _playSearchResults.value = play
+            val results = playProvider.search(q)
+            _playSearchResults.value = results
             _syncMessage.value = ""
         }
     }
@@ -154,25 +183,14 @@ class AppStoreViewModel(
         if (_isSyncing.value) return
         viewModelScope.launch {
             _isSyncing.value = true
-            _syncMessage.value = "Syncing repositories..."
-            val repos = db.repoDao().all().filter { it.enabled }
-            var fetched = 0
-            for (repo in repos) {
-                try {
-                    _syncMessage.value = "Syncing ${repo.name}..."
-                    val apps = FDroidRepository.fetchRepoIndex(repo.url)
-                    val entities = apps.map { it.toEntity() }
-                    db.cachedAppDao().deleteByRepo(repo.url.removeSuffix("/"))
-                    db.cachedAppDao().upsertAll(entities)
-                    db.repoDao().upsert(repo.copy(lastSync = System.currentTimeMillis()))
-                    fetched += apps.size
-                } catch (e: Exception) {
-                    _syncMessage.value = "Failed ${repo.name}: ${e.message}"
-                    kotlinx.coroutines.delay(1500)
-                }
+            _syncMessage.value = "Syncing F-Droid repositories..."
+            try {
+                val total = fdroidProvider.syncIntoDb()
+                _syncMessage.value = if (total > 0) "Synced $total apps from F-Droid" else "Sync complete"
+            } catch (e: Exception) {
+                _syncMessage.value = "F-Droid sync failed: ${e.message}"
             }
-            _syncMessage.value = if (fetched > 0) "Synced $fetched apps" else "Sync complete"
-            kotlinx.coroutines.delay(2000)
+            kotlinx.coroutines.delay(1500)
             _syncMessage.value = ""
             _isSyncing.value = false
             refreshInstalled()
@@ -182,9 +200,9 @@ class AppStoreViewModel(
     fun refreshInstalled() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            // Only user apps: exclude system partition apps
-            val allApps = pm.getInstalledApplications(PackageManager.MATCH_ALL)
-            val userApps = allApps.filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+            val all = pm.getInstalledApplications(PackageManager.MATCH_ALL)
+            // User apps only — not system partition
+            val userApps = all.filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
             val installed = userApps.mapNotNull { ai ->
                 try {
                     val pi = pm.getPackageInfo(ai.packageName, 0)
@@ -192,8 +210,7 @@ class AppStoreViewModel(
                         packageName = ai.packageName,
                         name = pm.getApplicationLabel(ai).toString(),
                         versionName = pi.versionName,
-                        versionCode = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong(),
-                        isSystem = false
+                        versionCode = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
                     )
                 } catch (_: Exception) { null }
             }.sortedBy { it.name.lowercase() }
@@ -202,21 +219,45 @@ class AppStoreViewModel(
                 try { ai.packageName to pm.getApplicationIcon(ai.packageName) } catch (_: Exception) { null }
             }.toMap()
 
-            _installedApps.value = installed
-            _installedIcons.value = icons
+            withContext(Dispatchers.Main) {
+                _installedApps.value = installed
+                _installedIcons.value = icons
+            }
+            // Resolve source presence for each installed app, order: fdroid -> play -> none (hide)
+            resolveInstalledSources(installed.map { it.packageName })
         }
     }
 
+    private fun resolveInstalledSources(packages: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val map = mutableMapOf<String, AppSource>()
+            for (pkg in packages) {
+                // Order: fdroid first, then play store
+                if (fdroidProvider.isPresent(pkg)) {
+                    map[pkg] = AppSource.FDROID
+                } else if (playProvider.isPresent(pkg)) {
+                    map[pkg] = AppSource.PLAYSTORE
+                }
+                // else not in any store -> hidden from installed list (per requirement)
+            }
+            _installedSourceMap.value = map
+        }
+    }
+
+    fun setInstalledFilter(filter: InstalledFilter) {
+        _installedFilter.value = filter
+    }
+
     fun selectApp(app: UnifiedApp) {
-        // Re-infer source based on F-Droid cache at selection time too
+        // Re-infer via providers order: fdroid check takes precedence
         val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
-        val inferred = app.copy(source = inferSource(app.packageName, fdroidPkgs))
-        _selectedApp.value = inferred
-        if (inferred.source == AppSource.PLAYSTORE && inferred.description.isBlank()) {
+        val inferredSource = if (fdroidPkgs.contains(app.packageName)) AppSource.FDROID else AppSource.PLAYSTORE
+        _selectedApp.value = app.copy(source = inferredSource)
+        if (inferredSource == AppSource.PLAYSTORE && app.description.isBlank()) {
             viewModelScope.launch {
-                val details = PlayStoreDataSource.appDetails(inferred.packageName)
+                val details = playProvider.getDetails(app.packageName)
                 if (details != null) {
-                    _selectedApp.value = details.copy(source = inferSource(details.packageName, fdroidPkgs))
+                    _selectedApp.value = details.copy(source = if (fdroidPkgs.contains(details.packageName)) AppSource.FDROID else AppSource.PLAYSTORE)
                 }
             }
         }
@@ -246,8 +287,8 @@ class AppStoreViewModel(
 
     fun addRepo(url: String, name: String) {
         viewModelScope.launch {
-            val cleanUrl = url.trim().trimEnd('/')
-            db.repoDao().upsert(RepoEntity(cleanUrl, name.ifBlank { cleanUrl }, true))
+            val clean = url.trim().trimEnd('/')
+            db.repoDao().upsert(RepoEntity(clean, name.ifBlank { clean }, true))
         }
     }
 
@@ -266,43 +307,45 @@ class AppStoreViewModel(
     }
 
     fun downloadAndInstall(app: UnifiedApp) {
-        // Inferred source decides: FDROID = direct APK, PLAYSTORE = market intent
-        val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
-        val src = inferSource(app.packageName, fdroidPkgs)
-        if (src == AppSource.PLAYSTORE) {
-            openInPlayStore(app.packageName)
-            return
-        }
-        // Resolve APK from F-Droid cache if current listing lacks it
-        val apkUrl = app.apkUrl ?: cachedApps.value.find { it.packageName == app.packageName }?.apkUrl ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                _downloadProgress.value = _downloadProgress.value + (app.packageName to 0.01f)
-                val file = File(context.cacheDir, "${app.packageName}.apk")
-                val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20000
-                    readTimeout = 60000
-                }
-                val total = conn.contentLengthLong.takeIf { it > 0 } ?: app.sizeBytes
-                conn.inputStream.use { input ->
-                    file.outputStream().use { out ->
-                        val buf = ByteArray(8192)
-                        var read: Int
-                        var downloaded = 0L
-                        while (input.read(buf).also { read = it } != -1) {
-                            out.write(buf, 0, read)
-                            downloaded += read
-                            if (total > 0) {
-                                _downloadProgress.value = _downloadProgress.value + (app.packageName to (downloaded.toFloat() / total))
+        // Use presence logic: fdroid present -> direct APK, else play -> market intent
+        viewModelScope.launch {
+            val srcMap = _installedSourceMap.value
+            val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
+            val isFdroid = fdroidPkgs.contains(app.packageName) || srcMap[app.packageName] == AppSource.FDROID || app.source == AppSource.FDROID
+            if (!isFdroid) {
+                openInPlayStore(app.packageName)
+                return@launch
+            }
+            val apkUrl = app.apkUrl ?: cachedApps.value.find { it.packageName == app.packageName }?.apkUrl ?: return@launch
+            withContext(Dispatchers.IO) {
+                try {
+                    _downloadProgress.value = _downloadProgress.value + (app.packageName to 0.01f)
+                    val file = File(context.cacheDir, "${app.packageName}.apk")
+                    val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 20000
+                        readTimeout = 60000
+                    }
+                    val total = conn.contentLengthLong.takeIf { it > 0 } ?: app.sizeBytes
+                    conn.inputStream.use { input ->
+                        file.outputStream().use { out ->
+                            val buf = ByteArray(8192)
+                            var read: Int
+                            var downloaded = 0L
+                            while (input.read(buf).also { read = it } != -1) {
+                                out.write(buf, 0, read)
+                                downloaded += read
+                                if (total > 0) {
+                                    _downloadProgress.value = _downloadProgress.value + (app.packageName to (downloaded.toFloat() / total))
+                                }
                             }
                         }
                     }
+                    _downloadProgress.value = _downloadProgress.value - app.packageName
+                    withContext(Dispatchers.Main) { installApk(file) }
+                } catch (e: Exception) {
+                    _downloadProgress.value = _downloadProgress.value - app.packageName
+                    _syncMessage.value = "Download failed: ${e.message}"
                 }
-                _downloadProgress.value = _downloadProgress.value - app.packageName
-                withContext(Dispatchers.Main) { installApk(file) }
-            } catch (e: Exception) {
-                _downloadProgress.value = _downloadProgress.value - app.packageName
-                _syncMessage.value = "Download failed: ${e.message}"
             }
         }
     }
@@ -337,6 +380,7 @@ class AppStoreViewModel(
         versionCode = versionCode,
         sizeBytes = sizeBytes,
         apkUrl = apkUrl,
+        targetSdk = targetSdk,
         repoUrl = repoUrl?.removeSuffix("/") ?: DefaultRepos.FDROID_MAIN,
         lastUpdated = lastUpdated
     )
@@ -354,6 +398,7 @@ class AppStoreViewModel(
         versionCode = versionCode,
         sizeBytes = sizeBytes,
         apkUrl = apkUrl,
+        targetSdk = targetSdk,
         repoUrl = repoUrl,
         lastUpdated = lastUpdated
     )

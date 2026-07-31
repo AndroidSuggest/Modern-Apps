@@ -21,6 +21,7 @@ data class UnifiedApp(
     val versionCode: Long = 0L,
     val sizeBytes: Long = 0L,
     val apkUrl: String? = null,
+    val targetSdk: Int? = null,
     val screenshotUrls: List<String> = emptyList(),
     val rating: Float? = null,
     val license: String? = null,
