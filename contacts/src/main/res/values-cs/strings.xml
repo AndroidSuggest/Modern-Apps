@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="ok">OK</string>
-    <string name="delete">Odstranit</string>
+    <string name="delete">Smazat</string>
     <string name="settings">Nastavení</string>
     <string name="app_name">Kontakty</string>
     <string name="contact_not_found">Kontakt nenalezen</string>
@@ -47,26 +47,26 @@
     <string name="contacts_calendar_name">Kontakty</string>
     <string name="anniversary">Výročí</string>
     <string name="backup_and_export">Záloha a Export</string>
-    <string name="delete_selected_contacts_title">Odstranit vybrané kontakty</string>
+    <string name="delete_selected_contacts_title">Smazat vybrané kontakty</string>
     <string name="search_contacts">Hledat kontakty</string>
     <string name="cancel">Zrušit</string>
-    <string name="name_nickname_format">%1$s (%2$s)</string>
-    <string name="about_name">O %1$s</string>
-    <string name="account_display_format">%1$s (%2$s)</string>
+    <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g> (<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>)</string>
+    <string name="about_name">O <xliff:g id="first_name" example="John">%1$s</xliff:g></string>
+    <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
     <string name="contact_photo">Fotografie kontaktu</string>
     <string name="change_picture">Změnit</string>
     <string name="add_contacts_account">Přidat účet kontaktů</string>
     <string name="delete_contact_confirm">Opravdu chcete tento kontakt smazat? Tuto akci nelze vrátit.</string>
-    <string name="delete_contact_name_confirm">Opravdu chcete smazat \"%1$s\"? Tuto akci nelze vrátit.</string>
+    <string name="delete_contact_name_confirm">Opravdu chcete smazat \"<xliff:g id="contact_name" example="Jan Novotný">%1$s</xliff:g>\"? Tuto akci nelze vrátit.</string>
     <string name="grant_contacts_permission">Udělte prosím oprávnění ke kontaktům</string>
     <string name="grant_calendar_permissions">Udělit oprávnění ke kalendáři</string>
-    <string name="selected_count">%1$d vybráno</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> vybráno</string>
     <string name="display">Zobrazit</string>
     <string name="include_year">Zahrnout rok</string>
-    <string name="contact_photo_description">%1$s fotka</string>
+    <string name="contact_photo_description"><xliff:g id="contact_name" example="John Doe">%1$s</xliff:g> fotka</string>
     <string name="on_device">V zařízení</string>
     <string name="done">Hotovo</string>
-    <string name="delete_selected_contacts_confirm">Opravdu chcete smazat %1$d vybraných kontaktů? Tuto akci nelze vrátit zpět..</string>
+    <string name="delete_selected_contacts_confirm">Opravdu chcete smazat <xliff:g id="count" example="5">%1$d</xliff:g> vybraných kontaktů? This action cannot be undone.</string>
     <string name="show_account_labels">Zobrazit účty kontaktů</string>
     <string name="system_default">Výchozí nastavení systému</string>
     <string name="signal">Signal</string>
@@ -82,5 +82,16 @@
     <string name="delete_group_title">Smazat skupinu</string>
     <string name="delete_group_confirm">Opravdu chcete smazat tuto skupinu? Kontakty nebudou smazány.</string>
     <string name="no_groups_found">Nebyly nalezeny žádné skupiny. Vytvořte ji na kartě skupiny.</string>
-    <string name="contacts_count">%1$d kontaktů</string>
+    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktů</string>
+    <string name="import_vcf_file">Import .vcf souboru</string>
+    <string name="import_to_existing_account">Importovat do existujícího účtu</string>
+    <string name="create_new_account_option">Vytvořit nový účet</string>
+    <string name="no_contacts_found">Nenalezeny žádné kontaky</string>
+    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktů je připraveno k importování</string>
+    <string name="select_account">Vybrerte účet</string>
+    <string name="no_name">(Beze jména)</string>
+    <string name="add_number_to_contact">Přidat číslo ke kontaktu</string>
+    <string name="create_new_contact">Vytvořit nový kontakt</string>
+    <string name="crop_photo">Oříznout fotku</string>
+    <string name="import_contacts_from_vcf_files">Importovat kontakty z .vcf souborů</string>
 </resources>
