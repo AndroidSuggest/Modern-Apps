@@ -9,7 +9,7 @@ import com.vayunmathur.speech.util.PiperModel
 /**
  * Answers the framework's `CHECK_TTS_DATA` probe: the system TTS settings run this before
  * letting the user pick our engine, to learn which voices are installed. We report en-US as
- * available when the bundled Piper voice is present, otherwise as unavailable.
+ * available when the Piper voice has been extracted (extraction happens right after download).
  */
 class CheckVoiceDataActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,7 +17,7 @@ class CheckVoiceDataActivity : Activity() {
 
         val available = ArrayList<String>()
         val unavailable = ArrayList<String>()
-        if (PiperModel.isReady(this)) available.add(VOICE) else unavailable.add(VOICE)
+        if (PiperModel.isExtracted(this)) available.add(VOICE) else unavailable.add(VOICE)
 
         val data = Intent().apply {
             putStringArrayListExtra(TextToSpeech.Engine.EXTRA_AVAILABLE_VOICES, available)

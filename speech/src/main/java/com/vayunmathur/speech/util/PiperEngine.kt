@@ -14,6 +14,11 @@ import java.io.File
  * phonemization needs real file paths); this loads it once and reuses it across syntheses.
  * Not thread-safe; drive it from one worker thread (the TTS framework calls
  * [com.vayunmathur.speech.service.PiperTtsService.onSynthesizeText] serially).
+ *
+ * IMPORTANT: sherpa 1.13.4's generateWithCallback JNI expects a Function1<FloatArray, Int>
+ * as a *sam* interface, but R8/minify + Kotlin synthetic lambdas cause
+ * NoSuchMethodError for ExternalSyntheticLambda (see tombstone_00). We use the blocking
+ * generate() API and chunk the PCM ourselves to avoid the callback JNI path.
  */
 class PiperEngine(private val context: Context) {
 
@@ -27,19 +32,25 @@ class PiperEngine(private val context: Context) {
     fun sampleRate(): Int = tts?.sampleRate() ?: 0
 
     /**
-     * Stream synthesis of [text]. [onChunk] receives PCM float samples ([-1, 1]) as they
-     * are produced and returns false to abort (e.g. the caller was stopped). Returns true
-     * if synthesis ran, false if the engine couldn't load.
+     * Synthesize [text] into PCM float chunks. [onChunk] receives each chunk and returns
+     * false to abort. Uses blocking generate() to avoid the crashy callback JNI.
      */
     @Synchronized
     fun synthesize(text: String, speed: Float, onChunk: (FloatArray) -> Boolean): Boolean {
         if (!ensure()) return false
         val engine = tts ?: return false
         return try {
-            // sherpa returns 1 to keep going, 0 to stop; it also returns the full audio,
-            // which we ignore since we've already streamed it out chunk by chunk.
-            engine.generateWithCallback(text, /* sid = */ 0, speed) { samples ->
-                if (onChunk(samples)) 1 else 0
+            // Blocking synthesis — returns full audio. We then stream it out in 4k-sample
+            // chunks so the caller's audioAvailable loop still gets progressive output.
+            val audio = engine.generate(text, /* sid = */ 0, speed)
+            val samples = audio.samples ?: return false
+            if (samples.isEmpty()) return true
+            var offset = 0
+            while (offset < samples.size) {
+                val end = minOf(offset + 4096, samples.size)
+                val chunk = samples.copyOfRange(offset, end)
+                if (!onChunk(chunk)) return false
+                offset = end
             }
             true
         } catch (t: Throwable) {
@@ -61,9 +72,11 @@ class PiperEngine(private val context: Context) {
     private fun ensure(): Boolean {
         tts?.let { return true }
         if (loadFailed) return false
-        // Extract the downloaded voice on first use. Don't latch loadFailed if it simply
-        // isn't downloaded yet — a later call can succeed once the model arrives.
-        if (!PiperModel.installIfNeeded(context)) return false
+        // Voice should already be extracted right after download (MainActivity does it).
+        // Don't try to extract here on the TTS binder/SynthThread — that would ANR the
+        // system TTS service. If not extracted yet, just return false so the caller can
+        // prompt the user to finish download in the app.
+        if (!PiperModel.isExtracted(context)) return false
         return try {
             val dir = PiperModel.voiceDir(context)
             val onnx = PiperModel.onnxFile(context)

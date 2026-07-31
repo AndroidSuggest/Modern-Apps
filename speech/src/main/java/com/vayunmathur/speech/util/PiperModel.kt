@@ -52,8 +52,8 @@ object PiperModel {
             File(dir, ESPEAK_DATA).isDirectory
     }
 
-    /** True if TTS can run now or after extracting an already-downloaded archive. */
-    fun isReady(context: Context): Boolean = isExtracted(context) || archive(context).exists()
+    /** True if TTS can run now (extracted). Extraction happens immediately after download. */
+    fun isReady(context: Context): Boolean = isExtracted(context)
 
     /** Download the voice archive if missing; suspends until complete. */
     suspend fun download(context: Context, ds: DataStoreUtils) = downloadModels(context, ds, FILES)

@@ -1,11 +1,15 @@
 package com.vayunmathur.speech.service
 
 import android.media.AudioFormat
+import android.os.Build
 import android.speech.tts.SynthesisCallback
 import android.speech.tts.SynthesisRequest
 import android.speech.tts.TextToSpeech
 import android.speech.tts.TextToSpeechService
+import android.speech.tts.Voice
 import com.vayunmathur.speech.util.PiperEngine
+import com.vayunmathur.speech.util.PiperModel
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -38,17 +42,45 @@ class PiperTtsService : TextToSpeechService() {
 
     // --- Language support: English (en-US) only. ---
 
-    override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
-        when {
-            !lang.equals("eng", ignoreCase = true) -> TextToSpeech.LANG_NOT_SUPPORTED
-            country.equals("USA", ignoreCase = true) -> TextToSpeech.LANG_COUNTRY_AVAILABLE
+    override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
+        // Guard against nulls — old implementations crashed calling equals() on null country.
+        val l = lang?.lowercase() ?: return TextToSpeech.LANG_NOT_SUPPORTED
+        if (l != "eng" && l != "en") return TextToSpeech.LANG_NOT_SUPPORTED
+        // If voice isn't installed yet, still report as available so the framework doesn't
+        // hide us; CheckVoiceDataActivity will report FAIL and the Settings will show
+        // the download prompt. Once extracted we report country-level availability.
+        val c = country?.lowercase()
+        return when {
+            c == null || c.isEmpty() || c == "usa" || c == "us" -> TextToSpeech.LANG_COUNTRY_AVAILABLE
             else -> TextToSpeech.LANG_AVAILABLE
         }
+    }
 
     override fun onLoadLanguage(lang: String?, country: String?, variant: String?): Int =
         onIsLanguageAvailable(lang, country, variant)
 
     override fun onGetLanguage(): Array<String> = arrayOf("eng", "USA", "")
+
+    // Provide a Voice list so modern Settings (API 21+) shows a voice and enables the Play
+    // button. Without this, some OEM / AOSP builds disable Play when getVoices() is empty.
+    // Do NOT extract here — that would ANR the TTS binder thread. Extraction happens
+    // right after download in MainActivity (PiperModel.download + installIfNeeded on IO).
+    override fun onGetVoices(): MutableList<Voice> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return super.onGetVoices()
+        val ctx = applicationContext
+        if (!PiperModel.isExtracted(ctx)) return mutableListOf()
+        val locale = Locale("en", "US")
+        // Name must be stable, quality high, local (no network) so Settings enables preview.
+        val voice = Voice(
+            "en-us-x-ma-speech-local",
+            locale,
+            Voice.QUALITY_HIGH,
+            Voice.LATENCY_NORMAL,
+            false,
+            emptySet()
+        )
+        return mutableListOf(voice)
+    }
 
     override fun onStop() {
         stopped = true
