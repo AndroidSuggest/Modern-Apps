@@ -28,13 +28,27 @@
     <string name="channel_completed_timers_name">Dokončené časovače</string>
     <string name="channel_alarms_description">Notifikace pro nastavené budíky</string>
     <string name="lap_number_format"># %1$d</string>
-    <string name="duration_ms_format">%1$d.%2$02d</string>
-    <string name="duration_m_s_ms_format">%1$d:%2$02d.%3$02d</string>
-    <string name="stopwatch_time_format">%1$d:%2$02d</string>
+    <string name="duration_ms_format">&lt;xliff:g id=\"seconds\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;.&lt;xliff:g id=\"centiseconds\" example=\"34\"&gt;%2$02d&lt;/xliff:g&gt;</string>
+    <string name="duration_m_s_ms_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"23\"&gt;%2$02d&lt;/xliff:g&gt;.&lt;xliff:g id=\"centiseconds\" example=\"45\"&gt;%3$02d&lt;/xliff:g&gt;</string>
+    <string name="stopwatch_time_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"05\"&gt;%2$02d&lt;/xliff:g&gt;</string>
     <string name="timer_finished_title">Časovač dokončen</string>
     <string name="grant_notifications_permission">Udělit oprávnění k oznámením</string>
     <string name="channel_completed_timers_description">Upozornění po dokončení časovačů</string>
-    <string name="timer_finished_text">%1$s skončil!</string>
+    <string name="timer_finished_text">&lt;xliff:g id=\"timer_name\" example=\"Čaj\"&gt;%1$s&lt;/xliff:g&gt; skončil!</string>
     <string name="analog_clock_widget_label">Analogové hodiny</string>
     <string name="analog_clock_widget_description">Material You aanalogové hodiny - klepnutím otevřete hodiny</string>
+    <string name="channel_stopwatch_name">Stopky</string>
+    <string name="channel_stopwatch_description">Ovládání stopek</string>
+    <string name="action_pause">Pozastavit</string>
+    <string name="action_resume">Pokračovat</string>
+    <string name="action_cancel">Zrušit</string>
+    <string name="action_reset">Obnovit</string>
+    <string name="action_lap">Kolo</string>
+    <string name="action_stop">Zastavit</string>
+    <string name="alarm_settings">Nastavení budíku</string>
+    <string name="defaults_for_new_alarms">Výchotí pro nové budíky</string>
+    <string name="gradual_off">Vypnuto</string>
+    <string name="ringtone_default">Výchozí</string>
+    <string name="ringtone_silent">Tichý</string>
+    <string name="ringtone_custom">Vlastní</string>
 </resources>
