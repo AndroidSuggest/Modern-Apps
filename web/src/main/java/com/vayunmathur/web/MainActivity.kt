@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
                 sitePermissionDao = db.sitePermissionDao(),
                 storageInfoDao = db.storageInfoDao(),
                 downloadDao = db.downloadDao(),
+                installedSiteDao = db.installedSiteDao(),
                 context = applicationContext
             )
             withContext(Dispatchers.Main) {
@@ -113,6 +114,7 @@ sealed interface Route : NavKey {
     @Serializable data object Settings : Route
     @Serializable data object Downloads : Route
     @Serializable data object SiteData : Route
+    @Serializable data object InstalledSites : Route
 }
 
 @Composable
@@ -143,5 +145,6 @@ fun Navigation(viewModel: WebViewModel) {
         entry<Route.Settings> { SettingsPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.Downloads> { DownloadsPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.SiteData> { SiteDataPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.InstalledSites> { com.vayunmathur.web.ui.InstalledSitesPage(viewModel = viewModel, backStack = backStack) }
     }
 }

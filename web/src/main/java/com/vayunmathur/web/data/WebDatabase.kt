@@ -6,6 +6,9 @@ import androidx.room.Delete
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.vayunmathur.library.util.DatabaseMigrations
 import kotlinx.coroutines.flow.Flow
 
 // Bumped to new file name to avoid old migration crash — fresh install uses this DB.
@@ -125,6 +128,27 @@ interface DownloadDao {
     suspend fun clearAll()
 }
 
+@Dao
+interface InstalledSiteDao {
+    @Query("SELECT * FROM InstalledSite ORDER BY installedAt DESC")
+    fun allFlow(): Flow<List<InstalledSite>>
+
+    @Query("SELECT * FROM InstalledSite WHERE id = :id LIMIT 1")
+    suspend fun byId(id: String): InstalledSite?
+
+    @Query("SELECT * FROM InstalledSite WHERE origin = :origin LIMIT 1")
+    suspend fun byOrigin(origin: String): InstalledSite?
+
+    @Upsert
+    suspend fun upsert(site: InstalledSite)
+
+    @Query("DELETE FROM InstalledSite WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM InstalledSite")
+    suspend fun clearAll()
+}
+
 @Database(
     entities = [
         HistoryEntry::class,
@@ -132,9 +156,10 @@ interface DownloadDao {
         BookmarkFolder::class,
         SitePermission::class,
         StorageInfo::class,
-        DownloadEntry::class
+        DownloadEntry::class,
+        InstalledSite::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class WebDatabase : RoomDatabase() {
@@ -143,4 +168,31 @@ abstract class WebDatabase : RoomDatabase() {
     abstract fun sitePermissionDao(): SitePermissionDao
     abstract fun storageInfoDao(): StorageInfoDao
     abstract fun downloadDao(): DownloadDao
+    abstract fun installedSiteDao(): InstalledSiteDao
+
+    companion object : DatabaseMigrations {
+        override val migrations = listOf(MIGRATION_1_2)
+    }
+}
+
+private val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `InstalledSite` (
+                `id` TEXT NOT NULL,
+                `url` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `shortName` TEXT NOT NULL,
+                `iconUrl` TEXT,
+                `faviconUrl` TEXT,
+                `themeColor` TEXT,
+                `backgroundColor` TEXT,
+                `displayMode` TEXT NOT NULL,
+                `startUrl` TEXT NOT NULL,
+                `origin` TEXT NOT NULL,
+                `installedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )"""
+        )
+    }
 }

@@ -29,8 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.util.NavBackStack
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel

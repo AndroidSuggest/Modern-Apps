@@ -72,8 +72,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconEdit
 import com.vayunmathur.library.ui.IconShare

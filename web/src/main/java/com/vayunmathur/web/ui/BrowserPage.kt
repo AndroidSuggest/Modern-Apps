@@ -37,32 +37,39 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.SearchBar
 import com.vayunmathur.library.ui.SearchBarInputField
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.ui.TopAppBarDefaults
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconArrowForward
 import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconRefresh
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.util.BrowserUtils
+import com.vayunmathur.web.util.PwaHelper
+import com.vayunmathur.web.util.PwaInfo
 import com.vayunmathur.web.util.WebViewModel
 import com.vayunmathur.web.util.isNewTab
 
@@ -98,6 +105,7 @@ fun BrowserPage(
     }
 
     var showMenu by remember { mutableStateOf(false) }
+    var showInstallDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = viewModel.showTabSwitcher) { viewModel.showTabSwitcher = false }
     BackHandler(enabled = !viewModel.showTabSwitcher && viewModel.omniboxFocused) {
@@ -108,7 +116,6 @@ fun BrowserPage(
         activeTab?.let { tab -> webViewPool[tab.id]?.goBack() }
     }
 
-    // Hoist search filtering outside LazyListScope
     val currentDraft = viewModel.searchDraft
     val filteredBookmarks = remember(currentDraft, bookmarks) {
         if (currentDraft.isBlank()) bookmarks.take(5)
@@ -349,6 +356,19 @@ fun BrowserPage(
                                 Spacer(Modifier.width(4.dp))
                                 IconButton(onClick = { showMenu = true }) { IconMoreVert() }
                                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                    if (activeTab != null && !isNewTabActive) {
+                                        val pwa = viewModel.getPwaInfo(activeTab.id)
+                                        val pinSupported = PwaHelper.isPinSupported(context)
+                                        val label = if (pwa?.hasManifest == true) "Install app" else "Add to Home screen"
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                showMenu = false
+                                                showInstallDialog = true
+                                            },
+                                            enabled = activeTab.url.isNotBlank() && activeTab.url.startsWith("http") && pinSupported
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text(if (isCurrentBookmarked) "Remove bookmark" else "Add bookmark") },
                                         onClick = {
@@ -378,6 +398,7 @@ fun BrowserPage(
                                     DropdownMenuItem(text = { Text("History") }, onClick = { showMenu = false; backStack.add(Route.History) })
                                     DropdownMenuItem(text = { Text("Bookmarks") }, onClick = { showMenu = false; backStack.add(Route.Bookmarks) })
                                     DropdownMenuItem(text = { Text("Downloads") }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
+                                    DropdownMenuItem(text = { Text("Installed apps") }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
                                     DropdownMenuItem(text = { Text("Site data") }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
                                     DropdownMenuItem(text = { Text("Settings") }, onClick = { showMenu = false; backStack.add(Route.Settings) })
                                 }
@@ -468,6 +489,72 @@ fun BrowserPage(
                             singleDocLauncher.launch(arrayOf(mt))
                         }
                     } catch (_: Exception) { viewModel.clearFileChooser() }
+                }
+            )
+        }
+
+        if (showInstallDialog) {
+            val tabId = activeTab?.id
+            val url = activeTab?.url ?: ""
+            val pwa = tabId?.let { viewModel.getPwaInfo(it) }
+            val fallbackTitle = tabId?.let { viewModel.getTabTitle(it).ifBlank { activeTab?.title ?: "" } } ?: ""
+            val defaultTitle = PwaHelper.displayTitle(pwa, fallbackTitle, url)
+            var draftTitle by remember(url, defaultTitle) { mutableStateOf(defaultTitle) }
+
+            AlertDialog(
+                onDismissRequest = { showInstallDialog = false },
+                title = { Text(if (pwa?.hasManifest == true) "Install app?" else "Add to Home screen?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            if (pwa?.hasManifest == true)
+                                "This site has a web manifest — install as standalone app."
+                            else
+                                "Create pinned shortcut that opens in standalone mode (PwaActivity). Works for any site via best icon (apple-touch-icon, 192x192).",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(BrowserUtils.prettyUrl(url), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (pwa?.iconUrl != null) {
+                                    Text("icon: ${pwa.iconUrl.take(64)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (pwa?.themeColor != null) {
+                                    Text("theme: ${pwa.themeColor}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = draftTitle,
+                            onValueChange = { draftTitle = it },
+                            label = { Text("App name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val finalTitle = draftTitle.ifBlank { defaultTitle }
+                            showInstallDialog = false
+                            if (tabId != null && url.startsWith("http")) {
+                                viewModel.installAsPwa(
+                                    tabId = tabId,
+                                    url = url,
+                                    pwaInfo = pwa?.copy(name = finalTitle) ?: PwaInfo(
+                                        name = finalTitle,
+                                        origin = BrowserUtils.originFromUrl(url),
+                                        startUrl = url
+                                    )
+                                )
+                            }
+                        },
+                        enabled = draftTitle.isNotBlank() || defaultTitle.isNotBlank()
+                    ) { Text("Add") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showInstallDialog = false }) { Text("Cancel") }
                 }
             )
         }
@@ -575,8 +662,8 @@ private fun TabSwitcher(
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
                 title = { Text("${tabs.size} tabs") },
-                navigationIcon = { IconButton(onClick = onDismiss) { IconClose() } },
-                actions = { IconButton(onClick = onNewTab) { IconAdd() } }
+                navigationIcon = { com.vayunmathur.library.ui.IconButton(onClick = onDismiss) { IconClose() } },
+                actions = { com.vayunmathur.library.ui.IconButton(onClick = onNewTab) { IconAdd() } }
             )
             LazyColumn(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(tabs, key = { it.id }) { tab ->
@@ -602,7 +689,7 @@ private fun TabSwitcher(
                                     Text(displayUrl, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                            IconButton(onClick = { onClose(tab.id) }) { IconClose() }
+                            com.vayunmathur.library.ui.IconButton(onClick = { onClose(tab.id) }) { IconClose() }
                         }
                     }
                 }

@@ -389,6 +389,36 @@ fun WordGameScreen(
                     rootOffset = it.localToRoot(Offset.Zero)
                 }
         ) {
+            // Puzzle board fills entire area so it can be dragged under the letter wheel.
+            // It is drawn first (behind), so the wheel and buttons appear on top.
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CrosswordBoard(
+                    foundWords = foundWords,
+                    revealedHints = revealedHints,
+                    crosswordData = crosswordData,
+                    wordToAnimate = wordToAnimate?.word,
+                    onCellPositioned = { position, offset ->
+                        if (crosswordCellPositions[position] != offset) {
+                            crosswordCellPositions =
+                                crosswordCellPositions + (position to offset)
+                        }
+                    },
+                    onCellClicked = { row, col ->
+                        val word = crosswordData.getWordAt(row, col, foundWords)
+                        if (word != null && word in foundWords) {
+                            val definition = viewModel.getDefinition(word)
+                            if (definition.isNotEmpty()) {
+                                wordWithDefinition = Pair(word, definition)
+                            }
+                        }
+                    }, {
+                        scale = it
+                    }
+                )
+            }
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -399,34 +429,7 @@ fun WordGameScreen(
                         remainingTimeMs = remainingTime
                     )
                 }
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CrosswordBoard(
-                        foundWords = foundWords,
-                        revealedHints = revealedHints,
-                        crosswordData = crosswordData,
-                        wordToAnimate = wordToAnimate?.word,
-                        onCellPositioned = { position, offset ->
-                            if (crosswordCellPositions[position] != offset) {
-                                crosswordCellPositions =
-                                    crosswordCellPositions + (position to offset)
-                            }
-                        },
-                        onCellClicked = { row, col ->
-                            val word = crosswordData.getWordAt(row, col, foundWords)
-                            if (word != null && word in foundWords) {
-                                val definition = viewModel.getDefinition(word)
-                                if (definition.isNotEmpty()) {
-                                    wordWithDefinition = Pair(word, definition)
-                                }
-                            }
-                        }, {
-                            scale = it
-                        }
-                    )
-                }
+                Spacer(modifier = Modifier.weight(1f))
                 Box(
                     modifier = Modifier.height(320.dp),
                     contentAlignment = Alignment.Center

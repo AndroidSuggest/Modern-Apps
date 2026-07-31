@@ -443,7 +443,7 @@ private fun Avatar(name: String?, photoUrl: String?, isGroup: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         when {
-            photoUrl != null -> coil.compose.AsyncImage(
+            photoUrl != null -> com.vayunmathur.library.image.compose.AsyncImage(
                 model = photoUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),

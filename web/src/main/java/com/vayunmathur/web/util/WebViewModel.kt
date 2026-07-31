@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -16,6 +17,8 @@ import com.vayunmathur.web.data.DownloadDao
 import com.vayunmathur.web.data.DownloadEntry
 import com.vayunmathur.web.data.HistoryDao
 import com.vayunmathur.web.data.HistoryEntry
+import com.vayunmathur.web.data.InstalledSite
+import com.vayunmathur.web.data.InstalledSiteDao
 import com.vayunmathur.web.data.SitePermission
 import com.vayunmathur.web.data.SitePermissionDao
 import com.vayunmathur.web.data.StorageInfo
@@ -52,6 +55,7 @@ class WebViewModel(
     private val sitePermissionDao: SitePermissionDao,
     private val storageInfoDao: StorageInfoDao,
     private val downloadDao: DownloadDao,
+    private val installedSiteDao: InstalledSiteDao,
     private val context: Context,
 ) : ViewModel() {
 
@@ -91,6 +95,9 @@ class WebViewModel(
     private val _downloads = MutableStateFlow<List<DownloadEntry>>(emptyList())
     val downloads: StateFlow<List<DownloadEntry>> = _downloads
 
+    private val _installedSites = MutableStateFlow<List<InstalledSite>>(emptyList())
+    val installedSites: StateFlow<List<InstalledSite>> = _installedSites
+
     var pendingPermissionPrompt by mutableStateOf<PermissionPrompt?>(null)
         private set
 
@@ -107,6 +114,9 @@ class WebViewModel(
     private val tabCanGoBack = mutableMapOf<String, Boolean>()
     private val tabCanGoForward = mutableMapOf<String, Boolean>()
     private val tabCurrentUrl = mutableMapOf<String, String>()
+
+    // PWA / installed site detection per tab
+    val pwaInfos = mutableStateMapOf<String, PwaInfo>()
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -179,6 +189,7 @@ class WebViewModel(
         viewModelScope.launch { sitePermissionDao.allFlow().collect { _sitePermissions.value = it } }
         viewModelScope.launch { storageInfoDao.allFlow().collect { _storageInfos.value = it } }
         viewModelScope.launch { downloadDao.allFlow().collect { _downloads.value = it } }
+        viewModelScope.launch { installedSiteDao.allFlow().collect { _installedSites.value = it } }
     }
 
     val activeTab: BrowserTab? get() = tabs.find { it.id == activeTabId }
@@ -210,6 +221,12 @@ class WebViewModel(
         persistTabs()
     }
 
+    fun getTabTitle(tabId: String): String = tabTitles[tabId] ?: tabs.find { it.id == tabId }?.title ?: ""
+
+    fun onPwaInfoDetected(tabId: String, info: PwaInfo) {
+        pwaInfos[tabId] = info
+    }
+
     fun onTabProgress(tabId: String, progress: Float) { tabProgress[tabId] = progress }
     fun onTabCanGoBack(tabId: String, value: Boolean) { tabCanGoBack[tabId] = value }
     fun onTabCanGoForward(tabId: String, value: Boolean) { tabCanGoForward[tabId] = value }
@@ -218,6 +235,7 @@ class WebViewModel(
     fun getCanGoBack(tabId: String) = tabCanGoBack[tabId] ?: false
     fun getCanGoForward(tabId: String) = tabCanGoForward[tabId] ?: false
     fun getCurrentUrl(tabId: String) = tabCurrentUrl[tabId] ?: tabs.find { it.id == tabId }?.url ?: ""
+    fun getPwaInfo(tabId: String) = pwaInfos[tabId]
 
     private fun updateTab(tabId: String, transform: (BrowserTab) -> BrowserTab) {
         val idx = tabs.indexOfFirst { it.id == tabId }
@@ -245,6 +263,7 @@ class WebViewModel(
         tabCanGoBack.remove(tabId)
         tabCanGoForward.remove(tabId)
         tabCurrentUrl.remove(tabId)
+        pwaInfos.remove(tabId)
         if (activeTabId == tabId) {
             activeTabId = when {
                 tabs.isEmpty() -> {
@@ -335,6 +354,51 @@ class WebViewModel(
     fun updateAdBlock(enabled: Boolean) {
         adBlockEnabled = enabled
         persistPrefs()
+    }
+
+    // ---- PWA / Installed sites ----
+    fun installAsPwa(
+        tabId: String,
+        url: String,
+        pwaInfo: PwaInfo?,
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val origin = BrowserUtils.originFromUrl(url)
+                val id = PwaHelper.shortcutId(url)
+                val title = PwaHelper.displayTitle(pwaInfo, tabs.find { it.id == tabId }?.title ?: "", url)
+                val entry = InstalledSite(
+                    id = id,
+                    url = url,
+                    title = title,
+                    shortName = pwaInfo?.shortName ?: "",
+                    iconUrl = pwaInfo?.iconUrl,
+                    faviconUrl = pwaInfo?.faviconUrl,
+                    themeColor = pwaInfo?.themeColor,
+                    backgroundColor = pwaInfo?.backgroundColor,
+                    displayMode = pwaInfo?.displayMode ?: "standalone",
+                    startUrl = pwaInfo?.startUrl ?: url,
+                    origin = origin,
+                )
+                installedSiteDao.upsert(entry)
+                val accepted = PwaHelper.requestPinShortcut(
+                    context = context,
+                    url = url,
+                    title = title,
+                    iconUrl = entry.iconUrl,
+                    faviconUrl = entry.faviconUrl,
+                )
+                onResult(accepted)
+            } catch (e: Exception) {
+                Log.e(TAG, "installAsPwa failed", e)
+                onResult(false)
+            }
+        }
+    }
+
+    fun removeInstalledSite(id: String) {
+        viewModelScope.launch { installedSiteDao.deleteById(id) }
     }
 
     // ---- Site permissions ----
@@ -583,12 +647,13 @@ class WebViewModelFactory(
     private val sitePermissionDao: SitePermissionDao,
     private val storageInfoDao: StorageInfoDao,
     private val downloadDao: DownloadDao,
+    private val installedSiteDao: InstalledSiteDao,
     private val context: Context,
 ) : androidx.lifecycle.ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WebViewModel::class.java)) {
-            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, context) as T
+            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, installedSiteDao, context) as T
         }
         throw IllegalArgumentException("Unknown ViewModel $modelClass")
     }

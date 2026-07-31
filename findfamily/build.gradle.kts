@@ -26,7 +26,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(project(":library:work"))
 
-    implementation(libs.coil.compose)
+    implementation(project(":library:image"))
 
     // Compose-native raster map (replaces maplibre; keeps spatialk coordinate types).
     implementation(project(":library:map"))

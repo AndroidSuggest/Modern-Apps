@@ -11,13 +11,19 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vayunmathur.library.room.buildDatabase
+import com.vayunmathur.library.util.DatabaseMigrations
 
 /**
  * Room database for WhatsApp-specific data.
  * Stores device info, session keys, conversations, media requests, and avatar cache.
  * Aligned with Go wadb.Database which has: Conversation, Message, PollOption,
  * MediaRequest, HSNotif, AvatarCache queries.
+ *
+ * v7 (Rust migration): E2E tables now hold Rust's own versioned blobs (RECORD_VERSION=1)
+ * rather than Java SignalRecord. Old Java blobs are incompatible, so migration clears E2E tables.
  */
 @Database(
     entities = [
@@ -28,14 +34,14 @@ import com.vayunmathur.library.room.buildDatabase
         WhatsAppAvatarCache::class,
         WhatsAppPollOption::class,
         WhatsAppPollSecret::class,
-        // libsignal-backed E2E protocol stores
+        // Rust-backed E2E protocol stores (was libsignal-backed)
         WhatsAppE2ESession::class,
         WhatsAppE2EIdentity::class,
         WhatsAppE2EPreKey::class,
         WhatsAppE2ESignedPreKey::class,
         WhatsAppE2ESenderKey::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(WhatsAppTypeConverters::class)
@@ -53,13 +59,28 @@ abstract class WhatsAppDatabase : RoomDatabase() {
     abstract fun e2eSignedPreKeyDao(): WhatsAppE2ESignedPreKeyDao
     abstract fun e2eSenderKeyDao(): WhatsAppE2ESenderKeyDao
 
-    companion object {
+    companion object : DatabaseMigrations {
         @Volatile
         private var INSTANCE: WhatsAppDatabase? = null
+
+        override val migrations: List<Migration> = listOf(
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    // Rust record format is incompatible with Java blobs; clear E2E tables.
+                    // User will need to re-link WhatsApp after update.
+                    db.execSQL("DELETE FROM whatsapp_e2e_sessions")
+                    db.execSQL("DELETE FROM whatsapp_e2e_identities")
+                    db.execSQL("DELETE FROM whatsapp_e2e_pre_keys")
+                    db.execSQL("DELETE FROM whatsapp_e2e_signed_pre_keys")
+                    db.execSQL("DELETE FROM whatsapp_e2e_sender_keys")
+                }
+            }
+        )
 
         fun getDatabase(context: Context): WhatsAppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = context.applicationContext.buildDatabase<WhatsAppDatabase>(
+                    migrations = migrations,
                     dbName = "whatsapp_database"
                 )
                 INSTANCE = instance

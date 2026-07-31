@@ -4,185 +4,230 @@ import android.util.Log
 import com.vayunmathur.messages.whatsapp.WhatsAppAuthData
 import com.vayunmathur.messages.whatsapp.WhatsAppDatabase
 import com.vayunmathur.messages.whatsapp.WhatsAppE2EPreKey
+import com.vayunmathur.messages.whatsapp.WhatsAppE2ESenderKey
+import com.vayunmathur.messages.whatsapp.WhatsAppE2ESession
 import com.vayunmathur.messages.whatsapp.WhatsAppProtocol
 import kotlinx.coroutines.runBlocking
-import org.whispersystems.libsignal.IdentityKey
-import org.whispersystems.libsignal.SessionBuilder
-import org.whispersystems.libsignal.SessionCipher
-import org.whispersystems.libsignal.SignalProtocolAddress
-import org.whispersystems.libsignal.ecc.Curve
-import org.whispersystems.libsignal.ecc.ECPublicKey
-import org.whispersystems.libsignal.groups.GroupCipher
-import org.whispersystems.libsignal.groups.GroupSessionBuilder
-import org.whispersystems.libsignal.groups.SenderKeyName
-import org.whispersystems.libsignal.protocol.CiphertextMessage
-import org.whispersystems.libsignal.protocol.PreKeySignalMessage
-import org.whispersystems.libsignal.protocol.SenderKeyDistributionMessage
-import org.whispersystems.libsignal.protocol.SignalMessage
-import org.whispersystems.libsignal.state.PreKeyBundle
-import org.whispersystems.libsignal.state.PreKeyRecord
-import org.whispersystems.libsignal.state.SignedPreKeyRecord
 import java.util.Base64
 
 /**
- * Classic (whispersystems) libsignal E2E crypto for WhatsApp, backed by [WhatsAppDatabase].
- * WhatsApp companion sessions use Signal protocol v3 (X3DH); org.signal:libsignal-android 0.86
- * dropped X3DH, so the WhatsApp bridge uses the pure-Java org.whispersystems library here.
+ * Rust-backed E2E crypto for WhatsApp (X3DH + Double Ratchet + Sender Keys).
+ * Kotlin owns persistence (Room) and passes opaque session/sender-key blobs to Rust.
  *
- * The own identity key pair is reconstructed from the raw 32-byte Curve25519 keys in
- * [WhatsAppAuthData]; one-time and signed prekeys are seeded into the stores so inbound pkmsg
- * decryption can resolve them.
+ * Record format is Rust's own versioned encoding (RECORD_VERSION=1), not Java's
+ * SignalRecord. Migration 6->7 clears the E2E tables, forcing a re-link.
  */
 class WhatsAppE2E(
     private val db: WhatsAppDatabase,
     private val auth: WhatsAppAuthData,
 ) {
-    private val sessionStore = WhatsAppSessionStore(db)
-    private val identityStore = WhatsAppIdentityKeyStore(
-        db,
-        b64(auth.identityPublicKey),
-        b64(auth.identityPrivateKey),
-        auth.registrationId,
-    )
-    private val preKeyStore = WhatsAppPreKeyStore(db)
-    private val senderKeyStore = WhatsAppSenderKeyStore(db)
 
-    /** Raw 32-byte Curve25519 identity public key (for the prekey-upload identity node). */
+    /** Raw 32-byte identity public key for upload. */
     val ownIdentityPublicKey: ByteArray = b64(auth.identityPublicKey)
 
-    private val ownAddress: SignalProtocolAddress = signalAddress(auth.wid, auth.deviceId)
+    private val ownIdentityPrivate: ByteArray = b64(auth.identityPrivateKey)
+    private val ownSignedPreKeyPrivate: ByteArray = b64(auth.signedPreKeyPrivate)
+    private val ownSignedPreKeyPublic: ByteArray = b64(auth.signedPreKeyPublic)
 
-    // -- Address mapping (whatsmeow JID.SignalAddress: name = user part, deviceId = device) --
-    // whispersystems libsignal accepts device id 0, so no remapping is needed.
+    private val ownUser: String = auth.wid.substringBefore("@").substringBefore(":").substringBefore(".")
+    private val ownDeviceId: Int = auth.deviceId
 
-    fun signalAddress(jid: String): SignalProtocolAddress {
+    // -----------------------------------------------------------------------
+    // JID parsing — matches whatsmeow JID.SignalAddress: name=user, deviceId=device
+    // -----------------------------------------------------------------------
+
+    private fun parseJid(jid: String): Pair<String, Int> {
         val local = jid.substringBefore("@")
         val user = local.substringBefore(":").substringBefore(".")
         val device = local.substringAfter(":", "0").toIntOrNull() ?: 0
-        return SignalProtocolAddress(user, device)
+        return user to device
     }
 
-    private fun signalAddress(jid: String, device: Int): SignalProtocolAddress {
-        val user = jid.substringBefore("@").substringBefore(":").substringBefore(".")
-        return SignalProtocolAddress(user, device)
+    fun signalAddress(jid: String): Pair<String, Int> = parseJid(jid)
+
+    fun hasSession(jid: String): Boolean {
+        val (name, dev) = parseJid(jid)
+        return runBlocking { db.e2eSessionDao().exists(name, dev) }
     }
 
-    fun hasSession(jid: String): Boolean = sessionStore.containsSession(signalAddress(jid))
+    fun deleteSession(jid: String) {
+        val (name, dev) = parseJid(jid)
+        runBlocking { db.e2eSessionDao().delete(name, dev) }
+    }
 
-    /**
-     * Delete the Signal session for a device so it can be rebuilt from fresh keys. Used when a
-     * peer asks us to retry a message it couldn't decrypt (the old session is desynced).
-     */
-    fun deleteSession(jid: String) = sessionStore.deleteSession(signalAddress(jid))
-
-    // -- 1:1 (Signal session) encryption / decryption --
+    // -- 1:1 encrypt / decrypt ------------------------------------------------
 
     data class EncResult(val type: String, val data: ByteArray)
 
-    private fun sessionCipher(address: SignalProtocolAddress) =
-        SessionCipher(sessionStore, preKeyStore, preKeyStore, identityStore, address)
-
-    /** Encrypt a padded plaintext for a peer device. Returns enc type ("msg"|"pkmsg") + bytes. */
     fun encryptDM(jid: String, paddedPlaintext: ByteArray): EncResult {
-        val cipher = sessionCipher(signalAddress(jid))
-        val msg: CiphertextMessage = cipher.encrypt(paddedPlaintext)
-        val type = when (msg.type) {
-            CiphertextMessage.PREKEY_TYPE -> "pkmsg"
-            else -> "msg"
+        val (name, dev) = parseJid(jid)
+        val entity = runBlocking { db.e2eSessionDao().get(name, dev) }
+            ?: throw RuntimeException("No session for $jid")
+        val result = RustWhatsAppCrypto.encryptSplit(entity.record, paddedPlaintext)
+        runBlocking {
+            db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, result.newSession))
         }
-        return EncResult(type, msg.serialize())
+        return EncResult(if (result.isPreKey) "pkmsg" else "msg", result.body)
     }
 
-    /** Decrypt an inbound 1:1 ciphertext. [isPreKey] true for enc type "pkmsg". */
     fun decryptDM(jid: String, isPreKey: Boolean, ciphertext: ByteArray): ByteArray {
-        val cipher = sessionCipher(signalAddress(jid))
+        val (name, dev) = parseJid(jid)
         return if (isPreKey) {
-            cipher.decrypt(PreKeySignalMessage(ciphertext))
+            // Inbound pkmsg: X3DH bob side + first message.
+            val preKeyId = parsePreKeyIdFromMessage(ciphertext)
+            val oneTimePriv: ByteArray? = if (preKeyId != null) {
+                val entity = runBlocking { db.e2ePreKeyDao().get(preKeyId) }
+                entity?.let { rec ->
+                    // record = private(32) || public(32)
+                    if (rec.record.size >= 32) rec.record.copyOfRange(0, 32) else null
+                }
+            } else null
+
+            val decrypted = RustWhatsAppCrypto.decryptPreKeySplit(
+                localIdentityPrivate = ownIdentityPrivate,
+                localIdentityPublic = ownIdentityPublicKey,
+                signedPreKeyPrivate = ownSignedPreKeyPrivate,
+                oneTimePrivate = oneTimePriv,
+                preKeyMessageBytes = ciphertext,
+            )
+            runBlocking {
+                db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, decrypted.newSession))
+                if (preKeyId != null) {
+                    try { db.e2ePreKeyDao().delete(preKeyId) } catch (_: Exception) {}
+                }
+            }
+            decrypted.plaintext
         } else {
-            cipher.decrypt(SignalMessage(ciphertext))
+            val entity = runBlocking { db.e2eSessionDao().get(name, dev) }
+                ?: throw RuntimeException("No session for $jid (msg)")
+            val decrypted = RustWhatsAppCrypto.decryptMessageSplit(entity.record, ciphertext)
+            runBlocking {
+                db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, decrypted.newSession))
+            }
+            decrypted.plaintext
         }
     }
 
-    /** Establish an outbound session from a fetched peer prekey bundle. */
-    fun processPreKeyBundle(jid: String, bundle: PreKeyBundle) {
-        val address = signalAddress(jid)
-        val builder = SessionBuilder(sessionStore, preKeyStore, preKeyStore, identityStore, address)
-        builder.process(bundle)
+    // -- Parsed bundle --------------------------------------------------------
+
+    data class ParsedPreKeyBundle(
+        val registrationId: Int,
+        val preKeyId: Int?, // null if absent
+        val preKeyPublic: ByteArray?, // 32 bytes or null
+        val signedPreKeyId: Int,
+        val signedPreKeyPublic: ByteArray, // 32
+        val signedPreKeySignature: ByteArray, // 64
+        val identityKey: ByteArray, // 32
+    )
+
+    fun processPreKeyBundle(jid: String, bundle: ParsedPreKeyBundle) {
+        val (name, dev) = parseJid(jid)
+        val sessionBytes = RustWhatsAppCrypto.processPreKeyBundle(
+            localIdentityPrivate = ownIdentityPrivate,
+            localIdentityPublic = ownIdentityPublicKey,
+            localRegistrationId = auth.registrationId,
+            registrationId = bundle.registrationId,
+            preKeyId = bundle.preKeyId ?: -1,
+            preKeyPublic = bundle.preKeyPublic,
+            signedPreKeyId = bundle.signedPreKeyId,
+            signedPreKeyPublic = bundle.signedPreKeyPublic,
+            signedPreKeySignature = bundle.signedPreKeySignature,
+            identityKey = bundle.identityKey,
+        ) ?: throw RuntimeException("Rust processPreKeyBundle returned null")
+        runBlocking {
+            db.e2eSessionDao().insert(WhatsAppE2ESession(name, dev, sessionBytes))
+        }
     }
 
-    // -- Group (sender key) --
-    // whispersystems keys sender keys by SenderKeyName(groupId, senderAddress), matching
-    // WhatsApp's group addressing (group JID + participant).
+    // -- Group (sender key) ---------------------------------------------------
 
-    private fun senderKeyName(groupJid: String, sender: SignalProtocolAddress) =
-        SenderKeyName(groupJid, sender)
-
-    /** Create our SenderKeyDistributionMessage for a group (to be wrapped in an SKDM E2E msg). */
-    fun createSenderKeyDistribution(groupJid: String): SenderKeyDistributionMessage {
-        val builder = GroupSessionBuilder(senderKeyStore)
-        return builder.create(senderKeyName(groupJid, ownAddress))
+    fun createSenderKeyDistribution(groupJid: String): ByteArray {
+        // Always mint a new sender key (matches GroupSessionBuilder.create overwriting).
+        val created = RustWhatsAppCrypto.createSenderKeySplit()
+        runBlocking {
+            db.e2eSenderKeyDao().insert(
+                WhatsAppE2ESenderKey(ownUser, ownDeviceId, groupJid, created.state)
+            )
+        }
+        return created.skdm
     }
 
-    /** Process an inbound SenderKeyDistributionMessage from a group participant. */
     fun processSenderKeyDistribution(groupJid: String, senderJid: String, skdmBytes: ByteArray) {
-        val builder = GroupSessionBuilder(senderKeyStore)
-        builder.process(senderKeyName(groupJid, signalAddress(senderJid)), SenderKeyDistributionMessage(skdmBytes))
+        val (sName, sDev) = parseJid(senderJid)
+        val stateBytes = RustWhatsAppCrypto.processSenderKey(skdmBytes)
+            ?: throw RuntimeException("processSenderKey returned null")
+        runBlocking {
+            db.e2eSenderKeyDao().insert(
+                WhatsAppE2ESenderKey(sName, sDev, groupJid, stateBytes)
+            )
+        }
     }
 
-    /** Encrypt a padded plaintext as a group skmsg using our own sender key. */
     fun encryptGroup(groupJid: String, paddedPlaintext: ByteArray): ByteArray {
-        val cipher = GroupCipher(senderKeyStore, senderKeyName(groupJid, ownAddress))
-        return cipher.encrypt(paddedPlaintext)
+        var stateEntity = runBlocking { db.e2eSenderKeyDao().get(ownUser, ownDeviceId, groupJid) }
+        if (stateEntity == null) {
+            // No sender key yet — create one (first group message).
+            val created = RustWhatsAppCrypto.createSenderKeySplit()
+            runBlocking {
+                db.e2eSenderKeyDao().insert(
+                    WhatsAppE2ESenderKey(ownUser, ownDeviceId, groupJid, created.state)
+                )
+            }
+            stateEntity = runBlocking { db.e2eSenderKeyDao().get(ownUser, ownDeviceId, groupJid) }
+                ?: throw RuntimeException("Failed to create sender key")
+        }
+        val encrypted = RustWhatsAppCrypto.encryptGroupSplit(stateEntity.record, paddedPlaintext)
+        runBlocking {
+            db.e2eSenderKeyDao().insert(
+                WhatsAppE2ESenderKey(ownUser, ownDeviceId, groupJid, encrypted.newState)
+            )
+        }
+        return encrypted.data
     }
 
-    /** Decrypt an inbound group skmsg from a participant. */
     fun decryptGroup(groupJid: String, senderJid: String, ciphertext: ByteArray): ByteArray {
-        val cipher = GroupCipher(senderKeyStore, senderKeyName(groupJid, signalAddress(senderJid)))
-        return cipher.decrypt(ciphertext)
+        val (sName, sDev) = parseJid(senderJid)
+        val entity = runBlocking { db.e2eSenderKeyDao().get(sName, sDev, groupJid) }
+            ?: throw RuntimeException("No sender key for $senderJid in $groupJid")
+        val decrypted = RustWhatsAppCrypto.decryptGroupSplit(entity.record, ciphertext)
+        runBlocking {
+            db.e2eSenderKeyDao().insert(
+                WhatsAppE2ESenderKey(sName, sDev, groupJid, decrypted.newState)
+            )
+        }
+        return decrypted.data
     }
 
-    // -- Prekey store seeding + upload --
+    // -- Prekey seeding & upload ---------------------------------------------
 
     /**
-     * Seed our own signed prekey (from auth) into the signed-prekey store so inbound pkmsg
-     * decryption can resolve it. Idempotent.
+     * Previously seeded the signed prekey into the Java store for inbound pkmsg.
+     * With Rust we use the raw keys from auth directly, so this is now a no-op
+     * kept for call-site compatibility.
      */
     fun ensureSignedPreKeyStored() {
-        if (preKeyStore.containsSignedPreKey(auth.signedPreKeyId)) return
-        val keyPair = org.whispersystems.libsignal.ecc.ECKeyPair(
-            Curve.decodePoint(byteArrayOf(0x05) + b64(auth.signedPreKeyPublic), 0),
-            Curve.decodePrivatePoint(b64(auth.signedPreKeyPrivate)),
-        )
-        val record = SignedPreKeyRecord(
-            auth.signedPreKeyId,
-            System.currentTimeMillis(),
-            keyPair,
-            b64(auth.signedPreKeySignature),
-        )
-        preKeyStore.storeSignedPreKey(auth.signedPreKeyId, record)
+        // no-op
     }
 
-    /** Generate [count] one-time prekeys, persist them (unuploaded), and return their records. */
-    fun generatePreKeys(count: Int): List<PreKeyRecord> {
+    private data class LocalPreKey(val id: Int, val publicKey: ByteArray)
+
+    private fun generatePreKeys(count: Int): List<LocalPreKey> {
         val maxId = runBlocking { db.e2ePreKeyDao().getMaxId() }
-        val records = ArrayList<PreKeyRecord>(count)
         val entities = ArrayList<WhatsAppE2EPreKey>(count)
+        val locals = ArrayList<LocalPreKey>(count)
         for (i in 1..count) {
             val id = maxId + i
-            val record = PreKeyRecord(id, Curve.generateKeyPair())
-            records.add(record)
-            entities.add(WhatsAppE2EPreKey(id, record.serialize(), uploaded = false))
+            val kp = RustWhatsAppCrypto.generateKeyPairSplit()
+            // Store as private||public (64 bytes) — private needed for inbound pkmsg.
+            val record = kp.privateKey + kp.publicKey
+            entities.add(WhatsAppE2EPreKey(id, record, uploaded = false))
+            locals.add(LocalPreKey(id, kp.publicKey))
         }
         runBlocking { db.e2ePreKeyDao().insertAll(entities) }
-        return records
+        return locals
     }
 
-    /**
-     * Build the <iq xmlns="encrypt" type="set"> content nodes uploading identity,
-     * registration, one-time prekeys and the signed prekey. Ref whatsmeow prekeys.go.
-     */
     fun buildPreKeyUploadContent(initialUpload: Boolean): List<WhatsAppProtocol.Node> {
-        ensureSignedPreKeyStored()
         val wanted = if (initialUpload) 812 else 50
         val records = generatePreKeys(wanted)
 
@@ -194,7 +239,7 @@ class WhatsAppE2E(
 
         val listNode = WhatsAppProtocol.Node(
             tag = "list",
-            content = records.map { preKeyToNode(it.id, it.keyPair.publicKey.raw32(), null) },
+            content = records.map { preKeyToNode(it.id, it.publicKey, null) },
         )
         val signedNode = preKeyToNode(
             auth.signedPreKeyId,
@@ -204,30 +249,24 @@ class WhatsAppE2E(
 
         return listOf(
             WhatsAppProtocol.Node(tag = "registration", data = regBytes),
-            WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(0x05)), // ecc.DjbType
+            WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(0x05)),
             WhatsAppProtocol.Node(tag = "identity", data = ownIdentityPublicKey),
             listNode,
             signedNode,
         )
     }
 
-    /** Mark prekeys up to the highest uploaded id as uploaded. */
     fun markPreKeysUploaded() {
         val maxId = runBlocking { db.e2ePreKeyDao().getMaxId() }
         runBlocking { db.e2ePreKeyDao().markUploadedUpTo(maxId) }
     }
 
-    /**
-     * Build the <keys> node included in a retry receipt (identity, one fresh one-time prekey, the
-     * signed prekey and the account device-identity). Ref whatsmeow retry.go sendRetryReceipt.
-     */
     fun buildRetryReceiptKeysNode(accountDeviceIdentity: ByteArray?): WhatsAppProtocol.Node {
-        ensureSignedPreKeyStored()
         val oneTime = generatePreKeys(1).first()
         val children = mutableListOf(
             WhatsAppProtocol.Node(tag = "type", data = byteArrayOf(0x05)),
             WhatsAppProtocol.Node(tag = "identity", data = ownIdentityPublicKey),
-            preKeyToNode(oneTime.id, oneTime.keyPair.publicKey.raw32(), null),
+            preKeyToNode(oneTime.id, oneTime.publicKey, null),
             preKeyToNode(auth.signedPreKeyId, b64(auth.signedPreKeyPublic), b64(auth.signedPreKeySignature)),
         )
         if (accountDeviceIdentity != null) {
@@ -237,7 +276,6 @@ class WhatsAppE2E(
     }
 
     private fun preKeyToNode(id: Int, pub32: ByteArray, signature: ByteArray?): WhatsAppProtocol.Node {
-        // key id is sent as 3 big-endian bytes (whatsmeow keyID[1:])
         val idBytes = byteArrayOf(
             (id ushr 16).toByte(),
             (id ushr 8).toByte(),
@@ -255,11 +293,7 @@ class WhatsAppE2E(
         }
     }
 
-    /**
-     * Parse a peer's <user> node from a prekey-fetch response into a [PreKeyBundle].
-     * Ref whatsmeow prekeys.go nodeToPreKeyBundle. Returns null on malformed/error nodes.
-     */
-    fun parsePreKeyBundleNode(deviceId: Int, userNode: WhatsAppProtocol.Node): PreKeyBundle? {
+    fun parsePreKeyBundleNode(deviceId: Int, userNode: WhatsAppProtocol.Node): ParsedPreKeyBundle? {
         return try {
             if (userNode.getChildByTag("error") != null) {
                 Log.w(TAG, "prekey response error for device $deviceId")
@@ -276,26 +310,31 @@ class WhatsAppE2E(
 
             val identityRaw = keysNode.getChildByTag("identity")?.data ?: return null
             if (identityRaw.size != 32) return null
-            val identityKey = IdentityKey(Curve.decodePoint(byteArrayOf(0x05) + identityRaw, 0))
 
-            var preKeyId = 0
-            var preKeyPublic: ECPublicKey? = null
+            var preKeyId: Int? = null
+            var preKeyPublic: ByteArray? = null
             keysNode.getChildByTag("key")?.let { keyNode ->
                 preKeyId = readKeyId(keyNode) ?: return null
                 val pub = keyNode.getChildByTag("value")?.data ?: return null
-                preKeyPublic = Curve.decodePoint(byteArrayOf(0x05) + pub, 0)
+                if (pub.size != 32) return null
+                preKeyPublic = pub
             }
 
             val skey = keysNode.getChildByTag("skey") ?: return null
             val signedPreKeyId = readKeyId(skey) ?: return null
             val signedPub = skey.getChildByTag("value")?.data ?: return null
+            if (signedPub.size != 32) return null
             val signedSig = skey.getChildByTag("signature")?.data ?: return null
+            if (signedSig.size != 64) return null
 
-            PreKeyBundle(
-                registrationId, deviceId,
-                preKeyId, preKeyPublic,
-                signedPreKeyId, Curve.decodePoint(byteArrayOf(0x05) + signedPub, 0), signedSig,
-                identityKey,
+            ParsedPreKeyBundle(
+                registrationId = registrationId,
+                preKeyId = preKeyId,
+                preKeyPublic = preKeyPublic,
+                signedPreKeyId = signedPreKeyId,
+                signedPreKeyPublic = signedPub,
+                signedPreKeySignature = signedSig,
+                identityKey = identityRaw,
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse prekey bundle", e)
@@ -316,18 +355,76 @@ class WhatsAppE2E(
 
         private fun b64(s: String): ByteArray = Base64.getDecoder().decode(s)
 
-        /** Raw 32-byte Curve25519 public key (whispersystems serialize() prepends a 0x05 type byte). */
-        private fun ECPublicKey.raw32(): ByteArray = serialize().copyOfRange(1, 33)
+        /**
+         * Parse the optional preKeyId from a PreKeySignalMessage (version || protobuf).
+         * Minimal protobuf scan for field 1 varint.
+         */
+        fun parsePreKeyIdFromMessage(data: ByteArray): Int? {
+            if (data.isEmpty()) return null
+            // Skip version byte (high nibble version)
+            var pos = 1
+            while (pos < data.size) {
+                val key = data[pos].toInt() and 0xFF
+                // Need varint key? In our wire format, field keys are small varints (<128) so single byte.
+                // But to be safe, read varint.
+                var fieldNum = 0
+                var shift = 0
+                var idx = pos
+                var b: Int
+                var keyVal = 0L
+                do {
+                    if (idx >= data.size) return null
+                    b = data[idx].toInt() and 0xFF
+                    keyVal = keyVal or ((b and 0x7F).toLong() shl shift)
+                    shift += 7
+                    idx++
+                } while (b and 0x80 != 0)
+                fieldNum = (keyVal shr 3).toInt()
+                val wireType = (keyVal and 7).toInt()
+                pos = idx
+                if (wireType == 0) {
+                    // varint
+                    var v = 0L
+                    shift = 0
+                    while (pos < data.size) {
+                        b = data[pos].toInt() and 0xFF
+                        v = v or ((b and 0x7F).toLong() shl shift)
+                        pos++
+                        if (b and 0x80 == 0) break
+                        shift += 7
+                    }
+                    if (fieldNum == 1) return v.toInt()
+                } else if (wireType == 2) {
+                    // length-delimited
+                    var len = 0L
+                    shift = 0
+                    while (pos < data.size) {
+                        b = data[pos].toInt() and 0xFF
+                        len = len or ((b and 0x7F).toLong() shl shift)
+                        pos++
+                        if (b and 0x80 == 0) break
+                        shift += 7
+                    }
+                    if (pos + len > data.size) return null
+                    pos += len.toInt()
+                } else {
+                    // Skip other wire types (not expected for preKeyId)
+                    break
+                }
+            }
+            return null
+        }
 
         /**
-         * Curve25519 signature over 0x05||signedPreKeyPub using the raw 32-byte identity
-         * private key. Ref whatsmeow KeyPair.Sign. Used to populate signedPreKeySignature.
+         * XEdDSA signature over 0x05||signedPreKeyPub using raw 32-byte identity private.
+         * Uses Rust for constant-time signing.
          */
         fun signSignedPreKey(identityPrivate32: ByteArray, signedPreKeyPublic32: ByteArray): ByteArray {
             val message = ByteArray(33)
             message[0] = 0x05
             System.arraycopy(signedPreKeyPublic32, 0, message, 1, 32)
-            return Curve.calculateSignature(Curve.decodePrivatePoint(identityPrivate32), message)
+            return RustWhatsAppCrypto.sign(identityPrivate32, message)
+                ?: throw RuntimeException("Rust sign returned null")
         }
     }
 }

@@ -806,7 +806,7 @@ fun CameraScreen(
                             } else {
                                 Intent(Intent.ACTION_VIEW, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
                             }
-                            context.startActivity(Intent.createChooser(intent, null))
+                            context.startActivity(intent)
                         }.onFailure { Log.w("CameraScreen", "Could not open image viewer", it) }
                     },
                     iconRotation = animatedRotation,

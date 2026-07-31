@@ -78,7 +78,7 @@ import com.vayunmathur.notes.util.NoteImageStore
 import com.vayunmathur.notes.util.NotesViewModel
 import com.vayunmathur.notes.util.exportNoteMarkdown
 import com.vayunmathur.notes.util.markdownCacheUri
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

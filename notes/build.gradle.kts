@@ -18,5 +18,5 @@ dependencies {
     implementRoom(libs)
     implementation(project(":library:room"))
     implementation(project(":library:ink"))
-    implementation(libs.coil.compose)
+    implementation(project(":library:image"))
 }

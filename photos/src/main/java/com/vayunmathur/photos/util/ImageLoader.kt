@@ -23,26 +23,20 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.decode.VideoFrameDecoder
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
-import coil.request.ImageRequest
-import coil.request.videoFrameMillis
+import com.vayunmathur.library.image.ImageLoader as LibImageLoader
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.DiskCache
+import com.vayunmathur.library.image.MemoryCache
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.photos.data.Photo
-import com.vayunmathur.photos.R
 
 object ImageLoader {
-    private lateinit var imageLoader: ImageLoader
+    private lateinit var imageLoader: LibImageLoader
 
     fun init(context: Context) {
-        imageLoader = ImageLoader.Builder(context)
-            .components {
-                add(VideoFrameDecoder.Factory())
-            }
+        imageLoader = LibImageLoader.Builder(context)
             .memoryCache {
                 MemoryCache.Builder(context)
                     .maxSizePercent(0.25) // Use 25% of available RAM

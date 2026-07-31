@@ -3,17 +3,19 @@ import android.provider.ContactsContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
-import okio.Buffer
-import okio.BufferedSink
-import okio.Sink
-import okio.Source
-import okio.buffer
 import com.vayunmathur.contacts.data.*
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.io.OutputStream
+import java.io.OutputStreamWriter
 
 object VcfUtils {
-    suspend fun exportContacts(contacts: List<Contact>, outputStream: Sink) {
+    suspend fun exportContacts(contacts: List<Contact>, outputStream: OutputStream) {
         withContext(Dispatchers.IO) {
-            outputStream.buffer().use { writer ->
+            BufferedWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
                 for (contact in contacts) {
                     val details = contact.details
                     writeFolded(writer, "BEGIN:VCARD")
@@ -59,7 +61,6 @@ object VcfUtils {
 
                     // Addresses
                     for (addr in details.addresses) {
-                        // Format into ADR components: PO Box;Extended;Street;City;Region;PostalCode;Country
                         val formatted = addr.formattedAddress
                         writeFolded(writer, "ADR;TYPE=HOME:;;${escapeV(formatted)};;;;")
                     }
@@ -93,16 +94,13 @@ object VcfUtils {
         }
     }
 
-    // New: parse vCard stream into a list of Contact objects without saving them to the Contacts provider.
-    fun parseContacts(inputStream: Source): List<Contact> {
+    fun parseContacts(inputStream: InputStream): List<Contact> {
         val contactsToSave = mutableListOf<Contact>()
-        // Read and unfold folded lines (lines starting with space or tab continue previous)
-        // Use okio BufferedSource readUtf8Line loop – library/util readLines now for InputStream only
-        val rawLines = inputStream.buffer().let { buf ->
+        val rawLines = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { br ->
             buildList {
-                while (true) {
-                    val l = buf.readUtf8Line() ?: break
-                    add(l)
+                var line: String?
+                while (br.readLine().also { line = it } != null) {
+                    add(line!!)
                 }
             }
         }
@@ -174,7 +172,6 @@ object VcfUtils {
 
             when (propName) {
                 "N" -> {
-                    // family;given;additional;prefix;suffix
                     val comps = value.split(';')
                     val family = comps.getOrNull(0) ?: ""
                     val given = comps.getOrNull(1) ?: ""
@@ -200,7 +197,6 @@ object VcfUtils {
                     currentContact.emails.add(Email(0, value, etype))
                 }
                 "ADR" -> {
-                    // ADR components: POBox;Extended;Street;City;Region;PostalCode;Country
                     val comps = value.split(';')
                     val street = comps.getOrNull(2) ?: ""
                     val city = comps.getOrNull(3) ?: ""
@@ -226,23 +222,18 @@ object VcfUtils {
                         val date = LocalDate.parse(dv)
                         currentContact.dates.add(Event(0, date, ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY))
                     } catch (_: Exception) {
-                        // ignore invalid date
                     }
                 }
                 "NOTE" -> {
                     currentContact.notes.add(Note(0, value))
                 }
                 "PHOTO" -> {
-                    // Keep base64 string as-is
                     currentContact.photos.add(Photo(0, value))
                 }
                 "URL" -> {
-                    // No dedicated website field - append URL to notes
                     currentContact.notes.add(Note(0, value))
                 }
-                else -> {
-                    // ignore unknown properties
-                }
+                else -> {}
             }
         }
 
@@ -271,7 +262,6 @@ object VcfUtils {
             if (p.isEmpty()) continue
             val eq = p.indexOf('=')
             if (eq == -1) {
-                // bare token, treat as TYPE
                 val k = "TYPE"
                 val vals = p.split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 out.getOrPut(k) { mutableListOf() }.addAll(vals)
@@ -285,11 +275,11 @@ object VcfUtils {
         return out
     }
 
-    private fun writeFolded(writer: BufferedSink, line: String) {
+    private fun writeFolded(writer: BufferedWriter, line: String) {
         val maxLineLength = 75
         if (line.length <= maxLineLength) {
-            writer.writeUtf8(line)
-            writer.writeUtf8("\r\n")
+            writer.write(line)
+            writer.write("\r\n")
             return
         }
         var idx = 0
@@ -297,41 +287,38 @@ object VcfUtils {
             val end = kotlin.math.min(idx + maxLineLength, line.length)
             val part = line.substring(idx, end)
             if (idx == 0) {
-                writer.writeUtf8(part)
-                writer.writeUtf8("\r\n")
+                writer.write(part)
+                writer.write("\r\n")
             } else {
-                writer.writeUtf8(" $part")
-                writer.writeUtf8("\r\n")
+                writer.write(" $part")
+                writer.write("\r\n")
             }
             idx = end
         }
     }
 
     private fun decodeQuotedPrintable(input: String, charsetName: String): String {
-        val out = Buffer()
+        val out = ByteArrayOutputStream()
         var i = 0
         while (i < input.length) {
             val c = input[i]
             if (c == '=') {
-                // soft line break? '=' at end or followed by CRLF is handled earlier since we read unfolded lines
                 if (i + 2 < input.length) {
                     val hex = input.substring(i + 1, i + 3)
                     val byteVal = hex.toIntOrNull(16)
                     if (byteVal != null) {
-                        out.writeByte(byteVal)
+                        out.write(byteVal)
                         i += 3
                         continue
                     }
                 }
-                // If malformed, skip '='
                 i++
             } else {
-                // write literal byte using US-ASCII
-                out.writeByte(c.code)
+                out.write(c.code)
                 i++
             }
         }
-        return out.readString(charset(charsetName))
+        return out.toString(charset(charsetName))
     }
 
     private fun detectPhoneType(params: Map<String, List<String>>): Int {

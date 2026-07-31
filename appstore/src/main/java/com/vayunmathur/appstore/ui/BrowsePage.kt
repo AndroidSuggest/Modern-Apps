@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.library.ui.Card

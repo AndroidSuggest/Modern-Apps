@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.vayunmathur.web.util.BrowserUtils
+import com.vayunmathur.web.util.PwaHelper
 import com.vayunmathur.web.util.SitePermissionType
 import com.vayunmathur.web.util.WebViewModel
 
@@ -208,6 +209,18 @@ fun WebViewBrowser(
                                     view.evalJsForStorageInfo(origin, cookieCount, viewModel)
                                 } catch (e: Exception) {
                                     Log.w(TAG, "storage snapshot failed", e)
+                                }
+                                // PWA / Add-to-Home detection: probe for manifest + best icon + theme-color
+                                try {
+                                    view.evaluateJavascript(PwaHelper.MANIFEST_PROBE_JS) { json ->
+                                        val info = PwaHelper.parseProbeJson(json)
+                                        if (info != null && info.origin.isNotBlank()) {
+                                            viewModel.onPwaInfoDetected(tabId, info)
+                                        }
+                                        // no need to keep raw json
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "pwa probe failed", e)
                                 }
                             }
                         }

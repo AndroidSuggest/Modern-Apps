@@ -10,7 +10,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import org.whispersystems.libsignal.ecc.Curve
+import com.vayunmathur.messages.whatsapp.e2e.RustWhatsAppCrypto
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 
 /**
@@ -185,19 +185,16 @@ object WhatsAppProtocol {
 
     // -- Cryptography helpers --
 
-    // X25519 via libsignal (Rust, constant-time; already shipped as libsignal_jni.so).
-    // WhatsApp uses raw 32-byte keys; libsignal public keys carry a 0x05 DJB type prefix.
+    // X25519 via Rust (constant-time x25519-dalek through libwhatsapp_signal.so).
+    // Falls back to throwing if Rust lib unavailable — pairing/connect requires keys.
     fun x25519(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
-        val priv = Curve.decodePrivatePoint(privateKey)
-        val pub = Curve.decodePoint(byteArrayOf(0x05) + publicKey, 0)
-        return Curve.calculateAgreement(pub, priv)
+        return RustWhatsAppCrypto.x25519Agreement(privateKey, publicKey)
+            ?: throw RuntimeException("RustWhatsAppCrypto.x25519Agreement returned null")
     }
 
     fun generateX25519KeyPair(): Pair<ByteArray, ByteArray> {
-        val kp = Curve.generateKeyPair()
-        val privateKey = kp.privateKey.serialize()               // 32-byte scalar
-        val publicKey = kp.publicKey.serialize().copyOfRange(1, 33) // strip 0x05 prefix -> raw 32
-        return Pair(privateKey, publicKey)
+        val kp = RustWhatsAppCrypto.generateKeyPairSplit()
+        return Pair(kp.privateKey, kp.publicKey)
     }
 
     /** HKDF-SHA256 (RFC 5869) on the platform Mac. null/empty salt = zero salt. */

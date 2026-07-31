@@ -140,9 +140,15 @@ tasks.matching {
 
 androidComponents {
     onVariants { variant ->
+        // Wire proto gen sources + Rust JNI libs into each variant.
         variant.sources.java?.addStaticSourceDirectory(protoGenDir.get().asFile.absolutePath)
+        val rustDir = layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        variant.sources.jniLibs?.addStaticSourceDirectory(rustDir)
     }
 }
+
+// Classic Signal protocol v3 (X3DH + Double Ratchet + Sender Keys) for WhatsApp — Rust impl.
+rustNativeLib("whatsapp_signal", "whatsapp_signal")
 
 dependencies {
     // Room
@@ -165,7 +171,7 @@ dependencies {
 
     // Coil — loads device-contact photo URIs (content://) into the
     // conversation-row avatars in InboxScreen / ConversationScreen.
-    implementation(libs.coil.compose)
+    implementation(project(":library:image"))
 
     // CameraX — built-in capture fallback when no system camera app
     // handles ACTION_IMAGE_CAPTURE (see ui/CameraCaptureScreen.kt).
@@ -175,17 +181,12 @@ dependencies {
     implementation(libs.androidx.camera.view)
 
     // Signal protocol crypto (Double Ratchet, sealed sender, pre-keys, etc.).
-    // Also provides constant-time X25519 (org.signal.libsignal.protocol.ecc.Curve)
-    // used by the WhatsApp Noise handshake — no Bouncy Castle needed.
+    // Also provides certificate verification (ECPublicKey.verifySignature) for WhatsApp
+    // Noise handshake cert chain.
     implementation(libs.libsignal.android)
-    // Classic pure-Java Signal protocol (X3DH) for the WhatsApp bridge. libsignal-android 0.86
-    // removed X3DH (PQXDH-only), which WhatsApp companion sessions require. This artifact has no
-    // native lib and a different package (org.whispersystems.libsignal.*), so it coexists with
-    // libsignal-android (used by the Signal bridge) without conflict.
-    // Classic Signal protocol (X3DH) for the WhatsApp bridge, with its protobuf 3.10 relocated
-    // into a private package (see :whatsapp-signal) so it does not collide with the app's
-    // protobuf 4.x. libsignal-android 0.86 (Signal bridge) cannot decrypt WhatsApp's X3DH pkmsgs.
-    implementation(project(mapOf("path" to ":whatsapp-signal", "configuration" to "shaded")))
+    // Classic Signal X3DH (org.whispersystems) previously provided by :whatsapp-signal
+    // shaded jar — now replaced by Rust libwhatsapp_signal.so (see rustNativeLib above +
+    // messages/src/main/rust/). X25519 via Rust x25519-dalek (constant-time).
 
     // kotlinx.serialization — session data persistence
     implementation(libs.kotlinx.serialization.json)

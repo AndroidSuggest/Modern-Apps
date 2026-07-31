@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.ImageLoader
+import com.vayunmathur.library.image.ImageLoader
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -69,7 +69,7 @@ fun RasterMap(
     val density = LocalDensity.current.density
     val scope = rememberCoroutineScope()
 
-    val loader = remember(context) { ImageLoader(context) }
+    val loader = remember(context) { ImageLoader.get(context) }
     val cache = remember(tileSource, loader) { TileCache(context, loader, tileSource) }
 
     val minZoom = tileSource.minZoom

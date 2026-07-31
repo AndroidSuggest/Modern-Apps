@@ -30,8 +30,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.NavigationBar

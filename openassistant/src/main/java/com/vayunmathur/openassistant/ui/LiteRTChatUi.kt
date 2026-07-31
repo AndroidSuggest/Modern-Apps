@@ -43,8 +43,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.util.NavBackStack
 import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_EXPANDED_LOWER_BOUND
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconMenu

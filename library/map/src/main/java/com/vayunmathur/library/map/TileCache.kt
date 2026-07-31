@@ -1,14 +1,13 @@
 package com.vayunmathur.library.map
 
 import android.content.Context
-import android.graphics.drawable.BitmapDrawable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import coil.ImageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
-import coil.size.Size
+import com.vayunmathur.library.image.ImageLoader
+import com.vayunmathur.library.image.ImageRequest
+import com.vayunmathur.library.image.ImageResult
+import com.vayunmathur.library.image.Size
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -16,10 +15,8 @@ import kotlinx.coroutines.launch
 internal data class TileKey(val z: Int, val x: Int, val y: Int)
 
 /**
- * Fetches raster tiles through a Coil [ImageLoader] (which handles memory + disk
- * caching) and holds decoded [ImageBitmap]s in a snapshot-state map so tile
- * arrival recomposes the map canvas. In-flight keys are tracked to avoid
- * duplicate requests.
+ * Fetches raster tiles through [ImageLoader] (memory + disk cache via library:image)
+ * and holds decoded [ImageBitmap]s in a snapshot-state map.
  */
 internal class TileCache(
     private val context: Context,
@@ -43,10 +40,7 @@ internal class TileCache(
                     .allowHardware(false)
                     .build()
                 val result = loader.execute(request)
-                (result as? SuccessResult)?.drawable
-                    ?.let { it as? BitmapDrawable }
-                    ?.bitmap
-                    ?.asImageBitmap()
+                (result as? ImageResult.Success)?.bitmap?.asImageBitmap()
             }.getOrNull()
             inFlight -= key
             if (bitmap != null) tiles[key] = bitmap

@@ -54,6 +54,7 @@ fun SettingsPage(
 
     val storageCount by viewModel.storageInfos.collectAsStateWithLifecycle()
     val permCount by viewModel.sitePermissions.collectAsStateWithLifecycle()
+    val installedCount by viewModel.installedSites.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -161,6 +162,14 @@ fun SettingsPage(
                     headlineContent = { Text("Downloads") },
                     supportingContent = { Text("${viewModel.downloads.value.size} files") },
                     modifier = Modifier.clickable { backStack.add(Route.Downloads) }
+                )
+            }
+
+            item {
+                ListItem(
+                    headlineContent = { Text("Installed apps") },
+                    supportingContent = { Text("${installedCount.size} PWAs • Homescreen shortcuts via PwaActivity standalone") },
+                    modifier = Modifier.clickable { backStack.add(Route.InstalledSites) }
                 )
             }
 

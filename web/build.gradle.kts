@@ -20,6 +20,5 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.coil.compose)
-    implementation(libs.coil.svg)
+    implementation(project(":library:image"))
 }

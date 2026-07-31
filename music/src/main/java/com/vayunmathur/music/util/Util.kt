@@ -22,9 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.createBitmap
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.size.Size as CoilSize
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
+import com.vayunmathur.library.image.Size as CoilSize
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.music.Route
 import com.vayunmathur.music.data.Album

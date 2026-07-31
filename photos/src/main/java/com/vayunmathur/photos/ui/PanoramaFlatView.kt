@@ -12,8 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.photos.data.Photo
 
 /**

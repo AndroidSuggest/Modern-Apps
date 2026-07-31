@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ElevatedCard

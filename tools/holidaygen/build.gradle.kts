@@ -2,11 +2,12 @@
 // holiday .ics files and converts them to the calendar app's bundled JSON
 // assets. Run: ./gradlew :tools:holidaygen:run
 plugins {
+    id("common-conventions-jvm")
     application
 }
 
 application {
-    mainClass.set("HolidayGen")
+    mainClass.set("HolidayGenKt")
 }
 
 // Emit assets relative to the repo root.

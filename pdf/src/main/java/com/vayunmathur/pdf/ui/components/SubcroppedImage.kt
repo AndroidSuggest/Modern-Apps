@@ -21,8 +21,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImagePainter
 import com.vayunmathur.pdf.model.CapturedImage
 import com.vayunmathur.pdf.model.Quadrilateral
 import com.vayunmathur.pdf.util.warpQuadToBitmap

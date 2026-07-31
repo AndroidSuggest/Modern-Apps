@@ -19,6 +19,5 @@ dependencies {
     implementation(project(":library:room"))
     implementation(project(":library:network"))
 
-    implementation(libs.coil.compose)
-    implementation(libs.coil.svg)
+    implementation(project(":library:image"))
 }

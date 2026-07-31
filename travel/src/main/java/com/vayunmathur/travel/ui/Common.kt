@@ -252,19 +252,11 @@ fun AirlineLogo(
         IataBadge(iata, size, modifier)
         return
     }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val imageLoader = androidx.compose.runtime.remember(context) {
-        coil.ImageLoader.Builder(context)
-            .components { add(coil.decode.SvgDecoder.Factory()) }
-            .build()
-    }
-    coil.compose.SubcomposeAsyncImage(
-        model = coil.request.ImageRequest.Builder(context).data(logoUrl).build(),
-        imageLoader = imageLoader,
+    // library:image includes SVG decoding (androidsvg) built-in.
+    com.vayunmathur.library.image.compose.AsyncImage(
+        model = logoUrl,
         contentDescription = iata,
         modifier = modifier.size(size),
-        loading = { IataBadge(iata, size) },
-        error = { IataBadge(iata, size) },
     )
 }
 

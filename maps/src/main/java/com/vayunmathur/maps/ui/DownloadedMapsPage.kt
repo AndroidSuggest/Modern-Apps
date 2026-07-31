@@ -39,9 +39,9 @@ import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.ImageLoader
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
+import com.vayunmathur.library.image.ImageLoader
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.R
 import com.vayunmathur.maps.util.MapsZonesViewModel

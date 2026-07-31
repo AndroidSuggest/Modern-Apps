@@ -32,8 +32,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.MAIN_BOTTOM_BAR_ITEMS

@@ -1,16 +1,16 @@
 package com.vayunmathur.photos.util
 
 import android.graphics.Bitmap
-import coil.size.Size
-import coil.transform.Transformation
+import com.vayunmathur.library.image.Size
+import com.vayunmathur.library.image.Transformation
 
 /**
- * Coil transformation that crops a decoded bitmap down to a single face, using a
+ * Transformation that crops a decoded bitmap down to a single face, using a
  * bounding box in normalised (0..1) coordinates. Used to show a person-cluster's
  * representative face as a thumbnail without storing a separate cropped image.
  *
  * A `data class` so two transformations with the same box compare equal — this
- * keeps a remembered [coil.request.ImageRequest] stable across recompositions
+ * keeps a remembered [com.vayunmathur.library.image.ImageRequest] stable across recompositions
  * (no needless re-decode / thumbnail flashing).
  */
 data class FaceCropTransformation(

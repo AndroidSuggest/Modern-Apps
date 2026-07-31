@@ -49,7 +49,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconSave
 import com.vayunmathur.pdf.R

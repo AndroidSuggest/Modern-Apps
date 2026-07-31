@@ -66,7 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.ui.IconAttachment
 import com.vayunmathur.library.ui.IconEdit
 import com.vayunmathur.library.ui.IconNavigation

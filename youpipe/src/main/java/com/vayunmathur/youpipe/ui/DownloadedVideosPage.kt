@@ -39,8 +39,8 @@ import com.vayunmathur.youpipe.MAIN_BOTTOM_BAR_ITEMS
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.DownloadManager
 import com.vayunmathur.youpipe.util.YouPipeViewModel
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource

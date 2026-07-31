@@ -55,7 +55,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack

@@ -27,22 +27,28 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
-import coil.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.util.AppStoreViewModel
+import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CenterAlignedTopAppBar
 import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconBack
+import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.IconGlobe
 import com.vayunmathur.library.ui.IconShoppingCart
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 @Composable
 fun AppDetailPage(
@@ -58,6 +64,9 @@ fun AppDetailPage(
     val progress = progressMap[current.packageName]
     val icons by viewModel.installedIcons.collectAsState()
     val installedIcon = icons[current.packageName]
+    val syncMessage by viewModel.syncMessage.collectAsState()
+
+    var showUninstallConfirm by remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -110,28 +119,53 @@ fun AppDetailPage(
                             Text("Installed ${installedInfo?.versionName ?: ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
+                    if (syncMessage.isNotBlank()) {
+                        Text(syncMessage, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    }
                 }
             }
 
+            if (progress != null) {
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                Text("Downloading ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+            }
+
+            // Action row redesigned per plan: Open + Uninstall for installed, Install/Update for others
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
                     isInstalled && current.versionCode > (installedInfo?.versionCode ?: 0L) -> {
-                        Button(onClick = { viewModel.downloadAndInstall(current) }, modifier = Modifier.weight(1f)) {
+                        Button(onClick = { viewModel.downloadAndInstall(current) }, modifier = Modifier.weight(1f), enabled = progress == null) {
                             IconDownload()
                             Spacer(Modifier.width(6.dp))
-                            Text("Update")
+                            Text(if (progress != null) "Downloading ${(progress * 100).toInt()}%" else "Update")
                         }
+                        FilledTonalButton(onClick = { viewModel.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
+                            Text("Open")
+                        }
+                        OutlinedButton(onClick = { showUninstallConfirm = true }) { IconDelete() }
                     }
                     isInstalled -> {
-                        FilledTonalButton(onClick = { viewModel.openInPlayStore(current.packageName) }, modifier = Modifier.weight(1f)) {
+                        FilledTonalButton(onClick = { viewModel.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
                             Text("Open")
+                        }
+                        OutlinedButton(onClick = { showUninstallConfirm = true }, modifier = Modifier.weight(1f)) {
+                            IconDelete()
+                            Spacer(Modifier.width(6.dp))
+                            Text("Uninstall")
                         }
                     }
                     current.source == AppSource.PLAYSTORE -> {
-                        Button(onClick = { viewModel.openInPlayStore(current.packageName) }, modifier = Modifier.weight(1f)) {
-                            IconShoppingCart()
+                        Button(
+                            onClick = { viewModel.downloadAndInstall(current) },
+                            modifier = Modifier.weight(1f),
+                            enabled = progress == null
+                        ) {
+                            IconDownload()
                             Spacer(Modifier.width(6.dp))
-                            Text("View in Play Store")
+                            Text(if (progress != null) "Downloading ${(progress * 100).toInt()}%" else "Install")
+                        }
+                        OutlinedButton(onClick = { viewModel.openInPlayStore(current.packageName) }) {
+                            IconShoppingCart()
                         }
                     }
                     else -> {
@@ -146,10 +180,27 @@ fun AppDetailPage(
                         }
                     }
                 }
-                if (current.source == AppSource.FDROID || current.website != null) {
+                // Globe button remains for website/source when not already handling installed actions
+                if (!isInstalled && (current.source == AppSource.FDROID || current.website != null)) {
                     OutlinedButton(onClick = {
                         viewModel.openInBrowser(current.website ?: current.sourceCode ?: "")
                     }) { IconGlobe() }
+                }
+            }
+
+            // For Play installed, also show View in Play Store as secondary
+            if (isInstalled && current.source == AppSource.PLAYSTORE) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { viewModel.openInPlayStore(current.packageName) }, modifier = Modifier.weight(1f)) {
+                        IconShoppingCart()
+                        Spacer(Modifier.width(6.dp))
+                        Text("View in Play Store")
+                    }
+                    if (current.website != null || current.sourceCode != null) {
+                        OutlinedButton(onClick = {
+                            viewModel.openInBrowser(current.website ?: current.sourceCode ?: "")
+                        }) { IconGlobe() }
+                    }
                 }
             }
 
@@ -175,6 +226,23 @@ fun AppDetailPage(
                 current.whatsNew?.let { if (it.isNotBlank()) DetailRow("What's New", it) }
             }
         }
+    }
+
+    if (showUninstallConfirm) {
+        AlertDialog(
+            onDismissRequest = { showUninstallConfirm = false },
+            title = { Text("Uninstall ${current.name}?") },
+            text = { Text("This will uninstall ${current.packageName}. You can reinstall later from the store.") },
+            confirmButton = {
+                Button(onClick = {
+                    showUninstallConfirm = false
+                    viewModel.uninstallApp(current.packageName)
+                }) { Text("Uninstall") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUninstallConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

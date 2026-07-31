@@ -83,6 +83,7 @@ okhttp = "4.12.0" # isolated: media3-datasource-okhttp (youpipe player) + Vonage
 
 # Images
 coilCompose = "2.7.0"
+androidsvg = "1.4"
 
 # Maps & geospatial
 maplibre = "0.13.0"
@@ -101,7 +102,7 @@ onnxruntimeAndroid = "1.27.0"
 cryptographyCore = "0.6.0"
 sqlcipherAndroid = "4.17.0"
 libsignalAndroid = "0.86.5"
-signalProtocolJava = "2.8.1"
+# signalProtocolJava removed — WhatsApp X3DH now via Rust libwhatsapp_signal
 
 # Mail & XML
 jakartaMail = "2.0.3"
@@ -109,7 +110,6 @@ kxml2 = "2.3.0"
 
 # Payments, telephony & auth
 stripe = "21.12.0"
-vonageVoice = "2.6.0"
 appauth = "0.11.1"
 
 # Own libraries (vayun-mathur, via JitPack)
@@ -119,9 +119,6 @@ ncnnAndroid = "1.6.1"
 # Testing
 junit = "4.13.2"
 gplayapi = "3.6.4"
-
-# Gradle plugins
-shadow = "9.0.0"
 
 [libraries]
 
@@ -242,6 +239,9 @@ coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose"
 coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coilCompose" }
 coil-video = { module = "io.coil-kt:coil-video", version.ref = "coilCompose" }
 
+# Replaces coil-svg
+androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
+
 # Maps & geospatial
 maplibre-compose = { module = "org.maplibre.compose:maplibre-compose", version.ref = "maplibre" }
 flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
@@ -261,7 +261,6 @@ cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", ver
 cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptographyCore" }
 sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipherAndroid" }
 libsignal-android = { module = "org.signal:libsignal-android", version.ref = "libsignalAndroid" }
-signal-protocol-java = { module = "org.whispersystems:signal-protocol-java", version.ref = "signalProtocolJava" }
 
 # Mail & XML
 jakarta-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "jakartaMail" }
@@ -269,7 +268,6 @@ kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
 
 # Payments, telephony & auth
 stripe-android = { module = "com.stripe:stripe-android", version.ref = "stripe" }
-vonage-client-sdk-voice = { group = "com.vonage", name = "client-sdk-voice", version.ref = "vonageVoice" }
 appauth = { group = "net.openid", name = "appauth", version.ref = "appauth" }
 
 # Own libraries (vayun-mathur, via JitPack)
@@ -295,10 +293,3 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
-
-# =============================================================================
-# THIRD PARTY
-# =============================================================================
-
-# Packaging
-shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

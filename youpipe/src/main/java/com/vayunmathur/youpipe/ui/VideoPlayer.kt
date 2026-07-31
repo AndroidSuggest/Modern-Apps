@@ -79,8 +79,8 @@ import androidx.media3.session.SessionToken
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import androidx.media3.ui.compose.material3.buttons.PlayPauseButton
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.google.common.util.concurrent.MoreExecutors
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.youpipe.R

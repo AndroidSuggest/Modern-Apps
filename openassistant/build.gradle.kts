@@ -38,7 +38,7 @@ dependencies {
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
 
     // display images
-    implementation(libs.coil.compose)
+    implementation(project(":library:image"))
 
     // ai
     implementation(libs.litertlm.android)

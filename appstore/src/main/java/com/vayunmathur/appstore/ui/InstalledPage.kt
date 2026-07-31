@@ -16,16 +16,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.appstore.util.InstalledFilter
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.FilterChip
+import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
 
 @Composable
@@ -38,8 +47,8 @@ fun InstalledPage(
     val srcMap by viewModel.installedSourceMap.collectAsState()
     val filteredInstalled by viewModel.filteredInstalled.collectAsState()
     val filter by viewModel.installedFilter.collectAsState()
+    var confirmPkg by remember { mutableStateOf<String?>(null) }
 
-    // counts for filter chips: Only user apps that are present in either store
     val allCount = srcMap.size
     val fdroidCount = srcMap.values.count { it == AppSource.FDROID }
     val playCount = srcMap.values.count { it == AppSource.PLAYSTORE }
@@ -67,7 +76,6 @@ fun InstalledPage(
         topBar = { TopAppBar(title = { Text("Installed (${filteredInstalled.size})") }) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // Filter chips with counts: All / F-Droid (n) / Play Store (n)
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -112,63 +120,85 @@ fun InstalledPage(
                     }
                 } else {
                     items(apps, key = { it.packageName }) { app ->
-                        AppRow(
-                            app = app,
-                            isInstalled = true,
-                            progress = null,
-                            installedIcon = icons[app.packageName],
-                            onClick = { onAppClick(app) }
-                        )
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                AppRow(
+                                    app = app,
+                                    isInstalled = true,
+                                    progress = null,
+                                    installedIcon = icons[app.packageName],
+                                    onClick = { onAppClick(app) }
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            IconButton(onClick = { confirmPkg = app.packageName }) { IconDelete() }
+                        }
                     }
                 }
             }
         }
     }
+
+    confirmPkg?.let { pkg ->
+        AlertDialog(
+            onDismissRequest = { confirmPkg = null },
+            title = { Text("Uninstall?") },
+            text = { Text("Uninstall $pkg? You can reinstall from the store.") },
+            confirmButton = {
+                Button(onClick = {
+                    confirmPkg = null
+                    viewModel.uninstallApp(pkg)
+                }) { Text("Uninstall") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPkg = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
 fun UpdatesPage(viewModel: AppStoreViewModel, onAppClick: (UnifiedApp) -> Unit) {
-    val installed by viewModel.installedApps.collectAsState()
-    val cached by viewModel.cachedApps.collectAsState()
     val progressMap by viewModel.downloadProgress.collectAsState()
     val icons by viewModel.installedIcons.collectAsState()
-    val srcMap by viewModel.installedSourceMap.collectAsState()
-
-    // Only user apps present in stores, with F-Droid updates (targetSdk already filtered)
-    val updates = cached.mapNotNull { cachedEntity ->
-        val inst = installed.find { it.packageName == cachedEntity.packageName } ?: return@mapNotNull null
-        if (srcMap[inst.packageName] == null) return@mapNotNull null
-        if (cachedEntity.versionCode > inst.versionCode) {
-            UnifiedApp(
-                packageName = cachedEntity.packageName,
-                source = AppSource.FDROID,
-                name = cachedEntity.name,
-                summary = cachedEntity.summary,
-                description = cachedEntity.description,
-                iconUrl = cachedEntity.iconUrl,
-                author = cachedEntity.author,
-                versionName = cachedEntity.versionName,
-                versionCode = cachedEntity.versionCode,
-                sizeBytes = cachedEntity.sizeBytes,
-                apkUrl = cachedEntity.apkUrl,
-                targetSdk = cachedEntity.targetSdk,
-                repoUrl = cachedEntity.repoUrl
-            )
-        } else null
-    }
+    val combinedUpdates by viewModel.combinedUpdates.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
+    val syncMsg by viewModel.syncMessage.collectAsState()
+    val playUpdatesRaw by viewModel.playUpdates.collectAsState()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Updates") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            if (syncMsg.isNotBlank()) {
+                Text(syncMsg, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(12.dp))
+            }
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { viewModel.syncRepos() }, enabled = !isSyncing) {
+                    Text("Sync F-Droid")
+                }
+                Button(onClick = { viewModel.syncPlayUpdates() }) {
+                    Text("Check Play")
+                }
+                if (combinedUpdates.isNotEmpty()) {
+                    Button(onClick = { viewModel.updateAll() }) {
+                        Text("Update All (${combinedUpdates.size})")
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (updates.isEmpty()) {
+                if (combinedUpdates.isEmpty()) {
                     item { Text("All apps up to date", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp)) }
+                    if (playUpdatesRaw.isEmpty()) {
+                        item { Text("Tap Check Play to look for Play Store updates (requires anonymous auth)", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp)) }
+                    }
                 } else {
-                    item { Text("${updates.size} updates", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(4.dp)) }
-                    items(updates, key = { it.packageName }) { app ->
+                    item { Text("${combinedUpdates.size} updates", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(4.dp)) }
+                    items(combinedUpdates, key = { it.packageName }) { app ->
                         AppRow(
                             app = app,
                             isInstalled = true,

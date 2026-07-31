@@ -105,8 +105,7 @@ Summed old per-crate locks (before workspace) = 712 total (641 excluding voxels)
 | `com.github.vayun-mathur:Stockfish-Library` via JitPack | `1.1.0` | `games/chess` | Personal fork on JitPack, if GitHub repo deleted build breaks. Only remaining JitPack dep | `games/chess/build.gradle.kts` |
 | `jitpack.io` itself | — | above | Supply chain SPOF | `settings.gradle.kts` |
 | `io.github.dokar3:quickjs-kt` | `1.0.5` | `youpipe` | Single maintainer (dokar3), JS eval for YouTube signature decipher — critical path | `youpipe/build.gradle.kts`, `libs.versions.toml:8` |
-| `org.whispersystems:signal-protocol-java` shaded via ShadowJar | `2.8.1` + `com.gradleup.shadow:9.0.0` | `whatsapp-signal` (`configuration = shaded`) → `messages` | Abandoned, replaced by `libsignal-android`; needed only because `libsignal-android:0.86.5` removed X3DH needed for WhatsApp bridge. Protobuf relocation `com.google.protobuf -> com.vayunmathur.messages.shadedproto` hack | `whatsapp-signal/build.gradle.kts` |
-| `dev.whyoleg.cryptography:cryptography-core` + `cryptography-provider-jdk` | `0.6.0` | `library:e2ee-p2p` → `office` E2EE | Single person (whyoleg), crypto-critical for PQC KEM | `library/e2ee-p2p/build.gradle.kts`, `libs.versions.toml:75` |
+| `dev.whyoleg.cryptography:cryptography-core` + `cryptography-provider-jdk` | `0.6.0` | `library:e2ee-p2p` → `office` E2EE | Single person (whyoleg), crypto-critical for PQC KEM | `library:e2ee-p2p/build.gradle.kts`, `libs.versions.toml:75` |
 | `org.linguafranca.pwdb:KeePassJava2-dom` | `2.2.4` | `passwords` | Single maintainer, last release 2021, security-sensitive KDBX parsing | `passwords/build.gradle.kts`, `libs.versions.toml:82` |
 | `org.wololo:flatgeobuf` | `3.29.0` | `maps` | Niche geo format, single maintainer | `maps/build.gradle.kts`, `libs.versions.toml:13` |
 | `com.google.code.findbugs:jsr305` + `javax.annotation-api:1.3.2` | `3.0.2` / `1.3.2` | `extractor` | Deprecated 7+ years, replaced by JetBrains annotations | `libs.versions.toml:5,114` |
@@ -126,7 +125,6 @@ Summed old per-crate locks (before workspace) = 712 total (641 excluding voxels)
 | `org.bouncycastle:bcprov-jdk18on` + `bcpkix-jdk18on` | `1.85` | `pdf`, `passwords`, `messages`, `e2ee-p2p` | Small org, long-lived, well-audited PQC ML-KEM/ML-DSA; resource conflicts handled in `common-conventions-app` | `libs.versions.toml:84,226` |
 | `com.google.zxing:core` | `3.5.4` | `messages` (QR), `library:ocr`, `pdf` | Old, community fork `zxing-cpp` preferred | `libs.versions.toml:83` |
 | `com.google.ai.edge.litertlm:litertlm-android` | `0.14.0` experimental | `openassistant` | Google AI Edge experimental, GPU backend `libLiteRtTopKOpenClSampler.so`, requires `kotlinx-coroutines 1.11.0` conflict win | `openassistant/build.gradle.kts`, `libs.versions.toml:30` |
-| `com.gradleup.shadow` | `9.0.0` | `whatsapp-signal` shaded jar | Single org (gradleup), medium risk | `whatsapp-signal/build.gradle.kts` |
 
 ### Low Risk / Platform (Google/JetBrains) — Not Critical
 

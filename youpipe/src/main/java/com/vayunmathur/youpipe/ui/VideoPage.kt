@@ -64,8 +64,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vayunmathur.library.util.NavBackStack
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.util.round
 import com.vayunmathur.youpipe.data.DownloadedVideo
 import com.vayunmathur.youpipe.util.DownloadManager
@@ -195,7 +195,6 @@ fun VideoPage(
     if(isFullscreen) {
         LockScreenOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE)
     }
-
 
     Scaffold { paddingValues ->
         val modifier = if(isFullscreen) Modifier.padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding()) else Modifier.padding(paddingValues)

@@ -48,8 +48,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.fragment.ktx)
     implementation(project(":library:map"))
-    implementation(libs.coil.compose)
-    implementation(libs.coil.video)
+    implementation(project(":library:image"))
     implementation(libs.androidx.exifinterface)
     // On-device face detection (SCRFD), face embedding (MobileFaceNet) and
     // subject segmentation (U²-Net) run on ncnn via the generalist AAR (BSD-3,

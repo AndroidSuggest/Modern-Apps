@@ -44,6 +44,7 @@ include(":library:widgets")
 include(":library:work")
 include(":library:ocr")
 include(":library:map")
+include(":library:image")
 include(":calendar")
 include(":contacts")
 include(":pdf")
@@ -71,7 +72,6 @@ include(":games:hub")
 include(":email")
 include(":weather")
 include(":messages")
-include(":whatsapp-signal")
 include(":camera")
 include(":sdk:openassistant")
 include(":sdk:games")
@@ -90,6 +90,7 @@ include(":speech")
 include(":vpn")
 include(":web")
 include(":appstore")
+include(":fooddelivery")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
@@ -98,7 +99,4 @@ if (file("personal/dooraccess").exists()) {
 }
 if (file("personal/amazon").exists()) {
     include(":personal:amazon")
-}
-if (file("personal/bites").exists()) {
-    include(":personal:bites")
 }

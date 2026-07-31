@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     private val readyState = mutableStateOf(false)
     private var factoryState by mutableStateOf<AppStoreViewModelFactory?>(null)
     private var externalPkg: String? = null
+    private var vmRef: AppStoreViewModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
                         Box(Modifier.fillMaxSize())
                     } else {
                         val vm: AppStoreViewModel = viewModel(factory = factoryState!!)
+                        vmRef = vm
                         LaunchedEffect(externalPkg) {
                             externalPkg?.let { pkg ->
                                 val cached = vm.cachedApps.value.find { it.packageName == pkg }
@@ -93,6 +95,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh installed after uninstall or install from system dialog
+        vmRef?.refreshInstalled()
     }
 
     override fun onNewIntent(intent: Intent) {

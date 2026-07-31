@@ -29,7 +29,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import org.whispersystems.libsignal.state.PreKeyBundle
+import com.vayunmathur.messages.whatsapp.e2e.ParsedPreKeyBundle
 import com.vayunmathur.messages.whatsapp.proto.WhatsAppE2EProto
 import com.vayunmathur.messages.whatsapp.proto.WhatsAppAppStateProto
 import java.security.SecureRandom
@@ -737,7 +737,7 @@ object WhatsAppClient {
         val resp = sendIqAndWait(iq) ?: return false
         val list = resp.getChildByTag("list") ?: return false
         val userNode = list.getChildren().firstOrNull { it.tag == "user" } ?: return false
-        val bundle: PreKeyBundle = crypto.parsePreKeyBundleNode(device, userNode) ?: return false
+        val bundle: ParsedPreKeyBundle = crypto.parsePreKeyBundleNode(device, userNode) ?: return false
         return try {
             crypto.processPreKeyBundle(jid, bundle)
             true
@@ -2390,7 +2390,7 @@ object WhatsAppClient {
             Log.e(TAG, "Group sender-key encrypt failed for $groupJid", e)
             return null
         }
-        val skdmBytes = crypto.createSenderKeyDistribution(groupJid).serialize()
+        val skdmBytes = crypto.createSenderKeyDistribution(groupJid)
         val skdmPlaintext = WhatsAppProtocol.padMessage(
             WhatsAppProtocol.senderKeyDistributionPlaintext(groupJid, skdmBytes)
         )

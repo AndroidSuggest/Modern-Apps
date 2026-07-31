@@ -24,7 +24,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.coil.compose)
+    implementation(project(":library:image"))
     implementation(project(":youpipe:extractor"))
     implementation(project(":third_party:nanojson"))
     implementation(libs.quickjs.kt)
