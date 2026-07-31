@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">VabaAbiline</string>
     <string name="recording">Salvestan…</string>
     <string name="message_placeholder">Sõnum…</string>
     <string name="voice_message">Häälsõnum</string>
-    <string name="mic_error_format">Mikrofoni viga: &lt;xliff:g id=\"error\" example=\"Õigused on puudu\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="mic_error_format">Mikrofoni viga: <xliff:g id="error" example="Õigused on puudu">%1$s</xliff:g></string>
     <string name="new_conversation">Uus vestlus</string>
     <string name="perm_desc_inference">Võimaldab teistel rakendustel kasutada seadmes asuvat tehisintellekti järeldusteenust struktureeritud andmete väljastamiseks.</string>
-    <string name="error_prefix">Viga: &lt;xliff:g id=\"error\" example=\"Aegumine\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="error_prefix">Viga: <xliff:g id="error" example="Aegumine">%1$s</xliff:g></string>
     <string name="inference_service">Järeldamise teenus</string>
     <string name="processing_ai_inference">Töötlen tehisaru järeldusi…</string>
     <string name="error_request_expired">Tööde järjekorras olnud päring aegus</string>

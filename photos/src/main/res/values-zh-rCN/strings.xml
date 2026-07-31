@@ -8,11 +8,11 @@
     <string name="label_map">地图</string>
     <string name="label_trash">回收站</string>
     <string name="label_secure_folder">安全文件夹</string>
-    <string name="items_selected">已选择 &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; 项</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month\" example=\"January\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2024\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="taken_on">拍摄时间：&lt;xliff:g id=\"date\" example=\"Jan 5, 2024\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="location">位置：&lt;xliff:g id=\"place\" example=\"Paris, France\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="resolution">分辨率：&lt;xliff:g id=\"width\" example=\"4000\"&gt;%1$d&lt;/xliff:g&gt; × &lt;xliff:g id=\"height\" example=\"3000\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="items_selected">已选择 <xliff:g id="count" example="5">%1$d</xliff:g> 项</string>
+    <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2024">%2$d</xliff:g></string>
+    <string name="taken_on">拍摄时间：<xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
+    <string name="location">位置：<xliff:g id="place" example="Paris, France">%1$s</xliff:g></string>
+    <string name="resolution">分辨率：<xliff:g id="width" example="4000">%1$d</xliff:g> × <xliff:g id="height" example="3000">%2$d</xliff:g></string>
     <string name="detecting">正在检测…</string>
     <string name="grant_image_video_permissions">授予图片/视频权限</string>
     <string name="grant_storage_permission">授予存储权限</string>
@@ -23,11 +23,11 @@
     <string name="label_people">人物</string>
     <string name="people_empty">尚未找到人物。扫描正在后台进行 — 请在照片索引完成后再查看。</string>
     <string name="people_scanning">正在分组面孔… 找到人物后将显示在此处。</string>
-    <string name="face_indexing_progress">正在索引 &lt;xliff:g id=\"processed\" example=\"20\"&gt;%1$d&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"100\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="face_indexing_progress">正在索引 <xliff:g id="processed" example="20">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="people_model_missing">面孔分组需要 MobileFaceNet 模型。请将具有宽松许可的 mobilefacenet.tflite 添加到 photos/src/main/assets（参见 FaceRecognizer）。</string>
-    <string name="people_photo_count">&lt;xliff:g id=\"count\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt; 张照片</string>
+    <string name="people_photo_count"><xliff:g id="count" example="12">%1$d</xliff:g> 张照片</string>
     <plurals name="people_in_photo">
-        <item quantity="other">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; 位人物</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> 位人物</item>
     </plurals>
     <string name="photo_widget_description">轮换展示来自图库的照片 — 点按即可随机显示</string>
     <string name="openassistant_needs_update">更新 OpenAssistant 应用以启用 AI 照片搜索。</string>
@@ -42,7 +42,7 @@
     <string name="in_white">白场输入</string>
     <string name="tool_threshold">阈值</string>
     <string name="color_blue">蓝色</string>
-    <string name="photos_indexed_for_text_search">已为文本搜索索引 &lt;xliff:g id=\"done\" example=\"120\"&gt;%1$d&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"500\"&gt;%2$d&lt;/xliff:g&gt; 张照片</string>
+    <string name="photos_indexed_for_text_search">已为文本搜索索引 <xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> 张照片</string>
     <string name="reset">重置</string>
     <string name="magentas">紫红色</string>
     <string name="tool_cat_retouch">修饰</string>
@@ -101,7 +101,7 @@
     <string name="tap_the_image_to_pick_a_color">点按图片即可选择颜色。</string>
     <string name="red_cyan">红-青</string>
     <string name="tool_red_eye">红眼</string>
-    <string name="of_photos_processed">已处理 &lt;xliff:g id=\"percent\" example=\"45\"&gt;%1$d&lt;/xliff:g&gt;%% 的照片</string>
+    <string name="of_photos_processed">已处理 <xliff:g id="percent" example="45">%1$d</xliff:g>%% 的照片</string>
     <string name="blend_luminosity">明度</string>
     <string name="blend_screen">滤色</string>
     <string name="editor_desc_curves">使用曲线重塑亮度和对比度。</string>
@@ -129,7 +129,7 @@
     <string name="editor_desc_levels">设置黑场、白场和中间调。</string>
     <string name="editor_desc_crop">裁剪、拉直和旋转照片。</string>
     <string name="export_as_webp">导出为 WebP</string>
-    <string name="photos_indexed_for_visual_search">已为视觉搜索索引 &lt;xliff:g id=\"done\" example=\"120\"&gt;%1$d&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"500\"&gt;%2$d&lt;/xliff:g&gt; 张照片</string>
+    <string name="photos_indexed_for_visual_search">已为视觉搜索索引 <xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> 张照片</string>
     <string name="tool_curves">曲线</string>
     <string name="out_black">黑场输出</string>
     <string name="editor_desc_liquify">推动和扭曲像素。</string>
@@ -190,7 +190,7 @@
     <string name="this_app_needs_permission_to_manage_medi">此应用需要管理媒体文件的权限才能正常运行。请在设置中授予“允许媒体管理”权限。</string>
     <string name="font">字体</string>
     <string name="tool_posterize">色调分离</string>
-    <string name="tap_to_add_points">点击添加点（&lt;xliff:g id=\"mode\" example=\"New\"&gt;%1$s&lt;/xliff:g&gt;）</string>
+    <string name="tap_to_add_points">点击添加点（<xliff:g id="mode" example="New">%1$s</xliff:g>）</string>
     <string name="blend_saturation">饱和度</string>
     <string name="levels">色阶</string>
     <string name="editor_desc_hsl">调整每种颜色的色相、饱和度和明度。</string>

@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">YouPipe</string>
     <string name="title_history">历史记录</string>
     <string name="label_search">搜索</string>
-    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; 位订阅者</string>
+    <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> 位订阅者</string>
     <string name="title_create_subscription_category">创建订阅类别</string>
     <string name="title_update_subscription_category">更新订阅类别</string>
     <string name="label_category_name">类别名称</string>
@@ -18,20 +18,20 @@
     <string name="label_groups">群组：</string>
     <string name="label_all_subscriptions">所有订阅</string>
     <string name="label_channels">频道：</string>
-    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1.2M\"&gt;%2$s&lt;/xliff:g&gt; 次观看 | &lt;xliff:g id=\"time\" example=\"2 days ago\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> 次观看 | <xliff:g id="time" example="2 days ago">%3$s</xliff:g></string>
     <string name="time_ago_just_now">刚刚</string>
-    <string name="time_ago_minutes">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; 分钟前</string>
-    <string name="time_ago_hours">&lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; 小时前</string>
-    <string name="time_ago_days">&lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; 天前</string>
-    <string name="time_ago_months">&lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; 个月前</string>
-    <string name="time_ago_years">&lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; 年前</string>
-    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12.3\"&gt;%1$s&lt;/xliff:g&gt;K</string>
-    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1.2\"&gt;%1$s&lt;/xliff:g&gt;M</string>
-    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3.4\"&gt;%1$s&lt;/xliff:g&gt;B</string>
+    <string name="time_ago_minutes"><xliff:g id="minutes" example="5">%1$d</xliff:g> 分钟前</string>
+    <string name="time_ago_hours"><xliff:g id="hours" example="3">%1$d</xliff:g> 小时前</string>
+    <string name="time_ago_days"><xliff:g id="days" example="2">%1$d</xliff:g> 天前</string>
+    <string name="time_ago_months"><xliff:g id="months" example="6">%1$d</xliff:g> 个月前</string>
+    <string name="time_ago_years"><xliff:g id="years" example="1">%1$d</xliff:g> 年前</string>
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>K</string>
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>M</string>
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>B</string>
     <string name="action_subscribe">订阅</string>
     <string name="action_unsubscribe">取消订阅</string>
-    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1.2M\"&gt;%1$s&lt;/xliff:g&gt; 位订阅者</string>
-    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; 次观看 | &lt;xliff:g id=\"time\" example=\"3 days ago\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> 位订阅者</string>
+    <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> 次观看 | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
     <string name="label_description">描述</string>
     <string name="title_settings">设置</string>
     <string name="label_sponsorblock">SponsorBlock 类别</string>
@@ -40,11 +40,11 @@
     <string name="label_import_newpipe">导入 NewPipe 订阅</string>
     <string name="label_import_youtube">从 YouTube (Takeout) 导入</string>
     <string name="label_export_youpipe">导出订阅</string>
-    <string name="video_quality_fps_codec">&lt;xliff:g id=\"quality\" example=\"1080p\"&gt;%1$s&lt;/xliff:g&gt;（&lt;xliff:g id=\"fps\" example=\"60\"&gt;%2$d&lt;/xliff:g&gt;fps）&lt;xliff:g id=\"codec\" example=\"avc\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g>（<xliff:g id="fps" example="60">%2$d</xliff:g>fps）<xliff:g id="codec" example="avc">%3$s</xliff:g></string>
     <string name="empty_recommendations">观看一些视频以获得个性化推荐</string>
     <string name="label_dearrow">启用 DeArrow</string>
     <string name="label_dearrow_description">用社区提交的替代内容替换标题党标题和缩略图</string>
-    <string name="recommendation_reason">原因：&lt;xliff:g id=\"reason\" example=\"watched similar\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="recommendation_reason">原因：<xliff:g id="reason" example="watched similar">%1$s</xliff:g></string>
     <string name="action_not_interested">不感兴趣</string>
     <string name="action_more_like_this">更多类似内容</string>
     <string name="action_pin_channel">固定频道</string>
@@ -97,8 +97,8 @@
     <string name="clear_history">清除历史记录</string>
     <string name="downloads">下载</string>
     <string name="off">已关闭</string>
-    <string name="selected">已选择 &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$s&lt;/xliff:g&gt; 项</string>
-    <string name="selected_1">已选择 &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt; 项</string>
+    <string name="selected">已选择 <xliff:g id="count" example="3">%1$s</xliff:g> 项</string>
+    <string name="selected_1">已选择 <xliff:g id="count" example="2">%1$s</xliff:g> 项</string>
     <string name="download">下载</string>
     <string name="cancel">取消</string>
     <string name="language">语言</string>

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="recording">Nahrávám…</string>
     <string name="message_placeholder">Zpráva…</string>
     <string name="voice_message">Hlasová zpráva</string>
-    <string name="mic_error_format">Chyba mikrofonu: &lt;xliff:g id=\"error\" example=\"Přístup zakázán\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="mic_error_format">Chyba mikrofonu: <xliff:g id="error" example="Přístup zakázán">%1$s</xliff:g></string>
     <string name="new_conversation">Nová konverzace</string>
-    <string name="error_prefix">Chyba: &lt;xliff:g id=\"error\" example=\"Timeout\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="error_prefix">Chyba: <xliff:g id="error" example="Timeout">%1$s</xliff:g></string>
     <string name="app_name">OpenAsistent</string>
     <string name="perm_desc_inference">Umožňuje ostatním aplikacím přístup k inferenční službě AI na zařízení pro extrakci strukturovaných dat.</string>
     <string name="inference_service">Inferenční služba</string>

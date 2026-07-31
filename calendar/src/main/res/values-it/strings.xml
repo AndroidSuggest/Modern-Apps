@@ -10,13 +10,13 @@
     <string name="remove">Rimuovi</string>
     <string name="search">Cerca</string>
     <string name="event_not_found">Evento non trovato</string>
-    <string name="date_range_format">&lt;xliff:g id=\"start_date\" example=\"Gen 1\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Gen 2\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"Gen 1\"&gt;%1$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"start_time\" example=\"9:00\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%3$s&lt;/xliff:g&gt;</string>
-    <string name="full_date_time_range_format">&lt;xliff:g id=\"start_date\" example=\"Gen 1\"&gt;%1$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"start_time\" example=\"9:00\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Gen 2\"&gt;%3$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%4$s&lt;/xliff:g&gt;</string>
+    <string name="date_range_format"><xliff:g id="start_date" example="Gen 1">%1$s</xliff:g> - <xliff:g id="end_date" example="Gen 2">%2$s</xliff:g></string>
+    <string name="date_time_range_format"><xliff:g id="date" example="Gen 1">%1$s</xliff:g> • <xliff:g id="start_time" example="9:00">%2$s</xliff:g> - <xliff:g id="end_time" example="10:00">%3$s</xliff:g></string>
+    <string name="full_date_time_range_format"><xliff:g id="start_date" example="Gen 1">%1$s</xliff:g>, <xliff:g id="start_time" example="9:00">%2$s</xliff:g> - <xliff:g id="end_date" example="Gen 2">%3$s</xliff:g>, <xliff:g id="end_time" example="10:00">%4$s</xliff:g></string>
     <string name="twelve_am">12 AM</string>
-    <string name="hour_am">&lt;xliff:g id=\"hour\" example=\"9\"&gt;%1$d&lt;/xliff:g&gt; AM</string>
+    <string name="hour_am"><xliff:g id="hour" example="9">%1$d</xliff:g> AM</string>
     <string name="twelve_pm">12 PM</string>
-    <string name="hour_pm">&lt;xliff:g id=\"hour\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; PM</string>
+    <string name="hour_pm"><xliff:g id="hour" example="3">%1$d</xliff:g> PM</string>
     <string name="label_title">Titolo</string>
     <string name="label_description">Descrizione</string>
     <string name="label_location">Posizione</string>
@@ -26,12 +26,12 @@
     <string name="repeats">Ripete</string>
     <string name="settings">Impostazioni</string>
     <string name="no_account">(Nessun account)</string>
-    <string name="calendar_id_label">ID: &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="calendar_id_label">ID: <xliff:g id="calendar_id" example="1">%1$d</xliff:g></string>
     <string name="choose_calendar">Scegli calendario</string>
     <string name="local_account">(Locale)</string>
     <string name="repeat">Ripeti</string>
     <string name="every">Ogni</string>
-    <string name="dropdown_freq_format">&lt;xliff:g id=\"frequency\" example=\"Settimanale\"&gt;%1$s&lt;/xliff:g&gt; ▼</string>
+    <string name="dropdown_freq_format"><xliff:g id="frequency" example="Settimanale">%1$s</xliff:g> ▼</string>
     <string name="end">Fine</string>
     <string name="never">Mai</string>
     <string name="until">Fino a</string>
@@ -48,7 +48,7 @@
     <string name="new_name">Nuovo nome</string>
     <string name="create_a_calendar">Crea un calendario</string>
     <string name="choose_timezone">Scegli fuso orario</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"Gennaio\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="month_year_format"><xliff:g id="month_name" example="Gennaio">%1$s</xliff:g> <xliff:g id="year" example="2025">%2$d</xliff:g></string>
     <string name="no_title">(Nessun titolo)</string>
     <string name="go_to_date">Vai alla data</string>
     <string name="on_days_of_week">Nei giorni della settimana</string>
@@ -60,7 +60,7 @@
     <string name="default_layout">Layout predefinito</string>
     <string name="add_reminder">Aggiungi promemoria</string>
     <string name="calendar_widget_description">Un riepilogo dei prossimi eventi — tocca per aprire il Calendario</string>
-    <string name="month_option_day_of_month">Il giorno &lt;xliff:g id=\"day\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; del mese</string>
+    <string name="month_option_day_of_month">Il giorno <xliff:g id="day" example="15">%1$d</xliff:g> del mese</string>
     <string name="layout_agenda">Agenda</string>
     <string name="layout_day">Giorno</string>
     <string name="layout_work_week">Settimana lavorativa</string>

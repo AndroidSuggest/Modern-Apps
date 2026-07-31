@@ -4,7 +4,7 @@
     <string name="app_name">YouPipe</string>
     <string name="title_history">Historie</string>
     <string name="label_search">Hledat</string>
-    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; odběratelů</string>
+    <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> odběratelů</string>
     <string name="title_create_subscription_category">Vytvořit kategorii odběrů</string>
     <string name="title_update_subscription_category">Upravit kategorii odběrů</string>
     <string name="label_category_name">Název kategorie</string>
@@ -19,20 +19,20 @@
     <string name="label_groups">Skupiny:</string>
     <string name="label_all_subscriptions">Všechny odběry</string>
     <string name="label_channels">Kanály:</string>
-    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1.2M\"&gt;%2$s&lt;/xliff:g&gt; zhlédnutí | &lt;xliff:g id=\"time\" example=\"2 dny zpět\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> zhlédnutí | <xliff:g id="time" example="2 dny zpět">%3$s</xliff:g></string>
     <string name="time_ago_just_now">Právě teď</string>
-    <string name="time_ago_minutes">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; před minutami</string>
-    <string name="time_ago_hours">Před &lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; hodinami</string>
-    <string name="time_ago_days">Před &lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; dny</string>
-    <string name="time_ago_months">Před &lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; měsíci</string>
-    <string name="time_ago_years">Před &lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; lety</string>
-    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12.3\"&gt;%1$s&lt;/xliff:g&gt;K</string>
-    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1.2\"&gt;%1$s&lt;/xliff:g&gt;M</string>
-    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3.4\"&gt;%1$s&lt;/xliff:g&gt;mld</string>
+    <string name="time_ago_minutes"><xliff:g id="minutes" example="5">%1$d</xliff:g> před minutami</string>
+    <string name="time_ago_hours">Před <xliff:g id="hours" example="3">%1$d</xliff:g> hodinami</string>
+    <string name="time_ago_days">Před <xliff:g id="days" example="2">%1$d</xliff:g> dny</string>
+    <string name="time_ago_months">Před <xliff:g id="months" example="6">%1$d</xliff:g> měsíci</string>
+    <string name="time_ago_years">Před <xliff:g id="years" example="1">%1$d</xliff:g> lety</string>
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>K</string>
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>M</string>
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>mld</string>
     <string name="action_subscribe">Odebírat</string>
     <string name="action_unsubscribe">Zrušit odbíraní</string>
-    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1,2 mil.\"&gt;%1$s&lt;/xliff:g&gt; odběratelů</string>
-    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1 mil.\"&gt;%1$s&lt;/xliff:g&gt; views | &lt;xliff:g id=\"time\" example=\"3 days ago\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="channel_info"><xliff:g id="count" example="1,2 mil.">%1$s</xliff:g> odběratelů</string>
+    <string name="video_stat_format"><xliff:g id="views" example="1 mil.">%1$s</xliff:g> views | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
     <string name="title_settings">Nastavení</string>
     <string name="label_sponsorblock">SponsorBlock kategorie</string>
     <string name="label_dearrow">Povolit DeArrow</string>
@@ -47,7 +47,7 @@
     <string name="label_export_youpipe">Exportovat odběry</string>
     <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g> (<xliff:g id="fps" example="60">%2$d</xliff:g>fps) <xliff:g id="codec" example="avc">%3$s</xliff:g></string>
     <string name="empty_recommendations">Podívejte se na pár videí a získejte doporučení na míru</string>
-    <string name="recommendation_reason">Proč: &lt;xliff:g id=\"reason\" example=\"sledovýny podobné\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="recommendation_reason">Proč: <xliff:g id="reason" example="sledovýny podobné">%1$s</xliff:g></string>
     <string name="action_not_interested">Nezajímá mě</string>
     <string name="action_more_like_this">Více podobných</string>
     <string name="action_pin_channel">Připnout kanál</string>

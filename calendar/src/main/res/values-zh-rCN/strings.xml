@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="ok">确定</string>
     <string name="app_name">日历</string>
     <string name="cancel">取消</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"January\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="date_range_format">&lt;xliff:g id=\"start_date\" example=\"Jan 1\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Jan 2\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"Jan 1\"&gt;%1$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"start_time\" example=\"9:00 AM\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_time\" example=\"10:00 AM\"&gt;%3$s&lt;/xliff:g&gt;</string>
-    <string name="full_date_time_range_format">&lt;xliff:g id=\"start_date\" example=\"Jan 1\"&gt;%1$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"start_time\" example=\"9:00 AM\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Jan 2\"&gt;%3$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"end_time\" example=\"10:00 AM\"&gt;%4$s&lt;/xliff:g&gt;</string>
+    <string name="month_year_format"><xliff:g id="month_name" example="January">%1$s</xliff:g> <xliff:g id="year" example="2025">%2$d</xliff:g></string>
+    <string name="date_range_format"><xliff:g id="start_date" example="Jan 1">%1$s</xliff:g> - <xliff:g id="end_date" example="Jan 2">%2$s</xliff:g></string>
+    <string name="date_time_range_format"><xliff:g id="date" example="Jan 1">%1$s</xliff:g> • <xliff:g id="start_time" example="9:00 AM">%2$s</xliff:g> - <xliff:g id="end_time" example="10:00 AM">%3$s</xliff:g></string>
+    <string name="full_date_time_range_format"><xliff:g id="start_date" example="Jan 1">%1$s</xliff:g>, <xliff:g id="start_time" example="9:00 AM">%2$s</xliff:g> - <xliff:g id="end_date" example="Jan 2">%3$s</xliff:g>, <xliff:g id="end_time" example="10:00 AM">%4$s</xliff:g></string>
     <string name="close">关闭</string>
     <string name="delete">删除</string>
     <string name="rename">重命名</string>
@@ -17,9 +17,9 @@
     <string name="event_not_found">未找到活动</string>
     <string name="label_title">标题</string>
     <string name="twelve_am">凌晨 12 点</string>
-    <string name="hour_am">上午 &lt;xliff:g id=\"hour\" example=\"9\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="hour_am">上午 <xliff:g id="hour" example="9">%1$d</xliff:g></string>
     <string name="twelve_pm">中午 12 点</string>
-    <string name="hour_pm">下午 &lt;xliff:g id=\"hour\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="hour_pm">下午 <xliff:g id="hour" example="3">%1$d</xliff:g></string>
     <string name="label_description">描述</string>
     <string name="label_location">位置</string>
     <string name="select_calendar">选择日历</string>
@@ -28,19 +28,19 @@
     <string name="repeats">重复</string>
     <string name="settings">设置</string>
     <string name="no_account">（无账号）</string>
-    <string name="calendar_id_label">ID：&lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="calendar_id_label">ID：<xliff:g id="calendar_id" example="1">%1$d</xliff:g></string>
     <string name="choose_calendar">选择日历</string>
     <string name="local_account">（本地）</string>
     <string name="go_to_date">转到日期</string>
     <string name="repeat">重复</string>
     <string name="every">每</string>
-    <string name="dropdown_freq_format">&lt;xliff:g id=\"frequency\" example=\"Weekly\"&gt;%1$s&lt;/xliff:g&gt; ▼</string>
+    <string name="dropdown_freq_format"><xliff:g id="frequency" example="Weekly">%1$s</xliff:g> ▼</string>
     <string name="on_days_of_week">在每周的某几天</string>
     <string name="end">结束</string>
     <string name="never">从不</string>
     <string name="count">计数</string>
     <string name="until">直到</string>
-    <string name="until_date">直到：&lt;xliff:g id=\"date\" example=\"Dec 31, 2025\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="until_date">直到：<xliff:g id="date" example="Dec 31, 2025">%1$s</xliff:g></string>
     <string name="new_local_calendar">新本地日历</string>
     <string name="calendar_name">日历名称</string>
     <string name="choose_color">选择颜色：</string>
@@ -48,7 +48,7 @@
     <string name="change_color">更改颜色</string>
     <string name="delete_calendar">删除日历</string>
     <string name="delete_calendar_confirm">确定要删除此日历吗？这将移除日历中的所有活动。</string>
-    <string name="delete_calendar_name_confirm">确定要删除“&lt;xliff:g id=\"calendar_name\" example=\"Work\"&gt;%1$s&lt;/xliff:g&gt;”吗？这将移除日历中的所有活动。</string>
+    <string name="delete_calendar_name_confirm">确定要删除“<xliff:g id="calendar_name" example="Work">%1$s</xliff:g>”吗？这将移除日历中的所有活动。</string>
     <string name="rename_calendar">重命名日历</string>
     <string name="new_name">新名称</string>
     <string name="create_a_calendar">创建日历</string>
@@ -61,29 +61,29 @@
     <string name="add_reminder">添加提醒</string>
     <string name="calendar_widget_description">一览即将进行的活动 — 点按即可打开 Calendar</string>
     <string name="on_label">在</string>
-    <string name="month_option_day_of_month">在每月的第 &lt;xliff:g id=\"day\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; 天</string>
-    <string name="month_option_nth_weekday">在 &lt;xliff:g id=\"ordinal\" example=\"second\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"weekday\" example=\"Monday\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="month_option_last_weekday">在最后一个 &lt;xliff:g id=\"weekday\" example=\"Friday\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="year_option_month_day">在 &lt;xliff:g id=\"month\" example=\"March\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"day\" example=\"15\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="year_option_week">在每年的第 &lt;xliff:g id=\"week_num\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt; 周的 &lt;xliff:g id=\"weekday\" example=\"Monday\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="year_option_day_of_year">在每年的第 &lt;xliff:g id=\"day_of_year\" example=\"100\"&gt;%1$d&lt;/xliff:g&gt; 天</string>
+    <string name="month_option_day_of_month">在每月的第 <xliff:g id="day" example="15">%1$d</xliff:g> 天</string>
+    <string name="month_option_nth_weekday">在 <xliff:g id="ordinal" example="second">%1$s</xliff:g> <xliff:g id="weekday" example="Monday">%2$s</xliff:g></string>
+    <string name="month_option_last_weekday">在最后一个 <xliff:g id="weekday" example="Friday">%1$s</xliff:g></string>
+    <string name="year_option_month_day">在 <xliff:g id="month" example="March">%1$s</xliff:g> <xliff:g id="day" example="15">%2$d</xliff:g></string>
+    <string name="year_option_week">在每年的第 <xliff:g id="week_num" example="12">%1$d</xliff:g> 周的 <xliff:g id="weekday" example="Monday">%2$s</xliff:g></string>
+    <string name="year_option_day_of_year">在每年的第 <xliff:g id="day_of_year" example="100">%1$d</xliff:g> 天</string>
     <string name="import_ics_file">导入 .ics 文件</string>
     <string name="import_events">导入活动</string>
     <string name="import_to_existing_calendar">导入到现有日历</string>
     <string name="create_new_calendar_option">创建新日历</string>
     <string name="no_events_found">未找到活动</string>
-    <string name="import_summary">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; 个活动已准备好导入</string>
+    <string name="import_summary"><xliff:g id="count" example="5">%1$d</xliff:g> 个活动已准备好导入</string>
     <plurals name="rrule_every_months">
-        <item quantity="other">每 &lt;xliff:g id=\"count\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; 个月</item>
+        <item quantity="other">每 <xliff:g id="count" example="6">%1$d</xliff:g> 个月</item>
     </plurals>
     <string name="theme_light">浅色</string>
     <plurals name="reminder_hours_before">
-        <item quantity="other">提前 &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; 小时</item>
+        <item quantity="other">提前 <xliff:g id="count" example="5">%1$d</xliff:g> 小时</item>
     </plurals>
     <string name="layout_full_week_summary">完整周摘要</string>
     <string name="import_events_from_ics_files">从 .ics 文件导入活动</string>
     <plurals name="rrule_count_suffix">
-        <item quantity="other">，&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; 次</item>
+        <item quantity="other">，<xliff:g id="count" example="5">%1$d</xliff:g> 次</item>
     </plurals>
     <string name="theme_dark">深色</string>
     <string name="theme_system_default">系统默认</string>
@@ -91,15 +91,15 @@
     <string name="layout_short_month">M</string>
     <string name="layout_work_week">工作周视图</string>
     <plurals name="rrule_every_weeks">
-        <item quantity="other">每 &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; 周</item>
+        <item quantity="other">每 <xliff:g id="count" example="2">%1$d</xliff:g> 周</item>
     </plurals>
     <string name="theme">主题</string>
     <string name="layout_agenda">日程视图</string>
     <plurals name="reminder_minutes_before">
-        <item quantity="other">提前 &lt;xliff:g id=\"count\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; 分钟</item>
+        <item quantity="other">提前 <xliff:g id="count" example="15">%1$d</xliff:g> 分钟</item>
     </plurals>
     <plurals name="rrule_every_days">
-        <item quantity="other">每 &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; 天</item>
+        <item quantity="other">每 <xliff:g id="count" example="3">%1$d</xliff:g> 天</item>
     </plurals>
     <string name="layout_work_week_summary">工作周摘要</string>
     <string name="search_countries">搜索国家/地区</string>
@@ -108,23 +108,23 @@
     <string name="rrule_yearly">每年</string>
     <string name="layout_day">日视图</string>
     <string name="layout_full_week">完整周视图</string>
-    <string name="rrule_until_suffix">，直到 &lt;xliff:g id=\"date\" example=\"Dec 31, 2025\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="rrule_until_suffix">，直到 <xliff:g id="date" example="Dec 31, 2025">%1$s</xliff:g></string>
     <string name="reminder_at_time_of_event">活动发生时</string>
     <string name="layout_short_work_week">W5</string>
-    <string name="rrule_on_days">在 &lt;xliff:g id=\"days\" example=\"Mon, Wed\"&gt;%2$s&lt;/xliff:g&gt; &lt;xliff:g id=\"frequency\" example=\"Weekly\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="rrule_on_days">在 <xliff:g id="days" example="Mon, Wed">%2$s</xliff:g> <xliff:g id="frequency" example="Weekly">%1$s</xliff:g></string>
     <string name="layout_short_work_week_summary">W5S</string>
     <string name="layout_month">月视图</string>
     <string name="rrule_daily">每日</string>
     <string name="add_public_holidays_for_countries">为国家/地区添加公共节假日</string>
     <plurals name="rrule_every_years">
-        <item quantity="other">每 &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; 年</item>
+        <item quantity="other">每 <xliff:g id="count" example="2">%1$d</xliff:g> 年</item>
     </plurals>
     <string name="layout_short_full_week">W7</string>
     <string name="rrule_monthly">每月</string>
     <string name="layout_short_full_week_summary">W7S</string>
     <string name="choose_language">选择语言</string>
     <plurals name="reminder_days_before">
-        <item quantity="other">提前 &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; 天</item>
+        <item quantity="other">提前 <xliff:g id="count" example="3">%1$d</xliff:g> 天</item>
     </plurals>
     <string name="add">添加</string>
     <string name="layout_short_day">D</string>

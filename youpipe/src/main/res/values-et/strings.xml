@@ -2,7 +2,7 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="title_history">Ajalugu</string>
     <string name="label_search">Otsi</string>
-    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; tellijat</string>
+    <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> tellijat</string>
     <string name="title_create_subscription_category">Loo tellimuste kategooria</string>
     <string name="title_update_subscription_category">Uuenda tellimuste kategooriat</string>
     <string name="app_name">YouPipe</string>
@@ -18,20 +18,20 @@
     <string name="label_groups">Grupid:</string>
     <string name="label_all_subscriptions">Kõik tellimused</string>
     <string name="label_channels">Kanalid:</string>
-    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1.2M\"&gt;%2$s&lt;/xliff:g&gt; vaatamist | &lt;xliff:g id=\"time\" example=\"2 päeva tagasi\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> vaatamist | <xliff:g id="time" example="2 päeva tagasi">%3$s</xliff:g></string>
     <string name="time_ago_just_now">Äsja</string>
-    <string name="time_ago_minutes">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti eest</string>
-    <string name="time_ago_hours">&lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; tunni eest</string>
-    <string name="time_ago_days">&lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; päeva eest</string>
-    <string name="time_ago_months">&lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; kuu eest</string>
-    <string name="time_ago_years">&lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; aasta eest</string>
-    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12.3\"&gt;%1$s&lt;/xliff:g&gt;K</string>
-    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1.2\"&gt;%1$s&lt;/xliff:g&gt;mln</string>
-    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3.4\"&gt;%1$s&lt;/xliff:g&gt;bln</string>
+    <string name="time_ago_minutes"><xliff:g id="minutes" example="5">%1$d</xliff:g> minuti eest</string>
+    <string name="time_ago_hours"><xliff:g id="hours" example="3">%1$d</xliff:g> tunni eest</string>
+    <string name="time_ago_days"><xliff:g id="days" example="2">%1$d</xliff:g> päeva eest</string>
+    <string name="time_ago_months"><xliff:g id="months" example="6">%1$d</xliff:g> kuu eest</string>
+    <string name="time_ago_years"><xliff:g id="years" example="1">%1$d</xliff:g> aasta eest</string>
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>K</string>
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>mln</string>
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>bln</string>
     <string name="action_subscribe">Telli</string>
     <string name="action_unsubscribe">Loobu tellimusest</string>
-    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1.2M\"&gt;%1$s&lt;/xliff:g&gt; tellijat</string>
-    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; vaatamist | &lt;xliff:g id=\"time\" example=\"3 päeva tagasi\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> tellijat</string>
+    <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> vaatamist | <xliff:g id="time" example="3 päeva tagasi">%2$s</xliff:g></string>
     <string name="label_description">Kirjeldus</string>
     <string name="title_settings">Seadistused</string>
     <string name="label_sponsorblock">SponsorBlocki kategooriad</string>
@@ -40,11 +40,11 @@
     <string name="label_import_newpipe">Impordi NewPipe\'i tellimused</string>
     <string name="label_import_youtube">Impordi YouTube\'ist (Takeout-liidestus)</string>
     <string name="label_export_youpipe">Ekspordi tellimused</string>
-    <string name="video_quality_fps_codec">&lt;xliff:g id=\"quality\" example=\"1080p\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"fps\" example=\"60\"&gt;%2$d&lt;/xliff:g&gt;kaadrit sekundis) &lt;xliff:g id=\"codec\" example=\"avc\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g> (<xliff:g id="fps" example="60">%2$d</xliff:g>kaadrit sekundis) <xliff:g id="codec" example="avc">%3$s</xliff:g></string>
     <string name="empty_recommendations">Kui tahad näha sulle mõeldud soovitusi, siis vaata natuke videoid</string>
     <string name="label_dearrow">Pisipiltide kuvamiseks kasuta DeArrow teenust</string>
     <string name="label_dearrow_description">Asenda liiga klikialtid pealkirjad ja pisipildid kogukonna loodud alterantiivisega</string>
-    <string name="recommendation_reason">Põhjus: &lt;xliff:g id=\"reason\" example=\"vaadatuga sarnane sisu\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="recommendation_reason">Põhjus: <xliff:g id="reason" example="vaadatuga sarnane sisu">%1$s</xliff:g></string>
     <string name="action_not_interested">See ei huvita mind</string>
     <string name="action_more_like_this">Tahan veel sellist sisu</string>
     <string name="action_pin_channel">Tõsta kanal esile</string>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Sõnadekoostaja</string>
     <string name="error_parse_level">Taseme andmete töötlemine ei õnnestunud.</string>
-    <string name="level_number">&lt;xliff:g id=\"level\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;. tase</string>
+    <string name="level_number"><xliff:g id="level" example="12">%1$d</xliff:g>. tase</string>
     <string name="next_level">Järgmine tase</string>
     <string name="close">Sulge</string>
     <string name="bonus_words">Boonussõnad</string>
@@ -15,12 +15,12 @@
     <string name="difficulty_easy">Lihtne</string>
     <string name="difficulty_medium">Keskmine</string>
     <string name="difficulty_hard">Raske</string>
-    <string name="competitive_score">Punktiskoor: &lt;xliff:g id=\"score\" example=\"150\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="competitive_score">Punktiskoor: <xliff:g id="score" example="150">%1$d</xliff:g></string>
     <string name="competitive_start">Alusta</string>
     <string name="competitive_difficulty">Raskusaste</string>
-    <string name="competitive_time_limit">&lt;xliff:g id=\"seconds\" example=\"45\"&gt;%1$d&lt;/xliff:g&gt; sekundit taseme kohta</string>
-    <string name="competitive_solved">Lahendatud! +&lt;xliff:g id=\"points\" example=\"50\"&gt;%1$d&lt;/xliff:g&gt; punkti</string>
-    <string name="competitive_timed_out">Aeg on täis! &lt;xliff:g id=\"points\" example=\"-15\"&gt;%1$d&lt;/xliff:g&gt; punkti</string>
+    <string name="competitive_time_limit"><xliff:g id="seconds" example="45">%1$d</xliff:g> sekundit taseme kohta</string>
+    <string name="competitive_solved">Lahendatud! +<xliff:g id="points" example="50">%1$d</xliff:g> punkti</string>
+    <string name="competitive_timed_out">Aeg on täis! <xliff:g id="points" example="-15">%1$d</xliff:g> punkti</string>
     <string name="mode_casual">Lihtsustatud</string>
     <string name="mode_competitive">Konkurentsitihe</string>
     <string name="cd_shuffle">Sega</string>

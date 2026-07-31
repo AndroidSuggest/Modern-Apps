@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Contacts</string>
     <string name="ok">Ok</string>
     <string name="contact_not_found">Contact non trouvé</string>
-    <string name="name_nickname_format">&lt;xliff:g id=\"name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"nickname\" example=\"Johnny\"&gt;%2$s&lt;/xliff:g&gt;)</string>
-    <string name="contact_photo_description">Photo de &lt;xliff:g id=\"contact_name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g> (<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>)</string>
+    <string name="contact_photo_description">Photo de <xliff:g id="contact_name" example="John Doe">%1$s</xliff:g></string>
     <string name="share_contact">Partager le contact</string>
-    <string name="about_name">À propos de &lt;xliff:g id=\"first_name\" example=\"John\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="about_name">À propos de <xliff:g id="first_name" example="John">%1$s</xliff:g></string>
     <string name="birthday">Anniversaire</string>
     <string name="note">Note</string>
     <string name="favorites">Favoris</string>
@@ -21,7 +21,7 @@
     <string name="nickname">Surnom</string>
     <string name="company">Entreprise</string>
     <string name="account">Compte</string>
-    <string name="account_display_format">&lt;xliff:g id=\"account_name\" example=\"Personal\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"account_type\" example=\"com.google\"&gt;%2$s&lt;/xliff:g&gt;)</string>
+    <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
     <string name="add_phone">Ajouter un numéro de téléphone</string>
     <string name="remove_phone">Supprimer le numéro de téléphone</string>
     <string name="add_email">Ajouter une adresse e-mail</string>
@@ -58,13 +58,13 @@
     <string name="backup_and_export">Sauvegarde et exportation</string>
     <string name="grant_calendar_permissions">Autoriser l\'accès au calendrier</string>
     <string name="delete_selected_contacts_title">Supprimer les contacts sélectionnés</string>
-    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; sélectionné(s)</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> sélectionné(s)</string>
     <string name="display">Affichage</string>
     <string name="show_account_labels">Afficher les comptes de contact</string>
     <string name="delete_contact_confirm">Voulez-vous vraiment supprimer ce contact ? Cette action est irréversible.</string>
-    <string name="delete_contact_name_confirm">Voulez-vous vraiment supprimer \"&lt;xliff:g id=\"contact_name\" example=\"John Doe\"&gt;%1$s&lt;/xliff:g&gt;\" ? Cette action est irréversible.</string>
+    <string name="delete_contact_name_confirm">Voulez-vous vraiment supprimer \"<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>\" ? Cette action est irréversible.</string>
     <string name="grant_contacts_permission">Veuillez autoriser l\'accès aux contacts</string>
-    <string name="delete_selected_contacts_confirm">Voulez-vous vraiment supprimer les &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; contacts sélectionnés ? Cette action est irréversible.</string>
+    <string name="delete_selected_contacts_confirm">Voulez-vous vraiment supprimer les <xliff:g id="count" example="5">%1$d</xliff:g> contacts sélectionnés ? Cette action est irréversible.</string>
     <string name="search_contacts">Rechercher un contact</string>
     <string name="include_year">Inclure l\'année</string>
     <string name="system_default">Préférence système</string>
@@ -81,14 +81,14 @@
     <string name="delete_group_title">Supprimer le groupe</string>
     <string name="delete_group_confirm">Voulez-vous vraiment supprimer ce groupe ? Les contacts du groupe ne seront pas supprimés.</string>
     <string name="no_groups_found">Aucun groupe trouvé. Créez-en un dans l\'onglet Groupes.</string>
-    <string name="contacts_count">&lt;xliff:g id=\"count\" example=\"42\"&gt;%1$d&lt;/xliff:g&gt; contacts</string>
+    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</string>
     <string name="done">Terminer</string>
     <string name="select_account">Sélectionner un compte</string>
     <string name="import_vcf_file">Importer un fichier .vcf</string>
     <string name="import_to_existing_account">Importer vers un compte existant</string>
     <string name="create_new_account_option">Créer un nouveau compte</string>
     <string name="no_contacts_found">Aucun contact trouvé</string>
-    <string name="import_summary_contacts">&lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; contacts prêts à être importés</string>
+    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> contacts prêts à être importés</string>
     <string name="add_number_to_contact">Ajouter un numéro à un contact</string>
     <string name="create_new_contact">Créer un nouveau contact</string>
     <string name="no_name">(Sans nom)</string>

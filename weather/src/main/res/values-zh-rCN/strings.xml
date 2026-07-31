@@ -15,24 +15,24 @@
     <string name="not_enough_data_to_plot">数据不足，无法绘制。</string>
     <string name="detect_your_device_s_current_location_au">自动检测设备的当前位置并将其添加到列表中</string>
     <string name="metric_wind_speed">风速</string>
-    <string name="summary_expect_conditions">预计全天 &lt;xliff:g id=\"conditions\" example=\"light rain\"&gt;%1$s&lt;/xliff:g&gt;。</string>
+    <string name="summary_expect_conditions">预计全天 <xliff:g id="conditions" example="light rain">%1$s</xliff:g>。</string>
     <string name="metric_pressure">气压</string>
     <string name="summary_showers_possible">晚些时候可能有阵雨。</string>
-    <string name="max_min">最高 &lt;xliff:g id=\"max\" example=\"28°C\"&gt;%1$s&lt;/xliff:g&gt; 最低 &lt;xliff:g id=\"min\" example=\"14°C\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="max_min">最高 <xliff:g id="max" example="28°C">%1$s</xliff:g> 最低 <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
     <string name="condition_unknown">未知</string>
     <string name="metric_humidity">湿度</string>
     <string name="summary_mixed_conditions">混合天气</string>
     <string name="metric_uv_index">紫外线指数</string>
-    <string name="summary_high_low">最高 &lt;xliff:g id=\"high\" example=\"24°C\"&gt;%1$s&lt;/xliff:g&gt;，最低 &lt;xliff:g id=\"low\" example=\"12°C\"&gt;%2$s&lt;/xliff:g&gt;。</string>
+    <string name="summary_high_low">最高 <xliff:g id="high" example="24°C">%1$s</xliff:g>，最低 <xliff:g id="low" example="12°C">%2$s</xliff:g>。</string>
     <string name="condition_snow">雪</string>
     <string name="delete">删除</string>
     <string name="summary_slight_chance_rain">有小雨的可能。</string>
     <string name="metric_visibility">能见度</string>
     <string name="metric_temperature">温度</string>
-    <string name="from_gusts">来自 &lt;xliff:g id=\"direction\" example=\"NW\"&gt;%1$s&lt;/xliff:g&gt; · 阵风 &lt;xliff:g id=\"gusts\" example=\"18 km/h\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="from_gusts">来自 <xliff:g id="direction" example="NW">%1$s</xliff:g> · 阵风 <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="condition_clear">晴</string>
     <string name="metric_feels_like">体感温度</string>
-    <string name="feels_like">体感温度 &lt;xliff:g id=\"temp\" example=\"26°C\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="feels_like">体感温度 <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
     <string name="use_current_location">使用当前位置</string>
     <string name="condition_partly_cloudy">多云</string>
     <string name="condition_rain">雨</string>

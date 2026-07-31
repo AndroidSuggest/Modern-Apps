@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Kontaktid</string>
     <string name="contact_not_found">Kontakti ei leidu</string>
-    <string name="name_nickname_format">&lt;xliff:g id=\"name\" example=\"Kadri Maasikas\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"nickname\" example=\"Kadri\"&gt;%2$s&lt;/xliff:g&gt;)</string>
-    <string name="contact_photo_description">Foto: &lt;xliff:g id=\"contact_name\" example=\"Kadri Maasikas\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="name_nickname_format"><xliff:g id="name" example="Kadri Maasikas">%1$s</xliff:g> (<xliff:g id="nickname" example="Kadri">%2$s</xliff:g>)</string>
+    <string name="contact_photo_description">Foto: <xliff:g id="contact_name" example="Kadri Maasikas">%1$s</xliff:g></string>
     <string name="share_contact">Jaga kontakti</string>
-    <string name="about_name">Teave: &lt;xliff:g id=\"first_name\" example=\"Kadri\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="about_name">Teave: <xliff:g id="first_name" example="Kadri">%1$s</xliff:g></string>
     <string name="birthday">Sünnipäev</string>
     <string name="note">Märge</string>
     <string name="favorites">Lemmikud</string>
@@ -49,10 +49,10 @@
     <string name="remove_address">Eemalda aadress</string>
     <string name="remove_phone">Eemalda telefon</string>
     <string name="delete_contact_confirm">Kas sa oled kindel, et soovid selle kontakti kustutada? Järgnevat tegevust ei saa tagasi pöörata.</string>
-    <string name="account_display_format">&lt;xliff:g id=\"account_name\" example=\"Isiklik\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"account_type\" example=\"com.google\"&gt;%2$s&lt;/xliff:g&gt;)</string>
+    <string name="account_display_format"><xliff:g id="account_name" example="Isiklik">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
     <string name="add_address">Lisa aadress</string>
     <string name="add_phone">Lisa telefon</string>
-    <string name="delete_contact_name_confirm">Kas sa oled kindel, et soovid „&lt;xliff:g id=\"contact_name\" example=\"Kadri Maasikas\"&gt;%1$s&lt;/xliff:g&gt;“ kontakti kustutada? Seda tegevust ei saa tagasi pöörata.</string>
+    <string name="delete_contact_name_confirm">Kas sa oled kindel, et soovid „<xliff:g id="contact_name" example="Kadri Maasikas">%1$s</xliff:g>“ kontakti kustutada? Seda tegevust ei saa tagasi pöörata.</string>
     <string name="add_email">Lisa e-posti aadress</string>
     <string name="calendar_sync">Kalendri sünkroonimine</string>
     <string name="sync_contacts_calendar">Näita kalendris sünnipäevi</string>
@@ -61,8 +61,8 @@
     <string name="backup_and_export">Varundus ja eksport</string>
     <string name="grant_calendar_permissions">Anna õigused kalendri kasutamiseks</string>
     <string name="delete_selected_contacts_title">Kustuta valitud kontaktid</string>
-    <string name="delete_selected_contacts_confirm">Kas oled kindel, et soovid kustutada &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; valitud kontakti? Seda tegevust ei saa tagasi pöörata.</string>
-    <string name="selected_count">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; on valitud</string>
+    <string name="delete_selected_contacts_confirm">Kas oled kindel, et soovid kustutada <xliff:g id="count" example="5">%1$d</xliff:g> valitud kontakti? Seda tegevust ei saa tagasi pöörata.</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> on valitud</string>
     <string name="display">Ekraanivaade</string>
     <string name="show_account_labels">Näita kontakti kasutajakontosid</string>
     <string name="search_contacts">Otsi kontaktide hulgast</string>
@@ -81,13 +81,13 @@
     <string name="delete_group_title">Kustuta grupp</string>
     <string name="delete_group_confirm">Kas oled kindel, et soovid selle grupi kustutada? Kontaktid jäävad sel puhul alles.</string>
     <string name="no_groups_found">Ühtegi gruppi ei leidu. Saad mõne luua gruppide vahekaardilt.</string>
-    <string name="contacts_count">&lt;xliff:g id=\"count\" example=\"42\"&gt;%1$d&lt;/xliff:g&gt; kontakti</string>
+    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> kontakti</string>
     <string name="done">Valmis</string>
     <string name="import_vcf_file">Impordi vcf-fail</string>
     <string name="import_to_existing_account">Impordi olemasoleva kasutajakonto jaoks</string>
     <string name="create_new_account_option">Loo uus kasutajakonto</string>
     <string name="no_contacts_found">Kontakte ei leidu</string>
-    <string name="import_summary_contacts">&lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; kontakti on importimiseks valmis</string>
+    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> kontakti on importimiseks valmis</string>
     <string name="select_account">Vali kasutajakonto</string>
     <string name="no_name">(Nimi puudub)</string>
     <string name="add_number_to_contact">Lisa telefoninumber kontaktile</string>

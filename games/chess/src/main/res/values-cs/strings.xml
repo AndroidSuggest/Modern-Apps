@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Šachy</string>
     <string name="start_new_game">Zahájit novou partii</string>
     <string name="play_as">"Hrát jako    "</string>
@@ -34,18 +34,18 @@
     <string name="tab_play">Hrát</string>
     <string name="tab_puzzles">Úlohy</string>
     <string name="tab_learn">Výuka</string>
-    <string name="learn_stage_number">Úroveň &lt;xliff:g id=\"stage_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;: &lt;xliff:g id=\"stage_title\" example=\"Základy\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="learn_stage_number">Úroveň <xliff:g id="stage_id" example="1">%1$d</xliff:g>: <xliff:g id="stage_title" example="Základy">%2$s</xliff:g></string>
     <string name="learn_lets_go">Jdeme na to!</string>
     <string name="learn_next">Další</string>
     <string name="learn_retry">Zkusit znovu</string>
     <string name="learn_completed">Skvěle!</string>
     <string name="learn_failed">Ne docela, zkuste to znovu.</string>
-    <string name="learn_stage_complete_n">Úroveň &lt;xliff:g id=\"stage_id\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; dokončena</string>
-    <string name="learn_your_score">Vaše skóre: &lt;xliff:g id=\"score\" example=\"350\"&gt;%1$d&lt;/xliff:g&gt;</string>
-    <string name="learn_next_stage">Další: &lt;xliff:g id=\"next_stage\" example=\"Taktiky\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="learn_stage_complete_n">Úroveň <xliff:g id="stage_id" example="2">%1$d</xliff:g> dokončena</string>
+    <string name="learn_your_score">Vaše skóre: <xliff:g id="score" example="350">%1$d</xliff:g></string>
+    <string name="learn_next_stage">Další: <xliff:g id="next_stage" example="Taktiky">%1$s</xliff:g></string>
     <string name="learn_back_to_menu">Zpět do menu</string>
-    <string name="learn_progress">&lt;xliff:g id=\"done\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;/&lt;xliff:g id=\"total\" example=\"5\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="puzzle_rating">Hodnocení &lt;xliff:g id=\"rating\" example=\"1200\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="learn_progress"><xliff:g id="done" example="3">%1$d</xliff:g>/<xliff:g id="total" example="5">%2$d</xliff:g></string>
+    <string name="puzzle_rating">Hodnocení <xliff:g id="rating" example="1200">%1$d</xliff:g></string>
     <string name="puzzle_your_move">Hrajete - najděte nejlepší tah.</string>
     <string name="puzzle_white_to_move">Na tahu bílý.</string>
     <string name="puzzle_black_to_move">Na tahu černý.</string>

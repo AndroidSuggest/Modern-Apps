@@ -8,11 +8,11 @@
     <string name="label_map">Kaart</string>
     <string name="label_trash">Prügikast</string>
     <string name="label_secure_folder">Turvaline kaust</string>
-    <string name="items_selected">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; on valitud</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month\" example=\"Jaanuar\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2024\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="taken_on">Pildistatud: &lt;xliff:g id=\"date\" example=\"5. jaan. 2024\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="location">Asukoht: &lt;xliff:g id=\"place\" example=\"Tallinn, Eesti\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="resolution">Eraldusvõime: &lt;xliff:g id=\"width\" example=\"4000\"&gt;%1$d&lt;/xliff:g&gt; x &lt;xliff:g id=\"height\" example=\"3000\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> on valitud</string>
+    <string name="month_year_format"><xliff:g id="month" example="Jaanuar">%1$s</xliff:g> <xliff:g id="year" example="2024">%2$d</xliff:g></string>
+    <string name="taken_on">Pildistatud: <xliff:g id="date" example="5. jaan. 2024">%1$s</xliff:g></string>
+    <string name="location">Asukoht: <xliff:g id="place" example="Tallinn, Eesti">%1$s</xliff:g></string>
+    <string name="resolution">Eraldusvõime: <xliff:g id="width" example="4000">%1$d</xliff:g> x <xliff:g id="height" example="3000">%2$d</xliff:g></string>
     <string name="detecting">Tuvastan…</string>
     <string name="grant_image_video_permissions">Luba õigused piltide ja videote vaatamiseks</string>
     <string name="grant_storage_permission">Luba õigused andmeruumi kasutamiseks</string>
@@ -22,13 +22,13 @@
     <string name="model_downloading_description">Tehisaru mudel on allalaadimisel. Sõltuvalt sinu nutiseadme ühendusest võib selleks kuluda õige mitu minutit.</string>
     <string name="label_people">Inimesed</string>
     <string name="people_empty">Inimesi veel ei leidu. Skaneerimine toimub taustal - vaata uuesti peale fotode skaneerimise lõppu.</string>
-    <string name="face_indexing_progress">Indekseerimisel: &lt;xliff:g id=\"processed\" example=\"20\"&gt;%1$d&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"100\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="face_indexing_progress">Indekseerimisel: <xliff:g id="processed" example="20">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="people_scanning">Grupeerin näotuvastuse tulemusi… inimesed on siin näha peale nende leidmist.</string>
     <string name="people_model_missing">Näotuvastuse tulemuste grupeerimine eeldab MobileFaceNet mudeli kasutamist. Lisa lubatava litsentsi alusel avaldatud „mobilefacenet.tflite“ mudel asukohta „photos/src/main/assets“ (vt ka „FaceRecognizer“).</string>
-    <string name="people_photo_count">&lt;xliff:g id=\"count\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt; fotot</string>
+    <string name="people_photo_count"><xliff:g id="count" example="12">%1$d</xliff:g> fotot</string>
     <plurals name="people_in_photo">
-        <item quantity="one">&lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; inimene</item>
-        <item quantity="other">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; inimest</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> inimene</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> inimest</item>
     </plurals>
     <string name="photo_widget_description">Fotod sinu galeriist - klõpsa ja seadista</string>
     <string name="openassistant_needs_update">Kui soovid kasutada tehisarupõhist fotootsingut, uuenda OpenAssistanti rakendus.</string>

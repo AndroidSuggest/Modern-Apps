@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="label_stopwatch">Stopky</string>
     <string name="app_name">Hodiny</string>
     <string name="label_alarm">Budík</string>
@@ -28,13 +28,13 @@
     <string name="channel_completed_timers_name">Dokončené časovače</string>
     <string name="channel_alarms_description">Notifikace pro nastavené budíky</string>
     <string name="lap_number_format"># %1$d</string>
-    <string name="duration_ms_format">&lt;xliff:g id=\"seconds\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;.&lt;xliff:g id=\"centiseconds\" example=\"34\"&gt;%2$02d&lt;/xliff:g&gt;</string>
-    <string name="duration_m_s_ms_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"23\"&gt;%2$02d&lt;/xliff:g&gt;.&lt;xliff:g id=\"centiseconds\" example=\"45\"&gt;%3$02d&lt;/xliff:g&gt;</string>
-    <string name="stopwatch_time_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"05\"&gt;%2$02d&lt;/xliff:g&gt;</string>
+    <string name="duration_ms_format"><xliff:g id="seconds" example="12">%1$d</xliff:g>.<xliff:g id="centiseconds" example="34">%2$02d</xliff:g></string>
+    <string name="duration_m_s_ms_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="23">%2$02d</xliff:g>.<xliff:g id="centiseconds" example="45">%3$02d</xliff:g></string>
+    <string name="stopwatch_time_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="05">%2$02d</xliff:g></string>
     <string name="timer_finished_title">Časovač dokončen</string>
     <string name="grant_notifications_permission">Udělit oprávnění k oznámením</string>
     <string name="channel_completed_timers_description">Upozornění po dokončení časovačů</string>
-    <string name="timer_finished_text">&lt;xliff:g id=\"timer_name\" example=\"Čaj\"&gt;%1$s&lt;/xliff:g&gt; skončil!</string>
+    <string name="timer_finished_text"><xliff:g id="timer_name" example="Čaj">%1$s</xliff:g> skončil!</string>
     <string name="analog_clock_widget_label">Analogové hodiny</string>
     <string name="analog_clock_widget_description">Material You aanalogové hodiny - klepnutím otevřete hodiny</string>
     <string name="channel_stopwatch_name">Stopky</string>

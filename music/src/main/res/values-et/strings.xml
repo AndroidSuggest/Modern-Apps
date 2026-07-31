@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Muusika</string>
     <string name="nav_home">Avaleht</string>
     <string name="nav_albums">Albumid</string>
@@ -11,11 +11,11 @@
     <string name="unknown_artist">Tundmatu esitaja</string>
     <string name="no_lyrics_available">Laulusõnu pole saadaval</string>
     <string name="label_album">Album</string>
-    <string name="album_info_format">&lt;xliff:g id=\"artist\" example=\"Rock Hotel\"&gt;%1$s&lt;/xliff:g&gt;\n&lt;xliff:g id=\"year\" example=\"1970\"&gt;%2$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"song_count\" example=\"10\"&gt;%3$d&lt;/xliff:g&gt; songs • &lt;xliff:g id=\"duration\" example=\"42:30\"&gt;%4$s&lt;/xliff:g&gt;</string>
+    <string name="album_info_format"><xliff:g id="artist" example="Rock Hotel">%1$s</xliff:g>\n<xliff:g id="year" example="1970">%2$s</xliff:g> • <xliff:g id="song_count" example="10">%3$d</xliff:g> songs • <xliff:g id="duration" example="42:30">%4$s</xliff:g></string>
     <string name="label_artist">Esitaja</string>
-    <string name="artist_info_format">&lt;xliff:g id=\"song_count\" example=\"25\"&gt;%1$d&lt;/xliff:g&gt; songs • &lt;xliff:g id=\"duration\" example=\"1h 42m\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="artist_info_format"><xliff:g id="song_count" example="25">%1$d</xliff:g> songs • <xliff:g id="duration" example="1h 42m">%2$s</xliff:g></string>
     <string name="label_playlist">Esitusloend</string>
-    <string name="num_songs_format">&lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; lugu</string>
+    <string name="num_songs_format"><xliff:g id="count" example="10">%1$d</xliff:g> lugu</string>
     <string name="label_play">Esita</string>
     <string name="label_shuffle">Sega lood</string>
     <string name="label_songs">Lood</string>
@@ -30,9 +30,9 @@
     <string name="grant_storage_permissions">Luba andmeruumi kasutamine</string>
     <string name="content_desc_album_art">Kaanepildid</string>
     <string name="content_desc_album_art_grid">Kaanepiltide ruudustikuvaade</string>
-    <string name="go_to_source">Ava &lt;xliff:g id=\"source\" example=\"Kõik lood\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="go_to_source">Ava <xliff:g id="source" example="Kõik lood">%1$s</xliff:g></string>
     <string name="dialog_delete_playlist">Kustuta esitusloend</string>
-    <string name="dialog_delete_playlist_confirm">Kas kustutad esitusloendi \"&lt;xliff:g id=\"playlist_name\" example=\"Minu lemmiklood\"&gt;%1$s&lt;/xliff:g&gt;\"? Seda tegevust ei saa tagasi pöörata.</string>
+    <string name="dialog_delete_playlist_confirm">Kas kustutad esitusloendi \"<xliff:g id="playlist_name" example="Minu lemmiklood">%1$s</xliff:g>\"? Seda tegevust ei saa tagasi pöörata.</string>
     <string name="dialog_delete">Kustuta</string>
     <string name="dialog_create_playlist">Koosta esitusloend</string>
     <string name="dialog_create">Koosta</string>

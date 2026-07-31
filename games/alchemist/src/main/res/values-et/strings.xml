@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Alkeemik</string>
-    <string name="alchemy_icon_content_description">Alkeemia ikoon &lt;xliff:g id=\"icon_id\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="alchemy_icon_content_description">Alkeemia ikoon <xliff:g id="icon_id" example="12">%1$d</xliff:g></string>
     <string name="see_details">Vaata üksikasju</string>
     <string name="item_details">Objekt üksikasjad</string>
-    <string name="counter">&lt;xliff:g id=\"discovered\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"100\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="recipes">Retseptid (&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;)</string>
-    <string name="used_in">Kasutusel (&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt;)</string>
-    <string name="locked">+ &lt;xliff:g id=\"locked_count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; lukustatud retsepti.</string>
+    <string name="counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
+    <string name="recipes">Retseptid (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
+    <string name="used_in">Kasutusel (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
+    <string name="locked">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> lukustatud retsepti.</string>
     <string name="locked_description">Ava kõik nende retseptide väljundist, et neid näha.</string>
     <string name="collection">Kogumik</string>
-    <string name="discovered_counter">Tuvastatud &lt;xliff:g id=\"discovered\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"100\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="discovered_counter">Tuvastatud <xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="hide_maxed_elements">Peida täielikult täidetud elemendid</string>
     <string name="id">Tunnus: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
     <string name="item_discovered">Tuvastasin objekti!</string>

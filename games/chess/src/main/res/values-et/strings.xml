@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Male</string>
     <string name="start_new_game">Alusta uut mängu</string>
     <string name="play_as">"Mängi    "</string>
@@ -34,7 +34,7 @@
     <string name="tab_play">Mängimine</string>
     <string name="tab_learn">Õppimine</string>
     <string name="tab_puzzles">Pusled</string>
-    <string name="learn_stage_number">&lt;xliff:g id=\"stage_id\" example=\"1\"&gt;%1$d. õppetund&lt;/xliff:g&gt;: &lt;xliff:g id=\"stage_title\" example=\"Baaskoolitus\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="learn_stage_number"><xliff:g id="stage_id" example="1">%1$d. õppetund</xliff:g>: <xliff:g id="stage_title" example="Baaskoolitus">%2$s</xliff:g></string>
     <string name="learn_lets_go">Alustame!</string>
     <string name="learn_next">Järgmine</string>
     <string name="learn_retry">Proovi uuesti</string>
@@ -47,15 +47,15 @@
     <string name="puzzle_difficulty_medium">Keskmine</string>
     <string name="puzzle_difficulty_hard">Raske</string>
     <string name="puzzle_loading">Laadin puslet…</string>
-    <string name="learn_next_stage">Järgmine: &lt;xliff:g id=\"next_stage\" example=\"Taktika\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="learn_stage_complete_n">&lt;xliff:g id=\"stage_id\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt;. õppetund on läbitud</string>
-    <string name="learn_your_score">Sinu punktiskoor: &lt;xliff:g id=\"score\" example=\"350\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="learn_next_stage">Järgmine: <xliff:g id="next_stage" example="Taktika">%1$s</xliff:g></string>
+    <string name="learn_stage_complete_n"><xliff:g id="stage_id" example="2">%1$d</xliff:g>. õppetund on läbitud</string>
+    <string name="learn_your_score">Sinu punktiskoor: <xliff:g id="score" example="350">%1$d</xliff:g></string>
     <string name="learn_back_to_menu">Tagasi menüüsse</string>
-    <string name="puzzle_rating">Reiting &lt;xliff:g id=\"rating\" example=\"1200\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="puzzle_rating">Reiting <xliff:g id="rating" example="1200">%1$d</xliff:g></string>
     <string name="puzzle_your_move">Sinu kord - leia parim käik.</string>
     <string name="puzzle_white_to_move">Valgete kord.</string>
     <string name="puzzle_black_to_move">Mustade kord.</string>
     <string name="puzzle_solved">Lahendatud!</string>
     <string name="puzzle_failed">Pole veel lahendatud - proovi uuesti.</string>
-    <string name="learn_progress">&lt;xliff:g id=\"done\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;/&lt;xliff:g id=\"total\" example=\"5\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="learn_progress"><xliff:g id="done" example="3">%1$d</xliff:g>/<xliff:g id="total" example="5">%2$d</xliff:g></string>
 </resources>

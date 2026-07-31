@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Pere asukoht</string>
     <string name="time_just_now">hetk tagasi</string>
-    <string name="time_minutes_ago">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti eest</string>
-    <string name="time_hours_ago">&lt;xliff:g id=\"hours\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; tunni eest</string>
-    <string name="time_days_ago">&lt;xliff:g id=\"days\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; päeva eest</string>
+    <string name="time_minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g> minuti eest</string>
+    <string name="time_hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g> tunni eest</string>
+    <string name="time_days_ago"><xliff:g id="days" example="3">%1$d</xliff:g> päeva eest</string>
     <string name="time_very_soon">üsna varsti</string>
-    <string name="time_in_minutes">in &lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti pärast</string>
-    <string name="time_in_hours">in &lt;xliff:g id=\"hours\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; tunni pärast</string>
-    <string name="time_in_days">in &lt;xliff:g id=\"days\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; päeva pärast</string>
+    <string name="time_in_minutes">in <xliff:g id="minutes" example="5">%1$d</xliff:g> minuti pärast</string>
+    <string name="time_in_hours">in <xliff:g id="hours" example="2">%1$d</xliff:g> tunni pärast</string>
+    <string name="time_in_days">in <xliff:g id="days" example="3">%1$d</xliff:g> päeva pärast</string>
     <string name="change_connected_contact">Muuda ühendatud kasutajakontot</string>
     <string name="waypoint_name_blank_error">Nimi ei saa jääda tühjaks</string>
     <string name="waypoint_range_error">Vahemik peab olema number</string>
@@ -40,9 +40,9 @@
     <string name="notification_channel_entry_exit_name">Tulemised ja minemised</string>
     <string name="notification_channel_entry_exit_desc">Teavitused, kui pereliikmed saabuvad teekonnapunktidesse või lahkuvad neist</string>
     <string name="notification_tracking_text">Asukoha jagamine oma valitud kontaktidega</string>
-    <string name="notification_low_battery">&lt;xliff:g id=\"person_name\" example=\"Alice\"&gt;%1$s&lt;/xliff:g&gt; - aku hakkab tühjaks saama</string>
-    <string name="notification_entered_waypoint">&lt;xliff:g id=\"person_name\" example=\"Kadri\"&gt;%1$s&lt;/xliff:g&gt; on sisenenud asukohta &lt;xliff:g id=\"waypoint_name\" example=\"Koduaed\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="notification_exited_waypoint">&lt;xliff:g id=\"person_name\" example=\"Kadri\"&gt;%1$s&lt;/xliff:g&gt; on väljunud asukohast &lt;xliff:g id=\"waypoint_name\" example=\"Koduaed\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="notification_low_battery"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> - aku hakkab tühjaks saama</string>
+    <string name="notification_entered_waypoint"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> on sisenenud asukohta <xliff:g id="waypoint_name" example="Koduaed">%2$s</xliff:g></string>
+    <string name="notification_exited_waypoint"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> on väljunud asukohast <xliff:g id="waypoint_name" example="Koduaed">%2$s</xliff:g></string>
     <string name="battery_percentage">%1$d%%</string>
     <string name="fab_person">Isik</string>
     <string name="fab_location">Asukoht</string>
@@ -50,15 +50,15 @@
     <string name="section_location_sharing_requests">Asukoha jagamise päringud</string>
     <string name="section_temporary_links">Ajutised lingid</string>
     <string name="section_saved_places">Salvestatud asukohad</string>
-    <string name="request_from">Päring osalejalt &lt;xliff:g id=\"sender_id\" example=\"ABC123\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="expires">Aegub &lt;xliff:g id=\"relative_time\" example=\"5 minuti pärast\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="request_from">Päring osalejalt <xliff:g id="sender_id" example="ABC123">%1$s</xliff:g></string>
+    <string name="expires">Aegub <xliff:g id="relative_time" example="5 minuti pärast">%1$s</xliff:g></string>
     <string name="nobody_here">mitte keegi pole hetkel siin</string>
-    <string name="user_is_here">&lt;xliff:g id=\"person_name\" example=\"Kadri\"&gt;%1$s&lt;/xliff:g&gt; on praegu siin</string>
-    <string name="users_are_here">&lt;xliff:g id=\"person_names\" example=\"Kadri, Mati\"&gt;%1$s&lt;/xliff:g&gt; on praegu siin üheskoos</string>
+    <string name="user_is_here"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> on praegu siin</string>
+    <string name="users_are_here"><xliff:g id="person_names" example="Kadri, Mati">%1$s</xliff:g> on praegu siin üheskoos</string>
     <string name="last_updated_never">Mitte kunagi</string>
     <string name="since_just_now">Tulid äsja</string>
-    <string name="since_minutes_ago">Tulid &lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti eest</string>
-    <string name="since_time_date">Tulid &lt;xliff:g id=\"time\" example=\"15:45\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"date\" example=\"täna\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="since_minutes_ago">Tulid <xliff:g id="minutes" example="5">%1$d</xliff:g> minuti eest</string>
+    <string name="since_time_date">Tulid <xliff:g id="time" example="15:45">%1$s</xliff:g> <xliff:g id="date" example="täna">%2$s</xliff:g></string>
     <string name="add_person_title">Lisa isik</string>
     <string name="status_awaiting_request">See osaleja soovib teada sinu asukohta</string>
     <string name="status_cannot_share_self">Sa ei saa oma asukohta jaga iseendale</string>
@@ -93,7 +93,7 @@
     <string name="permission_upgrade_dialog_title">Täpse asukoha tuvastamine on vajalik</string>
     <string name="permission_reopen_upgrade_prompt">Muud asukohatuvastuse tüüpi</string>
     <string name="permission_approximate_only_explanation">FindFamily toimib vaid siis, kui kasutusel on täpse asukoha tuvastamine. Jätkamiseks palun luba seadistustes vastavad õigused.</string>
-    <string name="history_title">Ajalugu: &lt;xliff:g id=\"person_name\" example=\"Kadri\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="history_title">Ajalugu: <xliff:g id="person_name" example="Kadri">%1$s</xliff:g></string>
     <string name="history_step_minus_5m">-5 min</string>
     <string name="history_step_minus_1m">-1 min</string>
     <string name="history_step_minus_10s">-10 sek</string>

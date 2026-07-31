@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">电子邮件</string>
     <string name="all_accounts">所有账号</string>
     <string name="add_account">添加账号</string>
     <string name="logout_current_account">退出登录当前账号</string>
-    <string name="selected_count">已选择 &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; 项</string>
+    <string name="selected_count">已选择 <xliff:g id="count" example="3">%1$d</xliff:g> 项</string>
     <string name="reply">回复</string>
     <string name="forward">转发</string>
     <string name="compose">撰写</string>
@@ -15,12 +15,12 @@
     <string name="subject_label">主题</string>
     <string name="body_label">正文</string>
     <string name="outbox">发件箱</string>
-    <string name="outbox_with_count">发件箱（&lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt;）</string>
+    <string name="outbox_with_count">发件箱（<xliff:g id="count" example="2">%1$d</xliff:g>）</string>
     <string name="send_now">立即发送</string>
     <string name="email_address">电子邮件地址</string>
     <string name="testing_connection">正在测试连接…</string>
     <string name="test_connection_and_save">测试连接并保存</string>
-    <string name="open_app_password_help">打开 &lt;xliff:g id=\"provider\" example=\"Google\"&gt;%1$s&lt;/xliff:g&gt; 应用密码帮助</string>
+    <string name="open_app_password_help">打开 <xliff:g id="provider" example="Google">%1$s</xliff:g> 应用密码帮助</string>
     <string name="host_label">主机</string>
     <string name="port_label">端口</string>
     <string name="ssl_tls">SSL/TLS</string>
@@ -42,7 +42,7 @@
     <string name="cc">抄送</string>
     <string name="password">密码</string>
     <string name="show_quoted_text">显示引用文本</string>
-    <string name="from">发件人：&lt;xliff:g id=\"account\" example=\"me@example.com\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="from">发件人：<xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
     <string name="sign_in_with_microsoft">使用 Microsoft 登录</string>
     <string name="app_password">应用密码</string>
     <string name="accounts">账号</string>
@@ -54,24 +54,24 @@
     <string name="all">全部</string>
     <string name="username_is_not_my_email">用户名不是我的电子邮件地址</string>
     <string name="none">无</string>
-    <string name="added">已添加 &lt;xliff:g id=\"email\" example=\"user@example.com\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="added">已添加 <xliff:g id="email" example="user@example.com">%1$s</xliff:g></string>
     <string name="load_images">加载图片</string>
     <string name="deleted_from_outbox">已从发件箱删除</string>
     <string name="blocked_senders">已屏蔽发件人</string>
     <string name="username">用户名</string>
-    <string name="inline_images">内嵌图片（&lt;xliff:g id=\"count\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"size\" example=\"1.2 MB\"&gt;%2$s&lt;/xliff:g&gt;）</string>
-    <string name="sign_in_with">使用 &lt;xliff:g id=\"provider\" example=\"Microsoft\"&gt;%1$s&lt;/xliff:g&gt; 登录</string>
+    <string name="inline_images">内嵌图片（<xliff:g id="count" example="2">%1$s</xliff:g> - <xliff:g id="size" example="1.2 MB">%2$s</xliff:g>）</string>
+    <string name="sign_in_with">使用 <xliff:g id="provider" example="Microsoft">%1$s</xliff:g> 登录</string>
     <string name="your_signature">您的签名</string>
     <string name="attachments">附件</string>
     <string name="remote_images_blocked">远程图片已屏蔽</string>
-    <string name="to">收件人：&lt;xliff:g id=\"recipient\" example=\"bob@example.com\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="to">收件人：<xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
     <string name="no_content_1">（无内容）</string>
     <string name="imap_incoming">IMAP（收件）</string>
     <string name="generating_summary">正在生成摘要…</string>
     <string name="no_messages_found_pull_down_to_refresh">未找到邮件。下拉即可刷新。</string>
-    <string name="saved_to_outbox">已保存到发件箱：&lt;xliff:g id=\"reason\" example=\"No network\"&gt;%1$s&lt;/xliff:g&gt;</string>
-    <string name="attempt_s">&lt;xliff:g id=\"count\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt; 次尝试</string>
-    <string name="retrying_pending_message_s">正在重试 &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$s&lt;/xliff:g&gt; 封待处理邮件…</string>
+    <string name="saved_to_outbox">已保存到发件箱：<xliff:g id="reason" example="No network">%1$s</xliff:g></string>
+    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> 次尝试</string>
+    <string name="retrying_pending_message_s">正在重试 <xliff:g id="count" example="3">%1$s</xliff:g> 封待处理邮件…</string>
     <string name="retry">重试</string>
     <string name="outbox_is_empty">发件箱为空</string>
     <string name="folders">文件夹</string>
@@ -88,8 +88,8 @@
     <string name="in_1_week">1 周后</string>
     <string name="hide">隐藏</string>
     <string name="tomorrow_8_am">明天（上午 8 点）</string>
-    <string name="attachments_1">附件（&lt;xliff:g id=\"size\" example=\"2.3 MB\"&gt;%1$s&lt;/xliff:g&gt;）</string>
-    <string name="cc_1">抄送：&lt;xliff:g id=\"recipient\" example=\"bob@example.com\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="attachments_1">附件（<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>）</string>
+    <string name="cc_1">抄送：<xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
     <string name="open">打开</string>
     <string name="this_evening_6_pm">今晚（下午 6 点）</string>
     <string name="no_subject">（无主题）</string>
@@ -99,7 +99,7 @@
     <string name="block_sender">屏蔽发件人</string>
     <string name="conversation">对话</string>
     <string name="no_drafts">无草稿</string>
-    <string name="download_failed">下载失败：&lt;xliff:g id=\"error\" example=\"Network error\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="download_failed">下载失败：<xliff:g id="error" example="Network error">%1$s</xliff:g></string>
     <string name="unblock">取消屏蔽</string>
     <string name="no_recent_emails">没有最近的邮件</string>
     <string name="how_to_get_your_app_password">如何获取您的应用密码</string>
@@ -107,7 +107,7 @@
     <string name="security">安全：</string>
     <string name="show">显示</string>
     <string name="attachments_2">附件：</string>
-    <string name="to_1">收件人：&lt;xliff:g id=\"recipient\" example=\"bob@example.com\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="to_1">收件人：<xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
     <string name="snoozed">已暂停</string>
     <string name="sender_blocked">发件人已屏蔽</string>
     <string name="save_as_eml">另存为 .eml</string>
@@ -115,6 +115,6 @@
     <string name="later">稍后</string>
     <string name="signature_saved">签名已保存</string>
     <string name="unsubscribe">取消订阅</string>
-    <string name="failed">失败：&lt;xliff:g id=\"error\" example=\"Auth error\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="failed">失败：<xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
     <string name="microsoft_sign_in_failed">Microsoft 登录失败</string>
 </resources>

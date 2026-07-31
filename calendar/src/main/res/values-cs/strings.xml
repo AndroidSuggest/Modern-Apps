@@ -35,19 +35,19 @@
     <string name="cancel">Zrušit</string>
     <string name="create">Vytvořit</string>
     <string name="no_title">(Bez názvu)</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"Leden\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="date_range_format">&lt;xliff:g id=\"start_date\" example=\"Led 1\"&gt;%1$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Led 2\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"Led 1\"&gt;%1$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"start_time\" example=\"9:00 dop.\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_time\" example=\"10:00 dop.\"&gt;%3$s&lt;/xliff:g&gt;</string>
-    <string name="full_date_time_range_format">&lt;xliff:g id=\"start_date\" example=\"Led 1\"&gt;%1$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"start_time\" example=\"9:00 dop.\"&gt;%2$s&lt;/xliff:g&gt; - &lt;xliff:g id=\"end_date\" example=\"Led 2\"&gt;%3$s&lt;/xliff:g&gt;, &lt;xliff:g id=\"end_time\" example=\"10:00 dop.\"&gt;%4$s&lt;/xliff:g&gt;</string>
-    <string name="hour_am">&lt;xliff:g id=\"hour\" example=\"9\"&gt;%1$d&lt;/xliff:g&gt; dop.</string>
+    <string name="month_year_format"><xliff:g id="month_name" example="Leden">%1$s</xliff:g> <xliff:g id="year" example="2025">%2$d</xliff:g></string>
+    <string name="date_range_format"><xliff:g id="start_date" example="Led 1">%1$s</xliff:g> - <xliff:g id="end_date" example="Led 2">%2$s</xliff:g></string>
+    <string name="date_time_range_format"><xliff:g id="date" example="Led 1">%1$s</xliff:g> • <xliff:g id="start_time" example="9:00 dop.">%2$s</xliff:g> - <xliff:g id="end_time" example="10:00 dop.">%3$s</xliff:g></string>
+    <string name="full_date_time_range_format"><xliff:g id="start_date" example="Led 1">%1$s</xliff:g>, <xliff:g id="start_time" example="9:00 dop.">%2$s</xliff:g> - <xliff:g id="end_date" example="Led 2">%3$s</xliff:g>, <xliff:g id="end_time" example="10:00 dop.">%4$s</xliff:g></string>
+    <string name="hour_am"><xliff:g id="hour" example="9">%1$d</xliff:g> dop.</string>
     <string name="twelve_pm">12 odp.</string>
-    <string name="hour_pm">&lt;xliff:g id=\"hour\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; odp.</string>
+    <string name="hour_pm"><xliff:g id="hour" example="3">%1$d</xliff:g> odp.</string>
     <string name="all_day">Celodenní</string>
     <string name="does_not_repeat">Neopakuje se</string>
     <string name="repeats">Opakuje se</string>
-    <string name="calendar_id_label">ID: &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="calendar_id_label">ID: <xliff:g id="calendar_id" example="1">%1$d</xliff:g></string>
     <string name="go_to_date">Přejít na datum</string>
-    <string name="dropdown_freq_format">&lt;xliff:g id=\"frequency\" example=\"Týdenní\"&gt;%1$s&lt;/xliff:g&gt; ▼</string>
+    <string name="dropdown_freq_format"><xliff:g id="frequency" example="Týdenní">%1$s</xliff:g> ▼</string>
     <string name="until_date">Do: <xliff:g id="date" example="31. 12. 2025">%1$s</xliff:g></string>
     <string name="change_color_for">Změnit barvu tohoto kalendáře</string>
     <string name="delete_calendar_name_confirm">Opravdu chcete smazat \"<xliff:g id="calendar_name" example="Work">%1$s</xliff:g>\"? Tímto se odstraní všechny události v kalendáři.</string>
