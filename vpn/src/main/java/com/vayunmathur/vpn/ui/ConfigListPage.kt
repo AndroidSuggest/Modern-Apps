@@ -2,6 +2,8 @@ package com.vayunmathur.vpn.ui
 
 import android.app.Activity
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,9 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,9 +44,6 @@ import com.vayunmathur.library.ui.SnackbarHost
 import com.vayunmathur.library.ui.SnackbarHostState
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
-import com.vayunmathur.library.ui.AlertDialog
-import com.vayunmathur.library.ui.OutlinedTextField
-import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.vpn.Route
 import com.vayunmathur.vpn.data.VpnConfig
 import com.vayunmathur.vpn.service.VpnTunnelService
@@ -61,8 +58,13 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     val context = LocalContext.current
     val activity = context as? Activity
     val snackbar = remember { SnackbarHostState() }
-    var showImport by remember { mutableStateOf(false) }
-    var importText by remember { mutableStateOf("") }
+
+    // The only way to add a tunnel is opening a .conf file via SAF.
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) vm.importFromUri(context, uri)
+    }
 
     LaunchedEffect(status) {
         status?.let { snackbar.showSnackbar(it); vm.clearStatus() }
@@ -81,13 +83,11 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FloatingActionButton(onClick = { showImport = true }) {
-                    Text("Import")
-                }
-                FloatingActionButton(onClick = { backStack.add(Route.New) }) {
-                    IconAdd()
-                }
+            FloatingActionButton(onClick = {
+                // Open a .conf file — only import option per user request.
+                filePicker.launch(arrayOf("*/*"))
+            }) {
+                IconAdd()
             }
         },
     ) { pad ->
@@ -97,12 +97,11 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
         ) {
             if (configs.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("No tunnels yet", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Add a connection by opening a .conf file", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
-                        Text("Create one or Import a wg-quick .conf")
-                        Spacer(Modifier.height(16.dp))
-                        Button({ backStack.add(Route.New) }) { Text("New tunnel") }
+                        Button({ filePicker.launch(arrayOf("*/*")) }) { Text("Open .conf file") }
                     }
                 }
             } else {
@@ -127,36 +126,6 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                 }
             }
         }
-    }
-
-    if (showImport) {
-        AlertDialog(
-            onDismissRequest = { showImport = false },
-            title = { Text("Import wg-quick .conf") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Paste a full WireGuard config (gotatun protocol compatible): [Interface] + [Peer]. Host:port Endpoint + base64 keys.", fontSize = 12.sp)
-                    OutlinedTextField(
-                        importText,
-                        { importText = it },
-                        Modifier.fillMaxWidth(),
-                        label = { Text("config text") },
-                        minLines = 6,
-                        maxLines = 12,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton({
-                    vm.importFromText(importText)
-                    showImport = false
-                    importText = ""
-                }) { Text("Import") }
-            },
-            dismissButton = {
-                TextButton({ showImport = false }) { Text("Cancel") }
-            },
-        )
     }
 }
 

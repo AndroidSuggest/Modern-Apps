@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.util.Log
 import androidx.compose.runtime.Composable
@@ -15,14 +16,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.vpn.data.VpnConfig
 import com.vayunmathur.vpn.data.VpnConfigDao
-import com.vayunmathur.vpn.data.VpnConfigEntity
-import com.vayunmathur.vpn.data.VpnStats
 import com.vayunmathur.vpn.data.WgConfigParser
 import com.vayunmathur.vpn.data.toEntity
 import com.vayunmathur.vpn.data.toModel
 import com.vayunmathur.vpn.service.VpnTunnelService
-import java.net.DatagramSocket
-import java.net.InetSocketAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,17 +47,11 @@ class VpnViewModel(
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
 
-    private val _activeStats = MutableStateFlow<VpnStats?>(null)
-    val activeStats: StateFlow<VpnStats?> = _activeStats
-
-    // used by service lifecycle — when service stops we clear connecting id
     init {
         viewModelScope.launch {
             while (true) {
                 delay(500)
-                if (!VpnTunnelService.isRunning) {
-                    _connectingId.value = null
-                }
+                if (!VpnTunnelService.isRunning) _connectingId.value = null
             }
         }
     }
@@ -78,10 +69,7 @@ class VpnViewModel(
             withContext(Dispatchers.Main) {
                 val svcIntent = Intent(ctx, VpnTunnelService::class.java).apply {
                     action = VpnTunnelService.ACTION_CONNECT
-                    putExtra(
-                        VpnTunnelService.EXTRA_CONFIG_JSON,
-                        Json.encodeToString(config),
-                    )
+                    putExtra(VpnTunnelService.EXTRA_CONFIG_JSON, Json.encodeToString(config))
                 }
                 _connectingId.value = config.id
                 ctx.startService(svcIntent)
@@ -92,28 +80,13 @@ class VpnViewModel(
 
     fun stopVpn() {
         val ctx = getApplication<Application>()
-        ctx.startService(
-            Intent(ctx, VpnTunnelService::class.java).apply {
-                action = VpnTunnelService.ACTION_DISCONNECT
-            }
-        )
+        ctx.startService(Intent(ctx, VpnTunnelService::class.java).apply { action = VpnTunnelService.ACTION_DISCONNECT })
         _connectingId.value = null
         _status.value = "Disconnected"
     }
 
-    fun isActive(configId: Long): Boolean {
-        return VpnTunnelService.isRunning && _connectingId.value == configId
-    }
-
-    fun generateKeys(): Pair<String, String> {
-        return try {
-            val priv = VpnNative.generatePrivateKey()
-            val pubKey = VpnNative.derivePublicKey(priv)
-            priv to pubKey
-        } catch (e: Throwable) {
-            Log.e("VpnVM", "keygen", e)
-            "" to ""
-        }
+    fun delete(config: VpnConfig) {
+        viewModelScope.launch(Dispatchers.IO) { dao.delete(config.toEntity()) }
     }
 
     fun upsert(config: VpnConfig, onSaved: ((Long) -> Unit)? = null) {
@@ -123,56 +96,44 @@ class VpnViewModel(
         }
     }
 
-    fun delete(config: VpnConfig) {
+    /**
+     * The only way to create a new tunnel — open a WireGuard .conf file.
+     * Parses [Interface] + [Peer] using the same tiny wg-quick parser the Rust side (gotatun/mullvad) expects.
+     * Derives public key via Rust X25519 if native .so is loaded; otherwise stores empty pubkey.
+     */
+    fun importFromUri(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            dao.delete(config.toEntity())
-        }
-    }
-
-    fun importFromText(text: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching { WgConfigParser.parse(text).getOrThrow() }
-                .onSuccess { imp ->
-                    try {
-                        val derivedPub = VpnNative.derivePublicKey(imp.privateKey)
-                        val config = VpnConfig(
-                            name = imp.peerEndpoint.substringBefore(':'),
-                            privateKey = imp.privateKey,
-                            publicKey = derivedPub,
-                            address = imp.address,
-                            dns = imp.dns,
-                            mtu = imp.mtu,
-                            peerPublicKey = imp.peerPublicKey,
-                            peerPresharedKey = imp.peerPresharedKey,
-                            peerAllowedIPs = imp.peerAllowedIps,
-                            peerEndpoint = imp.peerEndpoint,
-                            peerKeepalive = imp.peerKeepalive,
-                        )
-                        dao.upsert(config.toEntity())
-                        _status.value = "Imported ${config.name}"
-                    } catch (e: Exception) {
-                        _status.value = "Import derivation failed: ${e.message}"
-                    }
-                }
-                .onFailure { _status.value = "Import failed: ${it.message}" }
-        }
-    }
-
-    suspend fun preflight(endpoint: String, timeoutMs: Int = 2000): Boolean {
-        return withContext(Dispatchers.IO) {
-            val host = endpoint.substringBefore(':').trim()
-            val port = endpoint.substringAfterLast(':').toIntOrNull() ?: 51820
-            if (host.isEmpty()) return@withContext true
             try {
-                DatagramSocket().use { sock ->
-                    sock.soTimeout = timeoutMs
-                    val addr = InetSocketAddress(host, port)
-                    // quick probe: send a single null byte, expect ICMP unreachable etc — we only test reachability of socket create
-                    sock.connect(addr)
-                    true
+                try {
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (_: Exception) { }
+                val text = context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                    ?: run { _status.value = "Failed to read file"; return@launch }
+                val imp = WgConfigParser.parse(text).getOrElse {
+                    _status.value = "Import failed: ${it.message}"
+                    return@launch
                 }
+                val derivedPub = runCatching { VpnNative.derivePublicKey(imp.privateKey) }.getOrNull() ?: ""
+                val nameFromFile = uri.lastPathSegment?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
+                    ?: imp.peerEndpoint.substringBefore(':').ifBlank { "Imported Tunnel" }
+                val model = VpnConfig(
+                    name = nameFromFile,
+                    privateKey = imp.privateKey,
+                    publicKey = derivedPub,
+                    address = imp.address,
+                    dns = imp.dns,
+                    mtu = imp.mtu,
+                    peerPublicKey = imp.peerPublicKey,
+                    peerPresharedKey = imp.peerPresharedKey,
+                    peerAllowedIPs = imp.peerAllowedIps,
+                    peerEndpoint = imp.peerEndpoint,
+                    peerKeepalive = imp.peerKeepalive,
+                )
+                dao.upsert(model.toEntity())
+                _status.value = "Imported ${model.name} from .conf"
             } catch (e: Exception) {
-                false
+                Log.e("VpnVM", "importFromUri", e)
+                _status.value = "Import failed: ${e.message}"
             }
         }
     }

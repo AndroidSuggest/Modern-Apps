@@ -1,14 +1,13 @@
 package com.vayunmathur.vpn
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
@@ -45,6 +44,7 @@ class MainActivity : ComponentActivity() {
             dao = buildDatabase<VpnDatabase>(dbName = DB_NAME).vpnConfigDao()
             withContext(Dispatchers.Main) {
                 ready.value = true
+                handleIntent(intent)
             }
         }
 
@@ -52,6 +52,20 @@ class MainActivity : ComponentActivity() {
             DynamicTheme {
                 if (ready.value) Navigation(vm)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        intent ?: return
+        // Accept VIEW intents for .conf files from Files / Downloads etc.
+        if (intent.action == Intent.ACTION_VIEW) {
+            val uri = intent.data ?: return
+            vm.importFromUri(this, uri)
         }
     }
 }
@@ -63,8 +77,6 @@ sealed interface Route : NavKey {
     @Serializable
     data class Detail(val id: Long) : Route
     @Serializable
-    data object New : Route
-    @Serializable
     data object Settings : Route
 }
 
@@ -74,7 +86,6 @@ fun Navigation(vm: VpnViewModel) {
     MainNavigation(backStack) {
         entry<Route.List> { ConfigListPage(backStack, vm) }
         entry<Route.Detail> { ConfigDetailPage(backStack, vm, it.id) }
-        entry<Route.New> { ConfigDetailPage(backStack, vm, 0L) }
         entry<Route.Settings> { SettingsPage(backStack, vm) }
     }
 }
