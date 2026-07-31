@@ -112,7 +112,10 @@
     <!-- Settings blocked senders: Empty state when no blocked entries. Noun -->
     <string name="none">None</string>
     <!-- OutboxScreen TopBar: Toast while retrying pending messages. %1$s = count -->
-    <string name="retrying_pending_message_s">Retrying <xliff:g id="count" example="3">%1$s</xliff:g> pending message(s)…</string>
+    <plurals name="retrying_pending_messages">
+        <item quantity="one">Retrying <xliff:g id="count" example="3">%1$s</xliff:g> pending message…</item>
+        <item quantity="other">Retrying <xliff:g id="count" example="3">%1$s</xliff:g> pending messages…</item>
+    </plurals>
     <!-- Settings blocked senders: Button to unblock a sender. Verb -->
     <string name="unblock">Unblock</string>
     <!-- Composer schedule / Snooze menu: Tomorrow 8 AM option -->
@@ -235,8 +238,38 @@
     <!-- OutboxRow: Error line showing last failure reason. %1$s = error message -->
     <string name="failed">Failed: <xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
     <!-- OutboxRow: Showing number of send attempts. %1$s = count -->
-    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> attempt(s)</string>
+    <plurals name="attempts">
+        <item quantity="one"><xliff:g id="count" example="2">%1$s</xliff:g> attempt</item>
+        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> attempts</item>
+    </plurals>
 
     <!-- Composer format toolbar: Accessibility content description for insert image button -->
     <string name="cd_insert_image">Insert image</string>
+    <string name="normal">Normal</string>
+    <string name="heading_1">Heading 1</string>
+    <string name="heading_2">Heading 2</string>
+    <string name="heading_3">Heading 3</string>
+    <string name="left">Left</string>
+    <string name="center">Center</string>
+    <string name="right">Right</string>
+    <string name="justify">Justify</string>
+    <string name="small">Small</string>
+    <string name="large">Large</string>
+    <string name="extra_large">Extra Large</string>
+    <string name="font_default">Default</string>
+    <string name="sans">Sans</string>
+    <string name="serif">Serif</string>
+    <string name="monospace">Monospace</string>
+    <string name="alignment">Alignment</string>
+    <string name="blockquote">Blockquote</string>
+    <string name="inline_code">Inline code</string>
+    <string name="horizontal_rule">Horizontal rule</string>
+    <string name="text_color">Text color</string>
+    <string name="highlight">Highlight</string>
+    <string name="font_size">Font size</string>
+    <string name="font_family">Font family</string>
+    <string name="clear_formatting">Clear formatting</string>
+    <string name="email_sync_channel_name">Background email sync</string>
+    <string name="email_sync_channel_desc">Keeps an IMAP connection open so new mail arrives instantly.</string>
+    <string name="unified_inbox_label">Unified Inbox</string>
 </resources>

@@ -15,7 +15,9 @@
     <string name="label_artist">音乐人</string>
     <string name="artist_info_format"><xliff:g id="song_count" example="25">%1$d</xliff:g> 首歌曲 • <xliff:g id="duration" example="1h 42m">%2$s</xliff:g></string>
     <string name="label_playlist">播放列表</string>
-    <string name="num_songs_format"><xliff:g id="count" example="10">%1$d</xliff:g> 首歌曲</string>
+    <plurals name="num_songs_format">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> 首歌曲</item>
+    </plurals>
     <string name="label_play">播放</string>
     <string name="label_shuffle">随机播放</string>
     <string name="label_songs">歌曲</string>

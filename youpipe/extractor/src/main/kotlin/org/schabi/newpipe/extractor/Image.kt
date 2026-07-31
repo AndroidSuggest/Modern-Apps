@@ -1,7 +1,6 @@
 package org.schabi.newpipe.extractor
 
 import java.io.Serializable
-import java.util.Objects
 import javax.annotation.Nonnull
 
 class Image(
@@ -11,18 +10,9 @@ class Image(
     @field:Nonnull @get:Nonnull val estimatedResolutionLevel: ResolutionLevel
 ) : Serializable {
 
-    init {
-        Objects.requireNonNull(estimatedResolutionLevel, "estimatedResolutionLevel is null")
-    }
 
-    @Nonnull
-    fun getUrl(): String = url
 
-    fun getHeight(): Int = height
-    fun getWidth(): Int = width
 
-    @Nonnull
-    fun getEstimatedResolutionLevel(): ResolutionLevel = estimatedResolutionLevel
 
     @Nonnull
     override fun toString(): String =

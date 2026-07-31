@@ -1,6 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
 import java.util.EnumSet
 
 /** Validates policy output before executing any network, token, timing, or media capability. */
@@ -8,16 +7,6 @@ class SabrSessionPolicyHost(
     private val policy: SabrSessionPolicy,
     private val transcript: SabrSessionPolicyTranscript?
 ) : AutoCloseable {
-
-    companion object {
-        private const val MAX_REQUEST_BYTES: Int = 256 * 1024
-        private val TERMINAL: Set<SabrSessionPolicy.ActionType> = EnumSet.of(
-            SabrSessionPolicy.ActionType.CONTINUE,
-            SabrSessionPolicy.ActionType.RETRY,
-            SabrSessionPolicy.ActionType.FAIL_SABR_ERROR,
-            SabrSessionPolicy.ActionType.TRY_RELOAD
-        )
-    }
 
     init {
         requireNotNull(policy)
@@ -82,7 +71,7 @@ class SabrSessionPolicyHost(
     }
 
     fun snapshotTranscript(): List<String> {
-        return transcript?.snapshot() ?: Collections.emptyList()
+        return transcript?.snapshot() ?: emptyList()
     }
 
     fun commitAppliedState(result: SabrSessionPolicy.Result, state: SabrSessionPolicy.State) {
@@ -102,7 +91,15 @@ class SabrSessionPolicyHost(
         policy.close()
     }
 
-    companion object Validator {
+    companion object {
+        private const val MAX_REQUEST_BYTES: Int = 256 * 1024
+        private val TERMINAL: Set<SabrSessionPolicy.ActionType> = EnumSet.of(
+            SabrSessionPolicy.ActionType.CONTINUE,
+            SabrSessionPolicy.ActionType.RETRY,
+            SabrSessionPolicy.ActionType.FAIL_SABR_ERROR,
+            SabrSessionPolicy.ActionType.TRY_RELOAD
+        )
+
         private fun validateState(state: SabrSessionPolicy.State) {
             if (state.requestNumber < 0 ||
                 state.redirectCount < 0 ||

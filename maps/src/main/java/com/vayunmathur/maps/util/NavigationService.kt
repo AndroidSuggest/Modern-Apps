@@ -1,5 +1,6 @@
 package com.vayunmathur.maps.util
 
+import com.vayunmathur.library.util.localizedAmPmMarker
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -348,7 +349,7 @@ internal fun formatEta(etaEpochMs: Long): String {
         chars(":")
         minute()
         chars(" ")
-        amPmMarker("AM", "PM")
+        localizedAmPmMarker()
     }
     return local.format(fmt)
 }

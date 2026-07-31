@@ -29,7 +29,7 @@ class SabrMediaSegment private constructor(
         private const val COPY_BUFFER_SIZE = 8192
 
         internal fun progressive(header: SabrMediaHeader, file: File, length: Int): SabrMediaSegment {
-            return SabrMediaSegment(header, file, length, ProgressiveFileState(length))
+            return SabrMediaSegment(header, null, file, length, ProgressiveFileState(length))
         }
     }
 

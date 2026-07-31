@@ -1,5 +1,8 @@
 package com.vayunmathur.library.ui
 
+import com.vayunmathur.library.util.localizedAmPmMarker
+import kotlinx.datetime.format.DateTimeFormat
+import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -32,7 +35,6 @@ import kotlinx.datetime.atTime
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
@@ -43,23 +45,23 @@ import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.R
 
 object HistoryDateFormats {
-    val MONTH_DAY = LocalDate.Format {
-        monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+    val MONTH_DAY: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
         chars(" ")
         day()
     }
 
-    val TIME_SECOND_AM_PM = LocalTime.Format {
+    val TIME_SECOND_AM_PM: DateTimeFormat<LocalTime> get() = LocalTime.Format {
         amPmHour()
         chars(":")
         minute()
         chars(":")
         second()
         chars(" ")
-        amPmMarker("AM", "PM")
+        localizedAmPmMarker()
     }
 
-    val DATE_INPUT = MONTH_DAY
+    val DATE_INPUT: DateTimeFormat<LocalDate> get() = MONTH_DAY
 }
 
 /**

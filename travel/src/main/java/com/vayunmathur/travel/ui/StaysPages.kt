@@ -70,7 +70,7 @@ fun StaySearchForm(
 
     Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         StaySuggestField(
-            label = "Destination or hotel",
+            label = stringResource(com.vayunmathur.travel.R.string.destination_or_hotel),
             viewModel = viewModel,
             onSelect = { name, lat, lng ->
                 place = name
@@ -378,7 +378,7 @@ fun StayGuestsPage(
             }
             OutlinedTextField(givenName, { givenName = it }, label = { Text(stringResource(R.string.given_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(familyName, { familyName = it }, label = { Text(stringResource(R.string.family_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            DateField(stringResource(R.string.date_of_birth), bornOn, onDate = { bornOn = it }, dateFormat = "MMM d, yyyy")
+            DateField(stringResource(R.string.date_of_birth), bornOn, onDate = { bornOn = it }, dateFormat = MonthDayYear)
             OutlinedTextField(
                 email, { email = it }, label = { Text(stringResource(R.string.email)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),

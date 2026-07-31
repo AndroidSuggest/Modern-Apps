@@ -3,9 +3,9 @@ package com.vayunmathur.appstore.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
+import android.net.Uri
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 
 object PlayStoreDataSource {
 
@@ -14,7 +14,7 @@ object PlayStoreDataSource {
     suspend fun search(query: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
         try {
-            val q = URLEncoder.encode(query, "UTF-8")
+            val q = Uri.encode(query)
             val url = "$PLAY_BASE/store/search?q=$q&c=apps"
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000
@@ -29,7 +29,7 @@ object PlayStoreDataSource {
 
     suspend fun topCharts(category: String = ""): List<UnifiedApp> = withContext(Dispatchers.IO) {
         try {
-            val catPath = if (category.isNotBlank()) "/category/${URLEncoder.encode(category, "UTF-8")}" else ""
+            val catPath = if (category.isNotBlank()) "/category/${Uri.encode(category)}" else ""
             val url = "$PLAY_BASE/store/apps$catPath?hl=en_US&gl=US"
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15000

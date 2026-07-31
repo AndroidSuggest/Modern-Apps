@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import org.schabi.newpipe.extractor.Page
@@ -21,9 +22,8 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Collections
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeCommentsExtractor(
     service: StreamingService,
@@ -74,8 +74,8 @@ class YoutubeCommentsExtractor(
             ?.let { itemSectionRenderer ->
                 try {
                     JsonUtils.getString(
-                        itemSectionRenderer.getObject("itemSectionRenderer")!!
-                            .getArray("contents")!!.getObject(0)!!,
+                        itemSectionRenderer.getObject("itemSectionRenderer").orEmptyObject()
+                            .getArray("contents").orEmptyArray().getObject(0).orEmptyObject(),
                         "continuationItemRenderer.continuationEndpoint" +
                             ".continuationCommand.token"
                     )
@@ -128,10 +128,10 @@ class YoutubeCommentsExtractor(
         val continuationItemsArray: JsonArray
         try {
             val endpoint = onResponseReceivedEndpoints
-                .getObject(onResponseReceivedEndpoints.size - 1)!!
+                .getObject(onResponseReceivedEndpoints.size - 1).orEmptyObject()
             continuationItemsArray = (endpoint.getObject("reloadContinuationItemsCommand")
                 ?: endpoint.getObject("appendContinuationItemsAction"))!!
-                .getArray("continuationItems")!!
+                .getArray("continuationItems").orEmptyArray()
         } catch (e: Exception) {
             return null
         }
@@ -141,8 +141,8 @@ class YoutubeCommentsExtractor(
         }
 
         val continuationItemRenderer = continuationItemsArray
-            .getObject(continuationItemsArray.size - 1)!!
-            .getObject("continuationItemRenderer")!!
+            .getObject(continuationItemsArray.size - 1).orEmptyObject()
+            .getObject("continuationItemRenderer").orEmptyObject()
 
         val jsonPath = if (continuationItemRenderer.containsKey("button"))
             "button.buttonRenderer.command.continuationCommand.token"
@@ -177,7 +177,7 @@ class YoutubeCommentsExtractor(
         val body = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("continuation", page.id)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         val jsonObject = getJsonPostResponse("next", body, localization)
 
@@ -203,7 +203,7 @@ class YoutubeCommentsExtractor(
             return
         }
         val commentsEndpoint = onResponseReceivedEndpoints
-            .getObject(onResponseReceivedEndpoints.size - 1)!!
+            .getObject(onResponseReceivedEndpoints.size - 1).orEmptyObject()
 
         val path: String = when {
             commentsEndpoint.containsKey("reloadContinuationItemsCommand") ->
@@ -229,9 +229,9 @@ class YoutubeCommentsExtractor(
             mutableContents.removeAt(index)
         }
 
-        val mutations = jsonObject.getObject("frameworkUpdates")!!
-            .getObject("entityBatchUpdate")!!
-            .getArray("mutations")!!
+        val mutations = jsonObject.getObject("frameworkUpdates").orEmptyObject()
+            .getObject("entityBatchUpdate").orEmptyObject()
+            .getArray("mutations").orEmptyArray()
         val videoUrl = getUrl()
         val timeAgoParser = getTimeAgoParser()
 
@@ -251,23 +251,23 @@ class YoutubeCommentsExtractor(
     ) {
         when {
             content.containsKey("commentThreadRenderer") -> {
-                val commentThreadRenderer = content.getObject("commentThreadRenderer")!!
+                val commentThreadRenderer = content.getObject("commentThreadRenderer").orEmptyObject()
                 if (commentThreadRenderer.containsKey(COMMENT_VIEW_MODEL_KEY)) {
-                    val commentViewModel = commentThreadRenderer.getObject(COMMENT_VIEW_MODEL_KEY)!!
-                        .getObject(COMMENT_VIEW_MODEL_KEY)!!
+                    val commentViewModel = commentThreadRenderer.getObject(COMMENT_VIEW_MODEL_KEY).orEmptyObject()
+                        .getObject(COMMENT_VIEW_MODEL_KEY).orEmptyObject()
                     collector.commit(
                         YoutubeCommentsEUVMInfoItemExtractor(
                             commentViewModel,
-                            commentThreadRenderer.getObject("replies")!!
+                            commentThreadRenderer.getObject("replies").orEmptyObject()
                                 .getObject("commentRepliesRenderer"),
                             getMutationPayloadFromEntityKey(
                                 mutations,
-                                commentViewModel.getString("commentKey", "")!!
-                            ).getObject("commentEntityPayload")!!,
+                                commentViewModel.getString("commentKey", "")
+                            ).getObject("commentEntityPayload").orEmptyObject(),
                             getMutationPayloadFromEntityKey(
                                 mutations,
-                                commentViewModel.getString("toolbarStateKey", "")!!
-                            ).getObject("engagementToolbarStateEntityPayload")!!,
+                                commentViewModel.getString("toolbarStateKey", "")
+                            ).getObject("engagementToolbarStateEntityPayload").orEmptyObject(),
                             videoUrl,
                             timeAgoParser
                         )
@@ -275,9 +275,9 @@ class YoutubeCommentsExtractor(
                 } else if (commentThreadRenderer.containsKey("comment")) {
                     collector.commit(
                         YoutubeCommentsInfoItemExtractor(
-                            commentThreadRenderer.getObject("comment")!!
-                                .getObject(COMMENT_RENDERER_KEY)!!,
-                            commentThreadRenderer.getObject("replies")!!
+                            commentThreadRenderer.getObject("comment").orEmptyObject()
+                                .getObject(COMMENT_RENDERER_KEY).orEmptyObject(),
+                            commentThreadRenderer.getObject("replies").orEmptyObject()
                                 .getObject("commentRepliesRenderer"),
                             videoUrl,
                             timeAgoParser
@@ -286,19 +286,19 @@ class YoutubeCommentsExtractor(
                 }
             }
             content.containsKey(COMMENT_VIEW_MODEL_KEY) -> {
-                val commentViewModel = content.getObject(COMMENT_VIEW_MODEL_KEY)!!
+                val commentViewModel = content.getObject(COMMENT_VIEW_MODEL_KEY).orEmptyObject()
                 collector.commit(
                     YoutubeCommentsEUVMInfoItemExtractor(
                         commentViewModel,
                         null,
                         getMutationPayloadFromEntityKey(
                             mutations,
-                            commentViewModel.getString("commentKey", "")!!
-                        ).getObject("commentEntityPayload")!!,
+                            commentViewModel.getString("commentKey", "")
+                        ).getObject("commentEntityPayload").orEmptyObject(),
                         getMutationPayloadFromEntityKey(
                             mutations,
-                            commentViewModel.getString("toolbarStateKey", "")!!
-                        ).getObject("engagementToolbarStateEntityPayload")!!,
+                            commentViewModel.getString("toolbarStateKey", "")
+                        ).getObject("engagementToolbarStateEntityPayload").orEmptyObject(),
                         videoUrl,
                         timeAgoParser
                     )
@@ -307,7 +307,7 @@ class YoutubeCommentsExtractor(
             content.containsKey(COMMENT_RENDERER_KEY) -> {
                 collector.commit(
                     YoutubeCommentsInfoItemExtractor(
-                        content.getObject(COMMENT_RENDERER_KEY)!!,
+                        content.getObject(COMMENT_RENDERER_KEY).orEmptyObject(),
                         null,
                         videoUrl,
                         timeAgoParser
@@ -323,7 +323,7 @@ class YoutubeCommentsExtractor(
         val body = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("videoId", getId())
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         val initialToken = findInitialCommentsToken(
             getJsonPostResponse("next", body, localization)
@@ -336,7 +336,7 @@ class YoutubeCommentsExtractor(
         val ajaxBody = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("continuation", initialToken)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         ajaxJson = getJsonPostResponse("next", ajaxBody, localization)
     }
@@ -351,13 +351,13 @@ class YoutubeCommentsExtractor(
             return -1
         }
 
-        val countText = ajaxJson!!.getArray("onResponseReceivedEndpoints")!!
-            .getObject(0)!!
-            .getObject("reloadContinuationItemsCommand")!!
-            .getArray("continuationItems")!!
-            .getObject(0)!!
-            .getObject("commentsHeaderRenderer")!!
-            .getObject("countText")!!
+        val countText = ajaxJson!!.getArray("onResponseReceivedEndpoints").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("reloadContinuationItemsCommand").orEmptyObject()
+            .getArray("continuationItems").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("commentsHeaderRenderer").orEmptyObject()
+            .getObject("countText").orEmptyObject()
 
         try {
             return Utils.removeNonDigitCharacters(getTextFromObject(countText)!!).toInt()

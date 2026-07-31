@@ -42,17 +42,11 @@ class Page : Serializable {
 
     constructor(ids: List<String>, cookies: Map<String, String>) : this(null, null, ids, cookies, null)
 
-    fun getUrl(): String? = url
-    fun getId(): String? = id
-    fun getIds(): List<String>? = ids
-    fun getCookies(): Map<String, String>? = cookies
 
-    @Nullable
-    fun getBody(): ByteArray? = body
 
     companion object {
         @JvmStatic
         fun isValid(page: Page?): Boolean =
-            page != null && (!Utils.isNullOrEmpty(page.getUrl()) || !Utils.isNullOrEmpty(page.getIds()))
+            page != null && (!Utils.isNullOrEmpty(page.url) || !Utils.isNullOrEmpty(page.ids))
     }
 }

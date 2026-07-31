@@ -27,7 +27,6 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.prepar
 import org.schabi.newpipe.extractor.utils.JsonUtils
 import org.schabi.newpipe.extractor.utils.getObject
 import java.io.IOException
-import java.nio.charset.StandardCharsets
 
 object YoutubeStreamHelper {
 
@@ -62,7 +61,7 @@ object YoutubeStreamHelper {
 
         addVideoIdCpnAndOkChecks(builder, videoId, null)
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val url = YOUTUBEI_V1_URL + PLAYER + "?" + DISABLE_PRETTY_PRINT_PARAMETER +
             "&\$fields=microformat,videoDetails.thumbnail.thumbnails,videoDetails.videoId"
@@ -112,7 +111,7 @@ object YoutubeStreamHelper {
             addPoToken(builder, webEmbeddedPoTokenResult.playerRequestPoToken)
         }
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
         val url = YOUTUBEI_V1_URL + PLAYER + "?" + DISABLE_PRETTY_PRINT_PARAMETER
 
         return JsonUtils.toJsonObject(
@@ -144,7 +143,7 @@ object YoutubeStreamHelper {
 
         addPoToken(builder, androidPoTokenResult.playerRequestPoToken)
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val url = YOUTUBEI_V1_GAPIS_URL + PLAYER + "?" + DISABLE_PRETTY_PRINT_PARAMETER +
             "&t=" + generateTParameter() + "&id=" + videoId
@@ -185,7 +184,7 @@ object YoutubeStreamHelper {
         builder.end()
             .value("disablePlayerResponse", false)
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val url = YOUTUBEI_V1_GAPIS_URL + "reel/reel_item_watch" + "?" +
             DISABLE_PRETTY_PRINT_PARAMETER + "&t=" + generateTParameter() + "&id=" + videoId +
@@ -230,7 +229,7 @@ object YoutubeStreamHelper {
             addPoToken(builder, iosPoTokenResult.playerRequestPoToken)
         }
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val url = YOUTUBEI_V1_GAPIS_URL + PLAYER + "?" + DISABLE_PRETTY_PRINT_PARAMETER +
             "&t=" + generateTParameter() + "&id=" + videoId
@@ -268,7 +267,7 @@ object YoutubeStreamHelper {
 
         addVideoIdCpnAndOkChecks(builder, videoId, cpn)
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val url = YOUTUBEI_V1_GAPIS_URL + PLAYER + "?" + DISABLE_PRETTY_PRINT_PARAMETER +
             "&t=" + generateTParameter() + "&id=" + videoId

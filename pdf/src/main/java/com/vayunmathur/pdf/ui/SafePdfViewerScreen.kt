@@ -87,6 +87,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -95,6 +96,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -162,6 +164,7 @@ import com.vayunmathur.library.ui.IconShapeTriangleFill
 import com.vayunmathur.library.ui.IconShapeTriangleOutline
 import com.vayunmathur.pdf.util.SafeOutlineItem
 import kotlinx.coroutines.CoroutineScope
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -371,14 +374,23 @@ private data class EditAction(
 )
 
 /**
+ * Pinch-zoom bounds. 1 is "page fills the viewport width"; below that the page is
+ * drawn narrower than the screen so more of the document fits on it at once.
+ */
+private const val MIN_ZOOM = 0.5f
+private const val MAX_ZOOM = 6f
+
+/**
  * Clamp the zoom [pan] (screen-pixel translation) so the content, scaled by
- * [zoom] around its center, can't be dragged past the viewport ([size]) edges.
- * At zoom 1 the range is zero, so the page stays put.
+ * [zoom] around its top edge, can't be dragged past the viewport ([size]) edges.
+ * At zoom 1 the range is zero, so the page stays put. Because the pivot is the top
+ * (not the centre), the vertical range runs from -(zoom-1)·height to 0 rather than
+ * symmetrically about zero.
  */
 private fun clampPan(pan: Offset, zoom: Float, size: IntSize): Offset {
     val maxX = (size.width * (zoom - 1f) / 2f).coerceAtLeast(0f)
-    val maxY = (size.height * (zoom - 1f) / 2f).coerceAtLeast(0f)
-    return Offset(pan.x.coerceIn(-maxX, maxX), pan.y.coerceIn(-maxY, maxY))
+    val maxY = (size.height * (zoom - 1f)).coerceAtLeast(0f)
+    return Offset(pan.x.coerceIn(-maxX, maxX), pan.y.coerceIn(-maxY, 0f))
 }
 
 /**
@@ -597,15 +609,16 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     var multiTouch by remember { mutableStateOf(false) }
     val transformState = rememberTransformableState { centroid, zoomChange, panChange, _ ->
         val zoomOld = zoom
-        zoom = (zoom * zoomChange).coerceIn(1f, 6f)
-        // Keep the content point under the gesture centroid fixed while zooming
-        // (the graphicsLayer uses the default center transformOrigin, so pivot
-        // relative to the viewport centre), then apply the two-finger drag.
-        // panChange/centroid arrive in the layer's (unscaled) coordinate space,
-        // so the drag maps to screen pixels via the current zoom.
-        val center = Offset(viewportSize.width / 2f, viewportSize.height / 2f)
-        val pivoted = pan - (centroid - center) * (zoom - zoomOld)
-        pan = if (zoom > 1f) clampPan(pivoted + panChange * zoom, zoom, viewportSize) else Offset.Zero
+        zoom = (zoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        // Keep the content point under the gesture centroid fixed while zooming, then
+        // apply the two-finger drag. `transformable` sits above the graphicsLayer in the
+        // modifier chain, so centroid/panChange already arrive in viewport pixels, and
+        // the layer pivots on its top-centre.
+        val origin = Offset(viewportSize.width / 2f, 0f)
+        val pivoted = pan + (centroid - origin - pan) * (1f - zoom / zoomOld)
+        // Below zoom 1 the content already fits the viewport exactly, so there is
+        // nothing to pan to.
+        pan = if (zoom > 1f) clampPan(pivoted + panChange, zoom, viewportSize) else Offset.Zero
     }
 
     val searchFocus = remember { FocusRequester() }
@@ -958,13 +971,32 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                         }
                     }
                 }
+                // Above the graphicsLayer so gesture coordinates are plain viewport pixels.
+                .transformable(transformState, enabled = !editMode || tool == EditTool.SELECT)
+                // Zooming below 1 draws the page narrower than the screen. Lay the content
+                // out taller by 1/zoom so that, scaled back down, it still fills the
+                // viewport height — otherwise it would shrink to a band with blank space
+                // above and below. The layout width stays the viewport width, so pages keep
+                // rasterizing at full resolution and are only downscaled when drawn.
+                .layout { measurable, constraints ->
+                    val h = if (zoom < 1f && constraints.hasBoundedHeight) {
+                        (constraints.maxHeight / zoom).roundToInt()
+                    } else {
+                        constraints.maxHeight
+                    }
+                    val placeable = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+                    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
+                }
                 .graphicsLayer {
                     scaleX = zoom
                     scaleY = zoom
                     translationX = pan.x
                     translationY = pan.y
-                }
-                .transformable(transformState, enabled = !editMode || tool == EditTool.SELECT),
+                    // Pivot on the top edge: keeps the first visible page anchored to the top
+                    // of the screen across zoom changes, and makes the taller-than-viewport
+                    // layout above scale back to exactly the viewport height.
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                },
         ) {
             when (val state = loadState) {
                 LoadState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))

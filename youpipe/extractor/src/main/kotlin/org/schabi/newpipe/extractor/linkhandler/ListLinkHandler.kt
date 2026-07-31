@@ -30,10 +30,8 @@ open class ListLinkHandler : LinkHandler {
         handler.originalUrl,
         handler.url,
         handler.id,
-        Collections.emptyList(),
+        emptyList(),
         ""
     )
 
-    fun getContentFilters(): List<String> = contentFilters
-    fun getSortFilter(): String = sortFilter
 }

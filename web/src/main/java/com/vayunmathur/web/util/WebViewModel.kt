@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.web.util
 
+import kotlin.uuid.Uuid
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -30,7 +33,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.UUID
 
 private const val TAG = "WebViewModel"
 private const val P_SAVED_TABS = "web_saved_tabs"
@@ -42,7 +44,7 @@ private const val P_DESKTOP_MODE = "web_desktop_mode"
 private const val P_ADBLOCK = "web_adblock"
 
 data class PermissionPrompt(
-    val id: String = UUID.randomUUID().toString(),
+    val id: String = Uuid.random().toString(),
     val origin: String,
     val types: List<SitePermissionType>,
     val onGrant: (List<SitePermissionType>) -> Unit,
@@ -149,7 +151,7 @@ class WebViewModel(
                             }
                         }
                         if (tabs.isEmpty()) {
-                            val tab = BrowserTab(id = UUID.randomUUID().toString(), url = "")
+                            val tab = BrowserTab(id = Uuid.random().toString(), url = "")
                             tabs.add(tab)
                             activeTabId = tab.id
                         } else {
@@ -174,7 +176,7 @@ class WebViewModel(
                     Log.e(TAG, "Failed to load prefs", e)
                     withContext(Dispatchers.Main) {
                         if (tabs.isEmpty()) {
-                            val tab = BrowserTab(id = UUID.randomUUID().toString(), url = "")
+                            val tab = BrowserTab(id = Uuid.random().toString(), url = "")
                             tabs.add(tab)
                             activeTabId = tab.id
                         }
@@ -243,7 +245,7 @@ class WebViewModel(
     }
 
     fun newTab(url: String = "", makeActive: Boolean = true, isPrivate: Boolean = false) {
-        val tab = BrowserTab(id = UUID.randomUUID().toString(), url = url, isPrivate = isPrivate)
+        val tab = BrowserTab(id = Uuid.random().toString(), url = url, isPrivate = isPrivate)
         tabs.add(tab)
         if (makeActive) {
             activeTabId = tab.id
@@ -267,7 +269,7 @@ class WebViewModel(
         if (activeTabId == tabId) {
             activeTabId = when {
                 tabs.isEmpty() -> {
-                    val tab = BrowserTab(id = UUID.randomUUID().toString(), url = "")
+                    val tab = BrowserTab(id = Uuid.random().toString(), url = "")
                     tabs.add(tab)
                     tab.id
                 }

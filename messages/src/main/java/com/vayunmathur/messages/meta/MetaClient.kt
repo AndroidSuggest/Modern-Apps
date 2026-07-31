@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.meta
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.messages.data.MessageSource
@@ -16,12 +19,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 
 // TODO: E2EE support — the Go bridge uses whatsmeow for encrypted Messenger chats
 // (table.ENCRYPTED_OVER_WA_ONE_TO_ONE / ENCRYPTED_OVER_WA_GROUP). Implement E2EE
@@ -68,13 +69,7 @@ object MetaClient {
     private var db: MetaDatabase? = null
     private var backfillJob: Job? = null
 
-    // Web bootstrap (#5) + media upload (#14) need an HTTP client and the parsed config.
-    private val httpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
-    }
+    // Web bootstrap (#5) + media upload (#14) go through library:network.
     private var config: MetaConfig = MetaConfig()
 
     // Issue #2: Optimistic message ID resolution — maps task/request ID to callback
@@ -97,7 +92,7 @@ object MetaClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         if (_state.value is State.Connected) return
         scope.launch {
             val auth = MetaAuthData.load(appContext, MetaAuthData.Platform.MESSENGER)
@@ -142,7 +137,7 @@ object MetaClient {
 
         // #5: bootstrap web config (versionId / broker / appId / ParentThreadKeys)
         // before opening the realtime socket. Falls back to defaults on failure.
-        config = MetaBootstrap.load(auth, httpClient)
+        config = MetaBootstrap.load(auth)
 
         mqttClient = MetaMqttClient(auth, config).apply {
             scope.launch {
@@ -478,7 +473,6 @@ object MetaClient {
             bytes = bytes,
             mimeType = mimeType,
             fileName = fileName,
-            httpClient = httpClient,
         )
         if (fbid == null) {
             Log.e(TAG, "Media upload failed for $conversationId")

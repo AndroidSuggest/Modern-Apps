@@ -1,5 +1,7 @@
 package com.vayunmathur.passwords.ui
 
+import android.text.format.DateFormat
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -27,7 +29,6 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.passwords.R
 import com.vayunmathur.passwords.Route
 import com.vayunmathur.passwords.util.PasswordsViewModel
-import java.text.DateFormat
 import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,7 +45,10 @@ fun PasskeyPage(
         return
     }
 
-    val dateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+    val context = LocalContext.current
+    val mediumDate = DateFormat.getMediumDateFormat(context)
+    val shortTime = DateFormat.getTimeFormat(context)
+    val dateFormat = { ms: Long -> mediumDate.format(Date(ms)) + " " + shortTime.format(Date(ms)) }
 
     Scaffold(
         topBar = {
@@ -76,8 +80,8 @@ fun PasskeyPage(
                 stringResource(R.string.passkey_credential_id),
                 passkey.credentialId.let { if (it.length > 20) it.take(20) + "…" else it }
             )
-            DetailCard(stringResource(R.string.passkey_created), dateFormat.format(Date(passkey.creationTime)))
-            DetailCard(stringResource(R.string.passkey_last_used), dateFormat.format(Date(passkey.lastUsedTime)))
+            DetailCard(stringResource(R.string.passkey_created), dateFormat(passkey.creationTime))
+            DetailCard(stringResource(R.string.passkey_last_used), dateFormat(passkey.lastUsedTime))
         }
     }
 }

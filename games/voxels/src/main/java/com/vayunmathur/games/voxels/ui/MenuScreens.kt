@@ -1,5 +1,7 @@
 package com.vayunmathur.games.voxels.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.voxels.R
 import android.text.format.DateUtils
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,13 +49,13 @@ fun MenuScreen(
             Modifier.fillMaxWidth().widthIn(max = 560.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Voxels", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
-            Text("Select a world", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.select_a_world), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(20.dp))
 
             if (worlds.isEmpty()) {
                 Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-                    Text("No worlds yet — create one to start.", color = MaterialTheme.colorScheme.onBackground)
+                    Text(stringResource(R.string.no_worlds_yet_create_one_to_start), color = MaterialTheme.colorScheme.onBackground)
                 }
             } else {
                 LazyColumn(
@@ -68,7 +70,7 @@ fun MenuScreen(
             }
 
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
-                Text("Create New World")
+                Text(stringResource(R.string.create_new_world))
             }
         }
     }
@@ -84,7 +86,7 @@ private fun WorldRow(world: WorldInfo, onPlay: () -> Unit, onDelete: () -> Unit)
             Column(Modifier.weight(1f)) {
                 Text(world.meta.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
                 val last = DateUtils.getRelativeTimeSpanString(world.meta.lastPlayed).toString()
-                Text("Seed: ${world.meta.seed}  •  $last", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text(stringResource(R.string.seed_2, world.meta.seed, last), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
             }
             IconButton(onClick = onDelete) { IconDelete(tint = MaterialTheme.colorScheme.error) }
             IconButton(onClick = onPlay) { IconPlay(tint = MaterialTheme.colorScheme.primary) }
@@ -104,12 +106,12 @@ fun WorldCreatorScreen(
             Modifier.fillMaxWidth().widthIn(max = 480.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Create World", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.create_world), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(24.dp))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("World name") },
+                label = { Text(stringResource(R.string.world_name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -117,17 +119,17 @@ fun WorldCreatorScreen(
             OutlinedTextField(
                 value = seed,
                 onValueChange = { seed = it },
-                label = { Text("Seed") },
-                placeholder = { Text("Leave blank for random") },
-                supportingText = { Text("A number, or any text (hashed to a seed).") },
+                label = { Text(stringResource(R.string.seed)) },
+                placeholder = { Text(stringResource(R.string.leave_blank_for_random)) },
+                supportingText = { Text(stringResource(R.string.a_number_or_any_text_hashed_to_a_seed)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(24.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                Button(onClick = { onCreate(name, seed) }, modifier = Modifier.weight(1f)) { Text("Create & Play") }
+                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.cancel)) }
+                Button(onClick = { onCreate(name, seed) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.create_play)) }
             }
         }
     }

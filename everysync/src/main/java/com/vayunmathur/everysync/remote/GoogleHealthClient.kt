@@ -1,5 +1,14 @@
 package com.vayunmathur.everysync.remote
 
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.number
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
 import android.net.Uri
 import android.util.Log
 import androidx.health.connect.client.records.ExerciseSessionRecord
@@ -9,11 +18,6 @@ import com.vayunmathur.everysync.model.RemoteMeasurement
 import com.vayunmathur.everysync.model.RemoteNutrition
 import com.vayunmathur.everysync.model.RemoteSleepStage
 import com.vayunmathur.library.network.NetworkClient
-import java.time.Instant
-import java.time.LocalDate
-import java.time.OffsetDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -63,7 +67,7 @@ class GoogleHealthClient(private val accessToken: String) {
      * sequential since it depends on the previous page token.
      */
     suspend fun getMeasurements(fromMillis: Long, toMillis: Long): List<RemoteMeasurement> = coroutineScope {
-        val zone = ZoneId.systemDefault()
+        val zone = TimeZone.currentSystemDefault()
         if (fromMillis >= toMillis) return@coroutineScope emptyList()
         val semaphore = Semaphore(MAX_CONCURRENCY)
         val jobs = mutableListOf<Deferred<List<RemoteMeasurement>>>()
@@ -97,7 +101,7 @@ class GoogleHealthClient(private val accessToken: String) {
 
     // --- dailyRollUp (steps, distance, floors, elevation, calories, heart rate) ---
 
-    private suspend fun dailyRollUp(spec: Spec, start: LocalDate, end: LocalDate, zone: ZoneId): List<RemoteMeasurement> {
+    private suspend fun dailyRollUp(spec: Spec, start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
         val body = """
             {
               "range": {
@@ -139,7 +143,7 @@ class GoogleHealthClient(private val accessToken: String) {
 
     // --- dataPoints list (samples, daily summaries, hydration sessions) ---
 
-    private suspend fun listDataPoints(spec: Spec, start: LocalDate, end: LocalDate, zone: ZoneId): List<RemoteMeasurement> {
+    private suspend fun listDataPoints(spec: Spec, start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
         val filter = when (spec.mode) {
             Mode.LIST_DAILY ->
                 "${spec.filterField}.date >= \"$start\" AND ${spec.filterField}.date < \"$end\""
@@ -180,7 +184,7 @@ class GoogleHealthClient(private val accessToken: String) {
 
     // --- sleep (sessions with stage segments) ---
 
-    private suspend fun fetchSleep(start: LocalDate, end: LocalDate, zone: ZoneId): List<RemoteMeasurement> {
+    private suspend fun fetchSleep(start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
         val filter = "sleep.interval.end_time >= \"${iso(start, zone)}\" AND sleep.interval.end_time < \"${iso(end, zone)}\""
         val out = mutableListOf<RemoteMeasurement>()
         try {
@@ -211,7 +215,7 @@ class GoogleHealthClient(private val accessToken: String) {
 
     // --- exercise (workout sessions) ---
 
-    private suspend fun fetchExercise(start: LocalDate, end: LocalDate, zone: ZoneId): List<RemoteMeasurement> {
+    private suspend fun fetchExercise(start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
         val filter = "exercise.interval.civil_start_time >= \"$start\" AND exercise.interval.civil_start_time < \"$end\""
         val out = mutableListOf<RemoteMeasurement>()
         try {
@@ -238,7 +242,7 @@ class GoogleHealthClient(private val accessToken: String) {
 
     // --- nutrition (logged food) ---
 
-    private suspend fun fetchNutrition(start: LocalDate, end: LocalDate, zone: ZoneId): List<RemoteMeasurement> {
+    private suspend fun fetchNutrition(start: LocalDate, end: LocalDate, zone: TimeZone): List<RemoteMeasurement> {
         val filter = "nutrition_log.interval.civil_start_time >= \"$start\" AND nutrition_log.interval.civil_start_time < \"$end\""
         val out = mutableListOf<RemoteMeasurement>()
         try {
@@ -304,19 +308,21 @@ class GoogleHealthClient(private val accessToken: String) {
     private fun recordId(type: MeasurementType, millis: Long) = "googlehealth:${type.name}:$millis"
 
     /** Split `[fromMillis, toMillis)` into inclusive-start/exclusive-end windows of [chunkDays]. */
-    private fun chunks(fromMillis: Long, toMillis: Long, chunkDays: Int, zone: ZoneId): List<Pair<LocalDate, LocalDate>> {
-        val today = LocalDate.now(zone)
+    private fun chunks(fromMillis: Long, toMillis: Long, chunkDays: Int, zone: TimeZone): List<Pair<LocalDate, LocalDate>> {
+        val today = Clock.System.now().toLocalDateTime(zone).date
         // Round the end up a day so the final partial day is covered; never past today.
         val endExclusive = minOf(
-            Instant.ofEpochMilli(toMillis.coerceAtLeast(0)).atZone(zone).toLocalDate().plusDays(1),
-            today.plusDays(1),
+            Instant.fromEpochMilliseconds(toMillis.coerceAtLeast(0))
+                .toLocalDateTime(zone).date.plus(1, DateTimeUnit.DAY),
+            today.plus(1, DateTimeUnit.DAY),
         )
-        var start = Instant.ofEpochMilli(fromMillis.coerceAtLeast(0)).atZone(zone).toLocalDate()
-        if (start.isAfter(today)) start = today
+        var start = Instant.fromEpochMilliseconds(fromMillis.coerceAtLeast(0))
+            .toLocalDateTime(zone).date
+        if (start > today) start = today
         val out = mutableListOf<Pair<LocalDate, LocalDate>>()
         var s = start
-        while (s.isBefore(endExclusive)) {
-            val e = minOf(s.plusDays(chunkDays.toLong()), endExclusive)
+        while (s < endExclusive) {
+            val e = minOf(s.plus(chunkDays, DateTimeUnit.DAY), endExclusive)
             out += s to e
             s = e
         }
@@ -324,27 +330,27 @@ class GoogleHealthClient(private val accessToken: String) {
     }
 
     private fun dateJson(d: LocalDate): String =
-        """{"year": ${d.year}, "month": ${d.monthValue}, "day": ${d.dayOfMonth}}"""
+        """{"year": ${d.year}, "month": ${d.month.number}, "day": ${d.day}}"""
 
-    private fun iso(d: LocalDate, zone: ZoneId): String =
-        DateTimeFormatter.ISO_INSTANT.format(d.atStartOfDay(zone).toInstant())
+    // Instant.toString() is ISO-8601 with a 'Z' suffix, i.e. what ISO_INSTANT produced.
+    private fun iso(d: LocalDate, zone: TimeZone): String = d.atStartOfDayIn(zone).toString()
 
     /** Convert a `{year,month,day}` object to epoch millis at local midnight. */
-    private fun dateMillis(date: JsonObject?, zone: ZoneId): Long? {
+    private fun dateMillis(date: JsonObject?, zone: TimeZone): Long? {
         date ?: return null
         val year = date["year"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
         val month = date["month"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
         val day = date["day"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        return LocalDate.of(year, month, day).atStartOfDay(zone).toInstant().toEpochMilli()
+        return LocalDate(year, month, day).atStartOfDayIn(zone).toEpochMilliseconds()
     }
 
     /** Parse a google-datetime (RFC 3339) instant to epoch millis. */
     private fun sampleMillis(physicalTime: JsonElement?): Long? {
         val s = (physicalTime as? JsonPrimitive)?.content?.ifBlank { null } ?: return null
         return try {
-            OffsetDateTime.parse(s).toInstant().toEpochMilli()
+            Instant.parse(s).toEpochMilliseconds()
         } catch (_: Exception) {
-            try { Instant.parse(s).toEpochMilli() } catch (_: Exception) { null }
+            null
         }
     }
 

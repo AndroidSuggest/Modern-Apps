@@ -16,8 +16,6 @@ import java.io.Serializable
 import java.io.UnsupportedEncodingException
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.util.LinkedHashSet
 
 class YoutubeSabrFormat private constructor(
     @JvmField val itag: Int,
@@ -215,7 +213,7 @@ class YoutubeSabrFormat private constructor(
 
         internal fun urlEncode(value: String): String {
             try {
-                return URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+                return URLEncoder.encode(value, Charsets.UTF_8.name())
             } catch (e: UnsupportedEncodingException) {
                 throw ParsingException("Could not encode SABR signature cipher", e)
             }
@@ -223,7 +221,7 @@ class YoutubeSabrFormat private constructor(
 
         internal fun urlDecode(value: String): String {
             try {
-                return URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+                return URLDecoder.decode(value, Charsets.UTF_8.name())
             } catch (e: UnsupportedEncodingException) {
                 throw ParsingException("Could not decode SABR signature cipher", e)
             }

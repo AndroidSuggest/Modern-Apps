@@ -16,17 +16,17 @@ abstract class SearchExtractor(
 
     class NothingFoundException(message: String) : ExtractionException(message)
 
-    fun getSearchString(): String = getLinkHandler().getSearchString()
+    fun getSearchString(): String = linkHandler.getSearchString()
 
     @Nonnull
     @Throws(ParsingException::class)
     abstract fun getSearchSuggestion(): String
 
-    @Nonnull
-    override fun getLinkHandler(): SearchQueryHandler = super.getLinkHandler() as SearchQueryHandler
+    override val linkHandler: SearchQueryHandler
+        get() = super.linkHandler as SearchQueryHandler
 
     @Nonnull
-    override fun getName(): String = getLinkHandler().getSearchString()
+    override fun getName(): String = linkHandler.getSearchString()
 
     @Throws(ParsingException::class)
     abstract fun isCorrectedSearch(): Boolean

@@ -1,4 +1,5 @@
 package com.vayunmathur.calendar.ui.dialogs
+import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
@@ -48,7 +49,6 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 import com.vayunmathur.library.util.localizedMonthNames
 import com.vayunmathur.library.util.localizedDayOfWeekNames
-import java.time.format.TextStyle
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.number
 
@@ -86,9 +86,9 @@ fun RecurrenceDialog(backStack: NavBackStack<Route>, resultKey: String, startDat
     }
 
     // Values derived from the chosen start date, used to label the preset options.
-    val weekdayFull = localizedDayOfWeekNames(TextStyle.FULL)[startDate.dayOfWeek.isoDayNumber - 1]
+    val weekdayFull = localizedDayOfWeekNames(DateNameStyle.FULL)[startDate.dayOfWeek.isoDayNumber - 1]
     val nthOfMonth = ordinal((startDate.day - 1) / 7 + 1)
-    val monthName = localizedMonthNames(TextStyle.FULL)[startDate.month.number - 1]
+    val monthName = localizedMonthNames(DateNameStyle.FULL)[startDate.month.number - 1]
 
     AlertDialog(
         onDismissRequest = { backStack.pop() },
@@ -167,7 +167,7 @@ fun RecurrenceDialog(backStack: NavBackStack<Route>, resultKey: String, startDat
                         }, color = if(d in daysOfWeek) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
                             shape = CircleShape) {
                             Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) {
-                                Text(localizedDayOfWeekNames(TextStyle.SHORT)[d.isoDayNumber - 1])
+                                Text(localizedDayOfWeekNames(DateNameStyle.SHORT)[d.isoDayNumber - 1])
                             }
                         }
                     }

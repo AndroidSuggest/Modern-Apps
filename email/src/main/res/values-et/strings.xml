@@ -106,5 +106,7 @@
     <string name="no_content">(Sisu pole)</string>
     <string name="no_subject">(teemat pole)</string>
     <string name="cd_insert_image">Lisa pilt</string>
-    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> katse(t)</string>
+    <plurals name="attempts">
+        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> katse(t)</item>
+    </plurals>
 </resources>

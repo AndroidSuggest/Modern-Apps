@@ -175,7 +175,7 @@ class PlaylistInfo private constructor(
         fun getInfo(extractor: PlaylistExtractor): PlaylistInfo {
             val info = PlaylistInfo(
                 extractor.getServiceId(),
-                extractor.getLinkHandler(),
+                extractor.linkHandler,
                 extractor.getName()
             )
             // collect uploader extraction failures until we are sure this is not
@@ -203,12 +203,12 @@ class PlaylistInfo private constructor(
                 info.addError(e)
             }
             try {
-                info.setUploaderUrl(extractor.getUploaderUrl())
+                info.setUploaderUrl(extractor.getUploaderUrl() ?: "")
             } catch (e: Exception) {
                 uploaderParsingErrors.add(e)
             }
             try {
-                info.setUploaderName(extractor.getUploaderName())
+                info.setUploaderName(extractor.getUploaderName() ?: "")
             } catch (e: Exception) {
                 uploaderParsingErrors.add(e)
             }
@@ -251,8 +251,8 @@ class PlaylistInfo private constructor(
             }
 
             val itemsPage = ExtractorHelper.getItemsPageOrLogError(info, extractor)
-            info.setRelatedItems(itemsPage.getItems())
-            info.setNextPage(itemsPage.getNextPage())
+            info.relatedItems = itemsPage.getItems()
+            info.setNextPage(itemsPage.nextPage)
 
             return info
         }

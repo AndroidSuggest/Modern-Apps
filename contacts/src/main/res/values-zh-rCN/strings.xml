@@ -61,7 +61,9 @@
     <string name="backup_and_export">备份和导出</string>
     <string name="grant_calendar_permissions">授予日历权限</string>
     <string name="delete_selected_contacts_title">删除所选联系人</string>
-    <string name="delete_selected_contacts_confirm">确定要删除所选的 <xliff:g id="count" example="5">%1$d</xliff:g> 个联系人吗？此操作无法撤销。</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="other">确定要删除所选的 <xliff:g id="count" example="5">%1$d</xliff:g> 个联系人吗？此操作无法撤销。</item>
+    </plurals>
     <string name="selected_count">已选择 <xliff:g id="count" example="3">%1$d</xliff:g> 项</string>
     <string name="display">显示</string>
     <string name="show_account_labels">显示联系人账号</string>
@@ -81,13 +83,17 @@
     <string name="delete_group_title">删除群组</string>
     <string name="delete_group_confirm">确定要删除此群组吗？联系人不会被删除。</string>
     <string name="no_groups_found">未找到群组。请在“群组”标签页中创建一个。</string>
-    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> 个联系人</string>
+    <plurals name="contacts_count">
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> 个联系人</item>
+    </plurals>
     <string name="done">完成</string>
     <string name="import_vcf_file">导入 .vcf 文件</string>
     <string name="import_to_existing_account">导入到现有账号</string>
     <string name="create_new_account_option">创建新账号</string>
     <string name="no_contacts_found">未找到联系人</string>
-    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> 个联系人已准备好导入</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> 个联系人已准备好导入</item>
+    </plurals>
     <string name="select_account">选择账号</string>
     <string name="no_name">（无名称）</string>
     <string name="add_number_to_contact">将号码添加到联系人</string>

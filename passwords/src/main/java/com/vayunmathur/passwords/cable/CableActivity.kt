@@ -72,8 +72,8 @@ class CableActivity : FragmentActivity() {
         )
         prompt.authenticate(
             BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Sign in on your other device?")
-                .setSubtitle("Verify to approve this passkey sign-in")
+                .setTitle(getString(R.string.cable_prompt_title))
+                .setSubtitle(getString(R.string.cable_prompt_subtitle))
                 .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                 .setNegativeButtonText(getString(R.string.cancel))
                 .build()

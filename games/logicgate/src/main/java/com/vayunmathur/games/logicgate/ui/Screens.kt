@@ -158,12 +158,6 @@ fun ProgressionScreen(
                                 modifier = Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(Color(0xFF7FD8BE))
                             )
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LibText(
-                            stringResource(R.string.foundation_6_routing_bus_12_arith_6_memo),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))

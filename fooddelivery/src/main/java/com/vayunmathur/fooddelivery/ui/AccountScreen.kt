@@ -1,5 +1,10 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.fooddelivery.R
+import kotlin.uuid.Uuid
 import android.content.Context
 import android.location.Geocoder
 import androidx.compose.foundation.layout.Arrangement
@@ -52,7 +57,6 @@ import com.vayunmathur.fooddelivery.data.SavedAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 private const val PREFS_NAME = "fooddelivery_prefs"
 private const val KEY_TOKEN = "token_json"
@@ -142,11 +146,11 @@ fun AccountScreen() {
                         IconPerson(modifier = Modifier.size(64.dp),
                             tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(12.dp))
-                        Text("Sign in to Food Delivery",
+                        Text(stringResource(R.string.sign_in_to_food_delivery),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
-                        Text("View orders, earn rewards, and more",
+                        Text(stringResource(R.string.view_orders_earn_rewards_and_more),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(16.dp))
@@ -154,7 +158,7 @@ fun AccountScreen() {
                         OutlinedTextField(
                             value = phone,
                             onValueChange = { phone = it },
-                            label = { Text("Phone number") },
+                            label = { Text(stringResource(R.string.phone_number)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -164,7 +168,7 @@ fun AccountScreen() {
                             OutlinedTextField(
                                 value = code,
                                 onValueChange = { code = it },
-                                label = { Text("Verification code") },
+                                label = { Text(stringResource(R.string.verification_code)) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -239,7 +243,7 @@ fun AccountScreen() {
                                 IconEmojiEvents(modifier = Modifier.size(24.dp),
                                     tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Your Savings",
+                                Text(stringResource(R.string.your_savings),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold)
                             }
@@ -248,7 +252,7 @@ fun AccountScreen() {
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary)
-                            Text("saved vs delivery apps",
+                            Text(stringResource(R.string.saved_vs_delivery_apps),
                                 style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -267,7 +271,7 @@ fun AccountScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Sign Out")
+                    Text(stringResource(R.string.sign_out))
                 }
             }
 
@@ -278,7 +282,7 @@ fun AccountScreen() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Addresses",
+                Text(stringResource(R.string.addresses),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold)
                 IconButton(onClick = {
@@ -290,7 +294,7 @@ fun AccountScreen() {
             }
 
             if (addresses.isEmpty() && !showAddAddress) {
-                Text("No saved addresses. Tap + to add one.",
+                Text(stringResource(R.string.no_saved_addresses_tap_to_add_one),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -315,7 +319,7 @@ fun AccountScreen() {
                                             style = MaterialTheme.typography.titleSmall)
                                         if (addr.isDefault) {
                                             Spacer(Modifier.width(6.dp))
-                                            Text("Default",
+                                            Text(stringResource(R.string.default_address),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.primary)
                                         }
@@ -342,11 +346,11 @@ fun AccountScreen() {
                                     AddressStore.setDefault(context, addr.id)
                                     addresses = AddressStore.getAll(context)
                                 }) {
-                                    Text("Set Default", style = MaterialTheme.typography.labelMedium)
+                                    Text(stringResource(R.string.set_default), style = MaterialTheme.typography.labelMedium)
                                 }
                             }
                             TextButton(onClick = { populateForm(addr) }) {
-                                Text("Edit", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.edit), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -365,41 +369,41 @@ fun AccountScreen() {
                         OutlinedTextField(
                             value = addrLabel,
                             onValueChange = { addrLabel = it },
-                            label = { Text("Label (e.g. Home, Work)") },
+                            label = { Text(stringResource(R.string.label_e_g_home_work)) },
                             modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = addrStreet,
                             onValueChange = { addrStreet = it; addrError = null },
-                            label = { Text("Street address *") },
+                            label = { Text(stringResource(R.string.street_address)) },
                             isError = triedSubmit && addrStreet.isBlank(),
-                            supportingText = if (triedSubmit && addrStreet.isBlank()) {{ Text("Required") }} else null,
+                            supportingText = if (triedSubmit && addrStreet.isBlank()) {{ Text(stringResource(R.string.required)) }} else null,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = addrCity,
                                 onValueChange = { addrCity = it; addrError = null },
-                                label = { Text("City *") },
+                                label = { Text(stringResource(R.string.city)) },
                                 isError = triedSubmit && addrCity.isBlank(),
-                                supportingText = if (triedSubmit && addrCity.isBlank()) {{ Text("Required") }} else null,
+                                supportingText = if (triedSubmit && addrCity.isBlank()) {{ Text(stringResource(R.string.required)) }} else null,
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
                                 value = addrState,
                                 onValueChange = { addrState = it; addrError = null },
-                                label = { Text("State *") },
+                                label = { Text(stringResource(R.string.state)) },
                                 isError = triedSubmit && addrState.isBlank(),
-                                supportingText = if (triedSubmit && addrState.isBlank()) {{ Text("Required") }} else null,
+                                supportingText = if (triedSubmit && addrState.isBlank()) {{ Text(stringResource(R.string.required)) }} else null,
                                 modifier = Modifier.width(80.dp)
                             )
                         }
                         OutlinedTextField(
                             value = addrZip,
                             onValueChange = { addrZip = it; addrError = null },
-                            label = { Text("Zip code *") },
+                            label = { Text(stringResource(R.string.zip_code)) },
                             isError = triedSubmit && addrZip.isBlank(),
-                            supportingText = if (triedSubmit && addrZip.isBlank()) {{ Text("Required") }} else null,
+                            supportingText = if (triedSubmit && addrZip.isBlank()) {{ Text(stringResource(R.string.required)) }} else null,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -407,20 +411,20 @@ fun AccountScreen() {
                             OutlinedTextField(
                                 value = addrAptUnit,
                                 onValueChange = { addrAptUnit = it },
-                                label = { Text("Apt / Unit") },
+                                label = { Text(stringResource(R.string.apt_unit)) },
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
                                 value = addrGateCode,
                                 onValueChange = { addrGateCode = it },
-                                label = { Text("Gate code") },
+                                label = { Text(stringResource(R.string.gate_code)) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                         OutlinedTextField(
                             value = addrInstructions,
                             onValueChange = { addrInstructions = it },
-                            label = { Text("Delivery instructions (optional)") },
+                            label = { Text(stringResource(R.string.delivery_instructions_optional)) },
                             modifier = Modifier.fillMaxWidth()
                         )
                         if (addrError != null) {
@@ -431,7 +435,7 @@ fun AccountScreen() {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { resetAddressForm() },
                                 modifier = Modifier.weight(1f)) {
-                                Text("Cancel")
+                                Text(stringResource(R.string.cancel))
                             }
                             Button(
                                 onClick = {
@@ -449,7 +453,7 @@ fun AccountScreen() {
                                             return@launch
                                         }
                                         val addr = SavedAddress(
-                                            id = editingAddress?.id ?: UUID.randomUUID().toString(),
+                                            id = editingAddress?.id ?: Uuid.random().toString(),
                                             label = addrLabel,
                                             addressStreet = addrStreet,
                                             addressCity = addrCity,
@@ -472,7 +476,7 @@ fun AccountScreen() {
                                 modifier = Modifier.weight(1f)
                             ) {
                                 if (savingAddress) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                else Text("Save")
+                                else Text(stringResource(R.string.save))
                             }
                         }
                     }

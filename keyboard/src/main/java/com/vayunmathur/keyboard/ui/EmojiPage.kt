@@ -1,5 +1,7 @@
 package com.vayunmathur.keyboard.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.keyboard.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -61,7 +63,7 @@ fun EmojiPage(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SpecialKey(height = keyHeight, weight = 1.4f, onClick = onBack) {
-            Text("ABC", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
+            Text(stringResource(R.string.abc), color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
         }
         Emojis.CATEGORIES.forEachIndexed { index, cat ->
             CategoryTab(

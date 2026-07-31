@@ -1,5 +1,7 @@
 package com.vayunmathur.appstore.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.appstore.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,7 +48,7 @@ fun ReposPage(viewModel: AppStoreViewModel) {
     var newName by remember { mutableStateOf("") }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Repositories") }) },
+        topBar = { TopAppBar(title = { Text(stringResource(R.string.repositories)) }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAdd = true }) { IconAdd() }
         }
@@ -57,10 +59,10 @@ fun ReposPage(viewModel: AppStoreViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Text("F-Droid Repositories", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.f_droid_repositories), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Add F-Droid compatible repos. Apps available on F-Droid are marked F-Droid, others Play Store.",
+                    stringResource(R.string.add_f_droid_compatible_repos_apps_availa),
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -70,7 +72,7 @@ fun ReposPage(viewModel: AppStoreViewModel) {
                         Text(if (isSyncing) "Syncing..." else "Sync All")
                     }
                     Button(onClick = { viewModel.loadTopCharts() }, modifier = Modifier.weight(1f)) {
-                        Text("Refresh Play")
+                        Text(stringResource(R.string.refresh_play))
                     }
                 }
             }
@@ -82,7 +84,7 @@ fun ReposPage(viewModel: AppStoreViewModel) {
                                 Text(repo.name, style = MaterialTheme.typography.titleSmall)
                                 Text(repo.url, style = MaterialTheme.typography.labelSmall)
                                 if (repo.lastSync > 0) {
-                                    Text("Last sync: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(repo.lastSync))}", style = MaterialTheme.typography.labelSmall)
+                                    Text(stringResource(R.string.last_sync, java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(repo.lastSync))), style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                             Switch(checked = repo.enabled, onCheckedChange = { viewModel.toggleRepo(repo.url) })
@@ -97,12 +99,12 @@ fun ReposPage(viewModel: AppStoreViewModel) {
     if (showAdd) {
         AlertDialog(
             onDismissRequest = { showAdd = false },
-            title = { Text("Add Repository") },
+            title = { Text(stringResource(R.string.add_repository)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = newUrl, onValueChange = { newUrl = it }, label = { Text("Repo URL") }, placeholder = { Text(DefaultRepos.FDROID_MAIN) }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Name (optional)") }, modifier = Modifier.fillMaxWidth())
-                    Text("Examples:\n${DefaultRepos.FDROID_MAIN}\n${DefaultRepos.IZVYZID}", style = MaterialTheme.typography.labelSmall)
+                    OutlinedTextField(value = newUrl, onValueChange = { newUrl = it }, label = { Text(stringResource(R.string.repo_url)) }, placeholder = { Text(DefaultRepos.FDROID_MAIN) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text(stringResource(R.string.name_optional)) }, modifier = Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.examples, DefaultRepos.FDROID_MAIN, DefaultRepos.IZVYZID), style = MaterialTheme.typography.labelSmall)
                 }
             },
             confirmButton = {
@@ -113,9 +115,9 @@ fun ReposPage(viewModel: AppStoreViewModel) {
                         newName = ""
                         showAdd = false
                     }
-                }) { Text("Add") }
+                }) { Text(stringResource(R.string.add)) }
             },
-            dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showAdd = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }

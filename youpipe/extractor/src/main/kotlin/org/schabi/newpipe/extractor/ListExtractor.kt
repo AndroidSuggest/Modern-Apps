@@ -3,7 +3,6 @@ package org.schabi.newpipe.extractor
 import org.schabi.newpipe.extractor.exceptions.ExtractionException
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler
 import java.io.IOException
-import java.util.Collections
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
@@ -26,8 +25,8 @@ abstract class ListExtractor<R : InfoItem>(
     @Throws(IOException::class, ExtractionException::class)
     abstract fun getPage(page: Page): InfoItemsPage<R>
 
-    @Nonnull
-    override fun getLinkHandler(): ListLinkHandler = super.getLinkHandler() as ListLinkHandler
+    override val linkHandler: ListLinkHandler
+        get() = super.linkHandler as ListLinkHandler
 
     class InfoItemsPage<T : InfoItem> {
 
@@ -37,7 +36,7 @@ abstract class ListExtractor<R : InfoItem>(
         val errors: List<Throwable>
 
         constructor(collector: InfoItemsCollector<T, *>, @Nullable nextPage: Page?) :
-            this(collector.getItems(), nextPage, collector.errors)
+            this(collector.getItems(), nextPage, collector.getErrors())
 
         constructor(itemsList: List<T>, @Nullable nextPage: Page?, errors: List<Throwable>) {
             this.itemsList = itemsList
@@ -48,16 +47,13 @@ abstract class ListExtractor<R : InfoItem>(
         fun hasNextPage(): Boolean = Page.isValid(nextPage)
         fun getItems(): List<T> = itemsList
 
-        @Nullable
-        fun getNextPage(): Page? = nextPage
 
-        fun getErrors(): List<Throwable> = errors
 
         companion object {
             private val EMPTY: InfoItemsPage<InfoItem> = InfoItemsPage(
-                Collections.emptyList(),
+                emptyList(),
                 null,
-                Collections.emptyList()
+                emptyList()
             )
 
             @JvmStatic

@@ -1,5 +1,12 @@
+@file:OptIn(
+    kotlin.uuid.ExperimentalUuidApi::class,
+    kotlin.concurrent.atomics.ExperimentalAtomicApi::class,
+)
+
 package com.vayunmathur.messages.gmessages
 
+import kotlin.uuid.Uuid
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -37,7 +44,6 @@ import conversations.Conversations.MessageContent
 import conversations.Conversations.ReactionData
 import conversations.Conversations.EmojiType
 import events.Events.UpdateEvents
-import java.util.UUID
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +68,6 @@ import events.Events.TypingTypes
 import rpc.Rpc.ActionType
 import rpc.Rpc.MessageType
 import settings.SettingsOuterClass
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Process-global owner of the Google-Messages-for-Web protocol session.
@@ -208,7 +213,7 @@ object GMessagesClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         if (auth.isPaired() && _state.value !is State.Connected) {
             longPoll.start(scope)
             sessionHandler.startAckInterval(scope)
@@ -229,7 +234,7 @@ object GMessagesClient {
                     val req = authentication.Authentication.RevokeRelayPairingRequest.newBuilder()
                         .setAuthMessage(
                             authentication.Authentication.AuthMessage.newBuilder()
-                                .setRequestID(UUID.randomUUID().toString())
+                                .setRequestID(Uuid.random().toString())
                                 .setTachyonAuthToken(ByteString.copyFrom(token))
                                 .setConfigVersion(PairFlow.ConfigVersion)
                         )
@@ -1138,7 +1143,7 @@ object GMessagesClient {
         Log.i(TAG, "Refreshing auth token (expires in ${timeUntilExpiry / 1000}s)")
 
         try {
-            val requestId = UUID.randomUUID().toString()
+            val requestId = Uuid.random().toString()
             val timestamp = System.currentTimeMillis() * 1000
 
             // sign() uses SHA256withECDSA which hashes internally —

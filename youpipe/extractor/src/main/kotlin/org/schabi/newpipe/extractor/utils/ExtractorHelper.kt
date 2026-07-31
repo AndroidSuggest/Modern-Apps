@@ -28,7 +28,7 @@ object ExtractorHelper {
     fun getRelatedItemsOrLogError(info: StreamInfo, extractor: StreamExtractor): List<InfoItem> {
         return try {
             val collector = extractor.getRelatedItems() ?: return emptyList()
-            info.addAllErrors(collector.errors)
+            info.addAllErrors(collector.getErrors())
             @Suppress("UNCHECKED_CAST")
             collector.getItems() as List<InfoItem>
         } catch (e: Exception) {

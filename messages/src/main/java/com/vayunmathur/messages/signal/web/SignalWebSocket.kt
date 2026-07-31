@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.signal.web
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.messages.signal.proto.WebSocketProtos.WebSocketMessage
@@ -15,17 +18,12 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
-import okio.ByteString.Companion.toByteString
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
+import com.vayunmathur.library.network.WebSocketClient
+import com.vayunmathur.library.network.WebSocketHandshakeException
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import java.io.IOException
-import java.util.concurrent.atomic.AtomicLong
 
 class SignalWebSocket(
     private val context: Context,
@@ -86,7 +84,9 @@ class SignalWebSocket(
     private val requestId = AtomicLong(1)
     private val pendingRequests = ConcurrentHashMap<Long, CompletableDeferred<WebSocketResponseMessage>>()
 
-    private var webSocket: WebSocket? = null
+    @Volatile private var socket: WebSocketClient? = null
+    private var sessionJob: Job? = null
+    private var pingJob: Job? = null
     private var reconnectJob: Job? = null
     private var currentUrl: String? = null
     private var currentBackoff = INITIAL_BACKOFF_MS
@@ -105,81 +105,70 @@ class SignalWebSocket(
 
     var incomingRequestHandler: ((WebSocketRequestMessage) -> Unit)? = null
 
-    private val client: OkHttpClient by lazy {
-        val (sslSocketFactory, trustManager) = CertPinning.createSslSocketFactory(context)
-        OkHttpClient.Builder()
-            .sslSocketFactory(sslSocketFactory, trustManager)
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .pingInterval(PING_INTERVAL_MS, TimeUnit.MILLISECONDS)
-            .build()
+    private val sslSocketFactory by lazy {
+        CertPinning.createSslSocketFactory(context).first
     }
 
-    private val listener = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) {
-            Log.d(TAG, "Connected")
+    private fun onOpen() {
+        Log.d(TAG, "Connected")
         isConnected = true
-            currentBackoff = INITIAL_BACKOFF_MS
-            reconnectCount = 0
-            resetPingState()
-            scope.launch { _connectionEvents.emit(ConnectionEvent.Connected) }
-        }
+        currentBackoff = INITIAL_BACKOFF_MS
+        reconnectCount = 0
+        resetPingState()
+        scope.launch { _connectionEvents.emit(ConnectionEvent.Connected) }
+    }
 
-        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-            try {
-                val message = WebSocketMessage.parseFrom(bytes.toByteArray())
-                when (message.type) {
-                    WebSocketMessage.Type.RESPONSE -> handleResponse(message.response)
-                    WebSocketMessage.Type.REQUEST -> handleRequest(message.request)
-                    WebSocketMessage.Type.UNKNOWN ->
-                        Log.e(TAG, "Received message with UNKNOWN type")
-                    else -> Log.w(TAG, "Unknown message type: ${message.type}")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to parse message", e)
+    private fun onBinaryFrame(bytes: ByteArray) {
+        try {
+            val message = WebSocketMessage.parseFrom(bytes)
+            when (message.type) {
+                WebSocketMessage.Type.RESPONSE -> handleResponse(message.response)
+                WebSocketMessage.Type.REQUEST -> handleRequest(message.request)
+                WebSocketMessage.Type.UNKNOWN ->
+                    Log.e(TAG, "Received message with UNKNOWN type")
+                else -> Log.w(TAG, "Unknown message type: ${message.type}")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse message", e)
         }
+    }
 
-        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(TAG, "Closing: $code $reason")
-            webSocket.close(1000, null)
+    /**
+     * Replaces okhttp's `onFailure(.., response)`. The handshake status that used
+     * to arrive as `response.code` now comes from [WebSocketHandshakeException];
+     * a post-handshake read error has no status, matching okhttp's null response.
+     */
+    private fun onFailure(t: Throwable) {
+        Log.e(TAG, "Failure: ${t.message}")
+        errorCount++
+        if (errorCount > ERROR_COUNT_LIMIT) {
+            Log.e(TAG, "Error count limit reached ($errorCount), fatal")
+            shouldReconnect = false
+            scope.launch { _connectionEvents.emit(ConnectionEvent.FatalError("Too many errors")) }
+            onDisconnected("Too many errors")
+            return
         }
-
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(TAG, "Closed: $code $reason")
-            onDisconnected(reason)
+        val status = (t as? WebSocketHandshakeException)?.statusCode ?: 0
+        if (status == 403) {
+            shouldReconnect = false
+            onDisconnected("Logged out")
+            scope.launch { _connectionEvents.emit(ConnectionEvent.LoggedOut) }
+            return
         }
-
-        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            Log.e(TAG, "Failure: ${t.message}")
-            errorCount++
-            if (errorCount > ERROR_COUNT_LIMIT) {
-                Log.e(TAG, "Error count limit reached ($errorCount), fatal")
-                shouldReconnect = false
-                scope.launch { _connectionEvents.emit(ConnectionEvent.FatalError("Too many errors")) }
-                onDisconnected("Too many errors")
-                return
-            }
-            if (response?.code == 403) {
-                shouldReconnect = false
-                onDisconnected("Logged out")
-                scope.launch { _connectionEvents.emit(ConnectionEvent.LoggedOut) }
-                return
-            }
-            if (response != null && response.code > 0 && response.code < 500) {
-                shouldReconnect = false
-                scope.launch { _connectionEvents.emit(ConnectionEvent.FatalError("Unexpected status: ${response.code}")) }
-                onDisconnected("Unexpected status: ${response.code}")
-                return
-            }
-            if (response != null && response.code in 500..599) {
-                scope.launch { _connectionEvents.emit(ConnectionEvent.Disconnected("Server error: ${response.code}")) }
-            } else if (currentBackoff < MAX_BACKOFF_MS) {
-                scope.launch { _connectionEvents.emit(ConnectionEvent.Disconnected("Transient error: ${t.message ?: "Unknown error"}")) }
-            } else {
-                scope.launch { _connectionEvents.emit(ConnectionEvent.Error("Continuing error: ${t.message ?: "Unknown error"}")) }
-            }
-            onDisconnected(t.message ?: "Unknown error")
+        if (status in 1..499) {
+            shouldReconnect = false
+            scope.launch { _connectionEvents.emit(ConnectionEvent.FatalError("Unexpected status: $status")) }
+            onDisconnected("Unexpected status: $status")
+            return
         }
+        if (status in 500..599) {
+            scope.launch { _connectionEvents.emit(ConnectionEvent.Disconnected("Server error: $status")) }
+        } else if (currentBackoff < MAX_BACKOFF_MS) {
+            scope.launch { _connectionEvents.emit(ConnectionEvent.Disconnected("Transient error: ${t.message ?: "Unknown error"}")) }
+        } else {
+            scope.launch { _connectionEvents.emit(ConnectionEvent.Error("Continuing error: ${t.message ?: "Unknown error"}")) }
+        }
+        onDisconnected(t.message ?: "Unknown error")
     }
 
     fun connect(url: String, autoReconnect: Boolean = true) {
@@ -191,8 +180,11 @@ class SignalWebSocket(
     fun disconnect() {
         shouldReconnect = false
         reconnectJob?.cancel()
-        webSocket?.close(1000, "")
-        webSocket = null
+        val open = socket
+        socket = null
+        // Close before cancelling: the read loop is parked in a blocking socket
+        // read, and closing the socket is what unblocks it.
+        scope.launch { runCatching { open?.close() } }
         isConnected = false
         failAllPending("Disconnected")
         scope.launch { _connectionEvents.emit(ConnectionEvent.CleanShutdown) }
@@ -200,7 +192,9 @@ class SignalWebSocket(
 
     fun forceReconnect() {
         forceReconnectRequested = true
-        webSocket?.cancel()
+        val open = socket
+        socket = null
+        scope.launch { runCatching { open?.close() } }
     }
 
     suspend fun sendRequest(
@@ -235,7 +229,7 @@ class SignalWebSocket(
         body: ByteArray? = null,
         headers: Map<String, String> = emptyMap(),
     ): WebSocketResponseMessage {
-        val id = requestId.getAndIncrement()
+        val id = requestId.fetchAndIncrement()
         val deferred = CompletableDeferred<WebSocketResponseMessage>()
         pendingRequests[id] = deferred
 
@@ -266,10 +260,16 @@ class SignalWebSocket(
             .setRequest(request)
             .build()
 
-        val sent = webSocket?.send(message.toByteArray().toByteString()) ?: false
-        if (!sent) {
+        val open = socket
+        if (open == null) {
             pendingRequests.remove(id)
             throw IOException("WebSocket send failed")
+        }
+        try {
+            open.send(message.toByteArray())
+        } catch (e: Exception) {
+            pendingRequests.remove(id)
+            throw IOException("WebSocket send failed", e)
         }
 
         return deferred.await()
@@ -293,22 +293,87 @@ class SignalWebSocket(
             .setResponse(response)
             .build()
 
-        webSocket?.send(wsMsg.toByteArray().toByteString())
+        val open = socket ?: return
+        scope.launch {
+            runCatching { open.send(wsMsg.toByteArray()) }
+                .onFailure { Log.w(TAG, "sendResponse failed: ${it.message}") }
+        }
     }
 
+    /**
+     * Opens the socket and pumps its frames until it closes or errors. okhttp's
+     * newWebSocket returned immediately and drove callbacks off its own reader
+     * thread; here one coroutine owns connect + read, and a sibling drives the
+     * keepalive pings that okhttp's `pingInterval` used to send.
+     */
     private fun openSocket(url: String) {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", SignalHttpClient.USER_AGENT)
-            .header("X-Signal-Agent", SignalHttpClient.SIGNAL_AGENT)
-            .apply {
-                if (basicAuth != null) {
-                    header("Authorization", "Basic $basicAuth")
+        sessionJob?.cancel()
+        sessionJob = scope.launch {
+            val headers = buildMap {
+                put("User-Agent", SignalHttpClient.USER_AGENT)
+                put("X-Signal-Agent", SignalHttpClient.SIGNAL_AGENT)
+                if (basicAuth != null) put("Authorization", "Basic $basicAuth")
+            }
+
+            val open = try {
+                WebSocketClient.connect(url, headers, sslSocketFactory = sslSocketFactory)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onFailure(e)
+                return@launch
+            }
+
+            socket = open
+            onOpen()
+            startPingLoop(open)
+
+            var closeReason: String? = null
+            try {
+                open.incomingFlow().collect { frame ->
+                    when (frame) {
+                        is WebSocketClient.WsFrame.Binary -> onBinaryFrame(frame.bytes)
+                        is WebSocketClient.WsFrame.Text ->
+                            onBinaryFrame(frame.text.toByteArray(Charsets.UTF_8))
+                        is WebSocketClient.WsFrame.Close -> {
+                            Log.d(TAG, "Closed: ${frame.code} ${frame.reason}")
+                            closeReason = frame.reason
+                        }
+                        else -> Unit
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                pingJob?.cancel()
+                if (socket === open) socket = null
+                onFailure(e)
+                return@launch
+            }
+
+            // Flow completing means the peer closed or the read loop gave up.
+            pingJob?.cancel()
+            if (socket === open) socket = null
+            onDisconnected(closeReason ?: "Closed")
+        }
+    }
+
+    private fun startPingLoop(open: WebSocketClient) {
+        pingJob?.cancel()
+        pingJob = scope.launch {
+            while (isActive && !open.isClosed) {
+                delay(PING_INTERVAL_MS)
+                if (open.isClosed) break
+                try {
+                    open.ping()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ping failed: ${e.message}")
+                    break
                 }
             }
-            .build()
-
-        webSocket = client.newWebSocket(request, listener)
+        }
     }
 
     private fun handleResponse(response: WebSocketResponseMessage) {

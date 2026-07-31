@@ -1,4 +1,5 @@
 package com.vayunmathur.maps.util
+import com.vayunmathur.maps.R
 import android.app.DownloadManager
 import android.content.Context
 import android.database.Cursor
@@ -168,8 +169,8 @@ class ZoneDownloadManager(private val context: Context) {
         deleteZone(zoneId)
         val fileName = "zone_$zoneId.pmtiles"
         val request = DownloadManager.Request("https://data.vayunmathur.com/zone_$zoneId.pmtiles".toUri())
-            .setTitle("Map Zone $zoneId (Map)")
-            .setDescription("Downloading high-detail offline map data")
+            .setTitle(context.getString(R.string.map_zone_download_title, zoneId))
+            .setDescription(context.getString(R.string.map_zone_download_desc))
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, null, fileName)
             .setAllowedOverMetered(true)

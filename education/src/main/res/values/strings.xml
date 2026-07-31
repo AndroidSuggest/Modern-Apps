@@ -81,7 +81,10 @@
     <!-- CoursePage: Fallback TopAppBar title when course not found. Noun -->
     <string name="course">Course</string>
     <!-- CoursePage unit card: Subtitle showing number of lessons in unit. %1$s = count e.g. 5 -->
-    <string name="lessons"><xliff:g id="count" example="5">%1$s</xliff:g> lessons</string>
+    <plurals name="lessons">
+        <item quantity="one"><xliff:g id="count" example="5">%1$s</xliff:g> lesson</item>
+        <item quantity="other"><xliff:g id="count" example="5">%1$s</xliff:g> lessons</item>
+    </plurals>
     <!-- CoursePage: Button/title for course challenge that ends the course. Noun phrase -->
     <string name="course_challenge">Course challenge</string>
     <!-- ExplorerCoursePage: Fallback TopAppBar when topic/course not found. Noun -->
@@ -99,13 +102,19 @@
     <!-- ExplorerHomePage: Empty state when no courses visible after filter -->
     <string name="nothing_here_yet_ask_a_grown_up_to_add_l">Nothing here yet — ask a grown-up to add lessons.</string>
     <!-- ExplorerHomePage CourseCard: Subtitle showing topic count. %1$s = number of units/topics -->
-    <string name="topics"><xliff:g id="count" example="8">%1$s</xliff:g> topics</string>
+    <plurals name="topics">
+        <item quantity="one"><xliff:g id="count" example="8">%1$s</xliff:g> topic</item>
+        <item quantity="other"><xliff:g id="count" example="8">%1$s</xliff:g> topics</item>
+    </plurals>
     <!-- HomePage Scholar: Fallback TopAppBar title when learner name blank. Verb -->
     <string name="learn">Learn</string>
     <!-- HomePage Scholar: Greeting without emoji, more mature tone. %1$s = learner name. Distinct from hi -->
     <string name="hi_1">Hi, <xliff:g id="name" example="Alex">%1$s</xliff:g></string>
     <!-- HomePage Scholar course card: Subtitle showing unit count. %1$s = number e.g. 4 -->
-    <string name="units"><xliff:g id="count" example="4">%1$s</xliff:g> units</string>
+    <plurals name="units">
+        <item quantity="one"><xliff:g id="count" example="4">%1$s</xliff:g> unit</item>
+        <item quantity="other"><xliff:g id="count" example="4">%1$s</xliff:g> units</item>
+    </plurals>
     <!-- HomePage: Empty state when no content packs installed -->
     <string name="no_content_packs_are_installed_yet">No content packs are installed yet.</string>
     <!-- K2HomePage: Celebration message when all lessons done. Shown when nextLesson null -->
@@ -194,4 +203,5 @@
     <string name="grade_kindergarten">Kindergarten</string>
     <!-- Grade label: Grade with number. %1$d = grade number e.g. 3 -->
     <string name="grade_number">Grade <xliff:g id="number" example="3">%1$d</xliff:g></string>
+    <string name="play">Play</string>
 </resources>

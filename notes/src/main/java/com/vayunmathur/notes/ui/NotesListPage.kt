@@ -1,5 +1,7 @@
 package com.vayunmathur.notes.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.notes.R
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -174,7 +176,7 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
                         CommonSearchBar(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = "Notes",
+                            placeholder = stringResource(R.string.app_name),
                             padding = PaddingValues(0.dp)
                         )
                     },

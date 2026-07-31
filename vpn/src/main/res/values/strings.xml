@@ -1,4 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VPN</string>
+    <string name="vpn_wireguard_gotatun">VPN — WireGuard (gotatun)</string>
+    <string name="no_tunnels_yet">No tunnels yet</string>
+    <string name="add_a_connection_by_opening_a_conf_file">Add a connection by opening a .conf file</string>
+    <string name="open_conf_file">Open .conf file</string>
+    <string name="connected_via_gotatun_wireguard">\u25CF Connected via gotatun (WireGuard)</string>
+    <string name="export_as_conf">Export as .conf</string>
+    <string name="settings_about">Settings / About</string>
+    <string name="always_on_vpn">Always-On VPN</string>
+    <string name="open_system_vpn_settings">Open system VPN settings</string>
+    <string name="vpn_wireguard_gotatun_boringtun_fork">VPN (WireGuard) — gotatun / BoringTun fork</string>
+    <string name="logging">Logging</string>
+    <string name="delete_all_logs">Delete all logs?</string>
+    <string name="this_will_permanently_remove_all_connect">This will permanently remove all connection logs and cannot be undone.</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="address">Address: %1$s</string>
+    <string name="allowed">Allowed: %1$s</string>
+    <string name="need_activity_to_grant_vpn_permission">Need Activity to grant VPN permission</string>
+    <string name="tunnel">Tunnel — %1$s</string>
+    <string name="imported_from_wireguard_conf_using_gotat">Imported from WireGuard .conf using gotatun (mullvad/gotatun) — Noise IK / X25519 + ChaCha20Poly1305. To update, import a new .conf file.</string>
+    <string name="name">Name: %1$s</string>
+    <string name="endpoint">Endpoint: %1$s</string>
+    <string name="dns">DNS: %1$s</string>
+    <string name="allowedips">AllowedIPs: %1$s</string>
+    <string name="mtu_keepalive_s">MTU: %1$s  Keepalive: %2$ss</string>
+    <string name="privatekey">PrivateKey: %1$s…</string>
+    <string name="publickey">PublicKey: %1$s</string>
+    <string name="peer_publickey">Peer PublicKey: %1$s</string>
+    <string name="enable_always_on_in_android_system_vpn_s">Enable Always-On in Android system VPN settings to keep the VPN connected even after reboot. </string>
+    <string name="this_app_ships_a_pure_rust_implementatio">This app ships a pure Rust implementation of the WireGuard protocol from </string>
+    <string name="emulator_without_ndk_rust_built_so_will">Emulator without NDK Rust built .so will not have keygen available until </string>
+    <string name="vpn_channel_name">VPN Tunnel</string>
 </resources>

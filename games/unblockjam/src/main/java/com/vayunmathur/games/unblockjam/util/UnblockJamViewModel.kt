@@ -9,12 +9,8 @@ import com.vayunmathur.games.unblockjam.data.LevelPack
 import com.vayunmathur.library.util.LevelStats
 import com.vayunmathur.library.util.AchievementsManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -63,10 +59,6 @@ class UnblockJamViewModel(application: Application) : AndroidViewModel(applicati
     private val _levelStats =
         MutableStateFlow<Map<String, LevelStats>>(repository.getLevelStats())
     val levelStats: StateFlow<Map<String, LevelStats>> = _levelStats.asStateFlow()
-
-    /** Emits the next level index to navigate to when the current level is won. */
-    private val _nextLevel = MutableSharedFlow<Int>(extraBufferCapacity = 1)
-    val nextLevel: SharedFlow<Int> = _nextLevel.asSharedFlow()
 
     init {
         viewModelScope.launch {
@@ -158,9 +150,6 @@ class UnblockJamViewModel(application: Application) : AndroidViewModel(applicati
             if (s.packIndex == 0 && refreshed.size >= pack.levels.size) {
                 achievementsManager.onAchievementUnlocked("all_levels_pack_0")
             }
-
-            delay(500)
-            _nextLevel.emit(s.levelIndex + 1)
         }
     }
 

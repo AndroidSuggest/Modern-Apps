@@ -23,18 +23,20 @@ object VideoExtractor {
         val ex = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$youtubeId")
         ex.fetchPage()
 
+        // The extractor is Kotlin now, so these are plain functions — there is no synthetic
+        // property sugar (that only applies to Java getters) and no nullable elements.
         // Prefer a single muxed progressive stream (simplest to play).
-        val muxed = ex.videoStreams.filterNotNull().filter { it.content.isNotBlank() }
+        val muxed = ex.getVideoStreams().filter { it.getContent().isNotBlank() }
         if (muxed.isNotEmpty()) {
-            val best = muxed.maxByOrNull { it.height }!!
-            return@withContext ResolvedStreams(ex.name, best.content, null)
+            val best = muxed.maxByOrNull { it.getHeight() }!!
+            return@withContext ResolvedStreams(ex.getName(), best.getContent(), null)
         }
 
         // Otherwise combine the best video-only + audio streams.
-        val video = ex.videoOnlyStreams.filterNotNull().filter { it.content.isNotBlank() }
-            .maxByOrNull { it.height } ?: error("No playable video stream")
-        val audio = ex.audioStreams.filterNotNull().filter { it.content.isNotBlank() }
-            .maxByOrNull { it.bitrate }
-        ResolvedStreams(ex.name, video.content, audio?.content)
+        val video = ex.getVideoOnlyStreams().filter { it.getContent().isNotBlank() }
+            .maxByOrNull { it.getHeight() } ?: error("No playable video stream")
+        val audio = ex.getAudioStreams().filter { it.getContent().isNotBlank() }
+            .maxByOrNull { it.getBitrate() }
+        ResolvedStreams(ex.getName(), video.getContent(), audio?.getContent())
     }
 }

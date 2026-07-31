@@ -1,5 +1,7 @@
 package com.vayunmathur.vpn.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.vpn.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,7 +61,7 @@ fun LoggingPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Logging") },
+                title = { Text(stringResource(R.string.logging)) },
                 actions = {
                     IconButton(onClick = { showDeleteDialog = true }) {
                         IconDelete()
@@ -125,13 +127,13 @@ fun LoggingPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete all logs?") },
-            text = { Text("This will permanently remove all connection logs and cannot be undone.") },
+            title = { Text(stringResource(R.string.delete_all_logs)) },
+            text = { Text(stringResource(R.string.this_will_permanently_remove_all_connect)) },
             confirmButton = {
-                Button(onClick = { vm.deleteAllLogs(); showDeleteDialog = false }) { Text("Delete") }
+                Button(onClick = { vm.deleteAllLogs(); showDeleteDialog = false }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                OutlinedButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

@@ -1,5 +1,6 @@
 package com.vayunmathur.calendar.ui
 
+import com.vayunmathur.library.util.DateNameStyle
 import android.text.format.DateFormat
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -80,7 +81,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import com.vayunmathur.library.util.localizedMonthNames
 import com.vayunmathur.library.util.localizedDayOfWeekNames
-import java.time.format.TextStyle
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.number
@@ -144,7 +144,7 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
             TopAppBar(
                 {
                     // show month/year of the currently visible date
-                    val mon = localizedMonthNames(TextStyle.SHORT)[dateViewing.month.number - 1]
+                    val mon = localizedMonthNames(DateNameStyle.SHORT)[dateViewing.month.number - 1]
                     Row(
                         Modifier.clickable { backStack.add(Route.Calendar.GotoDialog(dateViewing)) },
                         verticalAlignment = Alignment.CenterVertically
@@ -697,7 +697,7 @@ private fun WeekHeader(weekDays: List<LocalDate>) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    localizedDayOfWeekNames(TextStyle.SHORT)[d.dayOfWeek.isoDayNumber - 1],
+                    localizedDayOfWeekNames(DateNameStyle.SHORT)[d.dayOfWeek.isoDayNumber - 1],
                     Modifier,
                     if (isToday) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp

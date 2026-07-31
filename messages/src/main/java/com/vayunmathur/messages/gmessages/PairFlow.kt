@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.messages.gmessages
 
+import kotlin.uuid.Uuid
 import android.util.Base64
 import android.util.Log
 import authentication.Authentication
@@ -14,7 +17,6 @@ import authentication.Authentication.KeyData
 import authentication.Authentication.RegisterPhoneRelayResponse
 import authentication.Authentication.RefreshPhoneRelayResponse
 import authentication.Authentication.URLData
-import java.util.UUID
 
 /**
  * Implements the QR-code pairing handshake. Direct port of
@@ -132,7 +134,7 @@ object PairFlow {
         val req = AuthenticationContainer.newBuilder()
             .setAuthMessage(
                 AuthMessage.newBuilder()
-                    .setRequestID(UUID.randomUUID().toString())
+                    .setRequestID(Uuid.random().toString())
                     .setNetwork(QrNetwork)
                     .setConfigVersion(ConfigVersion)
             )
@@ -200,7 +202,7 @@ object PairFlow {
         val req = AuthenticationContainer.newBuilder()
             .setAuthMessage(
                 AuthMessage.newBuilder()
-                    .setRequestID(UUID.randomUUID().toString())
+                    .setRequestID(Uuid.random().toString())
                     .setTachyonAuthToken(com.google.protobuf.ByteString.copyFrom(tachyonToken))
                     .setNetwork(QrNetwork)
                     .setConfigVersion(ConfigVersion)

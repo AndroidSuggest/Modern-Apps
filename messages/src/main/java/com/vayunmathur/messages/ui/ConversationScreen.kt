@@ -1,5 +1,16 @@
 package com.vayunmathur.messages.ui
 
+import android.text.format.DateUtils
+import android.content.Context
+import android.text.format.DateFormat
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.toLocalDateTime
 import android.Manifest
 import android.content.ContentUris
 import android.content.Intent
@@ -96,11 +107,7 @@ import com.vayunmathur.messages.util.displayTitle
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import java.text.DateFormat
-import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -375,7 +382,7 @@ fun ConversationScreen(
             // (sparse threads pack to the bottom, new messages slot in
             // without a jumpy scroll-to-end). To get that visual order
             // we feed it the chronological list REVERSED: newest first.
-            val items = remember(messages) { buildItems(messages).asReversed() }
+            val items = remember(messages, context) { buildItems(context, messages).asReversed() }
             val isGroup = conversation?.isGroup == true
             val canReact = conversation?.source in setOf(
                 MessageSource.MESSAGES_WEB,
@@ -522,7 +529,7 @@ private sealed interface ChatItem {
     ) : ChatItem
 }
 
-private fun buildItems(messages: List<Message>): List<ChatItem> {
+private fun buildItems(context: Context, messages: List<Message>): List<ChatItem> {
     val out = mutableListOf<ChatItem>()
     var lastDayKey: Long = Long.MIN_VALUE
     var lastSenderKey: String? = null
@@ -530,7 +537,7 @@ private fun buildItems(messages: List<Message>): List<ChatItem> {
     messages.forEachIndexed { idx, m ->
         val dayKey = startOfDayEpoch(m.timestamp)
         if (dayKey != lastDayKey) {
-            out += ChatItem.DayDivider(dayLabel(m.timestamp), dayKey)
+            out += ChatItem.DayDivider(dayLabel(context, m.timestamp), dayKey)
             lastDayKey = dayKey
             // Day-divider always breaks a sender run.
             lastSenderKey = null
@@ -783,7 +790,7 @@ private fun MessageBubble(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
             ) {
                 Text(
-                    formatTime(msg.timestamp),
+                    formatTime(LocalContext.current, msg.timestamp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -996,36 +1003,35 @@ private fun ConvAvatar(conversation: Conversation?) {
     }
 }
 
-private fun formatTime(ts: Long): String =
-    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(ts))
+// android.text.format honours the user's 24-hour setting; java.text only follows the locale.
+private fun formatTime(context: Context, ts: Long): String =
+    DateFormat.getTimeFormat(context).format(Date(ts))
 
 /** Epoch-ms at the local-time start of the calendar day [ts] falls in.
  *  Unique per calendar day, used as a stable LazyColumn key. */
 private fun startOfDayEpoch(ts: Long): Long {
-    val cal = Calendar.getInstance().apply {
-        timeInMillis = ts
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    return cal.timeInMillis
+    val tz = TimeZone.currentSystemDefault()
+    return Instant.fromEpochMilliseconds(ts)
+        .toLocalDateTime(tz)
+        .date
+        .atStartOfDayIn(tz)
+        .toEpochMilliseconds()
 }
 
 /** "Today", "Yesterday", "Wednesday", or a full date for older messages. */
-private fun dayLabel(ts: Long): String {
-    val now = Calendar.getInstance()
-    val that = Calendar.getInstance().apply { timeInMillis = ts }
-    val sameDay = now.get(Calendar.YEAR) == that.get(Calendar.YEAR) &&
-        now.get(Calendar.DAY_OF_YEAR) == that.get(Calendar.DAY_OF_YEAR)
-    if (sameDay) return "Today"
-    val yesterday = (Calendar.getInstance()).apply { add(Calendar.DAY_OF_YEAR, -1) }
-    if (yesterday.get(Calendar.YEAR) == that.get(Calendar.YEAR) &&
-        yesterday.get(Calendar.DAY_OF_YEAR) == that.get(Calendar.DAY_OF_YEAR)
-    ) return "Yesterday"
-    val sixDaysAgo = (Calendar.getInstance()).apply { add(Calendar.DAY_OF_YEAR, -6) }
-    if (that.after(sixDaysAgo)) {
-        return SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(ts))
+private fun dayLabel(context: Context, ts: Long): String {
+    val tz = TimeZone.currentSystemDefault()
+    val that = Instant.fromEpochMilliseconds(ts).toLocalDateTime(tz).date
+    val daysBack = Clock.System.now().toLocalDateTime(tz).date.toEpochDays() - that.toEpochDays()
+    return when {
+        // DateUtils yields a localized "Today"/"Yesterday" in every locale Android ships.
+        daysBack == 0L || daysBack == 1L -> DateUtils.getRelativeTimeSpanString(
+            ts,
+            System.currentTimeMillis(),
+            DateUtils.DAY_IN_MILLIS,
+        ).toString()
+        daysBack in 2L..6L ->
+            localizedDayOfWeekNames(DateNameStyle.FULL)[that.dayOfWeek.isoDayNumber - 1]
+        else -> DateFormat.getMediumDateFormat(context).format(Date(ts))
     }
-    return DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(ts))
 }

@@ -1,5 +1,6 @@
 package com.vayunmathur.clock.ui
 
+import com.vayunmathur.library.util.DateNameStyle
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -44,7 +45,6 @@ import kotlinx.datetime.format.Padding
 import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,9 +86,9 @@ fun ClockPage(backStack: NavBackStack<Route>, ds: DataStoreUtils, clockViewModel
             }
             item {
                 Text(time.date.format(LocalDate.Format {
-                    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
+                    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
                     chars(", ")
-                    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+                    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
                     chars(" ")
                     day(Padding.NONE)
                 }))

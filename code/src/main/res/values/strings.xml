@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Code</string>
+    <string name="open_folder">Open folder</string>
+    <string name="no_file_open">No file open</string>
+    <string name="open_file">Open file</string>
+    <string name="find">Find</string>
+    <string name="replace">Replace</string>
+    <string name="all">All</string>
+    <string name="no_folder_opened">No folder opened</string>
+    <string name="open_a_folder_to_browse_your_project_or">Open a folder to browse your project, or open a single file.</string>
 </resources>

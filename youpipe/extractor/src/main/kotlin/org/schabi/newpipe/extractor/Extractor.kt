@@ -9,7 +9,6 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.localization.TimeAgoParser
 import org.schabi.newpipe.extractor.utils.ExtractorLogger
 import java.io.IOException
-import java.util.Objects
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
@@ -20,8 +19,7 @@ abstract class Extractor(
 
     private val TAG = "${javaClass.simpleName}@${hashCode()}"
 
-    private val linkHandler: LinkHandler =
-        Objects.requireNonNull(linkHandler, "LinkHandler is null")
+    open val linkHandler: LinkHandler = linkHandler
 
     @Nullable
     private var forcedLocalization: Localization? = null
@@ -32,15 +30,7 @@ abstract class Extractor(
     private var pageFetched = false
 
     @get:JvmName("getDownloader")
-    val downloader: Downloader =
-        Objects.requireNonNull(NewPipe.getDownloader(), "downloader is null")
-
-    init {
-        Objects.requireNonNull(service, "service is null")
-    }
-
-    @Nonnull
-    open fun getLinkHandler(): LinkHandler = linkHandler
+    val downloader: Downloader = NewPipe.getDownloader()
 
     @Throws(IOException::class, ExtractionException::class)
     fun fetchPage() {
@@ -84,11 +74,8 @@ abstract class Extractor(
     @Throws(ParsingException::class)
     open fun getBaseUrl(): String = linkHandler.getBaseUrl()
 
-    @Nonnull
-    open fun getService(): StreamingService = service
 
     open fun getServiceId(): Int = service.serviceId
-    open fun getDownloader(): Downloader = downloader
 
     open fun forceLocalization(localization: Localization) {
         this.forcedLocalization = localization

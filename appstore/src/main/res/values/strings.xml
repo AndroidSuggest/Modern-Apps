@@ -1,4 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">App Store</string>
+    <string name="open">Open</string>
+    <string name="uninstall">Uninstall</string>
+    <string name="view_in_play_store">View in Play Store</string>
+    <string name="cancel">Cancel</string>
+    <string name="search_f_droid_play_store">Search F-Droid &amp; Play Store</string>
+    <string name="welcome_to_app_store">Welcome to App Store</string>
+    <string name="combines_f_droid_repos_with_play_store_l">Combines F-Droid repos with Play Store listings</string>
+    <string name="tap_sync_in_repos_to_fetch_f_droid_apps">Tap Sync in Repos to fetch F-Droid apps, or search for Play apps</string>
+    <string name="uninstall_2">Uninstall?</string>
+    <string name="updates">Updates</string>
+    <string name="sync_f_droid">Sync F-Droid</string>
+    <string name="check_play">Check Play</string>
+    <string name="all_apps_up_to_date">All apps up to date</string>
+    <string name="tap_check_play_to_look_for_play_store_up">Tap Check Play to look for Play Store updates (requires anonymous auth)</string>
+    <string name="repositories">Repositories</string>
+    <string name="f_droid_repositories">F-Droid Repositories</string>
+    <string name="refresh_play">Refresh Play</string>
+    <string name="add_repository">Add Repository</string>
+    <string name="repo_url">Repo URL</string>
+    <string name="name_optional">Name (optional)</string>
+    <string name="add">Add</string>
+    <string name="installed">Installed</string>
+    <string name="installed_2">Installed %1$s</string>
+    <string name="downloading">Downloading %1$s%%</string>
+    <string name="uninstall_3">Uninstall %1$s?</string>
+    <string name="this_will_uninstall_you_can_reinstall_la">This will uninstall %1$s. You can reinstall later from the store.</string>
+    <string name="no_results_for">No results for \"%1$s\"</string>
+    <string name="installed_3">Installed (%1$s)</string>
+    <string name="all">All (%1$s)</string>
+    <string name="f_droid">F-Droid (%1$s)</string>
+    <string name="play_store">Play Store (%1$s)</string>
+    <string name="uninstall_you_can_reinstall_from_the_sto">Uninstall %1$s? You can reinstall from the store.</string>
+    <string name="update_all">Update All (%1$s)</string>
+    <plurals name="updates_count">
+        <item quantity="one">%1$s update</item>
+        <item quantity="other">%1$s updates</item>
+    </plurals>
+    <string name="add_f_droid_compatible_repos_apps_availa">Add F-Droid compatible repos. Apps available on F-Droid are marked F-Droid, others Play Store.</string>
+    <string name="last_sync">Last sync: %1$s</string>
+    <string name="examples">Examples:\n%1$s\n%2$s</string>
 </resources>

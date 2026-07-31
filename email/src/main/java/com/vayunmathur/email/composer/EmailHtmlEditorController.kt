@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.email.composer
 
+import kotlin.uuid.Uuid
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,7 +12,6 @@ import android.text.Spanned
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.vayunmathur.library.ui.HtmlEditorController
-import java.util.UUID
 
 /**
  * Email-specific controller extending the generic HtmlEditorController.
@@ -63,7 +65,7 @@ class EmailHtmlEditorController(
     ): String? {
         val edit = editText ?: return null
         val editable = edit.text ?: return null
-        val cid = "${UUID.randomUUID()}@inline.local"
+        val cid = "${Uuid.random()}@inline.local"
 
         val bitmap = decodeSampledBitmap(context, sourceUri, 1024) ?: return null
         val drawable = BitmapDrawable(context.resources, bitmap)

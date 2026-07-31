@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors.kiosk
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -26,8 +27,8 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 abstract class YoutubeDesktopBaseKioskExtractor(
     streamingService: StreamingService,
@@ -60,28 +61,28 @@ abstract class YoutubeDesktopBaseKioskExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<StreamInfoItem> {
-        val tabRendererContent = responseData!!.jsonResponse.getObject("contents")!!
-            .getObject("twoColumnBrowseResultsRenderer")!!
-            .getArray("tabs")!!
-            .getObject(0)!!
-            .getObject("tabRenderer")!!
-            .getObject("content")!!
+        val tabRendererContent = responseData!!.jsonResponse.getObject("contents").orEmptyObject()
+            .getObject("twoColumnBrowseResultsRenderer").orEmptyObject()
+            .getArray("tabs").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("tabRenderer").orEmptyObject()
+            .getObject("content").orEmptyObject()
 
         val tabContents: JsonArray
         if (tabRendererContent.containsKey("sectionListRenderer")) {
-            tabContents = tabRendererContent.getObject("sectionListRenderer")!!
-                .getArray("contents")!!
-                .getObject(0)!!
-                .getObject("itemSectionRenderer")!!
-                .getArray("contents")!!
-                .getObject(0)!!
-                .getObject("shelfRenderer")!!
-                .getObject("content")!!
-                .getObject("gridRenderer")!!
-                .getArray("items")!!
+            tabContents = tabRendererContent.getObject("sectionListRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("itemSectionRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("shelfRenderer").orEmptyObject()
+                .getObject("content").orEmptyObject()
+                .getObject("gridRenderer").orEmptyObject()
+                .getArray("items").orEmptyArray()
         } else if (tabRendererContent.containsKey("richGridRenderer")) {
-            tabContents = tabRendererContent.getObject("richGridRenderer")!!
-                .getArray("contents")!!
+            tabContents = tabRendererContent.getObject("richGridRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
         } else {
             tabContents = JsonArray(emptyList())
         }
@@ -100,10 +101,10 @@ abstract class YoutubeDesktopBaseKioskExtractor(
 
         val continuationResponse = getJsonPostResponse("browse", page.body, getExtractorLocalization())
 
-        val continuationItems = continuationResponse.getArray("onResponseReceivedActions")!!
+        val continuationItems = continuationResponse.getArray("onResponseReceivedActions").orEmptyArray()
             .filterIsInstance<JsonObject>()
             .filter { it.containsKey("appendContinuationItemsAction") }
-            .map { it.getObject("appendContinuationItemsAction")!! }
+            .map { it.getObject("appendContinuationItemsAction").orEmptyObject() }
             .firstOrNull()?.getArray("continuationItems") ?: JsonArray(emptyList())
 
         return collectStreamItems(continuationItems, page.id)
@@ -124,11 +125,11 @@ abstract class YoutubeDesktopBaseKioskExtractor(
             items.filterIsInstance<JsonObject>().forEach { content ->
                 when {
                     content.containsKey("richItemRenderer") -> {
-                        val richItem = content.getObject("richItemRenderer")!!.getObject("content")!!
+                        val richItem = content.getObject("richItemRenderer").orEmptyObject().getObject("content").orEmptyObject()
                         if (richItem.containsKey("videoRenderer")) {
                             collector.commit(
                                 YoutubeStreamInfoItemExtractor(
-                                    richItem.getObject("videoRenderer")!!, timeAgoParser
+                                    richItem.getObject("videoRenderer").orEmptyObject(), timeAgoParser
                                 )
                             )
                         }
@@ -136,12 +137,12 @@ abstract class YoutubeDesktopBaseKioskExtractor(
                     content.containsKey("gridVideoRenderer") -> {
                         collector.commit(
                             YoutubeStreamInfoItemExtractor(
-                                content.getObject("gridVideoRenderer")!!, timeAgoParser
+                                content.getObject("gridVideoRenderer").orEmptyObject(), timeAgoParser
                             )
                         )
                     }
                     content.containsKey("lockupViewModel") -> {
-                        val lockupViewModel = content.getObject("lockupViewModel")!!
+                        val lockupViewModel = content.getObject("lockupViewModel").orEmptyObject()
                         if ("LOCKUP_CONTENT_TYPE_VIDEO" == lockupViewModel.getString("contentType")) {
                             collector.commit(
                                 YoutubeStreamInfoItemLockupExtractor(lockupViewModel, timeAgoParser)
@@ -171,9 +172,9 @@ abstract class YoutubeDesktopBaseKioskExtractor(
             return null
         }
 
-        val continuationEndpoint = continuation.getObject("continuationEndpoint")!!
-        val continuationToken = continuationEndpoint.getObject("continuationCommand")!!
-            .getString("token")!!
+        val continuationEndpoint = continuation.getObject("continuationEndpoint").orEmptyObject()
+        val continuationToken = continuationEndpoint.getObject("continuationCommand").orEmptyObject()
+            .getString("token")
 
         val webClientRequestInfo = InnertubeClientRequestInfo.ofWebClient()
         webClientRequestInfo.clientInfo.clientVersion = getClientVersion()
@@ -187,7 +188,7 @@ abstract class YoutubeDesktopBaseKioskExtractor(
         )
             .value("continuation", continuationToken)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         return Page(YOUTUBEI_V1_URL + "browse?" + DISABLE_PRETTY_PRINT_PARAMETER, visitorData, null, null, body)
     }

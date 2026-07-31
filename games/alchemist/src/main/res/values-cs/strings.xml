@@ -7,14 +7,18 @@
     <string name="counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="recipes">Recepty (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
     <string name="used_in">Použito v (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
-    <string name="locked">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> uzamčených receptů.</string>
+    <plurals name="locked_recipes">
+        <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> uzamčených receptů.</item>
+    </plurals>
     <string name="locked_description">Odemkněte všechny výsledky těchto receptů, abyste je viděli.</string>
     <string name="collection">Kolekce</string>
     <string name="discovered_counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g> objeveno</string>
     <string name="hide_maxed_elements">Skrýt dokončené prvky</string>
     <string name="id">ID: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
     <string name="item_discovered">Předmět nalezen!</string>
-    <string name="items_discovered"><xliff:g id="count" example="3">%1$s</xliff:g> předmětů nalezeno!</string>
+    <plurals name="items_discovered">
+        <item quantity="other"><xliff:g id="count" example="3">%1$s</xliff:g> předmětů nalezeno!</item>
+    </plurals>
     <string name="cd_final_item">Finální prvek</string>
     <string name="cd_delete">Smazat</string>
 </resources>

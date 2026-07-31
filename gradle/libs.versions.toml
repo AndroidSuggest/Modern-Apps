@@ -77,22 +77,11 @@ brotli = "0.1.2"
 # THIRD PARTY
 # =============================================================================
 
-# Networking (Square) – Android policy is HttpURLConnection + library:network only (no new OkHttp/Ktor deps)
-# okio/okhttp remain isolated exceptions where upstream SDKs require them:
-#  - maps: MapLibre Android SDK requires OkHttp Call.Factory via HttpRequestUtil.setOkHttpClient (MapTileCache) – already on runtime classpath via maplibre android-sdk
-#  - messages: Meta Messenger/Instagram MQTT+WS (ByteString framing), Signal WebSocket+HTTP (cert pinning), WhatsApp NOISE/WebSocket – HTTP parts use library:network where possible, WS kept as exception
-#  - personal/dooraccess (conditional, gitignored): Vonage SDK transitive okhttp (plus conditional include settings.gradle.kts:95-102)
-# contacts/files/appstore/youpipe have been migrated off okio/okhttp to java.io BufferedReader/Writer + ZipFile + HttpURLConnection/DefaultHttpDataSource
-okio = "3.17.0" # isolated: messages WS ByteString + transitive via okhttp (maps, dooraccess) – contacts/files/appstore/youpipe migrated to java.io + library:network
-okhttp = "4.12.0" # isolated: maps MapLibre Call.Factory + messages Meta/Signal/WA + dooraccess Vonage – appstore/youpipe migrated to HttpURLConnection/DefaultHttpDataSource
-
 # Maps & geospatial
 maplibre = "0.13.0"
 flatgeobuf = "3.29.0"
 
 # JavaScript engines & HTML
-# rhino 1.9.0 requires Android minSDK >= 26; rhino-engine only published for 1.8.x
-rhino = "1.8.1"
 quickjs = "1.0.5"
 jsoup = "1.22.2"
 
@@ -231,18 +220,11 @@ brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
 # THIRD PARTY
 # =============================================================================
 
-# Networking (Square) – isolated exceptions only: maps MapLibre Call.Factory, messages Meta/Signal/WA WS, dooraccess Vonage
-okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" } # isolated: messages MetaMqtt/Signal/WhatsApp ByteString (OkHttp WS API) + transitive via okhttp (maps, dooraccess) – contacts/files migrated to java.io
-okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" } # isolated: maps MapLibre Call.Factory + messages Meta/Signal/WA + dooraccess Vonage – appstore/youpipe migrated
-
 # Maps & geospatial
 maplibre-compose = { module = "org.maplibre.compose:maplibre-compose", version.ref = "maplibre" }
 flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
 
 # JavaScript engines & HTML
-# rhino 1.9.0 requires Android minSDK >= 26; rhino-engine only published for 1.8.x
-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
-rhino-engine = { module = "org.mozilla:rhino-engine", version.ref = "rhino" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 

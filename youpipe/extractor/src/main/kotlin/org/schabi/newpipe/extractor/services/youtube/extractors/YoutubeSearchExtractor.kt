@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -22,18 +23,18 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.YOUTUB
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getJsonPostResponse
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getTextFromObject
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.prepareDesktopJsonBuilder
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.ALL
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.CHANNELS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.PLAYLISTS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.VIDEOS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.getSearchParameter
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.ALL
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.CHANNELS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.PLAYLISTS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.VIDEOS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.getSearchParameter
 import org.schabi.newpipe.extractor.utils.JsonUtils
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Objects
+import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeSearchExtractor(
     service: StreamingService,
@@ -67,7 +68,7 @@ class YoutubeSearchExtractor(
             jsonBuilder.value("params", params)
         }
 
-        val body = jsonBuilder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = jsonBuilder.done().toString().toByteArray(Charsets.UTF_8)
 
         initialData = getJsonPostResponse("search", body, localization)
     }
@@ -79,36 +80,34 @@ class YoutubeSearchExtractor(
 
     @Throws(ParsingException::class)
     override fun getSearchSuggestion(): String {
-        val itemSectionRenderer = initialData!!.getObject("contents")!!
-            .getObject("twoColumnSearchResultsRenderer")!!
-            .getObject("primaryContents")!!
-            .getObject("sectionListRenderer")!!
-            .getArray("contents")!!
-            .getObject(0)!!
-            .getObject("itemSectionRenderer")!!
-        val didYouMeanRenderer = itemSectionRenderer.getArray("contents")!!
-            .getObject(0)!!
+        val itemSectionRenderer = initialData!!.getObject("contents").orEmptyObject()
+            .getObject("twoColumnSearchResultsRenderer").orEmptyObject()
+            .getObject("primaryContents").orEmptyObject()
+            .getObject("sectionListRenderer").orEmptyObject()
+            .getArray("contents").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("itemSectionRenderer").orEmptyObject()
+        val didYouMeanRenderer = itemSectionRenderer.getArray("contents").orEmptyArray()
+            .getObject(0).orEmptyObject()
             .getObject("didYouMeanRenderer")
 
         if (didYouMeanRenderer != null && didYouMeanRenderer.isNotEmpty()) {
             return JsonUtils.getString(didYouMeanRenderer, "correctedQueryEndpoint.searchEndpoint.query")
         }
 
-        return Objects.requireNonNullElse(
-            getTextFromObject(
-                itemSectionRenderer.getArray("contents")!!
-                    .getObject(0)!!
-                    .getObject("showingResultsForRenderer")!!
-                    .getObject("correctedQuery")
-            ), ""
-        )
+        return getTextFromObject(
+            itemSectionRenderer.getArray("contents").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("showingResultsForRenderer").orEmptyObject()
+                .getObject("correctedQuery")
+        ) ?: ""
     }
 
     override fun isCorrectedSearch(): Boolean {
-        val showingResultsForRenderer = initialData!!.getObject("contents")!!
-            .getObject("twoColumnSearchResultsRenderer")!!.getObject("primaryContents")!!
-            .getObject("sectionListRenderer")!!.getArray("contents")!!.getObject(0)!!
-            .getObject("itemSectionRenderer")!!.getArray("contents")!!.getObject(0)!!
+        val showingResultsForRenderer = initialData!!.getObject("contents").orEmptyObject()
+            .getObject("twoColumnSearchResultsRenderer").orEmptyObject().getObject("primaryContents").orEmptyObject()
+            .getObject("sectionListRenderer").orEmptyObject().getArray("contents").orEmptyArray().getObject(0).orEmptyObject()
+            .getObject("itemSectionRenderer").orEmptyObject().getArray("contents").orEmptyArray().getObject(0).orEmptyObject()
             .getObject("showingResultsForRenderer")
         return showingResultsForRenderer != null && showingResultsForRenderer.isNotEmpty()
     }
@@ -116,11 +115,11 @@ class YoutubeSearchExtractor(
     @Throws(ParsingException::class)
     override fun getMetaInfo(): List<MetaInfo> {
         return YoutubeMetaInfoHelper.getMetaInfo(
-            initialData!!.getObject("contents")!!
-                .getObject("twoColumnSearchResultsRenderer")!!
-                .getObject("primaryContents")!!
-                .getObject("sectionListRenderer")!!
-                .getArray("contents")!!
+            initialData!!.getObject("contents").orEmptyObject()
+                .getObject("twoColumnSearchResultsRenderer").orEmptyObject()
+                .getObject("primaryContents").orEmptyObject()
+                .getObject("sectionListRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
         )
     }
 
@@ -128,20 +127,20 @@ class YoutubeSearchExtractor(
     override fun getInitialPage(): InfoItemsPage<InfoItem> {
         val collector = MultiInfoItemsCollector(getServiceId())
 
-        val sections = initialData!!.getObject("contents")!!
-            .getObject("twoColumnSearchResultsRenderer")!!
-            .getObject("primaryContents")!!
-            .getObject("sectionListRenderer")!!
-            .getArray("contents")!!
+        val sections = initialData!!.getObject("contents").orEmptyObject()
+            .getObject("twoColumnSearchResultsRenderer").orEmptyObject()
+            .getObject("primaryContents").orEmptyObject()
+            .getObject("sectionListRenderer").orEmptyObject()
+            .getArray("contents").orEmptyArray()
 
         var nextPage: Page? = null
 
         for (section in sections) {
             val sectionJsonObject = section as JsonObject
             if (sectionJsonObject.containsKey("itemSectionRenderer")) {
-                val itemSectionRenderer = sectionJsonObject.getObject("itemSectionRenderer")!!
+                val itemSectionRenderer = sectionJsonObject.getObject("itemSectionRenderer").orEmptyObject()
 
-                collectStreamsFrom(collector, itemSectionRenderer.getArray("contents")!!)
+                collectStreamsFrom(collector, itemSectionRenderer.getArray("contents").orEmptyArray())
             } else if (sectionJsonObject.containsKey("continuationItemRenderer")) {
                 nextPage = getNextPageFrom(
                     sectionJsonObject.getObject("continuationItemRenderer")
@@ -161,35 +160,25 @@ class YoutubeSearchExtractor(
         val localization = getExtractorLocalization()
         val collector = MultiInfoItemsCollector(getServiceId())
 
-        val jsonBody = buildJsonObject {
-            // prepareDesktopJsonBuilder equivalent - we need to build a proper JSON
-            // The original Java used prepareDesktopJsonBuilder + value("continuation", token)
-            // Use YoutubeParsingHelper's builder via JsonUtils for portability
-            put("context", prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
-                .getObject("context") ?: buildJsonObject {})
-            put("continuation", page.id)
-        }
-
-        // Actually we need full builder pattern, fallback to direct use of helper
         val rawBody = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("continuation", page.id)
-            .done().toString().toByteArray(StandardCharsets.UTF_8)
+            .done().toString().toByteArray(Charsets.UTF_8)
 
         val ajaxJson = getJsonPostResponse("search", rawBody, localization)
 
-        val continuationItems = ajaxJson.getArray("onResponseReceivedCommands")!!
-            .getObject(0)!!
-            .getObject("appendContinuationItemsAction")!!
-            .getArray("continuationItems")!!
+        val continuationItems = ajaxJson.getArray("onResponseReceivedCommands").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("appendContinuationItemsAction").orEmptyObject()
+            .getArray("continuationItems").orEmptyArray()
 
-        val contents = continuationItems.getObject(0)!!
-            .getObject("itemSectionRenderer")!!
-            .getArray("contents")!!
+        val contents = continuationItems.getObject(0).orEmptyObject()
+            .getObject("itemSectionRenderer").orEmptyObject()
+            .getArray("contents").orEmptyArray()
         collectStreamsFrom(collector, contents)
 
         return InfoItemsPage(
             collector,
-            getNextPageFrom(continuationItems.getObject(1)!!.getObject("continuationItemRenderer"))
+            getNextPageFrom(continuationItems.getObject(1).orEmptyObject().getObject("continuationItemRenderer"))
         )
     }
 
@@ -204,48 +193,39 @@ class YoutubeSearchExtractor(
             val item = content as JsonObject
             when {
                 item.containsKey("backgroundPromoRenderer") -> throw NothingFoundException(
-                    getTextFromObject(item.getObject("backgroundPromoRenderer")!!.getObject("bodyText"))
+                    getTextFromObject(item.getObject("backgroundPromoRenderer").orEmptyObject().getObject("bodyText"))
+                        ?: "Nothing found"
                 )
                 item.containsKey("videoRenderer") && extractVideoResults -> {
                     collector.commit(
                         YoutubeStreamInfoItemExtractor(
-                            item.getObject("videoRenderer")!!, timeAgoParser
+                            item.getObject("videoRenderer").orEmptyObject(), timeAgoParser
                         )
                     )
                 }
                 item.containsKey("channelRenderer") && extractChannelResults -> {
                     collector.commit(
                         YoutubeChannelInfoItemExtractor(
-                            item.getObject("channelRenderer")!!
+                            item.getObject("channelRenderer").orEmptyObject()
                         )
                     )
                 }
                 item.containsKey("playlistRenderer") && extractPlaylistResults -> {
                     collector.commit(
                         YoutubePlaylistInfoItemExtractor(
-                            item.getObject("playlistRenderer")!!
+                            item.getObject("playlistRenderer").orEmptyObject()
                         )
                     )
                 }
                 item.containsKey("showRenderer") && extractPlaylistResults -> {
                     collector.commit(
                         YoutubeShowRendererInfoItemExtractor(
-                            item.getObject("showRenderer")!!
+                            item.getObject("showRenderer").orEmptyObject()
                         )
                     )
                 }
                 item.containsKey("lockupViewModel") -> {
-                    val lockupViewModel = item.getObject("lockupViewModel")!!
-                    val contentType = lockupViewModel.getObject("contentType")?.let {
-                        // contentType is stored as a primitive string in kotlinx.json compat layer
-                        // Actually need to resolve - it returns String via getString
-                        // The Java getString("contentType") returnsString
-                        // Use extension getString
-                        lockupViewModel.let { lvm -> 
-                            (lvm["contentType"] as? kotlinx.serialization.json.JsonPrimitive)?.content 
-                        }
-                    } ?: lockupViewModel.getString("contentType") ?: ""
-                    // Use helper to read
+                    val lockupViewModel = item.getObject("lockupViewModel").orEmptyObject()
                     val ct = lockupViewModel.getString("contentType") ?: ""
                     if ((ct == "LOCKUP_CONTENT_TYPE_PLAYLIST" || ct == "LOCKUP_CONTENT_TYPE_PODCAST") && extractPlaylistResults) {
                         collector.commit(YoutubeMixOrPlaylistLockupInfoItemExtractor(lockupViewModel))
@@ -262,9 +242,10 @@ class YoutubeSearchExtractor(
             return null
         }
 
-        val token = continuationItemRenderer.getObject("continuationEndpoint")!!
-            .getObject("continuationCommand")!!
-            .getString("token")!!
+        val token = continuationItemRenderer.getObject("continuationEndpoint").orEmptyObject()
+            .getObject("continuationCommand").orEmptyObject()
+            .getString("token")
+            ?: return null
 
         val url = YOUTUBEI_V1_URL + "search?" + DISABLE_PRETTY_PRINT_PARAMETER
 

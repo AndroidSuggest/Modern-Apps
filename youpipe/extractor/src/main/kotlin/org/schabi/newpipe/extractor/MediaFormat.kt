@@ -1,14 +1,13 @@
 package org.schabi.newpipe.extractor
 
-import java.util.Arrays
-import java.util.function.Function
-import java.util.stream.Collectors
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
 enum class MediaFormat(
     @JvmField val id: Int,
-    @JvmField @field:Nonnull val name: String,
+    // Not called `name`: `Enum.name` is final, so the human-readable format name needs its
+    // own property. Read it through `getName()`/`getNameById()`.
+    @JvmField val formatName: String,
     @JvmField @field:Nonnull val suffix: String,
     @JvmField @field:Nonnull val mimeType: String
 ) {
@@ -35,7 +34,7 @@ enum class MediaFormat(
     SRT(0x6000, "SubRip file format", "srt", "text/srt");
 
     @Nonnull
-    fun getName(): String = name
+    fun getName(): String = formatName
 
     @Nonnull
     fun getSuffix(): String = suffix
@@ -44,51 +43,40 @@ enum class MediaFormat(
     fun getMimeType(): String = mimeType
 
     companion object {
-        private fun <T> getById(id: Int, field: Function<MediaFormat, T>, orElse: T): T =
-            Arrays.stream(values())
-                .filter { it.id == id }
-                .map(field)
-                .findFirst()
-                .orElse(orElse)
+        // Matches the previous Stream.map(...).findFirst().orElse(orElse): a null from `field`
+        // collapsed an Optional to empty, so it fell back to orElse just as the elvis does here.
+        private fun <T> getById(id: Int, field: (MediaFormat) -> T, orElse: T): T =
+            values().firstOrNull { it.id == id }?.let(field) ?: orElse
 
         @JvmStatic
         @Nonnull
-        fun getNameById(id: Int): String = getById(id, Function { it.name }, "")
+        fun getNameById(id: Int): String = getById(id, { it.formatName }, "")
 
         @JvmStatic
         @Nonnull
-        fun getSuffixById(id: Int): String = getById(id, Function { it.suffix }, "")
+        fun getSuffixById(id: Int): String = getById(id, { it.suffix }, "")
 
         @JvmStatic
         @Nullable
-        fun getMimeById(id: Int): String? = getById(id, Function { it.mimeType }, null)
+        fun getMimeById(id: Int): String? = getById(id, { it.mimeType }, null)
 
         @JvmStatic
         @Nullable
         fun getFromMimeType(mimeType: String): MediaFormat? =
-            Arrays.stream(values())
-                .filter { it.mimeType == mimeType }
-                .findFirst()
-                .orElse(null)
+            values().firstOrNull { it.mimeType == mimeType }
 
         @JvmStatic
         @Nonnull
         fun getAllFromMimeType(mimeType: String): List<MediaFormat> =
-            Arrays.stream(values())
-                .filter { it.mimeType == mimeType }
-                .collect(Collectors.toList())
+            values().filter { it.mimeType == mimeType }
 
         @JvmStatic
         @Nullable
-        fun getFormatById(id: Int): MediaFormat? =
-            getById(id, Function { it }, null)
+        fun getFormatById(id: Int): MediaFormat? = getById(id, { it }, null)
 
         @JvmStatic
         @Nullable
         fun getFromSuffix(suffix: String): MediaFormat? =
-            Arrays.stream(values())
-                .filter { it.suffix == suffix }
-                .findFirst()
-                .orElse(null)
+            values().firstOrNull { it.suffix == suffix }
     }
 }

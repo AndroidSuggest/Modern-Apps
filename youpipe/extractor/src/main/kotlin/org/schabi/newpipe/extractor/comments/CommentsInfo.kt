@@ -81,20 +81,20 @@ class CommentsInfo private constructor(
 
             val name = commentsExtractor.getName()
             val serviceId = commentsExtractor.getServiceId()
-            val listUrlIdHandler = commentsExtractor.getLinkHandler()
+            val listUrlIdHandler = commentsExtractor.linkHandler
 
             val commentsInfo = CommentsInfo(serviceId, listUrlIdHandler, name)
             commentsInfo.setCommentsExtractor(commentsExtractor)
             val initialCommentsPage: InfoItemsPage<CommentsInfoItem> =
                 ExtractorHelper.getItemsPageOrLogError(commentsInfo, commentsExtractor)
             commentsInfo.setCommentsDisabled(commentsExtractor.isCommentsDisabled())
-            commentsInfo.setRelatedItems(initialCommentsPage.getItems())
+            commentsInfo.relatedItems = initialCommentsPage.getItems()
             try {
                 commentsInfo.setCommentsCount(commentsExtractor.getCommentsCount())
             } catch (e: Exception) {
                 commentsInfo.addError(e)
             }
-            initialCommentsPage.getNextPage()?.let { commentsInfo.setNextPage(it) }
+            initialCommentsPage.nextPage?.let { commentsInfo.setNextPage(it) }
 
             return commentsInfo
         }
@@ -106,8 +106,8 @@ class CommentsInfo private constructor(
             page: Page
         ): InfoItemsPage<CommentsInfoItem> {
             return getMoreItems(
-                NewPipe.getService(commentsInfo.getServiceId()),
-                commentsInfo.getUrl(),
+                NewPipe.getService(commentsInfo.serviceId),
+                commentsInfo.url,
                 page
             )
         }
@@ -119,7 +119,7 @@ class CommentsInfo private constructor(
             commentsInfo: CommentsInfo,
             page: Page
         ): InfoItemsPage<CommentsInfoItem> {
-            return getMoreItems(service, commentsInfo.getUrl(), page)
+            return getMoreItems(service, commentsInfo.url, page)
         }
 
         @JvmStatic

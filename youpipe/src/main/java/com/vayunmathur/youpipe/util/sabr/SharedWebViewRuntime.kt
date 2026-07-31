@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.youpipe.util.sabr
 
+import kotlin.uuid.Uuid
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ApplicationInfo
@@ -19,8 +22,6 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -88,7 +89,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                 return
             }
         }
-        failureCallback?.onInitializationFailure(existingFailure)
+        existingFailure?.let { failureCallback?.onInitializationFailure(it) }
     }
 
     @Throws(Exception::class)
@@ -195,7 +196,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                         if (read == -1) break
                         out.write(buffer, 0, read)
                     }
-                    return out.toString(StandardCharsets.UTF_8.name())
+                    return out.toString(Charsets.UTF_8.name())
                 }
             }
         } catch (e: Exception) {
@@ -204,7 +205,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
     }
 
     fun registerSabrLocalDomCallbacks(callbacks: SabrLocalDomCallbacks): String {
-        val id = UUID.randomUUID().toString()
+        val id = Uuid.random().toString()
         sabrLocalDomCallbacks[id] = callbacks
         return id
     }

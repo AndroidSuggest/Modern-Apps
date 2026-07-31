@@ -1,5 +1,7 @@
 package com.vayunmathur.health.ui
 
+import kotlinx.datetime.format.DateTimeFormat
+import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,13 +41,12 @@ import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import java.time.ZoneId
 
-private val dateFormatter = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.FULL)))
+private val dateFormatter: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.FULL)))
     chars(", ")
-    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
     chars(" ")
     day(Padding.NONE)
     chars(", ")

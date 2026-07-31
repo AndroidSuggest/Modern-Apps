@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.health.ui
 
+import kotlin.uuid.Uuid
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,7 +26,6 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.ui.BackupButtons
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +212,7 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
                 // Default to 100g
                 editingIngredientData = RecipeIngredientData(
                     ingredient,
-                    ServingUnit(id = UUID.randomUUID().toString(), ingredientId = ingredient.id, name = "g", grams = 1.0),
+                    ServingUnit(id = Uuid.random().toString(), ingredientId = ingredient.id, name = "g", grams = 1.0),
                     100.0
                 )
                 isAddingNewIngredient = true
@@ -342,7 +344,7 @@ fun IngredientQuantityDialog(
         
         // Add "g" if not present at all
         val finalUnits = if (unitsWithCurrent.none { it.name == "g" }) {
-            unitsWithCurrent + ServingUnit(id = UUID.randomUUID().toString(), ingredientId = ingredient.id, name = "g", grams = 1.0)
+            unitsWithCurrent + ServingUnit(id = Uuid.random().toString(), ingredientId = ingredient.id, name = "g", grams = 1.0)
         } else unitsWithCurrent
         
         availableUnits = finalUnits

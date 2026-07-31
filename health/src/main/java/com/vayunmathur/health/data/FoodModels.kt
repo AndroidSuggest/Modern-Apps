@@ -1,11 +1,13 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.health.data
 
+import kotlin.uuid.Uuid
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import java.util.UUID
 
 @Entity
 data class Ingredient(
@@ -22,7 +24,7 @@ data class Ingredient(
 
 @Entity
 data class Recipe(
-    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    @PrimaryKey val id: String = Uuid.random().toString(),
     val name: String
 )
 
@@ -47,7 +49,7 @@ data class Recipe(
     ]
 )
 data class ServingUnit(
-    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    @PrimaryKey val id: String = Uuid.random().toString(),
     val ingredientId: String? = null,
     val recipeId: String? = null,
     val name: String, // e.g., "Cup", "Slice", "Serving", "Gram"
@@ -83,7 +85,7 @@ data class ServingUnit(
     ]
 )
 data class RecipeIngredient(
-    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    @PrimaryKey val id: String = Uuid.random().toString(),
     val recipeId: String,
     val ingredientId: String,
     val quantity: Double,

@@ -1,4 +1,5 @@
 package com.vayunmathur.contacts.data
+import com.vayunmathur.library.util.DateNameStyle
 import android.content.ContentProviderOperation
 import android.content.ContentUris
 import android.content.Context
@@ -14,7 +15,6 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
@@ -23,7 +23,7 @@ import kotlin.time.ExperimentalTime
 val LocalDate.hasYear: Boolean get() = year >= 1901
 
 fun LocalDate.formatDisplay(): String = format(LocalDate.Format {
-    monthName(MonthNames(localizedMonthNames(TextStyle.FULL)))
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.FULL)))
     chars(" ")
     day()
     if (hasYear) {

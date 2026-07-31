@@ -5,9 +5,6 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.localization.Localization
 import java.io.ByteArrayInputStream
 import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Collections
-import java.util.HashMap
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
@@ -81,7 +78,7 @@ abstract class Downloader {
         if (headers != null) {
             actualHeaders.putAll(headers)
         }
-        actualHeaders["Content-Type"] = Collections.singletonList(contentType)
+        actualHeaders["Content-Type"] = listOf(contentType)
         return post(url, actualHeaders, dataToSend, localization)
     }
 
@@ -123,7 +120,7 @@ abstract class Downloader {
     ): StreamingResponse {
         val response = get(url, headers, localization ?: NewPipe.getPreferredLocalization())
         val raw = if (response.responseBody() == null) ByteArray(0)
-        else response.responseBody().toByteArray(StandardCharsets.ISO_8859_1)
+        else response.responseBody().toByteArray(Charsets.ISO_8859_1)
         return StreamingResponse(response.responseCode(), response.responseHeaders(), ByteArrayInputStream(raw))
     }
 
@@ -144,7 +141,7 @@ abstract class Downloader {
     ): StreamingResponse {
         val response = post(url, headers, dataToSend, localization ?: NewPipe.getPreferredLocalization())
         val raw = if (response.responseBody() == null) ByteArray(0)
-        else response.responseBody().toByteArray(StandardCharsets.ISO_8859_1)
+        else response.responseBody().toByteArray(Charsets.ISO_8859_1)
         return StreamingResponse(response.responseCode(), response.responseHeaders(), ByteArrayInputStream(raw))
     }
 

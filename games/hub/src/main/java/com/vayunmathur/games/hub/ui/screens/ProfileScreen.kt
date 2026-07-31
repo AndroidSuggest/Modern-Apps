@@ -90,20 +90,20 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
             item { Text(stringResource(R.string.stats), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = "Playtime", value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
-                    StatCard(label = "Sessions", value = "${crossStats.totalSessions}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.sessions), value = "${crossStats.totalSessions}", modifier = Modifier.weight(1f))
                 }
             }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = "Achievements", value = "${crossStats.totalAchievementsUnlocked}/${crossStats.totalAchievements}", modifier = Modifier.weight(1f))
-                    StatCard(label = "Games", value = "${crossStats.totalGames}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.achievements_for), value = "${crossStats.totalAchievementsUnlocked}/${crossStats.totalAchievements}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.tab_games), value = "${crossStats.totalGames}", modifier = Modifier.weight(1f))
                 }
             }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = "XP", value = "$xp", modifier = Modifier.weight(1f))
-                    StatCard(label = "Best streak", value = "${crossStats.longestStreak}d", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.xp_2), value = "$xp", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.best_streak), value = "${crossStats.longestStreak}d", modifier = Modifier.weight(1f))
                 }
             }
             item { Text(stringResource(R.string.level_table), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }

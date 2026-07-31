@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import org.schabi.newpipe.extractor.Image
@@ -24,7 +25,8 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeChannelExtractor(
     service: StreamingService,
@@ -184,7 +186,7 @@ class YoutubeChannelExtractor(
 
             if (textObject != null) {
                 try {
-                    return Utils.mixedNumberWordToLong(getTextFromObject(textObject))
+                    return Utils.mixedNumberWordToLong(getTextFromObject(textObject)!!)
                 } catch (e: NumberFormatException) {
                     throw ParsingException("Could not get subscriber count", e)
                 }
@@ -200,12 +202,12 @@ class YoutubeChannelExtractor(
             ?.getObject(PAGE_HEADER_VIEW_MODEL)
             ?.getObject(METADATA)
         if (metadataObject?.containsKey("contentMetadataViewModel") == true) {
-            val metadataRows = metadataObject.getObject("contentMetadataViewModel")!!
-                .getArray("metadataRows")!!
+            val metadataRows = metadataObject.getObject("contentMetadataViewModel").orEmptyObject()
+                .getArray("metadataRows").orEmptyArray()
 
             val lastMetadataRowParts = metadataRows.getObject(
                 maxOf(0, metadataRows.size - 1)
-            )!!.getArray("metadataParts")!!
+            ).orEmptyObject().getArray("metadataParts").orEmptyArray()
 
             if (lastMetadataRowParts.size < 2) {
                 return UNKNOWN_SUBSCRIBER_COUNT
@@ -213,7 +215,8 @@ class YoutubeChannelExtractor(
 
             try {
                 return Utils.mixedNumberWordToLong(
-                    lastMetadataRowParts.getObject(0)!!.getObject("text")!!.getString(CONTENT)
+                    lastMetadataRowParts.getObject(0).orEmptyObject().getObject("text").orEmptyObject().getString(CONTENT)
+                        ?: return UNKNOWN_SUBSCRIBER_COUNT
                 )
             } catch (e: NumberFormatException) {
                 throw ParsingException("Could not get subscriber count", e)
@@ -235,8 +238,8 @@ class YoutubeChannelExtractor(
                 return getTextFromObject(channelHeader!!.json.getObject("description"))
             }
 
-            return jsonResponse!!.getObject(METADATA)!!
-                .getObject("channelMetadataRenderer")!!
+            return jsonResponse!!.getObject(METADATA).orEmptyObject()
+                .getObject("channelMetadataRenderer").orEmptyObject()
                 .getString("description")
         } catch (e: Exception) {
             throw ParsingException("Could not get channel description", e)
@@ -277,16 +280,16 @@ class YoutubeChannelExtractor(
 
     @Throws(ParsingException::class)
     private fun getTabsForNonAgeRestrictedChannels(): List<ListLinkHandler> {
-        val responseTabs = jsonResponse!!.getObject(CONTENTS)!!
-            .getObject("twoColumnBrowseResultsRenderer")!!
-            .getArray("tabs")!!
+        val responseTabs = jsonResponse!!.getObject(CONTENTS).orEmptyObject()
+            .getObject("twoColumnBrowseResultsRenderer").orEmptyObject()
+            .getArray("tabs").orEmptyArray()
 
         val tabs = mutableListOf<ListLinkHandler>()
         val addNonVideosTab: (String) -> Unit = { tabName ->
             try {
                 tabs.add(
                     YoutubeChannelTabLinkHandlerFactory.getInstance().fromQuery(
-                        channelId, listOf(tabName), ""
+                        channelId!!, listOf(tabName), ""
                     )
                 )
             } catch (ignored: ParsingException) {
@@ -306,7 +309,9 @@ class YoutubeChannelExtractor(
                     ?.getObject("webCommandMetadata")
                     ?.getString("url")
                 if (tabUrl != null) {
-                    val urlParts = tabUrl.split("/")
+                    // Java's String.split drops trailing empty strings, and the last
+                    // segment is the tab name, so a trailing "/" must not add one.
+                    val urlParts = tabUrl.split("/").dropLastWhile { it.isEmpty() }
                     if (urlParts.isEmpty()) {
                         return@forEach
                     }
@@ -370,9 +375,9 @@ class YoutubeChannelExtractor(
             return emptyList()
         }
 
-        return jsonResponse!!.getObject("microformat")!!
-            .getObject("microformatDataRenderer")!!
-            .getArray("tags")!!
+        return jsonResponse!!.getObject("microformat").orEmptyObject()
+            .getObject("microformatDataRenderer").orEmptyObject()
+            .getArray("tags").orEmptyArray()
             .filterIsInstance<String>()
             .toList()
     }

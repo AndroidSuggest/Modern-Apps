@@ -2,7 +2,6 @@ package org.schabi.newpipe.extractor.linkhandler
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException
 import org.schabi.newpipe.extractor.utils.Utils
-import java.util.Objects
 
 abstract class ListLinkHandlerFactory : LinkHandlerFactory() {
 
@@ -24,7 +23,6 @@ abstract class ListLinkHandlerFactory : LinkHandlerFactory() {
     }
 
     override fun fromUrl(url: String, baseUrl: String): ListLinkHandler {
-        Objects.requireNonNull(url, "URL may not be null")
         return ListLinkHandler(super.fromUrl(url, baseUrl))
     }
 
@@ -34,7 +32,7 @@ abstract class ListLinkHandlerFactory : LinkHandlerFactory() {
         ListLinkHandler(super.fromId(id, baseUrl))
 
     @Throws(ParsingException::class)
-    fun fromQuery(id: String, contentFilters: List<String>, sortFilter: String): ListLinkHandler {
+    open fun fromQuery(id: String, contentFilters: List<String>, sortFilter: String): ListLinkHandler {
         val url = getUrl(id, contentFilters, sortFilter)
         return ListLinkHandler(url, url, id, contentFilters, sortFilter)
     }

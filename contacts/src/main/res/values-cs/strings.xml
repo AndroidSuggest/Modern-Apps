@@ -66,7 +66,9 @@
     <string name="contact_photo_description"><xliff:g id="contact_name" example="John Doe">%1$s</xliff:g> fotka</string>
     <string name="on_device">V zařízení</string>
     <string name="done">Hotovo</string>
-    <string name="delete_selected_contacts_confirm">Opravdu chcete smazat <xliff:g id="count" example="5">%1$d</xliff:g> vybraných kontaktů? This action cannot be undone.</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="other">Opravdu chcete smazat <xliff:g id="count" example="5">%1$d</xliff:g> vybraných kontaktů? This action cannot be undone.</item>
+    </plurals>
     <string name="show_account_labels">Zobrazit účty kontaktů</string>
     <string name="system_default">Výchozí nastavení systému</string>
     <string name="signal">Signal</string>
@@ -82,12 +84,16 @@
     <string name="delete_group_title">Smazat skupinu</string>
     <string name="delete_group_confirm">Opravdu chcete smazat tuto skupinu? Kontakty nebudou smazány.</string>
     <string name="no_groups_found">Nebyly nalezeny žádné skupiny. Vytvořte ji na kartě skupiny.</string>
-    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktů</string>
+    <plurals name="contacts_count">
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktů</item>
+    </plurals>
     <string name="import_vcf_file">Import .vcf souboru</string>
     <string name="import_to_existing_account">Importovat do existujícího účtu</string>
     <string name="create_new_account_option">Vytvořit nový účet</string>
     <string name="no_contacts_found">Nenalezeny žádné kontaky</string>
-    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktů je připraveno k importování</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktů je připraveno k importování</item>
+    </plurals>
     <string name="select_account">Vybrerte účet</string>
     <string name="no_name">(Beze jména)</string>
     <string name="add_number_to_contact">Přidat číslo ke kontaktu</string>

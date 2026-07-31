@@ -18,6 +18,7 @@ import org.schabi.newpipe.extractor.utils.getBoolean
 import org.schabi.newpipe.extractor.utils.getInt
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeCommentsInfoItemExtractor(
     private val commentRenderer: JsonObject,
@@ -205,7 +206,7 @@ class YoutubeCommentsInfoItemExtractor(
         try {
             val id = JsonUtils.getString(
                 JsonUtils.getArray(commentRepliesRenderer, "contents")
-                    .getObject(0)!!,
+                    .getObject(0).orEmptyObject(),
                 "continuationItemRenderer.continuationEndpoint.continuationCommand.token"
             )
             return Page(url, id)

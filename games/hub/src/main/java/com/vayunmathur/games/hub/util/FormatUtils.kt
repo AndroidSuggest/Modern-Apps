@@ -1,12 +1,12 @@
 package com.vayunmathur.games.hub.util
 
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color
-import java.util.concurrent.TimeUnit
 
 fun formatPlaytime(ms: Long): String {
     if (ms <= 0) return "0m"
-    val hours = TimeUnit.MILLISECONDS.toHours(ms)
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
+    val hours = ms.milliseconds.inWholeHours
+    val minutes = ms.milliseconds.inWholeMinutes % 60
     return when {
         hours > 0 -> "${hours}h ${minutes}m"
         minutes > 0 -> "${minutes}m"
@@ -16,7 +16,7 @@ fun formatPlaytime(ms: Long): String {
 
 fun formatDurationMs(ms: Long): String {
     if (ms <= 0) return "0s"
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(ms)
+    val seconds = ms.milliseconds.inWholeSeconds
     val minutes = seconds / 60
     val hours = minutes / 60
     return when {
@@ -29,9 +29,9 @@ fun formatDurationMs(ms: Long): String {
 fun formatRelativeTime(timestamp: Long, now: Long = System.currentTimeMillis()): String {
     val diff = now - timestamp
     if (diff < 0) return "now"
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(diff)
-    val hours = TimeUnit.MILLISECONDS.toHours(diff)
-    val days = TimeUnit.MILLISECONDS.toDays(diff)
+    val minutes = diff.milliseconds.inWholeMinutes
+    val hours = diff.milliseconds.inWholeHours
+    val days = diff.milliseconds.inWholeDays
     return when {
         minutes < 1 -> "just now"
         minutes < 60 -> "${minutes}m ago"

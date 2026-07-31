@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -24,20 +25,18 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getTex
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getValidJsonResponseBody
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getYoutubeMusicClientVersion
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getYoutubeMusicHeaders
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_PLAYLISTS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_SONGS
-import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.MUSIC_VIDEOS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.MUSIC_ALBUMS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.MUSIC_ARTISTS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.MUSIC_PLAYLISTS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.MUSIC_SONGS
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory.Companion.MUSIC_VIDEOS
 import org.schabi.newpipe.extractor.utils.JsonUtils
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Collections
-import java.util.Objects
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeMusicSearchExtractor(
     service: StreamingService,
@@ -86,7 +85,7 @@ class YoutubeMusicSearchExtractor(
             }
         }
 
-        val json = jsonBody.toString().toByteArray(StandardCharsets.UTF_8)
+        val json = jsonBody.toString().toByteArray(Charsets.UTF_8)
 
         val responseBody = getValidJsonResponseBody(
             downloader.postWithContentTypeJson(url, getYoutubeMusicHeaders(), json)
@@ -105,20 +104,20 @@ class YoutubeMusicSearchExtractor(
         }
 
         val contents = initialData!!
-            .getObject("contents")!!
-            .getObject("tabbedSearchResultsRenderer")!!
-            .getArray("tabs")!!
-            .getObject(0)!!
-            .getObject("tabRenderer")!!
-            .getObject("content")!!
-            .getObject("sectionListRenderer")!!
-            .getArray("contents")!!
+            .getObject("contents").orEmptyObject()
+            .getObject("tabbedSearchResultsRenderer").orEmptyObject()
+            .getArray("tabs").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("tabRenderer").orEmptyObject()
+            .getObject("content").orEmptyObject()
+            .getObject("sectionListRenderer").orEmptyObject()
+            .getArray("contents").orEmptyArray()
 
         cachedItemSectionRendererContents = contents
             .filterIsInstance<JsonObject>()
             .map { c -> c.getObject("itemSectionRenderer") }
             .filter { it != null && it.isNotEmpty() }
-            .map { it!!.getArray("contents")!!.getObject(0)!! }
+            .map { it!!.getArray("contents").orEmptyArray().getObject(0).orEmptyObject() }
             .toList()
         return cachedItemSectionRendererContents!!
     }
@@ -148,14 +147,14 @@ class YoutubeMusicSearchExtractor(
             .any { it.containsKey("showingResultsForRenderer") }
     }
 
-    override fun getMetaInfo(): List<MetaInfo> = Collections.emptyList()
+    override fun getMetaInfo(): List<MetaInfo> = emptyList()
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<InfoItem> {
         val collector = MultiInfoItemsCollector(getServiceId())
 
         val contents = JsonUtils.getArray(
-            JsonUtils.getArray(initialData!!, "contents.tabbedSearchResultsRenderer.tabs").getObject(0)!!,
+            JsonUtils.getArray(initialData!!, "contents.tabbedSearchResultsRenderer.tabs").getObject(0).orEmptyObject(),
             "tabRenderer.content.sectionListRenderer.contents"
         )
 
@@ -164,9 +163,9 @@ class YoutubeMusicSearchExtractor(
         for (content in contents) {
             val contentObj = content as JsonObject
             if (contentObj.containsKey("musicShelfRenderer")) {
-                val musicShelfRenderer = contentObj.getObject("musicShelfRenderer")!!
+                val musicShelfRenderer = contentObj.getObject("musicShelfRenderer").orEmptyObject()
 
-                collectMusicStreamsFrom(collector, musicShelfRenderer.getArray("contents")!!)
+                collectMusicStreamsFrom(collector, musicShelfRenderer.getArray("contents").orEmptyArray())
 
                 nextPage = getNextPageFrom(musicShelfRenderer.getArray("continuations"))
             }
@@ -205,7 +204,7 @@ class YoutubeMusicSearchExtractor(
 
         val responseBody = getValidJsonResponseBody(
             downloader.postWithContentTypeJson(
-                page.url, getYoutubeMusicHeaders(), jsonBody.toString().toByteArray(StandardCharsets.UTF_8)
+                page.url, getYoutubeMusicHeaders(), jsonBody.toString().toByteArray(Charsets.UTF_8)
             )
         )
 
@@ -216,10 +215,10 @@ class YoutubeMusicSearchExtractor(
             throw ParsingException("Could not parse JSON", e)
         }
 
-        val musicShelfContinuation = ajaxJson.getObject("continuationContents")!!
-            .getObject("musicShelfContinuation")!!
+        val musicShelfContinuation = ajaxJson.getObject("continuationContents").orEmptyObject()
+            .getObject("musicShelfContinuation").orEmptyObject()
 
-        collectMusicStreamsFrom(collector, musicShelfContinuation.getArray("contents")!!)
+        collectMusicStreamsFrom(collector, musicShelfContinuation.getArray("contents").orEmptyArray())
         val continuations = musicShelfContinuation.getArray("continuations")
 
         return InfoItemsPage(collector, getNextPageFrom(continuations))
@@ -239,11 +238,11 @@ class YoutubeMusicSearchExtractor(
                     return@forEach
                 }
 
-                val descriptionElements = infoItem.getArray("flexColumns")!!
-                    .getObject(1)!!
-                    .getObject("musicResponsiveListItemFlexColumnRenderer")!!
-                    .getObject("text")!!
-                    .getArray("runs")!!
+                val descriptionElements = infoItem.getArray("flexColumns").orEmptyArray()
+                    .getObject(1).orEmptyObject()
+                    .getObject("musicResponsiveListItemFlexColumnRenderer").orEmptyObject()
+                    .getObject("text").orEmptyObject()
+                    .getArray("runs").orEmptyArray()
 
                 when (searchType) {
                     MUSIC_SONGS, MUSIC_VIDEOS ->
@@ -269,9 +268,10 @@ class YoutubeMusicSearchExtractor(
             return null
         }
 
-        val nextContinuationData = continuations.getObject(0)!!
-            .getObject("nextContinuationData")!!
-        val continuation = nextContinuationData.getString("continuation")!!
+        val nextContinuationData = continuations.getObject(0).orEmptyObject()
+            .getObject("nextContinuationData").orEmptyObject()
+        val continuation = nextContinuationData.getString("continuation")
+            ?: return null
 
         return Page(
             "https://music.youtube.com/youtubei/v1/search?ctoken=$continuation&continuation=$continuation&$DISABLE_PRETTY_PRINT_PARAMETER"

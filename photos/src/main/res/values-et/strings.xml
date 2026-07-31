@@ -25,7 +25,9 @@
     <string name="face_indexing_progress">Indekseerimisel: <xliff:g id="processed" example="20">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="people_scanning">Grupeerin näotuvastuse tulemusi… inimesed on siin näha peale nende leidmist.</string>
     <string name="people_model_missing">Näotuvastuse tulemuste grupeerimine eeldab MobileFaceNet mudeli kasutamist. Lisa lubatava litsentsi alusel avaldatud „mobilefacenet.tflite“ mudel asukohta „photos/src/main/assets“ (vt ka „FaceRecognizer“).</string>
-    <string name="people_photo_count"><xliff:g id="count" example="12">%1$d</xliff:g> fotot</string>
+    <plurals name="people_photo_count">
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> fotot</item>
+    </plurals>
     <plurals name="people_in_photo">
         <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> inimene</item>
         <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> inimest</item>

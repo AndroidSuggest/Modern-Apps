@@ -1,5 +1,8 @@
 package com.vayunmathur.weather.ui.components
 
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import kotlinx.datetime.isoDayNumber
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,7 +39,6 @@ import com.vayunmathur.weather.util.formatTemperatureCompact
 import com.vayunmathur.weather.util.parseLocalIsoToEpochSec
 import com.vayunmathur.weather.util.weatherConditionForCode
 import androidx.compose.ui.unit.sp
-import java.time.format.TextStyle
 import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
@@ -207,10 +209,9 @@ private fun formatDayLabel(epochSec: Long): String {
                     kotlinx.datetime.DayOfWeek.SATURDAY -> 6
                     kotlinx.datetime.DayOfWeek.SUNDAY -> 7
                 }
-                val jDay = java.time.DayOfWeek.of(isoNum)
-                jDay.getDisplayName(TextStyle.SHORT, locale)
+                localizedDayOfWeekNames(DateNameStyle.SHORT, locale)[isoNum - 1]
             } catch (_: Exception) {
-                date.dayOfWeek.name.take(3)
+                localizedDayOfWeekNames(DateNameStyle.SHORT)[date.dayOfWeek.isoDayNumber - 1]
             }
         }
     }

@@ -17,10 +17,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.UncheckedIOException
-import java.util.ArrayList
-import java.util.Collections
-import java.util.Objects
-import java.util.stream.Collectors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
@@ -28,7 +24,7 @@ import java.util.zip.ZipInputStream
  * Extract subscriptions from a Google takeout export
  */
 class YoutubeSubscriptionExtractor(youtubeService: YoutubeService) :
-    SubscriptionExtractor(youtubeService, Collections.singletonList(ContentSource.INPUT_STREAM)) {
+    SubscriptionExtractor(youtubeService, listOf(ContentSource.INPUT_STREAM)) {
 
     companion object {
         private const val BASE_CHANNEL_URL = "https://www.youtube.com/channel/"
@@ -84,7 +80,7 @@ class YoutubeSubscriptionExtractor(youtubeService: YoutubeService) :
                 SubscriptionItem(
                     service.serviceId,
                     BASE_CHANNEL_URL + id,
-                    snippet.getString("title", "") ?: ""
+                    snippet?.getString("title", "") ?: ""
                 )
             )
         }
@@ -126,11 +122,14 @@ class YoutubeSubscriptionExtractor(youtubeService: YoutubeService) :
     fun fromCsvInputStream(contentInputStream: InputStream): List<SubscriptionItem> {
         try {
             BufferedReader(InputStreamReader(contentInputStream)).use { reader ->
-                return reader.lines()
-                    .skip(1)
-                    .map { line -> line.split(",").toTypedArray() }
+                return reader.lineSequence()
+                    .drop(1)
+                    // Java's String.split drops trailing empty strings, so a row with a
+                    // missing title is rejected by the size check below rather than
+                    // yielding a subscription with a blank name.
+                    .map { line -> line.split(",").dropLastWhile { it.isEmpty() }.toTypedArray() }
                     .filter { values -> values.size >= 3 }
-                    .map { values ->
+                    .mapNotNull { values ->
                         val channelUrl = values[1].replace("http://", "https://")
                         if (channelUrl.startsWith(BASE_CHANNEL_URL)) {
                             SubscriptionItem(
@@ -140,9 +139,7 @@ class YoutubeSubscriptionExtractor(youtubeService: YoutubeService) :
                             )
                         } else null
                     }
-                    .filter(Objects::nonNull)
-                    .map { it!! }
-                    .collect(Collectors.toUnmodifiableList())
+                    .toList()
             }
         } catch (e: UncheckedIOException) {
             throw InvalidSourceException("Error reading CSV file", e)

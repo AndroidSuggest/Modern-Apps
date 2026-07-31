@@ -1,7 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 import java.util.Collections
-import java.util.LinkedHashMap
 
 class SabrDecodedResponse {
 
@@ -281,7 +280,7 @@ class SabrDecodedResponse {
     fun getGenericPartDescriptions(): Map<Int, List<String>> {
         val copy = LinkedHashMap<Int, List<String>>()
         for ((k, v) in genericPartDescriptionsInternal) {
-            copy[k] = Collections.unmodifiableList(ArrayList(v))
+            copy[k] = v.toList()
         }
         return Collections.unmodifiableMap(copy)
     }

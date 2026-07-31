@@ -1,5 +1,8 @@
 package com.vayunmathur.calendar.ui
 
+import com.vayunmathur.library.util.localizedAmPmMarker
+import kotlinx.datetime.format.DateTimeFormat
+import com.vayunmathur.library.util.DateNameStyle
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,7 +73,6 @@ import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
@@ -375,22 +377,22 @@ fun Item(icon: @Composable () -> Unit = {}, left: @Composable () -> Unit, right:
     }
 }
 
-val dateFormat = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
+val dateFormat: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
     chars(", ")
-    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
     chars(" ")
     day(Padding.NONE)
     chars(", ")
     year(Padding.NONE)
 }
 
-val timeFormat12 = LocalTime.Format {
+val timeFormat12: DateTimeFormat<LocalTime> get() = LocalTime.Format {
     amPmHour(Padding.NONE)
     chars(":")
     minute()
     chars(" ")
-    amPmMarker("AM", "PM")
+    localizedAmPmMarker()
 }
 
 val timeFormat24 = LocalTime.Format {

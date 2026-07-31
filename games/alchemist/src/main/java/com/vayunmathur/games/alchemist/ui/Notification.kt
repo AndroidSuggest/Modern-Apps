@@ -1,5 +1,6 @@
 package com.vayunmathur.games.alchemist.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -76,7 +77,7 @@ fun UnlockNotification(
                         .weight(1f)
                 ) {
                     Text(
-                        text = if (unlock.size == 1) stringResource(R.string.item_discovered) else stringResource(R.string.items_discovered, unlock.size),
+                        text = if (unlock.size == 1) stringResource(R.string.item_discovered) else pluralStringResource(R.plurals.items_discovered, unlock.size, unlock.size),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )

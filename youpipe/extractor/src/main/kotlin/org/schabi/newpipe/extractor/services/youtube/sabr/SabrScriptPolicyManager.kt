@@ -1,7 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 import java.security.PublicKey
-import java.util.Arrays
 
 /** Thread-safe verifier and monotonic activation boundary for signed JavaScript source. */
 class SabrScriptPolicyManager {
@@ -40,7 +39,7 @@ class SabrScriptPolicyManager {
         if (verified.getRevision() < highestRevision) throw IllegalArgumentException("SABR policy rollback rejected")
         val currentActive = active
         if (currentActive != null && currentActive.getRevision() == verified.getRevision() &&
-            !Arrays.equals(currentActive.serialize(), verified.serialize())
+            !currentActive.serialize().contentEquals(verified.serialize())
         ) {
             throw IllegalArgumentException("Conflicting SABR policy revision")
         }

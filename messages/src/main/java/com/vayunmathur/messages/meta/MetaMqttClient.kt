@@ -1,5 +1,9 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class, kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.meta
 
+import kotlin.uuid.Uuid
+import kotlin.concurrent.atomics.*
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -14,15 +18,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
+import kotlinx.coroutines.CancellationException
+import com.vayunmathur.library.network.WebSocketClient
+import com.vayunmathur.library.network.WebSocketHandshakeException
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 class MetaMqttClient(
     private val authData: MetaAuthData,
@@ -48,11 +47,9 @@ class MetaMqttClient(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
 
-    private var webSocket: WebSocket? = null
+    @Volatile private var socket: WebSocketClient? = null
+    private var sessionJob: Job? = null
     private val writeMutex = Mutex()
     private var reconnectJob: Job? = null
     private var pingJob: Job? = null
@@ -61,7 +58,7 @@ class MetaMqttClient(
     private var lastFullReconnectTime = 0L
     private var lastError24ReconnectTime = 0L
 
-    private val packetsSent = AtomicInteger(0)
+    private val packetsSent = AtomicInt(0)
     private val sessionId = MetaProtocol.generateSessionId()
 
     // Pending ACK channels
@@ -81,7 +78,7 @@ class MetaMqttClient(
     // Lightspeed requests (FetchThreads never answered). Prefer the scraped page value; fall back to
     // a cookie, then a single generated UUID reused for the whole session (never regenerated).
     private val clientId: String =
-        config.clientId.ifEmpty { authData.cookies["cid"] ?: java.util.UUID.randomUUID().toString() }
+        config.clientId.ifEmpty { authData.cookies["cid"] ?: Uuid.random().toString() }
 
     // DB SyncManager (#10).
     private val syncManager = MetaSyncManager(
@@ -106,7 +103,7 @@ class MetaMqttClient(
 
     fun safePacketId(): Int {
         while (true) {
-            val id = packetsSent.incrementAndGet() and 0xFFFF
+            val id = packetsSent.incrementAndFetch() and 0xFFFF
             if (id != 0) return id
         }
     }
@@ -118,69 +115,87 @@ class MetaMqttClient(
 
         val mqttUrl = buildBrokerUrl()
 
-        val request = Request.Builder()
-            .url(mqttUrl)
-            .header("Cookie", authData.toCookieHeader())
-            .header("Origin", when (authData.platform) {
+        val headers = mapOf(
+            "Cookie" to authData.toCookieHeader(),
+            "Origin" to when (authData.platform) {
                 MetaAuthData.Platform.MESSENGER -> MetaProtocol.MESSENGER_BASE_URL
                 MetaAuthData.Platform.INSTAGRAM -> MetaProtocol.INSTAGRAM_BASE_URL
-            })
-            .header("User-Agent", MetaProtocol.USER_AGENT)
-            .build()
+            },
+            "User-Agent" to MetaProtocol.USER_AGENT,
+        )
 
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "WebSocket connected for ${authData.platform}")
-                scope.launch {
-                    try {
-                        sendConnectPacket()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to send CONNECT packet", e)
-                        _connectionState.emit(ConnectionState.Disconnected("Connect failed: ${e.message}"))
+        // One coroutine owns connect + read, replacing okhttp's callback listener.
+        sessionJob?.cancel()
+        sessionJob = scope.launch {
+            val open = try {
+                WebSocketClient.connect(mqttUrl, headers)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onSocketFailure(e)
+                return@launch
+            }
+
+            socket = open
+            Log.i(TAG, "WebSocket connected for ${authData.platform}")
+            try {
+                sendConnectPacket()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send CONNECT packet", e)
+                _connectionState.emit(ConnectionState.Disconnected("Connect failed: ${e.message}"))
+            }
+
+            var closeReason = ""
+            try {
+                open.incomingFlow().collect { frame ->
+                    when (frame) {
+                        is WebSocketClient.WsFrame.Binary -> handleBinaryMessage(frame.bytes)
+                        is WebSocketClient.WsFrame.Text ->
+                            Log.w(TAG, "Unexpected text message in websocket")
+                        is WebSocketClient.WsFrame.Close -> {
+                            Log.i(TAG, "WebSocket closed: ${frame.code} ${frame.reason}")
+                            closeReason = frame.reason
+                        }
+                        else -> Unit
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (socket === open) socket = null
+                onSocketFailure(e)
+                return@launch
             }
 
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                handleBinaryMessage(bytes.toByteArray())
-            }
+            if (socket === open) socket = null
+            cancelAllPending()
+            _connectionState.emit(ConnectionState.Disconnected("Closed: $closeReason"))
+            scheduleReconnect()
+        }
+    }
 
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                Log.w(TAG, "Unexpected text message in websocket")
-            }
-
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "WebSocket closing: $code $reason")
-                webSocket.close(1000, null)
-            }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "WebSocket closed: $code $reason")
-                cancelAllPending()
-                scope.launch {
-                    _connectionState.emit(ConnectionState.Disconnected("Closed: $reason"))
-                }
-                scheduleReconnect()
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket failure", t)
-                cancelAllPending()
-                // Issue #4: Detect HTTP auth/consent errors from WebSocket handshake failure
-                val statusCode = response?.code
-                val reason = when {
-                    statusCode == 401 || statusCode == 403 -> "TokenExpired"
-                    t.message?.contains("consent", ignoreCase = true) == true -> "ConsentRequired"
-                    else -> "Failure: ${t.message}"
-                }
-                scope.launch {
-                    _connectionState.emit(ConnectionState.Disconnected(reason))
-                }
-                if (reason != "TokenExpired" && reason != "ConsentRequired") {
-                    scheduleReconnect()
-                }
-            }
-        })
+    /**
+     * Replaces okhttp's `onFailure(.., response)`. Issue #4: detect HTTP
+     * auth/consent errors from the WebSocket handshake — the status that used to
+     * come from `response.code` now rides on [WebSocketHandshakeException].
+     */
+    private fun onSocketFailure(t: Throwable) {
+        Log.e(TAG, "WebSocket failure", t)
+        cancelAllPending()
+        val statusCode = (t as? WebSocketHandshakeException)?.statusCode
+        val reason = when {
+            statusCode == 401 || statusCode == 403 -> "TokenExpired"
+            t.message?.contains("consent", ignoreCase = true) == true -> "ConsentRequired"
+            else -> "Failure: ${t.message}"
+        }
+        scope.launch {
+            _connectionState.emit(ConnectionState.Disconnected(reason))
+        }
+        if (reason != "TokenExpired" && reason != "ConsentRequired") {
+            scheduleReconnect()
+        }
     }
 
     fun disconnect() {
@@ -188,8 +203,11 @@ class MetaMqttClient(
         pongTimeoutJob?.cancel()
         reconnectJob?.cancel()
         cancelAllPending()
-        webSocket?.close(1000, "Client disconnect")
-        webSocket = null
+        val open = socket
+        socket = null
+        // Closing unblocks the read loop, which then runs its normal
+        // Disconnected + scheduleReconnect path (as okhttp's onClosed did).
+        scope.launch { runCatching { open?.close(1000, "Client disconnect") } }
     }
 
     private fun buildBrokerUrl(): String {
@@ -203,8 +221,14 @@ class MetaMqttClient(
 
     private suspend fun sendData(data: ByteArray): Boolean {
         writeMutex.withLock {
-            val ws = webSocket ?: return false
-            return ws.send(ByteString.of(*data))
+            val ws = socket ?: return false
+            return try {
+                ws.send(data)
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "WebSocket send failed: ${e.message}")
+                false
+            }
         }
     }
 

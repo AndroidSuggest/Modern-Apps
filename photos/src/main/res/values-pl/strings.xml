@@ -27,7 +27,9 @@
     <string name="people_scanning">Grupowanie twarzy… osoby będą wyświetlane tutaj w miarę ich odnajdywania.</string>
     <string name="face_indexing_progress">Indeksowanie %1$d / %2$d</string>
     <string name="people_model_missing">Grupowanie twarzy wymaga modelu MobileFaceNet. Dodaj plik mobilefacenet.tflite z licencją dopuszczającą do pliku photos/src/main/assets (patrz FaceRecognizer).</string>
-    <string name="people_photo_count">%1$d zdjęć</string>
+    <plurals name="people_photo_count">
+        <item quantity="other">%1$d zdjęć</item>
+    </plurals>
     <plurals name="people_in_photo">
         <item quantity="one">%1$d osoba</item>
         <item quantity="few">%1$d osoby</item>

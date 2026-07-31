@@ -1,5 +1,6 @@
 package com.vayunmathur.calendar.glance
 
+import com.vayunmathur.library.util.DateNameStyle
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
@@ -122,9 +123,9 @@ class CalendarGlanceWidget : GlanceAppWidget() {
 @Composable
 private fun CalendarPreviewContent() {
     val dateFormatS = LocalDate.Format {
-        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(java.time.format.TextStyle.SHORT)))
+        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
         chars(", ")
-        monthName(MonthNames(localizedMonthNames(java.time.format.TextStyle.SHORT)))
+        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
         chars(" ")
         day(Padding.NONE)
     }
@@ -171,9 +172,9 @@ private fun CalendarPreviewEvent(title: String, time: String, color: Int) {
 @Composable
 fun Content(context: Context, positionedEvents: Map<LocalDate, List<Instance>>) {
     val dateFormatS = LocalDate.Format {
-        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(java.time.format.TextStyle.SHORT)))
+        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
         chars(", ")
-        monthName(MonthNames(localizedMonthNames(java.time.format.TextStyle.SHORT)))
+        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
         chars(" ")
         day(Padding.NONE)
     }

@@ -1,12 +1,17 @@
 package com.vayunmathur.messages.whatsapp
 
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.char
+import kotlinx.datetime.toLocalDateTime
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * In-app diagnostics sink. The dev build strips Log output from logcat, so during pairing
@@ -15,14 +20,16 @@ import java.util.Locale
  */
 object WhatsAppDiag {
     private const val MAX_ENTRIES = 300
-    private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+    private val timeFmt = LocalTime.Format {
+        hour(); char(':'); minute(); char(':'); second(); char('.'); secondFraction(3)
+    }
 
     private val _log = MutableStateFlow<List<String>>(emptyList())
     val log: StateFlow<List<String>> = _log.asStateFlow()
 
     @Synchronized
     fun log(tag: String, msg: String) {
-        val line = "${timeFmt.format(Date())} $tag  $msg"
+        val line = "${Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time.format(timeFmt)} $tag  $msg"
         _log.value = (_log.value + line).takeLast(MAX_ENTRIES)
         Log.i(tag, msg)
     }

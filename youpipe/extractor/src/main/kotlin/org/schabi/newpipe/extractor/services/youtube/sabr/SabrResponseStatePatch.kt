@@ -1,6 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
 
 /** Normalized protocol state produced by a policy and applied by the bounded Host. */
 class SabrResponseStatePatch private constructor(builder: Builder) {
@@ -26,7 +25,7 @@ class SabrResponseStatePatch private constructor(builder: Builder) {
 
         @JvmStatic
         private fun <T> immutableCopy(values: List<T>): List<T> =
-            Collections.unmodifiableList(ArrayList(values))
+            values.toList()
     }
 
     private val nextRequestPolicy: SabrNextRequestPolicy? = builder.nextRequestPolicy

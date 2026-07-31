@@ -1,5 +1,7 @@
 package com.vayunmathur.vpn.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.vpn.R
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -73,7 +75,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("VPN — WireGuard (gotatun)") },
+                title = { Text(stringResource(R.string.vpn_wireguard_gotatun)) },
                 actions = {
                     androidx.compose.material3.IconButton({ backStack.add(Route.Settings) }) {
                         IconSettings()
@@ -98,10 +100,10 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
             if (configs.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("No tunnels yet", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("Add a connection by opening a .conf file", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.no_tunnels_yet), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.add_a_connection_by_opening_a_conf_file), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
-                        Button({ filePicker.launch(arrayOf("*/*")) }) { Text("Open .conf file") }
+                        Button({ filePicker.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.open_conf_file)) }
                     }
                 }
             } else {
@@ -116,7 +118,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                                     vm.stopVpn()
                                 } else {
                                     if (activity != null) vm.startVpn(activity, cfg)
-                                    else Toast.makeText(context, "Need Activity to grant VPN permission", Toast.LENGTH_SHORT).show()
+                                    else Toast.makeText(context, context.getString(R.string.need_activity_to_grant_vpn_permission), Toast.LENGTH_SHORT).show()
                                 }
                             },
                             onClick = { backStack.add(Route.Detail(cfg.id)) },
@@ -159,10 +161,10 @@ private fun ConfigRow(
                 androidx.compose.material3.IconButton(onClick = onDelete) { IconDelete() }
             }
             if (isActive) {
-                Text("\u25CF Connected via gotatun (WireGuard)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.connected_via_gotatun_wireguard), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
-            Text("Address: ${cfg.address}", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-            Text("Allowed: ${cfg.peerAllowedIPs}", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.address, cfg.address), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.allowed, cfg.peerAllowedIPs), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }

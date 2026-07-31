@@ -29,11 +29,9 @@ rustNativeLib("offlinerouter", "maps")
 dependencies {
     implementation(libs.maplibre.compose)
     implementation(project(":library:image"))
-    // Installs a disk-caching Call.Factory into MapLibre for the streamed
-    // pmtiles basemap (see MapTileCache). okhttp is already on the runtime
-    // classpath via maplibre android-sdk; declare it for compilation.
-    implementation(libs.okhttp)
-
+    // MapTileCache installs a MapLibre ModuleProvider whose HttpRequest runs on
+    // library:network, so the map stack never touches MapLibre's bundled OkHttp
+    // implementation.
     implementation(project(":library:network"))
 
     implementation(libs.flatgeobuf)

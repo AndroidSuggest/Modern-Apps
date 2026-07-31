@@ -17,6 +17,8 @@ import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getBoolean
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * A [CommentsInfoItemExtractor] for YouTube comment data returned in a view model and entity
@@ -67,7 +69,7 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
     }
 
     override fun getTextualLikeCount(): String {
-        return commentEntityPayload.getObject("toolbar")!!
+        return commentEntityPayload.getObject("toolbar").orEmptyObject()
             .getString("likeCountNotliked") ?: ""
     }
 
@@ -76,8 +78,8 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
         // Comments' text work in the same way as an attributed video description
         return Description(
             attributedDescriptionToHtml(
-                commentEntityPayload.getObject(PROPERTIES)!!
-                    .getObject("content")!!
+                commentEntityPayload.getObject(PROPERTIES).orEmptyObject()
+                    .getObject("content").orEmptyObject()
             ),
             Description.HTML
         )
@@ -85,7 +87,7 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun getTextualUploadDate(): String {
-        return commentEntityPayload.getObject(PROPERTIES)!!
+        return commentEntityPayload.getObject(PROPERTIES).orEmptyObject()
             .getString("publishedTime") ?: ""
     }
 
@@ -100,7 +102,7 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun getCommentId(): String {
-        var commentId = commentEntityPayload.getObject(PROPERTIES)!!
+        var commentId = commentEntityPayload.getObject(PROPERTIES).orEmptyObject()
             .getString("commentId")
         if (commentId.isNullOrEmpty()) {
             commentId = commentViewModel.getString("commentId")
@@ -113,18 +115,18 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun getUploaderUrl(): String {
-        val author = commentEntityPayload.getObject(AUTHOR)!!
+        val author = commentEntityPayload.getObject(AUTHOR).orEmptyObject()
         var channelId = author.getString("channelId")
         if (channelId.isNullOrEmpty()) {
-            channelId = author.getObject("channelCommand")!!
-                .getObject("innertubeCommand")!!
-                .getObject("browseEndpoint")!!
+            channelId = author.getObject("channelCommand").orEmptyObject()
+                .getObject("innertubeCommand").orEmptyObject()
+                .getObject("browseEndpoint").orEmptyObject()
                 .getString("browseId")
             if (channelId.isNullOrEmpty()) {
-                channelId = author.getObject("avatar")!!
-                    .getObject("endpoint")!!
-                    .getObject("innertubeCommand")!!
-                    .getObject("browseEndpoint")!!
+                channelId = author.getObject("avatar").orEmptyObject()
+                    .getObject("endpoint").orEmptyObject()
+                    .getObject("innertubeCommand").orEmptyObject()
+                    .getObject("browseEndpoint").orEmptyObject()
                     .getString("browseId")
                 if (channelId.isNullOrEmpty()) {
                     throw ParsingException("Could not get channel ID")
@@ -136,16 +138,16 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun getUploaderName(): String {
-        return commentEntityPayload.getObject(AUTHOR)!!
+        return commentEntityPayload.getObject(AUTHOR).orEmptyObject()
             .getString("displayName") ?: ""
     }
 
     @Throws(ParsingException::class)
     override fun getUploaderAvatars(): List<Image> {
         return getImagesFromThumbnailsArray(
-            commentEntityPayload.getObject("avatar")!!
-                .getObject("image")!!
-                .getArray("sources")!!
+            commentEntityPayload.getObject("avatar").orEmptyObject()
+                .getObject("image").orEmptyObject()
+                .getArray("sources").orEmptyArray()
         )
     }
 
@@ -160,13 +162,13 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun isUploaderVerified(): Boolean {
-        val author = commentEntityPayload.getObject(AUTHOR)!!
+        val author = commentEntityPayload.getObject(AUTHOR).orEmptyObject()
         return author.getBoolean("isVerified") == true || author.getBoolean("isArtist") == true
     }
 
     @Throws(ParsingException::class)
     override fun getReplyCount(): Int {
-        val replyCountString = commentEntityPayload.getObject("toolbar")!!
+        val replyCountString = commentEntityPayload.getObject("toolbar").orEmptyObject()
             .getString("replyCount")
         if (replyCountString.isNullOrEmpty()) {
             return 0
@@ -180,7 +182,7 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
             return null
         }
 
-        val continuation = commentRepliesRenderer.getArray("contents")!!
+        val continuation = commentRepliesRenderer.getArray("contents").orEmptyArray()
             .filterIsInstance<JsonObject>()
             .mapNotNull { it.getObject("continuationItemRenderer") }
             .firstOrNull()
@@ -193,7 +195,7 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
     }
 
     override fun isChannelOwner(): Boolean {
-        return commentEntityPayload.getObject(AUTHOR)!!
+        return commentEntityPayload.getObject(AUTHOR).orEmptyObject()
             .getBoolean("isCreator") == true
     }
 

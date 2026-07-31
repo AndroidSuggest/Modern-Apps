@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.telegram.mtproto
 
+import kotlin.concurrent.atomics.*
 import android.util.Log
 import com.vayunmathur.messages.telegram.api.TlRegistry
 import com.vayunmathur.messages.telegram.mtproto.crypto.AuthResult
@@ -16,7 +19,6 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.SecureRandom
-import java.util.concurrent.atomic.AtomicInteger
 
 class MtProtoConnection(
     private val address: String,
@@ -39,7 +41,7 @@ class MtProtoConnection(
     var sessionId: Long = 0L
         private set
 
-    private val seqNo = AtomicInteger(0)
+    private val seqNo = AtomicInt(0)
     private val writeMutex = Mutex()
     private val sendMutex = Mutex()
     private val pendingAcks = mutableListOf<Long>()
@@ -96,7 +98,7 @@ class MtProtoConnection(
             Log.d(TAG, "serverTimeOffset=${handshakeOffset}s source=handshake")
         }
         connected = true
-        seqNo.set(0)
+        seqNo.store(0)
 
         val s = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = s
@@ -479,10 +481,10 @@ class MtProtoConnection(
 
     private fun nextSeqNo(contentRelated: Boolean): Int {
         return if (contentRelated) {
-            val s = seqNo.getAndIncrement()
+            val s = seqNo.fetchAndIncrement()
             s * 2 + 1
         } else {
-            seqNo.get() * 2
+            seqNo.load() * 2
         }
     }
 

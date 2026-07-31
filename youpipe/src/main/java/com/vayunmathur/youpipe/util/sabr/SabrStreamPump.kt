@@ -569,8 +569,8 @@ internal class SabrStreamPump(
             holder.recordDiagnosticsThrottled(
                 "pump_until_cached itag=${request.format.itag}" +
                     " seq=${request.getSequenceNumber()}" +
-                    " segments=${result.getSegmentCount()}" +
-                    " targetTrackSegments=${result.getTargetTrackSegmentCount()}"
+                    " segments=${result.segmentCount}" +
+                    " targetTrackSegments=${result.targetTrackSegmentCount}"
             )
         } finally {
             lastRequestMs = System.currentTimeMillis()
@@ -757,7 +757,7 @@ internal class SabrStreamPump(
         // A control-only response is pacing/protocol state, not evidence that the server omitted
         // a demanded media segment. The ordinary response policy has already handled it; keeping
         // the demand counters unchanged also preserves the server backoff.
-        if (result.getSegmentCount() == 0 && result.getReturnedSegments().isEmpty()) {
+        if (result.segmentCount == 0 && result.returnedSegments.isEmpty()) {
             demand.retryDelayMs = 0
             session.addDiagnosticEvent(
                 "pump_demand_no_media itag=${demand.request.format.itag}" +
@@ -776,8 +776,8 @@ internal class SabrStreamPump(
             SabrSessionPolicy.DemandResponseEvent(
                 demand.request.format.itag,
                 demand.request.getSequenceNumber(), targetStartMs, edgeMs,
-                demand.policyState(nowMs), result.getSegmentCount(),
-                result.getTargetTrackSegmentCount(), result.getReturnedSegments(),
+                demand.policyState(nowMs), result.segmentCount,
+                result.targetTrackSegmentCount, result.returnedSegments,
                 result.areReturnedSegmentsTruncated()
             )
         )
@@ -787,14 +787,14 @@ internal class SabrStreamPump(
             "pump_demand_omission itag=${demand.request.format.itag}" +
                 " seq=${demand.request.getSequenceNumber()}" +
                 " omissions=${demand.responsesWithoutDemandedSegment}" +
-                " targetTrackSegments=${result.getTargetTrackSegmentCount()}" +
-                " segments=${result.getSegmentCount()}" +
+                " targetTrackSegments=${result.targetTrackSegmentCount}" +
+                " segments=${result.segmentCount}" +
                 " returned=${summarizeReturnedSegments(result)}" +
                 " elapsedMs=$elapsedMs" +
-                " outcome=${decision.getOutcome()}" +
+                " outcome=${decision.outcome}" +
                 " retryDelayMs=${decision.getRetryDelayMs()}"
         )
-        if (decision.getOutcome() ==
+        if (decision.outcome ==
             SabrSessionPolicy.DemandOutcome.FAIL_REPEATED_TARGET_OMISSION
         ) {
             failDemand(
@@ -809,7 +809,7 @@ internal class SabrStreamPump(
             )
             return true
         }
-        if (decision.getOutcome() == SabrSessionPolicy.DemandOutcome.FAIL_NO_TARGET_MEDIA) {
+        if (decision.outcome == SabrSessionPolicy.DemandOutcome.FAIL_NO_TARGET_MEDIA) {
             failDemand(
                 demand,
                 IOException(
@@ -821,9 +821,9 @@ internal class SabrStreamPump(
             )
             return true
         }
-        if (decision.getOutcome() != SabrSessionPolicy.DemandOutcome.CONTINUE) {
+        if (decision.outcome != SabrSessionPolicy.DemandOutcome.CONTINUE) {
             throw IllegalStateException(
-                "Unhandled SABR demand outcome ${decision.getOutcome()}"
+                "Unhandled SABR demand outcome ${decision.outcome}"
             )
         }
         return false
@@ -975,11 +975,11 @@ internal class SabrStreamPump(
             result: YoutubeSabrSession.DemandResponseResult
         ): String {
             val summary = StringBuilder("[")
-            for (segment in result.getReturnedSegments()) {
+            for (segment in result.returnedSegments) {
                 if (summary.length > 1) {
                     summary.append(',')
                 }
-                summary.append(segment.getItag()).append(':').append(segment.getSequenceNumber())
+                summary.append(segment.itag).append(':').append(segment.sequenceNumber)
             }
             if (result.areReturnedSegmentsTruncated()) {
                 summary.append(",...")

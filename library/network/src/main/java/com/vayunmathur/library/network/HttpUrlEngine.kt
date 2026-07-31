@@ -9,6 +9,8 @@ import java.net.URL
 import java.util.zip.GZIPInputStream
 import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLSocketFactory
 
 /**
  * Android-only HTTP engine backed by HttpURLConnection.
@@ -44,6 +46,7 @@ internal object HttpUrlEngine {
         bodyBytes: ByteArray?,
         connectTimeoutMs: Long?,
         readTimeoutMs: Long? = connectTimeoutMs,
+        sslSocketFactory: SSLSocketFactory? = null,
     ): HttpURLConnection {
         val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
             connectTimeout = connectTimeoutMs?.toInt() ?: CONNECT_TIMEOUT
@@ -52,6 +55,12 @@ internal object HttpUrlEngine {
             useCaches = false
             doInput = true
             doOutput = bodyBytes != null
+        }
+
+        // Certificate pinning (Signal): callers supply a factory built over a
+        // KeyStore holding only their pinned root. Plain-HTTP URLs ignore it.
+        if (sslSocketFactory != null && conn is HttpsURLConnection) {
+            conn.sslSocketFactory = sslSocketFactory
         }
 
         try {
@@ -141,6 +150,7 @@ internal object HttpUrlEngine {
         followRedirects: Boolean,
         connectTimeoutMs: Long?,
         readTimeoutMs: Long? = connectTimeoutMs,
+        sslSocketFactory: SSLSocketFactory? = null,
     ): InternalResult = withContext(Dispatchers.IO) {
         var currentUrl = url
         var currentMethod = method
@@ -149,7 +159,10 @@ internal object HttpUrlEngine {
         var result: InternalResult? = null
 
         while (result == null) {
-            val conn = openConnection(currentUrl, currentMethod, headers, currentBody, connectTimeoutMs, readTimeoutMs)
+            val conn = openConnection(
+                currentUrl, currentMethod, headers, currentBody,
+                connectTimeoutMs, readTimeoutMs, sslSocketFactory,
+            )
             val status = try {
                 conn.responseCode
             } catch (e: Exception) {

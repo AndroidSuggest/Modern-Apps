@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui.dialogs
 
+import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -25,7 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.*
 import kotlinx.datetime.format.MonthNames
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlin.math.abs
 import kotlin.time.Clock
 
@@ -84,7 +84,7 @@ fun EventDatePickerDialog(id: String, initialDate: LocalDate?, onDismiss: () -> 
                 val previewText = try {
                     val date = LocalDate(selectedYear, selectedMonth, selectedDay)
                     date.format(LocalDate.Format {
-                        monthName(MonthNames(localizedMonthNames(TextStyle.FULL)))
+                        monthName(MonthNames(localizedMonthNames(DateNameStyle.FULL)))
                         chars(" ")
                         day()
                         if (includeYear) {
@@ -109,7 +109,7 @@ fun EventDatePickerDialog(id: String, initialDate: LocalDate?, onDismiss: () -> 
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     WheelPicker(
-                        items = months.map { localizedMonthNames(TextStyle.SHORT)[it - 1] },
+                        items = months.map { localizedMonthNames(DateNameStyle.SHORT)[it - 1] },
                         initialIndex = selectedMonth - 1,
                         onIndexSelected = { selectedMonth = it + 1 },
                         modifier = Modifier.weight(1f)

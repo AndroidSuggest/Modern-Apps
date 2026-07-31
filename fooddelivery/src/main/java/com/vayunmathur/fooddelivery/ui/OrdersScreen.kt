@@ -1,5 +1,7 @@
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.fooddelivery.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,9 +65,9 @@ fun OrdersScreen() {
                     IconPerson(modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    Text("Sign in to view your orders", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.sign_in_to_view_your_orders), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
-                    Text("Go to Account to sign in",
+                    Text(stringResource(R.string.go_to_account_to_sign_in),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -80,9 +82,9 @@ fun OrdersScreen() {
                     IconPackage(modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    Text("No orders yet", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.no_orders_yet), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
-                    Text("Your order history will appear here",
+                    Text(stringResource(R.string.your_order_history_will_appear_here),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -166,7 +168,7 @@ private fun OrderCard(order: Order) {
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Total", fontWeight = FontWeight.Bold,
+                Text(stringResource(R.string.total), fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyMedium)
                 Text("$%.2f".format(order.displayTotal), fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyMedium)

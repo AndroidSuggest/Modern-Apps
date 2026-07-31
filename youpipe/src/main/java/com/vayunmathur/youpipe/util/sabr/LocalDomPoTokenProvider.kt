@@ -14,10 +14,8 @@ import org.schabi.newpipe.extractor.services.youtube.InnertubeClientRequestInfo
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.YoutubeSessionPoToken
 import org.schabi.newpipe.extractor.services.youtube.YoutubeSessionPoTokenProvider
-import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
-import java.util.HashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -28,7 +26,7 @@ internal fun youtubeCredentialIdentity(loggedIn: Boolean, tokens: String?): Stri
     digest.update(if (loggedIn) 1.toByte() else 0.toByte())
     if (loggedIn) {
         digest.update(0.toByte())
-        digest.update(tokens.orEmpty().toByteArray(StandardCharsets.UTF_8))
+        digest.update(tokens.orEmpty().toByteArray(Charsets.UTF_8))
     }
     return Base64.getUrlEncoder().withoutPadding().encodeToString(digest.digest())
 }
@@ -381,7 +379,7 @@ class LocalDomPoTokenProvider(context: Context) :
             } else {
                 val visitorData = String(
                     Base64.getUrlDecoder().decode(parts[2]),
-                    StandardCharsets.UTF_8,
+                    Charsets.UTF_8,
                 )
                 CachedToken(
                     Base64.getUrlDecoder().decode(parts[3]),
@@ -404,7 +402,7 @@ class LocalDomPoTokenProvider(context: Context) :
     ) {
         val encoder = Base64.getUrlEncoder().withoutPadding()
         val encodedVisitorData = encoder.encodeToString(
-            visitorData.toByteArray(StandardCharsets.UTF_8),
+            visitorData.toByteArray(Charsets.UTF_8),
         )
         val encodedToken = encoder.encodeToString(token)
         prefs.edit().putString(

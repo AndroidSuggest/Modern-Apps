@@ -1,5 +1,6 @@
 package com.vayunmathur.games.alchemist.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -201,7 +202,7 @@ fun RecipeCard(
             if (lockedCount > 0) {
                 Column {
                     Text(
-                        stringResource(R.string.locked, lockedCount),
+                        pluralStringResource(R.plurals.locked_recipes, lockedCount, lockedCount),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold
                     )

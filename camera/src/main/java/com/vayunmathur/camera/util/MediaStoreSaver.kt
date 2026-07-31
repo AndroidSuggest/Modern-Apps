@@ -1,5 +1,13 @@
 package com.vayunmathur.camera.util
 
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.char
+import kotlinx.datetime.toLocalDateTime
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.graphics.Bitmap
@@ -7,14 +15,16 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /** Centralizes the DCIM/Camera MediaStore writes shared by photo, video and panorama capture. */
 object MediaStoreSaver {
 
-    fun timestamp(): String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+    private val FileStamp = LocalDateTime.Format {
+        year(); monthNumber(); day(); char('_'); hour(); minute(); second()
+    }
+
+    fun timestamp(): String =
+        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).format(FileStamp)
 
     fun imageValues(displayName: String): ContentValues = contentValues(displayName, "image/jpeg")
 

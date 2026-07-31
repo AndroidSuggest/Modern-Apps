@@ -13,9 +13,7 @@ object NewPipe {
 
     private const val TAG = "NewPipe"
 
-    @JvmStatic
-    var downloader: Downloader? = null
-        private set
+    private var downloaderInstance: Downloader? = null
 
     private var preferredLocalization: Localization? = null
     private var preferredContentCountry: ContentCountry? = null
@@ -41,13 +39,13 @@ object NewPipe {
     @JvmStatic
     fun init(d: Downloader, l: Localization, c: ContentCountry) {
         ExtractorLogger.d(TAG, "Initializing with downloader={}, localization={}, country={}", d, l, c)
-        downloader = d
+        downloaderInstance = d
         preferredLocalization = l
         preferredContentCountry = c
     }
 
     @JvmStatic
-    fun getDownloader(): Downloader = downloader!!
+    fun getDownloader(): Downloader = downloaderInstance!!
 
     @JvmStatic
     fun setYoutubeSessionPoTokenProvider(

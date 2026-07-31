@@ -1,5 +1,9 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.regex.Pattern
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -23,12 +27,10 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.regex.Pattern
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
-class YoutubeStreamInfoItemExtractor(
+open class YoutubeStreamInfoItemExtractor(
     private val videoInfo: JsonObject,
     private val timeAgoParser: TimeAgoParser?
 ) : StreamInfoItemExtractor {
@@ -78,7 +80,7 @@ class YoutubeStreamInfoItemExtractor(
     @Throws(ParsingException::class)
     override fun getUrl(): String {
         try {
-            val videoId = videoInfo.getString("videoId")
+            val videoId = videoInfo.getString("videoId")!!
             return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(videoId)
         } catch (e: Exception) {
             throw ParsingException("Could not get url", e)
@@ -115,7 +117,7 @@ class YoutubeStreamInfoItemExtractor(
                     .filter { it.containsKey("thumbnailOverlayTimeStatusRenderer") }
                     .mapNotNull { thumbnailOverlay ->
                         getTextFromObject(
-                            thumbnailOverlay.getObject("thumbnailOverlayTimeStatusRenderer")!!
+                            thumbnailOverlay.getObject("thumbnailOverlayTimeStatusRenderer").orEmptyObject()
                                 .getObject("text")
                         )
                     }
@@ -123,7 +125,7 @@ class YoutubeStreamInfoItemExtractor(
 
                 for (timeOverlayText in timeOverlays) {
                     try {
-                        return YoutubeParsingHelper.parseDurationString(timeOverlayText)
+                        return YoutubeParsingHelper.parseDurationString(timeOverlayText).toLong()
                     } catch (ex: ParsingException) {
                         // try next
                     }
@@ -138,11 +140,11 @@ class YoutubeStreamInfoItemExtractor(
             }
         }
 
-        return YoutubeParsingHelper.parseDurationString(duration)
+        return YoutubeParsingHelper.parseDurationString(duration).toLong()
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderName(): String {
+    override fun getUploaderName(): String? {
         var name = getTextFromObject(videoInfo.getObject("longBylineText"))
 
         if (isNullOrEmpty(name)) {
@@ -158,25 +160,25 @@ class YoutubeStreamInfoItemExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderUrl(): String {
+    override fun getUploaderUrl(): String? {
         var url = getUrlFromNavigationEndpoint(
-            videoInfo.getObject("longBylineText")!!
-                .getArray("runs")!!.getObject(0)!!
-                .getObject("navigationEndpoint")!!
+            videoInfo.getObject("longBylineText").orEmptyObject()
+                .getArray("runs").orEmptyArray().getObject(0).orEmptyObject()
+                .getObject("navigationEndpoint").orEmptyObject()
         )
 
         if (isNullOrEmpty(url)) {
             url = getUrlFromNavigationEndpoint(
-                videoInfo.getObject("ownerText")!!
-                    .getArray("runs")!!.getObject(0)!!
-                    .getObject("navigationEndpoint")!!
+                videoInfo.getObject("ownerText").orEmptyObject()
+                    .getArray("runs").orEmptyArray().getObject(0).orEmptyObject()
+                    .getObject("navigationEndpoint").orEmptyObject()
             )
 
             if (isNullOrEmpty(url)) {
                 url = getUrlFromNavigationEndpoint(
-                    videoInfo.getObject("shortBylineText")!!
-                        .getArray("runs")!!.getObject(0)!!
-                        .getObject("navigationEndpoint")!!
+                    videoInfo.getObject("shortBylineText").orEmptyObject()
+                        .getArray("runs").orEmptyArray().getObject(0).orEmptyObject()
+                        .getObject("navigationEndpoint").orEmptyObject()
                 )
 
                 if (isNullOrEmpty(url)) {
@@ -210,7 +212,7 @@ class YoutubeStreamInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun isUploaderVerified(): Boolean {
-        return YoutubeParsingHelper.isVerified(videoInfo.getArray("ownerBadges")!!)
+        return YoutubeParsingHelper.isVerified(videoInfo.getArray("ownerBadges").orEmptyArray())
     }
 
     @Throws(ParsingException::class)
@@ -227,9 +229,9 @@ class YoutubeStreamInfoItemExtractor(
         var publishedTimeText = getTextFromObject(videoInfo.getObject("publishedTimeText"))
 
         if (isNullOrEmpty(publishedTimeText) && videoInfo.containsKey("videoInfo")) {
-            publishedTimeText = videoInfo.getObject("videoInfo")!!
-                .getArray("runs")!!
-                .getObject(2)!!
+            publishedTimeText = videoInfo.getObject("videoInfo").orEmptyObject()
+                .getArray("runs").orEmptyArray()
+                .getObject(2).orEmptyObject()
                 .getString("text")
         }
 
@@ -281,10 +283,10 @@ class YoutubeStreamInfoItemExtractor(
         if (videoInfo.containsKey("videoInfo")) {
             try {
                 return getViewCountFromViewCountText(
-                    videoInfo.getObject("videoInfo")!!
-                        .getArray("runs")!!
-                        .getObject(0)!!
-                        .getString("text", "")!!, true
+                    videoInfo.getObject("videoInfo").orEmptyObject()
+                        .getArray("runs").orEmptyArray()
+                        .getObject(0).orEmptyObject()
+                        .getString("text", ""), true
                 )
             } catch (ignored: Exception) {
             }
@@ -317,9 +319,9 @@ class YoutubeStreamInfoItemExtractor(
 
     @Throws(NumberFormatException::class, org.schabi.newpipe.extractor.utils.Parser.RegexException::class)
     private fun getViewCountFromAccessibilityData(): Long {
-        val videoInfoTitleAccessibilityData = videoInfo.getObject("title")!!
-            .getObject("accessibility")!!
-            .getObject("accessibilityData")!!
+        val videoInfoTitleAccessibilityData = videoInfo.getObject("title").orEmptyObject()
+            .getObject("accessibility").orEmptyObject()
+            .getObject("accessibilityData").orEmptyObject()
             .getString("label", "") ?: ""
 
         if (videoInfoTitleAccessibilityData.lowercase().endsWith(NO_VIEWS_LOWERCASE)) {
@@ -362,8 +364,9 @@ class YoutubeStreamInfoItemExtractor(
 
     @Throws(ParsingException::class)
     private fun getInstantFromPremiere(): java.time.Instant {
-        val upcomingEventData = videoInfo.getObject("upcomingEventData")!!
-        val startTime = upcomingEventData.getString("startTime")!!
+        val upcomingEventData = videoInfo.getObject("upcomingEventData").orEmptyObject()
+        val startTime = upcomingEventData.getString("startTime")
+            ?: throw ParsingException("Could not get premiere start time")
 
         try {
             return java.time.Instant.ofEpochSecond(startTime.toLong())
@@ -376,8 +379,8 @@ class YoutubeStreamInfoItemExtractor(
     override fun getShortDescription(): String? {
         if (videoInfo.containsKey("detailedMetadataSnippets")) {
             return getTextFromObject(
-                videoInfo.getArray("detailedMetadataSnippets")!!
-                    .getObject(0)!!
+                videoInfo.getArray("detailedMetadataSnippets").orEmptyArray()
+                    .getObject(0).orEmptyObject()
                     .getObject("snippetText")
             )
         }
@@ -392,14 +395,14 @@ class YoutubeStreamInfoItemExtractor(
     @Throws(ParsingException::class)
     override fun isShortFormContent(): Boolean {
         try {
-            val webPageType = videoInfo.getObject("navigationEndpoint")!!
-                .getObject("commandMetadata")!!.getObject("webCommandMetadata")!!
+            val webPageType = videoInfo.getObject("navigationEndpoint").orEmptyObject()
+                .getObject("commandMetadata").orEmptyObject().getObject("webCommandMetadata").orEmptyObject()
                 .getString("webPageType")
 
             var isShort = !isNullOrEmpty(webPageType) && webPageType == "WEB_PAGE_TYPE_SHORTS"
 
             if (!isShort) {
-                isShort = videoInfo.getObject("navigationEndpoint")!!.containsKey("reelWatchEndpoint")
+                isShort = videoInfo.getObject("navigationEndpoint").orEmptyObject().containsKey("reelWatchEndpoint")
             }
 
             if (!isShort) {
@@ -407,12 +410,12 @@ class YoutubeStreamInfoItemExtractor(
                     isShort = (videoInfo.getArray("thumbnailOverlays") ?: JsonArray(emptyList()))
                         .filterIsInstance<JsonObject>()
                         .filter { it.containsKey("thumbnailOverlayTimeStatusRenderer") }
-                        .map { it.getObject("thumbnailOverlayTimeStatusRenderer")!! }
+                        .map { it.getObject("thumbnailOverlayTimeStatusRenderer").orEmptyObject() }
                         .any { timeOverlay ->
                             timeOverlay.getString("style", "")
                                 .equals("SHORTS", ignoreCase = true) ||
-                                timeOverlay.getObject("icon")!!
-                                    .getString("iconType", "")!!
+                                timeOverlay.getObject("icon").orEmptyObject()
+                                    .getString("iconType", "")
                                     .lowercase()
                                     .contains("shorts")
                         }
@@ -428,7 +431,7 @@ class YoutubeStreamInfoItemExtractor(
     private fun isMembersOnly(): Boolean {
         return (videoInfo.getArray("badges") ?: JsonArray(emptyList()))
             .filterIsInstance<JsonObject>()
-            .map { it.getObject("metadataBadgeRenderer")!!.getString("style") }
+            .map { it.getObject("metadataBadgeRenderer").orEmptyObject().getString("style") }
             .any { "BADGE_STYLE_TYPE_MEMBERS_ONLY" == it }
     }
 

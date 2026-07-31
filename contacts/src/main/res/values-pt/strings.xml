@@ -46,5 +46,7 @@
     <string name="add_to_group">Adicionar a um Grupo</string>
     <string name="add_group">Adicionar grupo</string>
     <string name="no_groups_found">Sem grupos encontrados. Cria um na aba de grupos.</string>
-    <string name="contacts_count">%1$d contactos</string>
+    <plurals name="contacts_count">
+        <item quantity="other">%1$d contactos</item>
+    </plurals>
 </resources>

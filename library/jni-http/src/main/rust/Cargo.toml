@@ -1,0 +1,14 @@
+[package]
+name = "jni_http"
+version = "0.1.0"
+edition = "2021"
+description = "Flat-frame JNI HTTP bridge shared by the Rust extractors — no object creation on the hot path"
+license = "GPL-3.0-only"
+
+[lib]
+name = "jni_http"
+# rlib only: this is linked into other crates' cdylibs, it is not a library of its own.
+crate-type = ["rlib"]
+
+[dependencies]
+jni.workspace = true

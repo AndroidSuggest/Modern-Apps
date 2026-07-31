@@ -1,5 +1,7 @@
 package com.vayunmathur.games.voxels.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.voxels.R
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,8 +45,8 @@ fun TradeOverlay(tradesJson: String, onClose: () -> Unit) {
                 .pointerInput(Unit) { detectTapGestures { } }.padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Villager Trades", color = Color.White, fontSize = 18.sp)
-            Text("Tap a trade to exchange (need the cost items).", color = Color.White.copy(0.6f), fontSize = 12.sp)
+            Text(stringResource(R.string.villager_trades), color = Color.White, fontSize = 18.sp)
+            Text(stringResource(R.string.tap_a_trade_to_exchange_need_the_cost_it), color = Color.White.copy(0.6f), fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(trades.withIndex().toList()) { (i, t) ->
@@ -62,7 +64,7 @@ fun TradeOverlay(tradesJson: String, onClose: () -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF3A6B3A)).clickable { onClose() }.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                Text("Close", color = Color.White)
+                Text(stringResource(R.string.close), color = Color.White)
             }
         }
     }

@@ -5,8 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import com.vayunmathur.library.network.NetworkClient
 
 /**
  * Web auth/config bootstrap (#5). Ports the behaviour of messagix's
@@ -104,7 +103,6 @@ object MetaBootstrap {
      */
     suspend fun load(
         authData: MetaAuthData,
-        httpClient: OkHttpClient,
     ): MetaConfig = withContext(Dispatchers.IO) {
         try {
             // Bootstrap must load the MESSAGES/INBOX page (the one that embeds the Lightspeed
@@ -116,7 +114,7 @@ object MetaBootstrap {
                 MetaAuthData.Platform.MESSENGER -> MetaProtocol.MESSENGER_BASE_URL + "/"
                 MetaAuthData.Platform.INSTAGRAM -> MetaProtocol.INSTAGRAM_BASE_URL + "/direct/inbox/"
             }
-            val html = fetch(baseUrl, authData, httpClient) ?: return@withContext MetaConfig()
+            val html = fetch(baseUrl, authData) ?: return@withContext MetaConfig()
 
             // Primary source: the SSJS-preloaded LSPlatformGraphQLLightspeedRequest carries the
             // schema "version" inline on the inbox page (ref modules.go handleRequire). Fall back to
@@ -128,7 +126,7 @@ object MetaBootstrap {
             // The page sometimes preloads the JS instead of inlining LSVersion.
             // Crawl a bounded number of linked script files looking for it.
             if (versionId == 0L) {
-                versionId = crawlForVersion(html, authData, httpClient)
+                versionId = crawlForVersion(html, authData)
             }
 
             val broker = brokerPattern.find(html)?.groupValues?.get(1)?.let { unescapeSlashes(it) }
@@ -185,33 +183,30 @@ object MetaBootstrap {
         }
     }
 
-    private fun fetch(url: String, authData: MetaAuthData, httpClient: OkHttpClient): String? {
-        val request = Request.Builder()
-            .url(url)
-            .header("Cookie", authData.toCookieHeader())
-            .header("User-Agent", MetaProtocol.USER_AGENT)
-            .header(
-                "Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            )
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .header("sec-fetch-dest", "document")
-            .header("sec-fetch-mode", "navigate")
-            .header("sec-fetch-site", "none")
-            .build()
-        return httpClient.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                Log.w(TAG, "Page fetch $url returned ${resp.code}")
-                return null
-            }
-            resp.body?.string()
+    private suspend fun fetch(url: String, authData: MetaAuthData): String? {
+        val resp = NetworkClient.execute(
+            url,
+            "GET",
+            mapOf(
+                "Cookie" to authData.toCookieHeader(),
+                "User-Agent" to MetaProtocol.USER_AGENT,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "en-US,en;q=0.9",
+                "sec-fetch-dest" to "document",
+                "sec-fetch-mode" to "navigate",
+                "sec-fetch-site" to "none",
+            ),
+        )
+        if (!resp.isSuccess) {
+            Log.w(TAG, "Page fetch $url returned ${resp.status}")
+            return null
         }
+        return resp.text
     }
 
-    private fun crawlForVersion(
+    private suspend fun crawlForVersion(
         html: String,
         authData: MetaAuthData,
-        httpClient: OkHttpClient,
     ): Long {
         val hrefPattern = Regex("<(?:link|script)[^>]+(?:href|src)=\"(https://[^\"]+\\.js[^\"]*)\"")
         val urls = hrefPattern.findAll(html)
@@ -220,7 +215,7 @@ object MetaBootstrap {
             .take(MAX_JS_CRAWL)
         for (jsUrl in urls) {
             try {
-                val js = fetch(jsUrl, authData, httpClient) ?: continue
+                val js = fetch(jsUrl, authData) ?: continue
                 val v = versionPattern.find(js)?.groupValues?.get(1)?.toLongOrNull()
                 if (v != null) {
                     Log.i(TAG, "Found LSVersion=$v in $jsUrl")

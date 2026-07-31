@@ -1,5 +1,7 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,7 +55,7 @@ fun InstalledSitesPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Installed apps") },
+                title = { Text(stringResource(R.string.installed_apps)) },
                 navigationIcon = { IconNavigation(backStack) }
             )
         }
@@ -67,9 +69,9 @@ fun InstalledSitesPage(
                 contentAlignment = Alignment.Center
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("No installed apps", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.no_installed_apps), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Open a site and tap Menu → Install app / Add to Home screen. Creates a pinned shortcut launching PwaActivity standalone (no browser chrome). Icon uses best icon 192x192 or apple-touch-icon; falls back to letter tile.",
+                        stringResource(R.string.open_a_site_and_tap_menu_install_app_add),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -109,7 +111,7 @@ fun InstalledSitesPage(
                                 Text(site.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                                 Text(BrowserUtils.prettyUrl(site.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (site.iconUrl != null) {
-                                    Text("icon: ${site.iconUrl.take(56)}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.icon, site.iconUrl.take(56)), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             IconButton(onClick = { viewModel.removeInstalledSite(site.id) }) { IconClose() }
@@ -118,7 +120,7 @@ fun InstalledSitesPage(
                 }
                 item {
                     Text(
-                        "Shortcuts launch PwaActivity standalone WebView (permission handling, downloads, third-party cookies enabled). Remove here deletes DB entry; pinned launcher icon must be removed via long-press if already pinned.",
+                        stringResource(R.string.shortcuts_launch_pwaactivity_standalone),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(8.dp)

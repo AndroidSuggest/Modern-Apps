@@ -277,12 +277,12 @@ internal class YoutubeSabrRequestBuilder private constructor() {
                     writeOfficialWebPreferredFormats(request, info)
                     return
                 }
-                for (format in info.formats) {
+                for (format in info.getFormats()) {
                     if (format.isAudio && streamState.shouldSelectAudioFormat()) {
                         request.writeMessage(16, SabrProto.formatId(format))
                     }
                 }
-                for (format in info.formats) {
+                for (format in info.getFormats()) {
                     if (format.isVideo && streamState.shouldSelectVideoFormat()) {
                         request.writeMessage(17, SabrProto.formatId(format))
                     }
@@ -318,7 +318,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             itag: Int,
             xtagsLength: Int
         ) {
-            for (format in info.formats) {
+            for (format in info.getFormats()) {
                 val currentXtagsLength = format.xtags?.length ?: 0
                 if (format.isAudio && format.itag == itag && currentXtagsLength == xtagsLength) {
                     request.writeMessage(16, SabrProto.formatId(format))
@@ -327,7 +327,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
         }
 
         private fun writeVideoFormatByItag(request: SabrProto.Writer, info: YoutubeSabrInfo, itag: Int) {
-            for (format in info.formats) {
+            for (format in info.getFormats()) {
                 if (format.isVideo && format.itag == itag) {
                     request.writeMessage(17, SabrProto.formatId(format))
                     return

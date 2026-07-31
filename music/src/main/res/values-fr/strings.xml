@@ -34,7 +34,9 @@
     <string name="nav_artists">Artistes</string>
     <string name="label_artist">Artiste</string>
     <string name="dialog_create">Créer</string>
-    <string name="num_songs_format">%1$d titres</string>
+    <plurals name="num_songs_format">
+        <item quantity="other">%1$d titres</item>
+    </plurals>
     <string name="page_title_music">Musique</string>
     <string name="unknown_artist">Artiste inconnu</string>
 </resources>

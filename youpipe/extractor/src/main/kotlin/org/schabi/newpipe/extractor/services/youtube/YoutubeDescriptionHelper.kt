@@ -7,13 +7,13 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getUrl
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isYoutubeServiceURL
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isYoutubeURL
 import org.schabi.newpipe.extractor.utils.getArray
+import org.schabi.newpipe.extractor.utils.getBoolean
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
 import org.schabi.newpipe.extractor.utils.getInt
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.*
-import java.util.function.Function
 import java.util.regex.Pattern
 
 object YoutubeDescriptionHelper {
@@ -32,12 +32,12 @@ object YoutubeDescriptionHelper {
         val open: String
         val close: String
         val pos: Int
-        val transformContent: Function<String, String>?
+        val transformContent: ((String) -> String)?
         var openPosInOutput: Int = -1
 
         constructor(open: String, close: String, pos: Int) : this(open, close, pos, null)
 
-        constructor(open: String, close: String, pos: Int, transformContent: Function<String, String>?) {
+        constructor(open: String, close: String, pos: Int, transformContent: ((String) -> String)?) {
             this.open = open
             this.close = close
             this.pos = pos
@@ -96,7 +96,7 @@ object YoutubeDescriptionHelper {
                         if (popped.transformContent != null && popped.openPosInOutput >= 0) {
                             textBuilder.replace(
                                 popped.openPosInOutput, textBuilder.length,
-                                popped.transformContent.apply(
+                                popped.transformContent(
                                     textBuilder.substring(popped.openPosInOutput)
                                 )
                             )
@@ -160,18 +160,18 @@ object YoutubeDescriptionHelper {
         }
     }
 
-    private fun getTransformContentFun(run: JsonObject, isYoutube: Boolean): Function<String, String> {
+    private fun getTransformContentFun(run: JsonObject, isYoutube: Boolean): (String) -> String {
         val accessibilityLabel = run.getObject("onTapOptions")
             ?.getObject("accessibilityInfo")
             ?.getString("accessibilityLabel", "")?.replaceFirst(" Channel Link", "") ?: ""
 
         return if (isYoutube || accessibilityLabel.isEmpty() || accessibilityLabel.startsWith("YouTube: ")) {
-            Function { content ->
+            { content ->
                 val m = LINK_CONTENT_CLEANER_REGEX.matcher(content)
                 if (m.find()) m.group(1) else content
             }
         } else {
-            Function { _ -> accessibilityLabel }
+            { _ -> accessibilityLabel }
         }
     }
 
@@ -226,7 +226,7 @@ object YoutubeDescriptionHelper {
                 (run["italic"] as? JsonPrimitive)?.let { it.content == "true" || it.content.toBoolean() } == true
 
             // Actually use extension getBoolean from JsonUtils
-            val italicBool = org.schabi.newpipe.extractor.utils.getBoolean(run, "italic") ?: false
+            val italicBool = run.getBoolean("italic") ?: false
 
             if (italicBool) {
                 openers.add(Run(ITALIC_OPEN, ITALIC_CLOSE, start))

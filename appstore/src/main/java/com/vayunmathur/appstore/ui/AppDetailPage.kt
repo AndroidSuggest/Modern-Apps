@@ -1,5 +1,7 @@
 package com.vayunmathur.appstore.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.appstore.R
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -116,7 +118,7 @@ fun AppDetailPage(
                         SourceBadge(current.source)
                         Spacer(Modifier.width(8.dp))
                         if (isInstalled) {
-                            Text("Installed ${installedInfo?.versionName ?: ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.installed_2, installedInfo?.versionName ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                     if (syncMessage.isNotBlank()) {
@@ -127,7 +129,7 @@ fun AppDetailPage(
 
             if (progress != null) {
                 LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                Text("Downloading ${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.downloading, (progress * 100).toInt()), style = MaterialTheme.typography.labelSmall)
             }
 
             // Action row redesigned per plan: Open + Uninstall for installed, Install/Update for others
@@ -140,18 +142,18 @@ fun AppDetailPage(
                             Text(if (progress != null) "Downloading ${(progress * 100).toInt()}%" else "Update")
                         }
                         FilledTonalButton(onClick = { viewModel.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
-                            Text("Open")
+                            Text(stringResource(R.string.open))
                         }
                         OutlinedButton(onClick = { showUninstallConfirm = true }) { IconDelete() }
                     }
                     isInstalled -> {
                         FilledTonalButton(onClick = { viewModel.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
-                            Text("Open")
+                            Text(stringResource(R.string.open))
                         }
                         OutlinedButton(onClick = { showUninstallConfirm = true }, modifier = Modifier.weight(1f)) {
                             IconDelete()
                             Spacer(Modifier.width(6.dp))
-                            Text("Uninstall")
+                            Text(stringResource(R.string.uninstall))
                         }
                     }
                     current.source == AppSource.PLAYSTORE -> {
@@ -194,7 +196,7 @@ fun AppDetailPage(
                     OutlinedButton(onClick = { viewModel.openInPlayStore(current.packageName) }, modifier = Modifier.weight(1f)) {
                         IconShoppingCart()
                         Spacer(Modifier.width(6.dp))
-                        Text("View in Play Store")
+                        Text(stringResource(R.string.view_in_play_store))
                     }
                     if (current.website != null || current.sourceCode != null) {
                         OutlinedButton(onClick = {
@@ -231,16 +233,16 @@ fun AppDetailPage(
     if (showUninstallConfirm) {
         AlertDialog(
             onDismissRequest = { showUninstallConfirm = false },
-            title = { Text("Uninstall ${current.name}?") },
-            text = { Text("This will uninstall ${current.packageName}. You can reinstall later from the store.") },
+            title = { Text(stringResource(R.string.uninstall_3, current.name)) },
+            text = { Text(stringResource(R.string.this_will_uninstall_you_can_reinstall_la, current.packageName)) },
             confirmButton = {
                 Button(onClick = {
                     showUninstallConfirm = false
                     viewModel.uninstallApp(current.packageName)
-                }) { Text("Uninstall") }
+                }) { Text(stringResource(R.string.uninstall)) }
             },
             dismissButton = {
-                TextButton(onClick = { showUninstallConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showUninstallConfirm = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

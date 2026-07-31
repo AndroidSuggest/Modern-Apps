@@ -36,7 +36,10 @@
     <!-- Detail screen: Overline label for playlist type. Noun. -->
     <string name="label_playlist">Playlist</string>
     <!-- Detail screen: Song count label. %1$d=number of songs -->
-    <string name="num_songs_format"><xliff:g id="count" example="10">%1$d</xliff:g> songs</string>
+    <plurals name="num_songs_format">
+        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> song</item>
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> songs</item>
+    </plurals>
     <!-- Button: Play action. Verb. -->
     <string name="label_play">Play</string>
     <!-- Button: Shuffle play. Verb. -->

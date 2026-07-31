@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.passwords.ui
 
+import kotlin.uuid.Uuid
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -23,12 +26,10 @@ import com.vayunmathur.passwords.util.buildGetCredentialResponse
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
-import java.nio.ByteBuffer
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
-import java.util.UUID
 
 class PasskeyAuthActivity : FragmentActivity() {
 
@@ -353,12 +354,6 @@ class PasskeyAuthActivity : FragmentActivity() {
         const val FLOW_PASSWORD = "password"
         const val FLOW_UNLOCK = "unlock"
         private const val TAG = "PasskeyAuthActivity"
-        private val AAGUID = uuidToBytes(UUID.fromString("a1b2c3d4-e5f6-7890-abcd-ef1234567890"))
-
-        private fun uuidToBytes(uuid: UUID): ByteArray =
-            ByteBuffer.allocate(16)
-                .putLong(uuid.mostSignificantBits)
-                .putLong(uuid.leastSignificantBits)
-                .array()
+        private val AAGUID = Uuid.parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890").toByteArray()
     }
 }

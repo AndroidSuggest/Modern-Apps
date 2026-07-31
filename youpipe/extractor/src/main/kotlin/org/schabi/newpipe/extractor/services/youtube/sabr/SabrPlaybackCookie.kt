@@ -1,7 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
-import java.util.LinkedHashMap
 
 class SabrPlaybackCookie private constructor(
     val resolution: Int,
@@ -16,7 +14,7 @@ class SabrPlaybackCookie private constructor(
     private val extraFields: String
 ) {
     private val extraVarints: Map<Int, Long> =
-        Collections.unmodifiableMap(LinkedHashMap(extraVarints))
+        extraVarints.toMap()
 
     companion object {
         @Throws(SabrProtocolException::class)

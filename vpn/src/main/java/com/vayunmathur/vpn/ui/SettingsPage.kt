@@ -1,5 +1,7 @@
 package com.vayunmathur.vpn.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.vpn.R
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +33,7 @@ import com.vayunmathur.library.util.NavBackStack
 fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     val context = LocalContext.current
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Settings / About") }, navigationIcon = { IconNavigation(backStack) }) }
+        topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_about)) }, navigationIcon = { IconNavigation(backStack) }) }
     ) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).padding(16.dp)
@@ -44,9 +46,9 @@ fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Always-On VPN", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.always_on_vpn), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Enable Always-On in Android system VPN settings to keep the VPN connected even after reboot. " +
+                        stringResource(R.string.enable_always_on_in_android_system_vpn_s) +
                         "Go to Settings → Network & Internet → VPN → gear next to this app → enable Always-On VPN.\n\n" +
                         "This app declares SUPPORTS_ALWAYS_ON and uses START_STICKY with last-used tunnel restore on null intent.",
                         fontSize = 12.sp,
@@ -60,16 +62,16 @@ fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                             } catch (_: Exception) {}
                         }
                     }) {
-                        Text("Open system VPN settings")
+                        Text(stringResource(R.string.open_system_vpn_settings))
                     }
                 }
             }
 
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("VPN (WireGuard) — gotatun / BoringTun fork", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.vpn_wireguard_gotatun_boringtun_fork), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "This app ships a pure Rust implementation of the WireGuard protocol from " +
+                        stringResource(R.string.this_app_ships_a_pure_rust_implementatio) +
                         "Mullvad's gotatun repository (https://github.com/mullvad/gotatun), itself a " +
                         "fork of Cloudflare's boringtun.\n\n" +
                         "Gotatun implements the Noise IK handshake (X25519, ChaCha20-Poly1305, " +
@@ -96,7 +98,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                         fontSize = 12.sp,
                     )
                     Text(
-                        "Emulator without NDK Rust built .so will not have keygen available until " +
+                        stringResource(R.string.emulator_without_ndk_rust_built_so_will) +
                         ":vpn:assembleDev builds libvpn_wireguard.so into rustJniLibs/arm64-v8a.",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,

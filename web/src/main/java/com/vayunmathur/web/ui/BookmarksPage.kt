@@ -1,5 +1,7 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,7 +72,7 @@ fun BookmarksPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Bookmarks") },
+                title = { Text(stringResource(R.string.bookmarks)) },
                 navigationIcon = { IconNavigation(backStack) },
                 actions = {
                     IconButton(onClick = { showNewFolderDialog = true }) {
@@ -90,7 +92,7 @@ fun BookmarksPage(
                         FilterChip(
                             selected = selectedFolder == null,
                             onClick = { selectedFolder = null },
-                            label = { Text("All") }
+                            label = { Text(stringResource(R.string.all)) }
                         )
                     }
                     items(folders, key = { it.id }) { folder ->
@@ -107,7 +109,7 @@ fun BookmarksPage(
                             if (showFolderMenu) {
                                 DropdownMenu(expanded = true, onDismissRequest = { showFolderMenu = false }) {
                                     DropdownMenuItem(
-                                        text = { Text("Delete folder") },
+                                        text = { Text(stringResource(R.string.delete_folder)) },
                                         onClick = {
                                             showFolderMenu = false
                                             showFolderDeleteDialog = folder
@@ -144,11 +146,11 @@ fun BookmarksPage(
 
             if (filtered.isEmpty() && bookmarks.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No bookmarks yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.no_bookmarks_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else if (filtered.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text("No bookmarks in this folder", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.no_bookmarks_in_this_folder), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
@@ -173,12 +175,12 @@ fun BookmarksPage(
     if (showNewFolderDialog) {
         AlertDialog(
             onDismissRequest = { showNewFolderDialog = false },
-            title = { Text("New folder") },
+            title = { Text(stringResource(R.string.new_folder)) },
             text = {
                 OutlinedTextField(
                     value = newFolderName,
                     onValueChange = { newFolderName = it },
-                    placeholder = { Text("Folder name") },
+                    placeholder = { Text(stringResource(R.string.folder_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -193,13 +195,13 @@ fun BookmarksPage(
                         showNewFolderDialog = false
                     },
                     enabled = newFolderName.isNotBlank()
-                ) { Text("Create") }
+                ) { Text(stringResource(R.string.create)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     newFolderName = ""
                     showNewFolderDialog = false
-                }) { Text("Cancel") }
+                }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -207,16 +209,16 @@ fun BookmarksPage(
     showDeleteDialog?.let { bm ->
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
-            title = { Text("Delete bookmark?") },
+            title = { Text(stringResource(R.string.delete_bookmark)) },
             text = { Text(bm.title.ifBlank { bm.url }) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.removeBookmark(bm)
                     showDeleteDialog = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = null }) { Text("Cancel") }
+                TextButton(onClick = { showDeleteDialog = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -224,17 +226,17 @@ fun BookmarksPage(
     showFolderDeleteDialog?.let { folder ->
         AlertDialog(
             onDismissRequest = { showFolderDeleteDialog = null },
-            title = { Text("Delete folder?") },
-            text = { Text("Bookmarks inside \"${folder.name}\" will also be deleted.") },
+            title = { Text(stringResource(R.string.delete_folder_2)) },
+            text = { Text(stringResource(R.string.bookmarks_inside_will_also_be_deleted, folder.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteFolder(folder)
                     if (selectedFolder == folder.id) selectedFolder = null
                     showFolderDeleteDialog = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { showFolderDeleteDialog = null }) { Text("Cancel") }
+                TextButton(onClick = { showFolderDeleteDialog = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }

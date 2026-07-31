@@ -2,9 +2,8 @@ package com.vayunmathur.youpipe.util.sabr
 
 import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.function
-import com.grack.nanojson.JsonObject
-import com.grack.nanojson.JsonParser
-import com.grack.nanojson.JsonWriter
+import kotlinx.serialization.json.JsonObject
+import org.schabi.newpipe.extractor.utils.JsonUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrProtocolException
@@ -50,7 +49,7 @@ internal object QuickJsSabrRuntime {
         activeSessionId = sessionId
         try {
             val bootstrap = compiledPolicies[script] ?: quickJs.compile(
-                "(function(id){\n" + script.source +
+                "(function(id){\n" + script.getSource() +
                     "\n;if(typeof createSabrPolicy!=='function')" +
                     "throw Error('missing createSabrPolicy');" +
                     "var p=createSabrPolicy(sabr);" +
@@ -68,13 +67,13 @@ internal object QuickJsSabrRuntime {
     fun invoke(sessionId: Int, method: String, input: JsonObject): JsonObject {
         activeSessionId = sessionId
         methodName = method
-        inputJson = JsonWriter.string(input)
+        inputJson = input.toString()
         return try {
             val result = runBlocking { quickJs.evaluate<String>(invokeBytecode) }
             if (result.length > MAX_RESULT_CHARS) {
                 throw SabrProtocolException("SABR QuickJS result exceeded limit")
             }
-            JsonParser.`object`().from(result)
+            JsonUtils.toJsonObject(result)
         } catch (error: SabrProtocolException) {
             throw error
         } catch (error: Exception) {

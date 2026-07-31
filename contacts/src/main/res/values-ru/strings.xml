@@ -3,6 +3,5 @@
     <string name="ok">Хорошо</string>
     <string name="cancel">Отменить</string>
     <string name="delete">Удалить</string>
-    <string name="search">Поиск</string>
     <string name="settings">Настройки</string>
 </resources>

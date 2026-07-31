@@ -1,5 +1,6 @@
 package com.vayunmathur.music.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -139,7 +140,7 @@ fun PlaylistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicVi
                             )
                         }
                     }, Modifier, {Text(stringResource(R.string.label_playlist))}, {
-                        Text(stringResource(R.string.num_songs_format, musicInPlaylist.size))
+                        Text(pluralStringResource(R.plurals.num_songs_format, musicInPlaylist.size, musicInPlaylist.size))
                     })
                 }
             }

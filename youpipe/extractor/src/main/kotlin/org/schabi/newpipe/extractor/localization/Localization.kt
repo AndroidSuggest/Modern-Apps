@@ -3,12 +3,8 @@ package org.schabi.newpipe.extractor.localization
 import org.schabi.newpipe.extractor.exceptions.ParsingException
 import org.schabi.newpipe.extractor.utils.LocaleCompat
 import java.io.Serializable
-import java.util.ArrayList
 import java.util.Collections
-import java.util.HashMap
 import java.util.Locale
-import java.util.Objects
-import java.util.Optional
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
@@ -26,8 +22,6 @@ class Localization : Serializable {
 
     constructor(languageCode: String) : this(languageCode, null)
 
-    @Nonnull
-    fun getLanguageCode(): String = languageCode
 
     @Nonnull
     fun getCountryCode(): String = countryCodeNullable ?: ""
@@ -41,12 +35,12 @@ class Localization : Serializable {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is Localization) return false
-        return languageCode == other.languageCode && Objects.equals(countryCodeNullable, other.countryCodeNullable)
+        return languageCode == other.languageCode && countryCodeNullable == other.countryCodeNullable
     }
 
     override fun hashCode(): Int {
         var result = languageCode.hashCode()
-        result = 31 * result + Objects.hashCode(countryCodeNullable)
+        result = 31 * result + countryCodeNullable.hashCode()
         return result
     }
 
@@ -60,9 +54,8 @@ class Localization : Serializable {
             val toReturn = ArrayList<Localization>()
             for (code in localizationCodeList) {
                 toReturn.add(
-                    fromLocalizationCode(code).orElseThrow {
-                        IllegalArgumentException("Not a localization code: $code")
-                    }
+                    fromLocalizationCode(code)
+                        ?: throw IllegalArgumentException("Not a localization code: $code")
                 )
             }
             return Collections.unmodifiableList(toReturn)
@@ -70,8 +63,8 @@ class Localization : Serializable {
 
         @JvmStatic
         @Nonnull
-        fun fromLocalizationCode(localizationCode: String): Optional<Localization> =
-            LocaleCompat.forLanguageTag(localizationCode).map { fromLocale(it) }
+        fun fromLocalizationCode(localizationCode: String): Localization? =
+            LocaleCompat.forLanguageTag(localizationCode)?.let { fromLocale(it) }
 
         @JvmStatic
         fun fromLocale(@Nonnull locale: Locale): Localization =

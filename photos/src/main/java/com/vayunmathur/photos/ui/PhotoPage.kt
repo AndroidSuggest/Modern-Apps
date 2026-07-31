@@ -1,5 +1,7 @@
 package com.vayunmathur.photos.ui
 
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedMonthNames
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -94,6 +96,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 
 // Helper class to store zoom information
@@ -466,9 +469,7 @@ fun PhotoDetailView(
                             Instant.fromEpochMilliseconds(photo.date)
                                     .toLocalDateTime(TimeZone.currentSystemDefault())
                                     .let {
-                                        // Simple formatting for now, better to use localized date
-                                        // formatter
-                                        "${it.day} ${it.month.name.lowercase().replaceFirstChar { c -> c.uppercase() }} ${it.year}"
+                                        "${it.day} ${localizedMonthNames(DateNameStyle.FULL)[it.month.number - 1]} ${it.year}"
                                     }
                         }
 
@@ -529,7 +530,7 @@ fun PhotoDetailView(
                                             putExtra(Intent.EXTRA_STREAM, photo.uri.toUri())
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
-                                context.startActivity(Intent.createChooser(intent, "Share"))
+                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
                             }
                     ) { IconShare(tint = Color.White) }
                     IconButton(onClick = { onDelete(photo) }) {

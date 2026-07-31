@@ -226,4 +226,6 @@
     <string name="then">Then: <xliff:g id="next_instruction" example="Turn left onto Main St">%1$s</xliff:g></string>
     <!-- NavigationOverlay: Route summary. %1$s=duration e.g. "12", %2$s=distance e.g. "1.2 km" -->
     <string name="min"><xliff:g id="minutes" example="12">%1$s</xliff:g> min · <xliff:g id="distance" example="1.2 km">%2$s</xliff:g></string>
+    <string name="map_zone_download_title">Map Zone <xliff:g id="zone" example="7">%1$d</xliff:g> (Map)</string>
+    <string name="map_zone_download_desc">Downloading high-detail offline map data</string>
 </resources>

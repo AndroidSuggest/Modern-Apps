@@ -47,6 +47,10 @@ fun AddLinkDialog(backStack: NavBackStack<Route>, ffViewModel: FindFamilyViewMod
         stringResource(R.string.expiry_1_week) to 7.days
     )
     var expiryTime by remember { mutableStateOf(expiry15min) }
+    // Links are post-quantum only, so creation can genuinely fail when the PQC keygen is
+    // unavailable. Keep the dialog open and say so rather than closing on a link that
+    // was never made.
+    var failed by remember { mutableStateOf(false) }
 
     Dialog({backStack.pop()}) {
         Card {
@@ -57,10 +61,19 @@ fun AddLinkDialog(backStack: NavBackStack<Route>, ffViewModel: FindFamilyViewMod
 
                 DropdownField(expiryTime, { expiryTime = it }, options.keys)
 
+                if (failed) {
+                    Text(
+                        stringResource(R.string.link_pqc_unavailable),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+
                 Button(
                     {
-                        ffViewModel.createTemporaryLink(name, options[expiryTime]!!) {
-                            backStack.pop()
+                        failed = false
+                        ffViewModel.createTemporaryLink(name, options[expiryTime]!!) { success ->
+                            if (success) backStack.pop() else failed = true
                         }
                     },
                     enabled = name.isNotBlank()

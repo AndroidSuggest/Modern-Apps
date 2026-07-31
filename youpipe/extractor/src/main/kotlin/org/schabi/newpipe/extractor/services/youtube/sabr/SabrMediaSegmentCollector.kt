@@ -185,7 +185,7 @@ class SabrMediaSegmentCollector private constructor() {
             val contentLength = header.contentLength
             if (spoolDirectory != null
                 && header.compressionAlgorithm <= 0
-                && !header.isInitSegment
+                && !header.isInitSegment()
             ) {
                 if (contentLength > Int.MAX_VALUE) {
                     throw SabrProtocolException(

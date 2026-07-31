@@ -1,7 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.LinkedHashMap
-import java.util.LinkedHashSet
 
 class YoutubeSabrStreamState(
     audioFormat: YoutubeSabrFormat,
@@ -84,7 +82,7 @@ class YoutubeSabrStreamState(
         }
         for (meta in patch.getLiveMetadata()) {
             live = true
-            postLiveDvr = meta.isPostLiveDvr
+            postLiveDvr = meta.isPostLiveDvr()
             if (meta.headSequenceNumber >= 0) liveHeadSequenceNumber = meta.headSequenceNumber
             if (meta.headTimeMs >= 0) liveHeadTimeMs = meta.headTimeMs
         }
@@ -352,13 +350,13 @@ class YoutubeSabrStreamState(
         if (contextUpdate.type < 0 || contextUpdate.getValueLength() == 0) return
         if (contextUpdate.writePolicy == SabrContextUpdate.WRITE_POLICY_KEEP_EXISTING && sabrContexts.containsKey(contextUpdate.type)) return
         sabrContexts[contextUpdate.type] = contextUpdate
-        if (contextUpdate.isSendByDefault) activeSabrContextTypes.add(contextUpdate.type)
+        if (contextUpdate.isSendByDefault()) activeSabrContextTypes.add(contextUpdate.type)
     }
 
     private fun ingestContextSendingPolicy(policy: SabrContextSendingPolicy) {
-        activeSabrContextTypes.addAll(policy.startPolicy)
-        activeSabrContextTypes.removeAll(policy.stopPolicy.toSet())
-        for (type in policy.discardPolicy) {
+        activeSabrContextTypes.addAll(policy.getStartPolicy())
+        activeSabrContextTypes.removeAll(policy.getStopPolicy().toSet())
+        for (type in policy.getDiscardPolicy()) {
             sabrContexts.remove(type)
             activeSabrContextTypes.remove(type)
         }
@@ -387,8 +385,8 @@ class YoutubeSabrStreamState(
             this.metadata = metadata
             val previousEndSegment = endSegment
             endSegment = metadata.endSegmentNumber
-            if (metadata.durationUnits > 0 && metadata.durationTimescale > 0 && metadata.endSegmentNumber > 0) {
-                val totalMs = metadata.durationUnits * 1000L / metadata.durationTimescale
+            if (metadata.durationUnits > 0 && metadata.getDurationTimescale() > 0 && metadata.endSegmentNumber > 0) {
+                val totalMs = metadata.durationUnits * 1000L / metadata.getDurationTimescale()
                 averageDurationMs = maxOf(1L, totalMs / metadata.endSegmentNumber)
             } else if (endSegment > 0 && format.approxDurationMs > 0) {
                 averageDurationMs = maxOf(1L, format.approxDurationMs / endSegment)
@@ -397,8 +395,8 @@ class YoutubeSabrStreamState(
         }
 
         fun observeSegment(segment: SabrMediaSegment): Boolean {
-            if (!segment.header.isInitSegment || metadata == null || segmentIndex != null) return false
-            return observeInitializationData(segment.data)
+            if (!segment.header.isInitSegment() || metadata == null || segmentIndex != null) return false
+            return observeInitializationData(segment.getData())
         }
 
         fun observeInitializationData(data: ByteArray): Boolean {
@@ -431,7 +429,7 @@ class YoutubeSabrStreamState(
         }
 
         fun observeHeader(header: SabrMediaHeader): Boolean {
-            if (header.isInitSegment) {
+            if (header.isInitSegment()) {
                 val changed = !initReceived
                 initReceived = true
                 return changed

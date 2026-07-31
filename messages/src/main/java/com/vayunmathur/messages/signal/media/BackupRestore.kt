@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.messages.signal.media
 
+import kotlin.uuid.Uuid
 import android.util.Log
 import com.vayunmathur.messages.data.MessageSource
 import com.vayunmathur.messages.gmessages.GMEvent
@@ -10,7 +13,6 @@ import com.vayunmathur.messages.signal.store.SignalRecipientStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.ByteBuffer
-import java.util.UUID
 
 /**
  * Reads the parsed Signal "link & sync" backup that [BackupManager] persisted into the
@@ -388,7 +390,7 @@ class BackupRestore(
         if (bytes.size != 16) return null
         return try {
             val bb = ByteBuffer.wrap(bytes)
-            UUID(bb.long, bb.long).toString()
+            Uuid.fromLongs(bb.long, bb.long).toString()
         } catch (e: Exception) {
             null
         }

@@ -18,7 +18,7 @@ internal class SabrSegmentWriter(
             val data = target.initializationData ?: continue
             if (!target.initializationObserved) {
                 target.initializationObserved =
-                    session.streamState.ingestInitializationData(target.format, data)
+                    session.getStreamState().ingestInitializationData(target.format, data)
             }
         }
     }
@@ -32,7 +32,7 @@ internal class SabrSegmentWriter(
             }
             val request = SabrSegmentRequest.initialization(target.format)
             val segment = session.getCachedSegment(request) ?: continue
-            writeInitializationSegment(target, outputs.getValue(target.resourceIndex), segment.data)
+            writeInitializationSegment(target, outputs.getValue(target.resourceIndex), segment.getData())
             session.discardCachedSegment(request)
             wroteInitialization = true
         }
@@ -46,7 +46,7 @@ internal class SabrSegmentWriter(
             while (true) {
                 val request = SabrSegmentRequest.media(target.format, target.nextWriteSequence)
                 val segment = session.getCachedSegment(request) ?: break
-                if (segment.header.isInitSegment) {
+                if (segment.header.isInitSegment()) {
                     session.discardCachedSegment(request)
                     continue
                 }
@@ -83,7 +83,7 @@ internal class SabrSegmentWriter(
             val request = SabrSegmentRequest.initialization(target.format)
             val segment = session.fetchSegment(request, localization)
             session.discardCachedSegment(request)
-            val data = segment.data
+            val data = segment.getData()
             writeInitializationSegment(target, outputs.getValue(target.resourceIndex), data)
             wroteInitialization = true
         }
@@ -118,11 +118,11 @@ internal class SabrSegmentWriter(
             return
         }
         if (!target.initializationWritten) {
-            cachePendingMedia(target, sequence, segment.data, "waiting for initialization")
+            cachePendingMedia(target, sequence, segment.getData(), "waiting for initialization")
             return
         }
         if (sequence > target.nextWriteSequence) {
-            cachePendingMedia(target, sequence, segment.data, "waiting for sequence ${target.nextWriteSequence}")
+            cachePendingMedia(target, sequence, segment.getData(), "waiting for sequence ${target.nextWriteSequence}")
             return
         }
         writeMediaSegmentBytes(target, output, segment)

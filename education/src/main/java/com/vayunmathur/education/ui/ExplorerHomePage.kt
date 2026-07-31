@@ -1,5 +1,6 @@
 package com.vayunmathur.education.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -201,7 +202,7 @@ private fun ExplorerCourseCard(course: Course, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(course.title, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    stringResource(R.string.topics, course.units.size),
+                    pluralStringResource(R.plurals.topics, course.units.size, course.units.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

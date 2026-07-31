@@ -14,6 +14,8 @@
 //! bytecode — see `wire.rs`). The *persisted record* format is our own, which is safe
 //! because the migration accepts a one-time WhatsApp re-link.
 
+pub mod wa_binary;
+pub mod wa_tokens;
 pub mod crypto;
 pub mod group;
 pub mod session;

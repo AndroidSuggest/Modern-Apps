@@ -75,8 +75,8 @@ class Pair<F : Serializable, S : Serializable> : Serializable {
         if (this === other) return true
         if (other == null || javaClass != other.javaClass) return false
         val pair = other as Pair<*, *>
-        return Objects.equals(firstObject, pair.firstObject) &&
-            Objects.equals(secondObject, pair.secondObject)
+        return firstObject == pair.firstObject &&
+            secondObject == pair.secondObject
     }
 
     override fun hashCode(): Int = Objects.hash(firstObject, secondObject)

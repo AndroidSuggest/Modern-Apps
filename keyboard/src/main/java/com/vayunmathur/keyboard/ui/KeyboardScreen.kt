@@ -1,5 +1,7 @@
 package com.vayunmathur.keyboard.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.keyboard.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -19,9 +21,15 @@ import com.vayunmathur.keyboard.ime.TextVariation
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.Layouts
 import com.vayunmathur.keyboard.util.ShiftState
+import com.vayunmathur.library.ui.IconArrowForward
 import com.vayunmathur.library.ui.IconBackspace
+import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconEmoji
 import com.vayunmathur.library.ui.IconReturn
+import com.vayunmathur.library.ui.IconSearch
+import com.vayunmathur.library.ui.IconSend
+import com.vayunmathur.library.ui.IconSkipNext
+import com.vayunmathur.library.ui.IconSkipPrevious
 import com.vayunmathur.library.ui.IconSpaceBar
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
@@ -192,7 +200,7 @@ private fun NumericPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp
     }
     Row(Modifier.fillMaxWidth()) {
         SpecialKey(keyHeight, side, onClick = { actions.setPage(KeyboardPage.LETTERS) }) {
-            Text("ABC", fontSize = 14.sp)
+            Text(stringResource(R.string.abc), fontSize = 14.sp)
         }
         NumFunctionKey(",", reg, keyHeight, actions)
         SpecialKey(keyHeight, grow, onClick = { actions.setPage(KeyboardPage.SYMBOLS) }) {
@@ -332,21 +340,30 @@ private fun RowScope.EnterKey(state: KeyboardState, actions: ImeActions, keyHeig
         pressedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         onClick = actions::onEnter,
     ) {
-        val label = enterLabel(state.enterAction)
-        if (label != null) {
-            Text(label, fontSize = 14.sp)
+        // A custom action carries an app-supplied label ("Join", "Post", ...) whose purpose
+        // we can't map to an icon, so that one case stays textual; every standard action
+        // gets a glyph.
+        val customLabel = state.enterActionLabel
+        if (customLabel != null) {
+            Text(customLabel, fontSize = 14.sp, maxLines = 1)
         } else {
-            IconReturn()
+            EnterActionIcon(state.enterAction)
         }
     }
 }
 
-private fun enterLabel(action: EnterAction): String? = when (action) {
-    EnterAction.GO -> "Go"
-    EnterAction.SEARCH -> "Search"
-    EnterAction.SEND -> "Send"
-    EnterAction.NEXT -> "Next"
-    EnterAction.DONE -> "Done"
-    EnterAction.PREVIOUS -> "Prev"
-    EnterAction.RETURN -> null
+/**
+ * The glyph for each Enter purpose. Arrow/send/return icons are AutoMirrored so they flip
+ * in RTL layouts; the skip pair used for field navigation is deliberately directional in
+ * the media sense and does not mirror.
+ */
+@Composable
+private fun EnterActionIcon(action: EnterAction) = when (action) {
+    EnterAction.SEARCH -> IconSearch()
+    EnterAction.SEND -> IconSend()
+    EnterAction.DONE -> IconCheck()
+    EnterAction.GO -> IconArrowForward()
+    EnterAction.NEXT -> IconSkipNext()
+    EnterAction.PREVIOUS -> IconSkipPrevious()
+    EnterAction.RETURN -> IconReturn()
 }

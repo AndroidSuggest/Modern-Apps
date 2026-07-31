@@ -1,5 +1,6 @@
 package com.vayunmathur.email.widget
 
+import androidx.compose.ui.res.stringResource
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -85,7 +86,7 @@ class EmailWidget : GlanceAppWidget() {
             try {
                 provideContent {
                     Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Email")
+                        Text(stringResource(R.string.app_name))
                     }
                 }
             } catch (_: Throwable) {}

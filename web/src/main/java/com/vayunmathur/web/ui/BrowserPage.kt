@@ -1,5 +1,8 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -150,7 +153,7 @@ fun BrowserPage(
                                     viewModel.omniboxFocused = false
                                 }
                             },
-                            placeholder = { Text("Search or enter address") },
+                            placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
                             leadingIcon = {
                                 IconButton(onClick = {
                                     focusManager.clearFocus()
@@ -205,7 +208,7 @@ fun BrowserPage(
                                     ) {
                                         IconRefresh()
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Reload")
+                                        Text(stringResource(R.string.reload))
                                     }
                                     OutlinedButton(
                                         onClick = { viewModel.searchDraft = "" },
@@ -213,7 +216,7 @@ fun BrowserPage(
                                     ) {
                                         IconClose()
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Clear")
+                                        Text(stringResource(R.string.clear))
                                     }
                                 }
                             }
@@ -257,7 +260,7 @@ fun BrowserPage(
 
                         if (filteredBookmarks.isNotEmpty()) {
                             item {
-                                Text("Bookmarks", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
+                                Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
                             }
                             items(filteredBookmarks, key = { "bm-${it.id}" }) { bm ->
                                 Row(
@@ -284,7 +287,7 @@ fun BrowserPage(
 
                         if (filteredHistory.isNotEmpty()) {
                             item {
-                                Text("History", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                                Text(stringResource(R.string.history), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
                             }
                             items(filteredHistory, key = { "h-${it.id}" }) { h ->
                                 Row(
@@ -381,7 +384,7 @@ fun BrowserPage(
                                             }
                                         }
                                     )
-                                    DropdownMenuItem(text = { Text("Share") }, onClick = {
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = {
                                         showMenu = false
                                         activeTab?.let { tab ->
                                             if (tab.url.isBlank()) return@let
@@ -390,17 +393,17 @@ fun BrowserPage(
                                                 putExtra(android.content.Intent.EXTRA_TEXT, tab.url)
                                                 type = "text/plain"
                                             }
-                                            context.startActivity(android.content.Intent.createChooser(sendIntent, "Share link"))
+                                            context.startActivity(android.content.Intent.createChooser(sendIntent, context.getString(R.string.share_link)))
                                         }
                                     })
-                                    DropdownMenuItem(text = { Text("New tab") }, onClick = { showMenu = false; viewModel.newTab() })
-                                    DropdownMenuItem(text = { Text("New private tab") }, onClick = { showMenu = false; viewModel.newTab(isPrivate = true) })
-                                    DropdownMenuItem(text = { Text("History") }, onClick = { showMenu = false; backStack.add(Route.History) })
-                                    DropdownMenuItem(text = { Text("Bookmarks") }, onClick = { showMenu = false; backStack.add(Route.Bookmarks) })
-                                    DropdownMenuItem(text = { Text("Downloads") }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
-                                    DropdownMenuItem(text = { Text("Installed apps") }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
-                                    DropdownMenuItem(text = { Text("Site data") }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
-                                    DropdownMenuItem(text = { Text("Settings") }, onClick = { showMenu = false; backStack.add(Route.Settings) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.new_tab)) }, onClick = { showMenu = false; viewModel.newTab() })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.new_private_tab)) }, onClick = { showMenu = false; viewModel.newTab(isPrivate = true) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.history)) }, onClick = { showMenu = false; backStack.add(Route.History) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.bookmarks)) }, onClick = { showMenu = false; backStack.add(Route.Bookmarks) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.downloads)) }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.installed_apps)) }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.site_data)) }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, onClick = { showMenu = false; backStack.add(Route.Settings) })
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -517,17 +520,17 @@ fun BrowserPage(
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(BrowserUtils.prettyUrl(url), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 if (pwa?.iconUrl != null) {
-                                    Text("icon: ${pwa.iconUrl.take(64)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(stringResource(R.string.icon, pwa.iconUrl.take(64)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 if (pwa?.themeColor != null) {
-                                    Text("theme: ${pwa.themeColor}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.theme, pwa.themeColor), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
                         OutlinedTextField(
                             value = draftTitle,
                             onValueChange = { draftTitle = it },
-                            label = { Text("App name") },
+                            label = { Text(stringResource(R.string.app_name_2)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -551,10 +554,10 @@ fun BrowserPage(
                             }
                         },
                         enabled = draftTitle.isNotBlank() || defaultTitle.isNotBlank()
-                    ) { Text("Add") }
+                    ) { Text(stringResource(R.string.add)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showInstallDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = { showInstallDialog = false }) { Text(stringResource(R.string.cancel)) }
                 }
             )
         }
@@ -597,7 +600,7 @@ private fun QuickAccess(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (bookmarks.isNotEmpty()) {
-            item { Text("Bookmarks", style = MaterialTheme.typography.titleMedium) }
+            item { Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleMedium) }
             item {
                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 16.dp)) {
                     items(bookmarks, key = { it.id }) { bm ->
@@ -617,7 +620,7 @@ private fun QuickAccess(
             }
         }
         if (history.isNotEmpty()) {
-            item { Text("Recent", style = MaterialTheme.typography.titleMedium) }
+            item { Text(stringResource(R.string.recent), style = MaterialTheme.typography.titleMedium) }
             items(history, key = { it.id }) { entry ->
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpenUrl(entry.url) }.padding(12.dp),
@@ -638,7 +641,7 @@ private fun QuickAccess(
         }
         item {
             Text(
-                "Blank New Tab — tap the address pill to search. Full URL visible in the pill. Reload/clear live inside expanded SearchBar card.",
+                stringResource(R.string.blank_new_tab_tap_the_address_pill_to_se),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 16.dp)
@@ -661,7 +664,7 @@ private fun TabSwitcher(
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.98f))) {
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
-                title = { Text("${tabs.size} tabs") },
+                title = { Text(pluralStringResource(R.plurals.tabs, tabs.size, tabs.size)) },
                 navigationIcon = { com.vayunmathur.library.ui.IconButton(onClick = onDismiss) { IconClose() } },
                 actions = { com.vayunmathur.library.ui.IconButton(onClick = onNewTab) { IconAdd() } }
             )
@@ -682,7 +685,7 @@ private fun TabSwitcher(
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (tab.isPrivate) Text("Private • ", style = MaterialTheme.typography.labelSmall)
+                                    if (tab.isPrivate) Text(stringResource(R.string.private_prefix), style = MaterialTheme.typography.labelSmall)
                                     Text(displayTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                                 }
                                 if (displayUrl.isNotBlank()) {
@@ -695,8 +698,8 @@ private fun TabSwitcher(
                 }
                 item {
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onNewTab, modifier = Modifier.weight(1f)) { Text("New tab") }
-                        OutlinedButton(onClick = onNewPrivateTab, modifier = Modifier.weight(1f)) { Text("Private tab") }
+                        OutlinedButton(onClick = onNewTab, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.new_tab)) }
+                        OutlinedButton(onClick = onNewPrivateTab, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.private_tab)) }
                     }
                 }
             }

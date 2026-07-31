@@ -8,7 +8,6 @@ import com.vayunmathur.library.room.buildDatabase
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.serializer
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -29,19 +28,19 @@ class CreateLinkIntent : AssistantIntent<CreateLinkData, String>(
     serializer<String>(),
 ) {
     override suspend fun performCalculation(input: CreateLinkData): String {
-        val keypair = Networking.generateKeyPair()
-        val pqcPair = runCatching { Networking.generatePqcKeyPair() }.getOrNull()
+        // Links are post-quantum only — with no classic fallback, a PQC keygen failure has to
+        // fail the whole call rather than hand back a link that can never publish.
+        val pqcPair = Networking.generatePqcKeyPair()
         val link = TemporaryLink(
             name = input.name,
-            key = Base64.encode(keypair.privateKeyPem),
-            publicKey = Base64.encode(keypair.publicKeyPem),
             deleteAt = Clock.System.now() + input.expiryMillis.milliseconds,
-            pqcPublicKey = pqcPair?.publicBundleB64,
-            pqcKey = pqcPair?.privateBundleB64,
+            pqcPublicKey = pqcPair.publicBundleB64,
+            pqcKey = pqcPair.privateBundleB64,
         )
-        val id = buildDatabase<FFDatabase>().temporaryLinkDao().upsert(link)
+        buildDatabase<FFDatabase>().temporaryLinkDao().upsert(link)
+        // The id is generated with the link (newTemporaryLinkId), not handed back by the
+        // insert, so read it off the entity — @Upsert returns -1 on the update path.
         // Must match the URL format produced by TemporaryLinkCard in MainPage.
-        val base = "https://findfamily.cc/view/$id#key=${link.key}"
-        return if (link.pqcKey != null) "$base&pqc_key=${link.pqcKey}" else base
+        return "https://findfamily.cc/view/${link.id}#pqc_key=${link.pqcKey}"
     }
 }

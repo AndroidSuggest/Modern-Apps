@@ -1,5 +1,8 @@
 package com.vayunmathur.findfamily.ui
 
+import com.vayunmathur.library.util.localizedAmPmMarker
+import kotlinx.datetime.format.DateTimeFormat
+import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -43,8 +46,6 @@ import com.vayunmathur.library.ui.IconLink
 import com.vayunmathur.library.ui.IconLocationOn
 import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconButton
-import com.vayunmathur.library.ui.IconLock
-import com.vayunmathur.library.ui.IconLockOpen
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.MaterialTheme
@@ -59,8 +60,6 @@ import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.ToggleFloatingActionButton
 import com.vayunmathur.library.ui.TopAppBar
-import com.vayunmathur.library.ui.AlertDialog
-import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.dynamicLightColorScheme
 import com.vayunmathur.library.ui.rememberBottomSheetScaffoldState
 import com.vayunmathur.library.ui.rememberSliderState
@@ -133,7 +132,6 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -636,11 +634,9 @@ fun TemporaryLinkCard(platform: Platform, ffViewModel: FindFamilyViewModel, temp
             trailingContent = {
                 Row {
                     IconButton({
-                        // PQC routing: if this link has a PQC key, include it in the fragment so a
-                        // PQC-capable viewer can decrypt via post-quantum path. The fragment never
-                        // hits the server; classic `#key=` still present for backward compat.
-                        val base = "https://findfamily.cc/view/${temporaryLink.id}#key=${temporaryLink.key}"
-                        val url = if (temporaryLink.pqcKey != null) "$base&pqc_key=${temporaryLink.pqcKey}" else base
+                        // Links are post-quantum only, so the fragment carries just the PQC
+                        // private bundle — no classic `#key=`. The fragment never hits the server.
+                        val url = "https://findfamily.cc/view/${temporaryLink.id}#pqc_key=${temporaryLink.pqcKey}"
                         platform.copy(url)
                     }) {
                         IconCopy()
@@ -691,7 +687,7 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
                 chars(":")
                 minute()
                 chars(" ")
-                amPmMarker("am", "pm")
+                localizedAmPmMarker(lowercase = true)
             })
             val formattedDate = when (sinceTime.date.toEpochDays() - Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toEpochDays()) {
                 0L -> stringResource(R.string.today)
@@ -701,79 +697,43 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
             stringResource(R.string.since_time_date, formattedTime, formattedDate)
         }
     }
-    // PQC status: show broken lock if peer lacks PQC key (not protected against quantum computers).
-    // Self user never shows a badge.
-    val isPqcProtected = user.id == Networking.userid || user.pqcEncryptionKey != null
-    var showPqcInfo by remember(user.id) { mutableStateOf(false) }
-    // Wrap Card + dialog so AlertDialog is not inside ListItem clickable area.
-    Box {
-        Card(if (showSupportingContent) Modifier.clickable(onClick = onClick) else Modifier) {
-            ListItem(
-                leadingContent = { UserPicture(user, 40.dp) },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                content = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            user.name,
-                            style = MaterialTheme.typography.titleMediumEmphasized,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        if (showSupportingContent && user.id != Networking.userid) {
-                            if (isPqcProtected) {
-                                // Protected: static green lock, not tappable.
-                                IconLock(tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
-                            } else {
-                                // Unprotected: red broken lock, tappable -> info box.
-                                androidx.compose.material3.IconButton(
-                                    onClick = { showPqcInfo = true },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    IconLockOpen(
-                                        tint = Color(0xFFF44336),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                supportingContent = {
-                    if (showSupportingContent) {
-                        Text(
-                            stringResource(
-                                R.string.user_card_status,
-                                lastUpdatedTime,
-                                user.locationName,
-                                sinceString
-                            )
-                        )
-                    }
-                },
-                trailingContent = {
-                    if (showSupportingContent) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(speedString, style = MaterialTheme.typography.labelMedium)
-                            Spacer(Modifier.height(2.dp))
-                            locationValue?.battery?.let { BatteryBar(it) }
-                        }
-                    }
+    Card(if (showSupportingContent) Modifier.clickable(onClick = onClick) else Modifier) {
+        ListItem(
+            leadingContent = { UserPicture(user, 40.dp) },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            content = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        user.name,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                 }
-            )
-        }
-    }
-    if (showPqcInfo) {
-        AlertDialog(
-            onDismissRequest = { showPqcInfo = false },
-            title = { Text(stringResource(R.string.pqc_unprotected_title)) },
-            text = { Text(stringResource(R.string.pqc_unprotected_message)) },
-            confirmButton = {
-                TextButton(onClick = { showPqcInfo = false }) {
-                    Text(stringResource(R.string.done))
+            },
+            supportingContent = {
+                if (showSupportingContent) {
+                    Text(
+                        stringResource(
+                            R.string.user_card_status,
+                            lastUpdatedTime,
+                            user.locationName,
+                            sinceString
+                        )
+                    )
+                }
+            },
+            trailingContent = {
+                if (showSupportingContent) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(speedString, style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.height(2.dp))
+                        locationValue?.battery?.let { BatteryBar(it) }
+                    }
                 }
             }
         )
@@ -916,22 +876,22 @@ fun AutoToggleRow(user: User, ffViewModel: FindFamilyViewModel) {
 
 object DateFormats {
     // example: Jun 4
-    val MONTH_DAY = LocalDate.Format {
-        monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+    val MONTH_DAY: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
         chars(" ")
         day()
     }
 
     // example: 10:05 am
-    val TIME_SECOND_AM_PM = LocalTime.Format {
+    val TIME_SECOND_AM_PM: DateTimeFormat<LocalTime> get() = LocalTime.Format {
         amPmHour()
         chars(":")
         minute()
         chars(":")
         second()
         chars(" ")
-        amPmMarker("AM", "PM")
+        localizedAmPmMarker()
     }
 
-    val DATE_INPUT = MONTH_DAY
+    val DATE_INPUT: DateTimeFormat<LocalDate> get() = MONTH_DAY
 }

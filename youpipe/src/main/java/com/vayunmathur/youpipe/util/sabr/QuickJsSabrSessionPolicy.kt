@@ -1,8 +1,16 @@
 package com.vayunmathur.youpipe.util.sabr
 
 import android.util.Base64
-import com.grack.nanojson.JsonArray
-import com.grack.nanojson.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import org.schabi.newpipe.extractor.utils.getArray
+import org.schabi.newpipe.extractor.utils.getBoolean
+import org.schabi.newpipe.extractor.utils.getInt
+import org.schabi.newpipe.extractor.utils.getLong
+import org.schabi.newpipe.extractor.utils.getObject
+import org.schabi.newpipe.extractor.utils.getString
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrMediaHeader
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrMediaProtocol
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrContextSendingPolicy
@@ -26,14 +34,14 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
     init {
         try {
             sessionId = QuickJsSabrRuntime.createSession(script)
-            val description = invokeObject("describe", JsonObject())
+            val description = invokeObject("describe", jsonObject())
             scriptedDemand = description.getBoolean("demand", false)
             val media = description.getObject("media")
                 ?: throw SabrProtocolException("QuickJS policy has no media protocol")
             mediaProtocol = ScriptMediaProtocol(
-                media.getInt("headerType"),
-                media.getInt("mediaType"),
-                media.getInt("endType"),
+                media.getInt("headerType", 0),
+                media.getInt("mediaType", 0),
+                media.getInt("endType", 0),
                 media.getString("headerDecoder") == "builtin",
             )
         } catch (error: SabrProtocolException) {
@@ -52,7 +60,7 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         event: SabrSessionPolicy.DemandRouteEvent,
     ): SabrSessionPolicy.DemandRoute {
         if (!scriptedDemand) return super<SabrSessionPolicy>.evaluateDemandRoute(event)
-        val output = invokeObject("demandRoute", demandInput(event))
+        val output = invokeObject("demandRoute", JsonObject(demandInput(event)))
         return try {
             SabrSessionPolicy.DemandRoute.valueOf(
                 output.getString("route")
@@ -69,20 +77,20 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
     ): SabrSessionPolicy.DemandResponseDecision {
         if (!scriptedDemand) return super<SabrSessionPolicy>.evaluateDemandResponse(event)
         val input = demandInput(event)
-        input["segmentCount"] = event.segmentCount
-        input["targetTrackSegmentCount"] = event.targetTrackSegmentCount
-        input["returnedSegmentsTruncated"] = event.areReturnedSegmentsTruncated()
-        val returned = JsonArray()
-        for (segment in event.returnedSegments) {
-            returned.add(JsonObject().apply {
-                this["itag"] = segment.itag
-                this["sequenceNumber"] = segment.sequenceNumber
-                this["startMs"] = segment.startMs
-                this["durationMs"] = segment.durationMs
-            })
-        }
-        input["returnedSegments"] = returned
-        val output = invokeObject("demandResponse", input)
+        input["segmentCount"] = JsonPrimitive(event.segmentCount)
+        input["targetTrackSegmentCount"] = JsonPrimitive(event.targetTrackSegmentCount)
+        input["returnedSegmentsTruncated"] = JsonPrimitive(event.areReturnedSegmentsTruncated())
+        input["returnedSegments"] = JsonArray(
+            event.getReturnedSegments().map { segment ->
+                jsonObject(
+                    "itag" to JsonPrimitive(segment.itag),
+                    "sequenceNumber" to JsonPrimitive(segment.sequenceNumber),
+                    "startMs" to JsonPrimitive(segment.startMs),
+                    "durationMs" to JsonPrimitive(segment.getDurationMs()),
+                )
+            }
+        )
+        val output = invokeObject("demandResponse", JsonObject(input))
         val outcome = try {
             SabrSessionPolicy.DemandOutcome.valueOf(
                 output.getString("outcome")
@@ -111,14 +119,15 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         ensureOpen()
         if (event is SabrSessionPolicy.RequestEvent) {
             val input = stateJson(state)
-            input["playerTimeMs"] = event.playerTimeMs
-            input["bufferedEdgeMs"] = event.bufferedEdgeMs
-            input["poTokenBytes"] = event.poTokenBytes
-            input["bufferedRangeCount"] = event.bufferedRangeCount
-            input["fallbackBody"] = Base64.encodeToString(event.proposedBody, Base64.NO_WRAP)
+            input["playerTimeMs"] = JsonPrimitive(event.playerTimeMs)
+            input["bufferedEdgeMs"] = JsonPrimitive(event.bufferedEdgeMs)
+            input["poTokenBytes"] = JsonPrimitive(event.poTokenBytes)
+            input["bufferedRangeCount"] = JsonPrimitive(event.bufferedRangeCount)
+            input["fallbackBody"] =
+                JsonPrimitive(Base64.encodeToString(event.getProposedBody(), Base64.NO_WRAP))
             val output = invokeObject(
                 if (state.requestNumber == 0) "initialRequest" else "followUpRequest",
-                input,
+                JsonObject(input),
             )
             val body = output.getString("body")
                 ?: throw SabrProtocolException("QuickJS policy returned no request body")
@@ -145,27 +154,31 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         event: SabrSessionPolicy.ControlResponseEvent,
     ): SabrSessionPolicy.Result {
         val input = stateJson(state)
-        input["segmentCount"] = event.segmentCount
-        input["honorBackoff"] = event.shouldHonorBackoff()
-        input["mode"] = event.mode.name
-        val parts = JsonArray()
-        for (part in event.response.parts) {
-            if (part.type == mediaProtocol.mediaPartType) continue
-            val item = JsonObject()
-            item["type"] = part.type
-            item["data"] = Base64.encodeToString(part.data, Base64.NO_WRAP)
-            parts.add(item)
-        }
-        input["parts"] = parts
-        val builtin = JsonObject()
-        builtin["error"] = event.response.sabrErrorDetails != null
-        builtin["reload"] = event.response.isReloadRequested
-        builtin["protection"] = event.response.isProtectionBoundaryNoMediaResponse
-        builtin["redirectUrl"] = event.response.redirectUrl
-        builtin["backoffMs"] = maxOf(0, event.response.backoffTimeMs)
-        input["builtin"] = builtin
+        input["segmentCount"] = JsonPrimitive(event.segmentCount)
+        input["honorBackoff"] = JsonPrimitive(event.shouldHonorBackoff())
+        input["mode"] = JsonPrimitive(event.mode.name)
+        input["parts"] = JsonArray(
+            event.getResponse().getParts()
+                .filter { it.type != mediaProtocol.getMediaPartType() }
+                .map { part ->
+                    jsonObject(
+                        "type" to JsonPrimitive(part.type),
+                        "data" to JsonPrimitive(
+                            Base64.encodeToString(part.getData(), Base64.NO_WRAP)
+                        ),
+                    )
+                }
+        )
+        input["builtin"] = jsonObject(
+            "error" to JsonPrimitive(event.getResponse().getSabrErrorDetails() != null),
+            "reload" to JsonPrimitive(event.getResponse().isReloadRequested()),
+            "protection" to
+                JsonPrimitive(event.getResponse().isProtectionBoundaryNoMediaResponse()),
+            "redirectUrl" to JsonPrimitive(event.getResponse().getRedirectUrl()),
+            "backoffMs" to JsonPrimitive(maxOf(0, event.getResponse().getBackoffTimeMs())),
+        )
 
-        val output = invokeObject("response", input)
+        val output = invokeObject("response", JsonObject(input))
         val outputActions = output.getArray("actions")
         if (outputActions == null || outputActions.isEmpty()) {
             throw SabrProtocolException("QuickJS policy returned no actions")
@@ -175,7 +188,9 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
             try {
                 actions.add(
                     SabrSessionPolicy.Action(
-                        SabrSessionPolicy.ActionType.valueOf(outputActions.getString(index)),
+                        SabrSessionPolicy.ActionType.valueOf(
+                            outputActions.getString(index).orEmpty()
+                        ),
                     ),
                 )
             } catch (error: RuntimeException) {
@@ -187,7 +202,7 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
             state.requestNumber,
             next.getInt("redirectCount", state.redirectCount),
             next.getInt("poTokenRefreshes", state.poTokenRefreshes),
-            state.reloads,
+            state.getReloads(),
         )
         return SabrSessionPolicy.Result.control(
             nextState,
@@ -197,7 +212,7 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
                 output.getString("redirectUrl"),
                 output.getString("errorDetails"),
             ),
-            if (output.has("statePatch")) {
+            if (output.containsKey("statePatch")) {
                 parseStatePatch(output.getObject("statePatch"), event)
             } else {
                 null
@@ -229,7 +244,7 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         val live = value.getArray("live")
         if (live != null) {
             for (index in live.indices) {
-                val item = live.getObject(index)
+                val item = live.getObject(index) ?: continue
                 builder.addLiveMetadata(
                     SabrLiveMetadata.normalized(
                         item.getString("broadcastId"),
@@ -250,7 +265,7 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         val formats = value.getArray("formats")
         if (formats != null) {
             for (index in formats.indices) {
-                val item = formats.getObject(index)
+                val item = formats.getObject(index) ?: continue
                 builder.addFormatMetadata(
                     SabrFormatInitializationMetadata.normalized(
                         item.getString("videoId"),
@@ -274,7 +289,7 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         val contexts = value.getArray("contexts")
         if (contexts != null) {
             for (index in contexts.indices) {
-                val item = contexts.getObject(index)
+                val item = contexts.getObject(index) ?: continue
                 builder.addContextUpdate(
                     SabrContextUpdate.normalized(
                         item.getInt("type", -1),
@@ -296,13 +311,13 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
                 ),
             )
         }
-        for (header in event.response.mediaHeaders) builder.addMediaHeader(header)
+        for (header in event.getResponse().getMediaHeaders()) builder.addMediaHeader(header)
         return builder.build()
     }
 
     private fun intList(values: JsonArray?): List<Int> {
         if (values == null) return emptyList()
-        return values.indices.map { values.getInt(it) }
+        return values.indices.map { values.getInt(it, 0) }
     }
 
     private fun decodeOptional(value: String?): ByteArray? =
@@ -323,25 +338,29 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
         return QuickJsSabrRuntime.invoke(sessionId, method, input)
     }
 
-    private fun stateJson(state: SabrSessionPolicy.State) = JsonObject().apply {
-        this["requestNumber"] = state.requestNumber
-        this["redirectCount"] = state.redirectCount
-        this["poTokenRefreshes"] = state.poTokenRefreshes
-        this["reloads"] = state.reloads
-    }
+    private fun stateJson(state: SabrSessionPolicy.State) = linkedMapOf<String, JsonElement>(
+        "requestNumber" to JsonPrimitive(state.requestNumber),
+        "redirectCount" to JsonPrimitive(state.redirectCount),
+        "poTokenRefreshes" to JsonPrimitive(state.poTokenRefreshes),
+        "reloads" to JsonPrimitive(state.getReloads()),
+    )
 
-    private fun demandInput(event: SabrSessionPolicy.DemandEvent) = JsonObject().apply {
-        this["targetItag"] = event.targetItag
-        this["targetSequenceNumber"] = event.targetSequenceNumber
-        this["targetStartMs"] = event.targetStartMs
-        this["bufferedEdgeMs"] = event.bufferedEdgeMs
-        this["createdAtMs"] = event.state.createdAtMs
-        this["nowMs"] = event.state.nowMs
-        this["elapsedMs"] = event.state.elapsedMs
-        this["responsesWithoutDemandedSegment"] =
-            event.state.responsesWithoutDemandedSegment
-        this["recoveryCount"] = event.state.recoveryCount
-    }
+    private fun demandInput(event: SabrSessionPolicy.DemandEvent) =
+        linkedMapOf<String, JsonElement>(
+            "targetItag" to JsonPrimitive(event.targetItag),
+            "targetSequenceNumber" to JsonPrimitive(event.targetSequenceNumber),
+            "targetStartMs" to JsonPrimitive(event.targetStartMs),
+            "bufferedEdgeMs" to JsonPrimitive(event.bufferedEdgeMs),
+            "createdAtMs" to JsonPrimitive(event.getState().createdAtMs),
+            "nowMs" to JsonPrimitive(event.getState().nowMs),
+            "elapsedMs" to JsonPrimitive(event.getState().getElapsedMs()),
+            "responsesWithoutDemandedSegment" to
+                JsonPrimitive(event.getState().responsesWithoutDemandedSegment),
+            "recoveryCount" to JsonPrimitive(event.getState().getRecoveryCount()),
+        )
+
+    private fun jsonObject(vararg entries: Pair<String, JsonElement>): JsonObject =
+        JsonObject(linkedMapOf(*entries))
 
     private fun ensureOpen() {
         if (closed) throw SabrProtocolException("SABR QuickJS policy is closed")
@@ -382,9 +401,12 @@ class QuickJsSabrSessionPolicy @Throws(SabrProtocolException::class) constructor
 
         override fun decodeHeader(payload: ByteArray): SabrMediaHeader {
             if (builtinHeaderDecoder) return SabrMediaProtocol.builtin().decodeHeader(payload)
-            val input = JsonObject()
-            input["data"] = Base64.encodeToString(payload, Base64.NO_WRAP)
-            val value = invokeObject("mediaHeader", input)
+            val value = invokeObject(
+                "mediaHeader",
+                jsonObject(
+                    "data" to JsonPrimitive(Base64.encodeToString(payload, Base64.NO_WRAP))
+                ),
+            )
             val headerId = value.getInt("headerId", -1)
             val itag = value.getInt("itag", -1)
             if (headerId !in 0..255 || itag <= 0) {

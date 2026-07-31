@@ -148,6 +148,8 @@
     <string name="expiry_time_label">Expiry Time</string>
     <!-- AddLinkDialog: Primary button to create temporary link. Verb phrase -->
     <string name="create_temporary_link">Create Temporary Link</string>
+    <!-- AddLinkDialog: Shown when the encryption keys for a new link can't be generated. Sentence -->
+    <string name="link_pqc_unavailable">Couldn\'t create the link on this device.</string>
     <!-- AddLinkDialog: Dropdown option for 15 minutes expiry. Duration noun -->
     <string name="expiry_15_minutes">15 minutes</string>
     <!-- AddLinkDialog: Dropdown option for 30 minutes -->
@@ -245,8 +247,5 @@
     <!-- UwbRangingScreen: Hint when azimuth null. Instruction sentence -->
     <string name="point_the_back_of_your_phone_toward_your">Point the back of your phone toward your contact</string>
 
-    <!-- PQC: Shown when tapping broken-lock icon for connections without PQC key. Sentence, explains quantum risk. -->
-    <string name="pqc_unprotected_title">Quantum protection</string>
-    <string name="pqc_unprotected_message">Unprotected against quantum computers: this person needs to update their app.</string>
     <string name="ok">OK</string>
 </resources>

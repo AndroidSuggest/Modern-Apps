@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.email.data
 
+import kotlin.concurrent.atomics.*
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -20,7 +23,6 @@ import com.vayunmathur.email.resolveAuth
 import com.vayunmathur.email.imapServer
 import com.vayunmathur.email.loginUser
 import java.util.Collections
-import java.util.concurrent.atomic.AtomicBoolean
 import jakarta.mail.Flags
 import jakarta.mail.Folder
 import jakarta.mail.UIDFolder
@@ -149,7 +151,7 @@ class ImapIdleService : Service() {
                     folder.addMessageCountListener(object : MessageCountAdapter() {
                         override fun messagesAdded(e: MessageCountEvent) {
                             Log.d(TAG, "EXISTS for ${account.email}: ${e.messages.size} new")
-                            sawNewMail.set(true)
+                            sawNewMail.store(true)
                         }
                         override fun messagesRemoved(e: MessageCountEvent) {
                             for (msg in e.messages) {
@@ -167,7 +169,7 @@ class ImapIdleService : Service() {
                     folder.addMessageChangedListener(object : MessageChangedListener {
                         override fun messageChanged(e: MessageChangedEvent) {
                             if (e.messageChangeType == MessageChangedEvent.FLAGS_CHANGED) {
-                                sawFlagsChanged.set(true)
+                                sawFlagsChanged.store(true)
                                 try {
                                     val uid = (folder as UIDFolder).getUID(e.message)
                                     if (uid != -1L) flaggedUids.add(uid)
@@ -186,7 +188,7 @@ class ImapIdleService : Service() {
                                     delay(IDLE_REFRESH_MS)
                                     if (isActive && folder.isOpen) {
                                         Log.d(TAG, "Proactive IDLE refresh for ${account.email} (24 min)")
-                                        isProactiveRefresh.set(true)
+                                        isProactiveRefresh.store(true)
                                         try { folder.close(false) } catch (_: Throwable) {}
                                     }
                                 }
@@ -197,11 +199,11 @@ class ImapIdleService : Service() {
                                     folder.idle(true)
                                 } else {
                                     delay(FALLBACK_NO_IDLE_POLL_MS)
-                                    sawNewMail.set(true)
-                                    sawFlagsChanged.set(true)
+                                    sawNewMail.store(true)
+                                    sawFlagsChanged.store(true)
                                 }
                             } catch (e: Exception) {
-                                if (isProactiveRefresh.getAndSet(false)) {
+                                if (isProactiveRefresh.exchange(false)) {
                                     Log.d(TAG, "IDLE 24-min refresh — reopening INBOX on same store for ${account.email}")
                                     folderNeedsReopen = true
                                 } else {
@@ -213,7 +215,7 @@ class ImapIdleService : Service() {
 
                             if (folderNeedsReopen) break
 
-                            if (sawNewMail.getAndSet(false)) {
+                            if (sawNewMail.exchange(false)) {
                                 try {
                                     if (folder.isOpen) quickInboxFetch(folder, account.email)
                                 } catch (t: Throwable) {
@@ -228,7 +230,7 @@ class ImapIdleService : Service() {
                                 }
                             }
 
-                            if (sawFlagsChanged.getAndSet(false) || flaggedUids.isNotEmpty()) {
+                            if (sawFlagsChanged.exchange(false) || flaggedUids.isNotEmpty()) {
                                 val flaggedSnapshot = synchronized(flaggedUids) { flaggedUids.toList().also { flaggedUids.clear() } }
                                 try {
                                     if (folder.isOpen) handleFlagChanges(folder, account.email, flaggedSnapshot)
@@ -241,8 +243,8 @@ class ImapIdleService : Service() {
                         try { folder.close(false) } catch (_: Throwable) {}
                     }
 
-                    if (folderNeedsReopen || isProactiveRefresh.get()) {
-                        isProactiveRefresh.set(false)
+                    if (folderNeedsReopen || isProactiveRefresh.load()) {
+                        isProactiveRefresh.store(false)
                         delay(200L)
                         continue
                     }
@@ -349,8 +351,8 @@ class ImapIdleService : Service() {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
             if (nm.getNotificationChannel(CHANNEL_ID) != null) return
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Background email sync", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Keeps an IMAP connection open so new mail arrives instantly."
+                NotificationChannel(CHANNEL_ID, context.getString(R.string.email_sync_channel_name), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = context.getString(R.string.email_sync_channel_desc)
                     setShowBadge(false)
                 }
             )

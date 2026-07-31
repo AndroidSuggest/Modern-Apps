@@ -1,34 +1,36 @@
 package com.vayunmathur.health.util
 
+import com.vayunmathur.library.util.localizedAmPmMarker
+import kotlinx.datetime.format.DateTimeFormat
+import com.vayunmathur.library.util.DateNameStyle
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.format
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlin.time.Duration.Companion.minutes
 
 fun LocalDate.displayString() = this.format(LocalDate.Format {
-    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
     chars(" ")
     day(Padding.NONE)
     chars(", ")
     year()
 })
 
-private val timeAmPmFormat = LocalTime.Format {
+private val timeAmPmFormat: DateTimeFormat<LocalTime> get() = LocalTime.Format {
     amPmHour(Padding.NONE)
     chars(":")
     minute()
     chars(" ")
-    amPmMarker("AM", "PM")
+    localizedAmPmMarker()
 }
 
-private val hourAmPmFormat = LocalTime.Format {
+private val hourAmPmFormat: DateTimeFormat<LocalTime> get() = LocalTime.Format {
     amPmHour(Padding.NONE)
     chars(" ")
-    amPmMarker("AM", "PM")
+    localizedAmPmMarker()
 }
 
 private val time24Format = LocalTime.Format {

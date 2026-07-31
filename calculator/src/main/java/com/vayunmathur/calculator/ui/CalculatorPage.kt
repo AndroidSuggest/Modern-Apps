@@ -1,5 +1,7 @@
 package com.vayunmathur.calculator.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.calculator.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,14 +46,17 @@ private enum class KeyEmphasis { Digit, Operator, Primary, Function, Toggle }
 /**
  * A keypad key. [second]/[secondPress] give an alternate label+action shown when the
  * "2nd" modifier is active (e.g. sin → sin⁻¹). [weight] lets a key span extra columns.
+ *
+ * [onPress] is last so the common single-action key reads as a trailing lambda:
+ * `Key("7") { it.append("7") }`.
  */
 private class Key(
     val label: String,
     val emphasis: KeyEmphasis = KeyEmphasis.Digit,
     val weight: Float = 1f,
     val second: String? = null,
-    val onPress: (CalculatorViewModel) -> Unit,
     val secondPress: ((CalculatorViewModel) -> Unit)? = null,
+    val onPress: (CalculatorViewModel) -> Unit,
 )
 
 @Composable
@@ -155,7 +160,7 @@ fun CalculatorPage(viewModel: CalculatorViewModel) {
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Calculator") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = { IconButton({ showHistory = true }) { IconHistory() } },
             )
         },
@@ -210,10 +215,10 @@ fun CalculatorPage(viewModel: CalculatorViewModel) {
 private fun HistoryDialog(viewModel: CalculatorViewModel, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("History") },
+        title = { Text(stringResource(R.string.history)) },
         text = {
             if (viewModel.history.isEmpty()) {
-                Text("No calculations yet.")
+                Text(stringResource(R.string.no_calculations_yet))
             } else {
                 LazyColumn(Modifier.height(320.dp)) {
                     items(viewModel.history) { entry ->
@@ -234,10 +239,10 @@ private fun HistoryDialog(viewModel: CalculatorViewModel, onDismiss: () -> Unit)
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
         dismissButton = {
             if (viewModel.history.isNotEmpty()) {
-                TextButton({ viewModel.clearHistory(); onDismiss() }) { Text("Clear") }
+                TextButton({ viewModel.clearHistory(); onDismiss() }) { Text(stringResource(R.string.clear)) }
             }
         },
     )

@@ -1,10 +1,8 @@
 package org.schabi.newpipe.extractor.utils
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException
-import java.util.Arrays
 import java.util.regex.Matcher
 import java.util.regex.Pattern
-import java.util.stream.Collectors
 import javax.annotation.Nonnull
 
 /**
@@ -142,15 +140,16 @@ object Parser {
     @Nonnull
     @JvmStatic
     fun compatParseMap(input: String): Map<String, String> {
-        return Arrays.stream(input.split("&").toTypedArray())
-            .map { arg -> arg.split("=").toTypedArray() }
-            .filter { splitArg -> splitArg.size > 1 }
-            .collect(
-                Collectors.toMap(
-                    { splitArg -> splitArg[0] },
-                    { splitArg -> Utils.decodeUrlUtf8(splitArg[1]) },
-                    { existing, _ -> existing }
-                )
-            )
+        // The stream collector this replaced used (existing, replacement) -> replacement,
+        // so the *last* occurrence of a duplicate key wins.
+        val parsed = LinkedHashMap<String, String>()
+        for (arg in input.split("&")) {
+            // Java's String.split drops trailing empty strings, so "key=" was skipped.
+            val splitArg = arg.split("=").dropLastWhile { it.isEmpty() }
+            if (splitArg.size > 1) {
+                parsed[splitArg[0]] = Utils.decodeUrlUtf8(splitArg[1])
+            }
+        }
+        return parsed
     }
 }

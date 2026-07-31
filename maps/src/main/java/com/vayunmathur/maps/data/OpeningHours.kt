@@ -1,5 +1,7 @@
 package com.vayunmathur.maps.data
 
+import com.vayunmathur.library.util.localizedAmPmMarker
+import kotlinx.datetime.format.DateTimeFormat
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDateTime
@@ -147,12 +149,12 @@ class OpeningHours(val rawString: String) {
     }
 }
 
-val timeFormat = LocalTime.Format {
+val timeFormat: DateTimeFormat<LocalTime> get() = LocalTime.Format {
     amPmHour(Padding.NONE)
     chars(":")
     minute()
     chars(" ")
-    amPmMarker("AM", "PM")
+    localizedAmPmMarker()
 }
 
 @Serializable

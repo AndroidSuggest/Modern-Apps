@@ -33,7 +33,6 @@
     <!-- ProgressionScreen: Bottom summary of completed levels. %1$s = completed count e.g. 5, %2$s = total e.g. 36. Status noun phrase -->
     <string name="completed"><xliff:g id="completed_count" example="5">%1$s</xliff:g> / <xliff:g id="total" example="36">%2$s</xliff:g> completed</string>
     <!-- ProgressionScreen: Legend explaining bus color/width coding: 1b green thin, 4b orange, 8b blue, ghost dashed yellow. Technical description -->
-    <string name="foundation_6_routing_bus_12_arith_6_memo">FOUNDATION 6 • ROUTING+BUS 12 • ARITH 6 • MEMORY 8 • CPU 4 = 36. Bus: 1b green thin 0xFF7ED8B6 2.7px, 4b orange 0xFFF59E0B 4.2px, 8b blue 0xFF60A5FA 6.0px. Ghost dashed yellow.</string>
     <!-- ProgressionScreen: LevelNode status when level locked (dependency not met). Noun, uppercase, keep caps -->
     <string name="lock">LOCK</string>
     <!-- ProgressionScreen: LevelNode status when level completed. Noun/adjective uppercase done -->
@@ -51,7 +50,6 @@
     <!-- TruthTableView: Special-case note for SR latch level explaining feedback cycle expected and structural pass enabled. Technical sentence -->
     <string name="sr_latch_2_nor_cross_coupled_feedback_cy">SR latch: 2 NOR cross-coupled feedback – cycle expected, structural pass enabled</string>
     <!-- InventoryBar: Title explaining inventory colors and action. Sentence with bus color coding and drag instruction -->
-    <string name="inventory_1b_green_thin_4b_orange_8b_blu">Inventory: 1b green thin • 4b orange • 8b blue • 0N JOIN_8/SPLIT_8 converters cut tedium. Drag chip onto board.</string>
 
     <!-- MainActivity: Top bar button to hide truth table when visible. Verb phrase abbreviation -->
     <string name="hide_tt">Hide TT</string>
@@ -60,4 +58,15 @@
 
     <!-- Screens: Content description (accessibility) for GameCenter star icon linking achievements. Noun -->
     <string name="cd_achievements">Achievements</string>
+    <string name="no_chips_all">No chips • ALL</string>
+    <string name="inputs">Inputs</string>
+    <string name="outputs">Outputs</string>
+    <string name="tick">Tick</string>
+    <string name="sim_speed">Sim speed</string>
+    <string name="exp">Exp</string>
+    <string name="got">Got</string>
+    <string name="gate">GATE %1$s</string>
+    <string name="expected">%1$s Expected</string>
+    <string name="got_2">%1$s Got</string>
+    <string name="hz">%1$shz</string>
 </resources>

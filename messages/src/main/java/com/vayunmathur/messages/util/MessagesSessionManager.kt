@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.util
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.messages.data.Conversation
@@ -32,7 +35,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Bridges [GMessagesClient] + [GVoiceClient]'s state + event streams
@@ -104,7 +106,7 @@ object MessagesSessionManager {
     fun database(): MessagesDatabase = db
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         GMessagesClient.start()
         GVoiceClient.start()
         TelegramClient.start()

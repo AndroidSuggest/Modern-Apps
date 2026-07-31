@@ -1,12 +1,12 @@
 package com.vayunmathur.messages.signal.groups
 
+import java.util.UUID
 import android.util.Log
 import com.vayunmathur.messages.signal.store.SignalSenderKeyStore
 import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.groups.GroupCipher
 import org.signal.libsignal.protocol.groups.GroupSessionBuilder
 import org.signal.libsignal.protocol.message.SenderKeyDistributionMessage
-import java.util.UUID
 
 class SenderKeyManager(
     private val senderKeyStore: SignalSenderKeyStore,

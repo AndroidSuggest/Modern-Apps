@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -110,7 +111,7 @@ fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expa
                                     )
                                 },
                                 supportingContent = {
-                                    Text(stringResource(R.string.contacts_count, contactsInGroup.size))
+                                    Text(pluralStringResource(R.plurals.contacts_count, contactsInGroup.size, contactsInGroup.size))
                                 },
                                 leadingContent = {
                                     Box(

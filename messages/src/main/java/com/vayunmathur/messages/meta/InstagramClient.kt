@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.meta
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.messages.data.MessageSource
@@ -16,12 +19,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 
 // TODO: E2EE support — see MetaClient.kt for details
 
@@ -54,13 +55,7 @@ object InstagramClient {
     private var db: MetaDatabase? = null
     private var backfillJob: Job? = null
 
-    // Web bootstrap (#5) + media upload (#14) need an HTTP client and the parsed config.
-    private val httpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
-    }
+    // Web bootstrap (#5) + media upload (#14) go through library:network.
     private var config: MetaConfig = MetaConfig()
 
     private val pendingMessages = ConcurrentHashMap<Int, (String?) -> Unit>()
@@ -82,7 +77,7 @@ object InstagramClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         if (_state.value is State.Connected) return
         scope.launch {
             val auth = MetaAuthData.load(appContext, MetaAuthData.Platform.INSTAGRAM)
@@ -126,7 +121,7 @@ object InstagramClient {
         _state.value = State.Connecting
 
         // #5: bootstrap web config before opening the realtime socket.
-        config = MetaBootstrap.load(auth, httpClient)
+        config = MetaBootstrap.load(auth)
 
         mqttClient = MetaMqttClient(auth, config).apply {
             scope.launch {
@@ -461,7 +456,6 @@ object InstagramClient {
             bytes = bytes,
             mimeType = mimeType,
             fileName = fileName,
-            httpClient = httpClient,
         )
         if (fbid == null) {
             Log.e(TAG, "Media upload failed for $conversationId")

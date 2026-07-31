@@ -121,8 +121,8 @@ class BackupManager(
             method = "GET",
             path = path,
         )
-        if (!resp.isSuccessful) return null
-        return resp.body?.bytes()
+        if (!resp.isSuccess) return null
+        return resp.bytes
     }
 
     private fun deriveTransferKeys(

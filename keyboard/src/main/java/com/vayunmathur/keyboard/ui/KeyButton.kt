@@ -2,6 +2,8 @@
 
 package com.vayunmathur.keyboard.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.keyboard.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -207,7 +209,7 @@ fun RowScope.SpaceKey(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "English",
+            text = stringResource(R.string.subtype_en),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
         )

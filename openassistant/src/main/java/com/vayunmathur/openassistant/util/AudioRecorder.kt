@@ -1,4 +1,7 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.openassistant.util
+import kotlin.uuid.Uuid
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
@@ -13,7 +16,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.UUID
 
 class WavRecorder(val context: Context, val outputFile: File, val scope: CoroutineScope) {
     private var audioRecord: AudioRecord? = null
@@ -84,7 +86,7 @@ class WavRecorder(val context: Context, val outputFile: File, val scope: Corouti
 }
 
 fun copyUriToFile(context: Context, uri: Uri): File? {
-    val tempFile = File(context.cacheDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID()}.jpg")
+    val tempFile = File(context.cacheDir, "img_${System.currentTimeMillis()}_${Uuid.random()}.jpg")
     return try {
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(tempFile).use { output ->

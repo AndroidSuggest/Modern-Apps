@@ -1,5 +1,7 @@
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.fooddelivery.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,7 +95,7 @@ fun RestaurantScreen(
             }
         } else if (merchant == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Restaurant not found")
+                Text(stringResource(R.string.restaurant_not_found))
             }
         } else {
             val m = merchant!!
@@ -152,7 +154,7 @@ fun RestaurantScreen(
                                     color = MaterialTheme.colorScheme.primary)
                             }
                             if ((m.rewardsPercentage ?: 0.0) > 0) {
-                                Text("${m.rewardsPercentage?.toInt()}% back",
+                                Text(stringResource(R.string.back, (m.rewardsPercentage?.toInt()).toString()),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary)
                             }
@@ -245,12 +247,12 @@ private fun ModifierDialog(
                             style = MaterialTheme.typography.titleSmall)
                         if (group.required) {
                             Spacer(Modifier.width(4.dp))
-                            Text("Required", style = MaterialTheme.typography.labelSmall,
+                            Text(stringResource(R.string.required), style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.error)
                         }
                     }
                     if (group.maxSelections > 1 || !group.required) {
-                        Text("Select up to ${group.maxSelections}",
+                        Text(stringResource(R.string.select_up_to, group.maxSelections),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -307,7 +309,7 @@ private fun ModifierDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -339,7 +341,7 @@ private fun MenuItemRow(item: MenuItem, onAdd: () -> Unit) {
                 }
             }
             if (item.modifierGroups.isNotEmpty()) {
-                Text("Customizable",
+                Text(stringResource(R.string.customizable),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary)
             }

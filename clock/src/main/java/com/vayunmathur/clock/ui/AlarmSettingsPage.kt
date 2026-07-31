@@ -104,20 +104,20 @@ fun AlarmOptionControls(
 ) {
     val context = LocalContext.current
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        OptionRow(label = "Sound") {
+        OptionRow(label = stringResource(com.vayunmathur.clock.R.string.sound)) {
             TextButton(onClick = onRingtoneClick) { Text(ringtoneTitle(context, ringtoneUri)) }
         }
-        OptionRow(label = "Vibrate") {
+        OptionRow(label = stringResource(com.vayunmathur.clock.R.string.vibrate)) {
             Switch(checked = vibrate, onCheckedChange = onVibrateChange)
         }
-        OptionRow(label = "Snooze length") {
+        OptionRow(label = stringResource(com.vayunmathur.clock.R.string.snooze_length)) {
             OptionDropdown(
                 value = "$snoozeMinutes min",
                 options = SNOOZE_OPTIONS.map { it to "$it min" },
                 onSelect = onSnoozeChange,
             )
         }
-        OptionRow(label = "Gradually increase volume") {
+        OptionRow(label = stringResource(com.vayunmathur.clock.R.string.gradually_increase_volume)) {
             OptionDropdown(
                 value = gradualLabel(context, gradualVolumeSeconds),
                 options = GRADUAL_OPTIONS.map { it to gradualLabel(context, it) },

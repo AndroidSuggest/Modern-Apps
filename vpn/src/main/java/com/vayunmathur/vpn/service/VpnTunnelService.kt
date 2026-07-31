@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.vpn.service
 
+import kotlin.concurrent.atomics.*
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -24,7 +27,6 @@ import java.io.FileOutputStream
 import java.net.DatagramSocket
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,7 +71,7 @@ class VpnTunnelService : VpnService() {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm?.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "VPN Tunnel", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, getString(R.string.vpn_channel_name), NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
@@ -133,7 +135,7 @@ class VpnTunnelService : VpnService() {
 
     private fun startVpn(config: VpnConfig) {
         if (isRunning) stopVpn()
-        stopFlag.set(false)
+        stopFlag.store(false)
         runningConfigName = config.name
         goForeground(notification("VPN (WireGuard/gotatun) — ${config.name}", config.peerEndpoint))
 
@@ -141,7 +143,7 @@ class VpnTunnelService : VpnService() {
     }
 
     private fun stopVpn() {
-        stopFlag.set(true)
+        stopFlag.store(true)
         job?.cancel(); job = null
         flushJob?.cancel(); flushJob = null
         isRunning = false
@@ -215,7 +217,7 @@ class VpnTunnelService : VpnService() {
         // Batched Room upsert job (1.5s) — tracker keeps cumulative TX/RX in memory,
         // so each drain returns full accumulated totals for dirty flows.
         flushJob = scope.launch(Dispatchers.IO) {
-            while (isActive && !stopFlag.get()) {
+            while (isActive && !stopFlag.load()) {
                 delay(1500)
                 try {
                     val batch = tracker.drainDirty()
@@ -319,7 +321,7 @@ class VpnTunnelService : VpnService() {
             val tunBuf = ByteBuffer.allocate(65535)
             var lastTimer = System.currentTimeMillis()
 
-            while (!stopFlag.get() && scope.isActive) {
+            while (!stopFlag.load() && scope.isActive) {
                 try {
                     while (tunIn.read(tunBuf) > 0) {
                         tunBuf.flip()
@@ -334,7 +336,7 @@ class VpnTunnelService : VpnService() {
                             }
                         }
                     }
-                } catch (e: Exception) { if (!stopFlag.get()) Log.w(TAG, "tun read", e) }
+                } catch (e: Exception) { if (!stopFlag.load()) Log.w(TAG, "tun read", e) }
 
                 try {
                     udpBuf.clear()
@@ -349,12 +351,12 @@ class VpnTunnelService : VpnService() {
                             1 -> if (payload.isNotEmpty()) { try { channel.write(ByteBuffer.wrap(payload)) } catch (_: Exception) {} }
                             2 -> if (payload.isNotEmpty()) {
                                 handleLoggingForPacket(payload, ConnectionTracker.Direction.RX, payload.size)
-                                try { tunOut.write(ByteBuffer.wrap(payload)) } catch (e: Exception) { if (!stopFlag.get()) Log.w(TAG, "tun write", e) }
+                                try { tunOut.write(ByteBuffer.wrap(payload)) } catch (e: Exception) { if (!stopFlag.load()) Log.w(TAG, "tun write", e) }
                             }
                             3 -> { /* keepalive absorbed */ }
                         }
                     }
-                } catch (e: Exception) { if (!stopFlag.get()) Log.w(TAG, "udp read", e) }
+                } catch (e: Exception) { if (!stopFlag.load()) Log.w(TAG, "udp read", e) }
 
                 val now = System.currentTimeMillis()
                 if (now - lastTimer >= 100) {

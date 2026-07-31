@@ -2,7 +2,6 @@ package org.schabi.newpipe.extractor.downloader
 
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
-import java.util.Collections
 
 open class Response(
     private val responseCode: Int,
@@ -12,7 +11,7 @@ open class Response(
     private val latestUrl: String?
 ) {
     private val responseHeaders: Map<String, List<String>> =
-        responseHeaders ?: Collections.emptyMap()
+        responseHeaders ?: emptyMap()
 
     private val responseBody: String = responseBody ?: ""
 

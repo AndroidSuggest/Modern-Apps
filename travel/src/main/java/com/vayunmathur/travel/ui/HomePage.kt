@@ -1,5 +1,6 @@
 package com.vayunmathur.travel.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -143,7 +144,7 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
                     TextButton(
                         onClick = { backStack.add(Route.Trips) },
                         modifier = Modifier.padding(horizontal = 8.dp),
-                    ) { Text(stringResource(R.string.see_all_trips, trips.size)) }
+                    ) { Text(pluralStringResource(R.plurals.see_all_trips, trips.size, trips.size)) }
                 }
             }
 

@@ -1,9 +1,9 @@
 package com.vayunmathur.calendar.util
+import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.ui.dateFormat
 import com.vayunmathur.library.util.localizedDayOfWeekNames
-import java.time.format.TextStyle
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -262,7 +262,7 @@ sealed class RRule {
             else context.resources.getQuantityString(R.plurals.rrule_every_weeks, weeks, weeks)
             if (daysOfWeek.isEmpty()) return prefix
             val days = daysOfWeek.sorted().joinToString(", ") {
-                localizedDayOfWeekNames(TextStyle.SHORT)[it.isoDayNumber - 1]
+                localizedDayOfWeekNames(DateNameStyle.SHORT)[it.isoDayNumber - 1]
             }
             return context.getString(R.string.rrule_on_days, prefix, days)
         }

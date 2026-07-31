@@ -102,7 +102,9 @@
     <string name="no_subject">(nessun oggetto)</string>
     <string name="from">Da <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
     <string name="to_1">A <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
-    <string name="retrying_pending_message_s">Nuovo tentativo per <xliff:g id="count" example="3">%1$s</xliff:g> messaggi in attesa…</string>
+    <plurals name="retrying_pending_messages">
+        <item quantity="other">Nuovo tentativo per <xliff:g id="count" example="3">%1$s</xliff:g> messaggi in attesa…</item>
+    </plurals>
     <string name="unblock">Sblocca</string>
     <string name="tomorrow_8_am">Domani (08:00)</string>
     <string name="folders">Cartelle</string>
@@ -115,6 +117,8 @@
     <string name="later">Più tardi</string>
     <string name="unsubscribing">Disiscrizione…</string>
     <string name="failed">Fallito: <xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
-    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> tentativi</string>
+    <plurals name="attempts">
+        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> tentativi</item>
+    </plurals>
     <string name="cd_insert_image">Inserisci immagine</string>
 </resources>

@@ -20,10 +20,10 @@ interface StreamInfoItemExtractor : InfoItemExtractor {
     fun getViewCount(): Long
 
     @Throws(ParsingException::class)
-    fun getUploaderName(): String
+    fun getUploaderName(): String?
 
     @Throws(ParsingException::class)
-    fun getUploaderUrl(): String
+    fun getUploaderUrl(): String?
 
     @Throws(ParsingException::class)
     fun getUploaderAvatars(): List<Image> = emptyList()

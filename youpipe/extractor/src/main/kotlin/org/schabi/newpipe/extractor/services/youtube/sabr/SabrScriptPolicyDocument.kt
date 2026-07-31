@@ -7,7 +7,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
-import java.nio.charset.StandardCharsets
 import java.util.Base64
 
 /**
@@ -35,7 +34,7 @@ class SabrScriptPolicyDocument private constructor() {
                 put("source", JsonPrimitive(policy.getSource()))
                 put("signature", JsonPrimitive(Base64.getEncoder().encodeToString(signature)))
             }
-            val encoded = document.toString().toByteArray(StandardCharsets.UTF_8)
+            val encoded = document.toString().toByteArray(Charsets.UTF_8)
             if (encoded.size > MAX_DOCUMENT_BYTES) {
                 throw IllegalArgumentException("SABR policy document exceeded size limit")
             }
@@ -49,7 +48,7 @@ class SabrScriptPolicyDocument private constructor() {
                 throw IllegalArgumentException("Invalid SABR policy document size")
             }
             try {
-                val jsonString = String(encoded, StandardCharsets.UTF_8)
+                val jsonString = String(encoded, Charsets.UTF_8)
                 val document = Json.parseToJsonElement(jsonString).jsonObject
 
                 if (document.size != 6 ||

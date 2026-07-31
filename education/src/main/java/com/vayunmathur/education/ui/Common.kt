@@ -1,5 +1,13 @@
 package com.vayunmathur.education.ui
 
+import android.content.Context
+import android.text.format.DateFormat
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
+import java.util.Date
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import com.vayunmathur.library.ui.AssistChip
@@ -13,9 +21,6 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.education.content.Band
 import com.vayunmathur.library.ui.IconFire
 import com.vayunmathur.library.ui.IconStar
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import com.vayunmathur.education.R
@@ -66,7 +71,9 @@ fun StarsChip(count: Int) {
  */
 @Composable
 fun DeadlineChip(dueEpochDay: Long, modifier: Modifier = Modifier) {
-    val today = LocalDate.now().toEpochDay()
+    // kotlinx-datetime's LocalDate has no now()/toEpochDay() — today comes from the clock,
+    // and the epoch-day accessor is toEpochDays() (Long).
+    val today = Clock.System.todayIn(TimeZone.currentSystemDefault()).toEpochDays()
     val diff = dueEpochDay - today
     val (label, color) = when {
         diff < 0 -> "Past due" to MaterialTheme.colorScheme.error
@@ -100,8 +107,12 @@ fun bandLabel(band: Band): String = when (band) {
     Band.SCHOLAR -> "6-12 · Scholar"
 }
 
-fun formatEpochDay(day: Long): String =
-    LocalDate.ofEpochDay(day).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+fun formatEpochDay(context: Context, day: Long): String {
+    val millis = LocalDate.fromEpochDays(day)
+        .atStartOfDayIn(TimeZone.currentSystemDefault())
+        .toEpochMilliseconds()
+    return DateFormat.getMediumDateFormat(context).format(Date(millis))
+}
 
 /** Integer-average stars (0-3) across a set of skills, unpracticed == 0. */
 fun averageStars(

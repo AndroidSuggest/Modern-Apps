@@ -15,7 +15,9 @@
     <string name="label_artist">Esitaja</string>
     <string name="artist_info_format"><xliff:g id="song_count" example="25">%1$d</xliff:g> songs • <xliff:g id="duration" example="1h 42m">%2$s</xliff:g></string>
     <string name="label_playlist">Esitusloend</string>
-    <string name="num_songs_format"><xliff:g id="count" example="10">%1$d</xliff:g> lugu</string>
+    <plurals name="num_songs_format">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> lugu</item>
+    </plurals>
     <string name="label_play">Esita</string>
     <string name="label_shuffle">Sega lood</string>
     <string name="label_songs">Lood</string>

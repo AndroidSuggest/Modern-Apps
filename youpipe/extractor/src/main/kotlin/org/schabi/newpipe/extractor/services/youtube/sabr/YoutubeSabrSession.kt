@@ -9,8 +9,6 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.URI
 import java.util.ArrayDeque
-import java.util.ArrayList
-import java.util.Arrays
 import java.util.Base64
 import java.util.Collections
 import java.util.Deque
@@ -54,7 +52,7 @@ class YoutubeSabrSession {
                 if (i > 0) summary.append(',')
                 val segment = segments[i]
                 summary.append(segment.header.itag).append(':')
-                if (segment.header.isInitSegment) summary.append("init")
+                if (segment.header.isInitSegment()) summary.append("init")
                 else summary.append(segment.header.sequenceNumber)
             }
             return summary.append(']').toString()
@@ -78,18 +76,18 @@ class YoutubeSabrSession {
         @JvmStatic
         private fun describeRequest(request: SabrSegmentRequest): String {
             return "itag=" + request.format.itag +
-                if (request.isInitializationSegment) ":init" else ":seq=" + request.sequenceNumber
+                if (request.isInitializationSegment()) ":init" else ":seq=" + request.getSequenceNumber()
         }
 
         @JvmStatic
         private fun cacheKey(request: SabrSegmentRequest): String {
-            return "${request.format.itag}:" + if (request.isInitializationSegment) "init" else request.sequenceNumber.toString()
+            return "${request.format.itag}:" + if (request.isInitializationSegment()) "init" else request.getSequenceNumber().toString()
         }
 
         @JvmStatic
         private fun cacheKey(segment: SabrMediaSegment): String {
             val header = segment.header
-            return "${header.itag}:" + if (header.isInitSegment) "init" else header.sequenceNumber.toString()
+            return "${header.itag}:" + if (header.isInitSegment()) "init" else header.sequenceNumber.toString()
         }
 
         @JvmStatic
@@ -341,7 +339,7 @@ class YoutubeSabrSession {
         }
         throw SabrProtocolException(
             "Requested SABR segment was not returned: itag=" + request.format.itag +
-                if (request.isInitializationSegment) ":init" else ":seq=" + request.sequenceNumber
+                if (request.isInitializationSegment()) ":init" else ":seq=" + request.getSequenceNumber()
         )
     }
 
@@ -380,7 +378,7 @@ class YoutubeSabrSession {
             sessionPolicyState(),
             SabrSessionPolicy.RequestEvent(playerTimeMs, bufferedEdgeMs, poTokenBytes, bufferedRangeCount, proposedBody)
         )
-        val requestBody = requestPolicyResult.requestBody ?: throw IllegalStateException("Missing request body")
+        val requestBody = requestPolicyResult.getRequestBody() ?: throw IllegalStateException("Missing request body")
         addDiagnosticEvent(
             "request n=$requestNumber playerMs=$playerTimeMs edgeMs=$bufferedEdgeMs poTokenBytes=$poTokenBytes ranges=${streamState.summarizeBufferedRanges()}"
         )
@@ -522,12 +520,12 @@ class YoutubeSabrSession {
         val result = pumpOnceInternal(localization, { segment ->
             ingestAndCacheSegment(segment)
             val header = segment.header
-            if (!header.isInitSegment && header.itag == target.format.itag) targetTrackSegments[0]++
-            if (!header.isInitSegment && returnedSegments.size < SabrSessionPolicy.MAX_DEMAND_RETURNED_SEGMENTS) {
+            if (!header.isInitSegment() && header.itag == target.format.itag) targetTrackSegments[0]++
+            if (!header.isInitSegment() && returnedSegments.size < SabrSessionPolicy.MAX_DEMAND_RETURNED_SEGMENTS) {
                 returnedSegments.add(
                     SabrSessionPolicy.DemandReturnedSegment(header.itag, header.sequenceNumber, header.startMs, header.durationMs)
                 )
-            } else if (!header.isInitSegment) {
+            } else if (!header.isInitSegment()) {
                 returnedTruncated[0] = true
             }
             true
@@ -549,11 +547,8 @@ class YoutubeSabrSession {
         val wasRequestPerformed: Boolean
     ) {
         val returnedSegments: List<SabrSessionPolicy.DemandReturnedSegment> =
-            Collections.unmodifiableList(ArrayList(returnedSegments))
+            returnedSegments.toList()
 
-        fun getSegmentCount(): Int = segmentCount
-        fun getTargetTrackSegmentCount(): Int = targetTrackSegmentCount
-        fun getReturnedSegments(): List<SabrSessionPolicy.DemandReturnedSegment> = returnedSegments
         fun areReturnedSegmentsTruncated(): Boolean = areReturnedSegmentsTruncated
         fun wasRequestPerformed(): Boolean = wasRequestPerformed
 
@@ -688,11 +683,11 @@ class YoutubeSabrSession {
         val executedActions = mutableListOf<SabrSessionPolicy.ActionType>()
         var completed = false
         try {
-            for (action in policyResult.actions) {
-                executedActions.add(action.type)
-                when (action.type) {
+            for (action in policyResult.getActions()) {
+                executedActions.add(action.getType())
+                when (action.getType()) {
                     SabrSessionPolicy.ActionType.APPLY_BUILTIN_RESPONSE_STATE -> streamState.ingest(decoded)
-                    SabrSessionPolicy.ActionType.APPLY_RESPONSE_STATE -> streamState.ingest(policyResult.statePatch!!)
+                    SabrSessionPolicy.ActionType.APPLY_RESPONSE_STATE -> streamState.ingest(policyResult.getStatePatch()!!)
                     SabrSessionPolicy.ActionType.APPLY_REDIRECT -> {
                         if (redirectCountBeforePolicy + 1 > MAX_REDIRECTS_PER_SESSION) {
                             throw SabrProtocolException("SABR redirect limit exceeded: redirects=${redirectCountBeforePolicy + 1}")
@@ -705,7 +700,7 @@ class YoutubeSabrSession {
                         serverAbrStreamingUrl = redirectUrl
                     }
                     SabrSessionPolicy.ActionType.FAIL_SABR_ERROR -> {
-                        val errorDetails = decision.errorDetails ?: decoded.summarizeNoMediaResponse()
+                        val errorDetails = decision.getErrorDetails() ?: decoded.summarizeNoMediaResponse()
                         completed = true
                         throw SabrProtocolException(
                             if (request == null) "SABR error: $errorDetails"
@@ -755,7 +750,7 @@ class YoutubeSabrSession {
                         completed = true
                         return PolicyControlOutcome.CONTINUE
                     }
-                    else -> throw IllegalStateException("Unexpected SABR session control action: ${action.type}")
+                    else -> throw IllegalStateException("Unexpected SABR session control action: ${action.getType()}")
                 }
             }
             throw IllegalStateException("SABR session policy returned no terminal outcome")
@@ -770,7 +765,7 @@ class YoutubeSabrSession {
 
     private fun ingestAndCacheSegment(segment: SabrMediaSegment) {
         val key = cacheKey(segment)
-        if (cacheClosed || !segment.isComplete || segment.hasFailed()) {
+        if (cacheClosed || !segment.isComplete() || segment.hasFailed()) {
             inFlightSegments.remove(key, segment)
             segment.delete()
             return
@@ -784,7 +779,7 @@ class YoutubeSabrSession {
             return
         }
         synchronized(segmentAvailable) { (segmentAvailable as Object).notifyAll() }
-        if (previous == null && !segment.header.isInitSegment) {
+        if (previous == null && !segment.header.isInitSegment()) {
             cacheOrder.addLast(key)
             cachedBytes += segment.length
             peakCachedBytes = maxOf(peakCachedBytes, cachedBytes)
@@ -797,7 +792,7 @@ class YoutubeSabrSession {
     }
 
     private fun publishInFlightSegment(segment: SabrMediaSegment) {
-        if (segment.isComplete || segment.header.isInitSegment) return
+        if (segment.isComplete() || segment.header.isInitSegment()) return
         if (cacheClosed) {
             segment.failProgressive(IOException("SABR session cache is closed"))
             segment.delete()
@@ -946,7 +941,7 @@ class YoutubeSabrSession {
         val inFlight = inFlightSegments.remove(key)
         inFlight?.delete()
         val removed = segmentCache.remove(key)
-        if (removed != null && !removed.header.isInitSegment) {
+        if (removed != null && !removed.header.isInitSegment()) {
             cacheOrder.remove(key)
             cachedBytes = maxOf(0, cachedBytes - removed.length)
             recordTraceDiscard(removed, "explicit")
@@ -995,7 +990,7 @@ class YoutubeSabrSession {
         if (!traceEnabled) return
         val header = segment.header
         val value = "request=$requestNumber,itag=${header.itag}" +
-            (if (header.isInitSegment) ",init=true" else ",seq=${header.sequenceNumber}") +
+            (if (header.isInitSegment()) ",init=true" else ",seq=${header.sequenceNumber}") +
             ",startMs=${header.startMs},durationMs=${header.durationMs},bytes=${segment.length},elapsedMs=$traceCurrentSegmentElapsedMs"
         synchronized(traceLock) {
             addBoundedTraceEvent(traceSegments, value)
@@ -1007,7 +1002,7 @@ class YoutubeSabrSession {
         val header = segment.header
         val bytes = segment.length
         val value = "request=$requestNumber,reason=$reason,itag=${header.itag}" +
-            (if (header.isInitSegment) ",init=true" else ",seq=${header.sequenceNumber}") +
+            (if (header.isInitSegment()) ",init=true" else ",seq=${header.sequenceNumber}") +
             ",startMs=${header.startMs},durationMs=${header.durationMs},bytes=$bytes"
         synchronized(traceLock) {
             traceDiscardedBytes += bytes
@@ -1032,23 +1027,12 @@ class YoutubeSabrSession {
         val discards: List<String> = Collections.unmodifiableList(discards)
         val responses: List<String> = Collections.unmodifiableList(responses)
 
-        fun getResponseBytes(): Long = responseBytes
-        fun getMediaPayloadBytes(): Long = mediaPayloadBytes
-        fun getControlPayloadBytes(): Long = controlPayloadBytes
-        fun getUmpOverheadBytes(): Long = umpOverheadBytes
-        fun getDiscardedBytes(): Long = discardedBytes
-        fun getRequestNumber(): Int = requestNumber
-        fun getCachedBytes(): Long = cachedBytes
-        fun getPeakCachedBytes(): Long = peakCachedBytes
-        fun getSegments(): List<String> = segments
-        fun getDiscards(): List<String> = discards
-        fun getResponses(): List<String> = responses
     }
 
     fun isBeyondEnd(request: SabrSegmentRequest): Boolean {
-        if (request.isInitializationSegment) return false
+        if (request.isInitializationSegment()) return false
         val endSegment = streamState.getEndSegment(request.format)
-        return endSegment > 0 && request.sequenceNumber > endSegment
+        return endSegment > 0 && request.getSequenceNumber() > endSegment
     }
 
     fun isComplete(): Boolean = streamState.isComplete()
@@ -1063,12 +1047,12 @@ class YoutubeSabrSession {
     fun getSessionPolicyTranscript(): List<String> = sessionPolicyHost.snapshotTranscript()
 
     fun prepareForMediaSegment(request: SabrSegmentRequest) {
-        if (request.isInitializationSegment) return
+        if (request.isInitializationSegment()) return
         demandBackoffUntilNs = 0
         val targetFormat = request.format
         val companionFormat = getCompanionFormat(targetFormat)
-        val targetStartMs = streamState.getSegmentStartMs(targetFormat, request.sequenceNumber)
-        streamState.assumeBufferedUntil(targetFormat, request.sequenceNumber - 1)
+        val targetStartMs = streamState.getSegmentStartMs(targetFormat, request.getSequenceNumber())
+        streamState.assumeBufferedUntil(targetFormat, request.getSequenceNumber() - 1)
         streamState.assumeBufferedUntil(companionFormat, streamState.getSegmentNumberAtOrAfterTimeMs(companionFormat, targetStartMs))
         streamState.setPlayerTimeMs(targetStartMs)
         streamState.clearPlaybackCookie()
@@ -1120,7 +1104,7 @@ class YoutubeSabrSession {
         if (poToken.isEmpty()) throw IOException("Missing PO token for SABR initialization range: itag=${format.itag}")
         val url = appendQueryParameterIfMissing(initializationUrl, "pot", Base64.getUrlEncoder().withoutPadding().encodeToString(poToken))
         val length = (end - start + 1).toInt()
-        val headers = Collections.singletonMap("Range", Collections.singletonList("bytes=$start-$end"))
+        val headers = mapOf("Range" to listOf("bytes=$start-$end"))
         try {
             NewPipe.getDownloader().getStreaming(url, headers, localization, timeoutMs).use { response ->
                 if (response.responseCode() != 206 && !(response.responseCode() == 200 && start == 0L)) {
@@ -1155,7 +1139,7 @@ class YoutubeSabrSession {
 
     private fun reindexCachedInitialization(format: YoutubeSabrFormat) {
         val segment = getCachedSegment(SabrSegmentRequest.initialization(format))
-        if (segment != null) streamState.ingestInitializationData(format, segment.data)
+        if (segment != null) streamState.ingestInitializationData(format, segment.getData())
     }
 
     private fun hasExactBootstrapTimeline(): Boolean =
@@ -1175,13 +1159,13 @@ class YoutubeSabrSession {
     }
 
     fun prepareForRewind(request: SabrSegmentRequest, seekPositionMs: Long) {
-        if (request.isInitializationSegment) return
+        if (request.isInitializationSegment()) return
         demandBackoffUntilNs = 0
         val targetFormat = request.format
         val companionFormat = getCompanionFormat(targetFormat)
-        val targetStartMs = streamState.getSegmentStartMs(targetFormat, request.sequenceNumber)
+        val targetStartMs = streamState.getSegmentStartMs(targetFormat, request.getSequenceNumber())
         val playbackPositionMs = if (seekPositionMs >= 0) seekPositionMs else targetStartMs
-        streamState.rewindBufferedTo(targetFormat, request.sequenceNumber)
+        streamState.rewindBufferedTo(targetFormat, request.getSequenceNumber())
         streamState.rewindBufferedTo(companionFormat, streamState.getSegmentNumberAtOrAfterTimeMs(companionFormat, playbackPositionMs))
         streamState.setPlayerTimeMs(playbackPositionMs)
         streamState.clearPlaybackCookie()
@@ -1193,13 +1177,13 @@ class YoutubeSabrSession {
     }
 
     fun prepareForForwardJump(request: SabrSegmentRequest, seekPositionMs: Long) {
-        if (request.isInitializationSegment) return
+        if (request.isInitializationSegment()) return
         demandBackoffUntilNs = 0
         val targetFormat = request.format
         val companionFormat = getCompanionFormat(targetFormat)
-        val targetStartMs = streamState.getSegmentStartMs(targetFormat, request.sequenceNumber)
+        val targetStartMs = streamState.getSegmentStartMs(targetFormat, request.getSequenceNumber())
         val playbackPositionMs = if (seekPositionMs >= 0) seekPositionMs else targetStartMs
-        streamState.jumpBufferedTo(targetFormat, request.sequenceNumber)
+        streamState.jumpBufferedTo(targetFormat, request.getSequenceNumber())
         streamState.jumpBufferedTo(companionFormat, streamState.getSegmentNumberAtOrAfterTimeMs(companionFormat, playbackPositionMs))
         streamState.setPlayerTimeMs(playbackPositionMs)
         streamState.clearPlaybackCookie()
@@ -1207,28 +1191,28 @@ class YoutubeSabrSession {
     }
 
     fun prepareForMissingSegment(request: SabrSegmentRequest) {
-        if (request.isInitializationSegment) return
+        if (request.isInitializationSegment()) return
         demandBackoffUntilNs = 0
-        val targetStartMs = streamState.getSegmentStartMs(request.format, request.sequenceNumber)
-        streamState.jumpBufferedTo(request.format, request.sequenceNumber)
+        val targetStartMs = streamState.getSegmentStartMs(request.format, request.getSequenceNumber())
+        streamState.jumpBufferedTo(request.format, request.getSequenceNumber())
         streamState.setPlayerTimeMs(targetStartMs)
         streamState.clearPlaybackCookie()
     }
 
     @Throws(SabrProtocolException::class)
     private fun failIfKnownOutOfBounds(request: SabrSegmentRequest) {
-        if (request.isInitializationSegment) return
+        if (request.isInitializationSegment()) return
         val endSegment = streamState.getEndSegment(request.format)
-        if (endSegment > 0 && request.sequenceNumber > endSegment) {
+        if (endSegment > 0 && request.getSequenceNumber() > endSegment) {
             throw SabrProtocolException("Requested SABR segment is beyond end: ${describeRequest(request)}, endSegment=$endSegment")
         }
     }
 
     private fun maybePrepareForDistantMediaSegment(request: SabrSegmentRequest): Boolean {
-        if (request.isInitializationSegment || requestNumber == 0) return false
+        if (request.isInitializationSegment() || requestNumber == 0) return false
         val format = request.format
         if (streamState.getEndSegment(format) <= 0) return false
-        if (request.sequenceNumber <= streamState.getMaxSegment(format) + 1) return false
+        if (request.getSequenceNumber() <= streamState.getMaxSegment(format) + 1) return false
         prepareForMediaSegment(request)
         return true
     }
@@ -1294,7 +1278,7 @@ class YoutubeSabrSession {
         val current = streamState.getRawPoToken()
         if (current != null && current.isNotEmpty() && !forceRefresh) return false
         val poToken = poTokenProvider.getPoToken(info, streamState, forceRefresh)
-        if (poToken != null && poToken.isNotEmpty() && !Arrays.equals(poToken, current)) {
+        if (poToken != null && poToken.isNotEmpty() && !poToken.contentEquals(current)) {
             streamState.setPoToken(poToken)
             return true
         }

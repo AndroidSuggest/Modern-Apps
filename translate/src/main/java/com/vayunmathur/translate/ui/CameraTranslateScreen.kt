@@ -1,5 +1,10 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.translate.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.translate.R
+import kotlin.concurrent.atomics.*
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Matrix
@@ -60,8 +65,6 @@ import com.vayunmathur.translate.util.Languages
 import com.vayunmathur.translate.util.TranslateViewModel
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -137,12 +140,12 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
 
         analysis.setAnalyzer(analysisExecutor) { proxy ->
             val now = System.currentTimeMillis()
-            if (pausedState.value || inFlight.get() || now - lastMs.get() < ANALYSIS_INTERVAL_MS) {
+            if (pausedState.value || inFlight.load() || now - lastMs.load() < ANALYSIS_INTERVAL_MS) {
                 proxy.close()
                 return@setAnalyzer
             }
-            lastMs.set(now)
-            inFlight.set(true)
+            lastMs.store(now)
+            inFlight.store(true)
             val bmp = try {
                 proxy.toBitmap()
             } catch (t: Throwable) {
@@ -152,7 +155,7 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
             val rotation = proxy.imageInfo.rotationDegrees
             proxy.close()
             if (bmp == null) {
-                inFlight.set(false)
+                inFlight.store(false)
                 return@setAnalyzer
             }
             // Heavy work off the analysis thread; OCR/translate suspend internally
@@ -178,7 +181,7 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
                     overlays = boxes
                     frozenFrame = upright
                 } finally {
-                    inFlight.set(false)
+                    inFlight.store(false)
                 }
             }
         }
@@ -264,7 +267,7 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
 
         if (!translationAvailable) {
             Text(
-                text = "Translation model not installed — showing detected text only",
+                text = stringResource(R.string.translation_model_not_installed_showing),
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopCenter)

@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import org.schabi.newpipe.extractor.Image
@@ -26,9 +27,8 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Optional
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * A [ChannelTabExtractor] implementation for the YouTube service.
@@ -101,25 +101,25 @@ open class YoutubeChannelTabExtractor(
         var items: JsonArray = JsonArray(emptyList())
         val tab = getTabData()
 
-        if (tab.isPresent) {
-            val tabContent = tab.get().getObject("content")
+        if (tab != null) {
+            val tabContent = tab.getObject("content")
 
-            items = tabContent!!.getObject("sectionListRenderer")!!
-                .getArray("contents")!!
-                .getObject(0)!!
-                .getObject("itemSectionRenderer")!!
-                .getArray("contents")!!
-                .getObject(0)!!
-                .getObject("gridRenderer")!!
-                .getArray("items")!!
+            items = tabContent!!.getObject("sectionListRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("itemSectionRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("gridRenderer").orEmptyObject()
+                .getArray("items").orEmptyArray()
 
             if (items.isEmpty()) {
-                items = tabContent.getObject("richGridRenderer")!!
-                    .getArray("contents")!!
+                items = tabContent.getObject("richGridRenderer").orEmptyObject()
+                    .getArray("contents").orEmptyArray()
 
                 if (items.isEmpty()) {
-                    items = tabContent.getObject("sectionListRenderer")!!
-                        .getArray("contents")!!
+                    items = tabContent.getObject("sectionListRenderer").orEmptyObject()
+                        .getArray("contents").orEmptyArray()
                 }
             }
         }
@@ -137,7 +137,7 @@ open class YoutubeChannelTabExtractor(
         val continuation = collectItemsFrom(
             collector, items, verifiedStatus,
             channelName, channelUrl
-        ).orElse(null)
+        )
 
         val nextPage = getNextPageFrom(
             continuation, listOf(channelName, channelUrl, verifiedStatus.toString())
@@ -155,54 +155,53 @@ open class YoutubeChannelTabExtractor(
         val channelIds = page.ids
         val collector = MultiInfoItemsCollector(getServiceId())
 
-        val ajaxJson = getJsonPostResponse("browse", page.body, getExtractorLocalization())
+        val ajaxJson = getJsonPostResponse("browse", page.body!!, getExtractorLocalization())
 
-        val sectionListContinuation = ajaxJson.getArray("onResponseReceivedActions")!!
+        val sectionListContinuation = ajaxJson.getArray("onResponseReceivedActions").orEmptyArray()
             .filterIsInstance<JsonObject>()
             .filter { it.containsKey("appendContinuationItemsAction") }
-            .map { it.getObject("appendContinuationItemsAction")!! }
+            .map { it.getObject("appendContinuationItemsAction").orEmptyObject() }
             .firstOrNull() ?: JsonObject(emptyMap())
 
         val continuation = collectItemsFrom(
             collector,
-            sectionListContinuation.getArray("continuationItems"), channelIds
-        ).orElse(null)
+            sectionListContinuation.getArray("continuationItems"), channelIds.orEmpty()
+        )
 
         return InfoItemsPage(collector, getNextPageFrom(continuation, channelIds))
     }
 
-    internal open fun getTabData(): Optional<JsonObject> {
+    internal open fun getTabData(): JsonObject? {
         val urlSuffix = YoutubeChannelTabLinkHandlerFactory.getUrlSuffix(getName())
 
-        return jsonResponse!!.getObject("contents")!!
-            .getObject("twoColumnBrowseResultsRenderer")!!
-            .getArray("tabs")!!
+        return jsonResponse!!.getObject("contents").orEmptyObject()
+            .getObject("twoColumnBrowseResultsRenderer").orEmptyObject()
+            .getArray("tabs").orEmptyArray()
             .filterIsInstance<JsonObject>()
             .filter { it.containsKey("tabRenderer") }
-            .map { it.getObject("tabRenderer")!! }
+            .map { it.getObject("tabRenderer").orEmptyObject() }
             .filter { tabRenderer ->
-                tabRenderer.getObject("endpoint")!!
-                    .getObject("commandMetadata")!!.getObject("webCommandMetadata")!!
-                    .getString("url", "")!!.endsWith(urlSuffix)
+                tabRenderer.getObject("endpoint").orEmptyObject()
+                    .getObject("commandMetadata").orEmptyObject().getObject("webCommandMetadata").orEmptyObject()
+                    .getString("url", "").endsWith(urlSuffix)
             }
             .firstOrNull()
-            ?.let { Optional.of(it) }
-            ?.filter { tabRenderer ->
-                val tabContents = tabRenderer.getObject("content")!!
-                    .getObject("sectionListRenderer")!!
-                    .getArray("contents")!!
-                    .getObject(0)!!
-                    .getObject("itemSectionRenderer")!!
-                    .getArray("contents")!!
-                tabContents.size != 1 || !tabContents.getObject(0)!!.containsKey("messageRenderer")
-            } ?: Optional.empty()
+            ?.takeIf { tabRenderer ->
+                val tabContents = tabRenderer.getObject("content").orEmptyObject()
+                    .getObject("sectionListRenderer").orEmptyObject()
+                    .getArray("contents").orEmptyArray()
+                    .getObject(0).orEmptyObject()
+                    .getObject("itemSectionRenderer").orEmptyObject()
+                    .getArray("contents").orEmptyArray()
+                tabContents.size != 1 || !tabContents.getObject(0).orEmptyObject().containsKey("messageRenderer")
+            }
     }
 
     private fun collectItemsFrom(
         collector: MultiInfoItemsCollector,
         items: JsonArray?,
         channelIds: List<String>
-    ): Optional<JsonObject> {
+    ): JsonObject? {
         val channelName: String?
         val channelUrl: String?
         val verifiedStatus: VerifiedStatus
@@ -230,12 +229,14 @@ open class YoutubeChannelTabExtractor(
         verifiedStatus: VerifiedStatus,
         channelName: String?,
         channelUrl: String?
-    ): Optional<JsonObject> {
-        if (items == null) return Optional.empty()
+    ): JsonObject? {
+        if (items == null) return null
+        // map is eager, so every item is still visited for its collector side effects;
+        // firstOrNull then picks the first non-null exactly as the old reduce did. (The old
+        // reduce also threw on an empty list -- this returns null instead.)
         return items.filterIsInstance<JsonObject>()
             .map { item -> collectItem(collector, item, verifiedStatus, channelName, channelUrl) }
-            .reduce { c1: Optional<JsonObject>, c2: Optional<JsonObject> -> if (c1.isPresent) c1 else c2 }
-            .let { if (it != null) it else Optional.empty() }
+            .firstOrNull { it != null }
     }
 
     private fun collectItem(
@@ -244,69 +245,69 @@ open class YoutubeChannelTabExtractor(
         channelVerifiedStatus: VerifiedStatus,
         channelName: String?,
         channelUrl: String?
-    ): Optional<JsonObject> {
+    ): JsonObject? {
         val timeAgoParser: TimeAgoParser = getTimeAgoParser()
 
         if (item.containsKey("richItemRenderer")) {
-            val richItem = item.getObject("richItemRenderer")!!.getObject("content")!!
+            val richItem = item.getObject("richItemRenderer").orEmptyObject().getObject("content").orEmptyObject()
 
             when {
                 richItem.containsKey("videoRenderer") ->
-                    commitVideo(collector, timeAgoParser, richItem.getObject("videoRenderer")!!,
+                    commitVideo(collector, timeAgoParser, richItem.getObject("videoRenderer").orEmptyObject(),
                         channelVerifiedStatus, channelName, channelUrl)
                 richItem.containsKey("reelItemRenderer") ->
-                    commitReel(collector, richItem.getObject("reelItemRenderer")!!,
+                    commitReel(collector, richItem.getObject("reelItemRenderer").orEmptyObject(),
                         channelVerifiedStatus, channelName, channelUrl)
                 richItem.containsKey("shortsLockupViewModel") ->
-                    commitShortsLockup(collector, richItem.getObject("shortsLockupViewModel")!!,
+                    commitShortsLockup(collector, richItem.getObject("shortsLockupViewModel").orEmptyObject(),
                         channelVerifiedStatus, channelName, channelUrl)
                 richItem.containsKey("playlistRenderer") ->
-                    commitPlaylist(collector, richItem.getObject("playlistRenderer")!!,
+                    commitPlaylist(collector, richItem.getObject("playlistRenderer").orEmptyObject(),
                         channelVerifiedStatus, channelName, channelUrl)
                 richItem.containsKey("lockupViewModel") ->
                     commitLockup(collector, channelVerifiedStatus, channelName, channelUrl,
                         timeAgoParser, richItem)
             }
         } else if (item.containsKey("gridVideoRenderer")) {
-            commitVideo(collector, timeAgoParser, item.getObject("gridVideoRenderer")!!,
+            commitVideo(collector, timeAgoParser, item.getObject("gridVideoRenderer").orEmptyObject(),
                 channelVerifiedStatus, channelName, channelUrl)
         } else if (item.containsKey("gridPlaylistRenderer")) {
-            commitPlaylist(collector, item.getObject("gridPlaylistRenderer")!!,
+            commitPlaylist(collector, item.getObject("gridPlaylistRenderer").orEmptyObject(),
                 channelVerifiedStatus, channelName, channelUrl)
         } else if (item.containsKey("gridShowRenderer")) {
             collector.commit(
                 YoutubeGridShowRendererChannelInfoItemExtractor(
-                    item.getObject("gridShowRenderer")!!, channelVerifiedStatus, channelName,
+                    item.getObject("gridShowRenderer").orEmptyObject(), channelVerifiedStatus, channelName,
                     channelUrl
                 )
             )
         } else if (item.containsKey("shelfRenderer")) {
             return collectItem(
-                collector, item.getObject("shelfRenderer")!!.getObject("content")!!,
+                collector, item.getObject("shelfRenderer").orEmptyObject().getObject("content").orEmptyObject(),
                 channelVerifiedStatus, channelName, channelUrl
             )
         } else if (item.containsKey("itemSectionRenderer")) {
             return collectItemsFrom(
-                collector, item.getObject("itemSectionRenderer")!!.getArray("contents"),
+                collector, item.getObject("itemSectionRenderer").orEmptyObject().getArray("contents"),
                 channelVerifiedStatus, channelName, channelUrl
             )
         } else if (item.containsKey("horizontalListRenderer")) {
             return collectItemsFrom(
-                collector, item.getObject("horizontalListRenderer")!!.getArray("items"),
+                collector, item.getObject("horizontalListRenderer").orEmptyObject().getArray("items"),
                 channelVerifiedStatus, channelName, channelUrl
             )
         } else if (item.containsKey("expandedShelfContentsRenderer")) {
             return collectItemsFrom(
-                collector, item.getObject("expandedShelfContentsRenderer")!!.getArray("items"),
+                collector, item.getObject("expandedShelfContentsRenderer").orEmptyObject().getArray("items"),
                 channelVerifiedStatus, channelName, channelUrl
             )
         } else if (item.containsKey("lockupViewModel")) {
             commitLockup(collector, channelVerifiedStatus, channelName, channelUrl, timeAgoParser, item)
         } else if (item.containsKey("continuationItemRenderer")) {
-            return Optional.ofNullable(item.getObject("continuationItemRenderer"))
+            return item.getObject("continuationItemRenderer")
         }
 
-        return Optional.empty()
+        return null
     }
 
     private fun commitLockup(
@@ -317,7 +318,7 @@ open class YoutubeChannelTabExtractor(
         timeAgoParser: TimeAgoParser,
         richItem: JsonObject
     ) {
-        val lockupViewModel = richItem.getObject("lockupViewModel")!!
+        val lockupViewModel = richItem.getObject("lockupViewModel").orEmptyObject()
         val contentType = lockupViewModel.getString("contentType")
         if ("LOCKUP_CONTENT_TYPE_PLAYLIST" == contentType ||
             "LOCKUP_CONTENT_TYPE_PODCAST" == contentType
@@ -337,12 +338,12 @@ open class YoutubeChannelTabExtractor(
     ) {
         collector.commit(
             object : YoutubeReelInfoItemExtractor(reelItemRenderer) {
-                override fun getUploaderName(): String {
+                override fun getUploaderName(): String? {
                     return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
                 }
 
-                override fun getUploaderUrl(): String {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderName() else channelUrl!!
+                override fun getUploaderUrl(): String? {
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
                 }
 
                 override fun isUploaderVerified(): Boolean {
@@ -361,12 +362,12 @@ open class YoutubeChannelTabExtractor(
     ) {
         collector.commit(
             object : YoutubeShortsLockupInfoItemExtractor(shortsLockupViewModel) {
-                override fun getUploaderName(): String {
+                override fun getUploaderName(): String? {
                     return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
                 }
 
-                override fun getUploaderUrl(): String {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderName() else channelUrl!!
+                override fun getUploaderUrl(): String? {
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
                 }
 
                 override fun isUploaderVerified(): Boolean {
@@ -390,12 +391,12 @@ open class YoutubeChannelTabExtractor(
 
                 override fun getUploaderAvatars(): List<Image> = emptyList()
 
-                override fun getUploaderName(): String {
+                override fun getUploaderName(): String? {
                     return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
                 }
 
-                override fun getUploaderUrl(): String {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderName() else channelUrl!!
+                override fun getUploaderUrl(): String? {
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
                 }
 
                 override fun isUploaderVerified(): Boolean {
@@ -414,12 +415,12 @@ open class YoutubeChannelTabExtractor(
     ) {
         collector.commit(
             object : YoutubeMixOrPlaylistLockupInfoItemExtractor(playlistLockupViewModel) {
-                override fun getUploaderName(): String {
+                override fun getUploaderName(): String? {
                     return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
                 }
 
-                override fun getUploaderUrl(): String {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderName() else channelUrl!!
+                override fun getUploaderUrl(): String? {
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
                 }
 
                 @Throws(ParsingException::class)
@@ -444,12 +445,12 @@ open class YoutubeChannelTabExtractor(
     ) {
         collector.commit(
             object : YoutubeStreamInfoItemExtractor(jsonObject, timeAgoParser) {
-                override fun getUploaderName(): String {
+                override fun getUploaderName(): String? {
                     return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
                 }
 
-                override fun getUploaderUrl(): String {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderName() else channelUrl!!
+                override fun getUploaderUrl(): String? {
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
                 }
 
                 @Throws(ParsingException::class)
@@ -473,12 +474,12 @@ open class YoutubeChannelTabExtractor(
     ) {
         collector.commit(
             object : YoutubePlaylistInfoItemExtractor(jsonObject) {
-                override fun getUploaderName(): String {
+                override fun getUploaderName(): String? {
                     return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
                 }
 
-                override fun getUploaderUrl(): String {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderName() else channelUrl!!
+                override fun getUploaderUrl(): String? {
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
                 }
 
                 @Throws(ParsingException::class)
@@ -496,20 +497,20 @@ open class YoutubeChannelTabExtractor(
     @Throws(IOException::class, ExtractionException::class)
     private fun getNextPageFrom(
         continuations: JsonObject?,
-        channelIds: List<String>
+        channelIds: List<String>?
     ): Page? {
         if (isNullOrEmpty(continuations)) {
             return null
         }
 
-        val continuationEndpoint = continuations!!.getObject("continuationEndpoint")!!
-        val continuation = continuationEndpoint.getObject("continuationCommand")!!
-            .getString("token")!!
+        val continuationEndpoint = continuations!!.getObject("continuationEndpoint").orEmptyObject()
+        val continuation = continuationEndpoint.getObject("continuationCommand").orEmptyObject()
+            .getString("token")
 
         val body = prepareDesktopJsonBuilder(getExtractorLocalization(), getExtractorContentCountry())
             .value("continuation", continuation)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         return Page("$YOUTUBEI_V1_URL${"browse"}?$DISABLE_PRETTY_PRINT_PARAMETER", null,
             channelIds, null, body)
@@ -543,7 +544,7 @@ open class YoutubeChannelTabExtractor(
 
         override fun getChannelName(): String = channelNameStr
 
-        override fun getTabData(): Optional<JsonObject> = Optional.of(tabRenderer)
+        override fun getTabData(): JsonObject? = tabRenderer
     }
 
     /**

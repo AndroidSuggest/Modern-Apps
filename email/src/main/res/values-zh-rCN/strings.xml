@@ -70,8 +70,12 @@
     <string name="generating_summary">正在生成摘要…</string>
     <string name="no_messages_found_pull_down_to_refresh">未找到邮件。下拉即可刷新。</string>
     <string name="saved_to_outbox">已保存到发件箱：<xliff:g id="reason" example="No network">%1$s</xliff:g></string>
-    <string name="attempt_s"><xliff:g id="count" example="2">%1$s</xliff:g> 次尝试</string>
-    <string name="retrying_pending_message_s">正在重试 <xliff:g id="count" example="3">%1$s</xliff:g> 封待处理邮件…</string>
+    <plurals name="attempts">
+        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> 次尝试</item>
+    </plurals>
+    <plurals name="retrying_pending_messages">
+        <item quantity="other">正在重试 <xliff:g id="count" example="3">%1$s</xliff:g> 封待处理邮件…</item>
+    </plurals>
     <string name="retry">重试</string>
     <string name="outbox_is_empty">发件箱为空</string>
     <string name="folders">文件夹</string>

@@ -1,5 +1,7 @@
 package com.vayunmathur.health.ui
 
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedMonthNames
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -87,6 +89,7 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
+import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
 import kotlin.time.Clock
@@ -386,7 +389,7 @@ fun BarChartDetails(
 
                     2 -> stringResource(
                         R.string.month_year_format,
-                        anchorDate.month.name.lowercase().replaceFirstChar { it.uppercase() },
+                        localizedMonthNames(DateNameStyle.FULL)[anchorDate.month.number - 1],
                         anchorDate.year
                     )
 

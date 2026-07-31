@@ -18,7 +18,6 @@ import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
 import java.io.IOException
 import java.io.Serializable
-import java.nio.charset.StandardCharsets
 
 /**
  * Shared functions for extracting YouTube channel pages and tabs.
@@ -57,7 +56,7 @@ object YoutubeChannelHelper {
                 val body = prepareDesktopJsonBuilder(Localization.DEFAULT, ContentCountry.DEFAULT)
                     .value("url", urlToResolve)
                     .done().toString()
-                    .toByteArray(StandardCharsets.UTF_8)
+                    .toByteArray(Charsets.UTF_8)
 
                 val jsonResponse = getJsonPostResponse(
                     "navigation/resolve_url", body, Localization.DEFAULT
@@ -125,7 +124,7 @@ object YoutubeChannelHelper {
                 .value(BROWSE_ID, id)
                 .value("params", parameters)
                 .done().toString()
-                .toByteArray(StandardCharsets.UTF_8)
+                .toByteArray(Charsets.UTF_8)
 
             val jsonResponse = getJsonPostResponse("browse", body, localization)
 

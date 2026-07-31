@@ -28,15 +28,15 @@ fun String.decodeHtml(): String =
 
 /** Maps a NewPipe [StreamInfoItem] to a [VideoInfo], or null if it has no upload date. */
 fun StreamInfoItem.toVideoInfo(): VideoInfo? {
-    val date = uploadDate ?: return null
+    val date = getUploadDate() ?: return null
     return VideoInfo(
         name.decodeHtml(),
         videoURLtoID(url),
-        duration,
-        viewCount,
+        getDuration(),
+        getViewCount(),
         date.instant.toKotlinInstant(),
         thumbnails.firstOrNull()?.url ?: "",
-        uploaderName.decodeHtml()
+        getUploaderName().orEmpty().decodeHtml()
     )
 }
 
@@ -73,22 +73,22 @@ suspend fun getVideoInfo(videoId: Long): VideoInfo = coroutineScope {
     val ex = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$idString")
     ex.fetchPage()
     VideoInfo(
-        ex.name.decodeHtml(),
+        ex.getName().decodeHtml(),
         videoId,
-        ex.length,
-        ex.viewCount,
-        ex.uploadDate!!.instant.toKotlinInstant(),
-        ex.thumbnails.first().url,
-        ex.uploaderName.decodeHtml()
+        ex.getLength(),
+        ex.getViewCount(),
+        ex.getUploadDate()!!.instant.toKotlinInstant(),
+        ex.getThumbnails().first().url,
+        ex.getUploaderName().decodeHtml()
     )
 }
 
 fun getChannelVideos(channelId: String): Sequence<VideoInfo> = sequence {
     val ex = ServiceList.YouTube.getChannelTabExtractorFromId(channelId, "videos")
     ex.fetchPage()
-    var page = ex.initialPage
+    var page = ex.getInitialPage()
     while(true) {
-        page.items.filterIsInstance<StreamInfoItem>().forEach { item ->
+        page.getItems().filterIsInstance<StreamInfoItem>().forEach { item ->
             item.toVideoInfo()?.let { yield(it) }
         }
         if(page.hasNextPage()) {
@@ -102,16 +102,17 @@ fun getChannelVideos(channelId: String): Sequence<VideoInfo> = sequence {
 
 /** First page of the YouTube Trending kiosk, mapped to [VideoInfo]. */
 suspend fun getTrendingVideos(): List<VideoInfo> = coroutineScope {
-    val ex = ServiceList.YouTube.kioskList.defaultKioskExtractor
+    val ex = ServiceList.YouTube.getKioskList().getDefaultKioskExtractor()
+        ?: return@coroutineScope emptyList()
     ex.fetchPage()
-    ex.initialPage.items.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoInfo() }
+    ex.getInitialPage().getItems().filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoInfo() }
 }
 
 /** First page of video results for [query], mapped to [VideoInfo]. */
 suspend fun searchVideos(query: String): List<VideoInfo> = coroutineScope {
     val ex = ServiceList.YouTube.getSearchExtractor(query)
     ex.fetchPage()
-    ex.initialPage.items.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoInfo() }
+    ex.getInitialPage().getItems().filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoInfo() }
 }
 
 suspend fun getChannelInfo(channelId: String): ChannelInfo = getChannelInfoFromURL(channelIDtoURL(channelId))
@@ -120,11 +121,11 @@ suspend fun getChannelInfoFromURL(url: String): ChannelInfo = coroutineScope {
     val ex = ServiceList.YouTube.getChannelExtractor(url)
     ex.fetchPage()
     ChannelInfo(
-        ex.name.decodeHtml(),
-        ex.id,
-        ex.subscriberCount,
+        ex.getName().decodeHtml(),
+        ex.getId(),
+        ex.getSubscriberCount(),
         0,
-        ex.avatars.firstOrNull()?.url ?: "",
+        ex.getAvatars().firstOrNull()?.url ?: "",
     )
 }
 

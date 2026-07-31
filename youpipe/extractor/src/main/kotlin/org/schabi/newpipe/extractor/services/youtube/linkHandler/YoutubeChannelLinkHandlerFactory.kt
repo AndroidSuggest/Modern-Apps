@@ -54,7 +54,9 @@ class YoutubeChannelLinkHandlerFactory private constructor() : ListLinkHandlerFa
             // Remove leading "/"
             path = path.substring(1)
 
-            val splitPath = path.split("/").toTypedArray()
+            // Java's String.split drops trailing empty strings; isCustomShortChannelUrl
+            // requires exactly one segment, so a trailing "/" must not add one.
+            val splitPath = path.split("/").dropLastWhile { it.isEmpty() }.toTypedArray()
 
             if (isHandle(splitPath) || isCustomShortChannelUrl(splitPath)) {
                 return splitPath[0]

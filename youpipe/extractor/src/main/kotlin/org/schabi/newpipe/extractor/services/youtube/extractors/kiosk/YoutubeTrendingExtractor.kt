@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors.kiosk
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -19,8 +20,9 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
-import java.io.IOException
-import java.nio.charset.StandardCharsets
+import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeTrendingExtractor(
     service: StreamingService,
@@ -36,7 +38,7 @@ class YoutubeTrendingExtractor(
             .value("browseId", "FEtrending")
             .value("params", VIDEOS_TAB_PARAMS)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         initialData = getJsonPostResponse("browse", body, getExtractorLocalization())
     }
@@ -47,15 +49,15 @@ class YoutubeTrendingExtractor(
 
     @Throws(ParsingException::class)
     override fun getName(): String {
-        val header = initialData!!.getObject("header")!!
+        val header = initialData!!.getObject("header").orEmptyObject()
         var name: String? = null
         when {
             header.containsKey("feedTabbedHeaderRenderer") ->
-                name = getTextAtKey(header.getObject("feedTabbedHeaderRenderer")!!, "title")
+                name = getTextAtKey(header.getObject("feedTabbedHeaderRenderer").orEmptyObject(), "title")
             header.containsKey("c4TabbedHeaderRenderer") ->
-                name = getTextAtKey(header.getObject("c4TabbedHeaderRenderer")!!, "title")
+                name = getTextAtKey(header.getObject("c4TabbedHeaderRenderer").orEmptyObject(), "title")
             header.containsKey("pageHeaderRenderer") ->
-                name = getTextAtKey(header.getObject("pageHeaderRenderer")!!, "pageTitle")
+                name = getTextAtKey(header.getObject("pageHeaderRenderer").orEmptyObject(), "pageTitle")
         }
 
         if (isNullOrEmpty(name)) {
@@ -69,28 +71,28 @@ class YoutubeTrendingExtractor(
         val collector = StreamInfoItemsCollector(getServiceId())
         val timeAgoParser = getTimeAgoParser()
         val tab = getTrendingTab()
-        val tabContent = tab.getObject("content")!!
-        val isVideoTab = tab.getObject("endpoint")!!.getObject("browseEndpoint")!!
+        val tabContent = tab.getObject("content").orEmptyObject()
+        val isVideoTab = tab.getObject("endpoint").orEmptyObject().getObject("browseEndpoint").orEmptyObject()
             .getString("params", "") == VIDEOS_TAB_PARAMS
 
         if (tabContent.containsKey("richGridRenderer")) {
-            tabContent.getObject("richGridRenderer")!!
-                .getArray("contents")!!
+            tabContent.getObject("richGridRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
                 .filterIsInstance<JsonObject>()
                 .filter { it.containsKey("richItemRenderer") }
-                .map { it.getObject("richItemRenderer")!!.getObject("content")!!.getObject("videoRenderer")!! }
+                .map { it.getObject("richItemRenderer").orEmptyObject().getObject("content").orEmptyObject().getObject("videoRenderer").orEmptyObject() }
                 .forEach { videoRenderer ->
                     collector.commit(YoutubeStreamInfoItemExtractor(videoRenderer, timeAgoParser))
                 }
         } else if (tabContent.containsKey("sectionListRenderer")) {
-            val shelves = tabContent.getObject("sectionListRenderer")!!
-                .getArray("contents")!!
+            val shelves = tabContent.getObject("sectionListRenderer").orEmptyObject()
+                .getArray("contents").orEmptyArray()
                 .filterIsInstance<JsonObject>()
                 .flatMap { content ->
-                    (content.getObject("itemSectionRenderer")!!.getArray("contents")!!)
+                    (content.getObject("itemSectionRenderer").orEmptyObject().getArray("contents").orEmptyArray())
                         .filterIsInstance<JsonObject>()
                 }
-                .map { it.getObject("shelfRenderer")!! }
+                .map { it.getObject("shelfRenderer").orEmptyObject() }
 
             val items: List<JsonObject> = if (isVideoTab) {
                 shelves.take(1)
@@ -99,12 +101,12 @@ class YoutubeTrendingExtractor(
             }
 
             items.flatMap { shelfRenderer ->
-                shelfRenderer.getObject("content")!!
-                    .getObject("expandedShelfContentsRenderer")!!
-                    .getArray("items")!!
+                shelfRenderer.getObject("content").orEmptyObject()
+                    .getObject("expandedShelfContentsRenderer").orEmptyObject()
+                    .getArray("items").orEmptyArray()
                     .filterIsInstance<JsonObject>()
             }
-                .map { it.getObject("videoRenderer")!! }
+                .map { it.getObject("videoRenderer").orEmptyObject() }
                 .forEach { videoRenderer ->
                     collector.commit(YoutubeStreamInfoItemExtractor(videoRenderer, timeAgoParser))
                 }
@@ -115,11 +117,11 @@ class YoutubeTrendingExtractor(
 
     @Throws(ParsingException::class)
     private fun getTrendingTab(): JsonObject {
-        return initialData!!.getObject("contents")!!
-            .getObject("twoColumnBrowseResultsRenderer")!!
-            .getArray("tabs")!!
+        return initialData!!.getObject("contents").orEmptyObject()
+            .getObject("twoColumnBrowseResultsRenderer").orEmptyObject()
+            .getArray("tabs").orEmptyArray()
             .filterIsInstance<JsonObject>()
-            .map { it.getObject("tabRenderer")!! }
+            .map { it.getObject("tabRenderer").orEmptyObject() }
             .filter { it.getObject("selected")?.let { sel -> 
                 // selected is boolean
                 (sel as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBoolean() ?: false

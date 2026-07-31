@@ -13,11 +13,11 @@ class BuiltinSabrSessionPolicy : SabrSessionPolicy {
                     SabrSessionPolicy.ActionType.SEND_INITIAL_REQUEST
                 else
                     SabrSessionPolicy.ActionType.SEND_FOLLOW_UP_REQUEST,
-                event.proposedBody
+                event.getProposedBody()
             )
         }
         val control = event as SabrSessionPolicy.ControlResponseEvent
-        val response = control.response
+        val response = control.getResponse()
         val actions = mutableListOf<SabrSessionPolicy.Action>()
         var next = state
         actions.add(SabrSessionPolicy.Action(SabrSessionPolicy.ActionType.APPLY_RESPONSE_STATE))
@@ -28,7 +28,7 @@ class BuiltinSabrSessionPolicy : SabrSessionPolicy {
                 state.requestNumber,
                 state.redirectCount + 1,
                 state.poTokenRefreshes,
-                state.reloads
+                state.getReloads()
             )
         }
         if (response.getSabrErrorDetails() != null) {

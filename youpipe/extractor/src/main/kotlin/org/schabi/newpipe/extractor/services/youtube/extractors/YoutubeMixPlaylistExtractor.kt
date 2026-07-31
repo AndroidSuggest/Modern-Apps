@@ -1,6 +1,8 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import org.schabi.newpipe.extractor.Image
@@ -35,9 +37,8 @@ import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getInt
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.stream.Collectors
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * A [YoutubePlaylistExtractor] for a mix (auto-generated playlist).
@@ -70,20 +71,20 @@ class YoutubeMixPlaylistExtractor(
             jsonBodyBuilder.value("playlistIndex", playlistIndexString.toInt())
         }
 
-        val body = jsonBodyBuilder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = jsonBodyBuilder.done().toString().toByteArray(Charsets.UTF_8)
 
         val headers = getYouTubeHeaders()
 
-        val response = getDownloader().postWithContentTypeJson(
+        val response = downloader.postWithContentTypeJson(
             "$YOUTUBEI_V1_URL${"next"}?$DISABLE_PRETTY_PRINT_PARAMETER", headers, body,
             localization
         )
 
         initialData = JsonUtils.toJsonObject(getValidJsonResponseBody(response))
         playlistData = initialData!!
-            .getObject("contents")!!
-            .getObject("twoColumnWatchNextResults")!!
-            .getObject("playlist")!!
+            .getObject("contents").orEmptyObject()
+            .getObject("twoColumnWatchNextResults").orEmptyObject()
+            .getObject("playlist").orEmptyObject()
             .getObject("playlist")
         if (isNullOrEmpty(playlistData)) {
             val ex = ExtractionException("Could not get playlistData")
@@ -112,8 +113,8 @@ class YoutubeMixPlaylistExtractor(
         } catch (e: Exception) {
             try {
                 return getThumbnailsFromVideoId(
-                    initialData!!.getObject("currentVideoEndpoint")!!
-                        .getObject("watchEndpoint")!!.getString("videoId")!!
+                    initialData!!.getObject("currentVideoEndpoint").orEmptyObject()
+                        .getObject("watchEndpoint").orEmptyObject().getString("videoId")!!
                 )
             } catch (ignored: Exception) {
             }
@@ -122,9 +123,9 @@ class YoutubeMixPlaylistExtractor(
         }
     }
 
-    override fun getUploaderUrl(): String = ""
+    override fun getUploaderUrl(): String? = ""
 
-    override fun getUploaderName(): String = "YouTube"
+    override fun getUploaderName(): String? = "YouTube"
 
     override fun getUploaderAvatars(): List<Image> = emptyList()
 
@@ -151,18 +152,18 @@ class YoutubeMixPlaylistExtractor(
         playlistJson: JsonObject,
         cookies: Map<String, String>
     ): Page {
-        val lastStream = playlistJson.getArray("contents")!!
-            .getOrNull(playlistJson.getArray("contents")!!.size - 1) as? JsonObject
+        val lastStream = playlistJson.getArray("contents").orEmptyArray()
+            .getOrNull(playlistJson.getArray("contents").orEmptyArray().size - 1) as? JsonObject
         if (lastStream == null || lastStream.getObject("playlistPanelVideoRenderer") == null) {
             throw ExtractionException("Could not extract next page url")
         }
 
-        val watchEndpoint = lastStream.getObject("playlistPanelVideoRenderer")!!
-            .getObject("navigationEndpoint")!!.getObject("watchEndpoint")!!
-        val playlistId = watchEndpoint.getString("playlistId")!!
-        val videoId = watchEndpoint.getString("videoId")!!
-        val index = watchEndpoint.getInt("index")!!
-        val params = watchEndpoint.getString("params")!!
+        val watchEndpoint = lastStream.getObject("playlistPanelVideoRenderer").orEmptyObject()
+            .getObject("navigationEndpoint").orEmptyObject().getObject("watchEndpoint").orEmptyObject()
+        val playlistId = watchEndpoint.getString("playlistId")
+        val videoId = watchEndpoint.getString("videoId")
+        val index = watchEndpoint.getInt("index", 0)
+        val params = watchEndpoint.getString("params")
         val body = prepareDesktopJsonBuilder(
             getExtractorLocalization(), getExtractorContentCountry()
         )
@@ -171,7 +172,7 @@ class YoutubeMixPlaylistExtractor(
             .value("playlistIndex", index)
             .value("params", params)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         return Page(
             "$YOUTUBEI_V1_URL${"next"}?$DISABLE_PRETTY_PRINT_PARAMETER", null, null,
@@ -185,34 +186,33 @@ class YoutubeMixPlaylistExtractor(
         if (page == null || isNullOrEmpty(page.url)) {
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
-        if (!page.cookies.containsKey(COOKIE_NAME)) {
+        if (page.cookies?.containsKey(COOKIE_NAME) != true) {
             throw IllegalArgumentException("Cookie '$COOKIE_NAME' is missing")
         }
 
         val collector = StreamInfoItemsCollector(getServiceId())
         val headers = getYouTubeHeaders()
 
-        val response = getDownloader().postWithContentTypeJson(
+        val response = downloader.postWithContentTypeJson(
             page.url, headers,
             page.body, getExtractorLocalization()
         )
         val ajaxJson = JsonUtils.toJsonObject(getValidJsonResponseBody(response))
-        val playlistJson = ajaxJson.getObject("contents")!!
-            .getObject("twoColumnWatchNextResults")!!.getObject("playlist")!!
-            .getObject("playlist")!!
-        val allStreams = playlistJson.getArray("contents")!!
+        val playlistJson = ajaxJson.getObject("contents").orEmptyObject()
+            .getObject("twoColumnWatchNextResults").orEmptyObject().getObject("playlist").orEmptyObject()
+            .getObject("playlist").orEmptyObject()
+        val allStreams = playlistJson.getArray("contents").orEmptyArray()
         val newStreams = allStreams.subList(
             (playlistJson.getInt("currentIndex") ?: 0) + 1, allStreams.size
         ).toList()
 
         collectStreamsFrom(collector, newStreams)
-        return ListExtractor.InfoItemsPage(collector, getNextPageFrom(playlistJson, page.cookies))
+        return ListExtractor.InfoItemsPage(collector, getNextPageFrom(playlistJson, page.cookies!!))
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun collectStreamsFrom(
         collector: StreamInfoItemsCollector,
-        streams: List<Any?>?
+        streams: List<JsonElement>?
     ) {
         if (streams == null) {
             return
@@ -220,19 +220,12 @@ class YoutubeMixPlaylistExtractor(
 
         val timeAgoParser = getTimeAgoParser()
 
-        JsonArray(streams).filterIsInstance<JsonObject>()
+        streams.filterIsInstance<JsonObject>()
             .map { stream ->
-                val renderer = stream.getObject("playlistPanelVideoRenderer")!!
+                val renderer = stream.getObject("playlistPanelVideoRenderer").orEmptyObject()
                 YoutubeStreamInfoItemExtractor(renderer, timeAgoParser)
             }
-            .forEachOrdered(collector::commit)
-    }
-
-    private fun collectStreamsFrom(
-        collector: StreamInfoItemsCollector,
-        streams: JsonArray?
-    ) {
-        collectStreamsFrom(collector, streams?.toList())
+            .forEach(collector::commit)
     }
 
     private fun getThumbnailsFromPlaylistId(playlistId: String): List<Image> {
@@ -241,15 +234,13 @@ class YoutubeMixPlaylistExtractor(
 
     private fun getThumbnailsFromVideoId(videoId: String): List<Image> {
         val baseUrl = "https://i.ytimg.com/vi/$videoId/"
-        return IMAGE_URL_SUFFIXES_AND_RESOLUTIONS.stream()
-            .map { imageSuffix ->
-                Image(
-                    baseUrl + imageSuffix.suffix,
-                    imageSuffix.height, imageSuffix.width,
-                    imageSuffix.resolutionLevel
-                )
-            }
-            .collect(Collectors.toUnmodifiableList())
+        return IMAGE_URL_SUFFIXES_AND_RESOLUTIONS.map { imageSuffix ->
+            Image(
+                baseUrl + imageSuffix.suffix,
+                imageSuffix.height, imageSuffix.width,
+                imageSuffix.resolutionLevel
+            )
+        }
     }
 
     @Throws(ParsingException::class)

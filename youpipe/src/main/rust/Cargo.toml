@@ -1,0 +1,23 @@
+[package]
+name = "youpipe_extractor"
+version = "0.1.0"
+edition = "2021"
+description = "YouTube (InnerTube) extractor for the youpipe app — a Rust port of PipePipeExtractor, exposed via JNI"
+license = "GPL-3.0-only"
+
+[lib]
+name = "youpipe_extractor"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+jni_http = { path = "../../../../library/jni-http/src/main/rust" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

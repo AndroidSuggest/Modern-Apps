@@ -22,12 +22,9 @@ object OmTilesNative {
      * Decode [variable] from the `.om` file at [omUrl] over the bounding box
      * [west]/[south]/[east]/[north], resampling into an [outW] × [outH] raster.
      *
-     * Restored efficient path (fixed crash): Rust no longer embeds `ureq`
-     * (~90 crates) for HTTP – it now calls back to
-     * `OmRangeFetcher.getFileSize` / `fetchRange` via JNI (HttpURLConnection
-     * + 64KB block cache + LRU of 12 files). Only covering chunks are fetched,
-     * avoiding OOM from full 148 MB file downloads that the `decodeRegionBytes`
-     * experiment caused.
+     * Rust fetches the bytes itself over HTTP Range (rustls; see `http_range.rs`), backed by a
+     * 64KB block cache and an LRU of 12 files. Only the chunks a view covers are fetched, which
+     * is what avoids the OOM the full-file `decodeRegionBytes` experiment caused.
      *
      * Blocking; call off the main thread. Returns null on any error so callers
      * degrade gracefully instead of crashing.

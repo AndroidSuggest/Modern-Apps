@@ -134,7 +134,10 @@
     <!-- Dialog title for deleting multiple selected contacts -->
     <string name="delete_selected_contacts_title">Delete selected contacts</string>
     <!-- Confirmation for bulk delete. %1$d = number of selected contacts -->
-    <string name="delete_selected_contacts_confirm">Are you sure you want to delete the <xliff:g id="count" example="5">%1$d</xliff:g> selected contacts? This action cannot be undone.</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="one">Are you sure you want to delete the <xliff:g id="count" example="5">%1$d</xliff:g> selected contact? This action cannot be undone.</item>
+        <item quantity="other">Are you sure you want to delete the <xliff:g id="count" example="5">%1$d</xliff:g> selected contacts? This action cannot be undone.</item>
+    </plurals>
     <!-- Top bar title in multi-select mode showing selection count. %1$d = count -->
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> selected</string>
     <!-- Settings section header for display preferences -->
@@ -188,13 +191,19 @@
     <!-- Empty state when VCF file contains no contacts -->
     <string name="no_contacts_found">No contacts found</string>
     <!-- Summary showing number of contacts parsed from VCF ready to import. %1$d = contact count -->
-    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> contacts ready to import</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> contact ready to import</item>
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> contacts ready to import</item>
+    </plurals>
     <!-- Dialog title: select account from list -->
     <string name="select_account">Select account</string>
     <!-- Placeholder when contact has no name -->
     <string name="no_name">(No name)</string>
     <!-- Contacts count label in account section. %1$d = number of contacts -->
-    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</string>
+    <plurals name="contacts_count">
+        <item quantity="one"><xliff:g id="count" example="42">%1$d</xliff:g> contact</item>
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</item>
+    </plurals>
     <!-- Action when incoming call from unknown number: add number to existing contact -->
     <string name="add_number_to_contact">Add number to contact</string>
     <!-- Action when incoming call from unknown number: create brand new contact -->

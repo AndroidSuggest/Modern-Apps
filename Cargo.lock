@@ -824,6 +824,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "jni_http"
+version = "0.1.0"
+dependencies = [
+ "jni",
+]
+
+[[package]]
 name = "jobserver"
 version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -887,7 +894,7 @@ dependencies = [
  "hybrid-array",
  "indexmap",
  "js-sys",
- "quick-xml",
+ "quick-xml 0.41.0",
  "rust-argon2",
  "salsa20",
  "secrecy",
@@ -1007,6 +1014,7 @@ name = "office_engine"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "quick-xml 0.37.5",
  "serde",
  "serde_json",
 ]
@@ -1159,6 +1167,15 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "version_check",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.37.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -1712,6 +1729,7 @@ name = "weather_om"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "jni_http",
  "om-file-format-sys",
 ]
 
@@ -1810,6 +1828,16 @@ dependencies = [
  "rand_core 0.6.4",
  "serde",
  "zeroize",
+]
+
+[[package]]
+name = "youpipe_extractor"
+version = "0.1.0"
+dependencies = [
+ "jni",
+ "jni_http",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

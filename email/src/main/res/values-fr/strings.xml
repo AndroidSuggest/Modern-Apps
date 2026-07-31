@@ -70,8 +70,12 @@
     <string name="generating_summary">Génération du résumé…</string>
     <string name="no_messages_found_pull_down_to_refresh">Aucun message trouvé. Faites glisser vers le bas pour actualiser.</string>
     <string name="saved_to_outbox">Enregistré dans la boîte d’envoi : %1$s</string>
-    <string name="attempt_s">%1$s tentative(s)</string>
-    <string name="retrying_pending_message_s">Nouvelle tentative d’envoi de %1$s message(s) en attente…</string>
+    <plurals name="attempts">
+        <item quantity="other">%1$s tentative(s)</item>
+    </plurals>
+    <plurals name="retrying_pending_messages">
+        <item quantity="other">Nouvelle tentative d’envoi de %1$s message(s) en attente…</item>
+    </plurals>
     <string name="retry">Réessayer</string>
     <string name="outbox_is_empty">La boîte d’envoi est vide</string>
     <string name="folders">Dossiers</string>

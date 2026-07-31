@@ -168,7 +168,7 @@ internal object SabrDownloadHelper {
             SabrDownloadTarget(VIDEO_INDEX, videoFormat, videoFile),
         )
         // Both tracks are requested together for the whole download.
-        session.streamState.setVideoAndAudioRequestMode()
+        session.getStreamState().setVideoAndAudioRequestMode()
 
         var writtenBytes = 0L
         val onBytesWritten: (SabrDownloadTarget, Long) -> Unit = { _, delta ->
@@ -223,7 +223,7 @@ internal object SabrDownloadHelper {
                 break
             }
 
-            session.streamState.setPlayerTimeMs(session.streamState.minBufferedEndMs)
+            session.getStreamState().setPlayerTimeMs(session.getStreamState().getMinBufferedEndMs())
             val segmentCount = session.pumpOnceStreaming(localization)
             writer.observeWrittenInitializations()
             wroteSegment = writer.drainCachedInitializations() || wroteSegment
@@ -278,16 +278,16 @@ internal object SabrDownloadHelper {
         session: YoutubeSabrSession,
         writer: SabrSegmentWriter,
     ) {
-        if (session.cachedBytes <= MAX_SESSION_CACHE_BYTES) {
+        if (session.getCachedBytes() <= MAX_SESSION_CACHE_BYTES) {
             return
         }
         writer.drainCachedSegments()
-        if (session.cachedBytes <= MAX_SESSION_CACHE_BYTES) {
+        if (session.getCachedBytes() <= MAX_SESSION_CACHE_BYTES) {
             return
         }
         throw SabrDownloadException(
             SabrDownloadException.Reason.STALLED,
-            "SABR download stalled: cached media grew to ${session.cachedBytes} bytes",
+            "SABR download stalled: cached media grew to ${session.getCachedBytes()} bytes",
         )
     }
 
@@ -301,7 +301,7 @@ internal object SabrDownloadHelper {
     ): Boolean {
         return targets.all { target ->
             target.pending.isEmpty() &&
-                (session.streamState.isComplete(target.format) ||
+                (session.getStreamState().isComplete(target.format) ||
                     session.isBeyondEnd(SabrSegmentRequest.media(target.format, target.nextWriteSequence)))
         }
     }

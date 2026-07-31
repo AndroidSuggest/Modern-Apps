@@ -1,11 +1,13 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.notes.data
 
+import kotlin.uuid.Uuid
 import com.vayunmathur.library.ink.SerializedStroke
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.UUID
 
 /**
  * One piece of a note's body. A note is an ordered list of blocks so it can mix
@@ -45,7 +47,7 @@ sealed interface NoteBlock {
     ) : NoteBlock
 }
 
-fun randomBlockId(): String = UUID.randomUUID().toString()
+fun randomBlockId(): String = Uuid.random().toString()
 
 /**
  * The full body of a note: an ordered list of inline [blocks]. Serialized to the

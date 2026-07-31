@@ -15,18 +15,20 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
     private val lockupViewModel: JsonObject
 ) : PlaylistInfoItemExtractor {
 
-    private val thumbnailViewModel: JsonObject = lockupViewModel.getObject("contentImage")!!
-        .getObject("collectionThumbnailViewModel")!!
-        .getObject("primaryThumbnail")!!
-        .getObject("thumbnailViewModel")!!
+    private val thumbnailViewModel: JsonObject = lockupViewModel.getObject("contentImage").orEmptyObject()
+        .getObject("collectionThumbnailViewModel").orEmptyObject()
+        .getObject("primaryThumbnail").orEmptyObject()
+        .getObject("thumbnailViewModel").orEmptyObject()
 
-    private val lockupMetadataViewModel: JsonObject = lockupViewModel.getObject("metadata")!!
-        .getObject("lockupMetadataViewModel")!!
+    private val lockupMetadataViewModel: JsonObject = lockupViewModel.getObject("metadata").orEmptyObject()
+        .getObject("lockupMetadataViewModel").orEmptyObject()
 
     /*
     The metadata rows are structured in the following way:
@@ -42,10 +44,10 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
     2nd element: playlist type (course, playlist, podcast)
     3rd element (not always returned): playlist updated date
      */
-    private val firstMetadataRow: JsonObject = lockupMetadataViewModel.getObject("metadata")!!
-        .getObject("contentMetadataViewModel")!!
-        .getArray("metadataRows")!!
-        .getObject(0)!!
+    private val firstMetadataRow: JsonObject = lockupMetadataViewModel.getObject("metadata").orEmptyObject()
+        .getObject("contentMetadataViewModel").orEmptyObject()
+        .getArray("metadataRows").orEmptyArray()
+        .getObject(0).orEmptyObject()
 
     private var playlistType: PlaylistInfo.PlaylistType
 
@@ -60,11 +62,11 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderName(): String {
-        return firstMetadataRow.getArray("metadataParts")!!
-            .getObject(0)!!
-            .getObject("text")!!
-            .getString("content")!!
+    override fun getUploaderName(): String? {
+        return firstMetadataRow.getArray("metadataParts").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("text").orEmptyObject()
+            .getString("content")
     }
 
     @Throws(ParsingException::class)
@@ -74,12 +76,12 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
         }
 
         return getUrlFromNavigationEndpoint(
-            firstMetadataRow.getArray("metadataParts")!!
-                .getObject(0)!!
-                .getObject("text")!!
-                .getArray("commandRuns")!!
-                .getObject(0)!!
-                .getObject("onTap")!!
+            firstMetadataRow.getArray("metadataParts").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("text").orEmptyObject()
+                .getArray("commandRuns").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("onTap").orEmptyObject()
                 .getObject("innertubeCommand")
         )
     }
@@ -91,10 +93,10 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
         }
 
         return hasArtistOrVerifiedIconBadgeAttachment(
-            firstMetadataRow.getArray("metadataParts")!!
-                .getObject(0)!!
-                .getObject("text")!!
-                .getArray("attachmentRuns")!!
+            firstMetadataRow.getArray("metadataParts").orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject("text").orEmptyObject()
+                .getArray("attachmentRuns").orEmptyArray()
         )
     }
 
@@ -106,7 +108,7 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
 
         try {
             return Utils.removeNonDigitCharacters(
-                thumbnailViewModel.getArray("overlays")!!
+                thumbnailViewModel.getArray("overlays").orEmptyArray()
                     .filterIsInstance<JsonObject>()
                     .filter { it.containsKey("thumbnailOverlayBadgeViewModel") }
                     .firstOrNull()
@@ -126,8 +128,9 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun getName(): String {
-        return lockupMetadataViewModel.getObject("title")!!
-            .getString("content")!!
+        return lockupMetadataViewModel.getObject("title").orEmptyObject()
+            .getString("content")
+            ?: throw ParsingException("Could not get name")
     }
 
     @Throws(ParsingException::class)
@@ -142,17 +145,17 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
         }
 
         return getUrlFromNavigationEndpoint(
-            lockupViewModel.getObject("rendererContext")!!
-                .getObject("commandContext")!!
-                .getObject("onTap")!!
-                .getObject("innertubeCommand")!!
+            lockupViewModel.getObject("rendererContext").orEmptyObject()
+                .getObject("commandContext").orEmptyObject()
+                .getObject("onTap").orEmptyObject()
+                .getObject("innertubeCommand").orEmptyObject()
         ) ?: throw ParsingException("Could not get url")
     }
 
     override fun getThumbnails(): List<Image> {
         return getImagesFromThumbnailsArray(
-            thumbnailViewModel.getObject("image")!!
-                .getArray("sources")!!
+            thumbnailViewModel.getObject("image").orEmptyObject()
+                .getArray("sources").orEmptyArray()
         )
     }
 

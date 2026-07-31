@@ -12,7 +12,7 @@ internal object SabrDownloadFormatResolver {
     @Throws(IOException::class)
     fun resolveAudioFormat(info: YoutubeSabrInfo, itag: Int): YoutubeSabrFormat {
         val byItag = if (itag > 0) {
-            info.formats.firstOrNull { it.isAudio && it.itag == itag }
+            info.getFormats().firstOrNull { it.isAudio && it.itag == itag }
         } else {
             null
         }
@@ -31,7 +31,7 @@ internal object SabrDownloadFormatResolver {
     @Throws(IOException::class)
     fun resolveVideoFormat(info: YoutubeSabrInfo, itag: Int): YoutubeSabrFormat {
         val byItag = if (itag > 0) {
-            info.formats.firstOrNull { it.isVideo && it.itag == itag }
+            info.getFormats().firstOrNull { it.isVideo && it.itag == itag }
         } else {
             null
         }

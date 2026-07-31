@@ -19,7 +19,6 @@
     <string name="cut_glue">Découper et assembler</string>
     <string name="password">Mot de passe</string>
     <string name="encrypt_with_password">Chiffrer avec un mot de passe</string>
-    <string name="signed_and_saved">Signé et enregistré</string>
     <string name="sign">Signer</string>
     <string name="opacity">Opacité : %1$s %</string>
     <string name="pdf_cut_and_glue">Découpage et assemblage de PDF</string>
@@ -32,7 +31,6 @@
     <string name="searchable_ocr">Avec recherche de texte (OCR)</string>
     <string name="password_required">Mot de passe requis</string>
     <string name="green">Vert</string>
-    <string name="signing_failed">Échec de la signature</string>
     <string name="red">Rouge</string>
     <string name="cancel">Annuler</string>
     <string name="outline">Contour</string>

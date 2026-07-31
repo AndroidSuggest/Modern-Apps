@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.games.logicgate.util
 
+import kotlin.uuid.Uuid
 import android.app.Application
 import android.content.Context
 import androidx.compose.ui.geometry.Offset
@@ -21,7 +24,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.UUID
 
 // Persisted format v2 with busWidth + lenient json
 @Serializable
@@ -154,7 +156,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addGateAt(chipId: String, x: Float?, y: Float?): String {
         val state = _uiState.value
-        val newId = "G_${UUID.randomUUID().toString().take(6)}"
+        val newId = "G_${Uuid.random().toString().take(6)}"
         val cnt = state.circuit.gates.size
         // Alchemist-style responsive placement: use window-relative defaults clamped to sane visible range
         // instead of 0..3000 which places off-screen on small portrait
@@ -372,7 +374,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
             updateCircuit(s.copy(outputMappings=newMap))
         } else {
             val existingWires = s.wires.filterNot { it.to==realTo }
-            val newWire = Wire(id="W_${UUID.randomUUID().toString().take(6)}", from=realFrom, to=realTo, busWidth=srcW)
+            val newWire = Wire(id="W_${Uuid.random().toString().take(6)}", from=realFrom, to=realTo, busWidth=srcW)
             updateCircuit(s.copy(wires=existingWires + newWire))
         }
         _uiState.update { it.copy(wiringFrom=null, dragGhostLineEnd=null) }

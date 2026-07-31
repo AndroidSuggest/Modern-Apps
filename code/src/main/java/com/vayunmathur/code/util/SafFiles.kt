@@ -4,7 +4,6 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.DocumentsContract
-import java.io.BufferedReader
 
 /**
  * A single entry (file or directory) discovered through the Storage Access Framework.
@@ -80,7 +79,7 @@ object SafFiles {
     fun readText(context: Context, uri: Uri): String {
         context.contentResolver.openInputStream(uri).use { input ->
             requireNotNull(input) { "Unable to open $uri for reading" }
-            return input.bufferedReader().use(BufferedReader::readText)
+            return input.bufferedReader().use { it.readText() }
         }
     }
 

@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.health.util
 
+import kotlin.uuid.Uuid
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
@@ -22,8 +25,6 @@ import com.vayunmathur.health.data.HealthDatabase
 import com.vayunmathur.health.data.Record
 import com.vayunmathur.health.data.RecordType
 import com.vayunmathur.library.util.Tuple3
-import java.time.ZoneOffset
-import java.util.UUID
 import kotlin.reflect.KClass
 import kotlin.time.Instant
 import kotlinx.datetime.DateTimeUnit
@@ -76,6 +77,13 @@ object HealthAPI {
         }
     }
 
+    /**
+     * Health Connect's record constructors take a `java.time.ZoneOffset`, so that type is
+     * fixed by the SDK; this just derives it from the system zone at [instant].
+     */
+    private fun systemOffsetAt(instant: java.time.Instant) =
+        java.time.ZoneId.systemDefault().rules.getOffset(instant)
+
     suspend fun writeHealthRecord(record: Record) {
         Log.d("HealthAPI", "writeHealthRecord: type=${record.type}, metadata=${record.metadata}")
         val startInstant = record.startTime
@@ -87,11 +95,9 @@ object HealthAPI {
                         val nd = record.nutritionData ?: return
                         NutritionRecord(
                                 startTime = startInstant,
-                                startZoneOffset =
-                                        ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                                startZoneOffset = systemOffsetAt(startInstant),
                                 endTime = endInstant,
-                                endZoneOffset =
-                                        ZoneOffset.systemDefault().rules.getOffset(endInstant),
+                                endZoneOffset = systemOffsetAt(endInstant),
                                 name = record.metadata,
                                 energy = Energy.kilocalories(nd.calories),
                                 protein = Mass.grams(nd.protein),
@@ -140,48 +146,46 @@ object HealthAPI {
                     RecordType.Hydration -> {
                         HydrationRecord(
                                 startTime = startInstant,
-                                startZoneOffset =
-                                        ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                                startZoneOffset = systemOffsetAt(startInstant),
                                 endTime = endInstant,
-                                endZoneOffset =
-                                        ZoneOffset.systemDefault().rules.getOffset(endInstant),
+                                endZoneOffset = systemOffsetAt(endInstant),
                                 volume = Volume.liters(record.value),
                                 metadata = Metadata.manualEntry(clientRecordId = record.id)
                         )
                     }
                     RecordType.Weight -> WeightRecord(
                             time = startInstant,
-                            zoneOffset = ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                            zoneOffset = systemOffsetAt(startInstant),
                             weight = Mass.kilograms(record.value),
                             metadata = Metadata.manualEntry(clientRecordId = record.id)
                     )
                     RecordType.Height -> HeightRecord(
                             time = startInstant,
-                            zoneOffset = ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                            zoneOffset = systemOffsetAt(startInstant),
                             height = Length.meters(record.value),
                             metadata = Metadata.manualEntry(clientRecordId = record.id)
                     )
                     RecordType.BodyFat -> BodyFatRecord(
                             time = startInstant,
-                            zoneOffset = ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                            zoneOffset = systemOffsetAt(startInstant),
                             percentage = Percentage(record.value),
                             metadata = Metadata.manualEntry(clientRecordId = record.id)
                     )
                     RecordType.LeanBodyMass -> LeanBodyMassRecord(
                             time = startInstant,
-                            zoneOffset = ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                            zoneOffset = systemOffsetAt(startInstant),
                             mass = Mass.kilograms(record.value),
                             metadata = Metadata.manualEntry(clientRecordId = record.id)
                     )
                     RecordType.BoneMass -> BoneMassRecord(
                             time = startInstant,
-                            zoneOffset = ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                            zoneOffset = systemOffsetAt(startInstant),
                             mass = Mass.kilograms(record.value),
                             metadata = Metadata.manualEntry(clientRecordId = record.id)
                     )
                     RecordType.BodyWaterMass -> BodyWaterMassRecord(
                             time = startInstant,
-                            zoneOffset = ZoneOffset.systemDefault().rules.getOffset(startInstant),
+                            zoneOffset = systemOffsetAt(startInstant),
                             mass = Mass.kilograms(record.value),
                             metadata = Metadata.manualEntry(clientRecordId = record.id)
                     )

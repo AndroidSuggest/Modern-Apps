@@ -1,5 +1,8 @@
 package com.vayunmathur.education.util
 
+import kotlin.time.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -29,7 +32,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
-import java.time.LocalDate
 
 /**
  * The single hub for the Education app: exposes the (immutable) content spine
@@ -143,7 +145,7 @@ class EducationViewModel(
     /** Persists a graded [result]: best-of star per skill, streak, and total stars. */
     fun commitResult(result: QuizResult) {
         viewModelScope.launch(Dispatchers.IO) {
-            val today = LocalDate.now().toEpochDay()
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toEpochDays()
             for ((skillId, stars) in result.perSkillStars) {
                 val existing = skillProgressDao.get(skillId)
                 skillProgressDao.upsert(

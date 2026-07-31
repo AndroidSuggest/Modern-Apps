@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Calculator</string>
+    <string name="history">History</string>
+    <string name="no_calculations_yet">No calculations yet.</string>
+    <string name="close">Close</string>
+    <string name="clear">Clear</string>
+    <string name="graph">Graph</string>
+    <string name="analysis">Analysis</string>
+    <string name="done">Done</string>
+    <string name="clear_markers">Clear markers</string>
+    <string name="add_function">Add function</string>
 </resources>

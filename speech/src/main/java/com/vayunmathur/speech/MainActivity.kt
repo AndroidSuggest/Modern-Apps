@@ -1,5 +1,7 @@
 package com.vayunmathur.speech
 
+import com.vayunmathur.speech.R
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
@@ -92,7 +94,7 @@ private fun SetupScreen() {
         ActivityResultContracts.RequestPermission()
     ) { refresh++ }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("MA Speech") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.recognition_service_label)) }) }) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -102,7 +104,7 @@ private fun SetupScreen() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                "Offline, on-device speech (Whisper recognition + Piper voice, ~99 languages) for " +
+                stringResource(R.string.offline_on_device_speech_whisper_recogni) +
                     "the whole system via MA Speech. Models download once, then everything runs with no internet, " +
                     "no Google — works on GrapheneOS.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -121,7 +123,7 @@ private fun SetupScreen() {
             ) {
                 if (!modelReady) {
                     ModelDownloadButton(
-                        label = "Download model (~113 MB)",
+                        label = stringResource(R.string.download_model_113_mb),
                         progressOf = { WhisperModel.progress(ds) },
                         download = { WhisperModel.download(context, ds) },
                         onDone = { refresh++ },
@@ -138,7 +140,7 @@ private fun SetupScreen() {
             ) {
                 if (!hasMic) {
                     Button(onClick = { micPermission.launch(Manifest.permission.RECORD_AUDIO) }) {
-                        Text("Grant microphone")
+                        Text(stringResource(R.string.grant_microphone))
                     }
                 }
             }
@@ -161,7 +163,7 @@ private fun SetupScreen() {
                             runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
                         }
                     refresh++
-                }) { Text("Open voice input settings") }
+                }) { Text(stringResource(R.string.open_voice_input_settings)) }
             }
 
             // 3) Try it
@@ -180,7 +182,7 @@ private fun SetupScreen() {
             ) {
                 if (!ttsModelReady) {
                     ModelDownloadButton(
-                        label = "Download voice (~64 MB)",
+                        label = stringResource(R.string.download_voice_64_mb),
                         progressOf = { PiperModel.progress(ds) },
                         download = {
                             PiperModel.download(context, ds)
@@ -209,7 +211,7 @@ private fun SetupScreen() {
                             runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
                         }
                     refresh++
-                }) { Text("Open text-to-speech settings") }
+                }) { Text(stringResource(R.string.open_text_to_speech_settings)) }
             }
 
             TtsTestSection(enabled = ttsModelReady)
@@ -280,7 +282,7 @@ private fun TestSection(enabled: Boolean) {
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Try it", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.try_it), fontWeight = FontWeight.Bold)
             Button(
                 enabled = enabled,
                 onClick = {
@@ -312,9 +314,9 @@ private fun TestSection(enabled: Boolean) {
                     }
                     sr.startListening(intent)
                 },
-            ) { Text("Test microphone") }
+            ) { Text(stringResource(R.string.test_microphone)) }
             if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary)
-            if (result.isNotBlank()) Text("Heard: $result")
+            if (result.isNotBlank()) Text(stringResource(R.string.heard, result))
         }
     }
 }
@@ -331,7 +333,7 @@ private fun TtsTestSection(enabled: Boolean) {
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Try the voice", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.try_the_voice), fontWeight = FontWeight.Bold)
             Button(
                 enabled = enabled,
                 onClick = {
@@ -357,7 +359,7 @@ private fun TtsTestSection(enabled: Boolean) {
                     )
                     engine.value = tts
                 },
-            ) { Text("Speak sample") }
+            ) { Text(stringResource(R.string.speak_sample)) }
             if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary)
         }
     }

@@ -16,7 +16,6 @@ import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import java.net.MalformedURLException
 import java.net.URL
-import java.util.function.Consumer
 
 object YoutubeMetaInfoHelper {
 
@@ -37,7 +36,7 @@ object YoutubeMetaInfoHelper {
                     metaInfo.add(getClarificationRenderer(it))
                 }
                 sectionContent.getObject("emergencyOneboxRenderer")?.let {
-                    getEmergencyOneboxRenderer(it, Consumer { info -> metaInfo.add(info) })
+                    getEmergencyOneboxRenderer(it) { info -> metaInfo.add(info) }
                 }
             }
         }
@@ -138,7 +137,7 @@ object YoutubeMetaInfoHelper {
     @Throws(ParsingException::class)
     private fun getEmergencyOneboxRenderer(
         emergencyOneboxRenderer: JsonObject,
-        addMetaInfo: Consumer<MetaInfo>
+        addMetaInfo: (MetaInfo) -> Unit
     ) {
         val supportRenderers = emergencyOneboxRenderer.values
             .filterIsInstance<JsonObject>()
@@ -200,7 +199,7 @@ object YoutubeMetaInfoHelper {
                 throw ParsingException("Could not parse emergency renderer url", e)
             }
 
-            addMetaInfo.accept(metaInfo)
+            addMetaInfo(metaInfo)
         }
     }
 }

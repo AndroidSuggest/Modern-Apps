@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.pdf.ui.components
 
+import kotlin.uuid.Uuid
 import android.net.Uri
 import android.util.Log
 import androidx.camera.core.CameraSelector
@@ -25,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vayunmathur.library.ui.IconCamera
 import java.io.File
-import java.util.UUID
 import java.util.concurrent.Executors
 
 @Composable
@@ -66,7 +68,7 @@ fun CameraPreview(onImageCaptured: (Uri) -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         FloatingActionButton(
             onClick = {
-                val file = File(context.cacheDir, "${UUID.randomUUID()}.jpg")
+                val file = File(context.cacheDir, "${Uuid.random()}.jpg")
                 imageCapture.targetRotation = previewView.display.rotation
                 val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
                 imageCapture.takePicture(

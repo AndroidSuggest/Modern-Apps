@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.gvoice
 
+import kotlin.concurrent.atomics.*
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Base64
@@ -15,7 +18,6 @@ import org.json.JSONObject
 import waa.Waa
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * WebView-based WAA request signer.
@@ -221,7 +223,7 @@ class WaaSigner(
      * [payload] is null for the blank/ping signature.
      */
     private suspend fun execute(payload: JSONObject?): String? {
-        val reqId = reqCounter.incrementAndGet().toString()
+        val reqId = reqCounter.incrementAndFetch().toString()
         val waiter = CompletableDeferred<Result<String>>()
         waiters[reqId] = waiter
         val payloadJs = payload?.toString() ?: "undefined"

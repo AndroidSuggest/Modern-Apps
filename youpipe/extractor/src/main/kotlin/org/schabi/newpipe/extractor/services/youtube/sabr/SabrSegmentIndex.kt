@@ -1,11 +1,10 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
 
 class SabrSegmentIndex(
     entries: List<Entry>
 ) {
-    private val entries: List<Entry> = Collections.unmodifiableList(ArrayList(entries))
+    private val entries: List<Entry> = entries.toList()
 
     fun getEntry(sequenceNumber: Int): Entry? {
         if (sequenceNumber <= 0 || sequenceNumber > entries.size) return null

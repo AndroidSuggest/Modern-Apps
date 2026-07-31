@@ -308,32 +308,20 @@ object Networking {
         }
     }
 
-    suspend fun publishLocation(location: LocationValue, user: TemporaryLink): Boolean {
-        // TemporaryLink PQC: if pqcPublicKey present, publish to PQC endpoint only.
-        if (user.pqcPublicKey != null) {
-            return try {
-                val bundle = Base64.decode(user.pqcPublicKey)
-                val encrypted = encryptLocationPqc(location, user.id, bundle)
-                val ok = makeRequest<Boolean, LocationSharingData>("/api/location/publish_pqc", encrypted) ?: false
-                Log.d(TAG, "publishLocation PQC to temp link ${user.id} ok=$ok encLen=${encrypted.encryptedLocation.length}")
-                ok
-            } catch (e: Exception) {
-                Log.w(TAG, "publishLocation PQC temp link ${user.id} exception, fallback RSA", e)
-                publishLocationClassic(location, user)
-            }
-        }
-        return publishLocationClassic(location, user)
-    }
-
-    private suspend fun publishLocationClassic(location: LocationValue, link: TemporaryLink): Boolean {
+    /**
+     * Publish to an anonymous share link. Links are post-quantum only — there is deliberately
+     * no classic RSA fallback here, so an encrypt/publish failure fails the send rather than
+     * silently downgrading the link to pre-quantum crypto.
+     */
+    suspend fun publishLocation(location: LocationValue, link: TemporaryLink): Boolean {
         return try {
-            val keyPem = Base64.decode(link.publicKey)
-            val encrypted = encryptLocation(location, link.id, keyPem)
-            val ok = makeRequest<Boolean, LocationSharingData>("/api/location/publish", encrypted) ?: false
-            Log.d(TAG, "publishLocation RSA to temp link ${link.id} ok=$ok encLen=${encrypted.encryptedLocation.length}")
+            val bundle = Base64.decode(link.pqcPublicKey)
+            val encrypted = encryptLocationPqc(location, link.id, bundle)
+            val ok = makeRequest<Boolean, LocationSharingData>("/api/location/publish_pqc", encrypted) ?: false
+            Log.d(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok encLen=${encrypted.encryptedLocation.length}")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishLocation RSA temp link ${link.id} exception", e)
+            Log.w(TAG, "publishLocation PQC temp link ${link.id} failed (no RSA fallback for links)", e)
             false
         }
     }
@@ -586,9 +574,6 @@ object Networking {
         val compat = json.decodeFromString<LocationValueCompatible>(plainBytes.decodeToString())
         return compat.toLocationValue() to compat.senderPlatform
     }
-
-    /** Generates a fresh RSA keypair (used for anonymous temporary share links). PEM bytes. */
-    suspend fun generateKeyPair(): E2ee.KeyPairPem = E2ee.generateKeyPair()
 
     /**
      * Generates a fresh PQC key bundle for an ephemeral temporary link.

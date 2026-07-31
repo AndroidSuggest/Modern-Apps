@@ -61,7 +61,9 @@
     <string name="backup_and_export">Varundus ja eksport</string>
     <string name="grant_calendar_permissions">Anna õigused kalendri kasutamiseks</string>
     <string name="delete_selected_contacts_title">Kustuta valitud kontaktid</string>
-    <string name="delete_selected_contacts_confirm">Kas oled kindel, et soovid kustutada <xliff:g id="count" example="5">%1$d</xliff:g> valitud kontakti? Seda tegevust ei saa tagasi pöörata.</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="other">Kas oled kindel, et soovid kustutada <xliff:g id="count" example="5">%1$d</xliff:g> valitud kontakti? Seda tegevust ei saa tagasi pöörata.</item>
+    </plurals>
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> on valitud</string>
     <string name="display">Ekraanivaade</string>
     <string name="show_account_labels">Näita kontakti kasutajakontosid</string>
@@ -81,13 +83,17 @@
     <string name="delete_group_title">Kustuta grupp</string>
     <string name="delete_group_confirm">Kas oled kindel, et soovid selle grupi kustutada? Kontaktid jäävad sel puhul alles.</string>
     <string name="no_groups_found">Ühtegi gruppi ei leidu. Saad mõne luua gruppide vahekaardilt.</string>
-    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> kontakti</string>
+    <plurals name="contacts_count">
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> kontakti</item>
+    </plurals>
     <string name="done">Valmis</string>
     <string name="import_vcf_file">Impordi vcf-fail</string>
     <string name="import_to_existing_account">Impordi olemasoleva kasutajakonto jaoks</string>
     <string name="create_new_account_option">Loo uus kasutajakonto</string>
     <string name="no_contacts_found">Kontakte ei leidu</string>
-    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> kontakti on importimiseks valmis</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> kontakti on importimiseks valmis</item>
+    </plurals>
     <string name="select_account">Vali kasutajakonto</string>
     <string name="no_name">(Nimi puudub)</string>
     <string name="add_number_to_contact">Lisa telefoninumber kontaktile</string>

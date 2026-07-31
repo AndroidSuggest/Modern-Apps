@@ -77,9 +77,9 @@ class StorageServiceManager(
             username = creds.first, password = creds.second,
             contentType = "application/x-protobuf",
         )
-        if (resp.code == 204) return null
-        if (resp.code != 200) throw java.io.IOException("Storage manifest fetch failed: ${resp.code}")
-        val body = resp.body?.bytes() ?: return null
+        if (resp.status == 204) return null
+        if (resp.status != 200) throw java.io.IOException("Storage manifest fetch failed: ${resp.status}")
+        val body = resp.bytes
         val enc = StorageManifest.parseFrom(body)
         val mKey = deriveManifestKey(storageKey, enc.version)
         val dec = decryptAESGCM(mKey, enc.value.toByteArray())
@@ -104,8 +104,9 @@ class StorageServiceManager(
                 username = creds.first, password = creds.second,
                 contentType = "application/x-protobuf",
             )
-            if (!resp.isSuccessful) throw java.io.IOException("Storage read failed: ${resp.code}")
-            val items = StorageItems.parseFrom(resp.body?.bytes() ?: continue)
+            if (!resp.isSuccess) throw java.io.IOException("Storage read failed: ${resp.status}")
+            if (resp.bytes.isEmpty()) continue
+            val items = StorageItems.parseFrom(resp.bytes)
             items.itemsList.mapNotNull { item ->
                 try {
                     val rawKey = item.key.toByteArray()

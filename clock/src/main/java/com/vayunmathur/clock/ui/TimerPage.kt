@@ -175,7 +175,7 @@ fun TimerKeypadContent(
             value = timerName,
             onValueChange = { timerName = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Timer name (optional)") },
+            placeholder = { Text(stringResource(R.string.timer_name_optional)) },
             singleLine = true
         )
 

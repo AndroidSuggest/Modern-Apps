@@ -64,7 +64,9 @@
     <string name="delete_contact_confirm">Voulez-vous vraiment supprimer ce contact ? Cette action est irréversible.</string>
     <string name="delete_contact_name_confirm">Voulez-vous vraiment supprimer \"<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>\" ? Cette action est irréversible.</string>
     <string name="grant_contacts_permission">Veuillez autoriser l\'accès aux contacts</string>
-    <string name="delete_selected_contacts_confirm">Voulez-vous vraiment supprimer les <xliff:g id="count" example="5">%1$d</xliff:g> contacts sélectionnés ? Cette action est irréversible.</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="other">Voulez-vous vraiment supprimer les <xliff:g id="count" example="5">%1$d</xliff:g> contacts sélectionnés ? Cette action est irréversible.</item>
+    </plurals>
     <string name="search_contacts">Rechercher un contact</string>
     <string name="include_year">Inclure l\'année</string>
     <string name="system_default">Préférence système</string>
@@ -81,14 +83,18 @@
     <string name="delete_group_title">Supprimer le groupe</string>
     <string name="delete_group_confirm">Voulez-vous vraiment supprimer ce groupe ? Les contacts du groupe ne seront pas supprimés.</string>
     <string name="no_groups_found">Aucun groupe trouvé. Créez-en un dans l\'onglet Groupes.</string>
-    <string name="contacts_count"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</string>
+    <plurals name="contacts_count">
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</item>
+    </plurals>
     <string name="done">Terminer</string>
     <string name="select_account">Sélectionner un compte</string>
     <string name="import_vcf_file">Importer un fichier .vcf</string>
     <string name="import_to_existing_account">Importer vers un compte existant</string>
     <string name="create_new_account_option">Créer un nouveau compte</string>
     <string name="no_contacts_found">Aucun contact trouvé</string>
-    <string name="import_summary_contacts"><xliff:g id="count" example="10">%1$d</xliff:g> contacts prêts à être importés</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> contacts prêts à être importés</item>
+    </plurals>
     <string name="add_number_to_contact">Ajouter un numéro à un contact</string>
     <string name="create_new_contact">Créer un nouveau contact</string>
     <string name="no_name">(Sans nom)</string>

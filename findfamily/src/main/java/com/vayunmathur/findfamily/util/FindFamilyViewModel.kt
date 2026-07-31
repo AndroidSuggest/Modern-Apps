@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.LocationManager
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -43,7 +44,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.GeoPoint
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -405,21 +405,26 @@ class FindFamilyViewModel(
      * Uses the same Pqc key generation as Office (same library, same DER compatibility).
      * Calls [onDone] on the main thread once the upsert completes.
      */
-    fun createTemporaryLink(name: String, expiry: Duration, onDone: () -> Unit = {}) {
+    fun createTemporaryLink(name: String, expiry: Duration, onDone: (success: Boolean) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
-            val rsaPair = Networking.generateKeyPair()
-            // PQC ephemeral — best effort, may fail if native lib unavailable (fallback to RSA-only link).
-            val pqcPair = runCatching { Networking.generatePqcKeyPair() }.getOrNull()
+            // Links are post-quantum only: if the PQC keygen fails (native lib unavailable)
+            // there is nothing to fall back to, so report failure instead of minting a link
+            // that can never publish.
+            val pqcPair = runCatching { Networking.generatePqcKeyPair() }
+                .onFailure { Log.w("FindFamilyViewModel", "createTemporaryLink: PQC keygen failed", it) }
+                .getOrNull()
+            if (pqcPair == null) {
+                withContext(Dispatchers.Main) { onDone(false) }
+                return@launch
+            }
             val newLink = TemporaryLink(
                 name = name,
-                key = Base64.encode(rsaPair.privateKeyPem),
-                publicKey = Base64.encode(rsaPair.publicKeyPem),
                 deleteAt = Clock.System.now() + expiry,
-                pqcPublicKey = pqcPair?.publicBundleB64,
-                pqcKey = pqcPair?.privateBundleB64,
+                pqcPublicKey = pqcPair.publicBundleB64,
+                pqcKey = pqcPair.privateBundleB64,
             )
             temporaryLinkDao.upsert(newLink)
-            withContext(Dispatchers.Main) { onDone() }
+            withContext(Dispatchers.Main) { onDone(true) }
         }
     }
 

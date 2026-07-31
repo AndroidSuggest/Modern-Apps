@@ -1,7 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
-import java.util.LinkedHashMap
 
 class SabrPlaybackStartPolicy private constructor(
     startMinReadaheadPolicies: List<ReadaheadPolicy>,
@@ -9,11 +7,11 @@ class SabrPlaybackStartPolicy private constructor(
     extraVarints: Map<Int, Long>
 ) {
     private val startMinReadaheadPolicies: List<ReadaheadPolicy> =
-        Collections.unmodifiableList(ArrayList(startMinReadaheadPolicies))
+        startMinReadaheadPolicies.toList()
     private val resumeMinReadaheadPolicies: List<ReadaheadPolicy> =
-        Collections.unmodifiableList(ArrayList(resumeMinReadaheadPolicies))
+        resumeMinReadaheadPolicies.toList()
     private val extraVarints: Map<Int, Long> =
-        Collections.unmodifiableMap(LinkedHashMap(extraVarints))
+        extraVarints.toMap()
 
     companion object {
         @Throws(SabrProtocolException::class)

@@ -225,13 +225,6 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, p
         viewModel.loadLevel(packIndex, levelIndex)
     }
 
-    LaunchedEffect(packIndex, levelIndex) {
-        viewModel.nextLevel.collect { nextIndex ->
-            val boundedIndex = nextIndex.coerceIn(0, pack.levels.lastIndex)
-            backStack.setLast(Route.Game(packIndex, boundedIndex))
-        }
-    }
-
     val isReady = uiState.packIndex == packIndex &&
             uiState.levelIndex == levelIndex &&
             uiState.currentLevelData != null

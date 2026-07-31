@@ -1,5 +1,7 @@
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.fooddelivery.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -162,7 +164,7 @@ fun CheckoutScreen(
 
     if (orderSuccess) {
         Scaffold(
-            topBar = { TopAppBar(title = { Text("Order Confirmed") }) }
+            topBar = { TopAppBar(title = { Text(stringResource(R.string.order_confirmed)) }) }
         ) { padding ->
             Column(
                 Modifier.fillMaxSize().padding(padding),
@@ -171,9 +173,9 @@ fun CheckoutScreen(
             ) {
                 IconCheck(modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(16.dp))
-                Text("Order placed!", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.order_placed), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text("Your order is being prepared.", style = MaterialTheme.typography.bodyMedium,
+                Text(stringResource(R.string.your_order_is_being_prepared), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -183,7 +185,7 @@ fun CheckoutScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Checkout") },
+                title = { Text(stringResource(R.string.checkout)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { IconBack() }
                 }
@@ -197,7 +199,7 @@ fun CheckoutScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 item {
-                    Text("Order Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.order_summary), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                 }
 
@@ -222,7 +224,7 @@ fun CheckoutScreen(
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))
 
-                    Text("Order Type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.order_type), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
                     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -230,13 +232,13 @@ fun CheckoutScreen(
                             selected = !isPickup,
                             onClick = { isPickup = false },
                             shape = SegmentedButtonDefaults.itemShape(0, 2),
-                            label = { Text("Delivery") }
+                            label = { Text(stringResource(R.string.delivery)) }
                         )
                         SegmentedButton(
                             selected = isPickup,
                             onClick = { isPickup = true },
                             shape = SegmentedButtonDefaults.itemShape(1, 2),
-                            label = { Text("Pickup") }
+                            label = { Text(stringResource(R.string.pickup)) }
                         )
                     }
                 }
@@ -244,12 +246,12 @@ fun CheckoutScreen(
                 if (!isPickup) {
                     item {
                         Spacer(Modifier.height(4.dp))
-                        Text("Delivery Address", style = MaterialTheme.typography.titleMedium,
+                        Text(stringResource(R.string.delivery_address), style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
 
                         if (addresses.isEmpty()) {
-                            Text("No saved addresses. Add one in Account settings.",
+                            Text(stringResource(R.string.no_saved_addresses_add_one_in_account_se),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
@@ -291,12 +293,12 @@ fun CheckoutScreen(
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             if (addr.aptUnit.isNotEmpty()) {
-                                                Text("Apt/Unit: ${addr.aptUnit}",
+                                                Text(stringResource(R.string.apt_unit_2, addr.aptUnit),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                             if (addr.gateCode.isNotEmpty()) {
-                                                Text("Gate: ${addr.gateCode}",
+                                                Text(stringResource(R.string.gate, addr.gateCode),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
@@ -314,7 +316,7 @@ fun CheckoutScreen(
                         OutlinedTextField(
                             value = deliveryInstructions,
                             onValueChange = { deliveryInstructions = it },
-                            label = { Text("Delivery instructions (optional)") },
+                            label = { Text(stringResource(R.string.delivery_instructions_optional)) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -325,7 +327,7 @@ fun CheckoutScreen(
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))
 
-                    Text("Tip", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.tip), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -351,7 +353,7 @@ fun CheckoutScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Calculating tax & fees…",
+                            Text(stringResource(R.string.calculating_tax_fees),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -364,7 +366,7 @@ fun CheckoutScreen(
                         HorizontalDivider()
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.total), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             Text("$%.2f".format(confirmedOrder.displayTotal), fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium)
                         }
@@ -402,7 +404,7 @@ fun CheckoutScreen(
                             if (payTotal != null) {
                                 Text("Place Order · $%.2f".format(payTotal))
                             } else {
-                                Text("Place Order")
+                                Text(stringResource(R.string.place_order))
                             }
                         }
                     }

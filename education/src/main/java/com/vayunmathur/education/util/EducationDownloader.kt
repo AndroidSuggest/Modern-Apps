@@ -10,10 +10,10 @@ import org.schabi.newpipe.extractor.downloader.Response
 class EducationDownloader : Downloader() {
     override fun execute(request: Request): Response = runBlocking {
         val response = NetworkClient.performRequest(
-            url = request.url(),
-            method = request.httpMethod(),
-            headers = request.headers(),
-            body = request.dataToSend(),
+            url = request.url,
+            method = request.httpMethod,
+            headers = request.headers,
+            body = request.dataToSend,
         )
         Response(
             response.status,

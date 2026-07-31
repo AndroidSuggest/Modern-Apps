@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Translate</string>
+    <string name="enter_text">Enter text</string>
+    <string name="loading_translator">Loading translator…</string>
+    <string name="copy">Copy</string>
+    <string name="speak">Speak</string>
+    <string name="translation">Translation</string>
+    <string name="translation_model_not_installed_showing">Translation model not installed — showing detected text only</string>
 </resources>

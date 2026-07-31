@@ -18,4 +18,5 @@
 
     <!-- NotePage: Clipboard label for note content. Noun, lowercase intentional. -->
     <string name="note">note</string>
+    <string name="share_note">Share Note</string>
 </resources>

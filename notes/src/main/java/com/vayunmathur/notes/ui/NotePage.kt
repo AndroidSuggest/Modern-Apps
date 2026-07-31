@@ -166,7 +166,7 @@ fun NotePage(
                 }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share Note"))
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_note)))
         }
     }
 

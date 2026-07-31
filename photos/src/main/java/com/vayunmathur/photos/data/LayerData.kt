@@ -1,8 +1,10 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.photos.data
 
+import kotlin.uuid.Uuid
 import android.graphics.Bitmap
 import com.vayunmathur.library.ink.SerializedStroke
-import java.util.UUID
 
 /**
  * Wraps a [Bitmap] with a stable unique id. Equality is by id only, which keeps
@@ -12,7 +14,7 @@ import java.util.UUID
  */
 class BitmapReference(
     val bitmap: Bitmap,
-    val id: String = UUID.randomUUID().toString(),
+    val id: String = Uuid.random().toString(),
 ) {
     override fun equals(other: Any?): Boolean = other is BitmapReference && other.id == id
     override fun hashCode(): Int = id.hashCode()
@@ -27,7 +29,7 @@ class LayerMask(
     val alphaData: FloatArray,
     val width: Int,
     val height: Int,
-    val id: String = UUID.randomUUID().toString(),
+    val id: String = Uuid.random().toString(),
 ) {
     fun invert(): LayerMask =
         LayerMask(FloatArray(alphaData.size) { 1f - alphaData[it] }, width, height)
@@ -67,7 +69,7 @@ data class LayerStyle(
  * with [opacity]/[blendMode]/[visible].
  */
 data class GroupInfo(
-    val id: String = UUID.randomUUID().toString(),
+    val id: String = Uuid.random().toString(),
     val name: String = "Group",
     val opacity: Float = 1f,
     val blendMode: LayerBlendMode = LayerBlendMode.Normal,
@@ -178,7 +180,7 @@ sealed class Layer {
 
 data class PixelLayer(
     val bitmapRef: BitmapReference,
-    override val id: String = UUID.randomUUID().toString(),
+    override val id: String = Uuid.random().toString(),
     override val name: String = "Layer",
     override val visible: Boolean = true,
     override val opacity: Float = 1f,
@@ -200,7 +202,7 @@ data class PixelLayer(
 
 data class AdjustmentLayer(
     val adjustment: LayerAdjustment,
-    override val id: String = UUID.randomUUID().toString(),
+    override val id: String = Uuid.random().toString(),
     override val name: String = adjustment.label,
     override val visible: Boolean = true,
     override val opacity: Float = 1f,
@@ -222,7 +224,7 @@ data class AdjustmentLayer(
 
 data class TextLayer(
     val textElement: TextElement,
-    override val id: String = UUID.randomUUID().toString(),
+    override val id: String = Uuid.random().toString(),
     override val name: String = "Text",
     override val visible: Boolean = true,
     override val opacity: Float = 1f,
@@ -246,7 +248,7 @@ data class DrawingLayer(
     val strokes: List<SerializedStroke>,
     val sourceWidth: Float,
     val sourceHeight: Float,
-    override val id: String = UUID.randomUUID().toString(),
+    override val id: String = Uuid.random().toString(),
     override val name: String = "Drawing",
     override val visible: Boolean = true,
     override val opacity: Float = 1f,

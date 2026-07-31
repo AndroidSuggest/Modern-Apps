@@ -1,5 +1,12 @@
+@file:OptIn(
+    kotlin.uuid.ExperimentalUuidApi::class,
+    kotlin.concurrent.atomics.ExperimentalAtomicApi::class,
+)
+
 package com.vayunmathur.findfamily.util
 
+import kotlin.uuid.Uuid
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -23,8 +30,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Process-global UWB ranging session owner.
@@ -122,17 +127,17 @@ object UwbSessionManager {
     // -----------------------------------------------------------------
 
     fun startAsInitiator(peerUserId: Long) {
-        Log.i(TAG, "startAsInitiator(peer=$peerUserId) entered. isSupportedSdk=$isSupportedSdk initialized=${initialized.get()} state=${_state.value}")
+        Log.i(TAG, "startAsInitiator(peer=$peerUserId) entered. isSupportedSdk=$isSupportedSdk initialized=${initialized.load()} state=${_state.value}")
         if (!isSupportedSdk) {
             _state.value = UwbSessionState.Unsupported(
                 "Find Nearby (UWB) requires Android 15 or newer."
             )
             return
         }
-        if (!initialized.get()) { Log.w(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet"); return }
+        if (!initialized.load()) { Log.w(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet"); return }
         if (_state.value !is UwbSessionState.Idle) { Log.i(TAG, "startAsInitiator: not idle, skipping"); return }
         _state.value = UwbSessionState.Starting
-        val sessionId = UUID.randomUUID().toString()
+        val sessionId = Uuid.random().toString()
         currentSessionId = sessionId
         _peerUserId.value = peerUserId
 

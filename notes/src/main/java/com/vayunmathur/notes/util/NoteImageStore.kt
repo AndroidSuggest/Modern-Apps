@@ -1,9 +1,11 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.notes.util
 
+import kotlin.uuid.Uuid
 import android.content.Context
 import android.net.Uri
 import java.io.File
-import java.util.UUID
 
 /**
  * Stores note images as files under `filesDir/note_images`. A [com.vayunmathur.notes.data.NoteBlock.Image]
@@ -18,7 +20,7 @@ object NoteImageStore {
 
     /** Copies [uri] into the images dir and returns the new file name, or null on failure. */
     fun import(context: Context, uri: Uri): String? {
-        val fileName = "img_${UUID.randomUUID()}.jpg"
+        val fileName = "img_${Uuid.random()}.jpg"
         val dest = File(dir(context), fileName)
         return try {
             context.contentResolver.openInputStream(uri)?.use { input ->

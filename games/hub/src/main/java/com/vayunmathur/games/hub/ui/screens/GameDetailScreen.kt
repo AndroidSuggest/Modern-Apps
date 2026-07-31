@@ -88,9 +88,9 @@ fun GameDetailScreen(
             }
             item { Button(onClick = { launchGame(context, g) }, enabled = isInstalled, modifier = Modifier.fillMaxWidth()) { Text(if (isInstalled) stringResource(R.string.play_1, g.displayName) else stringResource(R.string.not_installed)) } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                StatCard(label = "Playtime", value = formatPlaytime(g.totalPlaytimeMs), modifier = Modifier.weight(1f))
-                StatCard(label = "Sessions", value = "${sessions.size}", modifier = Modifier.weight(1f))
-                StatCard(label = "Last", value = g.lastPlayedAt?.let { formatRelativeTime(it) } ?: "Never", modifier = Modifier.weight(1f))
+                StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(g.totalPlaytimeMs), modifier = Modifier.weight(1f))
+                StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.sessions), value = "${sessions.size}", modifier = Modifier.weight(1f))
+                StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.last), value = g.lastPlayedAt?.let { formatRelativeTime(it) } ?: "Never", modifier = Modifier.weight(1f))
             } }
             if (achievements.isNotEmpty()) {
                 val unlocked = achievements.count { it.isUnlocked }

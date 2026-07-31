@@ -1,5 +1,7 @@
 package com.vayunmathur.calculator.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.calculator.R
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -71,7 +73,7 @@ fun GraphPage(viewModel: CalculatorViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Graph") },
+                title = { Text(stringResource(R.string.graph)) },
                 actions = {
                     AssistChip(
                         onClick = { viewModel.toggleAngleMode() },
@@ -92,14 +94,14 @@ fun GraphPage(viewModel: CalculatorViewModel) {
     if (showResults) {
         AlertDialog(
             onDismissRequest = { showResults = false },
-            title = { Text("Analysis") },
+            title = { Text(stringResource(R.string.analysis)) },
             text = {
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     items(viewModel.analysisSummary) { line -> Text(line, modifier = Modifier.padding(vertical = 3.dp)) }
                 }
             },
-            confirmButton = { TextButton({ showResults = false }) { Text("Done") } },
-            dismissButton = { TextButton({ viewModel.clearAnalysis(); showResults = false }) { Text("Clear markers") } },
+            confirmButton = { TextButton({ showResults = false }) { Text(stringResource(R.string.done)) } },
+            dismissButton = { TextButton({ viewModel.clearAnalysis(); showResults = false }) { Text(stringResource(R.string.clear_markers)) } },
         )
     }
 }
@@ -122,7 +124,7 @@ private fun AnalysisBar(viewModel: CalculatorViewModel, onResults: () -> Unit) {
             }
             AssistChip(onClick = { viewModel.runAnalysis(kind); onResults() }, label = { Text(short) })
         }
-        AssistChip(onClick = { viewModel.clearAnalysis() }, label = { Text("Clear") })
+        AssistChip(onClick = { viewModel.clearAnalysis() }, label = { Text(stringResource(R.string.clear)) })
     }
 }
 
@@ -285,7 +287,7 @@ private fun FunctionEditors(viewModel: CalculatorViewModel) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center) {
                 AssistChip(
                     onClick = { viewModel.addFunction() },
-                    label = { Text("Add function") },
+                    label = { Text(stringResource(R.string.add_function)) },
                     leadingIcon = { IconAdd() },
                 )
             }

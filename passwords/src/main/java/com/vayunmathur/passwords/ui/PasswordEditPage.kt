@@ -65,6 +65,7 @@ fun PasswordEditPage(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val nameAndUserIdRequired = stringResource(R.string.name_and_user_id_required)
     val focusManager = LocalFocusManager.current
 
     fun addWebsiteFromInput() {
@@ -91,7 +92,7 @@ fun PasswordEditPage(
             FloatingActionButton(onClick = {
                 val d = draft ?: return@FloatingActionButton
                 if (d.name.isBlank() || d.userId.isBlank()) {
-                    scope.launch { snackbarHostState.showSnackbar("Name and User ID cannot be empty") }
+                    scope.launch { snackbarHostState.showSnackbar(nameAndUserIdRequired) }
                     return@FloatingActionButton
                 }
                 // Normalize empty TOTP to null before saving.

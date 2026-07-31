@@ -14,7 +14,6 @@ import org.schabi.newpipe.extractor.linkhandler.LinkHandler
 import org.schabi.newpipe.extractor.localization.DateWrapper
 import org.schabi.newpipe.extractor.utils.Parser
 import java.io.IOException
-import java.util.Collections
 import java.util.Locale
 
 abstract class StreamExtractor(service: StreamingService, linkHandler: LinkHandler) : Extractor(service, linkHandler) {
@@ -94,10 +93,10 @@ abstract class StreamExtractor(service: StreamingService, linkHandler: LinkHandl
     abstract fun getVideoOnlyStreams(): List<VideoStream>
 
     @Throws(IOException::class, ExtractionException::class)
-    open fun getSubtitlesDefault(): List<SubtitlesStream> = Collections.emptyList()
+    open fun getSubtitlesDefault(): List<SubtitlesStream> = emptyList()
 
     @Throws(IOException::class, ExtractionException::class)
-    open fun getSubtitles(format: MediaFormat): List<SubtitlesStream> = Collections.emptyList()
+    open fun getSubtitles(format: MediaFormat): List<SubtitlesStream> = emptyList()
 
     @Throws(ParsingException::class)
     abstract fun getStreamType(): StreamType
@@ -113,7 +112,7 @@ abstract class StreamExtractor(service: StreamingService, linkHandler: LinkHandl
     }
 
     @Throws(ExtractionException::class)
-    open fun getFrames(): List<Frameset> = Collections.emptyList()
+    open fun getFrames(): List<Frameset> = emptyList()
 
     open fun getErrorMessage(): String? = null
 
@@ -165,16 +164,16 @@ abstract class StreamExtractor(service: StreamingService, linkHandler: LinkHandl
     open fun getLanguageInfo(): Locale? = null
 
     @Throws(ParsingException::class)
-    open fun getTags(): List<String> = Collections.emptyList()
+    open fun getTags(): List<String> = emptyList()
 
     @Throws(ParsingException::class)
     open fun getSupportInfo(): String = ""
 
     @Throws(ParsingException::class)
-    open fun getStreamSegments(): List<StreamSegment> = Collections.emptyList()
+    open fun getStreamSegments(): List<StreamSegment> = emptyList()
 
     @Throws(ParsingException::class)
-    open fun getMetaInfo(): List<MetaInfo> = Collections.emptyList()
+    open fun getMetaInfo(): List<MetaInfo> = emptyList()
 
     @Throws(ParsingException::class)
     open fun isShortFormContent(): Boolean = false

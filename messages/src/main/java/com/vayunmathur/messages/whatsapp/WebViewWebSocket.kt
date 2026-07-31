@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.whatsapp
 
+import kotlin.concurrent.atomics.*
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Base64
@@ -17,7 +20,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * WebView-based WebSocket client for WhatsApp Web.
@@ -90,7 +92,7 @@ class WebViewWebSocket(
     // across multiple WebSocket messages (the ServerHello carries the full cert chain) and
     // several frames can coalesce into one, so we cannot assume 1 message == 1 frame.
     private var recvBuffer = ByteArray(0)
-    private val iqCounter = AtomicInteger(0)
+    private val iqCounter = AtomicInt(0)
     private var reconnectJob: Job? = null
     private var lastKeepaliveSuccess = System.currentTimeMillis()
 
@@ -576,7 +578,7 @@ class WebViewWebSocket(
         keepaliveJob = scope.launch {
             while (true) {
                 delay(KEEPALIVE_INTERVAL_MIN_MS + (Math.random() * (KEEPALIVE_INTERVAL_MAX_MS - KEEPALIVE_INTERVAL_MIN_MS)).toLong())
-                val id = "keepalive-${iqCounter.incrementAndGet()}"
+                val id = "keepalive-${iqCounter.incrementAndFetch()}"
                 val keepaliveNode = WhatsAppProtocol.buildKeepalive(id)
                 val encoded = WhatsAppProtocol.encodeNode(keepaliveNode)
                 val sent = send(encoded)

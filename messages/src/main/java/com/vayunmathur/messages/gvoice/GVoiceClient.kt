@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.gvoice
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.messages.data.MessageSource
@@ -23,9 +26,6 @@ import responses.Responses
 import threads.Threads
 import waa.Waa
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Process-global owner of the Google Voice protocol session.
@@ -90,7 +90,7 @@ object GVoiceClient {
     private const val BACKGROUND_REFRESH_INTERVAL_MS = 15L * 60L * 1000L
     // Safety cap on backfill pagination (≈ MAX_BACKFILL_PAGES * count messages).
     private const val MAX_BACKFILL_PAGES = 20
-    private val refreshTokens = AtomicInteger(MIN_REFRESH_BURST)
+    private val refreshTokens = AtomicInt(MIN_REFRESH_BURST)
     private val lastRefreshTime = AtomicLong(0L)
     private val fetchLock = Mutex()
     @Volatile private var fetchLoopJob: Job? = null
@@ -116,7 +116,7 @@ object GVoiceClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         if (_state.value is State.Connected) return
         scope.launch {
             val auth = VoiceAuthData.load(appContext)
@@ -885,14 +885,14 @@ object GVoiceClient {
 
     private suspend fun rateLimitedBackfill() {
         val now = System.currentTimeMillis()
-        val elapsed = now - lastRefreshTime.get()
+        val elapsed = now - lastRefreshTime.load()
         val tokensToAdd = (elapsed / MIN_REFRESH_INTERVAL_MS).toInt()
         if (tokensToAdd > 0) {
-            refreshTokens.updateAndGet { minOf(it + tokensToAdd, MIN_REFRESH_BURST) }
-            lastRefreshTime.set(now)
+            refreshTokens.updateAndFetch { minOf(it + tokensToAdd, MIN_REFRESH_BURST) }
+            lastRefreshTime.store(now)
         }
-        if (refreshTokens.getAndDecrement() <= 0) {
-            refreshTokens.incrementAndGet()
+        if (refreshTokens.fetchAndDecrement() <= 0) {
+            refreshTokens.incrementAndFetch()
             Log.d(TAG, "rate-limited: skipping backfill")
             return
         }

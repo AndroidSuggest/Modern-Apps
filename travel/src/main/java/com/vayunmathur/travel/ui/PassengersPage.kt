@@ -222,7 +222,7 @@ private fun PassengerForm(
                 stringResource(R.string.date_of_birth),
                 passenger.bornOn,
                 onDate = { onChange(passenger.copy(bornOn = it)) },
-                dateFormat = "MMM d, yyyy",
+                dateFormat = MonthDayYear,
             )
 
             ChipRow("Gender", GENDERS, passenger.gender) { onChange(passenger.copy(gender = it)) }
@@ -298,7 +298,7 @@ private fun IdentityDocumentFields(doc: IdentityDocumentDto?, onChange: (Identit
         stringResource(R.string.expiry_date),
         current.expiresOn,
         onDate = { onChange(current.copy(expiresOn = it)) },
-        dateFormat = "MMM d, yyyy",
+        dateFormat = MonthDayYear,
     )
 }
 

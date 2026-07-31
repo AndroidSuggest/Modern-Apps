@@ -9,11 +9,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import com.vayunmathur.library.network.NetworkClient
+import java.io.ByteArrayOutputStream
 import java.security.SecureRandom
 
 /**
@@ -49,14 +46,13 @@ object MetaMediaUpload {
         bytes: ByteArray,
         mimeType: String,
         fileName: String?,
-        httpClient: OkHttpClient,
     ): Long? = withContext(Dispatchers.IO) {
         try {
             when (authData.platform) {
                 MetaAuthData.Platform.MESSENGER ->
-                    uploadMercury(authData, config, threadId, bytes, mimeType, fileName, httpClient)
+                    uploadMercury(authData, config, threadId, bytes, mimeType, fileName)
                 MetaAuthData.Platform.INSTAGRAM ->
-                    uploadRupload(authData, config, bytes, mimeType, httpClient)
+                    uploadRupload(authData, config, bytes, mimeType)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Media upload failed for ${authData.platform}", e)
@@ -64,93 +60,79 @@ object MetaMediaUpload {
         }
     }
 
-    private fun uploadMercury(
+    private suspend fun uploadMercury(
         authData: MetaAuthData,
         config: MetaConfig,
         threadId: Long,
         bytes: ByteArray,
         mimeType: String,
         fileName: String?,
-        httpClient: OkHttpClient,
     ): Long? {
         val boundary = "----WebKitFormBoundary" + randomAlphaNum(16)
-        val body = MultipartBody.Builder(boundary)
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(
-                "farr",
-                fileName ?: "attachment",
-                bytes.toRequestBody(mimeType.toMediaTypeOrNull()),
-            )
-            .build()
+        val body = multipartFormData(boundary, "farr", fileName ?: "attachment", mimeType, bytes)
 
         val query = buildMercuryQuery(authData, config)
         val url = MetaProtocol.MESSENGER_BASE_URL + "/ajax/mercury/upload.php?" + query
         val referer = MetaProtocol.MESSENGER_BASE_URL + "/t/" + threadId
 
-        val requestBuilder = Request.Builder()
-            .url(url)
-            .post(body)
-            .header("Cookie", authData.toCookieHeader())
-            .header("User-Agent", MetaProtocol.USER_AGENT)
-            .header("Accept", "*/*")
-            .header("Origin", MetaProtocol.MESSENGER_BASE_URL)
-            .header("Referer", referer)
-            .header("sec-fetch-dest", "empty")
-            .header("sec-fetch-mode", "cors")
-            .header("sec-fetch-site", "same-origin")
-        if (config.lsdToken.isNotEmpty()) requestBuilder.header("x-fb-lsd", config.lsdToken)
+        val headers = buildMap {
+            put("Cookie", authData.toCookieHeader())
+            put("User-Agent", MetaProtocol.USER_AGENT)
+            put("Accept", "*/*")
+            put("Content-Type", "multipart/form-data; boundary=$boundary")
+            put("Origin", MetaProtocol.MESSENGER_BASE_URL)
+            put("Referer", referer)
+            put("sec-fetch-dest", "empty")
+            put("sec-fetch-mode", "cors")
+            put("sec-fetch-site", "same-origin")
+            if (config.lsdToken.isNotEmpty()) put("x-fb-lsd", config.lsdToken)
+        }
 
-        val respBody = httpClient.newCall(requestBuilder.build()).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                Log.w(TAG, "Mercury upload returned ${resp.code}")
-                return null
-            }
-            resp.body?.string()
-        } ?: return null
+        val resp = NetworkClient.execute(url, "POST", headers, body)
+        if (!resp.isSuccess) {
+            Log.w(TAG, "Mercury upload returned ${resp.status}")
+            return null
+        }
 
-        val jsonStr = respBody.removePrefix(ANTI_JS_PREFIX)
+        val jsonStr = resp.text.removePrefix(ANTI_JS_PREFIX)
         val root = runCatching { json.parseToJsonElement(jsonStr).jsonObject }.getOrNull() ?: return null
         val payload = root["payload"]?.let { it as? JsonObject } ?: return null
         val metadata = payload["metadata"] ?: return null
         return extractFbid(metadata)
     }
 
-    private fun uploadRupload(
+    private suspend fun uploadRupload(
         authData: MetaAuthData,
         config: MetaConfig,
         bytes: ByteArray,
         mimeType: String,
-        httpClient: OkHttpClient,
     ): Long? {
         val userId = authData.userId
         val entityId = "${userId}_0_${MetaProtocol.generateEpochId()}"
         val entityType = if (mimeType == "image/png") "image/png" else "image/jpeg"
         val url = IG_RUPLOAD_URL + entityId
 
-        val body = bytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
-        val requestBuilder = Request.Builder()
-            .url(url)
-            .post(body)
-            .header("Cookie", authData.toCookieHeader())
-            .header("User-Agent", MetaProtocol.USER_AGENT)
-            .header("content-type", "application/octet-stream")
-            .header("image_type", "FILE_ATTACHMENT")
-            .header("x-entity-name", entityId)
-            .header("x-entity-length", bytes.size.toString())
-            .header("x-entity-type", entityType)
-            .header("offset", "0")
-            .header("priority", "u=6, i")
-        authData.cookies["csrftoken"]?.let { requestBuilder.header("x-csrftoken", it) }
-        authData.cookies["mid"]?.let { requestBuilder.header("x-mid", it) }
-        if (config.appId != 0L) requestBuilder.header("x-ig-app-id", config.appId.toString())
+        val headers = buildMap {
+            put("Cookie", authData.toCookieHeader())
+            put("User-Agent", MetaProtocol.USER_AGENT)
+            put("content-type", "application/octet-stream")
+            put("image_type", "FILE_ATTACHMENT")
+            put("x-entity-name", entityId)
+            put("x-entity-length", bytes.size.toString())
+            put("x-entity-type", entityType)
+            put("offset", "0")
+            put("priority", "u=6, i")
+            authData.cookies["csrftoken"]?.let { put("x-csrftoken", it) }
+            authData.cookies["mid"]?.let { put("x-mid", it) }
+            if (config.appId != 0L) put("x-ig-app-id", config.appId.toString())
+        }
 
-        val respBody = httpClient.newCall(requestBuilder.build()).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                Log.w(TAG, "rupload returned ${resp.code}")
-                return null
-            }
-            resp.body?.string()
-        } ?: return null
+        val resp = NetworkClient.execute(url, "POST", headers, bytes)
+        if (!resp.isSuccess) {
+            Log.w(TAG, "rupload returned ${resp.status}")
+            return null
+        }
+        val respBody = resp.text
 
         val root = runCatching { json.parseToJsonElement(respBody).jsonObject }.getOrNull() ?: return null
         val mediaId = root["media_id"]?.jsonPrimitive?.longOrNull
@@ -179,6 +161,39 @@ object MetaMediaUpload {
         }
         return null
     }
+
+    /**
+     * Encodes a single-file `multipart/form-data` body, replacing okhttp's
+     * MultipartBody.Builder. Mirrors what it emitted: CRLF line endings, a
+     * Content-Disposition naming the form field and filename, a Content-Type
+     * for the part, and a closing `--boundary--` delimiter. The caller sets the
+     * matching `Content-Type: multipart/form-data; boundary=...` header.
+     */
+    private fun multipartFormData(
+        boundary: String,
+        fieldName: String,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+    ): ByteArray {
+        val out = ByteArrayOutputStream()
+        val header = buildString {
+            append("--").append(boundary).append("\r\n")
+            append("Content-Disposition: form-data; name=\"").append(fieldName)
+                .append("\"; filename=\"").append(escapeQuotes(fileName)).append("\"\r\n")
+            if (mimeType.isNotEmpty()) append("Content-Type: ").append(mimeType).append("\r\n")
+            append("Content-Length: ").append(bytes.size).append("\r\n")
+            append("\r\n")
+        }
+        out.write(header.toByteArray(Charsets.UTF_8))
+        out.write(bytes)
+        out.write("\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+        return out.toByteArray()
+    }
+
+    /** okhttp percent-escapes quotes/newlines in part filenames; do the same. */
+    private fun escapeQuotes(s: String): String =
+        s.replace("\n", "%0A").replace("\r", "%0D").replace("\"", "%22")
 
     private fun buildMercuryQuery(authData: MetaAuthData, config: MetaConfig): String {
         val params = LinkedHashMap<String, String>()

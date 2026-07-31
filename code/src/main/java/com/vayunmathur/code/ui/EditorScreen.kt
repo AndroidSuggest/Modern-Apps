@@ -1,5 +1,7 @@
 package com.vayunmathur.code.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.code.R
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -130,16 +132,16 @@ private fun EmptyEditorState(onOpenFolder: () -> Unit, onOpenFile: () -> Unit) {
     ) {
         IconCode(Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.size(16.dp))
-        Text("No file open", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.no_file_open), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.size(8.dp))
         Text(
-            "Open a folder to browse your project, or open a single file.",
+            stringResource(R.string.open_a_folder_to_browse_your_project_or),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onOpenFolder) { Text("Open folder") }
-            Button(onClick = onOpenFile) { Text("Open file") }
+            Button(onClick = onOpenFolder) { Text(stringResource(R.string.open_folder)) }
+            Button(onClick = onOpenFile) { Text(stringResource(R.string.open_file)) }
         }
     }
 }

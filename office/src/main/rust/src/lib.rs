@@ -4,6 +4,11 @@
 
 mod crdt;
 mod formula;
+pub mod numfmt;
+pub mod ooxml_package;
+pub mod ooxml_units;
+pub mod xlsx_strings;
+pub mod xml;
 
 use crdt::DocumentTreeCrdt;
 use formula::Workbook;
@@ -298,5 +303,44 @@ mod jni_bindings {
         }))
         .unwrap_or_else(|_| String::new());
         out_string(&env, out)
+    }
+
+    /// Excel number-format code → the ODF number-style model, as JSON. `null` (a JSON `null`)
+    /// means "General"/text, i.e. no explicit style — matching `ExcelNumFmt.parse` returning null.
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_office_util_OfficeNative_numFmtParse<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        code: JString<'l>,
+    ) -> jstring {
+        let Some(code) = read_string(&mut env, &code) else {
+            return out_string(&env, "null".to_string());
+        };
+        let json = crate::numfmt::parse(&code)
+            .map(|f| serde_json::to_string(&f).unwrap_or_else(|_| "null".into()))
+            .unwrap_or_else(|| "null".into());
+        out_string(&env, json)
+    }
+
+    /// Builtin `numFmtId` → the ODF number-style model, as JSON, or `null`.
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_office_util_OfficeNative_numFmtForBuiltin<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        id: jint,
+    ) -> jstring {
+        let json = crate::numfmt::for_builtin(id)
+            .map(|f| serde_json::to_string(&f).unwrap_or_else(|_| "null".into()))
+            .unwrap_or_else(|| "null".into());
+        out_string(&env, json)
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_vayunmathur_office_util_OfficeNative_numFmtIsDateTimeBuiltin<'l>(
+        _env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        id: jint,
+    ) -> jboolean {
+        crate::numfmt::is_date_time_builtin(id) as jboolean
     }
 }

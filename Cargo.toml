@@ -10,7 +10,9 @@ members = [
   "passwords/src/main/rust",
   "vpn/src/main/rust",
   "library/e2ee-p2p/src/main/rust",
+  "library/jni-http/src/main/rust",
   "messages/src/main/rust",
+  "youpipe/src/main/rust",
   "third_party/om-file-format-sys",
 ]
 resolver = "2"
@@ -33,6 +35,8 @@ quote = "1.0.40"
 syn = "2.0.101"
 itoa = "1.0.15"
 memchr = "2.8.3"
+# XML pull parsing for the OOXML/ODF importers. Only transitive dep is memchr, pinned above.
+quick-xml = { version = "0.37", default-features = false }
 serde_json = "1.0.149"
 
 # Imaging – image crate 0.25->moxcms/pxfm removed, use tiny jpeg-encoder/decoder (1 function per your rule)
@@ -71,7 +75,8 @@ byteorder = "1.5.0"
 smallvec = "1.14.0"
 # bytes removed – it was only ever pulled transitively by combine (now gone from jni-android)
 
-# OM weather – ureq (~90 crates ring/rustls/icu/url) removed
+# No HTTP client crate anywhere: Rust reaches the network through library:network via
+# the flat-framed JNI bridge in library/jni-http, so no .so links its own TLS.
 # omfiles / memmap2 / ndarray removed – weather uses its own sync src/om.rs on top of
 # the vendored om-file-format-sys C lib (see weather/src/main/rust/Cargo.toml).
 

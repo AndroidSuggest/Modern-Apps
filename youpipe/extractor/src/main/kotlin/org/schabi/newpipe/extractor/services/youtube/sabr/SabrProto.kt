@@ -2,8 +2,6 @@ package org.schabi.newpipe.extractor.services.youtube.sabr
 
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.LinkedHashMap
 
 /**
  * Minimal protobuf wire reader/writer used by the experimental YouTube SABR probe.
@@ -54,7 +52,7 @@ internal class SabrProto private constructor() {
 
         @JvmStatic
         fun asString(data: ByteArray): String {
-            return String(data, StandardCharsets.UTF_8)
+            return String(data, Charsets.UTF_8)
         }
 
         @Throws(SabrProtocolException::class)
@@ -212,7 +210,7 @@ internal class SabrProto private constructor() {
 
         fun writeStringIfNotEmpty(fieldNumber: Int, value: String?) {
             if (value != null && value.isNotEmpty()) {
-                writeBytes(fieldNumber, value.toByteArray(StandardCharsets.UTF_8))
+                writeBytes(fieldNumber, value.toByteArray(Charsets.UTF_8))
             }
         }
 

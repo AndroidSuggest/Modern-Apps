@@ -1,5 +1,9 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -20,12 +24,8 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.time.LocalDateTime
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
-import java.util.ArrayList
-import java.util.stream.Collectors
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * Extractor of YouTube lockup view models for stream items.
@@ -39,11 +39,11 @@ open class YoutubeStreamInfoItemLockupExtractor(
     private val timeAgoParser: TimeAgoParser?
 ) : StreamInfoItemExtractor {
 
-    private val cachedMetadataRows: JsonArray = lockupViewModel.getObject("metadata")!!
-        .getObject("lockupMetadataViewModel")!!
-        .getObject("metadata")!!
-        .getObject("contentMetadataViewModel")!!
-        .getArray("metadataRows")!!
+    private val cachedMetadataRows: JsonArray = lockupViewModel.getObject("metadata").orEmptyObject()
+        .getObject("lockupMetadataViewModel").orEmptyObject()
+        .getObject("metadata").orEmptyObject()
+        .getObject("contentMetadataViewModel").orEmptyObject()
+        .getArray("metadataRows").orEmptyArray()
 
     private var cachedStreamType: StreamType? = null
     private var cachedName: String? = null
@@ -70,7 +70,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
                         ?.getArray("thumbnailBadges") ?: JsonArray(emptyList()))
                         .filterIsInstance<JsonObject>()
                 }
-                .map { it.getObject("thumbnailBadgeViewModel")!! }
+                .map { it.getObject("thumbnailBadgeViewModel").orEmptyObject() }
                 .any { vm ->
                     if ("THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE" == vm.getString("badgeStyle")) {
                         return@any true
@@ -93,7 +93,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
                         ?.getArray("badges") ?: JsonArray(emptyList()))
                         .filterIsInstance<JsonObject>()
                 }
-                .map { it.getObject("thumbnailBadgeViewModel")!! }
+                .map { it.getObject("thumbnailBadgeViewModel").orEmptyObject() }
                 .any { vm ->
                     "THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE" == vm.getString("badgeStyle")
                 }
@@ -151,7 +151,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
                     ?.getArray("badges") ?: JsonArray(emptyList()))
                     .filterIsInstance<JsonObject>()
             }
-            .map { it.getObject("thumbnailBadgeViewModel")!!.getString("text") ?: "" }
+            .map { it.getObject("thumbnailBadgeViewModel").orEmptyObject().getString("text") ?: "" }
 
         if (potentialDurations.isEmpty()) {
             return -1
@@ -177,13 +177,13 @@ open class YoutubeStreamInfoItemLockupExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderName(): String {
+    override fun getUploaderName(): String? {
         val metadataRows = getMetadataPartsFromMetadataRows()
         if (metadataRows.isEmpty()) {
             throw ParsingException("Could not get uploader name: no metadata row")
         }
 
-        val uploaderName = getTextContentFromMetadataPart(metadataRows[0].getObject(0)!!)
+        val uploaderName = getTextContentFromMetadataPart(metadataRows[0].getObject(0).orEmptyObject())
         if (isNullOrEmpty(uploaderName)) {
             throw ParsingException("Could not get uploader name")
         }
@@ -192,14 +192,14 @@ open class YoutubeStreamInfoItemLockupExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderUrl(): String {
+    override fun getUploaderUrl(): String? {
         val innerTubeCommand = channelImageViewModel()
             .forUploaderUrlExtraction()
-            .getObject("rendererContext")!!
-            .getObject("commandContext")!!
-            .getObject("onTap")!!
-            .getObject("innertubeCommand")!!
-        val browseEndpoint = innerTubeCommand.getObject("browseEndpoint")!!
+            .getObject("rendererContext").orEmptyObject()
+            .getObject("commandContext").orEmptyObject()
+            .getObject("onTap").orEmptyObject()
+            .getObject("innertubeCommand").orEmptyObject()
+        val browseEndpoint = innerTubeCommand.getObject("browseEndpoint").orEmptyObject()
         val channelId = browseEndpoint.getString("browseId")
 
         if (channelId != null && channelId.startsWith("UC")) {
@@ -211,8 +211,8 @@ open class YoutubeStreamInfoItemLockupExtractor(
             return resolveUploaderUrlFromRelativeUrl(canonicalBaseUrl!!)
         }
 
-        val webCommandMetadataUrl = innerTubeCommand.getObject("commandMetadata")!!
-            .getObject("webCommandMetadata")!!
+        val webCommandMetadataUrl = innerTubeCommand.getObject("commandMetadata").orEmptyObject()
+            .getObject("webCommandMetadata").orEmptyObject()
             .getString("url")
         if (!isNullOrEmpty(webCommandMetadataUrl)) {
             return resolveUploaderUrlFromRelativeUrl(webCommandMetadataUrl!!)
@@ -243,9 +243,9 @@ open class YoutubeStreamInfoItemLockupExtractor(
         }
 
         return YoutubeParsingHelper.hasArtistOrVerifiedIconBadgeAttachment(
-            metadataRows[0].getObject(0)!!
-                .getObject("text")!!
-                .getArray("attachmentRuns")!!
+            metadataRows[0].getObject(0).orEmptyObject()
+                .getObject("text").orEmptyObject()
+                .getArray("attachmentRuns").orEmptyArray()
         )
     }
 
@@ -316,7 +316,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
             throw ParsingException("Could not get view count: no metadata part in the metadata parts array")
         }
 
-        val viewCountText = getTextContentFromMetadataPart(metadataPartsRow.getObject(0)!!)
+        val viewCountText = getTextContentFromMetadataPart(metadataPartsRow.getObject(0).orEmptyObject())
         if (isNullOrEmpty(viewCountText)) {
             throw ParsingException("Could not get view count")
         }
@@ -364,9 +364,9 @@ open class YoutubeStreamInfoItemLockupExtractor(
 
     @Throws(ParsingException::class)
     private fun determineChannelImageViewModel(): ChannelImageViewModel {
-        val image = lockupViewModel.getObject("metadata")!!
-            .getObject("lockupMetadataViewModel")!!
-            .getObject("image")!!
+        val image = lockupViewModel.getObject("metadata").orEmptyObject()
+            .getObject("lockupMetadataViewModel").orEmptyObject()
+            .getObject("image").orEmptyObject()
 
         val single = image.getObject("decoratedAvatarViewModel")
         if (single != null) {
@@ -417,7 +417,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
             throw ParsingException("Could not get date text: no metadata part in the metadata parts array")
         }
 
-        cachedDateText = getTextContentFromMetadataPart(metadataPartsRow.getObject(metadataPartsRow.size - 1)!!)
+        cachedDateText = getTextContentFromMetadataPart(metadataPartsRow.getObject(metadataPartsRow.size - 1).orEmptyObject())
         return cachedDateText!!
     }
 
@@ -426,7 +426,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
         for (i in 0 until cachedMetadataRows.size) {
             val metadataRow = cachedMetadataRows.getObject(i)
             if (metadataRow != null && metadataRow.containsKey("metadataParts")) {
-                metadataParts.add(metadataRow.getArray("metadataParts")!!)
+                metadataParts.add(metadataRow.getArray("metadataParts").orEmptyArray())
             }
         }
         return metadataParts
@@ -439,29 +439,29 @@ open class YoutubeStreamInfoItemLockupExtractor(
 
     class SingleChannelImageViewModel(viewModel: JsonObject) : ChannelImageViewModel(viewModel) {
         override fun forUploaderUrlExtraction(): JsonObject = viewModel
-        override fun forAvatarExtraction(): JsonObject = viewModel.getObject("avatar")!!
+        override fun forAvatarExtraction(): JsonObject = viewModel.getObject("avatar").orEmptyObject()
     }
 
     class MultiChannelImageViewModel(viewModel: JsonObject) : ChannelImageViewModel(viewModel) {
         override fun forUploaderUrlExtraction(): JsonObject {
-            return viewModel.getObject("rendererContext")!!
-                .getObject("commandContext")!!
-                .getObject("onTap")!!
-                .getObject("innertubeCommand")!!
-                .getObject("showDialogCommand")!!
-                .getObject("panelLoadingStrategy")!!
-                .getObject("inlineContent")!!
-                .getObject("dialogViewModel")!!
-                .getObject("customContent")!!
-                .getObject("listViewModel")!!
-                .getArray("listItems")!!
+            return viewModel.getObject("rendererContext").orEmptyObject()
+                .getObject("commandContext").orEmptyObject()
+                .getObject("onTap").orEmptyObject()
+                .getObject("innertubeCommand").orEmptyObject()
+                .getObject("showDialogCommand").orEmptyObject()
+                .getObject("panelLoadingStrategy").orEmptyObject()
+                .getObject("inlineContent").orEmptyObject()
+                .getObject("dialogViewModel").orEmptyObject()
+                .getObject("customContent").orEmptyObject()
+                .getObject("listViewModel").orEmptyObject()
+                .getArray("listItems").orEmptyArray()
                 .filterIsInstance<JsonObject>()
-                .map { it.getObject("listItemViewModel")!! }
+                .map { it.getObject("listItemViewModel").orEmptyObject() }
                 .first()
         }
 
         override fun forAvatarExtraction(): JsonObject {
-            return viewModel.getArray("avatars")!!.getObject(0)!!
+            return viewModel.getArray("avatars").orEmptyArray().getObject(0).orEmptyObject()
         }
     }
 

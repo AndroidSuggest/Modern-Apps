@@ -10,7 +10,6 @@ import com.vayunmathur.messages.signal.store.SignalGroupStore
 import com.vayunmathur.messages.signal.store.SignalRecipientStore
 import com.vayunmathur.messages.signal.web.SignalHttpClient
 import com.vayunmathur.messages.signal.web.SignalWebSocket
-import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
@@ -348,15 +347,15 @@ class GroupManager(
             username = auth.username,
             password = auth.password,
         )
-        if (response.code == 200) {
+        if (response.status == 200) {
             // Distribute the GroupChange as a DataMessage to all group members
-            val changeBytes = response.body?.bytes()
+            val changeBytes = response.bytes
             distributeGroupChange(groupId, masterKey, changeBytes, actions.version)
             invalidateCachedGroup(groupId)
             fetchGroup(groupId, masterKey)
             return true
         } else {
-            Log.e(TAG, "Group change failed with status ${response.code}")
+            Log.e(TAG, "Group change failed with status ${response.status}")
             return false
         }
     }
@@ -583,9 +582,9 @@ class GroupManager(
                 username = auth.username,
                 password = auth.password,
             )
-            if (response.code != 200) return null
+            if (response.status != 200) return null
 
-            val groupResponse = GroupResponse.parseFrom(response.body?.bytes())
+            val groupResponse = GroupResponse.parseFrom(response.bytes)
             val groupProto = groupResponse.group
 
             // Decrypt zkgroup-encrypted fields (title/description/timer/members).
@@ -719,8 +718,8 @@ class GroupManager(
                 username = aci,
                 password = password,
             )
-            if (response.code !in 200..299) return null
-            val encryptedAvatar = response.body?.bytes() ?: return null
+            if (!response.isSuccess) return null
+            val encryptedAvatar = response.bytes
             decryptGroupAvatar(encryptedAvatar, masterKey)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download group avatar", e)

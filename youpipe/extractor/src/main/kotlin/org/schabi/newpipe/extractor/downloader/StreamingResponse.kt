@@ -3,7 +3,6 @@ package org.schabi.newpipe.extractor.downloader
 import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
-import java.util.Collections
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
@@ -15,7 +14,7 @@ class StreamingResponse(
 
     @Nonnull
     private val responseHeaders: Map<String, List<String>> =
-        responseHeaders ?: Collections.emptyMap()
+        responseHeaders ?: emptyMap()
 
     fun responseCode(): Int = responseCode
     fun body(): InputStream = body

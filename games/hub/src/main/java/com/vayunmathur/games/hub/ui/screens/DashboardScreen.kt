@@ -116,9 +116,9 @@ fun DashboardScreen(
 
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = "Playtime", value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
-                    StatCard(label = "Games", value = "${crossStats.totalGames}", modifier = Modifier.weight(1f))
-                    StatCard(label = "Achievements", value = "${crossStats.totalAchievementsUnlocked}/${crossStats.totalAchievements}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.tab_games), value = "${crossStats.totalGames}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.achievements_for), value = "${crossStats.totalAchievementsUnlocked}/${crossStats.totalAchievements}", modifier = Modifier.weight(1f))
                 }
             }
 

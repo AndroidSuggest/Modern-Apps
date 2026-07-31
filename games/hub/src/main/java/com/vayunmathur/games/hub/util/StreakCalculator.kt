@@ -1,8 +1,11 @@
 package com.vayunmathur.games.hub.util
 
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.games.hub.data.entities.PlaySessionEntity
-import java.util.Calendar
-import java.util.concurrent.TimeUnit
 
 object StreakCalculator {
 
@@ -36,7 +39,7 @@ object StreakCalculator {
         var maxStreak = 1
         var curRun = 1
         for (i in 1 until sortedDays.size) {
-            if (sortedDays[i] - sortedDays[i - 1] == TimeUnit.DAYS.toMillis(1)) {
+            if (sortedDays[i] - sortedDays[i - 1] == 1.days.inWholeMilliseconds) {
                 curRun++
                 if (curRun > maxStreak) maxStreak = curRun
             } else {
@@ -45,18 +48,18 @@ object StreakCalculator {
         }
 
         val todayStart = dayStart(now)
-        val yesterdayStart = todayStart - TimeUnit.DAYS.toMillis(1)
+        val yesterdayStart = todayStart - 1.days.inWholeMilliseconds
 
         var currentStreak = 0
         val lastDay = sortedDays.last()
         if (lastDay == todayStart || lastDay == yesterdayStart) {
             currentStreak = 1
             var idx = sortedDays.lastIndex - 1
-            var expectedDay = lastDay - TimeUnit.DAYS.toMillis(1)
+            var expectedDay = lastDay - 1.days.inWholeMilliseconds
             while (idx >= 0) {
                 if (sortedDays[idx] == expectedDay) {
                     currentStreak++
-                    expectedDay -= TimeUnit.DAYS.toMillis(1)
+                    expectedDay -= 1.days.inWholeMilliseconds
                     idx--
                 } else if (sortedDays[idx] < expectedDay) {
                     break
@@ -70,12 +73,11 @@ object StreakCalculator {
     }
 
     private fun dayStart(millis: Long): Long {
-        val cal = Calendar.getInstance()
-        cal.timeInMillis = millis
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
-        return cal.timeInMillis
+        val tz = TimeZone.currentSystemDefault()
+        return Instant.fromEpochMilliseconds(millis)
+            .toLocalDateTime(tz)
+            .date
+            .atStartOfDayIn(tz)
+            .toEpochMilliseconds()
     }
 }

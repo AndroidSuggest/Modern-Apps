@@ -1,10 +1,7 @@
 package org.schabi.newpipe.extractor.downloader
 
 import org.schabi.newpipe.extractor.localization.Localization
-import java.util.ArrayList
-import java.util.Arrays
 import java.util.Collections
-import java.util.LinkedHashMap
 import java.util.Objects
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
@@ -21,8 +18,6 @@ class Request(
     val headers: Map<String, List<String>>
 
     init {
-        Objects.requireNonNull(httpMethod, "Request's httpMethod is null")
-        Objects.requireNonNull(url, "Request's url is null")
 
         val actualHeaders = LinkedHashMap<String, List<String>>()
         if (headers != null) {
@@ -43,11 +38,6 @@ class Request(
         builder.automaticLocalizationHeader
     )
 
-    fun httpMethod(): String = httpMethod
-    fun url(): String = url
-    fun headers(): Map<String, List<String>> = headers
-    fun dataToSend(): ByteArray? = dataToSend
-    fun localization(): Localization? = localization
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -56,13 +46,13 @@ class Request(
         return httpMethod == request.httpMethod &&
             url == request.url &&
             headers == request.headers &&
-            Arrays.equals(dataToSend, request.dataToSend) &&
-            Objects.equals(localization, request.localization)
+            dataToSend.contentEquals(request.dataToSend) &&
+            localization == request.localization
     }
 
     override fun hashCode(): Int {
         var result = Objects.hash(httpMethod, url, headers, localization)
-        result = 31 * result + Arrays.hashCode(dataToSend)
+        result = 31 * result + dataToSend.contentHashCode()
         return result
     }
 
@@ -146,10 +136,10 @@ class Request(
         }
 
         fun setHeader(headerName: String, headerValue: String): Builder =
-            setHeaders(headerName, Collections.singletonList(headerValue))
+            setHeaders(headerName, listOf(headerValue))
 
         fun addHeader(headerName: String, headerValue: String): Builder =
-            addHeaders(headerName, Collections.singletonList(headerValue))
+            addHeaders(headerName, listOf(headerValue))
     }
 
     companion object {
@@ -160,14 +150,14 @@ class Request(
         @Nonnull
         fun getHeadersFromLocalization(@Nullable localization: Localization?): Map<String, List<String>> {
             if (localization == null) {
-                return Collections.emptyMap()
+                return emptyMap()
             }
             val languageCode = localization.languageCode
-            val languageCodeList = Collections.singletonList(
+            val languageCodeList = listOf(
                 if (localization.getCountryCode().isEmpty()) languageCode
                 else localization.getLocalizationCode() + ", " + languageCode + ";q=0.9"
             )
-            return Collections.singletonMap("Accept-Language", languageCodeList)
+            return mapOf("Accept-Language" to languageCodeList)
         }
     }
 }

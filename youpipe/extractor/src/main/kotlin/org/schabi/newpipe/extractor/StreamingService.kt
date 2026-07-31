@@ -23,7 +23,6 @@ import org.schabi.newpipe.extractor.stream.StreamExtractor
 import org.schabi.newpipe.extractor.subscription.SubscriptionExtractor
 import org.schabi.newpipe.extractor.suggestion.SuggestionExtractor
 import org.schabi.newpipe.extractor.utils.Utils
-import java.util.Collections
 import javax.annotation.Nullable
 
 abstract class StreamingService(
@@ -34,8 +33,6 @@ abstract class StreamingService(
 
     val serviceInfo: ServiceInfo = ServiceInfo(name, capabilities)
 
-    fun getServiceId(): Int = serviceId
-    fun getServiceInfo(): ServiceInfo = serviceInfo
 
     override fun toString(): String = "$serviceId:${serviceInfo.name}"
 
@@ -97,13 +94,13 @@ abstract class StreamingService(
     @Throws(ExtractionException::class)
     fun getChannelTabExtractorFromId(id: String, tab: String): ChannelTabExtractor =
         getChannelTabExtractor(
-            getChannelTabLHFactory()!!.fromQuery(id, Collections.singletonList(tab), "")
+            getChannelTabLHFactory()!!.fromQuery(id, listOf(tab), "")
         )
 
     @Throws(ExtractionException::class)
     fun getChannelTabExtractorFromIdAndBaseUrl(id: String, tab: String, baseUrl: String): ChannelTabExtractor =
         getChannelTabExtractor(
-            getChannelTabLHFactory()!!.fromQuery(id, Collections.singletonList(tab), "", baseUrl)
+            getChannelTabLHFactory()!!.fromQuery(id, listOf(tab), "", baseUrl)
         )
 
     @Throws(ExtractionException::class)
@@ -136,10 +133,10 @@ abstract class StreamingService(
     }
 
     open fun getSupportedLocalizations(): List<Localization> =
-        Collections.singletonList(Localization.DEFAULT)
+        listOf(Localization.DEFAULT)
 
     open fun getSupportedCountries(): List<ContentCountry> =
-        Collections.singletonList(ContentCountry.DEFAULT)
+        listOf(ContentCountry.DEFAULT)
 
     fun getLocalization(): Localization {
         val preferredLocalization = NewPipe.getPreferredLocalization()
@@ -177,8 +174,6 @@ abstract class StreamingService(
     }
 
     class ServiceInfo(val name: String, val mediaCapabilities: Set<MediaCapability>) {
-        fun getName(): String = name
-        fun getMediaCapabilities(): Set<MediaCapability> = mediaCapabilities
 
         enum class MediaCapability {
             AUDIO, VIDEO, LIVE, COMMENTS

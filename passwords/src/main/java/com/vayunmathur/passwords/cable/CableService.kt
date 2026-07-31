@@ -64,12 +64,12 @@ class CableService : Service() {
     private fun startForegroundNotification() {
         val manager = getSystemService(NotificationManager::class.java)
         manager?.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Cross-device sign-in", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL_ID, getString(R.string.cable_channel_name), NotificationManager.IMPORTANCE_LOW)
         )
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
-            buildNotification("Starting cross-device sign-in"),
+            buildNotification(getString(R.string.cable_starting)),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
     }
@@ -80,7 +80,7 @@ class CableService : Service() {
 
     private fun buildNotification(text: String) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Passwords")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)

@@ -1,4 +1,7 @@
 package com.vayunmathur.maps.ui
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import kotlinx.datetime.isoDayNumber
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.clickable
@@ -93,7 +96,7 @@ fun RestaurantBottomSheet(viewModel: SelectedFeatureViewModel, inactiveNavigatio
                 append(" • ")
                 if(isOpen) append(closesAtStr)
                 else append(opensAtStr)
-                if(nextChangeTime.date != now.date) append(" ${nextChangeTime.date.dayOfWeek.name.lowercase().firstLetterUppercase()}")
+                if(nextChangeTime.date != now.date) append(" ${localizedDayOfWeekNames(DateNameStyle.FULL)[nextChangeTime.date.dayOfWeek.isoDayNumber - 1]}")
             }.toAnnotatedString()
             Column {
                 RestaurantItem(
@@ -173,7 +176,7 @@ fun RestaurantBottomSheet(viewModel: SelectedFeatureViewModel, inactiveNavigatio
                 append(" • ")
                 if(isOpen) append(closesAtStr)
                 else append(opensAtStr)
-                if(nextChangeTime.date != now.date) append(" ${nextChangeTime.date.dayOfWeek.name.lowercase().firstLetterUppercase()}")
+                if(nextChangeTime.date != now.date) append(" ${localizedDayOfWeekNames(DateNameStyle.FULL)[nextChangeTime.date.dayOfWeek.isoDayNumber - 1]}")
             }.toAnnotatedString()
             Column {
                 RestaurantItem(

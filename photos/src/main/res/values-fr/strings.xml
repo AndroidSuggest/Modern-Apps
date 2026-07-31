@@ -26,7 +26,9 @@
     <string name="openassistant_needs_update">Mettez à jour l\'application OpenAssistant pour activer la recherche de photos par IA.</string>
     <string name="model_downloading_description">Le téléchargement du modèle d\'IA est en cours. Cela peut prendre quelques minutes, selon votre connexion.</string>
     <string name="resolution">Résolution : %1$d × %2$d</string>
-    <string name="people_photo_count">%1$d photos</string>
+    <plurals name="people_photo_count">
+        <item quantity="other">%1$d photos</item>
+    </plurals>
     <string name="view_360">Vue à 360°</string>
     <plurals name="people_in_photo">
         <item quantity="one">%1$d personne</item>

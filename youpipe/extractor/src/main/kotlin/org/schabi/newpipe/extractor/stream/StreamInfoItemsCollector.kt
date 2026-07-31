@@ -3,7 +3,6 @@ package org.schabi.newpipe.extractor.stream
 import org.schabi.newpipe.extractor.InfoItemsCollector
 import org.schabi.newpipe.extractor.exceptions.FoundAdException
 import org.schabi.newpipe.extractor.exceptions.ParsingException
-import java.util.Comparator
 
 open class StreamInfoItemsCollector : InfoItemsCollector<StreamInfoItem, StreamInfoItemExtractor> {
 

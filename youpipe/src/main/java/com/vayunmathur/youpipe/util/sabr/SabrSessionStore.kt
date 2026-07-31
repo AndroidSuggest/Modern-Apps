@@ -21,7 +21,6 @@ import java.util.ArrayDeque
 import java.util.Collections
 import java.util.Deque
 import java.util.IdentityHashMap
-import java.util.LinkedHashMap
 import java.util.Objects
 import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
@@ -127,7 +126,7 @@ object SabrSessionStore {
         startBootstrap(appContext, info, audioFormat, videoFormat, localization)
     }
 
-    private class SessionKey(
+    internal class SessionKey(
         private val sourceId: Long,
         val videoId: String,
         info: YoutubeSabrInfo,
@@ -136,7 +135,7 @@ object SabrSessionStore {
     ) {
         private val videoItag: Int = videoFormat.itag
         private val audioItag: Int = audioFormat.itag
-        private val audioTrackId: String = Objects.toString(audioFormat.audioTrackId, "")
+        private val audioTrackId: String = audioFormat.audioTrackId.orEmpty()
         private val profile: YoutubeSabrClientProfile = info.profile
 
         override fun equals(other: Any?): Boolean {

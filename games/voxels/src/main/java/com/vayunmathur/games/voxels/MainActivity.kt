@@ -1,5 +1,7 @@
 package com.vayunmathur.games.voxels
 
+import com.vayunmathur.games.voxels.R
+import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -113,7 +115,7 @@ class MainActivity : ComponentActivity() {
                         }, modifier = Modifier.fillMaxSize())
                     } else {
                         Box(Modifier.fillMaxSize().background(Color(0xFF0E1A0F)), contentAlignment = Alignment.Center) {
-                            Text("Rust lib missing — Vulkan unavailable", color = Color.White)
+                            Text(stringResource(R.string.rust_lib_missing_vulkan_unavailable), color = Color.White)
                         }
                     }
 
@@ -170,7 +172,7 @@ class MainActivity : ComponentActivity() {
                         )
                         if (flying) {
                             HoldButton(
-                                label = "Down",
+                                label = stringResource(R.string.down),
                                 onPress = { if (VoxelsNative.isAvailable) try { VoxelsNative.setFlyDown(true) } catch (_: Exception) {} },
                                 onRelease = { if (VoxelsNative.isAvailable) try { VoxelsNative.setFlyDown(false) } catch (_: Exception) {} }
                             )
@@ -237,13 +239,13 @@ class MainActivity : ComponentActivity() {
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                Text("Paused", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                                Button(onClick = { paused = false }, modifier = Modifier.width(240.dp)) { Text("Resume") }
+                                Text(stringResource(R.string.paused), style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                                Button(onClick = { paused = false }, modifier = Modifier.width(240.dp)) { Text(stringResource(R.string.resume)) }
                                 Button(onClick = {
                                     // onDestroy() saves the world and tears down the engine; finishing
                                     // returns to MenuActivity (still on the back stack).
                                     activity?.finish()
-                                }, modifier = Modifier.width(240.dp)) { Text("Save & Quit to Menu") }
+                                }, modifier = Modifier.width(240.dp)) { Text(stringResource(R.string.save_quit_to_menu)) }
                             }
                         }
                     }

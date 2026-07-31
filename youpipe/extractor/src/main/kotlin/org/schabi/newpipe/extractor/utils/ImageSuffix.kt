@@ -2,7 +2,6 @@ package org.schabi.newpipe.extractor.utils
 
 import org.schabi.newpipe.extractor.Image.ResolutionLevel
 import java.io.Serializable
-import java.util.Objects
 import javax.annotation.Nonnull
 
 /**
@@ -15,50 +14,18 @@ import javax.annotation.Nonnull
  *
  * Note that this class is not intended to be used externally and so should only be used when
  * interfacing with the extractor.
+ *
+ * @param suffix          the suffix string
+ * @param height          the height corresponding to the image suffix
+ * @param width           the width corresponding to the image suffix
+ * @param resolutionLevel the [ResolutionLevel] of the image suffix
  */
-class ImageSuffix : Serializable {
-
-    @Nonnull
-    private val suffix: String
-    private val height: Int
-    private val width: Int
-    @Nonnull
-    private val resolutionLevel: ResolutionLevel
-
-    /**
-     * Create a new [ImageSuffix] instance.
-     *
-     * @param suffix                   the suffix string
-     * @param height                   the height corresponding to the image suffix
-     * @param width                    the width corresponding to the image suffix
-     * @param estimatedResolutionLevel the [ResolutionLevel] of the image suffix, which must
-     *                                 not be null
-     * @throws NullPointerException if `estimatedResolutionLevel` is `null`
-     */
-    constructor(
-        @Nonnull suffix: String,
-        height: Int,
-        width: Int,
-        @Nonnull estimatedResolutionLevel: ResolutionLevel
-    ) {
-        this.suffix = suffix
-        this.height = height
-        this.width = width
-        this.resolutionLevel = Objects.requireNonNull(
-            estimatedResolutionLevel,
-            "estimatedResolutionLevel is null"
-        )
-    }
-
-    @Nonnull
-    fun getSuffix(): String = suffix
-
-    fun getHeight(): Int = height
-
-    fun getWidth(): Int = width
-
-    @Nonnull
-    fun getResolutionLevel(): ResolutionLevel = resolutionLevel
+class ImageSuffix(
+    @Nonnull val suffix: String,
+    val height: Int,
+    val width: Int,
+    @Nonnull val resolutionLevel: ResolutionLevel
+) : Serializable {
 
     @Nonnull
     override fun toString(): String =

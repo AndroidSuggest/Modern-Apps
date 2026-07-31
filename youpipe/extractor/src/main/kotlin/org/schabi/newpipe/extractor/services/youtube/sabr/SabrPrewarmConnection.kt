@@ -1,13 +1,12 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
 
 class SabrPrewarmConnection private constructor(
     connections: List<String>,
     extraFields: List<String>
 ) {
-    private val connections: List<String> = Collections.unmodifiableList(ArrayList(connections))
-    private val extraFields: List<String> = Collections.unmodifiableList(ArrayList(extraFields))
+    private val connections: List<String> = connections.toList()
+    private val extraFields: List<String> = extraFields.toList()
 
     companion object {
         private const val MAX_SUMMARY_ITEMS = 4

@@ -1,5 +1,18 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
+import android.content.Context
+import android.text.format.DateFormat
+import android.text.format.DateUtils
+import androidx.compose.ui.platform.LocalContext
+import java.util.Date
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.format
+import kotlinx.datetime.format.char
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,12 +54,8 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.data.HistoryEntry
 import com.vayunmathur.web.util.BrowserUtils
 import com.vayunmathur.web.util.WebViewModel
-import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -57,14 +66,15 @@ fun HistoryPage(
     val history by viewModel.history.collectAsStateWithLifecycle()
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    val grouped = remember(history) {
-        groupByDate(history)
+    val context = LocalContext.current
+    val grouped = remember(history, context) {
+        groupByDate(context, history)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("History") },
+                title = { Text(stringResource(R.string.history)) },
                 navigationIcon = { IconNavigation(backStack) },
                 actions = {
                     if (history.isNotEmpty()) {
@@ -78,7 +88,7 @@ fun HistoryPage(
     ) { paddingValues ->
         if (history.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text("No history yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.no_history_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -114,16 +124,16 @@ fun HistoryPage(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear history?") },
-            text = { Text("This will permanently delete your browsing history.") },
+            title = { Text(stringResource(R.string.clear_history)) },
+            text = { Text(stringResource(R.string.this_will_permanently_delete_your_browsi)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.clearHistory()
                     showClearConfirm = false
-                }) { Text("Clear") }
+                }) { Text(stringResource(R.string.clear)) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -168,21 +178,27 @@ private fun HistoryRow(
 
 private fun formatTime(millis: Long): String {
     return try {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(millis))
+        Instant.fromEpochMilliseconds(millis)
+            .toLocalDateTime(TimeZone.currentSystemDefault()).time
+            .format(LocalTime.Format { hour(); char(':'); minute() })
     } catch (_: Exception) {
         ""
     }
 }
 
-private fun groupByDate(entries: List<HistoryEntry>): List<Pair<String, List<HistoryEntry>>> {
+private fun groupByDate(context: Context, entries: List<HistoryEntry>): List<Pair<String, List<HistoryEntry>>> {
     val tz = TimeZone.currentSystemDefault()
     val now = Instant.fromEpochMilliseconds(System.currentTimeMillis()).toLocalDateTime(tz).date
     return entries.groupBy { entry ->
         val date = Instant.fromEpochMilliseconds(entry.visitedAt).toLocalDateTime(tz).date
-        when {
-            date == now -> "Today"
-            (now.toEpochDays() - date.toEpochDays()) == 1L -> "Yesterday"
-            else -> "${date.month.name.lowercase().replaceFirstChar { it.uppercase() }} ${date.dayOfMonth}, ${date.year}"
+        when (now.toEpochDays() - date.toEpochDays()) {
+            // DateUtils yields a localized "Today"/"Yesterday" in every locale Android ships.
+            0L, 1L -> DateUtils.getRelativeTimeSpanString(
+                entry.visitedAt,
+                System.currentTimeMillis(),
+                DateUtils.DAY_IN_MILLIS,
+            ).toString()
+            else -> DateFormat.getMediumDateFormat(context).format(Date(entry.visitedAt))
         }
     }.toList()
 }

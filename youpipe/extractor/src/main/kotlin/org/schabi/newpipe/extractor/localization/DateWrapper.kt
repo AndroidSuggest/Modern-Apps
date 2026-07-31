@@ -32,8 +32,6 @@ class DateWrapper : Serializable {
     constructor(dateTime: LocalDateTime, isApproximation: Boolean) :
         this(dateTime.atZone(ZoneId.systemDefault()).toInstant(), isApproximation)
 
-    @Nonnull
-    fun getInstant(): Instant = instant
 
     @Nonnull
     fun offsetDateTime(): OffsetDateTime = instant.atOffset(ZoneOffset.UTC)
@@ -45,7 +43,6 @@ class DateWrapper : Serializable {
     fun getLocalDateTime(@Nonnull zoneId: ZoneId): LocalDateTime =
         LocalDateTime.ofInstant(instant, zoneId)
 
-    fun isApproximation(): Boolean = isApproximation
 
     override fun toString(): String =
         "DateWrapper{instant=$instant, isApproximation=$isApproximation}"

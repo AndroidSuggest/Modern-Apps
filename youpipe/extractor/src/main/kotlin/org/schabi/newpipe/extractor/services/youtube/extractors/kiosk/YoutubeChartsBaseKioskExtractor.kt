@@ -1,5 +1,8 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors.kiosk
 
+import java.io.IOException
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -34,10 +37,8 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.time.LocalDate
-import java.time.ZoneOffset
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * Base class parsing responses from YouTube Charts for all trending video charts.
@@ -73,7 +74,7 @@ abstract class YoutubeChartsBaseKioskExtractor(
                 "perspective=CHART_DETAILS&chart_params_country_code=${contentCountry.countryCode}&chart_params_chart_type=$chartType"
             )
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val headers = HashMap(getOriginReferrerHeaders("https://charts.youtube.com"))
         headers.putAll(
@@ -85,7 +86,7 @@ abstract class YoutubeChartsBaseKioskExtractor(
 
         browseResponse = JsonUtils.toJsonObject(
             getValidJsonResponseBody(
-                getDownloader().postWithContentTypeJson(YT_CHARTS_ENDPOINT, headers, body, localization)
+                downloader.postWithContentTypeJson(YT_CHARTS_ENDPOINT, headers, body, localization)
             )
         )
     }
@@ -96,15 +97,15 @@ abstract class YoutubeChartsBaseKioskExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<StreamInfoItem> {
-        val videos = browseResponse!!.getObject("contents")!!
-            .getObject("sectionListRenderer")!!
-            .getArray("contents")!!
-            .getObject(0)!!
-            .getObject("musicAnalyticsSectionRenderer")!!
-            .getObject("content")!!
-            .getArray("videos")!!
-            .getObject(0)!!
-            .getArray("videoViews")!!
+        val videos = browseResponse!!.getObject("contents").orEmptyObject()
+            .getObject("sectionListRenderer").orEmptyObject()
+            .getArray("contents").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("musicAnalyticsSectionRenderer").orEmptyObject()
+            .getObject("content").orEmptyObject()
+            .getArray("videos").orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getArray("videoViews").orEmptyArray()
 
         val collector = StreamInfoItemsCollector(getServiceId())
 
@@ -144,12 +145,12 @@ abstract class YoutubeChartsBaseKioskExtractor(
         override fun getViewCount(): Long = -1
 
         @Throws(ParsingException::class)
-        override fun getUploaderName(): String {
+        override fun getUploaderName(): String? {
             return videoObject.getString("channelName") ?: ""
         }
 
         @Throws(ParsingException::class)
-        override fun getUploaderUrl(): String {
+        override fun getUploaderUrl(): String? {
             val channelId = videoObject.getString("externalChannelId")
             if (isNullOrEmpty(channelId)) {
                 throw ParsingException("Could not get channel ID")
@@ -162,7 +163,7 @@ abstract class YoutubeChartsBaseKioskExtractor(
         override fun getTextualUploadDate(): String? = null
 
         override fun getUploadDate(): DateWrapper {
-            val releaseDate = videoObject.getObject("releaseDate")!!
+            val releaseDate = videoObject.getObject("releaseDate").orEmptyObject()
             val year = (releaseDate["year"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toInt() ?: 1970
             val month = (releaseDate["month"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toInt() ?: 1
             val day = (releaseDate["day"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toInt() ?: 1
@@ -178,7 +179,10 @@ abstract class YoutubeChartsBaseKioskExtractor(
 
         @Throws(ParsingException::class)
         override fun getUrl(): String {
-            return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(videoObject.getString("id"))
+            return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(
+                videoObject.getString("id")
+                    ?: throw ParsingException("Could not get video id")
+            )
         }
 
         @Throws(ParsingException::class)
@@ -188,6 +192,7 @@ abstract class YoutubeChartsBaseKioskExtractor(
     }
 
     companion object {
+        @JvmStatic
         protected val YT_CHARTS_SUPPORTED_COUNTRY_CODES: Set<String> = setOf(
             "AE", "AR", "AT", "AU", "BE", "BO", "BR", "CA", "CH", "CL", "CO", "CR", "CZ", "DE",
             "DK", "DO", "EC", "EE", "EG", "ES", "FI", "FR", "GB", "GT", "HN", "HU", "ID", "IE",

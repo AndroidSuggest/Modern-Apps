@@ -1,28 +1,47 @@
 package com.vayunmathur.maps.util
 
+import kotlin.time.Duration.Companion.hours
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import okhttp3.Interceptor
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Protocol
-import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
-import org.maplibre.android.module.http.HttpRequestUtil
+import android.net.Uri
+import android.os.Build
+import com.vayunmathur.library.network.NetworkClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.maplibre.android.LibraryLoaderProvider
+import org.maplibre.android.MapLibre
+import org.maplibre.android.ModuleProvider
+import org.maplibre.android.http.HttpIdentifier
+import org.maplibre.android.http.HttpRequest
+import org.maplibre.android.http.HttpRequestUrl
+import org.maplibre.android.http.HttpResponder
+import org.maplibre.android.module.loader.LibraryLoaderProviderImpl
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.NoRouteToHostException
+import java.net.ProtocolException
+import java.net.SocketException
+import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.util.Properties
-import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 /**
  * Disk cache for the streamed protomaps basemap tiles.
  *
  * The basemap is streamed live from [BASEMAP_PMTILES_URL] via pmtiles-over-HTTP
- * range requests. MapLibre routes every HTTP resource load through the OkHttp
- * client installed via [HttpRequestUtil.setOkHttpClient]; this interceptor sits
- * on that client and caches the range responses for the pmtiles host.
+ * range requests. MapLibre routes every HTTP resource load through the
+ * [HttpRequest] produced by its [ModuleProvider]; we install our own provider
+ * via [MapLibre.setModuleProvider] so the whole map stack runs on
+ * `library:network` (HttpURLConnection) instead of MapLibre's bundled OkHttp
+ * implementation, and cache the range responses for the pmtiles host on the way
+ * through.
  *
  * Cache policy (per requested byte range = one tile/directory/header chunk):
  *  - A cached range is kept on disk indefinitely and served whenever the device
@@ -37,13 +56,24 @@ object MapTileCache {
         "pmtiles://https://data.vayunmathur.com/v4.pmtiles"
 
     internal const val TILE_HOST = "data.vayunmathur.com"
-    private val REFRESH_INTERVAL_MS = TimeUnit.HOURS.toMillis(24)
+    private val REFRESH_INTERVAL_MS = 24.hours.inWholeMilliseconds
+
+    internal const val CACHE_DIR_NAME = "tilecache"
+
+    /**
+     * Marker written into the cache dir. Entries are wiped when it changes, so
+     * it carries both the origin host and a format revision — v2 stores the
+     * headers [HttpResponder.onResponse] actually consumes (ETag, Last-Modified,
+     * Cache-Control, Expires, Retry-After, x-rate-limit-reset) rather than the
+     * Content-Type/Content-Range/Accept-Ranges the OkHttp interceptor needed.
+     */
+    private const val CACHE_ORIGIN = "$TILE_HOST/v2"
 
     @Volatile private var installed = false
 
     /**
-     * Install the caching OkHttp client into MapLibre. Idempotent; must run
-     * before the first map request (i.e. before the map composable is created).
+     * Install the caching HTTP stack into MapLibre. Idempotent; must run before
+     * the first map request (i.e. before the map composable is created).
      */
     @Synchronized
     fun install(context: Context) {
@@ -53,48 +83,126 @@ object MapTileCache {
         // like the downloaded zone pmtiles) and fall back to internal files.
         val root = appContext.getExternalFilesDir(null) ?: appContext.filesDir
         val cacheDir = File(root, CACHE_DIR_NAME).apply { mkdirs() }
-        // Cache migration: old tilecache was keyed by SHA-256(demo-bucket URL+Range).
-        // After switching TILE_HOST to data.vayunmathur.com the hashes no longer
-        // match. Clear stale entries when the origin marker differs.
+        // Cache migration: entries are keyed by SHA-256(URL+Range) and their
+        // meta format is tied to CACHE_ORIGIN. Clear stale entries when the
+        // marker differs (host change, or the v1 -> v2 meta format change).
         try {
             val originFile = File(cacheDir, ".origin")
             val currentOrigin = originFile.takeIf { it.exists() }?.readText()?.trim()
-            if (currentOrigin != null && currentOrigin != TILE_HOST) {
+            if (currentOrigin != CACHE_ORIGIN) {
                 cacheDir.listFiles()?.forEach { f ->
                     if (f.name != ".origin") f.deleteRecursively()
                 }
-            }
-            if (currentOrigin != TILE_HOST) {
-                originFile.writeText(TILE_HOST)
+                originFile.writeText(CACHE_ORIGIN)
             }
         } catch (_: Exception) {
             // Best-effort migration; a failure must not break map init.
         }
-        val client = OkHttpClient.Builder()
-            .addInterceptor(TileCacheInterceptor(appContext, cacheDir))
-            .build()
-        HttpRequestUtil.setOkHttpClient(client)
+        MapLibre.setModuleProvider(CachingModuleProvider(appContext, cacheDir))
         installed = true
     }
 
-    internal const val CACHE_DIR_NAME = "tilecache"
+    /**
+     * MapLibre constructs one [HttpRequest] per resource load, so the scope is
+     * shared here. Core already bounds how many resource loads are in flight,
+     * so [Dispatchers.IO] needs no extra throttling.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private class TileCacheInterceptor(
+    private val userAgent: String by lazy {
+        val identifier = try { HttpIdentifier.getIdentifier() } catch (_: Throwable) { "" }
+        val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
+        toHumanReadableAscii("$identifier MapLibre Android/${Build.VERSION.SDK_INT} ($abi)")
+    }
+
+    /** Header values must be ASCII; package/version names are not guaranteed to be. */
+    private fun toHumanReadableAscii(s: String): String =
+        buildString { for (c in s) if (c.code in 0x20..0x7e) append(c) }.trim()
+
+    private class CachingModuleProvider(
         private val context: Context,
         private val cacheDir: File,
-    ) : Interceptor {
-        override fun intercept(chain: Interceptor.Chain): Response {
-            val request = chain.request()
-            // Only intercept PMTiles range requests — TILE_HOST now also serves
-            // amenities.db, road_names.bin etc which must NOT be cached here.
-            if (request.method != "GET" ||
-                request.url.host != TILE_HOST ||
-                !request.url.encodedPath.contains(".pmtiles")
-            ) {
-                return chain.proceed(request)
-            }
+    ) : ModuleProvider {
+        override fun createHttpRequest(): HttpRequest = CachingHttpRequest(context, cacheDir)
+        override fun createLibraryLoaderProvider(): LibraryLoaderProvider = LibraryLoaderProviderImpl()
+    }
 
-            val key = keyFor(request.url.toString(), request.header("Range"))
+    /** The header set [HttpResponder.onResponse] takes, plus the body. */
+    private class Loaded(
+        val code: Int,
+        val eTag: String?,
+        val lastModified: String?,
+        val cacheControl: String?,
+        val expires: String?,
+        val retryAfter: String?,
+        val xRateLimitReset: String?,
+        val body: ByteArray,
+    )
+
+    private class CachingHttpRequest(
+        private val context: Context,
+        private val cacheDir: File,
+    ) : HttpRequest {
+
+        @Volatile private var job: Job? = null
+
+        override fun executeRequest(
+            responder: HttpResponder,
+            nativePtr: Long,
+            resourceUrl: String,
+            dataRange: String,
+            etag: String,
+            modified: String,
+            offlineUsage: Boolean,
+        ) {
+            job = scope.launch {
+                val loaded = try {
+                    load(resourceUrl, dataRange, etag, modified, offlineUsage)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    responder.handleFailure(
+                        failureType(e),
+                        e.message ?: "Error processing the request",
+                    )
+                    return@launch
+                }
+                responder.onResponse(
+                    loaded.code,
+                    loaded.eTag,
+                    loaded.lastModified,
+                    loaded.cacheControl,
+                    loaded.expires,
+                    loaded.retryAfter,
+                    loaded.xRateLimitReset,
+                    loaded.body,
+                )
+            }
+        }
+
+        override fun cancelRequest() {
+            // Expected for tiles that were prefetched but are no longer needed.
+            job?.cancel()
+        }
+
+        private suspend fun load(
+            resourceUrl: String,
+            dataRange: String,
+            etag: String,
+            modified: String,
+            offlineUsage: Boolean,
+        ): Loaded {
+            val uri = runCatching { Uri.parse(resourceUrl) }.getOrNull()
+            val host = uri?.host?.lowercase().orEmpty()
+            val querySize = runCatching { uri?.queryParameterNames?.size ?: 0 }.getOrDefault(0)
+            val url = HttpRequestUrl.buildResourceUrl(host, resourceUrl, querySize, offlineUsage)
+
+            // Only cache PMTiles range requests — TILE_HOST also serves
+            // amenities.db, road_names.bin etc which must NOT be cached here.
+            val cacheable = host == TILE_HOST && uri?.encodedPath?.contains(".pmtiles") == true
+            if (!cacheable) return fetch(url, dataRange, etag, modified)
+
+            val key = keyFor(url, dataRange)
             val dataFile = File(cacheDir, "$key.data")
             val metaFile = File(cacheDir, "$key.meta")
             val cached = dataFile.exists() && metaFile.exists()
@@ -104,77 +212,87 @@ object MapTileCache {
             // Serve from cache without touching the network when the entry is
             // still fresh, or whenever we're offline (stale-but-usable).
             if (cached && (fresh || !isOnline())) {
-                return buildFromCache(request, dataFile, metaFile)
+                readCache(dataFile, metaFile)?.let { return it }
             }
 
             val networkResponse = try {
-                chain.proceed(request)
+                fetch(url, dataRange, etag, modified)
             } catch (e: IOException) {
                 // Network error (e.g. went offline mid-session): fall back to
                 // the stale cache if we have it, otherwise propagate.
-                if (cached) return buildFromCache(request, dataFile, metaFile)
+                if (cached) readCache(dataFile, metaFile)?.let { return it }
                 throw e
             }
 
-            if (!networkResponse.isSuccessful) {
+            if (networkResponse.code !in 200..299) {
                 // Server error / 304: keep serving the existing cache rather
                 // than replacing it.
-                if (cached) {
-                    networkResponse.close()
-                    return buildFromCache(request, dataFile, metaFile)
-                }
+                if (cached) readCache(dataFile, metaFile)?.let { return it }
                 return networkResponse
             }
 
-            val contentType = networkResponse.header("Content-Type")
-            val contentRange = networkResponse.header("Content-Range")
-            val acceptRanges = networkResponse.header("Accept-Ranges")
-            val code = networkResponse.code
-            val message = networkResponse.message
-            val bytes = networkResponse.body?.bytes() ?: ByteArray(0)
-
-            writeCache(dataFile, metaFile, code, message, contentType, contentRange, acceptRanges, bytes)
-
-            return networkResponse.newBuilder()
-                .body(bytes.toResponseBody(contentType?.toMediaTypeOrNull()))
-                .build()
+            writeCache(dataFile, metaFile, networkResponse)
+            return networkResponse
         }
 
-        private fun buildFromCache(request: okhttp3.Request, dataFile: File, metaFile: File): Response {
-            val props = Properties()
-            metaFile.inputStream().use { props.load(it) }
-            val bytes = dataFile.readBytes()
-            val contentType = props.getProperty(KEY_CONTENT_TYPE)
-            val builder = Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(props.getProperty(KEY_CODE, "200").toIntOrNull() ?: 200)
-                .message(props.getProperty(KEY_MESSAGE, "OK"))
-                .body(bytes.toResponseBody(contentType?.toMediaTypeOrNull()))
-            contentType?.let { builder.header("Content-Type", it) }
-            builder.header("Content-Length", bytes.size.toString())
-            props.getProperty(KEY_CONTENT_RANGE)?.let { builder.header("Content-Range", it) }
-            props.getProperty(KEY_ACCEPT_RANGES)?.let { builder.header("Accept-Ranges", it) }
-            return builder.build()
+        private suspend fun fetch(
+            url: String,
+            dataRange: String,
+            etag: String,
+            modified: String,
+        ): Loaded {
+            val headers = buildMap {
+                put("User-Agent", userAgent)
+                if (dataRange.isNotEmpty()) put("Range", dataRange)
+                if (etag.isNotEmpty()) {
+                    put("If-None-Match", etag)
+                } else if (modified.isNotEmpty()) {
+                    put("If-Modified-Since", modified)
+                }
+            }
+            val response = NetworkClient.execute(url, "GET", headers)
+            return Loaded(
+                code = response.status,
+                eTag = response.header("ETag"),
+                lastModified = response.header("Last-Modified"),
+                cacheControl = response.header("Cache-Control"),
+                expires = response.header("Expires"),
+                retryAfter = response.header("Retry-After"),
+                xRateLimitReset = response.header("x-rate-limit-reset"),
+                body = response.bytes,
+            )
         }
 
-        private fun writeCache(
-            dataFile: File,
-            metaFile: File,
-            code: Int,
-            message: String,
-            contentType: String?,
-            contentRange: String?,
-            acceptRanges: String?,
-            bytes: ByteArray,
-        ) {
+        private fun readCache(dataFile: File, metaFile: File): Loaded? {
+            return try {
+                val props = Properties()
+                metaFile.inputStream().use { props.load(it) }
+                Loaded(
+                    code = props.getProperty(KEY_CODE, "200").toIntOrNull() ?: 200,
+                    eTag = props.getProperty(KEY_ETAG),
+                    lastModified = props.getProperty(KEY_LAST_MODIFIED),
+                    cacheControl = props.getProperty(KEY_CACHE_CONTROL),
+                    expires = props.getProperty(KEY_EXPIRES),
+                    retryAfter = props.getProperty(KEY_RETRY_AFTER),
+                    xRateLimitReset = props.getProperty(KEY_RATE_LIMIT_RESET),
+                    body = dataFile.readBytes(),
+                )
+            } catch (_: Exception) {
+                // Unreadable/corrupt entry: fall through to the network.
+                null
+            }
+        }
+
+        private fun writeCache(dataFile: File, metaFile: File, loaded: Loaded) {
             try {
                 val props = Properties().apply {
-                    setProperty(KEY_CODE, code.toString())
-                    setProperty(KEY_MESSAGE, message.ifEmpty { "OK" })
-                    contentType?.let { setProperty(KEY_CONTENT_TYPE, it) }
-                    contentRange?.let { setProperty(KEY_CONTENT_RANGE, it) }
-                    acceptRanges?.let { setProperty(KEY_ACCEPT_RANGES, it) }
+                    setProperty(KEY_CODE, loaded.code.toString())
+                    loaded.eTag?.let { setProperty(KEY_ETAG, it) }
+                    loaded.lastModified?.let { setProperty(KEY_LAST_MODIFIED, it) }
+                    loaded.cacheControl?.let { setProperty(KEY_CACHE_CONTROL, it) }
+                    loaded.expires?.let { setProperty(KEY_EXPIRES, it) }
+                    loaded.retryAfter?.let { setProperty(KEY_RETRY_AFTER, it) }
+                    loaded.xRateLimitReset?.let { setProperty(KEY_RATE_LIMIT_RESET, it) }
                 }
                 // Write meta first, then data, each via temp+rename so a reader
                 // never sees a half-written file. Presence of the data file then
@@ -184,7 +302,7 @@ object MapTileCache {
                 metaTmp.renameTo(metaFile)
 
                 val dataTmp = File.createTempFile("d", null, cacheDir)
-                dataTmp.outputStream().use { it.write(bytes) }
+                dataTmp.outputStream().use { it.write(loaded.body) }
                 dataTmp.renameTo(dataFile)
                 dataFile.setLastModified(System.currentTimeMillis())
             } catch (_: IOException) {
@@ -205,11 +323,26 @@ object MapTileCache {
             val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
             return digest.joinToString("") { "%02x".format(it) }
         }
+
+        /** Mirrors MapLibre's own HttpRequestImpl classification. */
+        private fun failureType(e: Exception): Int = when {
+            e is NoRouteToHostException || e is UnknownHostException ||
+                e is SocketException || e is ProtocolException || e is SSLException ->
+                HttpRequest.CONNECTION_ERROR
+            e is InterruptedIOException -> HttpRequest.TEMPORARY_ERROR
+            // library:network wraps connect failures in a plain IOException.
+            e is IOException && e.cause.let {
+                it is UnknownHostException || it is SocketException || it is NoRouteToHostException
+            } -> HttpRequest.CONNECTION_ERROR
+            else -> HttpRequest.PERMANENT_ERROR
+        }
     }
 
     private const val KEY_CODE = "code"
-    private const val KEY_MESSAGE = "message"
-    private const val KEY_CONTENT_TYPE = "contentType"
-    private const val KEY_CONTENT_RANGE = "contentRange"
-    private const val KEY_ACCEPT_RANGES = "acceptRanges"
+    private const val KEY_ETAG = "etag"
+    private const val KEY_LAST_MODIFIED = "lastModified"
+    private const val KEY_CACHE_CONTROL = "cacheControl"
+    private const val KEY_EXPIRES = "expires"
+    private const val KEY_RETRY_AFTER = "retryAfter"
+    private const val KEY_RATE_LIMIT_RESET = "rateLimitReset"
 }

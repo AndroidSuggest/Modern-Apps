@@ -1,14 +1,11 @@
 package org.schabi.newpipe.extractor.localization
 
 import java.io.Serializable
-import java.util.ArrayList
 import java.util.Collections
 import javax.annotation.Nonnull
 
 class ContentCountry(@field:Nonnull @get:Nonnull val countryCode: String) : Serializable {
 
-    @Nonnull
-    fun getCountryCode(): String = countryCode
 
     override fun toString(): String = countryCode
 

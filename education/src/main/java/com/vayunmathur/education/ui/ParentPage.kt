@@ -1,5 +1,9 @@
 package com.vayunmathur.education.ui
 
+import androidx.compose.ui.platform.LocalContext
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,8 +50,6 @@ import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
-import java.time.Instant
-import java.time.ZoneOffset
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import com.vayunmathur.education.R
@@ -139,7 +141,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
                             Text(unit.title, style = MaterialTheme.typography.bodyLarge)
                             deadline?.let {
                                 Text(
-                                    stringResource(R.string.due, formatEpochDay(it.dueEpochDay)),
+                                    stringResource(R.string.due, formatEpochDay(LocalContext.current, it.dueEpochDay)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
@@ -172,7 +174,7 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
                     enabled = state.selectedDateMillis != null,
                     onClick = {
                         state.selectedDateMillis?.let { ms ->
-                            val day = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay()
+                            val day = Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.UTC).date.toEpochDays()
                             viewModel.setDeadline(ModuleType.UNIT, unitId, day)
                         }
                         pendingDeadlineUnitId = null

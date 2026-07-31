@@ -113,7 +113,5 @@
     <string name="disable_after">在此之后禁用</string>
     <string name="enable_after">在此之后启用</string>
     <string name="auto_toggle_never">从不</string>
-    <string name="pqc_unprotected_title">量子保护</string>
-    <string name="pqc_unprotected_message">未受保护，易受量子计算机攻击：此人需要更新其应用。</string>
     <string name="ok">确定</string>
 </resources>

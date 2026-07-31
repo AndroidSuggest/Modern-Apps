@@ -1,5 +1,6 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.StreamingService
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor
@@ -52,20 +53,24 @@ class YoutubeChannelTabPlaylistExtractor @Throws(
     }
 
     @Throws(IOException::class, ExtractionException::class)
-    override fun getInitialPage(): InfoItemsPage {
+    override fun getInitialPage(): InfoItemsPage<InfoItem> {
         if (!playlistExisting) {
-            return InfoItemsPage.emptyPage()
+            return InfoItemsPage.emptyPage<InfoItem>()
         }
-        return playlistExtractorInstance.getInitialPage()
+        return playlistExtractorInstance.getInitialPage().upcast()
     }
 
     @Throws(IOException::class, ExtractionException::class)
-    override fun getPage(page: Page): InfoItemsPage {
+    override fun getPage(page: Page): InfoItemsPage<InfoItem> {
         if (!playlistExisting) {
-            return InfoItemsPage.emptyPage()
+            return InfoItemsPage.emptyPage<InfoItem>()
         }
-        return playlistExtractorInstance.getPage(page)
+        return playlistExtractorInstance.getPage(page).upcast()
     }
+
+    /** [InfoItemsPage] is invariant in its item type, so widen it to the tab's item type. */
+    private fun InfoItemsPage<out InfoItem>.upcast(): InfoItemsPage<InfoItem> =
+        InfoItemsPage(getItems().toList(), nextPage, errors)
 
     /**
      * Get a playlist [ListLinkHandler] from a channel tab one.

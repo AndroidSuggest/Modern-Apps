@@ -1,6 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.telegram.mtproto.proto
 
-import java.util.concurrent.atomic.AtomicLong
+import kotlin.concurrent.atomics.*
 
 object MessageId {
     private val lastNano = AtomicLong(0)
@@ -16,19 +18,19 @@ object MessageId {
     // shared across connections (Telegram server time is universal), so generation and
     // validation can never diverge.
     private val timeOffsetSeconds = AtomicLong(0)
-    private val offsetInitialized = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val offsetInitialized = AtomicBoolean(false)
 
     fun setTimeOffsetSeconds(seconds: Long) {
-        timeOffsetSeconds.set(seconds)
-        offsetInitialized.set(true)
+        timeOffsetSeconds.store(seconds)
+        offsetInitialized.store(true)
     }
 
-    fun timeOffsetSeconds(): Long = timeOffsetSeconds.get()
+    fun timeOffsetSeconds(): Long = timeOffsetSeconds.load()
 
-    fun isOffsetInitialized(): Boolean = offsetInitialized.get()
+    fun isOffsetInitialized(): Boolean = offsetInitialized.load()
 
     /** Current server time in seconds (local clock + learned offset). */
-    fun serverNowSeconds(): Long = System.currentTimeMillis() / 1000 + timeOffsetSeconds.get()
+    fun serverNowSeconds(): Long = System.currentTimeMillis() / 1000 + timeOffsetSeconds.load()
 
     private const val YIELD_CLIENT = 0L
     private const val YIELD_SERVER_RESPONSE = 1L
@@ -42,8 +44,8 @@ object MessageId {
     }
 
     fun generate(): Long {
-        val nowNano = (System.currentTimeMillis() + timeOffsetSeconds.get() * 1000L) * 1_000_000L
-        val nano = lastNano.updateAndGet { prev ->
+        val nowNano = (System.currentTimeMillis() + timeOffsetSeconds.load() * 1000L) * 1_000_000L
+        val nano = lastNano.updateAndFetch { prev ->
             if (nowNano > prev) nowNano else prev + MIN_RESOLUTION_NANOS
         }
         return newMessageId(nano, YIELD_CLIENT)
@@ -59,7 +61,7 @@ object MessageId {
     }
 
     fun reset() {
-        lastNano.set(0)
+        lastNano.store(0)
     }
 
     fun type(id: Long): MessageType {

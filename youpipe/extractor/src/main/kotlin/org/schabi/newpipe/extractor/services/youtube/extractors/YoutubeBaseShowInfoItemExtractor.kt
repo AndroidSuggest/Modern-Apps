@@ -10,6 +10,7 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getUrl
 import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * The base [PlaylistInfoItemExtractor] for shows playlists UI elements.
@@ -26,17 +27,15 @@ internal abstract class YoutubeBaseShowInfoItemExtractor protected constructor(
 
     @Throws(ParsingException::class)
     override fun getUrl(): String {
-        return getUrlFromNavigationEndpoint(
-            showRenderer.getObject("navigationEndpoint")
-                ?: throw ParsingException("Could not get navigationEndpoint")
-        )
+        return getUrlFromNavigationEndpoint(showRenderer.getObject("navigationEndpoint"))
+            ?: throw ParsingException("Could not get navigationEndpoint")
     }
 
     @Throws(ParsingException::class)
     override fun getThumbnails(): List<Image> {
         return getThumbnailsFromInfoItem(
-            showRenderer.getObject("thumbnailRenderer")!!
-                .getObject("showCustomThumbnailRenderer")!!
+            showRenderer.getObject("thumbnailRenderer").orEmptyObject()
+                .getObject("showCustomThumbnailRenderer").orEmptyObject()
         )
     }
 
@@ -45,8 +44,8 @@ internal abstract class YoutubeBaseShowInfoItemExtractor protected constructor(
         // The stream count should be always returned in the first text object for English
         // localizations, but the complete text is parsed for reliability purposes
         val streamCountText = getTextFromObject(
-            showRenderer.getObject("thumbnailOverlays")!!
-                .getObject("thumbnailOverlayBottomPanelRenderer")!!
+            showRenderer.getObject("thumbnailOverlays").orEmptyObject()
+                .getObject("thumbnailOverlayBottomPanelRenderer").orEmptyObject()
                 .getObject("text")
         )
         if (streamCountText == null) {

@@ -304,4 +304,5 @@
     <string name="quantity_x_100g">Quantity (x 100g)</string>
     <!-- FoodLoggingDialogs: Label for servings count when recipe selected. Noun -->
     <string name="servings">Servings</string>
+    <string name="kcal_2">kcal</string>
 </resources>

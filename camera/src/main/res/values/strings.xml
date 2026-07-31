@@ -78,4 +78,8 @@
 
     <!-- Generic auto option for ISO / exposure / flash etc. Noun/adjective -->
     <string name="auto">Auto</string>
+    <string name="night_2">Night %1$s%%</string>
+    <string name="brightness">Brightness</string>
+    <string name="shadows">Shadows</string>
+    <string name="warmth">Warmth</string>
 </resources>

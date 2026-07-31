@@ -13,6 +13,7 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * A [StreamInfoItemExtractor] for YouTube's `reelItemRenderer`s.
@@ -25,19 +26,19 @@ import org.schabi.newpipe.extractor.utils.getString
  * `shortsLockupViewModel`s. See [YoutubeShortsLockupInfoItemExtractor] for an
  * extractor for this new UI data type.
  */
-class YoutubeReelInfoItemExtractor(
+open class YoutubeReelInfoItemExtractor(
     private val reelInfo: JsonObject
 ) : StreamInfoItemExtractor {
 
     @Throws(ParsingException::class)
     override fun getName(): String {
-        return getTextFromObject(reelInfo.getObject("headline")!!)!!
+        return getTextFromObject(reelInfo.getObject("headline").orEmptyObject())!!
     }
 
     @Throws(ParsingException::class)
     override fun getUrl(): String {
         try {
-            val videoId = reelInfo.getString("videoId")
+            val videoId = reelInfo.getString("videoId")!!
             return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(videoId)
         } catch (e: Exception) {
             throw ParsingException("Could not get URL", e)

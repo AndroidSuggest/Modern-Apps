@@ -17,7 +17,6 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.w3c.dom.DOMException
 import org.w3c.dom.Document
 import org.w3c.dom.Element
-import java.util.Arrays
 
 /**
  * Class which generates DASH manifests of YouTube OTF streams.
@@ -69,7 +68,7 @@ object YoutubeOtfDashManifestCreator {
             val segmentsArray = segmentsAndDurationsResponseSplit.toTypedArray()
             val lastIndex = segmentsArray.size - 1
             segmentDuration = if (Utils.isBlank(segmentsArray[lastIndex])) {
-                Arrays.copyOf(segmentsArray, lastIndex)
+                segmentsArray.copyOfRange(0, lastIndex)
             } else {
                 segmentsArray
             }

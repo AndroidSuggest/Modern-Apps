@@ -61,8 +61,8 @@ open class FeedInfo(
 
             val itemsPage: InfoItemsPage<StreamInfoItem> =
                 ExtractorHelper.getItemsPageOrLogError(info, extractor)
-            info.setRelatedItems(itemsPage.getItems())
-            val nextPage = itemsPage.getNextPage()
+            info.relatedItems = itemsPage.getItems()
+            val nextPage = itemsPage.nextPage
             if (nextPage != null) {
                 info.setNextPage(nextPage)
             }

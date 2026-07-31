@@ -1,4 +1,5 @@
 package com.vayunmathur.education.ui
+import androidx.compose.ui.res.pluralStringResource
 import com.vayunmathur.education.R
 
 import androidx.compose.foundation.clickable
@@ -84,7 +85,7 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
                             StarRow(averageStars(skills, progress))
                         }
                         Text(
-                            stringResource(R.string.lessons, unit.lessons.size),
+                            pluralStringResource(R.plurals.lessons, unit.lessons.size, unit.lessons.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

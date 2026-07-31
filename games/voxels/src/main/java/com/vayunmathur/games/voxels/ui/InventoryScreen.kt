@@ -1,5 +1,7 @@
 package com.vayunmathur.games.voxels.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.voxels.R
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -157,7 +159,7 @@ private fun InventoryGrid(slots: List<InvSlot>, bounds: MutableMap<Int, Rect>,
                           onDragEnd: () -> Unit, onDragCancel: () -> Unit) {
     fun cell(i: Int) = @Composable { SlotBox(i, slots.getOrNull(i) ?: InvSlot(0, 0), bounds, true, onDragStart, onDragMove, onDragEnd, onDragCancel) }
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Inventory — drag to rearrange", color = Color.White.copy(0.6f), fontSize = 12.sp)
+        Text(stringResource(R.string.inventory_drag_to_rearrange), color = Color.White.copy(0.6f), fontSize = 12.sp)
         Spacer(Modifier.height(4.dp))
         for (row in 0 until 3) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -225,7 +227,7 @@ private fun CraftingTable(recipesJson: String) {
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         // Left: product picker.
         Column(Modifier.width(160.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Products", color = Color.White.copy(0.6f), fontSize = 12.sp)
+            Text(stringResource(R.string.products), color = Color.White.copy(0.6f), fontSize = 12.sp)
             recipes.forEachIndexed { i, rec ->
                 val icon = rememberBlockIcon(rec.outId)
                 Row(
@@ -241,7 +243,7 @@ private fun CraftingTable(recipesJson: String) {
         }
         // Right: the crafting table (2x2 grid) with the selected recipe placed + its product.
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Crafting Table", color = Color.White.copy(0.6f), fontSize = 12.sp)
+            Text(stringResource(R.string.crafting_table), color = Color.White.copy(0.6f), fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (row in 0 until 2) {
@@ -265,7 +267,7 @@ private fun CraftingTable(recipesJson: String) {
                 Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF3A6B3A))
                     .clickable { if (r != null) try { VoxelsNative.craft(sel) } catch (_: Exception) {} }
                     .padding(horizontal = 24.dp, vertical = 8.dp)
-            ) { Text("Craft", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+            ) { Text(stringResource(R.string.craft), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
         }
     }
 }
@@ -276,8 +278,8 @@ private data class Recipe(val inId: Int, val inN: Int, val in2Id: Int, val in2N:
 private fun OutfitView(armor: List<InvSlot>) {
     val labels = listOf("Helmet", "Chestplate", "Leggings", "Boots")
     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Equipped Armor", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        Text("Hold an armor piece in-hand to equip it.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+        Text(stringResource(R.string.equipped_armor), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text(stringResource(R.string.hold_an_armor_piece_in_hand_to_equip_it), color = Color.White.copy(0.6f), fontSize = 12.sp)
         for (i in 0 until 4) {
             val s = armor.getOrNull(i) ?: InvSlot(0, 0)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -1,5 +1,9 @@
 package org.schabi.newpipe.extractor.services.youtube
 
+import java.io.IOException
+import java.net.URLEncoder
+import javax.annotation.Nonnull
+import javax.annotation.Nullable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -11,13 +15,8 @@ import org.schabi.newpipe.extractor.utils.JsonUtils
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.util.Collections
-import java.util.HashMap
-import javax.annotation.Nonnull
-import javax.annotation.Nullable
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * Decoder for YouTube signature and throttling parameters using the PipePipe API.
@@ -74,8 +73,8 @@ object YoutubeApiDecoder {
             try {
                 val result = decoder.decodeBatch(
                     playerId,
-                    if ("sig" == paramType) Collections.singletonList(value) else null,
-                    if ("n" == paramType) Collections.singletonList(value) else null
+                    if ("sig" == paramType) listOf(value) else null,
+                    if ("n" == paramType) listOf(value) else null
                 )
                 val decodedValue = if ("sig" == paramType) {
                     result.signatures[value]
@@ -93,11 +92,11 @@ object YoutubeApiDecoder {
         }
 
         try {
-            val encodedValue = URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+            val encodedValue = URLEncoder.encode(value, Charsets.UTF_8.name())
             val url = "$API_BASE_URL?player=$playerId&$paramType=$encodedValue"
 
             val headers: MutableMap<String, List<String>> = HashMap()
-            headers["User-Agent"] = Collections.singletonList(USER_AGENT)
+            headers["User-Agent"] = listOf(USER_AGENT)
 
             val response = NewPipe.getDownloader().get(url, headers, Localization.DEFAULT)
             val responseBody = response.responseBody()
@@ -107,14 +106,14 @@ object YoutubeApiDecoder {
                 throw ParsingException("API returned unexpected type: ${jsonResponse.getString("type")}")
             }
 
-            val firstResponse = jsonResponse.getArray("responses")!!.getObject(0)!!
+            val firstResponse = jsonResponse.getArray("responses").orEmptyArray().getObject(0).orEmptyObject()
             if ("result" != firstResponse.getString("type")) {
                 throw ParsingException(
                     "API response item has unexpected type: ${firstResponse.getString("type")}"
                 )
             }
 
-            val data = firstResponse.getObject("data")!!
+            val data = firstResponse.getObject("data").orEmptyObject()
             val decodedValue = data.getString(value)
 
             if (decodedValue.isNullOrEmpty()) {
@@ -227,7 +226,7 @@ object YoutubeApiDecoder {
                 urlBuilder.append("&n=")
                 for (i in uncachedNs.indices) {
                     if (i > 0) urlBuilder.append(',')
-                    urlBuilder.append(URLEncoder.encode(uncachedNs[i], StandardCharsets.UTF_8.name()))
+                    urlBuilder.append(URLEncoder.encode(uncachedNs[i], Charsets.UTF_8.name()))
                 }
             }
 
@@ -235,12 +234,12 @@ object YoutubeApiDecoder {
                 urlBuilder.append("&sig=")
                 for (i in uncachedSigs.indices) {
                     if (i > 0) urlBuilder.append(',')
-                    urlBuilder.append(URLEncoder.encode(uncachedSigs[i], StandardCharsets.UTF_8.name()))
+                    urlBuilder.append(URLEncoder.encode(uncachedSigs[i], Charsets.UTF_8.name()))
                 }
             }
 
             val headers: MutableMap<String, List<String>> = HashMap()
-            headers["User-Agent"] = Collections.singletonList(USER_AGENT)
+            headers["User-Agent"] = listOf(USER_AGENT)
 
             val response = NewPipe.getDownloader().get(urlBuilder.toString(), headers, Localization.DEFAULT)
             val responseBody = response.responseBody()
@@ -250,18 +249,18 @@ object YoutubeApiDecoder {
                 throw ParsingException("API returned unexpected type: ${jsonResponse.getString("type")}")
             }
 
-            val responses = jsonResponse.getArray("responses")!!
+            val responses = jsonResponse.getArray("responses").orEmptyArray()
 
             var responseIndex = 0
             if (uncachedNs.isNotEmpty()) {
-                val nResponse = responses.getObject(responseIndex++)!!
+                val nResponse = responses.getObject(responseIndex++).orEmptyObject()
                 if ("result" != nResponse.getString("type")) {
                     throw ParsingException(
                         "N parameter response has unexpected type: ${nResponse.getString("type")}"
                     )
                 }
 
-                val nData = nResponse.getObject("data")!!
+                val nData = nResponse.getObject("data").orEmptyObject()
                 for (nParam in uncachedNs) {
                     val decodedValue = nData.getString(nParam)
                     if (decodedValue.isNullOrEmpty()) {
@@ -275,14 +274,14 @@ object YoutubeApiDecoder {
             }
 
             if (uncachedSigs.isNotEmpty()) {
-                val sigResponse = responses.getObject(responseIndex)!!
+                val sigResponse = responses.getObject(responseIndex).orEmptyObject()
                 if ("result" != sigResponse.getString("type")) {
                     throw ParsingException(
                         "Signature response has unexpected type: ${sigResponse.getString("type")}"
                     )
                 }
 
-                val sigData = sigResponse.getObject("data")!!
+                val sigData = sigResponse.getObject("data").orEmptyObject()
                 for (sig in uncachedSigs) {
                     val decodedValue = sigData.getString(sig)
                     if (decodedValue.isNullOrEmpty()) {

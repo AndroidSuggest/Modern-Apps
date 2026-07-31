@@ -1,6 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.nio.charset.StandardCharsets
 
 internal object SabrMp4SegmentIndexParser {
     private const val SIDX_BOX = "sidx"
@@ -98,7 +97,7 @@ internal object SabrMp4SegmentIndexParser {
     private fun findSidxBox(data: ByteArray, start: Int, end: Int): Int {
         var offset = start
         while (offset + 8 <= end) {
-            if (SIDX_BOX == String(data, offset + 4, 4, StandardCharsets.US_ASCII)) {
+            if (SIDX_BOX == String(data, offset + 4, 4, Charsets.US_ASCII)) {
                 return offset
             }
             offset++

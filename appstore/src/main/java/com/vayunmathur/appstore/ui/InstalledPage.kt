@@ -1,5 +1,8 @@
 package com.vayunmathur.appstore.ui
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.appstore.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -73,7 +76,7 @@ fun InstalledPage(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Installed (${filteredInstalled.size})") }) }
+        topBar = { TopAppBar(title = { Text(stringResource(R.string.installed_3, filteredInstalled.size)) }) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             LazyRow(
@@ -85,21 +88,21 @@ fun InstalledPage(
                     FilterChip(
                         selected = filter == InstalledFilter.ALL,
                         onClick = { viewModel.setInstalledFilter(InstalledFilter.ALL) },
-                        label = { Text("All ($allCount)") }
+                        label = { Text(stringResource(R.string.all, allCount)) }
                     )
                 }
                 item {
                     FilterChip(
                         selected = filter == InstalledFilter.FDROID,
                         onClick = { viewModel.setInstalledFilter(InstalledFilter.FDROID) },
-                        label = { Text("F-Droid ($fdroidCount)") }
+                        label = { Text(stringResource(R.string.f_droid, fdroidCount)) }
                     )
                 }
                 item {
                     FilterChip(
                         selected = filter == InstalledFilter.PLAYSTORE,
                         onClick = { viewModel.setInstalledFilter(InstalledFilter.PLAYSTORE) },
-                        label = { Text("Play Store ($playCount)") }
+                        label = { Text(stringResource(R.string.play_store, playCount)) }
                     )
                 }
             }
@@ -142,16 +145,16 @@ fun InstalledPage(
     confirmPkg?.let { pkg ->
         AlertDialog(
             onDismissRequest = { confirmPkg = null },
-            title = { Text("Uninstall?") },
-            text = { Text("Uninstall $pkg? You can reinstall from the store.") },
+            title = { Text(stringResource(R.string.uninstall_2)) },
+            text = { Text(stringResource(R.string.uninstall_you_can_reinstall_from_the_sto, pkg)) },
             confirmButton = {
                 Button(onClick = {
                     confirmPkg = null
                     viewModel.uninstallApp(pkg)
-                }) { Text("Uninstall") }
+                }) { Text(stringResource(R.string.uninstall)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmPkg = null }) { Text("Cancel") }
+                TextButton(onClick = { confirmPkg = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -166,7 +169,7 @@ fun UpdatesPage(viewModel: AppStoreViewModel, onAppClick: (UnifiedApp) -> Unit) 
     val syncMsg by viewModel.syncMessage.collectAsState()
     val playUpdatesRaw by viewModel.playUpdates.collectAsState()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Updates") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.updates)) }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (syncMsg.isNotBlank()) {
                 Text(syncMsg, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(12.dp))
@@ -174,14 +177,14 @@ fun UpdatesPage(viewModel: AppStoreViewModel, onAppClick: (UnifiedApp) -> Unit) 
 
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { viewModel.syncRepos() }, enabled = !isSyncing) {
-                    Text("Sync F-Droid")
+                    Text(stringResource(R.string.sync_f_droid))
                 }
                 Button(onClick = { viewModel.syncPlayUpdates() }) {
-                    Text("Check Play")
+                    Text(stringResource(R.string.check_play))
                 }
                 if (combinedUpdates.isNotEmpty()) {
                     Button(onClick = { viewModel.updateAll() }) {
-                        Text("Update All (${combinedUpdates.size})")
+                        Text(stringResource(R.string.update_all, combinedUpdates.size))
                     }
                 }
             }
@@ -192,12 +195,12 @@ fun UpdatesPage(viewModel: AppStoreViewModel, onAppClick: (UnifiedApp) -> Unit) 
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (combinedUpdates.isEmpty()) {
-                    item { Text("All apps up to date", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp)) }
+                    item { Text(stringResource(R.string.all_apps_up_to_date), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp)) }
                     if (playUpdatesRaw.isEmpty()) {
-                        item { Text("Tap Check Play to look for Play Store updates (requires anonymous auth)", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp)) }
+                        item { Text(stringResource(R.string.tap_check_play_to_look_for_play_store_up), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp)) }
                     }
                 } else {
-                    item { Text("${combinedUpdates.size} updates", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(4.dp)) }
+                    item { Text(pluralStringResource(R.plurals.updates_count, combinedUpdates.size, combinedUpdates.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(4.dp)) }
                     items(combinedUpdates, key = { it.packageName }) { app ->
                         AppRow(
                             app = app,

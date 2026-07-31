@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.maps.util
 
+import kotlin.concurrent.atomics.*
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -25,7 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.maplibre.spatialk.geojson.Position
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Process-global state machine for an in-progress navigation session.
@@ -125,7 +127,7 @@ object NavigationSessionManager {
         destination: Position,
         destinationLabel: String,
     ) {
-        if (!initialized.get()) {
+        if (!initialized.load()) {
             Log.w(TAG, "start() called before init()")
             return
         }

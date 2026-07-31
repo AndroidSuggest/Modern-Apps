@@ -162,7 +162,7 @@ class SabrSegmentDataSource : DataSource {
             }
         }
         opened = true
-        bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET) {
+        bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
             availableRemaining
         } else {
             minOf(dataSpec.length, availableRemaining)

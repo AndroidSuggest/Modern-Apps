@@ -60,7 +60,6 @@ abstract class Info : Serializable {
         this.originalUrl = originalUrl
     }
 
-    fun getServiceId(): Int = serviceId
 
     fun getService(): StreamingService {
         try {
@@ -70,9 +69,5 @@ abstract class Info : Serializable {
         }
     }
 
-    fun getId(): String = id
-    fun getUrl(): String = url
-    fun getOriginalUrl(): String = originalUrl
-    fun getName(): String = name
     fun getErrors(): List<Throwable> = errors
 }

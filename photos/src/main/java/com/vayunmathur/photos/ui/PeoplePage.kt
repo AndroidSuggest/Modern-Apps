@@ -1,5 +1,6 @@
 package com.vayunmathur.photos.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -140,7 +141,7 @@ private fun PeopleGrid(
                     onClick = { onClick(person) },
                 )
                 Text(
-                    text = stringResource(R.string.people_photo_count, person.photos.size),
+                    text = pluralStringResource(R.plurals.people_photo_count, person.photos.size, person.photos.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),

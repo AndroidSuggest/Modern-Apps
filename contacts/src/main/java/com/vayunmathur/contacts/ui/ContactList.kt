@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.ContactsContract
@@ -122,7 +123,7 @@ fun ContactList(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text(stringResource(R.string.delete_selected_contacts_title)) },
-            text = { Text(stringResource(R.string.delete_selected_contacts_confirm, selectedIds.size)) },
+            text = { Text(pluralStringResource(R.plurals.delete_selected_contacts_confirm, selectedIds.size, selectedIds.size)) },
             confirmButton = {
                 TextButton(onClick = {
                     val toDelete = contacts.filter { it.id in selectedIds }

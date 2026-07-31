@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.net.ssl.SSLSocketFactory
 
 /**
  * Android-only HTTP client – HttpURLConnection only, no Ktor/OkHttp.
@@ -142,6 +143,9 @@ object NetworkClient {
      * Full-control buffered request: binary body, per-request timeouts and
      * optional redirect suppression. Does not throw on 4xx/5xx — inspect
      * [RawResponse.status].
+     *
+     * [sslSocketFactory] pins the TLS trust anchors for this call (Signal uses
+     * a factory built over its bundled root); null keeps the platform default.
      */
     suspend fun execute(
         url: String,
@@ -151,10 +155,11 @@ object NetworkClient {
         followRedirects: Boolean = true,
         connectTimeoutMs: Long? = null,
         readTimeoutMs: Long? = connectTimeoutMs,
+        sslSocketFactory: SSLSocketFactory? = null,
     ): RawResponse {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
-            followRedirects, connectTimeoutMs, readTimeoutMs,
+            followRedirects, connectTimeoutMs, readTimeoutMs, sslSocketFactory,
         )
         return RawResponse(r.status, r.statusMessage, r.bodyBytes, r.headers, r.finalUrl)
     }

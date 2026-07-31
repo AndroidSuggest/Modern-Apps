@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
 import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
@@ -21,6 +20,17 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
+
+/**
+ * Thrown when the HTTP upgrade is answered with something other than 101.
+ * [statusCode] is 0 when the status line could not be parsed. Callers branch on
+ * it the way okhttp's `onFailure(.., response)` used to (403 = logged out, other
+ * 4xx = fatal, 5xx = retryable).
+ */
+class WebSocketHandshakeException(
+    val statusCode: Int,
+    message: String,
+) : IOException(message)
 
 /**
  * Android-only pure Socket/SSLSocket WebSocket (RFC6455).
@@ -86,6 +96,18 @@ class WebSocketClient private constructor(
         if (closed) throw IOException("WebSocket closed")
         writeFrame(opcode = 0x2, payload = bytes, mask = true)
     }
+
+    /**
+     * Sends a PING frame. okhttp did this on a timer via `pingInterval`; callers
+     * that need keepalive (Signal, Meta MQTT) run their own loop over this.
+     */
+    suspend fun ping() = withContext(Dispatchers.IO) {
+        if (closed) throw IOException("WebSocket closed")
+        writeFrame(opcode = 0x9, payload = ByteArray(0), mask = true)
+    }
+
+    /** True once a CLOSE frame was seen or [close] was called. */
+    val isClosed: Boolean get() = closed
 
     suspend fun close(code: Int = 1000, reason: String = "") {
         if (closed) return
@@ -243,6 +265,7 @@ class WebSocketClient private constructor(
             urlStr: String,
             headers: Map<String, String> = emptyMap(),
             captureResponseHeaders: List<String> = emptyList(),
+            sslSocketFactory: SSLSocketFactory? = null,
         ): WebSocketClient = withContext(Dispatchers.IO) {
             val uri = try { URI(urlStr) } catch (_: Exception) { URI(URL(urlStr).toString()) }
             val scheme = uri.scheme?.lowercase() ?: if (urlStr.startsWith("wss")) "wss" else "ws"
@@ -260,7 +283,7 @@ class WebSocketClient private constructor(
             }
 
             val sock: Socket = if (scheme == "wss" || scheme == "https") {
-                val factory = SSLSocketFactory.getDefault()
+                val factory = sslSocketFactory ?: SSLSocketFactory.getDefault()
                 val s = factory.createSocket(host, port) as Socket
                 // Ensure TLS handshake completes before HTTP upgrade request
                 if (s is SSLSocket) {
@@ -319,7 +342,11 @@ class WebSocketClient private constructor(
             if (responseLines.isEmpty()) throw IOException("ws empty handshake response")
             val statusLine = responseLines.first()
             if (!statusLine.contains("101")) {
-                throw IOException("ws handshake failed: $statusLine; ${responseLines.take(10)}")
+                runCatching { sock.close() }
+                throw WebSocketHandshakeException(
+                    statusCode = statusLine.split(' ').getOrNull(1)?.toIntOrNull() ?: 0,
+                    message = "ws handshake failed: $statusLine; ${responseLines.take(10)}",
+                )
             }
 
             val respHeaders = mutableMapOf<String, MutableList<String>>()
@@ -371,9 +398,10 @@ suspend fun webSocket(
     url: String,
     headers: Map<String, String> = emptyMap(),
     captureResponseHeaders: List<String> = emptyList(),
+    sslSocketFactory: SSLSocketFactory? = null,
     block: suspend WsSession.() -> Unit,
 ) {
-    val c = WebSocketClient.connect(url, headers, captureResponseHeaders)
+    val c = WebSocketClient.connect(url, headers, captureResponseHeaders, sslSocketFactory)
     try {
         WsSession(c).block()
     } finally {

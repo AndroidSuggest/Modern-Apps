@@ -1,7 +1,6 @@
 package com.vayunmathur.vpn.service
 
 import java.net.InetAddress
-import java.util.LinkedHashMap
 
 /**
  * DNS snooping: observes UDP port 53 traffic (queries and responses) to build IP -> domain map.

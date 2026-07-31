@@ -14,7 +14,10 @@
     <!-- ItemDetails: Sticky header for recipes that use this item as ingredient. %1$d = count of recipes where item is input, e.g. 5. Verb phrase passive -->
     <string name="used_in">Used in (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
     <!-- ItemDetails: Label showing how many recipes remain hidden because outputs not discovered. %1$d = locked recipe count, e.g. 2. Status noun -->
-    <string name="locked">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> locked recipes.</string>
+    <plurals name="locked_recipes">
+        <item quantity="one">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> locked recipe.</item>
+        <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> locked recipes.</item>
+    </plurals>
     <!-- ItemDetails: Explainer under locked count. Sentence telling user to unlock all outputs to reveal -->
     <string name="locked_description">Unlock all outputs of these recipes to see them.</string>
     <!-- CollectionScreen: TopAppBar title for grid of all discovered elements. Noun -->
@@ -28,7 +31,10 @@
     <!-- Notification: Single-item discovery toast when one new element unlocked. Sentence, celebratory -->
     <string name="item_discovered">Item discovered!</string>
     <!-- Notification: Multi-item discovery toast when combo yields several outputs. %1$s = count as string e.g. 3, number of items just discovered. Sentence -->
-    <string name="items_discovered"><xliff:g id="count" example="3">%1$s</xliff:g> items discovered!</string>
+    <plurals name="items_discovered">
+        <item quantity="one"><xliff:g id="count" example="3">%1$s</xliff:g> item discovered!</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$s</xliff:g> items discovered!</item>
+    </plurals>
     <!-- HomeScreen: Accessibility content description for final-item star badge on palette icons. Noun phrase, indicates no outgoing recipes -->
     <string name="cd_final_item">Final Item</string>
     <!-- HomeScreen: Accessibility description for trash drop zone when dragging board item to delete. Verb -->

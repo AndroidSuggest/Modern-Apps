@@ -8,8 +8,6 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.google.jsr305)
     implementation(libs.protobuf.javalite)
-    implementation(libs.rhino)
-    implementation(libs.rhino.engine)
     implementation(libs.brotli.dec)
 
     testImplementation(libs.kotlin.test)

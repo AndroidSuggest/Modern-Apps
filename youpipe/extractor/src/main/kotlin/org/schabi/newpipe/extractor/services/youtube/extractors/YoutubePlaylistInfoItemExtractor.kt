@@ -16,19 +16,21 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
-class YoutubePlaylistInfoItemExtractor(
+open class YoutubePlaylistInfoItemExtractor(
     private val playlistInfoItem: JsonObject
 ) : PlaylistInfoItemExtractor {
 
     @Throws(ParsingException::class)
     override fun getThumbnails(): List<Image> {
         try {
-            var thumbnails: JsonArray? = playlistInfoItem.getArray("thumbnails")!!
-                .getObject(0)!!
+            var thumbnails: JsonArray? = playlistInfoItem.getArray("thumbnails").orEmptyArray()
+                .getObject(0).orEmptyObject()
                 .getArray("thumbnails")
             if (thumbnails == null || thumbnails.isEmpty()) {
-                thumbnails = playlistInfoItem.getObject("thumbnail")!!
+                thumbnails = playlistInfoItem.getObject("thumbnail").orEmptyObject()
                     .getArray("thumbnails")
             }
             return getImagesFromThumbnailsArray(thumbnails!!)
@@ -40,7 +42,7 @@ class YoutubePlaylistInfoItemExtractor(
     @Throws(ParsingException::class)
     override fun getName(): String {
         try {
-            return getTextFromObject(playlistInfoItem.getObject("title")!!)!!
+            return getTextFromObject(playlistInfoItem.getObject("title").orEmptyObject())!!
         } catch (e: Exception) {
             throw ParsingException("Could not get name", e)
         }
@@ -57,18 +59,18 @@ class YoutubePlaylistInfoItemExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderName(): String {
+    override fun getUploaderName(): String? {
         try {
-            return getTextFromObject(playlistInfoItem.getObject("longBylineText")!!)!!
+            return getTextFromObject(playlistInfoItem.getObject("longBylineText").orEmptyObject())!!
         } catch (e: Exception) {
             throw ParsingException("Could not get uploader name", e)
         }
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderUrl(): String {
+    override fun getUploaderUrl(): String? {
         try {
-            return getUrlFromObject(playlistInfoItem.getObject("longBylineText")!!)!!
+            return getUrlFromObject(playlistInfoItem.getObject("longBylineText").orEmptyObject())!!
         } catch (e: Exception) {
             throw ParsingException("Could not get uploader url", e)
         }
@@ -77,7 +79,7 @@ class YoutubePlaylistInfoItemExtractor(
     @Throws(ParsingException::class)
     override fun isUploaderVerified(): Boolean {
         try {
-            return YoutubeParsingHelper.isVerified(playlistInfoItem.getArray("ownerBadges")!!)
+            return YoutubeParsingHelper.isVerified(playlistInfoItem.getArray("ownerBadges").orEmptyArray())
         } catch (e: Exception) {
             throw ParsingException("Could not get uploader verification info", e)
         }

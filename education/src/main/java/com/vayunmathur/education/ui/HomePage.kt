@@ -1,4 +1,5 @@
 package com.vayunmathur.education.ui
+import androidx.compose.ui.res.pluralStringResource
 import com.vayunmathur.education.R
 
 import androidx.compose.foundation.clickable
@@ -117,7 +118,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
                             Column(Modifier.weight(1f)) {
                                 Text(course.title, style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    stringResource(R.string.units, course.units.size),
+                                    pluralStringResource(R.plurals.units, course.units.size, course.units.size),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

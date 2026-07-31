@@ -12,14 +12,14 @@ interface PlaylistInfoItemExtractor : InfoItemExtractor {
      * @return the uploader name
      */
     @Throws(ParsingException::class)
-    fun getUploaderName(): String
+    fun getUploaderName(): String?
 
     /**
      * Get the uploader url
      * @return the uploader url
      */
     @Throws(ParsingException::class)
-    fun getUploaderUrl(): String
+    fun getUploaderUrl(): String?
 
     /**
      * Get whether the uploader is verified

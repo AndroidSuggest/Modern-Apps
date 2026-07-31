@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.messages.signal.contacts
 
+import kotlin.uuid.Uuid
 import android.util.Log
 import com.vayunmathur.messages.data.MessageSource
 import com.vayunmathur.messages.signal.proto.SignalServiceProtos
@@ -8,7 +11,6 @@ import com.vayunmathur.messages.signal.store.SignalRecipientStore
 import com.vayunmathur.messages.util.ContactSuggestion
 import java.nio.ByteBuffer
 import java.security.MessageDigest
-import java.util.UUID
 
 class ContactManager(
     private val recipientStore: SignalRecipientStore,
@@ -112,7 +114,7 @@ class ContactManager(
             if (!str.isNullOrBlank()) return str
             if (bytes != null && bytes.size == 16) {
                 val buf = ByteBuffer.wrap(bytes)
-                val uuid = UUID(buf.long, buf.long)
+                val uuid = Uuid.fromLongs(buf.long, buf.long)
                 return uuid.toString()
             }
             return null

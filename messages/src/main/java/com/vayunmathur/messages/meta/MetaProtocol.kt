@@ -1,5 +1,9 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class, kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.meta
 
+import kotlin.uuid.Uuid
+import kotlin.concurrent.atomics.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -12,7 +16,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.security.SecureRandom
-import java.util.concurrent.atomic.AtomicLong
 
 object MetaProtocol {
     private const val TAG = "MetaProtocol"
@@ -114,7 +117,7 @@ object MetaProtocol {
 
     private val nextTaskId = AtomicLong(-1)
 
-    fun getTaskId(): Long = nextTaskId.incrementAndGet()
+    fun getTaskId(): Long = nextTaskId.incrementAndFetch()
 
     // --- Connect JSON (from messagix/json.go) ---
 
@@ -725,7 +728,7 @@ object MetaProtocol {
 
     fun buildReportAppStatePayload(versionId: Long): String {
         val task = ReportAppStateTask(
-            requestId = java.util.UUID.randomUUID().toString(),
+            requestId = Uuid.random().toString(),
         )
         val taskJson = json.encodeToString(task)
         return buildTaskPayload(

@@ -28,7 +28,9 @@
     <string name="people_scanning">Seskupování obličejů... lidé se zde budou zobrazovat, jak budou nalezeni.</string>
     <string name="face_indexing_progress">Indexování %1$d / %2$d</string>
     <string name="people_model_missing">Seskupování obličejů vyžaduje model MobileFaceNet. Přidejte soubor mobilefacenet.tflite s permisivní licencí do photos/src/main/assets (viz FaceRecognizer).</string>
-    <string name="people_photo_count">%1$d fotek</string>
+    <plurals name="people_photo_count">
+        <item quantity="other">%1$d fotek</item>
+    </plurals>
     <plurals name="people_in_photo">
         <item quantity="one">%1$d člověk</item>
         <item quantity="few">%1$d lidi</item>

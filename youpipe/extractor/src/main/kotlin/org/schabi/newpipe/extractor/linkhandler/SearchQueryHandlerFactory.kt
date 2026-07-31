@@ -1,7 +1,6 @@
 package org.schabi.newpipe.extractor.linkhandler
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException
-import java.util.Collections
 
 abstract class SearchQueryHandlerFactory : ListLinkHandlerFactory() {
 
@@ -19,7 +18,7 @@ abstract class SearchQueryHandlerFactory : ListLinkHandlerFactory() {
 
     @Throws(ParsingException::class)
     fun fromQuery(query: String): SearchQueryHandler =
-        fromQuery(query, Collections.emptyList(), "")
+        fromQuery(query, emptyList(), "")
 
     override fun onAcceptUrl(url: String): Boolean = false
 }

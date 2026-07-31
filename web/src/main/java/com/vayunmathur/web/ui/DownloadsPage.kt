@@ -1,5 +1,15 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.char
+import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,9 +37,6 @@ import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.util.WebViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +49,7 @@ fun DownloadsPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Downloads") },
+                title = { Text(stringResource(R.string.downloads)) },
                 navigationIcon = { IconNavigation(backStack) },
                 actions = {
                     if (downloads.isNotEmpty()) {
@@ -54,7 +61,7 @@ fun DownloadsPage(
     ) { paddingValues ->
         if (downloads.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text("No downloads", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.no_downloads), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(paddingValues), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -76,5 +83,14 @@ fun DownloadsPage(
 }
 
 private fun formatTime(millis: Long): String {
-    return try { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis)) } catch (_: Exception) { "" }
+    return try {
+        Instant.fromEpochMilliseconds(millis)
+            .toLocalDateTime(TimeZone.currentSystemDefault())
+            .format(
+                LocalDateTime.Format {
+                    year(); char('-'); monthNumber(); char('-'); day()
+                    char(' '); hour(); char(':'); minute()
+                },
+            )
+    } catch (_: Exception) { "" }
 }

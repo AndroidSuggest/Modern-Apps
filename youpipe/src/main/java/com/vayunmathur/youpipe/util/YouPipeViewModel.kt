@@ -438,7 +438,7 @@ class YouPipeViewModel(
         return try {
             val ex = ServiceList.YouTube.getSearchExtractor(authorName)
             ex.fetchPage()
-            ex.initialPage.items.filterIsInstance<ChannelInfoItem>()
+            ex.getInitialPage().getItems().filterIsInstance<ChannelInfoItem>()
                 .firstOrNull { channelNameMatches(it.name, authorName) }
                 ?.let { channelURLtoID(it.url) }
         } catch (e: Exception) {
@@ -552,7 +552,7 @@ class YouPipeViewModel(
         suggestionJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 _suggestions.value = if (query.isNotBlank()) {
-                    ServiceList.YouTube.suggestionExtractor
+                    ServiceList.YouTube.getSuggestionExtractor()
                         .suggestionList(query)
                         .map { it.decodeHtml() }
                 } else {
@@ -577,13 +577,13 @@ class YouPipeViewModel(
             try {
                 val ex = ServiceList.YouTube.getSearchExtractor(q)
                 ex.fetchPage()
-                val results = ex.initialPage.items.mapNotNull { item ->
+                val results = ex.getInitialPage().getItems().mapNotNull { item ->
                     when (item) {
                         is StreamInfoItem -> item.toVideoInfo()
                         is ChannelInfoItem -> ChannelInfo(
                             item.name.decodeHtml(),
                             channelURLtoID(item.url),
-                            item.subscriberCount,
+                            item.getSubscriberCount(),
                             0,
                             item.thumbnails.first().url,
                         )
@@ -675,20 +675,20 @@ class YouPipeViewModel(
                     val subtitles: List<SubtitleTrack>
 
                     if (downloadedVideo == null) {
-                        segments = ex.streamSegments.map {
-                            VideoChapter(it.startTimeSeconds * 1000, it.title, it.previewUrl)
+                        segments = ex.getStreamSegments().map {
+                            VideoChapter(it.getStartTimeSeconds() * 1000, it.getTitle(), it.getPreviewUrl())
                         }
                         subtitles = ex.getSubtitles(org.schabi.newpipe.extractor.MediaFormat.VTT).map { it.toSubtitleTrack() }
-                        val rawVideoOnly = ex.videoOnlyStreams
-                        val rawAudio = ex.audioStreams
+                        val rawVideoOnly = ex.getVideoOnlyStreams()
+                        val rawAudio = ex.getAudioStreams()
 
                         val sabrMethod =
                             org.schabi.newpipe.extractor.stream.DeliveryMethod.SABR
-                        val progVideoOnly = rawVideoOnly.filter { it.deliveryMethod != sabrMethod }
-                        val progAudio = rawAudio.filter { it.deliveryMethod != sabrMethod }
-                        val sabrVideoOnly = rawVideoOnly.filter { it.deliveryMethod == sabrMethod }
-                        val sabrAudio = rawAudio.filter { it.deliveryMethod == sabrMethod }
-                        val videoId = ex.id
+                        val progVideoOnly = rawVideoOnly.filter { it.getDeliveryMethod() != sabrMethod }
+                        val progAudio = rawAudio.filter { it.getDeliveryMethod() != sabrMethod }
+                        val sabrVideoOnly = rawVideoOnly.filter { it.getDeliveryMethod() == sabrMethod }
+                        val sabrAudio = rawAudio.filter { it.getDeliveryMethod() == sabrMethod }
+                        val videoId = ex.getId()
 
                         android.util.Log.d(
                             "YouPipeSabr",
@@ -703,10 +703,10 @@ class YouPipeViewModel(
                         // at play time by createSourceSpec, which is the known-working ordering.
                         if (sabrVideoOnly.isNotEmpty()) {
                             sabrVideoOnly.firstOrNull {
-                                it.deliveryMethodInfo is
+                                it.getDeliveryMethodInfo() is
                                     org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrInfo
                             }?.let {
-                                val sabrInfo = it.deliveryMethodInfo as
+                                val sabrInfo = it.getDeliveryMethodInfo() as
                                     org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrInfo
                                 com.vayunmathur.youpipe.util.sabr.SabrSessionStore.putExtractorInfo(
                                     videoId, sabrInfo
@@ -758,7 +758,7 @@ class YouPipeViewModel(
                                     compareByDescending<AudioStream> { it.bitrate }
                                 )
                         } else {
-                            videoStreams = ex.videoStreams.map { it.toDomain() }
+                            videoStreams = ex.getVideoStreams().map { it.toDomain() }
                                 .sortedWith(compareByDescending { it.height })
                             audioStreams = emptyList()
                         }
@@ -771,18 +771,27 @@ class YouPipeViewModel(
                     }
 
                     val data = VideoData(
-                        ex.name.decodeHtml(),
-                        ex.viewCount,
-                        ex.length,
-                        ex.uploadDate!!.instant.toKotlinInstant(),
-                        ex.thumbnails.first().url,
-                        ex.uploaderName.decodeHtml(),
-                        channelURLtoID(ex.uploaderUrl),
-                        ex.uploaderAvatars.first().url,
-                        ex.description.content.fromHTML()
+                        ex.getName().decodeHtml(),
+                        ex.getViewCount(),
+                        ex.getLength(),
+                        ex.getUploadDate()!!.instant.toKotlinInstant(),
+                        ex.getThumbnails().first().url,
+                        ex.getUploaderName().decodeHtml(),
+                        channelURLtoID(ex.getUploaderUrl()),
+                        ex.getUploaderAvatars().first().url,
+                        ex.getDescription().getContent().fromHTML()
                     )
-                    val related = ex.relatedItems?.items?.filterIsInstance<StreamInfoItem>()
-                        ?.mapNotNull { it.toVideoInfo() } ?: emptyList()
+                    // Related videos are optional; upstream fetches them via
+                    // ExtractorHelper.getRelatedItemsOrLogError precisely so a failure here
+                    // cannot take down playback. Calling getRelatedItems() bare meant one bad
+                    // renderer surfaced as "Video load error" on a video that had extracted fine.
+                    val related = try {
+                        ex.getRelatedItems()?.getItems()?.filterIsInstance<StreamInfoItem>()
+                            ?.mapNotNull { it.toVideoInfo() } ?: emptyList()
+                    } catch (e: Exception) {
+                        Log.w("YouPipeViewModel", "Could not get related videos", e)
+                        emptyList()
+                    }
 
                     _videoState.update {
                         it.copy(
@@ -809,14 +818,20 @@ class YouPipeViewModel(
                 }
                 withContext(Dispatchers.IO) {
                     val cex = youtubeService.getCommentsExtractor(url)
+                        ?: return@withContext
                     cex.fetchPage()
-                    val comments = cex.initialPage.items.map { c ->
-                        val content = if (c.commentText.type == Description.HTML) {
-                            c.commentText.content.fromHTML()
+                    val comments = cex.getInitialPage().getItems().map { c ->
+                        val content = if (c.getCommentText().getType() == Description.HTML) {
+                            c.getCommentText().getContent().fromHTML()
                         } else {
-                            c.commentText.content.decodeHtml()
+                            c.getCommentText().getContent().decodeHtml()
                         }
-                        Comment(content, c.uploaderName.decodeHtml(), c.likeCount, 0)
+                        Comment(
+                            content,
+                            c.getUploaderName().orEmpty().decodeHtml(),
+                            c.getLikeCount(),
+                            0
+                        )
                     }
                     _videoState.update { it.copy(comments = comments) }
                 }
@@ -1240,51 +1255,52 @@ class YouPipeViewModel(
 }
 
 private fun org.schabi.newpipe.extractor.stream.VideoStream.toDomain() = VideoStream(
-    content, width, height, bitrate, fps, "${height}p",
-    getVideoCodecName(codec ?: ""), itagItem?.contentLength ?: 0L
+    getContent(), getWidth(), getHeight(), getBitrate(), getFps(), "${getHeight()}p",
+    getVideoCodecName(getCodec() ?: ""), getItagItem()?.contentLength ?: 0L
 )
 
 private fun org.schabi.newpipe.extractor.stream.VideoStream.toSabrDomain(videoId: String): VideoStream {
-    val itag = itagItem?.id ?: 0
-    val url = if (deliveryMethod == org.schabi.newpipe.extractor.stream.DeliveryMethod.SABR) {
+    val itag = getItagItem()?.id ?: 0
+    val url = if (getDeliveryMethod() == org.schabi.newpipe.extractor.stream.DeliveryMethod.SABR) {
         "sabr://$videoId?v=$itag"
     } else {
-        content
+        getContent()
     }
     return VideoStream(
-        url, width, height, bitrate, fps, "${height}p",
-        getVideoCodecName(codec ?: ""), itagItem?.contentLength ?: 0L
+        url, getWidth(), getHeight(), getBitrate(), getFps(), "${getHeight()}p",
+        getVideoCodecName(getCodec() ?: ""), getItagItem()?.contentLength ?: 0L
     )
 }
 
 private fun org.schabi.newpipe.extractor.stream.AudioStream.toDomain() = AudioStream(
-    content, bitrate, audioLocale?.language ?: "Default",
-    getAudioCodecName(codec ?: ""), itagItem?.contentLength ?: 0L,
-    audioTrackId = audioTrackId,
-    displayName = audioTrackName ?: audioLocale?.displayLanguage,
+    getContent(), getBitrate(), getAudioLocale()?.language ?: "Default",
+    getAudioCodecName(getCodec() ?: ""), getItagItem()?.contentLength ?: 0L,
+    audioTrackId = getAudioTrackId(),
+    displayName = getAudioTrackName() ?: getAudioLocale()?.displayLanguage,
 )
 
 private fun org.schabi.newpipe.extractor.stream.AudioStream.toSabrDomain(videoId: String): AudioStream {
-    val itag = itagItem?.id ?: 0
-    val url = if (deliveryMethod == org.schabi.newpipe.extractor.stream.DeliveryMethod.SABR) {
+    val itag = getItagItem()?.id ?: 0
+    val url = if (getDeliveryMethod() == org.schabi.newpipe.extractor.stream.DeliveryMethod.SABR) {
         "sabr://$videoId?a=$itag"
     } else {
-        content
+        getContent()
     }
     return AudioStream(
-        url, bitrate, audioLocale?.language ?: audioLocale?.toLanguageTag() ?: "Default",
-        getAudioCodecName(codec ?: ""), itagItem?.contentLength ?: 0L,
-        audioTrackId = audioTrackId,
-        displayName = audioTrackName ?: audioLocale?.displayLanguage,
+        url, getBitrate(),
+        getAudioLocale()?.language ?: getAudioLocale()?.toLanguageTag() ?: "Default",
+        getAudioCodecName(getCodec() ?: ""), getItagItem()?.contentLength ?: 0L,
+        audioTrackId = getAudioTrackId(),
+        displayName = getAudioTrackName() ?: getAudioLocale()?.displayLanguage,
     )
 }
 
 private fun SubtitlesStream.toSubtitleTrack() = SubtitleTrack(
-    url = content,
-    languageTag = languageTag ?: "",
-    displayName = displayLanguageName + if (isAutoGenerated) " (auto)" else "",
-    autoGenerated = isAutoGenerated,
-    mimeType = format?.mimeType ?: "application/ttml+xml",
+    url = getContent(),
+    languageTag = getLanguageTag(),
+    displayName = getDisplayLanguageName() + if (isAutoGenerated()) " (auto)" else "",
+    autoGenerated = isAutoGenerated(),
+    mimeType = getFormat()?.mimeType ?: "application/ttml+xml",
 )
 
 /** Builds a NewPipe [Localization] for the given language [code]; blank falls back to the device locale. */
@@ -1293,7 +1309,7 @@ fun youtubeLocalization(code: String): Localization =
         Localization.fromLocale(Locale.getDefault())
     } else {
         Localization.fromLocalizationCode(code)
-            .orElseGet { Localization.fromLocale(Locale.forLanguageTag(code)) }
+            ?: Localization.fromLocale(Locale.forLanguageTag(code))
     }
 
 private fun codecPriority(codec: String): Int = when (codec) {

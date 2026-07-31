@@ -3,10 +3,8 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.time.Duration
-import java.util.regex.Pattern
 
 /**
  * Generates the calendar app's bundled holiday data from Google's public
@@ -105,7 +103,7 @@ fun main(args: Array<String>) {
     }
     Files.write(
         File(baseDir, "languages.json").toPath(),
-        langsJson.toByteArray(StandardCharsets.UTF_8)
+        langsJson.toByteArray(Charsets.UTF_8)
     )
 
     // Phase 1: Build canonical slug -> code mapping from English feed
@@ -144,7 +142,7 @@ fun main(args: Array<String>) {
     }
     Files.write(
         File(baseDir, "index.json").toPath(),
-        topIdx.toByteArray(StandardCharsets.UTF_8)
+        topIdx.toByteArray(Charsets.UTF_8)
     )
 
     // Phase 2: For each slug, fetch English first, then other langs
@@ -155,11 +153,11 @@ fun main(args: Array<String>) {
         val clFile = File(baseDir, "country_languages.json")
         if (clFile.exists()) {
             try {
-                val clText = String(Files.readAllBytes(clFile.toPath()), StandardCharsets.UTF_8)
-                val m = Pattern.compile("\"([^\"]+)\":\\[([^\\]]*)\\]").matcher(clText)
-                while (m.find()) {
-                    val c = m.group(1)
-                    val langs = m.group(2).replace("\"", "").split(",")
+                val clText = String(Files.readAllBytes(clFile.toPath()), Charsets.UTF_8)
+                val re = Regex("\"([^\"]+)\":\\[([^\\]]*)\\]")
+                for (m in re.findAll(clText)) {
+                    val c = m.groupValues[1]
+                    val langs = m.groupValues[2].replace("\"", "").split(",")
                     val set = mutableSetOf<String>()
                     for (lang in langs) if (lang.trim().isNotEmpty()) set.add(lang.trim())
                     if (set.isNotEmpty()) countryLangs[c] = set
@@ -262,7 +260,7 @@ fun main(args: Array<String>) {
         }
         Files.write(
             File(langDir, "index.json").toPath(),
-            idx.toByteArray(StandardCharsets.UTF_8)
+            idx.toByteArray(Charsets.UTF_8)
         )
     }
 
@@ -293,7 +291,7 @@ fun main(args: Array<String>) {
     }
     Files.write(
         File(baseDir, "country_languages.json").toPath(),
-        cl.toByteArray(StandardCharsets.UTF_8)
+        cl.toByteArray(Charsets.UTF_8)
     )
 
     println("  \u2713 Wrote $totalWritten files across ${LANGS.size} languages to ${baseDir.absolutePath}")
@@ -329,7 +327,7 @@ private fun writeHolidays(out: File, holidays: List<Array<String>>) {
         }
         append("]")
     }
-    Files.write(out.toPath(), sb.toByteArray(StandardCharsets.UTF_8))
+    Files.write(out.toPath(), sb.toByteArray(Charsets.UTF_8))
 }
 
 private fun calendarName(lines: List<String>): String? {
@@ -365,8 +363,8 @@ private fun parseEvents(lines: List<String>): List<Array<String>> {
                 when {
                     left == "SUMMARY" -> summary = unescape(value)
                     left.startsWith("DTSTART") -> {
-                        val d = Pattern.compile("(\\d{4})(\\d{2})(\\d{2})").matcher(value)
-                        if (d.find()) date = "${d.group(1)}-${d.group(2)}-${d.group(3)}"
+                        val d = Regex("(\\d{4})(\\d{2})(\\d{2})").find(value)
+                        if (d != null) date = "${d.groupValues[1]}-${d.groupValues[2]}-${d.groupValues[3]}"
                     }
                 }
             }
@@ -414,7 +412,7 @@ private fun get(url: String): String {
         .header("User-Agent", "Mozilla/5.0 (holidaygen)")
         .timeout(Duration.ofSeconds(60))
         .GET().build()
-    val resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+    val resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString(Charsets.UTF_8))
     if (resp.statusCode() / 100 != 2) {
         throw IllegalStateException("HTTP ${resp.statusCode()}")
     }

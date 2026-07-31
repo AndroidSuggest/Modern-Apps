@@ -9,7 +9,6 @@ import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.utils.Utils
 import java.io.IOException
-import java.util.HashMap
 import javax.annotation.Nullable
 
 class KioskList(

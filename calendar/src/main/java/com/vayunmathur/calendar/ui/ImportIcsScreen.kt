@@ -1,5 +1,6 @@
 package com.vayunmathur.calendar.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import android.net.Uri
 import android.provider.CalendarContract
 import androidx.compose.foundation.background
@@ -158,7 +159,7 @@ fun ImportIcsScreen(
                 ) {
                     item {
                         Text(
-                            stringResource(R.string.import_summary, events.size),
+                            pluralStringResource(R.plurals.import_summary, events.size, events.size),
                             style = MaterialTheme.typography.titleMedium
                         )
                     }

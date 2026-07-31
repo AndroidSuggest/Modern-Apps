@@ -1,5 +1,8 @@
 package com.vayunmathur.everysync.ui
 
+import android.content.Context
+import android.text.format.DateFormat
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +36,6 @@ import com.vayunmathur.everysync.Route
 import com.vayunmathur.everysync.provider.ProviderRegistry
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.NavBackStack
-import java.text.DateFormat
 import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +91,7 @@ fun AccountsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel
                                             isSyncing -> stringResource(R.string.syncing)
                                             account.lastSyncError != null -> account.lastSyncError
                                             account.lastSyncEpochMs > 0 ->
-                                                stringResource(R.string.last_synced, formatTime(account.lastSyncEpochMs))
+                                                stringResource(R.string.last_synced, formatTime(LocalContext.current, account.lastSyncEpochMs))
                                             else -> stringResource(R.string.never_synced)
                                         },
                                     )
@@ -115,5 +117,9 @@ fun AccountsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel
     }
 }
 
-private fun formatTime(millis: Long): String =
-    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(millis))
+private fun formatTime(context: Context, millis: Long): String {
+    val date = Date(millis)
+    // android.text.format honours the user's 24-hour setting; java.text only follows the locale.
+    return DateFormat.getDateFormat(context).format(date) + " " +
+        DateFormat.getTimeFormat(context).format(date)
+}

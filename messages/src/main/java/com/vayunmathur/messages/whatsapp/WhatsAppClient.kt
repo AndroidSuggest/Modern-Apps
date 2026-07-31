@@ -1,10 +1,15 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.whatsapp
 
+import kotlin.time.Duration.Companion.seconds
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Base64
 import android.util.Log
+import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.messages.data.MessageSource
 import com.vayunmathur.messages.gmessages.GMEvent
 import com.vayunmathur.messages.util.ContactSuggestion
@@ -25,11 +30,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import com.vayunmathur.messages.whatsapp.e2e.ParsedPreKeyBundle
+import com.vayunmathur.messages.whatsapp.e2e.WhatsAppE2E.ParsedPreKeyBundle
 import com.vayunmathur.messages.whatsapp.proto.WhatsAppE2EProto
 import com.vayunmathur.messages.whatsapp.proto.WhatsAppAppStateProto
 import java.security.SecureRandom
@@ -38,8 +40,6 @@ import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 object WhatsAppClient {
 
@@ -150,13 +150,9 @@ object WhatsAppClient {
     private const val MAX_RECONNECT_DELAY_MS = 60_000L
     private const val MAX_FILE_SIZE = 50L * 1024 * 1024
 
-    private val httpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
-    }
+    // Media upload/download run on library:network (HttpURLConnection).
+    private val MEDIA_CONNECT_TIMEOUT_MS = 30.seconds.inWholeMilliseconds
+    private val MEDIA_READ_TIMEOUT_MS = 60.seconds.inWholeMilliseconds
 
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
@@ -176,7 +172,7 @@ object WhatsAppClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         // Only skip if fully connected. (Connecting is intentionally NOT skipped: a stale/stuck
         // Connecting state must be able to retry; connect() calls teardownSocket() first so an
         // overlapping attempt can't leave two live sockets.)
@@ -214,7 +210,7 @@ object WhatsAppClient {
      * No-op if there is no saved session.
      */
     fun forceResync() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         val auth = authData ?: run {
             WhatsAppDiag.log(TAG, "forceResync: no session, ignoring")
             return
@@ -270,7 +266,7 @@ object WhatsAppClient {
             override fun onAvailable(network: Network) {
                 if (authData == null || suppressReconnect) return
                 if (_state.value is State.Connected) return
-                if (connectInProgress.get()) return
+                if (connectInProgress.load()) return
                 WhatsAppDiag.log(TAG, "network available — reconnecting now")
                 reconnectAttempts = 0
                 reconnectJob?.cancel()
@@ -897,7 +893,7 @@ object WhatsAppClient {
     private suspend fun connect(auth: WhatsAppAuthData) {
         _state.value = State.Connecting
         suppressReconnect = false
-        connectInProgress.set(true)
+        connectInProgress.store(true)
         registerNetworkMonitor()
         // Ensure no previous socket (provisioning or a prior login attempt) is still alive,
         // otherwise overlapping sessions make the server reject us with <stream:error><conflict>.
@@ -912,12 +908,12 @@ object WhatsAppClient {
                     when (state) {
                         is WebViewWebSocket.ConnectionState.Connected -> {
                             WhatsAppDiag.log(TAG, "login socket: Noise connected, awaiting <success>")
-                            connectInProgress.set(false)
+                            connectInProgress.store(false)
                             ensureE2E(auth)
                         }
                         is WebViewWebSocket.ConnectionState.Disconnected -> {
                             WhatsAppDiag.log(TAG, "login socket: Disconnected (${state.reason})")
-                            connectInProgress.set(false)
+                            connectInProgress.store(false)
                             if (authData != null && !suppressReconnect) {
                                 scheduleReconnect()
                             } else {
@@ -2460,22 +2456,26 @@ object WhatsAppClient {
         val encAuth = java.net.URLEncoder.encode(auth, "UTF-8")
         val encToken = java.net.URLEncoder.encode(token, "UTF-8")
         val uploadUrl = "https://$host/mms/$mmsType/$token?auth=$encAuth&token=$encToken"
-        val requestBody = encryptedData.toRequestBody(null)
         // WhatsApp's rupload endpoint expects POST (whatsmeow upload.go rawUpload). A PUT here
-        // returns 404, which is why media send was failing.
-        val request = Request.Builder()
-            .url(uploadUrl)
-            .post(requestBody)
-            .header("Origin", "https://web.whatsapp.com")
-            .header("Referer", "https://web.whatsapp.com/")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-            .build()
-
-        val response = httpClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw Exception("Media upload failed: HTTP ${response.code}")
+        // returns 404, which is why media send was failing. No Content-Type is sent, matching
+        // the previous okhttp `toRequestBody(null)`.
+        val response = NetworkClient.execute(
+            uploadUrl,
+            "POST",
+            mapOf(
+                "Origin" to "https://web.whatsapp.com",
+                "Referer" to "https://web.whatsapp.com/",
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            ),
+            encryptedData,
+            connectTimeoutMs = MEDIA_CONNECT_TIMEOUT_MS,
+            readTimeoutMs = MEDIA_READ_TIMEOUT_MS,
+        )
+        if (!response.isSuccess) {
+            throw Exception("Media upload failed: HTTP ${response.status}")
         }
-        val json = JSONObject(response.body?.string() ?: throw Exception("Empty upload response"))
+        if (response.bytes.isEmpty()) throw Exception("Empty upload response")
+        val json = JSONObject(response.text)
         MediaUploadResult(
             url = json.getString("url"),
             directPath = json.getString("direct_path"),
@@ -3341,18 +3341,23 @@ object WhatsAppClient {
         mediaType: String,
     ): ByteArray? = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder()
-                .url(url)
-                .header("Origin", "https://web.whatsapp.com")
-                .header("Referer", "https://web.whatsapp.com/")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .build()
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Media download failed: HTTP ${response.code}")
+            val response = NetworkClient.execute(
+                url,
+                "GET",
+                mapOf(
+                    "Origin" to "https://web.whatsapp.com",
+                    "Referer" to "https://web.whatsapp.com/",
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                ),
+                connectTimeoutMs = MEDIA_CONNECT_TIMEOUT_MS,
+                readTimeoutMs = MEDIA_READ_TIMEOUT_MS,
+            )
+            if (!response.isSuccess) {
+                Log.e(TAG, "Media download failed: HTTP ${response.status}")
                 return@withContext null
             }
-            val encrypted = response.body?.bytes() ?: return@withContext null
+            val encrypted = response.bytes
+            if (encrypted.isEmpty()) return@withContext null
             WhatsAppProtocol.decryptMedia(encrypted, mediaKey, mediaType)
         } catch (e: Exception) {
             Log.e(TAG, "Media download/decrypt failed", e)

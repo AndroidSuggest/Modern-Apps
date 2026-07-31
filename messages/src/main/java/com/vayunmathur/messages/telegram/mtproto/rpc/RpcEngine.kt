@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.telegram.mtproto.rpc
 
+import kotlin.concurrent.atomics.*
 import android.util.Log
 import com.vayunmathur.messages.telegram.mtproto.tl.TlBuffer
 import com.vayunmathur.messages.telegram.mtproto.tl.TlMethod
@@ -11,9 +14,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 class RpcException(val errorCode: Int, override val message: String) : Exception("RPC error $errorCode: $message")
 
@@ -27,7 +27,7 @@ class RpcEngine(
     private val acks = ConcurrentHashMap<Long, CompletableDeferred<Unit>>()
     private val payloads = ConcurrentHashMap<Long, ByteArray>()
     private val closed = AtomicBoolean(false)
-    private val activeCount = AtomicInteger(0)
+    private val activeCount = AtomicInt(0)
     private val idleLock = Object()
     private val TAG = "RpcEngine"
 
@@ -36,8 +36,8 @@ class RpcEngine(
         sendFn: suspend (ByteArray, Long) -> Long,
         decoder: (TlBuffer) -> R,
     ): R = coroutineScope {
-        check(!closed.get()) { "Engine is closed" }
-        activeCount.incrementAndGet()
+        check(!closed.load()) { "Engine is closed" }
+        activeCount.incrementAndFetch()
 
         val buf = TlBuffer()
         method.encode(buf)
@@ -60,22 +60,22 @@ class RpcEngine(
                     withTimeout(retryInterval) { ackDeferred.await() }
                     return@launch
                 } catch (_: TimeoutCancellationException) {
-                    Log.w(TAG, "Ack timeout for msgId=${currentMsgId.get()}, retry ${retries + 1}/$maxRetries")
+                    Log.w(TAG, "Ack timeout for msgId=${currentMsgId.load()}, retry ${retries + 1}/$maxRetries")
                     try {
-                        val old = currentMsgId.get()
+                        val old = currentMsgId.load()
                         val newMsgId = sendFn(encoded, old)
                         if (newMsgId != old) {
                             migratePending(old, newMsgId)
-                            currentMsgId.set(newMsgId)
+                            currentMsgId.store(newMsgId)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Retry send failed for msgId=${currentMsgId.get()}", e)
+                        Log.e(TAG, "Retry send failed for msgId=${currentMsgId.load()}", e)
                         deferred.completeExceptionally(e)
                         return@launch
                     }
                     retries++
                     if (retries >= maxRetries) {
-                        Log.e(TAG, "Retry limit reached for msgId=${currentMsgId.get()}")
+                        Log.e(TAG, "Retry limit reached for msgId=${currentMsgId.load()}")
                         deferred.completeExceptionally(RetryLimitReachedException(retries))
                         return@launch
                     }
@@ -87,13 +87,13 @@ class RpcEngine(
             val result = withTimeout(30_000) { deferred.await() }
             decoder(result)
         } catch (e: Exception) {
-            pending.remove(currentMsgId.get())
-            payloads.remove(currentMsgId.get())
+            pending.remove(currentMsgId.load())
+            payloads.remove(currentMsgId.load())
             throw e
         } finally {
             retryJob.cancel()
-            acks.remove(currentMsgId.get())
-            if (activeCount.decrementAndGet() == 0) {
+            acks.remove(currentMsgId.load())
+            if (activeCount.decrementAndFetch() == 0) {
                 synchronized(idleLock) { idleLock.notifyAll() }
             }
         }
@@ -129,16 +129,16 @@ class RpcEngine(
     }
 
     fun close() {
-        closed.set(true)
+        closed.store(true)
         synchronized(idleLock) {
-            while (activeCount.get() > 0) {
+            while (activeCount.load() > 0) {
                 idleLock.wait()
             }
         }
     }
 
     fun forceClose() {
-        closed.set(true)
+        closed.store(true)
         dropAll(Exception("Engine forcibly closed"))
     }
 

@@ -2,9 +2,7 @@ package org.schabi.newpipe.extractor
 
 import org.schabi.newpipe.extractor.exceptions.FoundAdException
 import org.schabi.newpipe.extractor.exceptions.ParsingException
-import java.util.ArrayList
 import java.util.Collections
-import java.util.Comparator
 import javax.annotation.Nullable
 
 abstract class InfoItemsCollector<I : InfoItem, E : InfoItemExtractor> : Collector<I, E> {

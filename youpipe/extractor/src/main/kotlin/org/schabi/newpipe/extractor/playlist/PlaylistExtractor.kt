@@ -15,10 +15,10 @@ abstract class PlaylistExtractor(
 ) : ListExtractor<StreamInfoItem>(service, linkHandler) {
 
     @Throws(ParsingException::class)
-    abstract fun getUploaderUrl(): String
+    abstract fun getUploaderUrl(): String?
 
     @Throws(ParsingException::class)
-    abstract fun getUploaderName(): String
+    abstract fun getUploaderName(): String?
 
     @Nonnull
     @Throws(ParsingException::class)

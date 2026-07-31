@@ -8,9 +8,6 @@ class SubscriptionItem(
     val name: String
 ) : Serializable {
 
-    fun getServiceId(): Int = serviceId
-    fun getUrl(): String = url
-    fun getName(): String = name
 
     override fun toString(): String =
         "${javaClass.simpleName}@${Integer.toHexString(hashCode())}[name=$name > $serviceId:$url]"

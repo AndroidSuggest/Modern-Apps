@@ -1,13 +1,12 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
 
 class SabrRequestCancellationPolicy private constructor(
     private val field1: Int,
     val field3: Int,
     items: List<Item>
 ) {
-    private val items: List<Item> = Collections.unmodifiableList(ArrayList(items))
+    private val items: List<Item> = items.toList()
 
     internal companion object {
         @JvmStatic

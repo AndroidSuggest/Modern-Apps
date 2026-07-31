@@ -1,5 +1,7 @@
 package com.vayunmathur.keyboard.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.keyboard.R
 import android.content.Intent
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
@@ -92,7 +94,7 @@ fun SetupScreen() {
 
     var testText by remember { mutableStateOf("") }
 
-    Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text("Keyboard") }) }) { padding ->
+    Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text(stringResource(R.string.app_name)) }) }) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -106,16 +108,16 @@ fun SetupScreen() {
             Button(
                 onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Enable keyboard") }
+            ) { Text(stringResource(R.string.enable_keyboard)) }
 
             OutlinedButton(
                 onClick = { imm?.showInputMethodPicker() },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Choose keyboard") }
+            ) { Text(stringResource(R.string.choose_keyboard)) }
 
             HorizontalDivider()
 
-            Text("Settings", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
 
             SettingSwitch("Haptic feedback", haptic) {
                 haptic = it; scope.launch { ds.setBoolean(keys.HAPTIC, it) }
@@ -140,7 +142,7 @@ fun SetupScreen() {
             }
 
             Column {
-                Text("Key height", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.key_height), style = MaterialTheme.typography.bodyLarge)
                 Slider(
                     value = keyHeight,
                     onValueChange = { keyHeight = it },
@@ -152,8 +154,8 @@ fun SetupScreen() {
             }
 
             ListItem(
-                headlineContent = { Text("Theme") },
-                supportingContent = { Text("Follows the system light/dark theme and Material You colors") },
+                headlineContent = { Text(stringResource(R.string.theme)) },
+                supportingContent = { Text(stringResource(R.string.follows_the_system_light_dark_theme_and)) },
             )
 
             HorizontalDivider()
@@ -161,7 +163,7 @@ fun SetupScreen() {
             OutlinedTextField(
                 value = testText,
                 onValueChange = { testText = it },
-                label = { Text("Try the keyboard here") },
+                label = { Text(stringResource(R.string.try_the_keyboard_here)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 24.dp),

@@ -19,9 +19,9 @@ import javax.annotation.Nullable
 
 class ItagItem : Serializable {
 
-    /*//////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////
     // Static constants
-    //////////////////////////////////////////////////////////////////////////*/
+    ////////////////////////////////////////////////////////////////////////////
 
     companion object {
         /**
@@ -135,9 +135,9 @@ class ItagItem : Serializable {
         }
     }
 
-    /*//////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////
     // Constructors and misc
-    //////////////////////////////////////////////////////////////////////////*/
+    ////////////////////////////////////////////////////////////////////////////
 
     enum class ItagType {
         AUDIO,
@@ -145,7 +145,7 @@ class ItagItem : Serializable {
         VIDEO_ONLY
     }
 
-    private val mediaFormat: MediaFormat
+    val mediaFormat: MediaFormat
 
     @JvmField
     val id: Int
@@ -154,44 +154,137 @@ class ItagItem : Serializable {
     val itagType: ItagType
 
     // Audio fields
-    @Deprecated("Use getAverageBitrate() instead.")
-    @JvmField
-    var avgBitrate: Int = AVERAGE_BITRATE_UNKNOWN
 
-    private var _sampleRate: Int = SAMPLE_RATE_UNKNOWN
-    private var _audioChannels: Int = AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN
+    /**
+     * The average bitrate.
+     *
+     * It is only known for audio itags, so [AVERAGE_BITRATE_UNKNOWN] is always used for other
+     * itag types. Bitrate of video itags and precise bitrate of audio itags is [bitrate].
+     */
+    @JvmField
+    var averageBitrate: Int = AVERAGE_BITRATE_UNKNOWN
+
+    /**
+     * The sample rate.
+     *
+     * It is only known for audio itags, so [SAMPLE_RATE_UNKNOWN] is used for non audio itags,
+     * or if the value set is less than or equal to 0.
+     */
+    var sampleRate: Int = SAMPLE_RATE_UNKNOWN
+        set(value) {
+            field = if (value > 0) value else SAMPLE_RATE_UNKNOWN
+        }
+
+    /**
+     * The number of audio channels.
+     *
+     * It is only known for audio itags, so [AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN] is used
+     * for non audio itags, or if the value set is less than or equal to 0.
+     */
+    var audioChannels: Int = AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN
+        set(value) {
+            field = if (value > 0) value else AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN
+        }
 
     // Video fields
-    @Deprecated("Use getResolutionString() instead.")
+
+    /** The resolution string associated with this itag. It is only known for video itags. */
     @JvmField
     var resolutionString: String? = null
 
-    @Deprecated("Use getFps() and setFps(int) instead.")
-    @JvmField
+    /**
+     * The frame rate.
+     *
+     * It is set to the `fps` value returned in the corresponding itag in the YouTube player
+     * response, and defaults to the standard value associated with this itag. It is only known
+     * for video itags, so [FPS_NOT_APPLICABLE_OR_UNKNOWN] is used for non video itags, or if
+     * the value set is less than or equal to 0.
+     */
     var fps: Int = FPS_NOT_APPLICABLE_OR_UNKNOWN
+        set(value) {
+            field = if (value > 0) value else FPS_NOT_APPLICABLE_OR_UNKNOWN
+        }
 
     // Fields for Dash
-    private var _bitrate: Int = 0
-    private var _width: Int = 0
-    private var _height: Int = 0
-    private var _initStart: Int = 0
-    private var _initEnd: Int = 0
-    private var _indexStart: Int = 0
-    private var _indexEnd: Int = 0
-    private var _quality: String? = null
-    private var _codec: String? = null
-    private var _targetDurationSec: Int = TARGET_DURATION_SEC_UNKNOWN
-    private var _approxDurationMs: Long = APPROX_DURATION_MS_UNKNOWN
-    private var _contentLength: Long = CONTENT_LENGTH_UNKNOWN
-    private var _audioTrackId: String? = null
-    private var _audioTrackName: String? = null
+    var bitrate: Int = 0
+    var width: Int = 0
+    var height: Int = 0
+    var initStart: Int = 0
+    var initEnd: Int = 0
+    var indexStart: Int = 0
+    var indexEnd: Int = 0
+    var quality: String? = null
+    var codec: String? = null
+
+    /**
+     * The `targetDurationSec` value: the average time in seconds of the duration of sequences
+     * of livestreams and ended livestreams.
+     *
+     * It is only returned by YouTube for these stream types and makes no sense for videos, so
+     * [TARGET_DURATION_SEC_UNKNOWN] is used for video streams, or if the value set is less than
+     * or equal to 0.
+     */
+    var targetDurationSec: Int = TARGET_DURATION_SEC_UNKNOWN
+        set(value) {
+            field = if (value > 0) value else TARGET_DURATION_SEC_UNKNOWN
+        }
+
+    /**
+     * The `approxDurationMs` value.
+     *
+     * It is only known for DASH progressive streams, so [APPROX_DURATION_MS_UNKNOWN] is used
+     * for other stream types, or if the value set is less than or equal to 0.
+     */
+    var approxDurationMs: Long = APPROX_DURATION_MS_UNKNOWN
+        set(value) {
+            field = if (value > 0) value else APPROX_DURATION_MS_UNKNOWN
+        }
+
+    /**
+     * The content length of the stream.
+     *
+     * It is only known for DASH progressive streams, so [CONTENT_LENGTH_UNKNOWN] is used for
+     * other stream types, or if the value set is less than or equal to 0.
+     */
+    var contentLength: Long = CONTENT_LENGTH_UNKNOWN
+        set(value) {
+            field = if (value > 0) value else CONTENT_LENGTH_UNKNOWN
+        }
+
+    /** The `audioTrackId` of the stream, if present. */
     @Nullable
-    private var _audioTrackType: AudioTrackType? = null
+    var audioTrackId: String? = null
+
+    /** The `audioTrackName` of the stream, if present. */
     @Nullable
-    private var _audioLocale: Locale? = null
-    private var _isDrc: Boolean = false
-    private var _lastModified: Long = 0L
-    private var _xtags: String? = null
+    var audioTrackName: String? = null
+
+    /** The [AudioTrackType] of the stream, if known. */
+    @Nullable
+    var audioTrackType: AudioTrackType? = null
+
+    /** The audio [Locale] of the stream, if known. */
+    @Nullable
+    var audioLocale: Locale? = null
+
+    /**
+     * Whether the audio is using dynamic range compression (DRC).
+     *
+     * https://en.wikipedia.org/wiki/Dynamic_range_compression
+     */
+    var isDrc: Boolean = false
+
+    /**
+     * Unix timestamp of when the stream was last modified, or [LAST_MODIFIED_UNKOWN] if the
+     * timestamp is unknown.
+     */
+    var lastModified: Long = 0L
+
+    /**
+     * Extra tags about the stream: a Base64 encoded protobuf key-value list of additional tags,
+     * such as whether the stream is using [isDrc].
+     */
+    var xtags: String? = null
 
     /**
      * Call [ItagItem] with the fps set to 30.
@@ -230,12 +323,12 @@ class ItagItem : Serializable {
         id: Int,
         type: ItagType,
         format: MediaFormat,
-        avgBitrate: Int
+        averageBitrate: Int
     ) {
         this.id = id
         this.itagType = type
         this.mediaFormat = format
-        this.avgBitrate = avgBitrate
+        this.averageBitrate = averageBitrate
     }
 
     /**
@@ -247,373 +340,29 @@ class ItagItem : Serializable {
         this.mediaFormat = itagItem.mediaFormat
         this.id = itagItem.id
         this.itagType = itagItem.itagType
-        this.avgBitrate = itagItem.avgBitrate
-        this._sampleRate = itagItem._sampleRate
-        this._audioChannels = itagItem._audioChannels
+        this.averageBitrate = itagItem.averageBitrate
+        this.sampleRate = itagItem.sampleRate
+        this.audioChannels = itagItem.audioChannels
         this.resolutionString = itagItem.resolutionString
         this.fps = itagItem.fps
-        this._bitrate = itagItem._bitrate
-        this._width = itagItem._width
-        this._height = itagItem._height
-        this._initStart = itagItem._initStart
-        this._initEnd = itagItem._initEnd
-        this._indexStart = itagItem._indexStart
-        this._indexEnd = itagItem._indexEnd
-        this._quality = itagItem._quality
-        this._codec = itagItem._codec
-        this._targetDurationSec = itagItem._targetDurationSec
-        this._approxDurationMs = itagItem._approxDurationMs
-        this._contentLength = itagItem._contentLength
-        this._audioTrackId = itagItem._audioTrackId
-        this._audioTrackName = itagItem._audioTrackName
-        this._audioTrackType = itagItem._audioTrackType
-        this._audioLocale = itagItem._audioLocale
-        this._isDrc = itagItem._isDrc
-        this._lastModified = itagItem._lastModified
-        this._xtags = itagItem._xtags
-    }
-
-    fun getMediaFormat(): MediaFormat = mediaFormat
-
-    fun getBitrate(): Int = _bitrate
-    fun setBitrate(bitrate: Int) {
-        _bitrate = bitrate
-    }
-
-    fun getWidth(): Int = _width
-    fun setWidth(width: Int) {
-        _width = width
-    }
-
-    fun getHeight(): Int = _height
-    fun setHeight(height: Int) {
-        _height = height
-    }
-
-    /**
-     * Get the frame rate.
-     *
-     * It is set to the `fps` value returned in the corresponding itag in the YouTube player
-     * response.
-     *
-     * It defaults to the standard value associated with this itag.
-     *
-     * Note that this value is only known for video itags, so [FPS_NOT_APPLICABLE_OR_UNKNOWN] is returned for non video itags.
-     *
-     * @return the frame rate or [FPS_NOT_APPLICABLE_OR_UNKNOWN]
-     */
-    fun getFps(): Int = fps
-
-    /**
-     * Set the frame rate.
-     *
-     * It is only known for video itags, so [FPS_NOT_APPLICABLE_OR_UNKNOWN] is set/used for
-     * non video itags or if the sample rate value is less than or equal to 0.
-     *
-     * @param fps the frame rate
-     */
-    fun setFps(fps: Int) {
-        this.fps = if (fps > 0) fps else FPS_NOT_APPLICABLE_OR_UNKNOWN
-    }
-
-    fun getInitStart(): Int = _initStart
-    fun setInitStart(initStart: Int) {
-        _initStart = initStart
-    }
-
-    fun getInitEnd(): Int = _initEnd
-    fun setInitEnd(initEnd: Int) {
-        _initEnd = initEnd
-    }
-
-    fun getIndexStart(): Int = _indexStart
-    fun setIndexStart(indexStart: Int) {
-        _indexStart = indexStart
-    }
-
-    fun getIndexEnd(): Int = _indexEnd
-    fun setIndexEnd(indexEnd: Int) {
-        _indexEnd = indexEnd
-    }
-
-    fun getQuality(): String? = _quality
-    fun setQuality(quality: String?) {
-        _quality = quality
-    }
-
-    /**
-     * Get the resolution string associated with this `ItagItem`.
-     *
-     * It is only known for video itags.
-     *
-     * @return the resolution string associated with this `ItagItem` or `null`.
-     */
-    @Nullable
-    fun getResolutionString(): String? = resolutionString
-
-    fun getCodec(): String? = _codec
-    fun setCodec(codec: String?) {
-        _codec = codec
-    }
-
-    /**
-     * Get the average bitrate.
-     *
-     * It is only known for audio itags, so [AVERAGE_BITRATE_UNKNOWN] is always returned for
-     * other itag types.
-     *
-     * Bitrate of video itags and precise bitrate of audio itags can be known using
-     * [getBitrate].
-     *
-     * @return the average bitrate or [AVERAGE_BITRATE_UNKNOWN]
-     * @see getBitrate
-     */
-    fun getAverageBitrate(): Int = avgBitrate
-
-    /**
-     * Get the sample rate.
-     *
-     * It is only known for audio itags, so [SAMPLE_RATE_UNKNOWN] is returned for non audio
-     * itags, or if the sample rate is unknown.
-     *
-     * @return the sample rate or [SAMPLE_RATE_UNKNOWN]
-     */
-    fun getSampleRate(): Int = _sampleRate
-
-    /**
-     * Set the sample rate.
-     *
-     * It is only known for audio itags, so [SAMPLE_RATE_UNKNOWN] is set/used for non audio
-     * itags, or if the sample rate value is less than or equal to 0.
-     *
-     * @param sampleRate the sample rate of an audio itag
-     */
-    fun setSampleRate(sampleRate: Int) {
-        _sampleRate = if (sampleRate > 0) sampleRate else SAMPLE_RATE_UNKNOWN
-    }
-
-    /**
-     * Get the number of audio channels.
-     *
-     * It is only known for audio itags, so [AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN] is
-     * returned for non audio itags, or if it is unknown.
-     *
-     * @return the number of audio channels or [AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN]
-     */
-    fun getAudioChannels(): Int = _audioChannels
-
-    /**
-     * Set the number of audio channels.
-     *
-     * It is only known for audio itags, so [AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN] is
-     * set/used for non audio itags, or if the `audioChannels` value is less than or equal to
-     * 0.
-     *
-     * @param audioChannels the number of audio channels of an audio itag
-     */
-    fun setAudioChannels(audioChannels: Int) {
-        _audioChannels = if (audioChannels > 0) audioChannels else AUDIO_CHANNELS_NOT_APPLICABLE_OR_UNKNOWN
-    }
-
-    /**
-     * Get the `targetDurationSec` value.
-     *
-     * This value is the average time in seconds of the duration of sequences of livestreams and
-     * ended livestreams. It is only returned by YouTube for these stream types, and makes no sense
-     * for videos, so [TARGET_DURATION_SEC_UNKNOWN] is returned for those.
-     *
-     * @return the `targetDurationSec` value or [TARGET_DURATION_SEC_UNKNOWN]
-     */
-    fun getTargetDurationSec(): Int = _targetDurationSec
-
-    /**
-     * Set the `targetDurationSec` value.
-     *
-     * This value is the average time in seconds of the duration of sequences of livestreams and
-     * ended livestreams.
-     *
-     * It is only returned for these stream types by YouTube and makes no sense for videos, so
-     * [TARGET_DURATION_SEC_UNKNOWN] will be set/used for video streams or if this value is
-     * less than or equal to 0.
-     *
-     * @param targetDurationSec the target duration of a segment of streams which are using the
-     *                          live delivery method type
-     */
-    fun setTargetDurationSec(targetDurationSec: Int) {
-        _targetDurationSec = if (targetDurationSec > 0) targetDurationSec else TARGET_DURATION_SEC_UNKNOWN
-    }
-
-    /**
-     * Get the `approxDurationMs` value.
-     *
-     * It is only known for DASH progressive streams, so [APPROX_DURATION_MS_UNKNOWN] is
-     * returned for other stream types or if this value is less than or equal to 0.
-     *
-     * @return the `approxDurationMs` value or [APPROX_DURATION_MS_UNKNOWN]
-     */
-    fun getApproxDurationMs(): Long = _approxDurationMs
-
-    /**
-     * Set the `approxDurationMs` value.
-     *
-     * It is only known for DASH progressive streams, so [APPROX_DURATION_MS_UNKNOWN] is
-     * set/used for other stream types or if this value is less than or equal to 0.
-     *
-     * @param approxDurationMs the approximate duration of a DASH progressive stream, in
-     *                         milliseconds
-     */
-    fun setApproxDurationMs(approxDurationMs: Long) {
-        _approxDurationMs = if (approxDurationMs > 0) approxDurationMs else APPROX_DURATION_MS_UNKNOWN
-    }
-
-    /**
-     * Get the `contentLength` value.
-     *
-     * It is only known for DASH progressive streams, so [CONTENT_LENGTH_UNKNOWN] is
-     * returned for other stream types or if this value is less than or equal to 0.
-     *
-     * @return the `contentLength` value or [CONTENT_LENGTH_UNKNOWN]
-     */
-    fun getContentLength(): Long = _contentLength
-
-    /**
-     * Set the content length of stream.
-     *
-     * It is only known for DASH progressive streams, so [CONTENT_LENGTH_UNKNOWN] is
-     * set/used for other stream types or if this value is less than or equal to 0.
-     *
-     * @param contentLength the content length of a DASH progressive stream
-     */
-    fun setContentLength(contentLength: Long) {
-        _contentLength = if (contentLength > 0) contentLength else CONTENT_LENGTH_UNKNOWN
-    }
-
-    /**
-     * Get the `audioTrackId` of the stream, if present.
-     *
-     * @return the `audioTrackId` of the stream or null
-     */
-    @Nullable
-    fun getAudioTrackId(): String? = _audioTrackId
-
-    /**
-     * Set the `audioTrackId` of the stream.
-     *
-     * @param audioTrackId the `audioTrackId` of the stream
-     */
-    fun setAudioTrackId(@Nullable audioTrackId: String?) {
-        _audioTrackId = audioTrackId
-    }
-
-    /**
-     * Get the `audioTrackName` of the stream, if present.
-     *
-     * @return the `audioTrackName` of the stream or `null`
-     */
-    @Nullable
-    fun getAudioTrackName(): String? = _audioTrackName
-
-    /**
-     * Set the `audioTrackName` of the stream, if present.
-     *
-     * @param audioTrackName the `audioTrackName` of the stream or `null`
-     */
-    fun setAudioTrackName(@Nullable audioTrackName: String?) {
-        _audioTrackName = audioTrackName
-    }
-
-    /**
-     * Get the [AudioTrackType] of the stream.
-     *
-     * @return the [AudioTrackType] of the stream or `null`
-     */
-    @Nullable
-    fun getAudioTrackType(): AudioTrackType? = _audioTrackType
-
-    /**
-     * Set the [AudioTrackType] of the stream, if present.
-     *
-     * @param audioTrackType the [AudioTrackType] of the stream or `null`
-     */
-    fun setAudioTrackType(@Nullable audioTrackType: AudioTrackType?) {
-        _audioTrackType = audioTrackType
-    }
-
-    /**
-     * Return the audio [Locale] of the stream, if known.
-     *
-     * @return the audio [Locale] of the stream, if known, or `null` if that's not the
-     * case
-     */
-    @Nullable
-    fun getAudioLocale(): Locale? = _audioLocale
-
-    /**
-     * Set the audio [Locale] of the stream.
-     *
-     * If it is unknown, `null` could be passed, which is the default value.
-     *
-     * @param audioLocale the audio [Locale] of the stream, which could be `null`
-     */
-    fun setAudioLocale(@Nullable audioLocale: Locale?) {
-        _audioLocale = audioLocale
-    }
-
-    /**
-     * Whether the audio is using dynamic range compression (DRC).
-     *
-     * https://en.wikipedia.org/wiki/Dynamic_range_compression
-     *
-     * @return whether the audio is using DRC
-     */
-    fun isDrc(): Boolean = _isDrc
-
-    /**
-     * Sets whether the audio is using dynamic range compression (DRC).
-     *
-     * https://en.wikipedia.org/wiki/Dynamic_range_compression
-     *
-     * @param isDrc whether the audio has DRC applied
-     */
-    fun setIsDrc(isDrc: Boolean) {
-        _isDrc = isDrc
-    }
-
-    /**
-     * When the stream was last modified.
-     *
-     * If the timestamp is unknown, [LAST_MODIFIED_UNKOWN] is returned.
-     *
-     * @return unix timestamp of when the stream was last modified or
-     * [LAST_MODIFIED_UNKOWN] if the timestamp is unknown.
-     */
-    fun getLastModified(): Long = _lastModified
-
-    /**
-     * Sets the timestamp when the stream was last modified.
-     *
-     * @param lastModified unix timestamp of when the stream was last modified
-     */
-    fun setLastModified(lastModified: Long) {
-        _lastModified = lastModified
-    }
-
-    /**
-     * Extra tags about the stream.
-     *
-     * Contains a Base64 encoded protobuf key-value list of additional tags for the stream,
-     * such as whether the stream is using [isDrc].
-     *
-     * @return Base64-encoded extra tags.
-     */
-    fun getXtags(): String? = _xtags
-
-    /**
-     * Sets extra tags of the stream.
-     *
-     * @param xtags extra tags of the stream
-     */
-    fun setXtags(xtags: String?) {
-        _xtags = xtags
+        this.bitrate = itagItem.bitrate
+        this.width = itagItem.width
+        this.height = itagItem.height
+        this.initStart = itagItem.initStart
+        this.initEnd = itagItem.initEnd
+        this.indexStart = itagItem.indexStart
+        this.indexEnd = itagItem.indexEnd
+        this.quality = itagItem.quality
+        this.codec = itagItem.codec
+        this.targetDurationSec = itagItem.targetDurationSec
+        this.approxDurationMs = itagItem.approxDurationMs
+        this.contentLength = itagItem.contentLength
+        this.audioTrackId = itagItem.audioTrackId
+        this.audioTrackName = itagItem.audioTrackName
+        this.audioTrackType = itagItem.audioTrackType
+        this.audioLocale = itagItem.audioLocale
+        this.isDrc = itagItem.isDrc
+        this.lastModified = itagItem.lastModified
+        this.xtags = itagItem.xtags
     }
 }

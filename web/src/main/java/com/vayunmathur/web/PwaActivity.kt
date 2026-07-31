@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.web.ui.applySystemDarkMode
 
 class PwaActivity : ComponentActivity() {
 
@@ -204,6 +205,7 @@ private fun PwaBrowser(
                     } catch (_: Exception) {}
                     settings.setSupportMultipleWindows(true)
                     settings.mediaPlaybackRequiresUserGesture = false
+                    settings.applySystemDarkMode()
                     try {
                         val compat = Class.forName("androidx.webkit.WebSettingsCompat")
                         val feature = Class.forName("androidx.webkit.WebViewFeature")

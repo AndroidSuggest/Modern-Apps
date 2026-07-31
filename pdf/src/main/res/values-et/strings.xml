@@ -29,8 +29,6 @@
     <string name="style">Stiil</string>
     <string name="save_as_u2026">Salvesta kui…</string>
     <string name="aa">Aa</string>
-    <string name="signed_and_saved">Allkirjastatud ja salvestatud</string>
-    <string name="signing_failed">Allkirjastamine ei õnnestunud</string>
     <string name="done">Valmis</string>
     <string name="color">Värv</string>
     <string name="searchable_ocr">Otsitav (tekstutuvastusega)</string>

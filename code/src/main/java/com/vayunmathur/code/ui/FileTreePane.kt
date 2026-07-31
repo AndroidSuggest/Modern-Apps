@@ -1,5 +1,7 @@
 package com.vayunmathur.code.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.code.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -69,11 +71,11 @@ fun FileTreePane(
                 IconFolder(Modifier.size(48.dp))
                 Spacer(Modifier.size(12.dp))
                 Text(
-                    "No folder opened",
+                    stringResource(R.string.no_folder_opened),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.size(12.dp))
-                Button(onClick = onOpenFolder) { Text("Open folder") }
+                Button(onClick = onOpenFolder) { Text(stringResource(R.string.open_folder)) }
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {

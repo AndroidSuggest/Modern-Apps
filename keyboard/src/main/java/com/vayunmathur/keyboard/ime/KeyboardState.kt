@@ -39,6 +39,13 @@ class KeyboardState {
 
     var enterAction by mutableStateOf(EnterAction.RETURN)
 
+    /**
+     * App-supplied label for a custom IME action ([android.view.inputmethod.EditorInfo.actionLabel]),
+     * or null when the action is one of the standard [EnterAction] values. Takes precedence over
+     * [enterAction] when labelling the enter key.
+     */
+    var enterActionLabel by mutableStateOf<String?>(null)
+
     /** True when the target field is a password field (disables suggestions/composing). */
     var passwordField by mutableStateOf(false)
 

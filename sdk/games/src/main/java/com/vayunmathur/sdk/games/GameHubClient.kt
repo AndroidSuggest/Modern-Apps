@@ -1,10 +1,12 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.sdk.games
 
+import kotlin.uuid.Uuid
 import android.content.ContentValues
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 /**
  * Client SDK for games to report into the GameHub hub app.
@@ -151,7 +153,7 @@ class GameHubClient(
 
     suspend fun startSession(): String? = withContext(Dispatchers.IO) {
         if (!isHubInstalled()) return@withContext null
-        val sessionId = UUID.randomUUID().toString()
+        val sessionId = Uuid.random().toString()
         val resolver = appContext.contentResolver
         val uri = GameHubContract.buildSessionItemUri(gameId, sessionId)
         val values = ContentValues().apply {

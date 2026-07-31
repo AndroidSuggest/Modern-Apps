@@ -1,5 +1,7 @@
 package com.vayunmathur.vpn.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.vpn.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -40,7 +42,7 @@ fun ConfigDetailPage(backStack: NavBackStack<Route>, vm: VpnViewModel, id: Long)
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Tunnel — ${cfg.name}") }, navigationIcon = { IconNavigation(backStack) })
+            TopAppBar(title = { Text(stringResource(R.string.tunnel, cfg.name)) }, navigationIcon = { IconNavigation(backStack) })
         }
     ) { pad ->
         Column(
@@ -48,20 +50,20 @@ fun ConfigDetailPage(backStack: NavBackStack<Route>, vm: VpnViewModel, id: Long)
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "Imported from WireGuard .conf using gotatun (mullvad/gotatun) — Noise IK / X25519 + ChaCha20Poly1305. To update, import a new .conf file.",
+                stringResource(R.string.imported_from_wireguard_conf_using_gotat),
                 fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text("Name: ${cfg.name}", fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            Text("Endpoint: ${cfg.peerEndpoint}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            Text("Address: ${cfg.address}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            Text("DNS: ${cfg.dns}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            Text("AllowedIPs: ${cfg.peerAllowedIPs}", fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            Text("MTU: ${cfg.mtu}  Keepalive: ${cfg.peerKeepalive}s", fontSize = 12.sp)
-            Text("PrivateKey: ${cfg.privateKey.take(16)}…", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("PublicKey: ${cfg.publicKey}", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-            Text("Peer PublicKey: ${cfg.peerPublicKey}", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.name, cfg.name), fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Text(stringResource(R.string.endpoint, cfg.peerEndpoint), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.address, cfg.address), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.dns, cfg.dns), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.allowedips, cfg.peerAllowedIPs), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.mtu_keepalive_s, cfg.mtu, cfg.peerKeepalive), fontSize = 12.sp)
+            Text(stringResource(R.string.privatekey, cfg.privateKey.take(16)), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.publickey, cfg.publicKey), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text(stringResource(R.string.peer_publickey, cfg.peerPublicKey), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
 
-            Button({ exportText = WgConfigParser.toWgQuick(cfg) }, Modifier.fillMaxWidth()) { Text("Export as .conf") }
+            Button({ exportText = WgConfigParser.toWgQuick(cfg) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.export_as_conf)) }
 
             if (exportText != null) {
                 Text(exportText!!, fontFamily = FontFamily.Monospace, fontSize = 11.sp, modifier = Modifier.fillMaxWidth())

@@ -694,7 +694,7 @@ fun CameraScreen(
                     // Live vendor night-processing strength while the NIGHT extension preview is bound.
                     extensionStrength?.let { strength ->
                         Text(
-                            text = "Night $strength%",
+                            text = stringResource(R.string.night_2, strength),
                             color = Color.White,
                             fontSize = 12.sp,
                             modifier = Modifier
@@ -723,19 +723,19 @@ fun CameraScreen(
                                 value = exposureComp,
                                 onValueChange = { viewModel.setExposureCompensation(it) },
                                 icon = { m, c -> IconSunny(m, c) },
-                                label = "Brightness"
+                                label = stringResource(com.vayunmathur.camera.R.string.brightness)
                             )
                             CameraSetting.SHADOWS -> HorizontalSettingSlider(
                                 value = shadows,
                                 onValueChange = { viewModel.setShadows(it) },
                                 icon = { m, c -> IconContrast(m, c) },
-                                label = "Shadows"
+                                label = stringResource(com.vayunmathur.camera.R.string.shadows)
                             )
                             CameraSetting.WARMTH -> HorizontalSettingSlider(
                                 value = warmth,
                                 onValueChange = { viewModel.setWarmth(it) },
                                 icon = { m, c -> IconLightbulb(m, c) },
-                                label = "Warmth"
+                                label = stringResource(com.vayunmathur.camera.R.string.warmth)
                             )
                             CameraSetting.EXPOSURE_TIME -> ExposureTimeBar(
                                 selectedIndex = exposureTimeIndex,

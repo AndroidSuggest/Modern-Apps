@@ -1,12 +1,14 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.everysync.remote
 
+import kotlin.uuid.Uuid
 import android.content.Context
 import com.vayunmathur.everysync.format.ICalendar
 import com.vayunmathur.everysync.format.VCard
 import com.vayunmathur.everysync.provider.SyncDirection
 import com.vayunmathur.everysync.sink.CalendarSink
 import com.vayunmathur.everysync.sink.ContactsSink
-import java.util.UUID
 
 /**
  * Shared two-way CalDAV/CardDAV sync routines against [ContactsSink] /
@@ -44,7 +46,7 @@ object DavSync {
                 when {
                     change.deleted && change.sourceId != null -> client.delete(change.sourceId, change.etag)
                     !change.deleted && change.contact != null -> {
-                        val href = change.sourceId ?: "$collectionUrl/${UUID.randomUUID()}.vcf"
+                        val href = change.sourceId ?: "$collectionUrl/${Uuid.random()}.vcf"
                         val vcard = VCard.serialize(change.contact.copy(uid = change.contact.uid.ifBlank { href }))
                         val newEtag = client.put(href, "text/vcard; charset=utf-8", vcard, change.etag)
                         if (change.sourceId == null) {
@@ -85,7 +87,7 @@ object DavSync {
                     when {
                         change.deleted && change.syncId != null -> client.delete(change.syncId, change.etag)
                         !change.deleted && change.event != null -> {
-                            val href = change.syncId ?: "$collectionUrl/${UUID.randomUUID()}.ics"
+                            val href = change.syncId ?: "$collectionUrl/${Uuid.random()}.ics"
                             val ics = ICalendar.serialize(change.event.copy(uid = change.event.uid.ifBlank { href }))
                             val newEtag = client.put(href, "text/calendar; charset=utf-8", ics, change.etag)
                             if (change.syncId == null) {

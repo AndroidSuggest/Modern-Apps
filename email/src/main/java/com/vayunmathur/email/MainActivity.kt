@@ -1,5 +1,6 @@
 package com.vayunmathur.email
 
+import androidx.compose.ui.res.pluralStringResource
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -1583,10 +1584,10 @@ private fun EmailComposerFormatToolbar(
                 IconArrowDropDown()
             }
             DropdownMenu(expanded = headingMenu, onDismissRequest = { headingMenu = false }) {
-                DropdownMenuItem(text = { Text("Normal") }, onClick = { headingMenu = false; controller.toggleHeading(null) })
-                DropdownMenuItem(text = { Text("Heading 1") }, onClick = { headingMenu = false; controller.toggleHeading(1) })
-                DropdownMenuItem(text = { Text("Heading 2") }, onClick = { headingMenu = false; controller.toggleHeading(2) })
-                DropdownMenuItem(text = { Text("Heading 3") }, onClick = { headingMenu = false; controller.toggleHeading(3) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.normal)) }, onClick = { headingMenu = false; controller.toggleHeading(null) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.heading_1)) }, onClick = { headingMenu = false; controller.toggleHeading(1) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.heading_2)) }, onClick = { headingMenu = false; controller.toggleHeading(2) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.heading_3)) }, onClick = { headingMenu = false; controller.toggleHeading(3) })
             }
         }
 
@@ -1603,26 +1604,26 @@ private fun EmailComposerFormatToolbar(
                 else -> { { IconFormatAlignLeft() } }
             }
             com.vayunmathur.library.ui.FormatIconButton(
-                contentDescription = "Alignment",
+                contentDescription = stringResource(R.string.alignment),
                 active = alignCss != null,
                 onClick = { alignMenu = true },
                 icon = alignIcon,
             )
             DropdownMenu(expanded = alignMenu, onDismissRequest = { alignMenu = false }) {
                 DropdownMenuItem(
-                    text = { Text("Left") }, leadingIcon = { IconFormatAlignLeft() },
+                    text = { Text(stringResource(R.string.left)) }, leadingIcon = { IconFormatAlignLeft() },
                     onClick = { alignMenu = false; controller.setAlignment(null) }
                 )
                 DropdownMenuItem(
-                    text = { Text("Center") }, leadingIcon = { IconFormatAlignCenter() },
+                    text = { Text(stringResource(R.string.center)) }, leadingIcon = { IconFormatAlignCenter() },
                     onClick = { alignMenu = false; controller.setAlignment("center") }
                 )
                 DropdownMenuItem(
-                    text = { Text("Right") }, leadingIcon = { IconFormatAlignRight() },
+                    text = { Text(stringResource(R.string.right)) }, leadingIcon = { IconFormatAlignRight() },
                     onClick = { alignMenu = false; controller.setAlignment("right") }
                 )
                 DropdownMenuItem(
-                    text = { Text("Justify") }, leadingIcon = { IconFormatAlignJustify() },
+                    text = { Text(stringResource(R.string.justify)) }, leadingIcon = { IconFormatAlignJustify() },
                     onClick = { alignMenu = false; controller.setAlignment("justify") }
                 )
             }
@@ -1630,19 +1631,19 @@ private fun EmailComposerFormatToolbar(
 
         // Blockquote, code, hr, clear
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Blockquote",
+            contentDescription = stringResource(R.string.blockquote),
             active = blockquoteActive,
             onClick = { controller.toggleBlockquote() },
         ) { IconFormatQuote() }
 
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Inline code",
+            contentDescription = stringResource(R.string.inline_code),
             active = codeActive,
             onClick = { controller.toggleInlineCode() },
         ) { IconFormatCode() }
 
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Horizontal rule",
+            contentDescription = stringResource(R.string.horizontal_rule),
             onClick = { controller.insertHorizontalRule() },
         ) { IconFormatHorizontalRule() }
 
@@ -1650,14 +1651,14 @@ private fun EmailComposerFormatToolbar(
 
         // Text color
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Text color",
+            contentDescription = stringResource(R.string.text_color),
             active = colorDialog == 1,
             onClick = { colorDialog = 1 },
         ) { IconFormatColorText() }
 
         // Highlight / background
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Highlight",
+            contentDescription = stringResource(R.string.highlight),
             active = colorDialog == 2,
             onClick = { colorDialog = 2 },
         ) { IconFormatColorFill() }
@@ -1665,28 +1666,28 @@ private fun EmailComposerFormatToolbar(
         // Font size dropdown
         Box {
             com.vayunmathur.library.ui.FormatIconButton(
-                contentDescription = "Font size",
+                contentDescription = stringResource(R.string.font_size),
                 onClick = { sizeMenu = true },
             ) { IconFormatSize() }
             DropdownMenu(expanded = sizeMenu, onDismissRequest = { sizeMenu = false }) {
-                DropdownMenuItem(text = { Text("Small") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(0.9f) })
-                DropdownMenuItem(text = { Text("Normal") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(null) })
-                DropdownMenuItem(text = { Text("Large") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(1.2f) })
-                DropdownMenuItem(text = { Text("Extra Large") }, onClick = { sizeMenu = false; controller.setFontSizeFactor(1.4f) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.small)) }, onClick = { sizeMenu = false; controller.setFontSizeFactor(0.9f) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.normal)) }, onClick = { sizeMenu = false; controller.setFontSizeFactor(null) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.large)) }, onClick = { sizeMenu = false; controller.setFontSizeFactor(1.2f) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.extra_large)) }, onClick = { sizeMenu = false; controller.setFontSizeFactor(1.4f) })
             }
         }
 
         // Font family dropdown
         Box {
             com.vayunmathur.library.ui.FormatIconButton(
-                contentDescription = "Font family",
+                contentDescription = stringResource(R.string.font_family),
                 onClick = { fontMenu = true },
             ) { IconFormatTitle() }
             DropdownMenu(expanded = fontMenu, onDismissRequest = { fontMenu = false }) {
-                DropdownMenuItem(text = { Text("Default") }, onClick = { fontMenu = false; controller.setFontFamily(null) })
-                DropdownMenuItem(text = { Text("Sans") }, onClick = { fontMenu = false; controller.setFontFamily("sans-serif") })
-                DropdownMenuItem(text = { Text("Serif") }, onClick = { fontMenu = false; controller.setFontFamily("serif") })
-                DropdownMenuItem(text = { Text("Monospace") }, onClick = { fontMenu = false; controller.setFontFamily("monospace") })
+                DropdownMenuItem(text = { Text(stringResource(R.string.font_default)) }, onClick = { fontMenu = false; controller.setFontFamily(null) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.sans)) }, onClick = { fontMenu = false; controller.setFontFamily("sans-serif") })
+                DropdownMenuItem(text = { Text(stringResource(R.string.serif)) }, onClick = { fontMenu = false; controller.setFontFamily("serif") })
+                DropdownMenuItem(text = { Text(stringResource(R.string.monospace)) }, onClick = { fontMenu = false; controller.setFontFamily("monospace") })
             }
         }
 
@@ -1694,7 +1695,7 @@ private fun EmailComposerFormatToolbar(
 
         // Clear formatting
         com.vayunmathur.library.ui.FormatIconButton(
-            contentDescription = "Clear formatting",
+            contentDescription = stringResource(R.string.clear_formatting),
             onClick = { controller.clearFormatting() },
         ) { IconFormatClear() }
 
@@ -1821,7 +1822,7 @@ fun OutboxScreen(
                     if (outbox.isNotEmpty()) {
                         TextButton(onClick = {
                             viewModel.sendOutboxNow(context)
-                            android.widget.Toast.makeText(context, context.getString(R.string.retrying_pending_message_s, outbox.size), android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, context.resources.getQuantityString(R.plurals.retrying_pending_messages, outbox.size, outbox.size), android.widget.Toast.LENGTH_SHORT).show()
                         }) { Text(stringResource(R.string.send_now)) }
                     }
                 },
@@ -1899,7 +1900,7 @@ private fun OutboxRow(entry: OutboxEntry, onDelete: () -> Unit) {
                 if (entry.lastError != null) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.primary
             val failedText = if (entry.lastError != null) stringResource(R.string.failed, entry.lastError) else ""
-            val attemptText = if (entry.attemptCount > 0) stringResource(R.string.attempt_s, entry.attemptCount) else ""
+            val attemptText = if (entry.attemptCount > 0) pluralStringResource(R.plurals.attempts, entry.attemptCount, entry.attemptCount) else ""
             Text(
                 buildString {
                     if (failedText.isNotEmpty()) append(failedText)

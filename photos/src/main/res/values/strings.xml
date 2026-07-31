@@ -62,7 +62,10 @@
     <!-- Error when mobilefacenet.tflite model missing, instructions to add asset with FaceRecognizer reference -->
     <string name="people_model_missing">Face grouping needs a MobileFaceNet model. Add a permissively-licensed mobilefacenet.tflite to photos/src/main/assets (see FaceRecognizer).</string>
     <!-- Subtitle per person grid cell showing photo count. %1$d = count -->
-    <string name="people_photo_count"><xliff:g id="count" example="12">%1$d</xliff:g> photos</string>
+    <plurals name="people_photo_count">
+        <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
+    </plurals>
     <!-- Photo detail badge: number of people in this photo. Plural handling. %1$d = count -->
     <plurals name="people_in_photo">
         <!-- Singular: one person in photo -->
@@ -493,4 +496,6 @@
     <string name="editor_desc_shape_ellipse">Drag to draw a filled ellipse.</string>
     <!-- Desc: drag to draw a line -->
     <string name="editor_desc_shape_line">Drag to draw a line.</string>
+    <string name="edit_with_label">Edit with My App</string>
+    <string name="share">Share</string>
 </resources>

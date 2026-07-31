@@ -62,7 +62,7 @@
         <receiver
             android:name=".widget.EmailWidgetReceiver"
             android:exported="false"
-            android:label="Unified Inbox">
+            android:label="@string/unified_inbox_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

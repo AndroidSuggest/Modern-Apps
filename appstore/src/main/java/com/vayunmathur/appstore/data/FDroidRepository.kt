@@ -6,7 +6,6 @@ import android.util.JsonToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileReader
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -81,7 +80,7 @@ object FDroidRepository {
 
     private fun parseV2Streaming(file: File, repoBase: String): List<UnifiedApp> {
         val result = mutableListOf<UnifiedApp>()
-        JsonReader(FileReader(file)).use { r ->
+        JsonReader(file.reader()).use { r ->
             r.isLenient = true
             r.beginObject()
             while (r.hasNext()) {
@@ -257,7 +256,7 @@ object FDroidRepository {
     private fun parseV1Streaming(file: File, repoBase: String): List<UnifiedApp> {
         val appsMeta = mutableMapOf<String, V1AppMeta>()
         val packagesMap = mutableMapOf<String, V1PackageLatest>()
-        JsonReader(FileReader(file)).use { r ->
+        JsonReader(file.reader()).use { r ->
             r.isLenient = true
             r.beginObject()
             while (r.hasNext()) {

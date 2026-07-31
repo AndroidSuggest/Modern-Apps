@@ -6,7 +6,9 @@
     <string name="counter">%1$d / %2$d</string>
     <string name="recipes">Rezepte (%1$d)</string>
     <string name="used_in">Genutzt in (%1$d)</string>
-    <string name="locked">+%1$d gesperrte Rezepte.</string>
+    <plurals name="locked_recipes">
+        <item quantity="other">+%1$d gesperrte Rezepte.</item>
+    </plurals>
     <string name="locked_description">Schalte alle Ausgänge dieser Rezepte frei, um sie anzusehen.</string>
     <string name="collection">Kollektion</string>
     <string name="discovered_counter">%1$d / %2$d endteckt</string>

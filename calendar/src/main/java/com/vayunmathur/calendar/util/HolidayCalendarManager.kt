@@ -1,13 +1,14 @@
 package com.vayunmathur.calendar.util
 
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.CalendarContract
 import android.util.Log
-import java.time.LocalDate
-import java.time.ZoneOffset
 import kotlin.math.absoluteValue
 
 /**
@@ -110,7 +111,7 @@ object HolidayCalendarManager {
 
         val rows = HolidayData.holidays(context, code, lang).mapNotNull { h ->
             val date = runCatching { LocalDate.parse(h.d) }.getOrNull() ?: return@mapNotNull null
-            val startMs = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            val startMs = date.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
             ContentValues().apply {
                 put(CalendarContract.Events.CALENDAR_ID, calId)
                 put(CalendarContract.Events.TITLE, h.n)

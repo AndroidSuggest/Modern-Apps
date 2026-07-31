@@ -224,18 +224,36 @@ class KeyboardService : InputMethodService(),
         kbState.page = kbState.basePage
         kbState.shift = ShiftState.OFF
 
-        val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
+        // Which action Enter performs, using AOSP LatinIME's precedence:
+        //  1. IME_FLAG_NO_ENTER_ACTION  -> Enter is a plain newline, whatever imeOptions says.
+        //  2. a custom actionLabel      -> perform info.actionId. This is NOT the imeOptions
+        //     action: apps calling setImeActionLabel("Search", id) usually leave imeOptions
+        //     at UNSPECIFIED, so reading only imeOptions loses the action entirely and Enter
+        //     falls back to a newline.
+        //  3. otherwise                 -> perform imeOptions & IME_MASK_ACTION.
+        val optionsAction = info.imeOptions and EditorInfo.IME_MASK_ACTION
         val noAction = (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
-        editorActionId = action
-        enterSendsAction = !noAction && action != EditorInfo.IME_ACTION_NONE &&
-            action != EditorInfo.IME_ACTION_UNSPECIFIED
-        kbState.enterAction = if (!enterSendsAction) EnterAction.RETURN else when (action) {
+        val customLabel = info.actionLabel?.toString()?.takeIf { it.isNotBlank() }
+
+        editorActionId = if (customLabel != null) info.actionId else optionsAction
+        enterSendsAction = !noAction && when {
+            customLabel != null -> true
+            // UNSPECIFIED means "the app didn't say"; treat it as a newline rather than
+            // firing action 0, which most multi-line fields do not expect.
+            else -> optionsAction != EditorInfo.IME_ACTION_NONE &&
+                optionsAction != EditorInfo.IME_ACTION_UNSPECIFIED
+        }
+
+        kbState.enterActionLabel = if (enterSendsAction) customLabel else null
+        kbState.enterAction = if (!enterSendsAction) EnterAction.RETURN else when (optionsAction) {
             EditorInfo.IME_ACTION_GO -> EnterAction.GO
             EditorInfo.IME_ACTION_SEARCH -> EnterAction.SEARCH
             EditorInfo.IME_ACTION_SEND -> EnterAction.SEND
             EditorInfo.IME_ACTION_NEXT -> EnterAction.NEXT
             EditorInfo.IME_ACTION_DONE -> EnterAction.DONE
             EditorInfo.IME_ACTION_PREVIOUS -> EnterAction.PREVIOUS
+            // A custom action with no recognisable imeOptions action still sends; the key
+            // shows the app's own label (enterActionLabel) rather than the return glyph.
             else -> EnterAction.RETURN
         }
     }
@@ -306,10 +324,14 @@ class KeyboardService : InputMethodService(),
     override fun onEnter() {
         feedback()
         val ic = currentInputConnection ?: return
+        // Finish the composing word first: performEditorAction hands control to the app,
+        // which would otherwise read the field without the last (still-composing) word.
         commitCurrentWord(ic, autoCorrect = false)
-        if (enterSendsAction) {
-            ic.performEditorAction(editorActionId)
-        } else {
+        // performEditorAction returns false when the target can't handle the action (a
+        // dead connection, or an actionId the app declines). Fall back to a real Enter so
+        // the key never silently does nothing.
+        val handled = enterSendsAction && ic.performEditorAction(editorActionId)
+        if (!handled) {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         }
         kbState.suggestions = emptyList()

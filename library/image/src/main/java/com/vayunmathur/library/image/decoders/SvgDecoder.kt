@@ -11,7 +11,6 @@ import com.vayunmathur.library.image.ImageRequest
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
-import java.util.ArrayDeque
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.ceil

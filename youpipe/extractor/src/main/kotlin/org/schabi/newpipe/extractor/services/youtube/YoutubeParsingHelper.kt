@@ -1,6 +1,12 @@
 package org.schabi.newpipe.extractor.services.youtube
 
 import com.google.protobuf.InvalidProtocolBufferException
+import java.io.IOException
+import java.net.MalformedURLException
+import java.net.URL
+import java.util.Base64
+import java.util.Random
+import java.util.regex.Pattern
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -48,16 +54,10 @@ import org.schabi.newpipe.extractor.utils.Utils.HTTPS
 import org.schabi.newpipe.extractor.utils.Utils.getStringResultFromRegexArray
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
+import org.schabi.newpipe.extractor.utils.getBoolean
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.net.MalformedURLException
-import java.net.URL
-import java.nio.charset.StandardCharsets
-import java.util.Base64
-import java.util.Optional
-import java.util.Random
-import java.util.regex.Pattern
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 /**
  * Compatibility builder that mimics old nanojson JsonBuilder API but builds
@@ -209,7 +209,7 @@ object YoutubeParsingHelper {
     private var clientVersion: String? = null
     private var youtubeMusicClientVersion: String? = null
     private var clientVersionExtracted = false
-    private var hardcodedClientVersionValid: Optional<Boolean> = Optional.empty()
+    private var hardcodedClientVersionValid: Boolean? = null
 
     private val INNERTUBE_CONTEXT_CLIENT_VERSION_REGEXES = arrayOf(
         "INNERTUBE_CONTEXT_CLIENT_VERSION\":\"([0-9\\.]+?)\"",
@@ -298,7 +298,10 @@ object YoutubeParsingHelper {
         if (!input.matches(".*\\d.*".toRegex()) && !input.equals("SHORTS", ignoreCase = true)) {
             throw ParsingException("Error duration string contains no digits: $input")
         }
-        val splitInput = if (input.contains(":")) input.split(":") else input.split(".")
+        // Java's String.split drops trailing empty strings, and the segment count picks
+        // the unit offset below, so a trailing separator must not add one.
+        val splitInput = (if (input.contains(":")) input.split(":") else input.split("."))
+            .dropLastWhile { it.isEmpty() }
         val units = intArrayOf(24, 60, 60, 1)
         val offset = units.size - splitInput.size
         if (offset < 0) {
@@ -353,11 +356,11 @@ object YoutubeParsingHelper {
             throw ParsingException("Video id could not be determined from empty playlist id")
         } else if (isYoutubeMyMixId(playlistId)) {
             return playlistId.substring(4)
-        } else if (isYoutubeMusicMixId(playlistId)) {
+        } else if (isYoutubeMusicMixId(playlistId!!)) {
             return playlistId.substring(6)
-        } else if (isYoutubeGenreMixId(playlistId)) {
+        } else if (isYoutubeGenreMixId(playlistId!!)) {
             throw ParsingException("Video id could not be determined from genre mix id: $playlistId")
-        } else if (isYoutubeMixId(playlistId)) {
+        } else if (isYoutubeMixId(playlistId!!)) {
             if (playlistId.length != 13) {
                 throw ParsingException("Video id could not be determined from mix id: $playlistId")
             }
@@ -369,14 +372,14 @@ object YoutubeParsingHelper {
 
     @JvmStatic
     @Throws(ParsingException::class)
-    fun extractPlaylistTypeFromPlaylistId(playlistId: String): PlaylistInfo.PlaylistType {
+    fun extractPlaylistTypeFromPlaylistId(playlistId: String?): PlaylistInfo.PlaylistType {
         if (isNullOrEmpty(playlistId)) {
             throw ParsingException("Could not extract playlist type from empty playlist id")
-        } else if (isYoutubeMusicMixId(playlistId)) {
+        } else if (isYoutubeMusicMixId(playlistId!!)) {
             return PlaylistInfo.PlaylistType.MIX_MUSIC
-        } else if (isYoutubeGenreMixId(playlistId)) {
+        } else if (isYoutubeGenreMixId(playlistId!!)) {
             return PlaylistInfo.PlaylistType.MIX_GENRE
-        } else if (isYoutubeMixId(playlistId)) {
+        } else if (isYoutubeMixId(playlistId!!)) {
             return PlaylistInfo.PlaylistType.MIX_STREAM
         } else {
             return PlaylistInfo.PlaylistType.NORMAL
@@ -409,8 +412,8 @@ object YoutubeParsingHelper {
     @JvmStatic
     @Throws(IOException::class, ExtractionException::class)
     fun isHardcodedClientVersionValid(): Boolean {
-        if (hardcodedClientVersionValid.isPresent) {
-            return hardcodedClientVersionValid.get()
+        hardcodedClientVersionValid?.let {
+            return it
         }
         val body = buildJsonObject {
             putJsonObject("context") {
@@ -431,7 +434,7 @@ object YoutubeParsingHelper {
                 }
             }
             put("fetchLiveState", true)
-        }.toString().toByteArray(StandardCharsets.UTF_8)
+        }.toString().toByteArray(Charsets.UTF_8)
 
         val headers = getClientHeaders(WEB_CLIENT_ID, WEB_HARDCODED_CLIENT_VERSION)
 
@@ -442,8 +445,9 @@ object YoutubeParsingHelper {
         val responseBody = response.responseBody()
         val responseCode = response.responseCode()
 
-        hardcodedClientVersionValid = Optional.of(responseBody.length > 5000 && responseCode == 200)
-        return hardcodedClientVersionValid.get()
+        val valid = responseBody.length > 5000 && responseCode == 200
+        hardcodedClientVersionValid = valid
+        return valid
     }
 
     @Throws(IOException::class, ExtractionException::class)
@@ -588,7 +592,7 @@ object YoutubeParsingHelper {
                 }
             }
             put("input", "")
-        }.toString().toByteArray(StandardCharsets.UTF_8)
+        }.toString().toByteArray(Charsets.UTF_8)
 
         val headers = HashMap(getOriginReferrerHeaders(YOUTUBE_MUSIC_URL))
         headers.putAll(getClientHeaders(WEB_REMIX_CLIENT_ID, WEB_HARDCODED_CLIENT_VERSION))
@@ -633,7 +637,10 @@ object YoutubeParsingHelper {
     }
 
     @JvmStatic
-    fun getUrlFromNavigationEndpoint(navigationEndpoint: JsonObject): String? {
+    fun getUrlFromNavigationEndpoint(navigationEndpoint: JsonObject?): String? {
+        if (navigationEndpoint == null) {
+            return null
+        }
         if (navigationEndpoint.containsKey("urlEndpoint")) {
             var internUrl = navigationEndpoint.getObject("urlEndpoint")?.getString("url") ?: ""
             if (internUrl.startsWith("https://www.youtube.com/redirect?")) {
@@ -708,7 +715,7 @@ object YoutubeParsingHelper {
                     "showDialogCommand.panelLoadingStrategy.inlineContent.dialogViewModel.customContent.listViewModel.listItems"
                 )
                 val command = JsonUtils.getObject(
-                    listItems.getObject(0)!!,
+                    listItems.getObject(0).orEmptyObject(),
                     "listItemViewModel.rendererContext.commandContext.onTap.innertubeCommand"
                 )
                 return getUrlFromNavigationEndpoint(command)
@@ -748,7 +755,7 @@ object YoutubeParsingHelper {
                     if (nav != null) {
                         val url = getUrlFromNavigationEndpoint(nav)
                         if (!isNullOrEmpty(url)) {
-                            text = "<a href=\"" + Entities.escape(url) + "\">" +
+                            text = "<a href=\"" + Entities.escape(url!!) + "\">" +
                                     Entities.escape(text) + "</a>"
                         }
                     }
@@ -1257,7 +1264,7 @@ object YoutubeParsingHelper {
             localization, contentCountry, innertubeClientRequestInfo, embedUrl
         )
 
-        val body = builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        val body = builder.done().toString().toByteArray(Charsets.UTF_8)
 
         val visitorData = JsonUtils.toJsonObject(
             getValidJsonResponseBody(
@@ -1331,7 +1338,7 @@ object YoutubeParsingHelper {
 
     @JvmStatic
     @Throws(ParsingException::class)
-    fun getFirstCollaborator(navigationEndpoint: JsonObject): JsonObject? {
+    fun getFirstCollaborator(navigationEndpoint: JsonObject?): JsonObject? {
         return try {
             val listItems = JsonUtils.getArray(
                 navigationEndpoint,

@@ -1,8 +1,13 @@
 package com.vayunmathur.youpipe.util.sabr
 
-import com.grack.nanojson.JsonObject
-import com.grack.nanojson.JsonParser
-import com.grack.nanojson.JsonWriter
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
+import org.schabi.newpipe.extractor.utils.JsonUtils
+import org.schabi.newpipe.extractor.utils.getObject
+import org.schabi.newpipe.extractor.utils.getString
 import java.util.Base64
 
 internal data class SabrAttChallengeData(
@@ -12,12 +17,13 @@ internal data class SabrAttChallengeData(
 )
 
 internal fun parseSabrAttChallengeData(rawAttestationData: String): SabrAttChallengeData {
-    val challenge = JsonParser.`object`().from(rawAttestationData).getObject("bgChallenge")
+    val challenge = JsonUtils.toJsonObject(rawAttestationData).getObject("bgChallenge")
+        ?: throw IllegalArgumentException("Missing bgChallenge in attestation data")
     val interpreterUrl = challenge.getObject("interpreterUrl")
-        .getString("privateDoNotAccessOrElseTrustedResourceUrlWrappedValue")
+        ?.getString("privateDoNotAccessOrElseTrustedResourceUrlWrappedValue").orEmpty()
     return SabrAttChallengeData(
-        program = challenge.getString("program"),
-        globalName = challenge.getString("globalName"),
+        program = challenge.getString("program").orEmpty(),
+        globalName = challenge.getString("globalName").orEmpty(),
         interpreterUrl = if (interpreterUrl.startsWith("//")) {
             "https:$interpreterUrl"
         } else {
@@ -30,24 +36,23 @@ internal fun buildSabrAttChallengeData(
     challengeData: SabrAttChallengeData,
     interpreterJavascript: String,
 ): String {
-    return JsonWriter.string(
-        JsonObject.builder()
-            .`object`("interpreterJavascript")
-            .value("privateDoNotAccessOrElseSafeScriptWrappedValue", interpreterJavascript)
-            .value(
+    return buildJsonObject {
+        putJsonObject("interpreterJavascript") {
+            put("privateDoNotAccessOrElseSafeScriptWrappedValue", interpreterJavascript)
+            put(
                 "privateDoNotAccessOrElseTrustedResourceUrlWrappedValue",
                 challengeData.interpreterUrl,
             )
-            .end()
-            .value("program", challengeData.program)
-            .value("globalName", challengeData.globalName)
-            .done(),
-    )
+        }
+        put("program", challengeData.program)
+        put("globalName", challengeData.globalName)
+    }.toString()
 }
 
 internal fun parseSabrIntegrityTokenData(rawIntegrityTokenData: String): Pair<String, Long> {
-    val integrityTokenData = JsonParser.array().from(rawIntegrityTokenData)
-    return base64ToU8(integrityTokenData.getString(0)) to integrityTokenData.getLong(1)
+    val integrityTokenData = JsonUtils.toJsonArray(rawIntegrityTokenData)
+    return base64ToU8(integrityTokenData[0].jsonPrimitive.content) to
+        integrityTokenData[1].jsonPrimitive.content.toLong()
 }
 
 internal fun stringToSabrU8(value: String): String {

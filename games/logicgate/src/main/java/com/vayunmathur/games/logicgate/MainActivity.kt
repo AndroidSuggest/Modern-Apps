@@ -408,7 +408,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                     navigationIcon = { IconNavigation(backStack) },
                     actions = {
                         Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Turing.rightTabOn).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                            Text("GATE $gateCost", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(stringResource(R.string.gate, gateCost), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                         AppBarActionBtn(glyph = "↩", enabled = uiState.canUndo) { viewModel.undo() }
@@ -653,7 +653,7 @@ fun MobileInventoryBar(
             MobileDraggableChipItem(chipId = chipId, chipOnDragStart = { id: String, g: Offset -> onChipDragStart(id, g) }, chipOnDrag = { id: String, g: Offset -> onChipDrag(id, g) }, chipOnDrop = { id: String, g: Offset -> onChipDrop(id, g) })
         }
         if (filtered.isEmpty()) {
-            Text("No chips • ALL", fontSize = 13.sp, color = Color(0xFF6B7D96), modifier = Modifier.padding(8.dp))
+            Text(stringResource(R.string.no_chips_all), fontSize = 13.sp, color = Color(0xFF6B7D96), modifier = Modifier.padding(8.dp))
         }
     }
 }
@@ -728,7 +728,7 @@ fun MobileIoSheet(level: LevelDef, inputDecimals: Map<Int, Int>, inputBitSlices:
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color(0xFF1D2A3A), contentColor = Color.White, scrimColor = Color.Black.copy(alpha = 0.4f)) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp).navigationBarsPadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Turing.leftPanelCard).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Inputs", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
+                Text(stringResource(R.string.inputs), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
                 level.inputs.forEachIndexed { idx, _ ->
                     val dec = inputDecimals[idx] ?: 0
                     val bits = inputBitSlices[idx] ?: emptyList()
@@ -742,7 +742,7 @@ fun MobileIoSheet(level: LevelDef, inputDecimals: Map<Int, Int>, inputBitSlices:
                 }
             }
             Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Turing.leftPanelCard).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Outputs", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
+                Text(stringResource(R.string.outputs), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 8.dp))
                 level.outputs.forEachIndexed { idx, _ ->
                     val decD = desiredDecimals[idx] ?: 0
                     val bitsD = desiredBitSlices[idx] ?: emptyList()
@@ -751,12 +751,12 @@ fun MobileIoSheet(level: LevelDef, inputDecimals: Map<Int, Int>, inputBitSlices:
                     val outLabel = displayOutputLabel(level, idx)
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(modifier = Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("$outLabel Expected", fontSize = 13.sp, color = Turing.orangeLabel, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.expected, outLabel), fontSize = 13.sp, color = Turing.orangeLabel, modifier = Modifier.weight(1f))
                             MobileBitDotsRow(bits = bitsD, dotSize = 16.dp, spacing = 6.dp)
                             Text("$decD", fontSize = 14.sp, color = Color.White, modifier = Modifier.width(48.dp))
                         }
                         Row(modifier = Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("$outLabel Got", fontSize = 13.sp, color = if (decD == decA) Turing.orangeLabel else Color(0xFFFF8A8A), modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.got_2, outLabel), fontSize = 13.sp, color = if (decD == decA) Turing.orangeLabel else Color(0xFFFF8A8A), modifier = Modifier.weight(1f))
                             MobileBitDotsRow(bits = bitsA, dotSize = 16.dp, spacing = 6.dp)
                             Text("$decA", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (decD == decA) Color(0xFF8EF0B0) else Color(0xFFFF8A8A), modifier = Modifier.width(48.dp))
                         }
@@ -784,11 +784,11 @@ private fun AppBarActionBtn(glyph: String, enabled: Boolean = true, tint: Color 
 fun MobileLeftPanel(tick: Int, simSpeed: Int, level: LevelDef, inputDecimals: Map<Int, Int>, inputBitSlices: Map<Int, List<Boolean>>, desiredDecimals: Map<Int, Int>, desiredBitSlices: Map<Int, List<Boolean>>, actualDecimals: Map<Int, Int>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.background(Turing.leftPanelBg).verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Turing.leftPanelCard).padding(12.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Tick", fontSize = 13.sp, color = Color(0xFF8AA0BB)); Text("$tick", fontSize = 13.sp, color = Color.White) }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Sim speed", fontSize = 13.sp, color = Color(0xFF8AA0BB)); Text("${simSpeed}hz", fontSize = 13.sp, color = Color.White) }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.tick), fontSize = 13.sp, color = Color(0xFF8AA0BB)); Text("$tick", fontSize = 13.sp, color = Color.White) }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.sim_speed), fontSize = 13.sp, color = Color(0xFF8AA0BB)); Text(stringResource(R.string.hz, simSpeed), fontSize = 13.sp, color = Color.White) }
         }
         Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Turing.leftPanelCard).padding(12.dp)) {
-            Text("Inputs", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
+            Text(stringResource(R.string.inputs), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
             level.inputs.forEachIndexed { idx, _ ->
                 val dec = inputDecimals[idx] ?: 0
                 val bits = inputBitSlices[idx] ?: emptyList()
@@ -798,7 +798,7 @@ fun MobileLeftPanel(tick: Int, simSpeed: Int, level: LevelDef, inputDecimals: Ma
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Outputs", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
+            Text(stringResource(R.string.outputs), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
             level.outputs.forEachIndexed { idx, _ ->
                 val dec = actualDecimals[idx] ?: desiredDecimals[idx] ?: 0
                 val bits = desiredBitSlices[idx] ?: emptyList()
@@ -869,12 +869,12 @@ fun MobileTestbench(
                         Box(modifier = Modifier.width(1.dp).height(16.dp).background(Color(0xFF3A3A52)))
                         level.outputs.forEachIndexed { idx, _ ->
                             Box(modifier = Modifier.width(outCellWs[idx]), contentAlignment = Alignment.Center) {
-                                Text("Exp", fontSize = 12.sp, color = Turing.orangeLabel, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.exp), fontSize = 12.sp, color = Turing.orangeLabel, fontWeight = FontWeight.Bold)
                             }
                         }
                         level.outputs.forEachIndexed { idx, _ ->
                             Box(modifier = Modifier.width(outCellWs[idx]), contentAlignment = Alignment.Center) {
-                                Text("Got", fontSize = 12.sp, color = Turing.orangeLabel, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.got), fontSize = 12.sp, color = Turing.orangeLabel, fontWeight = FontWeight.Bold)
                             }
                         }
                         Box(modifier = Modifier.width(checkW))

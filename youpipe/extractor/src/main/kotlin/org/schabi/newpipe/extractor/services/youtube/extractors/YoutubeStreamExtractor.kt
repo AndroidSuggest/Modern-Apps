@@ -1,5 +1,9 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -60,7 +64,6 @@ import org.schabi.newpipe.extractor.stream.VideoStream
 import org.schabi.newpipe.extractor.utils.ExtractorLogger
 import org.schabi.newpipe.extractor.utils.JsonUtils
 import org.schabi.newpipe.extractor.utils.LocaleCompat
-import org.schabi.newpipe.extractor.utils.Pair
 import org.schabi.newpipe.extractor.utils.Parser
 import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.getArray
@@ -68,13 +71,7 @@ import org.schabi.newpipe.extractor.utils.getBoolean
 import org.schabi.newpipe.extractor.utils.getInt
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.ArrayList
-import java.util.Collections
-import java.util.Locale
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubeStreamExtractor(
     service: StreamingService,
@@ -182,11 +179,11 @@ class YoutubeStreamExtractor(
         ): String {
             val manifestKey = manifestType + "ManifestUrl"
             for (obj in streamingDataObjects) {
-                val streamingData = obj.getFirst()
+                val streamingData = obj.first
                 if (streamingData != null) {
                     val manifestUrl = streamingData.getString(manifestKey)
                     if (manifestUrl.isNullOrEmpty()) continue
-                    val second = obj.getSecond()
+                    val second = obj.second
                     return if (second == null) {
                         "$manifestUrl?$partToAppendToManifestUrlEnd"
                     } else {
@@ -282,7 +279,7 @@ class YoutubeStreamExtractor(
                 if (parts.size > 1) parts[1] else ""
             } else ""
             val webm = mimeType.contains("webm")
-            val itagItem: ItagItem = if (format.isAudio()) {
+            val itagItem: ItagItem = if (format.isAudio) {
                 val mediaFormat = if (webm) {
                     if (codec.contains("opus")) MediaFormat.WEBMA_OPUS else MediaFormat.WEBMA
                 } else MediaFormat.M4A
@@ -291,14 +288,14 @@ class YoutubeStreamExtractor(
                 val mediaFormat = if (webm) MediaFormat.WEBM else MediaFormat.MPEG_4
                 val resolution = if (format.height > 0) "${format.height}p" else ""
                 val item = ItagItem(format.itag, ItagItem.ItagType.VIDEO_ONLY, mediaFormat, resolution)
-                item.setWidth(format.width)
-                item.setHeight(format.height)
+                item.width = format.width
+                item.height = format.height
                 item
             }
-            itagItem.setBitrate(format.bitrate)
-            itagItem.setCodec(codec)
-            itagItem.setContentLength(format.contentLength)
-            itagItem.setApproxDurationMs(format.approxDurationMs)
+            itagItem.bitrate = format.bitrate
+            itagItem.codec = codec
+            itagItem.contentLength = format.contentLength
+            itagItem.approxDurationMs = format.approxDurationMs
             return itagItem
         }
     }
@@ -383,22 +380,24 @@ class YoutubeStreamExtractor(
 
         try {
             val localization = Localization("en")
-            return TimeAgoPatternsManager.getTimeAgoParserFor(localization).parse(dateText)
+            if (dateText != null) {
+                TimeAgoPatternsManager.getTimeAgoParserFor(localization)
+                    ?.let { return it.parse(dateText) }
+            }
         } catch (e: ParsingException) {
         }
 
-        return parseOptionalDate(dateText, "MMM dd, yyyy")
-            .or { parseOptionalDate(dateText, "dd MMM yyyy") }
-            .map { date -> DateWrapper(date.atStartOfDay(), true) }
-            .orElseThrow { ParsingException("Could not parse upload date \"$dateText\"") }
+        val date = parseOptionalDate(dateText, "MMM dd, yyyy")
+            ?: parseOptionalDate(dateText, "dd MMM yyyy")
+            ?: throw ParsingException("Could not parse upload date \"$dateText\"")
+        return DateWrapper(date.atStartOfDay(), true)
     }
 
-    private fun parseOptionalDate(date: String?, pattern: String): java.util.Optional<LocalDate> {
-        try {
-            val formatter = DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH)
-            return java.util.Optional.of(LocalDate.parse(date, formatter))
+    private fun parseOptionalDate(date: String?, pattern: String): LocalDate? {
+        return try {
+            LocalDate.parse(date, DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH))
         } catch (e: java.time.format.DateTimeParseException) {
-            return java.util.Optional.empty()
+            null
         }
     }
 
@@ -794,21 +793,21 @@ class YoutubeStreamExtractor(
                     when {
                         result.containsKey("compactVideoRenderer") -> {
                             YoutubeStreamInfoItemExtractor(
-                                result.getObject("compactVideoRenderer")!!, timeAgoParser
+                                result.getObject("compactVideoRenderer").orEmptyObject(), timeAgoParser
                             )
                         }
                         result.containsKey("compactRadioRenderer") -> {
                             YoutubeMixOrPlaylistInfoItemExtractor(
-                                result.getObject("compactRadioRenderer")!!
+                                result.getObject("compactRadioRenderer").orEmptyObject()
                             )
                         }
                         result.containsKey("compactPlaylistRenderer") -> {
                             YoutubeMixOrPlaylistInfoItemExtractor(
-                                result.getObject("compactPlaylistRenderer")!!
+                                result.getObject("compactPlaylistRenderer").orEmptyObject()
                             )
                         }
                         result.containsKey("lockupViewModel") -> {
-                            val lockupViewModel = result.getObject("lockupViewModel")!!
+                            val lockupViewModel = result.getObject("lockupViewModel").orEmptyObject()
                             val contentType = lockupViewModel.getString("contentType")
                             when (contentType) {
                                 "LOCKUP_CONTENT_TYPE_PLAYLIST",
@@ -875,7 +874,7 @@ class YoutubeStreamExtractor(
             .value(CONTENT_CHECK_OK, true)
             .value(RACY_CHECK_OK, true)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
         nextResponse = getJsonPostResponse(NEXT, nextBody, localization)
     }
 
@@ -899,7 +898,7 @@ class YoutubeStreamExtractor(
             )
         }
 
-        checkPlayabilityStatus(playerResponse!!.getObject(PLAYABILITY_STATUS)!!)
+        checkPlayabilityStatus(playerResponse!!.getObject(PLAYABILITY_STATUS).orEmptyObject())
         if (isPlayerResponseNotValid(playerResponse, videoId)) {
             throw ExtractionException("ANDROID player response is not valid")
         }
@@ -1049,7 +1048,7 @@ class YoutubeStreamExtractor(
             ExtractorLogger.d("YoutubeSabr", "SABR fetch failed for {}: {}", videoId, e)
             return
         }
-        if (sabrInfo.formats.isEmpty() && sabrInfo.serverAbrStreamingUrl.isNullOrEmpty()) {
+        if (sabrInfo.getFormats().isEmpty() && sabrInfo.serverAbrStreamingUrl.isNullOrEmpty()) {
             // still check formats via getFormats for compatibility
         }
         // Use getter for java compatibility + kotlin property both exist
@@ -1076,14 +1075,14 @@ class YoutubeStreamExtractor(
             ExtractorLogger.d("YoutubeSabr", "SABR fetch returned no info/formats for {}", videoId)
             // still continue to allow serverAbrStreamingUrl check
         }
-        val serverAbrStreamingUrl = sabrInfo.serverAbrStreamingUrl
+        val serverAbrStreamingUrl = sabrInfo.serverAbrStreamingUrl ?: ""
         var av1Count = 0
         for (format in actualFormats) {
             try {
                 val itagItem = buildSabrItagItem(format) ?: continue
                 val idStr = format.itag.toString()
 
-                if (format.isAudio()) {
+                if (format.isAudio) {
                     val builder = AudioStream.Builder()
                         .setContent(serverAbrStreamingUrl, false)
                         .setMediaFormat(itagItem.mediaFormat)
@@ -1106,7 +1105,7 @@ class YoutubeStreamExtractor(
                     if (sabrAudioStreams.none { audioStreamId == it.getId() }) {
                         sabrAudioStreams.add(stream)
                     }
-                } else if (format.isVideo()) {
+                } else if (format.isVideo) {
                     val codec = itagItem.codec
                     if (codec != null && codec.contains("av01")) {
                         av1Count++
@@ -1141,7 +1140,7 @@ class YoutubeStreamExtractor(
     private fun <T : Stream> getItags(
         streamingDataKey: String,
         itagTypeWanted: ItagItem.ItagType,
-        streamBuilderHelper: java.util.function.Function<ItagInfo, T>,
+        streamBuilderHelper: (ItagInfo) -> T,
         streamTypeExceptionMessage: String
     ): MutableList<T> {
         try {
@@ -1164,7 +1163,7 @@ class YoutubeStreamExtractor(
                     videoId, streamingData, streamingDataKey,
                     itagTypeWanted, cpn, poToken
                 ).forEach { itagInfo ->
-                    val stream = streamBuilderHelper.apply(itagInfo)
+                    val stream = streamBuilderHelper(itagInfo)
                     if (!Stream.containSimilarStream(stream, streamList)) {
                         streamList.add(stream)
                     }
@@ -1177,8 +1176,8 @@ class YoutubeStreamExtractor(
         }
     }
 
-    private fun getAudioStreamBuilderHelper(): java.util.function.Function<ItagInfo, AudioStream> {
-        return java.util.function.Function { itagInfo ->
+    private fun getAudioStreamBuilderHelper(): (ItagInfo) -> AudioStream {
+        return { itagInfo ->
             val itagItem = itagInfo.getItagItem()
             val builder = AudioStream.Builder()
                 .setId(itagItem.id.toString())
@@ -1204,8 +1203,8 @@ class YoutubeStreamExtractor(
 
     private fun getVideoStreamBuilderHelper(
         areStreamsVideoOnly: Boolean
-    ): java.util.function.Function<ItagInfo, VideoStream> {
-        return java.util.function.Function { itagInfo ->
+    ): (ItagInfo) -> VideoStream {
+        return { itagInfo ->
             val itagItem = itagInfo.getItagItem()
             val builder = VideoStream.Builder()
                 .setId(itagItem.id.toString())
@@ -1305,69 +1304,58 @@ class YoutubeStreamExtractor(
             if (parts.size > 1) parts[1] else ""
         } else ""
 
-        itagItem.setBitrate(formatData.getInt("bitrate") ?: 0)
-        itagItem.setWidth(formatData.getInt("width") ?: 0)
-        itagItem.setHeight(formatData.getInt("height") ?: 0)
-        itagItem.setInitStart(
+        itagItem.bitrate = formatData.getInt("bitrate") ?: 0
+        itagItem.width = formatData.getInt("width") ?: 0
+        itagItem.height = formatData.getInt("height") ?: 0
+        itagItem.initStart =
             initRange?.getString("start", "-1")?.toIntOrNull() ?: -1
-        )
-        itagItem.setInitEnd(
+        itagItem.initEnd =
             initRange?.getString("end", "-1")?.toIntOrNull() ?: -1
-        )
-        itagItem.setIndexStart(
+        itagItem.indexStart =
             indexRange?.getString("start", "-1")?.toIntOrNull() ?: -1
-        )
-        itagItem.setIndexEnd(
+        itagItem.indexEnd =
             indexRange?.getString("end", "-1")?.toIntOrNull() ?: -1
-        )
-        itagItem.setQuality(formatData.getString("quality"))
-        itagItem.setCodec(codec)
-        itagItem.setIsDrc(formatData.getBoolean("isDrc", false))
-        itagItem.setLastModified(
+        itagItem.quality = formatData.getString("quality")
+        itagItem.codec = codec
+        itagItem.isDrc = formatData.getBoolean("isDrc", false)
+        itagItem.lastModified =
             formatData.getString("lastModified", "-1")?.toLongOrNull() ?: -1
-        )
-        itagItem.setXtags(formatData.getString("xtags"))
+        itagItem.xtags = formatData.getString("xtags")
 
         if (streamType == StreamType.LIVE_STREAM || streamType == StreamType.POST_LIVE_STREAM) {
-            itagItem.setTargetDurationSec(formatData.getInt("targetDurationSec") ?: -1)
+            itagItem.targetDurationSec = formatData.getInt("targetDurationSec") ?: -1
         }
 
         if (itagType == ItagItem.ItagType.VIDEO || itagType == ItagItem.ItagType.VIDEO_ONLY) {
-            itagItem.setFps(formatData.getInt("fps") ?: -1)
+            itagItem.fps = formatData.getInt("fps") ?: -1
         } else if (itagType == ItagItem.ItagType.AUDIO) {
             val audioSampleRateStr = formatData.getString("audioSampleRate") ?: "0"
-            itagItem.setSampleRate(audioSampleRateStr.toIntOrNull() ?: 0)
-            itagItem.setAudioChannels(
+            itagItem.sampleRate = audioSampleRateStr.toIntOrNull() ?: 0
+            itagItem.audioChannels =
                 formatData.getInt("audioChannels", 2)
-            )
 
             val audioTrackId = formatData.getObject("audioTrack")?.getString("id")
             if (!Utils.isNullOrEmpty(audioTrackId)) {
-                itagItem.setAudioTrackId(audioTrackId)
+                itagItem.audioTrackId = audioTrackId
                 val dot = audioTrackId!!.indexOf(".")
                 if (dot != -1) {
-                    LocaleCompat.forLanguageTag(
-                        audioTrackId.substring(0, dot)
-                    ).ifPresent { locale -> itagItem.setAudioLocale(locale) }
+                    LocaleCompat.forLanguageTag(audioTrackId.substring(0, dot))
+                        ?.let { locale -> itagItem.audioLocale = locale }
                 }
-                itagItem.setAudioTrackType(
+                itagItem.audioTrackType =
                     YoutubeParsingHelper.extractAudioTrackType(itagItem.xtags)
-                )
             }
 
-            itagItem.setAudioTrackName(
+            itagItem.audioTrackName =
                 formatData.getObject("audioTrack")?.getString("displayName")
-            )
         }
 
-        itagItem.setContentLength(
+        itagItem.contentLength =
             formatData.getString("contentLength", ItagItem.CONTENT_LENGTH_UNKNOWN.toString())
                 ?.toLongOrNull() ?: ItagItem.CONTENT_LENGTH_UNKNOWN
-        )
-        itagItem.setApproxDurationMs(
+        itagItem.approxDurationMs =
             formatData.getString("approxDurationMs", ItagItem.APPROX_DURATION_MS_UNKNOWN.toString())
                 ?.toLongOrNull() ?: ItagItem.APPROX_DURATION_MS_UNKNOWN
-        )
 
         val itagInfo = ItagInfo(streamUrl, itagItem)
 
@@ -1396,11 +1384,11 @@ class YoutubeStreamExtractor(
             }
 
             if (storyboardsRenderer == null) {
-                return Collections.emptyList()
+                return emptyList()
             }
 
             val storyboardsRendererSpec = storyboardsRenderer.getString("spec")
-                ?: return Collections.emptyList()
+                ?: return emptyList()
 
             val spec = storyboardsRendererSpec.split("|")
             val url = spec[0]
@@ -1424,7 +1412,7 @@ class YoutubeStreamExtractor(
                         (urls as ArrayList).add(baseUrl.replace("\$M", j.toString()))
                     }
                 } else {
-                    urls = Collections.singletonList(baseUrl)
+                    urls = listOf(baseUrl)
                 }
                 result.add(
                     Frameset(
@@ -1492,7 +1480,7 @@ class YoutubeStreamExtractor(
     @Throws(ParsingException::class)
     override fun getStreamSegments(): List<StreamSegment> {
         val engagementPanels = nextResponse?.getArray("engagementPanels")
-            ?: return Collections.emptyList()
+            ?: return emptyList()
 
         val segmentsArray = engagementPanels.filterIsInstance<JsonObject>()
             .firstOrNull { panel ->
@@ -1506,7 +1494,7 @@ class YoutubeStreamExtractor(
             ?.getArray("contents")
 
         if (segmentsArray == null) {
-            return Collections.emptyList()
+            return emptyList()
         }
 
         val duration = getLength()
@@ -1532,7 +1520,7 @@ class YoutubeStreamExtractor(
             }
 
             val segment = StreamSegment(title!!, startTimeSeconds)
-            segment.setUrl(getUrl() + "?t=" + startTimeSeconds)
+            segment.url = getUrl() + "?t=" + startTimeSeconds
             if (segmentJson.containsKey(THUMBNAIL)) {
                 val previewsArray = segmentJson.getObject(THUMBNAIL)
                     ?.getArray(THUMBNAILS)

@@ -7,7 +7,9 @@
     <string name="counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="recipes">配方（<xliff:g id="count" example="3">%1$d</xliff:g>）</string>
     <string name="used_in">用于（<xliff:g id="count" example="5">%1$d</xliff:g>）</string>
-    <string name="locked">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> 个已锁定配方。</string>
+    <plurals name="locked_recipes">
+        <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> 个已锁定配方。</item>
+    </plurals>
     <string name="locked_description">解锁这些配方的所有产出即可查看。</string>
     <string name="collection">收藏</string>
     <string name="discovered_counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g> 已发现</string>
@@ -15,6 +17,8 @@
     <string name="id">ID: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
     <string name="cd_final_item">最后一件物品</string>
     <string name="item_discovered">发现物品！</string>
-    <string name="items_discovered">发现 <xliff:g id="count" example="3">%1$s</xliff:g> 件物品！</string>
+    <plurals name="items_discovered">
+        <item quantity="other">发现 <xliff:g id="count" example="3">%1$s</xliff:g> 件物品！</item>
+    </plurals>
     <string name="cd_delete">删除</string>
 </resources>

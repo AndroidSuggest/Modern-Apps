@@ -41,7 +41,7 @@ class YoutubeMixOrPlaylistInfoItemExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderName(): String {
+    override fun getUploaderName(): String? {
         // this will be a list of uploaders for mixes
         return YoutubeParsingHelper.getTextFromObject(mixInfoItem.getObject("longBylineText")) ?: ""
     }

@@ -8,6 +8,17 @@ launcherIcon {
     symbol = "play_arrow"
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// YouTube (InnerTube) extractor — a Rust port of PipePipeExtractor. See youpipe/src/main/rust/.
+rustNativeLib("youpipe_extractor", "youpipe")
+
 android {
     defaultConfig {
         applicationId = "com.vayunmathur.youpipe"

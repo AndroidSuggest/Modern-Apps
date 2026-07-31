@@ -170,11 +170,11 @@ class ProfileManager(
                 username = username,
                 password = password,
             )
-            if (resp.code !in 200..299) {
-                Log.e(TAG, "Unexpected response status ${resp.code} downloading avatar")
+            if (!resp.isSuccess) {
+                Log.e(TAG, "Unexpected response status ${resp.status} downloading avatar")
                 return null
             }
-            val encryptedAvatar = resp.body?.bytes() ?: return null
+            val encryptedAvatar = resp.bytes
             decryptBytes(profileKey, encryptedAvatar)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download user avatar", e)

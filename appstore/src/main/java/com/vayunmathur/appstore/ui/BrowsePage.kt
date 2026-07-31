@@ -1,5 +1,7 @@
 package com.vayunmathur.appstore.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.appstore.R
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
@@ -103,7 +105,7 @@ fun AppRow(
                         }
                         if (isInstalled) {
                             Spacer(Modifier.width(8.dp))
-                            Text("Installed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.installed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui
 
+import androidx.compose.ui.res.pluralStringResource
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -143,7 +144,7 @@ fun ImportVcfScreen(
                 ) {
                     item {
                         Text(
-                            stringResource(R.string.import_summary_contacts, contacts.size),
+                            pluralStringResource(R.plurals.import_summary_contacts, contacts.size, contacts.size),
                             style = MaterialTheme.typography.titleMedium
                         )
                     }

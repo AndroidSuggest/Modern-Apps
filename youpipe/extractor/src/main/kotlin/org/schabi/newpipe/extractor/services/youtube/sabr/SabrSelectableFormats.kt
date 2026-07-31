@@ -1,6 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.Collections
 
 class SabrSelectableFormats private constructor(
     videoFormats: List<FormatId>,
@@ -9,10 +8,10 @@ class SabrSelectableFormats private constructor(
     wrappedAudioFormats: List<FormatId>,
     private val otherFieldCount: Int
 ) {
-    private val videoFormats: List<FormatId> = Collections.unmodifiableList(ArrayList(videoFormats))
-    private val audioFormats: List<FormatId> = Collections.unmodifiableList(ArrayList(audioFormats))
-    private val wrappedVideoFormats: List<FormatId> = Collections.unmodifiableList(ArrayList(wrappedVideoFormats))
-    private val wrappedAudioFormats: List<FormatId> = Collections.unmodifiableList(ArrayList(wrappedAudioFormats))
+    private val videoFormats: List<FormatId> = videoFormats.toList()
+    private val audioFormats: List<FormatId> = audioFormats.toList()
+    private val wrappedVideoFormats: List<FormatId> = wrappedVideoFormats.toList()
+    private val wrappedAudioFormats: List<FormatId> = wrappedAudioFormats.toList()
 
     internal companion object {
         @JvmStatic

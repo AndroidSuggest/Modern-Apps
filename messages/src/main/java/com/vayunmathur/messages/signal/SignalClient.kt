@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.signal
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -54,7 +57,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.signal.libsignal.protocol.IdentityKeyPair
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.Collections
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -157,7 +159,7 @@ object SignalClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         if (_state.value is State.Connected) return
         scope.launch {
             val auth = SignalAuthData.load(appContext) ?: run {

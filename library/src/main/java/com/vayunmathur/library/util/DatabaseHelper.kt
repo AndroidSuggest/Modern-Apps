@@ -5,7 +5,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
-import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.KeyStoreException
 import java.security.SecureRandom
@@ -80,7 +79,7 @@ open class DatabaseHelper(val context: Context) {
     }
 
     private fun persist(passphrase: String, cipher: Cipher) {
-        val encryptedBytes = cipher.doFinal(passphrase.toByteArray(StandardCharsets.UTF_8))
+        val encryptedBytes = cipher.doFinal(passphrase.toByteArray(Charsets.UTF_8))
         val iv = cipher.iv
         val prefs = context.getSharedPreferences(sharedPrefsName, Context.MODE_PRIVATE)
         prefs.edit {
@@ -103,7 +102,7 @@ open class DatabaseHelper(val context: Context) {
         val encryptedPassphrase = prefs.getString(passphraseKey, null) ?: throw Exception("Passphrase not found")
         val encryptedBytes = Base64.decode(encryptedPassphrase, Base64.NO_WRAP)
         val decryptedBytes = cipher.doFinal(encryptedBytes)
-        return String(decryptedBytes, StandardCharsets.UTF_8)
+        return String(decryptedBytes, Charsets.UTF_8)
     }
 
     fun getCipherForEncryption(): Cipher {

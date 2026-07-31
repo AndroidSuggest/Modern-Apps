@@ -1,5 +1,7 @@
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.fooddelivery.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,9 +45,9 @@ fun CartScreen(
                     IconShoppingCart(modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    Text("Your cart is empty", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.your_cart_is_empty), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
-                    Text("Add items from a restaurant",
+                    Text(stringResource(R.string.add_items_from_a_restaurant),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -69,14 +71,14 @@ fun CartScreen(
                     Column(Modifier.padding(16.dp)) {
                         Row(Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.subtotal), style = MaterialTheme.typography.bodyMedium)
                             Text("$%.2f".format(subtotal),
                                 style = MaterialTheme.typography.bodyMedium)
                         }
                         Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Estimated tax", style = MaterialTheme.typography.bodySmall,
+                            Text(stringResource(R.string.estimated_tax), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("$%.2f".format(subtotal * 0.09),
                                 style = MaterialTheme.typography.bodySmall,
@@ -87,7 +89,7 @@ fun CartScreen(
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total", fontWeight = FontWeight.Bold,
+                            Text(stringResource(R.string.total), fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleSmall)
                             Text("$%.2f".format(subtotal * 1.09), fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleSmall)
@@ -97,7 +99,7 @@ fun CartScreen(
                             onClick = onCheckout,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Checkout")
+                            Text(stringResource(R.string.checkout))
                         }
                     }
                 }

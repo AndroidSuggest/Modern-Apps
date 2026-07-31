@@ -1,27 +1,30 @@
+@file:OptIn(
+    kotlin.uuid.ExperimentalUuidApi::class,
+    kotlin.concurrent.atomics.ExperimentalAtomicApi::class,
+)
+
 package com.vayunmathur.messages.signal.contacts
 
+import kotlin.uuid.Uuid
+import kotlin.concurrent.atomics.*
 import android.util.Log
 import com.vayunmathur.messages.signal.store.SignalRecipientEntity
 import com.vayunmathur.messages.signal.store.SignalRecipientStore
 import com.vayunmathur.messages.signal.web.CertPinning
 import com.vayunmathur.messages.signal.web.SignalHttpClient
-import kotlinx.coroutines.CompletableDeferred
+import com.vayunmathur.library.network.WebSocketClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import okhttp3.Credentials
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
-import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import org.signal.libsignal.cds2.Cds2Client
 import signalservice.ContactDiscovery.CDSClientRequest
 import signalservice.ContactDiscovery.CDSClientResponse
 import java.nio.ByteBuffer
 import java.time.Instant
-import java.util.UUID
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +32,7 @@ class ContactDiscoveryRateLimitError(val retryAfterSeconds: Long) : Exception(
     "contact discovery rate limited for ${retryAfterSeconds}s"
 )
 
-data class CDSResponseEntry(val aci: UUID, val pni: UUID)
+data class CDSResponseEntry(val aci: Uuid, val pni: Uuid)
 
 class ContactDiscovery(
     private val recipientStore: SignalRecipientStore,
@@ -72,7 +75,7 @@ class ContactDiscovery(
             null
         } ?: return null
         val entry = results[e164Num] ?: return null
-        val nilUUID = UUID(0, 0)
+        val nilUUID = Uuid.NIL
         val aci = entry.aci.takeIf { it != nilUUID }?.toString()
         val pni = entry.pni.takeIf { it != nilUUID }?.toString()
         if (aci != null) {
@@ -118,89 +121,107 @@ class ContactDiscovery(
         cdsiPassword: String,
     ): Pair<Map<Long, CDSResponseEntry>, ByteArray?>? {
         val url = "wss://$CDSI_HOST/v1/$MRENCLAVE/discovery"
-        val (sslSocketFactory, trustManager) = CertPinning.createSslSocketFactory(context)
-        val client = OkHttpClient.Builder()
-            .sslSocketFactory(sslSocketFactory, trustManager)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build()
+        val sslSocketFactory = CertPinning.createSslSocketFactory(context).first
 
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", Credentials.basic(cdsiUsername, cdsiPassword))
-            .build()
+        // WebSocketClient.connect completes the handshake before returning, so a
+        // non-101 upgrade throws here instead of arriving via onFailure.
+        val socket = WebSocketClient.connect(
+            url,
+            mapOf("Authorization" to SignalHttpClient.basicCredentials(cdsiUsername, cdsiPassword)),
+            sslSocketFactory = sslSocketFactory,
+        )
 
         val messages = LinkedBlockingQueue<ByteArray>()
-        val connected = CompletableDeferred<Unit>()
+        // Terminal condition seen by the reader (rate-limit close or read error);
+        // the exchange below surfaces it instead of waiting out its poll timeout.
+        val failure = AtomicReference<Throwable?>(null)
 
-        var socket: WebSocket? = null
-        socket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                connected.complete(Unit)
-            }
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                messages.put(bytes.toByteArray())
-            }
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                if (code == RATE_LIMIT_CLOSE_CODE) {
-                    val retryAfter = try {
-                        JSONObject(reason).optLong("retry_after", 0)
-                    } catch (_: Exception) { 0L }
-                    connected.completeExceptionally(ContactDiscoveryRateLimitError(retryAfter))
-                }
-            }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "CDSI WebSocket failure", t)
-                connected.completeExceptionally(t)
-            }
-        })
+        fun nextMessage(missing: String): ByteArray {
+            failure.load()?.let { throw it }
+            val msg = messages.poll(10, TimeUnit.SECONDS)
+            failure.load()?.let { throw it }
+            return msg ?: throw IllegalStateException(missing)
+        }
 
         return try {
-            withTimeout(20000) {
-                connected.await()
-                val attestationMsg = messages.poll(10, TimeUnit.SECONDS)
-                    ?: throw IllegalStateException("No attestation")
-                val mrenclave = MRENCLAVE.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                val cds2Client = Cds2Client(mrenclave, attestationMsg, Instant.now())
-                val initialRequest = cds2Client.initialRequest()
-                socket.send(initialRequest.toByteString())
-                val handshakeFinish = messages.poll(10, TimeUnit.SECONDS)
-                    ?: throw IllegalStateException("No handshake finish")
-                cds2Client.completeHandshake(handshakeFinish)
-
-                val cdsiRequest = CDSClientRequest.newBuilder()
-                    .setNewE164S(com.google.protobuf.ByteString.copyFrom(newE164sData))
-                if (cdsiToken != null) {
-                    cdsiRequest.setToken(com.google.protobuf.ByteString.copyFrom(cdsiToken))
-                }
-                val encryptedReq = cds2Client.establishedSend(cdsiRequest.build().toByteArray())
-                socket.send(encryptedReq.toByteString())
-
-                // Response loop matching Go's ReadResponse
-                var token: ByteArray? = null
-                var response: Map<Long, CDSResponseEntry>? = null
-                while (response == null) {
-                    val msg = messages.poll(10, TimeUnit.SECONDS)
-                        ?: throw IllegalStateException("No CDSI response")
-                    val decrypted = cds2Client.establishedRecv(msg)
-                    val cdsiResp = CDSClientResponse.parseFrom(decrypted)
-
-                    if (cdsiResp.hasToken()) {
-                        token = cdsiResp.token.toByteArray()
-                        val tokenAck = CDSClientRequest.newBuilder()
-                            .setTokenAck(true).build()
-                        val encAck = cds2Client.establishedSend(tokenAck.toByteArray())
-                        socket.send(encAck.toByteString())
-                    }
-
-                    if (!cdsiResp.e164PniAciTriples.isEmpty) {
-                        response = parseTriples(cdsiResp.e164PniAciTriples.toByteArray())
+            coroutineScope {
+                val reader = launch(Dispatchers.IO) {
+                    try {
+                        socket.incomingFlow().collect { frame ->
+                            when (frame) {
+                                is WebSocketClient.WsFrame.Binary -> messages.put(frame.bytes)
+                                is WebSocketClient.WsFrame.Text ->
+                                    messages.put(frame.text.toByteArray(Charsets.UTF_8))
+                                is WebSocketClient.WsFrame.Close -> {
+                                    if (frame.code == RATE_LIMIT_CLOSE_CODE) {
+                                        val retryAfter = try {
+                                            JSONObject(frame.reason).optLong("retry_after", 0)
+                                        } catch (_: Exception) { 0L }
+                                        failure.compareAndSet(
+                                            null, ContactDiscoveryRateLimitError(retryAfter),
+                                        )
+                                    }
+                                }
+                                else -> Unit
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(TAG, "CDSI WebSocket failure", e)
+                        failure.compareAndSet(null, e)
                     }
                 }
-                Pair(response, token)
+
+                try {
+                    // The exchange drives blocking queue polls, so keep it on IO.
+                    withTimeout(20000) {
+                        withContext(Dispatchers.IO) {
+                            val attestationMsg = nextMessage("No attestation")
+                            val mrenclave = MRENCLAVE.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                            val cds2Client = Cds2Client(mrenclave, attestationMsg, Instant.now())
+                            val initialRequest = cds2Client.initialRequest()
+                            socket.send(initialRequest)
+                            val handshakeFinish = nextMessage("No handshake finish")
+                            cds2Client.completeHandshake(handshakeFinish)
+
+                            val cdsiRequest = CDSClientRequest.newBuilder()
+                                .setNewE164S(com.google.protobuf.ByteString.copyFrom(newE164sData))
+                            if (cdsiToken != null) {
+                                cdsiRequest.setToken(com.google.protobuf.ByteString.copyFrom(cdsiToken))
+                            }
+                            val encryptedReq = cds2Client.establishedSend(cdsiRequest.build().toByteArray())
+                            socket.send(encryptedReq)
+
+                            // Response loop matching Go's ReadResponse
+                            var token: ByteArray? = null
+                            var response: Map<Long, CDSResponseEntry>? = null
+                            while (response == null) {
+                                val msg = nextMessage("No CDSI response")
+                                val decrypted = cds2Client.establishedRecv(msg)
+                                val cdsiResp = CDSClientResponse.parseFrom(decrypted)
+
+                                if (cdsiResp.hasToken()) {
+                                    token = cdsiResp.token.toByteArray()
+                                    val tokenAck = CDSClientRequest.newBuilder()
+                                        .setTokenAck(true).build()
+                                    val encAck = cds2Client.establishedSend(tokenAck.toByteArray())
+                                    socket.send(encAck)
+                                }
+
+                                if (!cdsiResp.e164PniAciTriples.isEmpty) {
+                                    response = parseTriples(cdsiResp.e164PniAciTriples.toByteArray())
+                                }
+                            }
+                            Pair(response, token)
+                        }
+                    }
+                } finally {
+                    reader.cancel()
+                }
             }
         } finally {
-            socket?.close(3000, "Normal")
-            client.dispatcher.executorService.shutdown()
+            runCatching { socket.close(3000, "Normal") }
         }
     }
 
@@ -216,9 +237,9 @@ class ContactDiscovery(
             val e164 = ByteBuffer.wrap(triples, offset, 8).long
             if (e164 == 0L) continue
             val pniBuf = ByteBuffer.wrap(triples, offset + 8, 16)
-            val pni = UUID(pniBuf.long, pniBuf.long)
+            val pni = Uuid.fromLongs(pniBuf.long, pniBuf.long)
             val aciBuf = ByteBuffer.wrap(triples, offset + 24, 16)
-            val aci = UUID(aciBuf.long, aciBuf.long)
+            val aci = Uuid.fromLongs(aciBuf.long, aciBuf.long)
             result[e164] = CDSResponseEntry(aci = aci, pni = pni)
         }
         return result

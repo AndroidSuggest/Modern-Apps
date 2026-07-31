@@ -1,6 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 
 internal class SabrColdStartPoToken private constructor() {
@@ -12,7 +11,7 @@ internal class SabrColdStartPoToken private constructor() {
         @JvmStatic
         @Throws(SabrProtocolException::class)
         fun generate(identifier: String, clientState: Int): ByteArray {
-            val identifierBytes = identifier.toByteArray(StandardCharsets.UTF_8)
+            val identifierBytes = identifier.toByteArray(Charsets.UTF_8)
             if (identifierBytes.size > MAX_IDENTIFIER_BYTES) {
                 throw SabrProtocolException("PO token identifier is too long")
             }

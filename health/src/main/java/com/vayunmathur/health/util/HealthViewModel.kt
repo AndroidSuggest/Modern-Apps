@@ -1,5 +1,12 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.health.util
 
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
+import kotlinx.datetime.isoDayNumber
+import kotlin.uuid.Uuid
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -33,13 +40,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
+import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.toKotlinLocalDate
-import java.io.File
-import java.io.FileOutputStream
 import java.time.ZoneId
-import java.util.UUID
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
@@ -237,22 +242,23 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
             val history = if (selectedTab != 0) rawPairsHistory.mapIndexed { index, triple ->
                 val label = when (selectedTab) {
                     0 -> ""
-                    1 -> startTime.plus(index.toLong(), DateTimeUnit.DAY, tz)
-                        .toLocalDateTime(tz).dayOfWeek.name.lowercase()
-                        .replaceFirstChar { it.uppercase() }
+                    1 -> localizedDayOfWeekNames(DateNameStyle.FULL)[
+                        startTime.plus(index.toLong(), DateTimeUnit.DAY, tz)
+                            .toLocalDateTime(tz).dayOfWeek.isoDayNumber - 1
+                    ]
                     2 -> {
                         val date = startTime.plus(index.toLong(), DateTimeUnit.DAY, tz)
                             .toLocalDateTime(tz).date
                         resources.getString(
                             R.string.month_year_format,
-                            date.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() },
+                            localizedMonthNames(DateNameStyle.SHORT)[date.month.number - 1],
                             date.day,
                         )
                     }
                     else -> {
                         val date = startTime.plus(index.toLong(), DateTimeUnit.MONTH, tz)
                             .toLocalDateTime(tz).date
-                        date.month.name.lowercase().replaceFirstChar { it.uppercase() }
+                        localizedMonthNames(DateNameStyle.FULL)[date.month.number - 1]
                     }
                 }
                 HistoryItem(
@@ -305,7 +311,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
         }
         1 -> {
             val date = LocalDate.fromEpochDays(firstKey.toInt())
-            date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+            localizedDayOfWeekNames(DateNameStyle.SHORT)[date.dayOfWeek.isoDayNumber - 1]
         }
         2 -> {
             val date = LocalDate.fromEpochDays(firstKey.toInt())
@@ -313,7 +319,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
         }
         else -> {
             val date = LocalDate.fromEpochDays(firstKey.toInt())
-            date.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+            localizedMonthNames(DateNameStyle.SHORT)[date.month.number - 1]
         }
     }
 
@@ -328,7 +334,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
     fun logHydration(liters: Double, time: java.time.Instant) {
         viewModelScope.launch {
             val record = Record(
-                id = UUID.randomUUID().toString(),
+                id = Uuid.random().toString(),
                 index = 0,
                 type = RecordType.Hydration,
                 startTime = time,
@@ -344,7 +350,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
     fun logBodyMetric(type: RecordType, value: Double, time: java.time.Instant) {
         viewModelScope.launch {
             val record = Record(
-                id = UUID.randomUUID().toString(),
+                id = Uuid.random().toString(),
                 index = 0,
                 type = type,
                 startTime = time,
@@ -385,7 +391,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
                 is LogMealTarget.FromIngredient -> target.ingredient.displayName
             }
             val record = Record(
-                id = UUID.randomUUID().toString(),
+                id = Uuid.random().toString(),
                 index = 0,
                 type = RecordType.Nutrition,
                 startTime = time,
@@ -488,7 +494,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
         onComplete: () -> Unit,
     ) {
         viewModelScope.launch {
-            val id = existingRecipeId ?: UUID.randomUUID().toString()
+            val id = existingRecipeId ?: Uuid.random().toString()
             db.healthDao().insertRecipe(Recipe(id = id, name = name))
 
             if (existingRecipeId != null) {
@@ -501,7 +507,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
                 db.healthDao().insertServingUnit(row.unit)
                 db.healthDao().insertRecipeIngredient(
                     RecipeIngredient(
-                        id = UUID.randomUUID().toString(),
+                        id = Uuid.random().toString(),
                         recipeId = id,
                         ingredientId = row.ingredient.id,
                         quantity = row.quantity,

@@ -1,5 +1,6 @@
 package com.vayunmathur.clock.ui
 
+import com.vayunmathur.library.util.localizedAmPmMarker
 import android.content.Context
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
@@ -258,7 +259,8 @@ fun formatAlarmTime(context: Context, time: LocalTime): String {
             amPmHour(Padding.NONE)
             char(':')
             minute()
-            amPmMarker(" AM", " PM")
+            char(' ')
+            localizedAmPmMarker()
         }
     }
     return time.format(format)

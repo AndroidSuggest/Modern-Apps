@@ -7,7 +7,6 @@ import org.schabi.newpipe.extractor.playlist.PlaylistInfoItemExtractor
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItemsCollector
 import org.schabi.newpipe.extractor.stream.StreamInfoItemExtractor
 import org.schabi.newpipe.extractor.stream.StreamInfoItemsCollector
-import java.util.ArrayList
 import java.util.Collections
 
 class MultiInfoItemsCollector(serviceId: Int) :
@@ -19,9 +18,9 @@ class MultiInfoItemsCollector(serviceId: Int) :
 
     override fun getErrors(): List<Throwable> {
         val allErrors = ArrayList<Throwable>(super.getErrors())
-        allErrors.addAll(streamCollector.errors)
-        allErrors.addAll(userCollector.errors)
-        allErrors.addAll(playlistCollector.errors)
+        allErrors.addAll(streamCollector.getErrors())
+        allErrors.addAll(userCollector.getErrors())
+        allErrors.addAll(playlistCollector.getErrors())
         return Collections.unmodifiableList(allErrors)
     }
 

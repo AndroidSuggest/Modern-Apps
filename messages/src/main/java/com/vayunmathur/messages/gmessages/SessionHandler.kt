@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.messages.gmessages
 
+import kotlin.uuid.Uuid
 import android.util.Log
 import com.google.protobuf.Message
 import com.vayunmathur.messages.gmessages.PairFlow.ConfigVersion
@@ -11,7 +14,6 @@ import rpc.Rpc.MessageType
 import rpc.Rpc.OutgoingRPCData
 import rpc.Rpc.OutgoingRPCMessage
 import rpc.Rpc.OutgoingRPCResponse
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.CompletableDeferred
@@ -42,7 +44,7 @@ class SessionHandler(
     private val waiters = ConcurrentHashMap<String, CompletableDeferred<IncomingRpc>>()
 
     @Volatile
-    private var currentSessionId: String = UUID.randomUUID().toString()
+    private var currentSessionId: String = Uuid.random().toString()
 
     fun currentSessionId(): String = currentSessionId
 
@@ -99,7 +101,7 @@ class SessionHandler(
         val payload = AckMessageRequest.newBuilder()
             .setAuthData(
                 AuthMessage.newBuilder()
-                    .setRequestID(UUID.randomUUID().toString())
+                    .setRequestID(Uuid.random().toString())
                     .setTachyonAuthToken(
                         com.google.protobuf.ByteString.copyFrom(
                             auth.tachyonToken() ?: return
@@ -243,7 +245,7 @@ class SessionHandler(
      * TTL = 0. Without this, the relay won't forward data events.
      */
     suspend fun setActiveSession(): Boolean {
-        currentSessionId = UUID.randomUUID().toString()
+        currentSessionId = Uuid.random().toString()
         Log.i(TAG, "setActiveSession (GET_UPDATES, requestID=sessionID=$currentSessionId)")
         return sendMessageNoResponse(SendMessageParams(
             action = ActionType.GET_UPDATES,
@@ -294,7 +296,7 @@ class SessionHandler(
 
     private fun buildMessage(params: SendMessageParams): Pair<String, OutgoingRPCMessage> {
         val auth = authProvider()
-        val requestId = params.requestId ?: UUID.randomUUID().toString()
+        val requestId = params.requestId ?: Uuid.random().toString()
         val msgType = params.messageType
 
         val serializedPayload = params.data?.toByteArray() ?: ByteArray(0)

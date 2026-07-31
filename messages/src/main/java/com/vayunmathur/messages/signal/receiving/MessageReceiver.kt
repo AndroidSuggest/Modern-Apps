@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.messages.signal.receiving
 
+import kotlin.uuid.Uuid
 import android.util.Log
 import com.vayunmathur.messages.signal.proto.WebSocketProtos
 import com.vayunmathur.messages.signal.proto.SignalServiceProtos
@@ -17,7 +20,6 @@ import org.signal.libsignal.protocol.message.CiphertextMessage
 import kotlinx.coroutines.runBlocking
 import org.signal.libsignal.protocol.SignalProtocolAddress
 import java.util.concurrent.ConcurrentHashMap
-import java.util.UUID
 
 class MessageReceiver(
     private val sessionStore: SessionStore,
@@ -235,7 +237,7 @@ class MessageReceiver(
 
     private fun isValidAciUuid(aci: String): Boolean {
         return try {
-            UUID.fromString(aci)
+            Uuid.parse(aci)
             !aci.startsWith("PNI:")
         } catch (_: IllegalArgumentException) {
             false

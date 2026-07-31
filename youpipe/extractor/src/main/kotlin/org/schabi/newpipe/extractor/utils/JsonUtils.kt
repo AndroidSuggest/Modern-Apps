@@ -28,9 +28,10 @@ object JsonUtils {
     @Nonnull
     @Throws(ParsingException::class)
     fun getValue(
-        @Nonnull obj: JsonObject,
+        @Nullable obj: JsonObject?,
         @Nonnull path: String
     ): JsonElement {
+        if (obj == null) throw ParsingException("Unable to get $path")
         if (path.isEmpty()) throw ParsingException("Empty path")
         val keys = path.split(".")
         val parentKeys = if (keys.size > 1) keys.subList(0, keys.size - 1) else emptyList()
@@ -109,7 +110,7 @@ object JsonUtils {
     @JvmStatic
     @Nonnull
     @Throws(ParsingException::class)
-    fun getArray(obj: JsonObject, path: String): JsonArray {
+    fun getArray(obj: JsonObject?, path: String): JsonArray {
         val value = getValue(obj, path)
         if (value is JsonArray) return value
         throw ParsingException("Wrong data type at path $path")
@@ -199,12 +200,34 @@ object JsonUtils {
 // Compatibility extensions mimicking old nanojson API to ease migration
 // ---------------------------------------------------------------------------
 
+private val EMPTY_JSON_OBJECT = JsonObject(emptyMap())
+private val EMPTY_JSON_ARRAY = JsonArray(emptyList())
+
+/**
+ * Restores nanojson's `JsonObject.getObject(key)` semantics: a missing key (or one holding
+ * a value of the wrong type) yields an *empty* object rather than null.
+ *
+ * The YouTube extractors walk long `a.getObject("b").getObject("c")` chains over InnerTube
+ * responses that legitimately omit keys, and rely on those chains bottoming out in an empty
+ * object instead of throwing. Use this instead of `!!` when porting such a chain.
+ */
+fun JsonObject?.orEmptyObject(): JsonObject = this ?: EMPTY_JSON_OBJECT
+
+/**
+ * Restores nanojson's `JsonObject.getArray(key)` semantics: a missing key (or one holding a
+ * value of the wrong type) yields an *empty* array rather than null.
+ *
+ * @see orEmptyObject
+ */
+fun JsonArray?.orEmptyArray(): JsonArray = this ?: EMPTY_JSON_ARRAY
+
 fun JsonObject.getString(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 fun JsonObject.getString(key: String, defaultValue: String): String =
     getString(key) ?: defaultValue
 
+@JvmName("getStringOrDefaultNullable")
 fun JsonObject.getString(key: String, defaultValue: String?): String? =
     getString(key) ?: defaultValue
 
@@ -235,9 +258,13 @@ fun JsonObject.getInt(key: String): Int? =
             ?: p.doubleOrNull?.toInt()
     }
 
+fun JsonObject.getInt(key: String, defaultValue: Int): Int = getInt(key) ?: defaultValue
+
 fun JsonObject.getLong(key: String): Long? =
     (this[key] as? JsonPrimitive)?.longOrNull
         ?: (this[key] as? JsonPrimitive)?.doubleOrNull?.toLong()
+
+fun JsonObject.getLong(key: String, defaultValue: Long): Long = getLong(key) ?: defaultValue
 
 fun JsonObject.getDouble(key: String): Double? =
     (this[key] as? JsonPrimitive)?.doubleOrNull
@@ -259,6 +286,15 @@ fun JsonArray.getArray(index: Int): JsonArray? =
 
 fun JsonArray.getBoolean(index: Int): Boolean? =
     (this.getOrNull(index) as? JsonPrimitive)?.booleanOrNull
+
+fun JsonArray.getInt(index: Int): Int? =
+    (this.getOrNull(index) as? JsonPrimitive)?.let { p ->
+        p.content.toIntOrNull()
+            ?: p.longOrNull?.toInt()
+            ?: p.doubleOrNull?.toInt()
+    }
+
+fun JsonArray.getInt(index: Int, defaultValue: Int): Int = getInt(index) ?: defaultValue
 
 fun JsonArray.getNumber(index: Int): Number? {
     val primitive = this.getOrNull(index) as? JsonPrimitive ?: return null

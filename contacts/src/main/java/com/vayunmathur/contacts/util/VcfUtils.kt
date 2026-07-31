@@ -4,18 +4,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import com.vayunmathur.contacts.data.*
-import java.io.BufferedReader
-import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.io.InputStreamReader
 import java.io.OutputStream
-import java.io.OutputStreamWriter
+import java.io.Writer
 
 object VcfUtils {
     suspend fun exportContacts(contacts: List<Contact>, outputStream: OutputStream) {
         withContext(Dispatchers.IO) {
-            BufferedWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
+            outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
                 for (contact in contacts) {
                     val details = contact.details
                     writeFolded(writer, "BEGIN:VCARD")
@@ -96,7 +93,7 @@ object VcfUtils {
 
     fun parseContacts(inputStream: InputStream): List<Contact> {
         val contactsToSave = mutableListOf<Contact>()
-        val rawLines = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { br ->
+        val rawLines = inputStream.bufferedReader(Charsets.UTF_8).use { br ->
             buildList {
                 var line: String?
                 while (br.readLine().also { line = it } != null) {
@@ -275,7 +272,7 @@ object VcfUtils {
         return out
     }
 
-    private fun writeFolded(writer: BufferedWriter, line: String) {
+    private fun writeFolded(writer: Writer, line: String) {
         val maxLineLength = 75
         if (line.length <= maxLineLength) {
             writer.write(line)

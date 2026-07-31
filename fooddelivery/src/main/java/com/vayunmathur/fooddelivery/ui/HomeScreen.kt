@@ -1,5 +1,7 @@
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.fooddelivery.R
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,9 +76,9 @@ fun HomeScreen(onMerchantClick: (Int) -> Unit) {
                     IconHome(modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    Text("Set your address", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.set_your_address), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
-                    Text("Add an address in Account to see nearby restaurants",
+                    Text(stringResource(R.string.add_an_address_in_account_to_see_nearby),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -84,9 +86,9 @@ fun HomeScreen(onMerchantClick: (Int) -> Unit) {
         } else if (merchants.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No restaurants found", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.no_restaurants_found), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
-                    Text("Check your connection or try again later",
+                    Text(stringResource(R.string.check_your_connection_or_try_again_later),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -187,7 +189,7 @@ private fun MerchantCard(merchant: Merchant, onClick: () -> Unit) {
                         }
                     }
                     if (merchant.displayRewardsPercentage > 0) {
-                        Text("${merchant.displayRewardsPercentage.toInt()}% back",
+                        Text(stringResource(R.string.back, merchant.displayRewardsPercentage.toInt()),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary)
                     }

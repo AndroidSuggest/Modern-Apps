@@ -1,5 +1,14 @@
 package com.vayunmathur.messages.ui
 
+import android.content.Context
+import android.text.format.DateFormat
+import androidx.compose.ui.platform.LocalContext
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.background as foundationBackground
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -59,7 +68,6 @@ import com.vayunmathur.messages.util.MessagesViewModel
 import com.vayunmathur.messages.util.SourceConnectionState
 import com.vayunmathur.messages.util.displayTitle
 import com.vayunmathur.messages.util.isMessageRequest
-import java.text.DateFormat
 import java.util.Date
 
 /**
@@ -351,7 +359,7 @@ private fun ConversationRow(
             Column(horizontalAlignment = Alignment.End) {
                 if (lastMessageTimestamp > 0L) {
                     Text(
-                        formatTimestamp(lastMessageTimestamp),
+                        formatTimestamp(LocalContext.current, lastMessageTimestamp),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -483,14 +491,19 @@ private fun UnreadBadge(count: Int) {
     }
 }
 
-private fun formatTimestamp(ts: Long): String {
+private fun formatTimestamp(context: Context, ts: Long): String {
     val now = System.currentTimeMillis()
     val daysAgo = (now - ts) / (24L * 60 * 60 * 1000)
     val date = Date(ts)
     return when {
-        daysAgo < 1L -> DateFormat.getTimeInstance(DateFormat.SHORT).format(date)
-        daysAgo < 7L -> java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault()).format(date)
-        else -> DateFormat.getDateInstance(DateFormat.SHORT).format(date)
+        // android.text.format honours the user's 24-hour setting; java.text only follows the locale.
+        daysAgo < 1L -> DateFormat.getTimeFormat(context).format(date)
+        daysAgo < 7L -> localizedDayOfWeekNames(DateNameStyle.SHORT)[
+            Instant.fromEpochMilliseconds(ts)
+                .toLocalDateTime(TimeZone.currentSystemDefault())
+                .dayOfWeek.isoDayNumber - 1
+        ]
+        else -> DateFormat.getDateFormat(context).format(date)
     }
 }
 

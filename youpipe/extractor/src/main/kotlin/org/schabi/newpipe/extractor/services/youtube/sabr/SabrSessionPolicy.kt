@@ -1,7 +1,5 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
-import java.util.ArrayList
-import java.util.Collections
 import java.util.Objects
 
 /**
@@ -96,12 +94,9 @@ interface SabrSessionPolicy : AutoCloseable {
         val targetItag: Int,
         val targetSequenceNumber: Int,
         val targetStartMs: Long,
-        private val bufferedEdgeMs: Long,
+        val bufferedEdgeMs: Long,
         private val state: DemandState
     ) {
-        init {
-            Objects.requireNonNull(state)
-        }
 
         fun getState(): DemandState = state
     }
@@ -130,14 +125,14 @@ interface SabrSessionPolicy : AutoCloseable {
         targetStartMs: Long,
         bufferedEdgeMs: Long,
         state: DemandState,
-        private val segmentCount: Int,
+        val segmentCount: Int,
         val targetTrackSegmentCount: Int,
         returnedSegments: List<DemandReturnedSegment>,
         private val returnedSegmentsTruncated: Boolean
     ) : DemandEvent(targetItag, targetSequenceNumber, targetStartMs, bufferedEdgeMs, state) {
 
         private val returnedSegments: List<DemandReturnedSegment> =
-            Collections.unmodifiableList(ArrayList(Objects.requireNonNull(returnedSegments)))
+            returnedSegments.toList()
 
         fun getReturnedSegments(): List<DemandReturnedSegment> = returnedSegments
         fun areReturnedSegmentsTruncated(): Boolean = returnedSegmentsTruncated
@@ -147,9 +142,6 @@ interface SabrSessionPolicy : AutoCloseable {
         val outcome: DemandOutcome,
         private val retryDelayMs: Int
     ) {
-        init {
-            Objects.requireNonNull(outcome)
-        }
 
         fun getRetryDelayMs(): Int = retryDelayMs
     }
@@ -173,8 +165,6 @@ interface SabrSessionPolicy : AutoCloseable {
         private val response: SabrDecodedResponse
     ) : Event() {
         init {
-            Objects.requireNonNull(mode)
-            Objects.requireNonNull(response)
         }
 
         fun shouldHonorBackoff(): Boolean = honorBackoff
@@ -182,9 +172,6 @@ interface SabrSessionPolicy : AutoCloseable {
     }
 
     class Action(private val type: ActionType) {
-        init {
-            Objects.requireNonNull(type)
-        }
 
         fun getType(): ActionType = type
 
@@ -218,13 +205,13 @@ interface SabrSessionPolicy : AutoCloseable {
         val controlDecision: ControlDecision?,
         private val statePatch: SabrResponseStatePatch?
     ) {
-        private val actions: List<Action> = Collections.unmodifiableList(ArrayList(actions))
+        private val actions: List<Action> = actions.toList()
         private val requestBody: ByteArray? = requestBody?.clone()
 
         companion object {
             @JvmStatic
             fun request(state: State, action: ActionType, body: ByteArray): Result {
-                return Result(state, Collections.singletonList(Action(action)), body, null, null)
+                return Result(state, listOf(Action(action)), body, null, null)
             }
 
             @JvmStatic

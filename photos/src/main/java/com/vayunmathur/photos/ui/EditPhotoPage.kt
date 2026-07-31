@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.photos.ui
 
+import kotlin.uuid.Uuid
 import android.app.Activity
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -172,7 +175,6 @@ import com.vayunmathur.photos.util.PhotoEditViewModel
 import com.vayunmathur.library.util.ResultEffect
 import com.vayunmathur.library.ink.serialize
 import com.vayunmathur.library.ink.deserialize
-import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -769,7 +771,7 @@ fun EditPhotoPage(
                             .then(
                                 if (activeTool == DrawingTool.Text && isDrawing) Modifier.pointerInput(activeTool) {
                                     detectTapGestures { tapOffset ->
-                                        val newId = UUID.randomUUID().toString()
+                                        val newId = Uuid.random().toString()
                                         texts.add(
                                             TextElement(
                                                 id = newId, text = "New Text",

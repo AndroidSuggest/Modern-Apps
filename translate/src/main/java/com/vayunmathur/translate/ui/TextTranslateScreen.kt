@@ -1,5 +1,7 @@
 package com.vayunmathur.translate.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.translate.R
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -138,7 +140,7 @@ fun TextTranslateScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Translate") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = onOpenCamera) {
                         IconCamera()
@@ -197,7 +199,7 @@ fun TextTranslateScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 120.dp),
-                label = { Text("Enter text") },
+                label = { Text(stringResource(R.string.enter_text)) },
                 minLines = 4,
             )
 
@@ -286,14 +288,14 @@ private fun OutputCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("Loading translator…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.loading_translator), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 return@Column
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Translation",
+                    text = stringResource(R.string.translation),
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -316,12 +318,12 @@ private fun OutputCard(
                 TextButton(onClick = onCopy, enabled = outputText.isNotBlank()) {
                     IconCopy(Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Copy")
+                    Text(stringResource(R.string.copy))
                 }
                 TextButton(onClick = onSpeak, enabled = outputText.isNotBlank()) {
                     IconSpeak(Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Speak")
+                    Text(stringResource(R.string.speak))
                 }
             }
         }

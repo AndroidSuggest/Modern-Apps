@@ -2,7 +2,6 @@ package org.schabi.newpipe.extractor.timeago
 
 import java.time.temporal.ChronoUnit
 import java.util.EnumMap
-import java.util.LinkedHashMap
 
 open class PatternsHolder internal constructor(
     private val wordSeparator: String,
@@ -55,7 +54,15 @@ open class PatternsHolder internal constructor(
 
     fun specialCases(): Map<ChronoUnit, Map<String, Int>> = specialCases
 
-    protected fun putSpecialCase(unit: ChronoUnit, caseText: String, caseAmount: Int) {
+    /**
+     * Records a phrase that names its own amount, e.g. Hebrew "שעתיים" ("two hours"), which has
+     * no digits for [TimeAgoParser] to read.
+     *
+     * `internal` rather than `protected` because patterns are loaded from
+     * `unique_patterns.json` by [PatternsManager]; upstream instead generates a subclass per
+     * locale that calls this from its constructor.
+     */
+    internal fun putSpecialCase(unit: ChronoUnit, caseText: String, caseAmount: Int) {
         val item = specialCases.computeIfAbsent(unit) { LinkedHashMap() }
         item[caseText] = caseAmount
     }

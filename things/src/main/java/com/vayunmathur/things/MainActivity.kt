@@ -1,5 +1,13 @@
 package com.vayunmathur.things
 
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.char
+import kotlinx.datetime.toLocalDateTime
 import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,8 +21,6 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.things.ui.ThingsApp
 import com.vayunmathur.things.util.BleManager
 import java.time.LocalDate
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     private lateinit var bleManager: BleManager
@@ -48,7 +54,8 @@ class MainActivity : ComponentActivity() {
         }
         totalMl.intValue += ml
         saveTotal()
-        val timestamp = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+        val timestamp = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time
+            .format(LocalTime.Format { hour(); char(':'); minute() })
         messages.add(0, "[$timestamp]  +$ml mL")
     }
 

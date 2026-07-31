@@ -16,7 +16,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -32,7 +31,7 @@ class SecureFolderManager(val context: Context) {
 
     private fun getSecretKey(password: String): SecretKey {
         val digest = MessageDigest.getInstance("SHA-256")
-        val keyBytes = digest.digest(password.toByteArray(StandardCharsets.UTF_8))
+        val keyBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
         return SecretKeySpec(keyBytes, "AES")
     }
 

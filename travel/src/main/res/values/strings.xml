@@ -16,7 +16,10 @@
     <!-- Section header: saved and remote trips grouped -->
     <string name="my_trips">My trips</string>
     <!-- Link to view all trips in overflow card. %1$s = total count e.g. 5 -->
-    <string name="see_all_trips">See all <xliff:g id="count" example="3">%1$s</xliff:g> trips</string>
+    <plurals name="see_all_trips">
+        <item quantity="one">See all <xliff:g id="count" example="3">%1$s</xliff:g> trip</item>
+        <item quantity="other">See all <xliff:g id="count" example="3">%1$s</xliff:g> trips</item>
+    </plurals>
     <!-- Label for recent flight/hotel searches header. Noun phrase -->
     <string name="recent_searches">Recent searches</string>
 
@@ -349,4 +352,5 @@
     <string name="cd_remove">Remove</string>
     <!-- CD: more guests/rooms increment button. Adjective comparative -->
     <string name="cd_more">More</string>
+    <string name="destination_or_hotel">Destination or hotel</string>
 </resources>

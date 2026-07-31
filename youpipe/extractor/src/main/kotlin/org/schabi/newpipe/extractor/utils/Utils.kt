@@ -1,14 +1,13 @@
 package org.schabi.newpipe.extractor.utils
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 import java.net.MalformedURLException
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.util.Arrays
 import java.util.regex.Pattern
-import java.util.stream.Collectors
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
 
@@ -25,7 +24,7 @@ object Utils {
      * @return The encoded URL.
      */
     @JvmStatic
-    fun encodeUrlUtf8(string: String): String = URLEncoder.encode(string, StandardCharsets.UTF_8)
+    fun encodeUrlUtf8(string: String): String = URLEncoder.encode(string, Charsets.UTF_8)
 
     /**
      * Decodes a URL using the UTF-8 character set.
@@ -33,7 +32,7 @@ object Utils {
      * @return The decoded URL.
      */
     @JvmStatic
-    fun decodeUrlUtf8(url: String): String = URLDecoder.decode(url, StandardCharsets.UTF_8)
+    fun decodeUrlUtf8(url: String): String = URLDecoder.decode(url, Charsets.UTF_8)
 
     /**
      * Remove all non-digit characters from a string.
@@ -224,14 +223,28 @@ object Utils {
         return url
     }
 
+    // The contracts let callers keep the `if (!isNullOrEmpty(x)) use(x)` shape they had in Java
+    // and still get a smart cast to the non-null type.
     @JvmStatic
-    fun isNullOrEmpty(str: String?): Boolean = str == null || str.isEmpty()
+    @OptIn(ExperimentalContracts::class)
+    fun isNullOrEmpty(str: String?): Boolean {
+        contract { returns(false) implies (str != null) }
+        return str == null || str.isEmpty()
+    }
 
     @JvmStatic
-    fun isNullOrEmpty(collection: Collection<*>?): Boolean = collection == null || collection.isEmpty()
+    @OptIn(ExperimentalContracts::class)
+    fun isNullOrEmpty(collection: Collection<*>?): Boolean {
+        contract { returns(false) implies (collection != null) }
+        return collection == null || collection.isEmpty()
+    }
 
     @JvmStatic
-    fun <K, V> isNullOrEmpty(map: Map<K, V>?): Boolean = map == null || map.isEmpty()
+    @OptIn(ExperimentalContracts::class)
+    fun <K, V> isNullOrEmpty(map: Map<K, V>?): Boolean {
+        contract { returns(false) implies (map != null) }
+        return map == null || map.isEmpty()
+    }
 
     @JvmStatic
     fun isBlank(string: String?): Boolean = string == null || string.isBlank()
@@ -243,9 +256,9 @@ object Utils {
         mapJoin: String,
         elements: Map<out CharSequence, CharSequence>
     ): String {
-        return elements.entries.stream()
-            .map { entry -> entry.key.toString() + mapJoin + entry.value }
-            .collect(Collectors.joining(delimiter))
+        return elements.entries.joinToString(delimiter) { entry ->
+            entry.key.toString() + mapJoin + entry.value
+        }
     }
 
     /**
@@ -254,9 +267,8 @@ object Utils {
     @Nonnull
     @JvmStatic
     fun nonEmptyAndNullJoin(delimiter: CharSequence, vararg elements: String): String {
-        return Arrays.stream(elements)
-            .filter { s: String -> !isNullOrEmpty(s) && s != "null" }
-            .collect(Collectors.joining(delimiter))
+        return elements.filter { s -> !isNullOrEmpty(s) && s != "null" }
+            .joinToString(delimiter)
     }
 
     /**

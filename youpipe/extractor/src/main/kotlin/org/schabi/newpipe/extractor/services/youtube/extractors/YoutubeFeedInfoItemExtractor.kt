@@ -22,11 +22,11 @@ class YoutubeFeedInfoItemExtractor(
             .attr("views").toLong()
     }
 
-    override fun getUploaderName(): String {
+    override fun getUploaderName(): String? {
         return entryElement.select("author > name").first()!!.text()
     }
 
-    override fun getUploaderUrl(): String {
+    override fun getUploaderUrl(): String? {
         return entryElement.select("author > uri").first()!!.text()
     }
 

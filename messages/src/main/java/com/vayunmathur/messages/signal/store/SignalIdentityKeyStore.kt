@@ -5,8 +5,10 @@ import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.state.IdentityKeyStore
-import java.util.Base64
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
+@OptIn(ExperimentalEncodingApi::class)
 class SignalIdentityKeyStore(
     private val db: SignalDatabase,
     private val identityKeyPairBase64: String,
@@ -14,7 +16,7 @@ class SignalIdentityKeyStore(
 ) : IdentityKeyStore {
 
     override fun getIdentityKeyPair(): IdentityKeyPair {
-        return IdentityKeyPair(Base64.getDecoder().decode(identityKeyPairBase64))
+        return IdentityKeyPair(Base64.Default.decode(identityKeyPairBase64))
     }
 
     override fun getLocalRegistrationId(): Int = localRegistrationId

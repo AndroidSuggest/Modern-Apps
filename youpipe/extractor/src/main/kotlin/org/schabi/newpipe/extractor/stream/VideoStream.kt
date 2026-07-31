@@ -104,14 +104,12 @@ class VideoStream : Stream {
         this.isVideoOnly = isVideoOnly
     }
 
-    override fun equalStats(cmp: Stream): Boolean {
+    override fun equalStats(cmp: Stream?): Boolean {
         return super.equalStats(cmp) && cmp is VideoStream
                 && resolution == cmp.resolution
                 && isVideoOnly == cmp.isVideoOnly
     }
 
-    fun getResolution(): String = resolution
-    fun isVideoOnly(): Boolean = isVideoOnly
     fun getItag(): Int = itag
     fun getBitrate(): Int = bitrate
     fun getInitStart(): Int = initStart

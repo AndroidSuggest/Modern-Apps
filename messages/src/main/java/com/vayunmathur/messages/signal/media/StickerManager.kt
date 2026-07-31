@@ -38,11 +38,11 @@ object StickerManager {
             method = "GET",
             path = path,
         )
-        if (response.code != 200) {
-            Log.e(TAG, "Sticker download failed: ${response.code}")
+        if (response.status != 200) {
+            Log.e(TAG, "Sticker download failed: ${response.status}")
             return null
         }
-        val body = response.body?.bytes() ?: return null
+        val body = response.bytes
         return decryptSticker(packKey, body)
     }
 

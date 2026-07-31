@@ -23,10 +23,7 @@ import org.w3c.dom.DOMException
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import java.io.StringWriter
-import java.nio.charset.StandardCharsets
 import java.util.Locale
-import java.util.Objects
-import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
@@ -233,7 +230,7 @@ object YoutubeDashManifestCreatorsUtils {
                     "the codec value of the ItagItem is null or empty"
                 )
             }
-            setAttribute(representationElement, doc, "codecs", codec)
+            setAttribute(representationElement, doc, "codecs", codec!!)
             setAttribute(representationElement, doc, "startWithSAP", "1")
             setAttribute(representationElement, doc, "maxPlayoutRate", "1")
 
@@ -271,9 +268,9 @@ object YoutubeDashManifestCreatorsUtils {
                 }
             }
 
-            if (itagItem.itagType == ItagItem.ItagType.AUDIO && itagItem.getSampleRate() > 0) {
+            if (itagItem.itagType == ItagItem.ItagType.AUDIO && itagItem.sampleRate > 0) {
                 val audioSamplingRateAttribute: Attr = doc.createAttribute("audioSamplingRate")
-                audioSamplingRateAttribute.value = itagItem.getSampleRate().toString()
+                audioSamplingRateAttribute.value = itagItem.sampleRate.toString()
             }
 
             adaptationSetElement.appendChild(representationElement)
@@ -294,15 +291,15 @@ object YoutubeDashManifestCreatorsUtils {
                 "urn:mpeg:dash:23003:3:audio_channel_configuration:2011"
             )
 
-            if (itagItem.getAudioChannels() <= 0) {
+            if (itagItem.audioChannels <= 0) {
                 throw CreationException(
                     "the number of audioChannels in the ItagItem is <= 0: " +
-                            itagItem.getAudioChannels()
+                            itagItem.audioChannels
                 )
             }
             setAttribute(
                 audioChannelConfigurationElement, doc, "value",
-                itagItem.getAudioChannels().toString()
+                itagItem.audioChannels.toString()
             )
 
             representationElement.appendChild(audioChannelConfigurationElement)
@@ -403,7 +400,7 @@ object YoutubeDashManifestCreatorsUtils {
                 return downloader.post(
                     baseStreamingUrl,
                     mapOf("User-Agent" to listOf(getAndroidUserAgent(null))),
-                    "".toByteArray(StandardCharsets.UTF_8)
+                    "".toByteArray(Charsets.UTF_8)
                 )
             } catch (e: Exception) {
                 // Preserve original exception types for message
@@ -414,7 +411,7 @@ object YoutubeDashManifestCreatorsUtils {
                 return downloader.post(
                     baseStreamingUrl,
                     mapOf("User-Agent" to listOf(getIosUserAgent(null))),
-                    "".toByteArray(StandardCharsets.UTF_8)
+                    "".toByteArray(Charsets.UTF_8)
                 )
             } catch (e: Exception) {
                 throw CreationException("Could not get the IOS streaming URL response", e as? Exception ?: Exception(e))
@@ -424,7 +421,7 @@ object YoutubeDashManifestCreatorsUtils {
                 return downloader.post(
                     baseStreamingUrl,
                     mapOf("User-Agent" to listOf(getVisionOsUserAgent(null))),
-                    "".toByteArray(StandardCharsets.UTF_8)
+                    "".toByteArray(Charsets.UTF_8)
                 )
             } catch (e: Exception) {
                 throw CreationException("Could not get the VISIONOS streaming URL response", e as? Exception ?: Exception(e))
@@ -441,8 +438,8 @@ object YoutubeDashManifestCreatorsUtils {
     private fun newDocument(): Document {
         val documentBuilderFactory = DocumentBuilderFactory.newInstance()
         try {
-            documentBuilderFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-            documentBuilderFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+            documentBuilderFactory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "")
+            documentBuilderFactory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "")
         } catch (ignored: Exception) {
         }
         return documentBuilderFactory.newDocumentBuilder().newDocument()
@@ -452,8 +449,8 @@ object YoutubeDashManifestCreatorsUtils {
     private fun documentToXml(doc: Document): String {
         val transformerFactory = TransformerFactory.newInstance()
         try {
-            transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-            transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+            transformerFactory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "")
+            transformerFactory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "")
         } catch (ignored: Exception) {
         }
 
@@ -498,10 +495,10 @@ object YoutubeDashManifestCreatorsUtils {
                     )
                 }
 
-                responseMimeType = Objects.requireNonNull(
-                    response.getHeader("Content-Type"),
-                    "Could not get the Content-Type header from the response headers"
-                )
+                responseMimeType = response.getHeader("Content-Type")
+                    ?: throw NullPointerException(
+                        "Could not get the Content-Type header from the response headers"
+                    )
 
                 if (responseMimeType == "text/plain") {
                     streamingUrl = response.responseBody()

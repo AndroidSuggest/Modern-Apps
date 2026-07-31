@@ -254,7 +254,7 @@ fun WeatherMapPage(
                         val (w, h) = rasterSize(bbox)
                         val url = omFileUrl(domain, meta.referenceTime, validTime)
                         val t0 = System.currentTimeMillis()
-                        // Fixed: use range-fetching decodeRegion(url) via OmRangeFetcher
+                        // Range-fetching decodeRegion(url); ranges are fetched natively in Rust.
                         // (HttpURLConnection 64KB blocks, LRU) instead of full-file
                         // performRequestBytes (~148 MB) which caused OOM crash.
                         val values = OmTilesNative.decodeRegion(

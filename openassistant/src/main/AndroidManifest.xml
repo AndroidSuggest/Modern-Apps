@@ -25,7 +25,7 @@
 
     <permission
         android:name="com.vayunmathur.openassistant.permission.ACCESS_INFERENCE"
-        android:label="Access Inference Service"
+        android:label="@string/inference_service_label"
         android:description="@string/perm_desc_inference"
         android:protectionLevel="signature" />
 

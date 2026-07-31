@@ -171,7 +171,7 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     val calorieProgress = (totalCalories / caloriesGoal).toFloat().coerceIn(0f, 1f)
                     MetricRing(
                         progress = calorieProgress,
-                        label = "kcal",
+                        label = stringResource(com.vayunmathur.health.R.string.kcal_2),
                         value = totalCalories.round(0).toInt().toString(),
                         modifier = Modifier.size(140.dp),
                         color = HealthColors.Nutrition,

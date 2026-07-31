@@ -62,7 +62,7 @@ class SearchInfo(
         fun getInfo(extractor: SearchExtractor): SearchInfo {
             val info = SearchInfo(
                 extractor.getServiceId(),
-                extractor.getLinkHandler(),
+                extractor.linkHandler,
                 extractor.getSearchString()
             )
 
@@ -88,8 +88,8 @@ class SearchInfo(
             }
 
             val page = ExtractorHelper.getItemsPageOrLogError(info, extractor)
-            info.setRelatedItems(page.getItems())
-            page.getNextPage()?.let { info.setNextPage(it) }
+            info.relatedItems = page.getItems()
+            page.nextPage?.let { info.setNextPage(it) }
 
             return info
         }

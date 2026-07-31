@@ -1,5 +1,8 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.webkit.WebView
@@ -59,7 +62,7 @@ fun SettingsPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = { IconNavigation(backStack) }
             )
         }
@@ -69,19 +72,19 @@ fun SettingsPage(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             item {
-                Text("General", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                Text(stringResource(R.string.general), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Search engine") },
-                    supportingContent = { Text("DuckDuckGo (locked)") }
+                    headlineContent = { Text(stringResource(R.string.search_engine)) },
+                    supportingContent = { Text(stringResource(R.string.duckduckgo_locked)) }
                 )
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Cache mode") },
+                    headlineContent = { Text(stringResource(R.string.cache_mode)) },
                     supportingContent = { Text("${viewModel.cacheMode.title} — ${viewModel.cacheMode.description}") },
                     modifier = Modifier.clickable { showCacheDialog = true }
                 )
@@ -89,8 +92,8 @@ fun SettingsPage(
 
             item {
                 ListItem(
-                    headlineContent = { Text("JavaScript") },
-                    supportingContent = { Text("Required by most sites") },
+                    headlineContent = { Text(stringResource(R.string.javascript)) },
+                    supportingContent = { Text(stringResource(R.string.required_by_most_sites)) },
                     trailingContent = {
                         Switch(checked = viewModel.jsEnabled, onCheckedChange = { viewModel.updateJsEnabled(it) })
                     }
@@ -99,8 +102,8 @@ fun SettingsPage(
 
             item {
                 ListItem(
-                    headlineContent = { Text("Block third-party cookies") },
-                    supportingContent = { Text("May break logins") },
+                    headlineContent = { Text(stringResource(R.string.block_third_party_cookies)) },
+                    supportingContent = { Text(stringResource(R.string.may_break_logins)) },
                     trailingContent = {
                         Switch(checked = viewModel.blockThirdPartyCookies, onCheckedChange = { viewModel.updateBlockThirdParty(it) })
                     }
@@ -109,8 +112,8 @@ fun SettingsPage(
 
             item {
                 ListItem(
-                    headlineContent = { Text("Desktop mode") },
-                    supportingContent = { Text("Request desktop site") },
+                    headlineContent = { Text(stringResource(R.string.desktop_mode)) },
+                    supportingContent = { Text(stringResource(R.string.request_desktop_site)) },
                     trailingContent = {
                         Switch(checked = viewModel.desktopMode, onCheckedChange = { viewModel.updateDesktopMode(it) })
                     }
@@ -119,8 +122,8 @@ fun SettingsPage(
 
             item {
                 ListItem(
-                    headlineContent = { Text("Ad-tracker blocking") },
-                    supportingContent = { Text("Blocks doubleclick, googletagmanager, analytics") },
+                    headlineContent = { Text(stringResource(R.string.ad_tracker_blocking)) },
+                    supportingContent = { Text(stringResource(R.string.blocks_doubleclick_googletagmanager_anal)) },
                     trailingContent = {
                         Switch(checked = viewModel.adBlockEnabled, onCheckedChange = { viewModel.updateAdBlock(it) })
                     }
@@ -130,45 +133,45 @@ fun SettingsPage(
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
             item {
-                Text("Privacy & data", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                Text(stringResource(R.string.privacy_data), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Clear browsing data") },
-                    supportingContent = { Text("Cookies, cache, history, storage, permissions") },
+                    headlineContent = { Text(stringResource(R.string.clear_browsing_data)) },
+                    supportingContent = { Text(stringResource(R.string.cookies_cache_history_storage_permission)) },
                     modifier = Modifier.clickable { showClearDataDialog = true }
                 )
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Site data") },
-                    supportingContent = { Text("${storageCount.size} sites • ${permCount.size} permission grants") },
+                    headlineContent = { Text(stringResource(R.string.site_data)) },
+                    supportingContent = { Text(stringResource(R.string.sites_permission_grants, storageCount.size, permCount.size)) },
                     modifier = Modifier.clickable { backStack.add(Route.SiteData) }
                 )
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("History") },
-                    supportingContent = { Text("${viewModel.history.value.size} entries") },
+                    headlineContent = { Text(stringResource(R.string.history)) },
+                    supportingContent = { Text(pluralStringResource(R.plurals.entries, viewModel.history.value.size, viewModel.history.value.size)) },
                     modifier = Modifier.clickable { backStack.add(Route.History) }
                 )
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Downloads") },
-                    supportingContent = { Text("${viewModel.downloads.value.size} files") },
+                    headlineContent = { Text(stringResource(R.string.downloads)) },
+                    supportingContent = { Text(pluralStringResource(R.plurals.files, viewModel.downloads.value.size, viewModel.downloads.value.size)) },
                     modifier = Modifier.clickable { backStack.add(Route.Downloads) }
                 )
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Installed apps") },
-                    supportingContent = { Text("${installedCount.size} PWAs • Homescreen shortcuts via PwaActivity standalone") },
+                    headlineContent = { Text(stringResource(R.string.installed_apps)) },
+                    supportingContent = { Text(pluralStringResource(R.plurals.pwas, installedCount.size, installedCount.size)) },
                     modifier = Modifier.clickable { backStack.add(Route.InstalledSites) }
                 )
             }
@@ -176,21 +179,19 @@ fun SettingsPage(
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
             item {
-                Text("About", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                Text(stringResource(R.string.about), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
             }
 
             item {
                 ListItem(
-                    headlineContent = { Text("Web") },
-                    supportingContent = { Text("Blank New Tab — url=\"\" / \"about:blank\", title \"New Tab\". Full address display in pill (no prettyUrl truncation), tap pill to expand full-page SearchBar with reload/clear full-width card below. Top bar is back/forward only left, tab chip + menu right. DuckDuckGo used only as search fallback for plain queries.") }
+                    headlineContent = { Text(stringResource(R.string.app_name)) },
                 )
             }
 
             item {
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(16.dp)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Engine: ${WebView.getCurrentWebViewPackage()?.let { "${it.packageName} ${it.versionName}" } ?: "System WebView"}", style = MaterialTheme.typography.bodySmall)
-                        Text("NTP contract: BrowserTab(url=\"\"), SearchBar placeholder \"Search or enter address\", no DDG preload. Omnibox holds full URL.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.engine, WebView.getCurrentWebViewPackage()?.let { "${it.packageName} ${it.versionName}" } ?: "System WebView"), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -200,7 +201,7 @@ fun SettingsPage(
     if (showCacheDialog) {
         AlertDialog(
             onDismissRequest = { showCacheDialog = false },
-            title = { Text("Cache mode") },
+            title = { Text(stringResource(R.string.cache_mode)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     CacheMode.entries.forEach { mode ->
@@ -222,15 +223,15 @@ fun SettingsPage(
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showCacheDialog = false }) { Text("Close") } }
+            confirmButton = { TextButton(onClick = { showCacheDialog = false }) { Text(stringResource(R.string.close)) } }
         )
     }
 
     if (showClearDataDialog) {
         AlertDialog(
             onDismissRequest = { showClearDataDialog = false },
-            title = { Text("Clear browsing data?") },
-            text = { Text("Clears cookies, cache, storage, history, downloads, permissions. Tabs stay open.") },
+            title = { Text(stringResource(R.string.clear_browsing_data_2)) },
+            text = { Text(stringResource(R.string.clears_cookies_cache_storage_history_dow)) },
             confirmButton = {
                 TextButton(onClick = {
                     try { CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush() } catch (_: Exception) {}
@@ -240,9 +241,9 @@ fun SettingsPage(
                     viewModel.clearAllDownloads()
                     viewModel.clearAllSiteData()
                     showClearDataDialog = false
-                }) { Text("Clear") }
+                }) { Text(stringResource(R.string.clear)) }
             },
-            dismissButton = { TextButton(onClick = { showClearDataDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showClearDataDialog = false }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }

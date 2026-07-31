@@ -8,7 +8,8 @@ import com.vayunmathur.messages.whatsapp.WhatsAppE2ESenderKey
 import com.vayunmathur.messages.whatsapp.WhatsAppE2ESession
 import com.vayunmathur.messages.whatsapp.WhatsAppProtocol
 import kotlinx.coroutines.runBlocking
-import java.util.Base64
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Rust-backed E2E crypto for WhatsApp (X3DH + Double Ratchet + Sender Keys).
@@ -17,6 +18,7 @@ import java.util.Base64
  * Record format is Rust's own versioned encoding (RECORD_VERSION=1), not Java's
  * SignalRecord. Migration 6->7 clears the E2E tables, forcing a re-link.
  */
+@OptIn(ExperimentalEncodingApi::class)
 class WhatsAppE2E(
     private val db: WhatsAppDatabase,
     private val auth: WhatsAppAuthData,
@@ -353,7 +355,7 @@ class WhatsAppE2E(
     companion object {
         private const val TAG = "WhatsAppE2E"
 
-        private fun b64(s: String): ByteArray = Base64.getDecoder().decode(s)
+        private fun b64(s: String): ByteArray = Base64.Default.decode(s)
 
         /**
          * Parse the optional preKeyId from a PreKeySignalMessage (version || protobuf).

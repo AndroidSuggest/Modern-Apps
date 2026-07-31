@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package com.vayunmathur.office.util
 
+import kotlin.uuid.Uuid
 import android.content.Context
 import com.vayunmathur.e2ee.E2ee
 import com.vayunmathur.e2ee.E2eeKeyStore
@@ -21,7 +24,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.util.UUID
 import kotlin.io.encoding.Base64
 
 object OfficeSync {
@@ -49,7 +51,7 @@ object OfficeSync {
             // Use suspend hydration variant to avoid cold-start empty race.
             var id = ds.getStringAwait("officeDeviceId")
             if (id == null) {
-                id = UUID.randomUUID().toString()
+                id = Uuid.random().toString()
                 ds.setString("officeDeviceId", id, true)
             }
             deviceId = ds.getStringAwait("officeDeviceId") ?: id
@@ -68,7 +70,7 @@ object OfficeSync {
     }
 
     fun newDocumentKey(): ByteArray = E2ee.newContentKey()
-    fun newDocumentId(): String = UUID.randomUUID().toString()
+    fun newDocumentId(): String = Uuid.random().toString()
 
     suspend fun appendDocActions(docId: String, key: ByteArray, items: List<String>): Int? {
         val blobs = items.map { Base64.encode(E2ee.aesEncrypt(key, it.encodeToByteArray())) }

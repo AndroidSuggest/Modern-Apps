@@ -43,7 +43,7 @@ open class ChannelTabInfo(
          */
         @JvmStatic
         fun getInfo(extractor: ChannelTabExtractor): ChannelTabInfo {
-            val info = ChannelTabInfo(extractor.getServiceId(), extractor.getLinkHandler())
+            val info = ChannelTabInfo(extractor.getServiceId(), extractor.linkHandler)
 
             try {
                 info.setOriginalUrl(extractor.getOriginalUrl())
@@ -53,8 +53,8 @@ open class ChannelTabInfo(
 
             val page: ListExtractor.InfoItemsPage<InfoItem> =
                 ExtractorHelper.getItemsPageOrLogError(info, extractor)
-            info.setRelatedItems(page.getItems())
-            val nextPage = page.getNextPage()
+            info.relatedItems = page.getItems()
+            val nextPage = page.nextPage
             if (nextPage != null) {
                 info.setNextPage(nextPage)
             }

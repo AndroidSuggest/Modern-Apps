@@ -35,4 +35,5 @@
     <string name="memories">Memories</string>
     <!-- Empty state in Settings when no long-term memories have been saved yet -->
     <string name="no_memories_yet">No memories yet.</string>
+    <string name="inference_service_label">Access Inference Service</string>
 </resources>

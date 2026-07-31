@@ -1,5 +1,6 @@
 package com.vayunmathur.weather.glance
 
+import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -254,7 +255,7 @@ private fun TimeBlock(context: Context) {
 @Composable
 private fun DateBlock(now: LocalDateTime) {
     val dateFormat = LocalDateTime.Format {
-        monthName(MonthNames(localizedMonthNames(java.time.format.TextStyle.SHORT))); char(' '); day(Padding.NONE)
+        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT))); char(' '); day(Padding.NONE)
     }
     Text(
         text = now.format(dateFormat),

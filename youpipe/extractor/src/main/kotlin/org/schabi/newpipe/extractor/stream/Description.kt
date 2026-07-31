@@ -21,7 +21,7 @@ class Description : Serializable {
         if (this === other) return true
         if (other == null || javaClass != other.javaClass) return false
         val that = other as Description
-        return type == that.type && Objects.equals(content, that.content)
+        return type == that.type && content == that.content
     }
 
     override fun hashCode(): Int = Objects.hash(content, type)

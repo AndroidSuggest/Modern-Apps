@@ -1,5 +1,7 @@
 package org.schabi.newpipe.extractor.services.youtube.extractors
 
+import java.io.IOException
+import java.util.Base64
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -35,9 +37,8 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
-import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Base64
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
 class YoutubePlaylistExtractor(
     service: StreamingService,
@@ -63,7 +64,7 @@ class YoutubePlaylistExtractor(
             .value("browseId", "VL$playlistId")
             .value("params", "wgYCCAA%3D")
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         browseMetadataResponse = getJsonPostResponse(
             BROWSE_ENDPOINT,
@@ -95,7 +96,7 @@ class YoutubePlaylistExtractor(
                     )
                 )
                 .done().toString()
-                .toByteArray(StandardCharsets.UTF_8),
+                .toByteArray(Charsets.UTF_8),
             localization
         )
     }
@@ -107,9 +108,9 @@ class YoutubePlaylistExtractor(
     @Throws(ParsingException::class)
     private fun getUploaderInfoObj(): JsonObject {
         if (uploaderInfo == null) {
-            uploaderInfo = browseMetadataResponse!!.getObject(SIDEBAR)!!
-                .getObject("playlistSidebarRenderer")!!
-                .getArray("items")!!
+            uploaderInfo = browseMetadataResponse!!.getObject(SIDEBAR).orEmptyObject()
+                .getObject("playlistSidebarRenderer").orEmptyObject()
+                .getArray("items").orEmptyArray()
                 .filterIsInstance<JsonObject>()
                 .filter { item ->
                     item.getObject("playlistSidebarSecondaryInfoRenderer")
@@ -117,9 +118,9 @@ class YoutubePlaylistExtractor(
                         ?.containsKey(VIDEO_OWNER_RENDERER) == true
                 }
                 .map { item ->
-                    item.getObject("playlistSidebarSecondaryInfoRenderer")!!
-                        .getObject("videoOwner")!!
-                        .getObject(VIDEO_OWNER_RENDERER)!!
+                    item.getObject("playlistSidebarSecondaryInfoRenderer").orEmptyObject()
+                        .getObject("videoOwner").orEmptyObject()
+                        .getObject(VIDEO_OWNER_RENDERER).orEmptyObject()
                 }
                 .firstOrNull() ?: throw ParsingException("Could not get uploader info")
         }
@@ -129,12 +130,12 @@ class YoutubePlaylistExtractor(
     @Throws(ParsingException::class)
     private fun getPlaylistInfoObj(): JsonObject {
         if (playlistInfo == null) {
-            playlistInfo = browseMetadataResponse!!.getObject(SIDEBAR)!!
-                .getObject("playlistSidebarRenderer")!!
-                .getArray("items")!!
+            playlistInfo = browseMetadataResponse!!.getObject(SIDEBAR).orEmptyObject()
+                .getObject("playlistSidebarRenderer").orEmptyObject()
+                .getArray("items").orEmptyArray()
                 .filterIsInstance<JsonObject>()
                 .filter { it.containsKey("playlistSidebarPrimaryInfoRenderer") }
-                .map { it.getObject("playlistSidebarPrimaryInfoRenderer")!! }
+                .map { it.getObject("playlistSidebarPrimaryInfoRenderer").orEmptyObject() }
                 .firstOrNull() ?: throw ParsingException("Could not get playlist info")
         }
         return playlistInfo!!
@@ -142,17 +143,17 @@ class YoutubePlaylistExtractor(
 
     private fun getPlaylistHeaderObj(): JsonObject {
         if (playlistHeader == null) {
-            playlistHeader = browseMetadataResponse!!.getObject(HEADER)!!
-                .getObject("playlistHeaderRenderer")!!
+            playlistHeader = browseMetadataResponse!!.getObject(HEADER).orEmptyObject()
+                .getObject("playlistHeaderRenderer").orEmptyObject()
         }
         return playlistHeader!!
     }
 
     private fun isCoursePlaylistCheck(): Boolean {
         if (isCoursePlaylist == null) {
-            isCoursePlaylist = getPlaylistHeaderObj().getObject("onDescriptionTap")!!
-                .getObject(COMMAND_EXECUTOR_COMMAND)!!
-                .getArray("commands")!!
+            isCoursePlaylist = getPlaylistHeaderObj().getObject("onDescriptionTap").orEmptyObject()
+                .getObject(COMMAND_EXECUTOR_COMMAND).orEmptyObject()
+                .getArray("commands").orEmptyArray()
                 .filterIsInstance<JsonObject>()
                 .any { obj ->
                     "engagement-panel-course-metadata" == obj.getObject("showEngagementPanelEndpoint")
@@ -169,22 +170,23 @@ class YoutubePlaylistExtractor(
         if (!isNullOrEmpty(name)) {
             return name!!
         }
-        return browseMetadataResponse!!.getObject(MICROFORMAT)!!
-            .getObject("microformatDataRenderer")!!
-            .getString(TITLE)!!
+        return browseMetadataResponse!!.getObject(MICROFORMAT).orEmptyObject()
+            .getObject("microformatDataRenderer").orEmptyObject()
+            .getString(TITLE)
+            ?: throw ParsingException("Could not get playlist name")
     }
 
     @Throws(ParsingException::class)
     override fun getThumbnails(): List<Image> {
         val playlistMetadataThumbnailsArray: JsonArray? = if (isNewPlaylistInterface) {
-            getPlaylistHeaderObj().getObject("playlistHeaderBanner")!!
-                .getObject("heroPlaylistThumbnailRenderer")!!
-                .getObject(THUMBNAIL)!!
+            getPlaylistHeaderObj().getObject("playlistHeaderBanner").orEmptyObject()
+                .getObject("heroPlaylistThumbnailRenderer").orEmptyObject()
+                .getObject(THUMBNAIL).orEmptyObject()
                 .getArray(THUMBNAILS)
         } else {
-            playlistInfo!!.getObject("thumbnailRenderer")!!
-                .getObject("playlistVideoThumbnailRenderer")!!
-                .getObject(THUMBNAIL)!!
+            playlistInfo!!.getObject("thumbnailRenderer").orEmptyObject()
+                .getObject("playlistVideoThumbnailRenderer").orEmptyObject()
+                .getObject(THUMBNAIL).orEmptyObject()
                 .getArray(THUMBNAILS)
         }
 
@@ -192,10 +194,10 @@ class YoutubePlaylistExtractor(
             return getImagesFromThumbnailsArray(playlistMetadataThumbnailsArray)
         }
 
-        val microFormatThumbnailsArray = browseMetadataResponse!!.getObject(MICROFORMAT)!!
-            .getObject("microformatDataRenderer")!!
-            .getObject(THUMBNAIL)!!
-            .getArray(THUMBNAILS)!!
+        val microFormatThumbnailsArray = browseMetadataResponse!!.getObject(MICROFORMAT).orEmptyObject()
+            .getObject("microformatDataRenderer").orEmptyObject()
+            .getObject(THUMBNAIL).orEmptyObject()
+            .getArray(THUMBNAILS).orEmptyArray()
 
         if (microFormatThumbnailsArray.isNotEmpty()) {
             return getImagesFromThumbnailsArray(microFormatThumbnailsArray)
@@ -205,16 +207,16 @@ class YoutubePlaylistExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderUrl(): String {
+    override fun getUploaderUrl(): String? {
         try {
             return getUrlFromNavigationEndpoint(
                 if (isNewPlaylistInterface) {
-                    getPlaylistHeaderObj().getObject("ownerText")!!
-                        .getArray("runs")!!
-                        .getObject(0)!!
-                        .getObject("navigationEndpoint")!!
+                    getPlaylistHeaderObj().getObject("ownerText").orEmptyObject()
+                        .getArray("runs").orEmptyArray()
+                        .getObject(0).orEmptyObject()
+                        .getObject("navigationEndpoint").orEmptyObject()
                 } else {
-                    getUploaderInfoObj().getObject("navigationEndpoint")!!
+                    getUploaderInfoObj().getObject("navigationEndpoint").orEmptyObject()
                 }
             ) ?: throw ParsingException("null url")
         } catch (e: Exception) {
@@ -223,7 +225,7 @@ class YoutubePlaylistExtractor(
     }
 
     @Throws(ParsingException::class)
-    override fun getUploaderName(): String {
+    override fun getUploaderName(): String? {
         try {
             return getTextFromObject(
                 if (isNewPlaylistInterface) {
@@ -244,8 +246,8 @@ class YoutubePlaylistExtractor(
         }
         try {
             return getImagesFromThumbnailsArray(
-                getUploaderInfoObj().getObject(THUMBNAIL)!!
-                    .getArray(THUMBNAILS)!!
+                getUploaderInfoObj().getObject(THUMBNAIL).orEmptyObject()
+                    .getArray(THUMBNAILS).orEmptyArray()
             )
         } catch (e: Exception) {
             throw ParsingException("Could not get playlist uploader avatars", e)
@@ -267,8 +269,8 @@ class YoutubePlaylistExtractor(
             }
 
             val firstByLineRendererText = getTextFromObject(
-                getPlaylistHeaderObj().getArray("byline")!!
-                    .getObject(0)!!
+                getPlaylistHeaderObj().getArray("byline").orEmptyArray()
+                    .getObject(0).orEmptyObject()
                     .getObject("text")
             )
 
@@ -315,16 +317,16 @@ class YoutubePlaylistExtractor(
         val collector = StreamInfoItemsCollector(getServiceId())
 
         var initialItems = initialBrowseContinuationResponse!!
-            .getArray(ON_RESPONSE_RECEIVED_ACTIONS)!!
-            .getObject(0)!!
-            .getObject("reloadContinuationItemsCommand")!!
-            .getArray(CONTINUATION_ITEMS)!!
+            .getArray(ON_RESPONSE_RECEIVED_ACTIONS).orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject("reloadContinuationItemsCommand").orEmptyObject()
+            .getArray(CONTINUATION_ITEMS).orEmptyArray()
 
         if (initialItems.isEmpty()) {
-            initialItems = initialBrowseContinuationResponse!!.getArray(ON_RESPONSE_RECEIVED_ACTIONS)!!
-                .getObject(0)!!
-                .getObject(APPEND_CONTINUATION_ITEMS_ACTION)!!
-                .getArray(CONTINUATION_ITEMS)!!
+            initialItems = initialBrowseContinuationResponse!!.getArray(ON_RESPONSE_RECEIVED_ACTIONS).orEmptyArray()
+                .getObject(0).orEmptyObject()
+                .getObject(APPEND_CONTINUATION_ITEMS_ACTION).orEmptyObject()
+                .getArray(CONTINUATION_ITEMS).orEmptyArray()
         }
 
         collectStreamsFrom(collector, initialItems)
@@ -340,12 +342,12 @@ class YoutubePlaylistExtractor(
 
         val collector = StreamInfoItemsCollector(getServiceId())
 
-        val ajaxJson = getJsonPostResponse(BROWSE_ENDPOINT, page.body, getExtractorLocalization())
+        val ajaxJson = getJsonPostResponse(BROWSE_ENDPOINT, page.body!!, getExtractorLocalization())
 
-        val continuation = ajaxJson.getArray(ON_RESPONSE_RECEIVED_ACTIONS)!!
-            .getObject(0)!!
-            .getObject(APPEND_CONTINUATION_ITEMS_ACTION)!!
-            .getArray(CONTINUATION_ITEMS)!!
+        val continuation = ajaxJson.getArray(ON_RESPONSE_RECEIVED_ACTIONS).orEmptyArray()
+            .getObject(0).orEmptyObject()
+            .getObject(APPEND_CONTINUATION_ITEMS_ACTION).orEmptyObject()
+            .getArray(CONTINUATION_ITEMS).orEmptyArray()
 
         collectStreamsFrom(collector, continuation)
 
@@ -360,16 +362,16 @@ class YoutubePlaylistExtractor(
 
         val continuation: String?
 
-        val lastElement = contents.getObject(contents.size - 1)!!
+        val lastElement = contents.getObject(contents.size - 1).orEmptyObject()
         if (lastElement.containsKey("continuationItemRenderer")) {
             val continuationEndpoint = lastElement
-                .getObject("continuationItemRenderer")!!
-                .getObject("continuationEndpoint")!!
+                .getObject("continuationItemRenderer").orEmptyObject()
+                .getObject("continuationEndpoint").orEmptyObject()
 
             val continuationObject: JsonObject
             if (continuationEndpoint.containsKey(COMMAND_EXECUTOR_COMMAND)) {
-                continuationObject = continuationEndpoint.getObject(COMMAND_EXECUTOR_COMMAND)!!
-                    .getArray("commands")!!
+                continuationObject = continuationEndpoint.getObject(COMMAND_EXECUTOR_COMMAND).orEmptyObject()
+                    .getArray("commands").orEmptyArray()
                     .filterIsInstance<JsonObject>()
                     .filter { it.containsKey(CONTINUATION_COMMAND) }
                     .firstOrNull() ?: JsonObject(emptyMap())
@@ -379,11 +381,11 @@ class YoutubePlaylistExtractor(
 
             continuation = continuationObject.getObject(CONTINUATION_COMMAND)?.getString("token")
         } else if (lastElement.containsKey("continuationItemViewModel")) {
-            val continuationItemViewModel = lastElement.getObject("continuationItemViewModel")!!
+            val continuationItemViewModel = lastElement.getObject("continuationItemViewModel").orEmptyObject()
 
-            continuation = continuationItemViewModel.getObject(CONTINUATION_COMMAND)!!
-                .getObject("innertubeCommand")!!
-                .getObject(CONTINUATION_COMMAND)!!
+            continuation = continuationItemViewModel.getObject(CONTINUATION_COMMAND).orEmptyObject()
+                .getObject("innertubeCommand").orEmptyObject()
+                .getObject(CONTINUATION_COMMAND).orEmptyObject()
                 .getString("token")
         } else {
             return null
@@ -396,7 +398,7 @@ class YoutubePlaylistExtractor(
         val body = prepareDesktopJsonBuilder(getExtractorLocalization(), getExtractorContentCountry())
             .value("continuation", continuation)
             .done().toString()
-            .toByteArray(StandardCharsets.UTF_8)
+            .toByteArray(Charsets.UTF_8)
 
         return Page(YOUTUBEI_V1_URL + "browse?" + DISABLE_PRETTY_PRINT_PARAMETER, body)
     }
@@ -413,10 +415,10 @@ class YoutubePlaylistExtractor(
             when {
                 video.containsKey(PLAYLIST_VIDEO_RENDERER) -> {
                     collector.commit(object : YoutubeStreamInfoItemExtractor(
-                        video.getObject(PLAYLIST_VIDEO_RENDERER)!!, timeAgoParser
+                        video.getObject(PLAYLIST_VIDEO_RENDERER).orEmptyObject(), timeAgoParser
                     ) {
                         @Throws(ParsingException::class)
-                        override fun getUploaderName(): String {
+                        override fun getUploaderName(): String? {
                             if (isCoursePlaylistResult) {
                                 return playlistExtractor.getUploaderName()
                             }
@@ -424,7 +426,7 @@ class YoutubePlaylistExtractor(
                         }
 
                         @Throws(ParsingException::class)
-                        override fun getUploaderUrl(): String {
+                        override fun getUploaderUrl(): String? {
                             if (isCoursePlaylistResult) {
                                 return playlistExtractor.getUploaderUrl()
                             }
@@ -433,13 +435,13 @@ class YoutubePlaylistExtractor(
                     })
                 }
                 video.containsKey(RICH_ITEM_RENDERER) -> {
-                    val richItemRenderer = video.getObject(RICH_ITEM_RENDERER)!!
+                    val richItemRenderer = video.getObject(RICH_ITEM_RENDERER).orEmptyObject()
                     if (richItemRenderer.containsKey("content")) {
-                        val richItemRendererContent = richItemRenderer.getObject("content")!!
+                        val richItemRendererContent = richItemRenderer.getObject("content").orEmptyObject()
                         if (richItemRendererContent.containsKey(REEL_ITEM_RENDERER)) {
                             collector.commit(
                                 YoutubeReelInfoItemExtractor(
-                                    richItemRendererContent.getObject(REEL_ITEM_RENDERER)!!
+                                    richItemRendererContent.getObject(REEL_ITEM_RENDERER).orEmptyObject()
                                 )
                             )
                         }
@@ -447,12 +449,12 @@ class YoutubePlaylistExtractor(
                 }
                 video.containsKey(LOCKUP_VIEW_MODEL) -> {
                     collector.commit(object : YoutubeStreamInfoItemLockupExtractor(
-                        video.getObject(LOCKUP_VIEW_MODEL)!!, timeAgoParser
+                        video.getObject(LOCKUP_VIEW_MODEL).orEmptyObject(), timeAgoParser
                     ) {
                         override fun isChannelOrCoursePlaylistLockupItem(): Boolean = isCoursePlaylistResult
 
                         @Throws(ParsingException::class)
-                        override fun getUploaderName(): String {
+                        override fun getUploaderName(): String? {
                             if (isCoursePlaylistResult) {
                                 return playlistExtractor.getUploaderName()
                             }
@@ -460,7 +462,7 @@ class YoutubePlaylistExtractor(
                         }
 
                         @Throws(ParsingException::class)
-                        override fun getUploaderUrl(): String {
+                        override fun getUploaderUrl(): String? {
                             if (isCoursePlaylistResult) {
                                 return playlistExtractor.getUploaderUrl()
                             }

@@ -1,5 +1,13 @@
 package com.vayunmathur.calendar
 
+import kotlin.time.Clock
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.plus
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import android.content.ContentUris
 import android.content.ContentValues
 import android.graphics.Color
@@ -19,8 +27,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.util.Calendar
-import java.util.TimeZone
 
 /**
  * Screenshot generator driven by `:calendar:metadata`. Seeds a local calendar with events
@@ -87,7 +93,8 @@ class MetadataScreenshots {
             resolver.insert(syncAdapterUri(CalendarContract.Calendars.CONTENT_URI), calValues)!!
         )
 
-        val tz = TimeZone.getDefault().id
+        val zone = TimeZone.currentSystemDefault()
+        val tz = zone.id
         // (title, dayOffsetFromToday, startHour, durationHours, location)
         val events = listOf(
             Event("Team standup", 0, 9, 1, "Meeting Room B"),
@@ -98,11 +105,10 @@ class MetadataScreenshots {
             Event("Weekend hike", 5, 8, 4, "Trailhead"),
         )
         for (e in events) {
-            val cal = Calendar.getInstance().apply {
-                add(Calendar.DAY_OF_YEAR, e.dayOffset)
-                set(Calendar.HOUR_OF_DAY, e.startHour); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            }
-            val start = cal.timeInMillis
+            val day = Clock.System.now().toLocalDateTime(zone).date.plus(e.dayOffset, DateTimeUnit.DAY)
+            val start = LocalDateTime(day, LocalTime(e.startHour, 0))
+                .toInstant(zone)
+                .toEpochMilliseconds()
             val end = start + e.durationHours * 60L * 60L * 1000L
             val values = ContentValues().apply {
                 put(CalendarContract.Events.CALENDAR_ID, calId)

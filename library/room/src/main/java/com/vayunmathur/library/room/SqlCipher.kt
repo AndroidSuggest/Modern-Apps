@@ -10,7 +10,6 @@ import com.vayunmathur.library.util.databases
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.io.File
 import java.io.FileInputStream
-import java.nio.charset.StandardCharsets
 
 private var sqlCipherLoaded = false
 fun loadSqlCipher() {
@@ -83,7 +82,7 @@ inline fun <reified T : RoomDatabase> Context.buildDatabase(
             dbName
         ).addMigrations(*resolvedMigrations.toTypedArray())
 
-        builder.openHelperFactory(SupportOpenHelperFactory(password.toByteArray(StandardCharsets.UTF_8)))
+        builder.openHelperFactory(SupportOpenHelperFactory(password.toByteArray(Charsets.UTF_8)))
 
         val db = builder.build()
         databases[T::class] = db
@@ -102,7 +101,7 @@ fun encryptExistingDatabase(context: Context, dbName: String, password: String) 
             if (fis.read(header) != 16) {
                 true
             } else {
-                !header.contentEquals("SQLite format 3\u0000".toByteArray(StandardCharsets.UTF_8))
+                !header.contentEquals("SQLite format 3\u0000".toByteArray(Charsets.UTF_8))
             }
         }
     } catch (e: Exception) {

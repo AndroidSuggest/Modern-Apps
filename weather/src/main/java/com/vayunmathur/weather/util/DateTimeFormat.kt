@@ -1,5 +1,8 @@
 package com.vayunmathur.weather.util
 
+import com.vayunmathur.library.util.localizedAmPmMarker
+import kotlinx.datetime.format.DateTimeFormat
+import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.datetime.LocalDate
@@ -15,7 +18,6 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
-import java.time.format.TextStyle
 
 /**
  * Centralized date/time display formatting for the weather module, built on
@@ -24,10 +26,10 @@ import java.time.format.TextStyle
  */
 
 /** "3 PM" / "12 AM" — 12-hour clock, no minutes. */
-private val HourAmPm = LocalTime.Format {
+private val HourAmPm: DateTimeFormat<LocalTime> get() = LocalTime.Format {
     amPmHour(Padding.NONE)
     char(' ')
-    amPmMarker("AM", "PM")
+    localizedAmPmMarker()
 }
 
 /** "09:00" / "15:00" — 24-hour hour, padded, minutes pinned to :00 for hour axes. */
@@ -44,12 +46,12 @@ private val HourOfDayBare = LocalTime.Format {
 }
 
 /** "3:05 PM" / "12:00 AM" — 12-hour clock with minutes. */
-private val ClockTimeAmPm = LocalTime.Format {
+private val ClockTimeAmPm: DateTimeFormat<LocalTime> get() = LocalTime.Format {
     amPmHour(Padding.NONE)
     char(':')
     minute()
     char(' ')
-    amPmMarker("AM", "PM")
+    localizedAmPmMarker()
 }
 
 /** "09:05" / "15:00" — 24-hour clock with minutes. */
@@ -60,17 +62,17 @@ private val ClockTime24 = LocalTime.Format {
 }
 
 /** "Mon" … "Sun". */
-private val WeekdayShort = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
+private val WeekdayShort: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
 }
 
 /** "Wed 25 Jun". */
-private val DayMonthLabel = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(TextStyle.SHORT)))
+private val DayMonthLabel: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
     char(' ')
     day(Padding.NONE)
     char(' ')
-    monthName(MonthNames(localizedMonthNames(TextStyle.SHORT)))
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
 }
 
 private fun localTimeAt(epochSec: Long): LocalTime =

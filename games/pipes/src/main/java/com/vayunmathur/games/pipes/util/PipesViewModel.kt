@@ -11,13 +11,9 @@ import com.vayunmathur.library.util.LevelStats
 import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -57,9 +53,6 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
     private val _levelStats =
         MutableStateFlow<Map<String, LevelStats>>(repository.getLevelStats())
     val levelStats: StateFlow<Map<String, LevelStats>> = _levelStats.asStateFlow()
-
-    private val _nextLevel = MutableSharedFlow<Int>(extraBufferCapacity = 1)
-    val nextLevel: SharedFlow<Int> = _nextLevel.asSharedFlow()
 
     private val ds = DataStoreUtils.getInstance(application)
 
@@ -278,9 +271,6 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
             if (pack0Completed >= pack0.levels.size) {
                 achievementsManager.onAchievementUnlocked("all_5x5")
             }
-
-            delay(500)
-            _nextLevel.emit(s.levelIndex + 1)
         }
     }
 

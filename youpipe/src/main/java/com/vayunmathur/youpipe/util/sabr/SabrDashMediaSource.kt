@@ -28,7 +28,6 @@ import org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrFormat
 import org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrStreamState
 import java.io.ByteArrayInputStream
 import java.io.IOException
-import java.nio.charset.StandardCharsets
 import java.util.Locale
 
 class SabrDashMediaSource
@@ -100,7 +99,7 @@ constructor(
     }
 
     override fun createPeriod(
-        id: MediaPeriodId,
+        id: MediaSource.MediaPeriodId,
         allocator: Allocator,
         startPositionUs: Long
     ): MediaPeriod {
@@ -351,7 +350,7 @@ constructor(
             try {
                 return DashManifestParser().parse(
                     Uri.parse("sabr://${spec.videoId}"),
-                    ByteArrayInputStream(mpd.toByteArray(StandardCharsets.UTF_8))
+                    ByteArrayInputStream(mpd.toByteArray(Charsets.UTF_8))
                 )
             } catch (e: IOException) {
                 throw IOException("Error when parsing generated SABR DASH manifest", e)

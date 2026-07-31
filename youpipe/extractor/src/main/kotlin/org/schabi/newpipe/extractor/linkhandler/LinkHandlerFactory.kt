@@ -2,7 +2,6 @@ package org.schabi.newpipe.extractor.linkhandler
 
 import org.schabi.newpipe.extractor.exceptions.ParsingException
 import org.schabi.newpipe.extractor.utils.Utils
-import java.util.Objects
 
 abstract class LinkHandlerFactory {
 
@@ -19,7 +18,7 @@ abstract class LinkHandlerFactory {
     open fun getUrl(id: String, baseUrl: String): String = getUrl(id)
 
     @Throws(ParsingException::class)
-    fun fromUrl(url: String): LinkHandler {
+    open fun fromUrl(url: String): LinkHandler {
         if (Utils.isNullOrEmpty(url)) {
             throw IllegalArgumentException("The url is null or empty")
         }
@@ -30,7 +29,6 @@ abstract class LinkHandlerFactory {
 
     @Throws(ParsingException::class)
     open fun fromUrl(url: String, baseUrl: String): LinkHandler {
-        Objects.requireNonNull(url, "URL cannot be null")
         if (!acceptUrl(url)) {
             throw ParsingException("URL not accepted: $url")
         }
@@ -39,15 +37,13 @@ abstract class LinkHandlerFactory {
     }
 
     @Throws(ParsingException::class)
-    fun fromId(id: String): LinkHandler {
-        Objects.requireNonNull(id, "ID cannot be null")
+    open fun fromId(id: String): LinkHandler {
         val url = getUrl(id)
         return LinkHandler(url, url, id)
     }
 
     @Throws(ParsingException::class)
-    fun fromId(id: String, baseUrl: String): LinkHandler {
-        Objects.requireNonNull(id, "ID cannot be null")
+    open fun fromId(id: String, baseUrl: String): LinkHandler {
         val url = getUrl(id, baseUrl)
         return LinkHandler(url, url, id)
     }

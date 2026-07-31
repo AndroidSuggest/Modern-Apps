@@ -18,10 +18,6 @@ import java.util.Locale
 
 open class StreamInfo : Info {
 
-    companion object {
-        private val TAG = StreamInfo::class.java.simpleName
-    }
-
     class StreamExtractException(message: String) : ExtractionException(message)
 
     private var streamType: StreamType
@@ -85,8 +81,8 @@ open class StreamInfo : Info {
     }
 
     override fun toString(): String =
-        "$TAG[serviceId=${getServiceId()}, url='${getUrl()}', originalUrl='${getOriginalUrl()}', " +
-                "id='${getId()}', name='${getName()}', streamType=$streamType, ageLimit=$ageLimit]"
+        "$TAG[serviceId=${serviceId}, url='${url}', originalUrl='${originalUrl}', " +
+                "id='${id}', name='${name}', streamType=$streamType, ageLimit=$ageLimit]"
 
     fun getStreamType(): StreamType = streamType
     fun setStreamType(streamType: StreamType) { this.streamType = streamType }
@@ -211,6 +207,8 @@ open class StreamInfo : Info {
     fun setContentAvailability(availability: ContentAvailability) { this.contentAvailability = availability }
 
     companion object {
+        private val TAG = StreamInfo::class.java.simpleName
+
         @JvmStatic
         @Throws(IOException::class, ExtractionException::class)
         fun getInfo(url: String): StreamInfo {

@@ -1,5 +1,7 @@
 package com.vayunmathur.appstore.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.appstore.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,7 +50,7 @@ fun SearchAndBrowsePage(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("App Store") })
+            TopAppBar(title = { Text(stringResource(R.string.app_name)) })
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -56,7 +58,7 @@ fun SearchAndBrowsePage(
                 value = query,
                 onValueChange = { viewModel.setSearch(it) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder = { Text("Search F-Droid & Play Store") },
+                placeholder = { Text(stringResource(R.string.search_f_droid_play_store)) },
                 leadingIcon = { IconSearch() },
                 trailingIcon = {
                     if (query.isNotBlank()) {
@@ -87,16 +89,16 @@ fun SearchAndBrowsePage(
                 if (apps.isEmpty() && query.isNotBlank()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text("No results for \"$query\"", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.no_results_for, query), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 } else if (apps.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Welcome to App Store", style = MaterialTheme.typography.titleMedium)
-                                Text("Combines F-Droid repos with Play Store listings", style = MaterialTheme.typography.bodySmall)
-                                Text("Tap Sync in Repos to fetch F-Droid apps, or search for Play apps", style = MaterialTheme.typography.bodySmall)
+                                Text(stringResource(R.string.welcome_to_app_store), style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.combines_f_droid_repos_with_play_store_l), style = MaterialTheme.typography.bodySmall)
+                                Text(stringResource(R.string.tap_sync_in_repos_to_fetch_f_droid_apps), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }

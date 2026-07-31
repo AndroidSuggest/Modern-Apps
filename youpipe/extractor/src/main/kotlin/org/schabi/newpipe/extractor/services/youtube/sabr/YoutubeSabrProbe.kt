@@ -18,7 +18,6 @@ import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.nio.charset.StandardCharsets
 
 object YoutubeSabrProbe {
     private const val PLAYER = "player"
@@ -673,7 +672,7 @@ object YoutubeSabrProbe {
                 .end()
         }
 
-        return builder.done().toString().toByteArray(StandardCharsets.UTF_8)
+        return builder.done().toString().toByteArray(Charsets.UTF_8)
     }
 
     private fun getInnertubeBaseUrl(profile: YoutubeSabrClientProfile): String =

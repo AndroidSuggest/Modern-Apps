@@ -1,5 +1,7 @@
 package com.vayunmathur.games.voxels.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.games.voxels.R
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -297,7 +299,7 @@ fun HealthOverlay(healthJson: String, modifier: Modifier = Modifier) {
             for (i in 0 until absHearts) { Text("♥", color = Color(0xFFF2C15A), style = MaterialTheme.typography.bodyMedium) }
         }
         if (h.estus > 0) {
-            Text("Estus ×${h.estus}", color = Color(0xFFFFC957), style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.estus, h.estus), color = Color(0xFFFFC957), style = MaterialTheme.typography.labelSmall)
         }
     }
 }

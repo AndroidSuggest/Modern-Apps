@@ -1,5 +1,6 @@
 package com.vayunmathur.photos.ui
 
+import com.vayunmathur.library.util.DateNameStyle
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -68,7 +69,6 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.library.util.localizedMonthNames
-import java.time.format.TextStyle
 import kotlin.math.roundToInt
 import kotlin.time.Instant
 import com.vayunmathur.library.R as LibraryR
@@ -77,7 +77,7 @@ internal fun groupPhotosByMonth(
     photos: List<Photo>,
     resources: android.content.res.Resources,
 ): Map<String, List<Photo>> {
-    val monthNames = localizedMonthNames(TextStyle.SHORT)
+    val monthNames = localizedMonthNames(DateNameStyle.SHORT)
     return photos.groupBy {
         val date = Instant.fromEpochMilliseconds(it.date).toLocalDateTime(TimeZone.currentSystemDefault())
         LocalDate(date.year, date.month, 1)

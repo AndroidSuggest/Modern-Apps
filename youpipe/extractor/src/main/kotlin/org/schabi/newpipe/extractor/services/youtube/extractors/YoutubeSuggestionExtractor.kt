@@ -12,7 +12,6 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getString
-import java.util.Collections
 
 class YoutubeSuggestionExtractor(service: StreamingService) : SuggestionExtractor(service) {
 
@@ -26,8 +25,8 @@ class YoutubeSuggestionExtractor(service: StreamingService) : SuggestionExtracto
             "&xhr=t"
 
         val headers: MutableMap<String, List<String>> = HashMap()
-        headers["Origin"] = Collections.singletonList("https://www.youtube.com")
-        headers["Referer"] = Collections.singletonList("https://www.youtube.com")
+        headers["Origin"] = listOf("https://www.youtube.com")
+        headers["Referer"] = listOf("https://www.youtube.com")
 
         val response = NewPipe.getDownloader()
             .get(url, headers, getExtractorLocalization())

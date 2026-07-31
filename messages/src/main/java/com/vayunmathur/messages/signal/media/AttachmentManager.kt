@@ -38,9 +38,9 @@ object AttachmentManager {
                 method = "GET",
                 path = path,
             )
-            if (response.code == 404) throw AttachmentNotFoundException()
-            if (response.code !in 200..299) return null
-            val body = response.body?.bytes() ?: return null
+            if (response.status == 404) throw AttachmentNotFoundException()
+            if (!response.isSuccess) return null
+            val body = response.bytes
 
             if (!plaintextDigest) {
                 if (digest == null) {
@@ -201,7 +201,7 @@ object AttachmentManager {
             contentType = "application/octet-stream",
             headers = headerMap,
         )
-        if (!allocResponse.isSuccessful) throw Exception("Allocate request returned ${allocResponse.code}")
+        if (!allocResponse.isSuccess) throw Exception("Allocate request returned ${allocResponse.status}")
         val location = allocResponse.header("Location") ?: throw Exception("No Location header in allocate response")
 
         val uploadResponse = SignalHttpClient.request(
@@ -211,7 +211,7 @@ object AttachmentManager {
             body = encrypted,
             contentType = "application/octet-stream",
         )
-        if (!uploadResponse.isSuccessful) throw Exception("Upload request returned ${uploadResponse.code}")
+        if (!uploadResponse.isSuccess) throw Exception("Upload request returned ${uploadResponse.status}")
     }
 
     private suspend fun uploadAttachmentTUS(
@@ -234,7 +234,7 @@ object AttachmentManager {
             contentType = "application/offset+octet-stream",
             headers = tusHeaders,
         )
-        if (!uploadResponse.isSuccessful) throw Exception("TUS upload request returned ${uploadResponse.code}")
+        if (!uploadResponse.isSuccess) throw Exception("TUS upload request returned ${uploadResponse.status}")
     }
 
     private fun padAttachmentSize(size: Int): Int {

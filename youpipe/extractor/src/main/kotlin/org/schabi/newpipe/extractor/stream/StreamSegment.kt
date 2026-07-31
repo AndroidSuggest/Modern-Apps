@@ -26,10 +26,6 @@ open class StreamSegment(
         this.channelName = channelName
     }
 
-    fun getUrl(): String? = url
-    fun setUrl(url: String?) {
-        this.url = url
-    }
 
     fun getPreviewUrl(): String? = previewUrl
     fun setPreviewUrl(previewUrl: String?) {

@@ -83,7 +83,7 @@ open class StreamInfoItem(
     override fun toString(): String =
         "StreamInfoItem{streamType=$streamType, uploaderName='$uploaderName', " +
                 "textualUploadDate='$textualUploadDate', viewCount=$viewCount, duration=$duration, " +
-                "uploaderUrl='$uploaderUrl', infoType=${getInfoType()}, serviceId=${getServiceId()}, " +
-                "url='${getUrl()}', name='${getName()}', thumbnails='${getThumbnails()}', " +
+                "uploaderUrl='$uploaderUrl', infoType=${infoType}, serviceId=${serviceId}, " +
+                "url='${url}', name='${name}', thumbnails='${thumbnails}', " +
                 "uploaderVerified='${isUploaderVerified()}'}"
 }

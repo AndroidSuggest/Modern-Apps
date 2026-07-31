@@ -18,7 +18,6 @@ import jakarta.activation.DataHandler
 import jakarta.activation.DataSource
 import jakarta.mail.*
 import jakarta.mail.internet.*
-import java.util.*
 
 data class ServerConfig(val host: String, val port: Int, val useSsl: Boolean) {
     val imapProtocol: String get() = if (useSsl) "imaps" else "imap"

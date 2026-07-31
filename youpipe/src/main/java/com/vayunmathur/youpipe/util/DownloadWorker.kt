@@ -164,11 +164,11 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
                     "https://www.youtube.com/watch?v=$youtubeId"
                 )
                 ex.fetchPage()
-                val sabrStreams: List<Stream> = ex.videoOnlyStreams + ex.audioStreams
+                val sabrStreams: List<Stream> = ex.getVideoOnlyStreams() + ex.getAudioStreams()
                 val info = sabrStreams.firstOrNull {
-                    it.deliveryMethod == DeliveryMethod.SABR &&
-                        it.deliveryMethodInfo is YoutubeSabrInfo
-                }?.deliveryMethodInfo as? YoutubeSabrInfo
+                    it.getDeliveryMethod() == DeliveryMethod.SABR &&
+                        it.getDeliveryMethodInfo() is YoutubeSabrInfo
+                }?.getDeliveryMethodInfo() as? YoutubeSabrInfo
                     ?: throw IllegalStateException("No SABR info available for $youtubeId")
 
                 SabrDownloadHelper.download(

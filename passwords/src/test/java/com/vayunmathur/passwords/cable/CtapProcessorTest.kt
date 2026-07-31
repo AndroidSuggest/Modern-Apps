@@ -14,16 +14,18 @@ import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
-import java.util.Base64
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * End-to-end test of the caBLE getAssertion path (Phases 0/1/8): a real P-256 passkey is stored,
  * a CTAP getAssertion is processed, and the returned assertion signature is verified against the
  * stored public key. Proves the cross-device signer matches WebAuthn assertion semantics.
  */
+@OptIn(ExperimentalEncodingApi::class)
 class CtapProcessorTest {
 
-    private val urlEncoder = Base64.getUrlEncoder().withoutPadding()
+    private val urlEncoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
     private class FakePasskeyDao(initial: List<Passkey>) : PasskeyDao {
         val store = initial.toMutableList()
@@ -52,8 +54,8 @@ class CtapProcessorTest {
         val passkey = Passkey(
             id = 1,
             rpId = "example.com",
-            credentialId = urlEncoder.encodeToString(credIdBytes),
-            userId = urlEncoder.encodeToString(userIdBytes),
+            credentialId = urlEncoder.encode(credIdBytes),
+            userId = urlEncoder.encode(userIdBytes),
             privateKeyBytes = kp.private.encoded,
             signCount = 5,
         )

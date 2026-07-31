@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.vayunmathur.web.util.BrowserUtils
 import com.vayunmathur.web.util.PwaHelper
 import com.vayunmathur.web.util.SitePermissionType
@@ -343,6 +345,7 @@ fun WebViewBrowser(
                         val newWebView = WebView(view.context).apply {
                             settings.javaScriptEnabled = viewModel.jsEnabled
                             settings.domStorageEnabled = true
+                            settings.applySystemDarkMode()
                         }
                         newWebView.webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean {
@@ -384,6 +387,20 @@ fun WebViewBrowser(
     )
 
     DisposableEffect(tabId) { onDispose { } }
+}
+
+/**
+ * Forwards the system light/dark setting to page content as `prefers-color-scheme`.
+ *
+ * WebView reads this from the hosting activity theme's `android:isLightTheme`, which
+ * `Theme.Web` flips through its `values-night` variant. Enabling algorithmic darkening is what
+ * opts the WebView into honouring that flag; it additionally auto-darkens pages that ship no
+ * dark stylesheet of their own, and leaves pages that do handle dark mode to style themselves.
+ */
+internal fun WebSettings.applySystemDarkMode() {
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+        WebSettingsCompat.setAlgorithmicDarkeningAllowed(this, true)
+    }
 }
 
 private fun applySettings(webView: WebView, viewModel: WebViewModel) {
@@ -433,6 +450,8 @@ private fun applySettings(webView: WebView, viewModel: WebViewModel) {
     }
 
     settings.mediaPlaybackRequiresUserGesture = false
+
+    settings.applySystemDarkMode()
 
     // Safe browsing
     try {

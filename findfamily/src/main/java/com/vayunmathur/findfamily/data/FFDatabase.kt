@@ -97,7 +97,7 @@ interface TemporaryLinkDao {
     suspend fun delete(value: TemporaryLink): Int
 }
 
-@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 7, exportSchema = false)
+@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 8, exportSchema = false)
 @TypeConverters(DefaultConverters::class)
 abstract class FFDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -129,6 +129,33 @@ abstract class FFDatabase : RoomDatabase() {
                 it.execSQL("ALTER TABLE `User` ADD COLUMN `pqcEncryptionKey` TEXT")
                 it.execSQL("ALTER TABLE `TemporaryLink` ADD COLUMN `pqcPublicKey` TEXT")
                 it.execSQL("ALTER TABLE `TemporaryLink` ADD COLUMN `pqcKey` TEXT")
+            },
+            // Two changes to TemporaryLink, both needing a table rebuild (SQLite cannot alter a
+            // primary key or drop a NOT NULL column in place):
+            //  - `id` stops being an AUTOINCREMENT rowid and becomes a caller-supplied globally
+            //    unique value (see newTemporaryLinkId).
+            //  - links are post-quantum only, so the RSA `key`/`publicKey` columns are dropped
+            //    and the PQC pair becomes NOT NULL.
+            // Rows keep their existing ids on purpose — those URLs are already shared, and every
+            // link expires within a week. Rows with no PQC bundle are dropped rather than
+            // carried over: under PQC-only they can never publish again, so keeping them would
+            // just leave dead entries in the list.
+            androidx.room.migration.Migration(7, 8) {
+                it.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `TemporaryLink_new` (" +
+                        "`name` TEXT NOT NULL, `deleteAt` INTEGER NOT NULL, " +
+                        "`pqcPublicKey` TEXT NOT NULL, `pqcKey` TEXT NOT NULL, " +
+                        "`id` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                it.execSQL(
+                    "INSERT INTO `TemporaryLink_new` " +
+                        "(`name`, `deleteAt`, `pqcPublicKey`, `pqcKey`, `id`) " +
+                        "SELECT `name`, `deleteAt`, `pqcPublicKey`, `pqcKey`, `id` " +
+                        "FROM `TemporaryLink` " +
+                        "WHERE `pqcPublicKey` IS NOT NULL AND `pqcKey` IS NOT NULL"
+                )
+                it.execSQL("DROP TABLE `TemporaryLink`")
+                it.execSQL("ALTER TABLE `TemporaryLink_new` RENAME TO `TemporaryLink`")
             }
         )
     }

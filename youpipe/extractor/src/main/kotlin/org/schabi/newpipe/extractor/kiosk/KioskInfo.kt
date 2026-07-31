@@ -25,7 +25,10 @@ class KioskInfo private constructor(
             url: String,
             page: Page
         ): ListExtractor.InfoItemsPage<StreamInfoItem> {
-            return service.getKioskList().getExtractorByUrl(url, page).getPage(page)
+            @Suppress("UNCHECKED_CAST")
+            val extractor = service.getKioskList().getExtractorByUrl(url, page)
+                as ListExtractor<StreamInfoItem>
+            return extractor.getPage(page)
         }
 
         @JvmStatic
@@ -58,8 +61,8 @@ class KioskInfo private constructor(
 
             val itemsPage: ListExtractor.InfoItemsPage<StreamInfoItem> =
                 ExtractorHelper.getItemsPageOrLogError(info, extractor as ListExtractor<StreamInfoItem>)
-            info.setRelatedItems(itemsPage.getItems())
-            itemsPage.getNextPage()?.let { info.setNextPage(it) }
+            info.relatedItems = itemsPage.getItems()
+            itemsPage.nextPage?.let { info.setNextPage(it) }
 
             return info
         }

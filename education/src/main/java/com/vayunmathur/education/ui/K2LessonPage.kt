@@ -61,7 +61,7 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
             lesson.videos.firstOrNull()?.let { video ->
                 K2BigTile(
                     emoji = "📺",
-                    label = "Watch",
+                    label = stringResource(com.vayunmathur.education.R.string.watch),
                     color = Color(0xFF3B82F6),
                     onClick = {
                         narrator?.stop()
@@ -72,7 +72,7 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
             lesson.exercise?.let { exercise ->
                 K2BigTile(
                     emoji = "🎮",
-                    label = "Play",
+                    label = stringResource(com.vayunmathur.education.R.string.play),
                     color = Color(0xFF22C55E),
                     onClick = {
                         narrator?.stop()

@@ -4,7 +4,6 @@ import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.services.youtube.ItagItem
 import java.io.Serializable
 import java.util.Locale
-import java.util.Objects
 
 class AudioStream : Stream {
 
@@ -116,12 +115,12 @@ class AudioStream : Stream {
         this.audioTrackType = builder.audioTrackType
     }
 
-    override fun equalStats(cmp: Stream): Boolean {
+    override fun equalStats(cmp: Stream?): Boolean {
         return super.equalStats(cmp) && cmp is AudioStream
                 && averageBitrate == cmp.averageBitrate
-                && Objects.equals(audioTrackId, cmp.audioTrackId)
+                && audioTrackId == cmp.audioTrackId
                 && audioTrackType == cmp.audioTrackType
-                && Objects.equals(audioLocale, cmp.audioLocale)
+                && audioLocale == cmp.audioLocale
     }
 
     fun getAverageBitrate(): Int = averageBitrate

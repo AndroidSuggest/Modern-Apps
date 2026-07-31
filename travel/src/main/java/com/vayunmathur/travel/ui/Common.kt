@@ -1,5 +1,22 @@
 package com.vayunmathur.travel.ui
 
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localizedMonthNames
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.format
+import kotlinx.datetime.format.DateTimeFormat
+import kotlinx.datetime.format.DayOfWeekNames
+import kotlinx.datetime.format.MonthNames
+import kotlinx.datetime.format.Padding
+import kotlinx.datetime.format.char
+import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,11 +58,6 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.rememberDatePickerState
 import com.vayunmathur.travel.network.PlaceDto
 import com.vayunmathur.travel.util.TravelViewModel
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.travel.R
 
@@ -131,11 +143,11 @@ fun DateField(
     value: String,
     onDate: (String) -> Unit,
     modifier: Modifier = Modifier,
-    dateFormat: String = "EEE, MMM d",
+    dateFormat: DateTimeFormat<LocalDate> = WeekdayMonthDay,
 ) {
     var show by remember { mutableStateOf(false) }
     val display = if (value.isBlank()) "" else runCatching {
-        LocalDate.parse(value).format(DateTimeFormatter.ofPattern(dateFormat))
+        LocalDate.parse(value).format(dateFormat)
     }.getOrDefault(value)
 
     Box(modifier) {
@@ -159,16 +171,15 @@ fun DateField(
         val state = rememberDatePickerState(
             initialSelectedDateMillis = runCatching { LocalDate.parse(value) }
                 .getOrNull()
-                ?.atStartOfDay(ZoneOffset.UTC)
-                ?.toInstant()
-                ?.toEpochMilli(),
+                ?.atStartOfDayIn(TimeZone.UTC)
+                ?.toEpochMilliseconds(),
         )
         DatePickerDialog(
             onDismissRequest = { show = false },
             confirmButton = {
                 TextButton(onClick = {
                     state.selectedDateMillis?.let { ms ->
-                        val date = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate()
+                        val date = Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.UTC).date
                         onDate(date.toString())
                     }
                     show = false
@@ -326,8 +337,28 @@ fun formatDuration(minutes: Long): String {
 
 /** "2026-09-01T10:00:00" -> "10:00"; falls back to the raw time part. */
 fun formatTime(iso: String): String = runCatching {
-    LocalDateTime.parse(iso.take(19)).format(DateTimeFormatter.ofPattern("HH:mm"))
+    LocalDateTime.parse(iso.take(19)).time.format(HourMinute)
 }.getOrDefault(iso.substringAfter('T').take(5))
+
+/** "Wed, Jun 25" — the default [DateField] display format. */
+val WeekdayMonthDay: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
+    chars(", ")
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
+    char(' ')
+    day(Padding.NONE)
+}
+
+/** "Jun 25, 2026". */
+val MonthDayYear: DateTimeFormat<LocalDate> get() = LocalDate.Format {
+    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
+    char(' ')
+    day(Padding.NONE)
+    chars(", ")
+    year()
+}
+
+private val HourMinute = LocalTime.Format { hour(); char(':'); minute() }
 
 /** Stops label: "Nonstop" / "1 stop" / "N stops". */
 fun stopsLabel(stops: Long): String = when (stops) {
@@ -338,7 +369,7 @@ fun stopsLabel(stops: Long): String = when (stops) {
 
 /** Whole seconds from now until an ISO-8601 instant; [Long.MAX_VALUE] if unparseable. */
 fun secondsUntil(iso: String): Long = runCatching {
-    java.time.Duration.between(java.time.Instant.now(), java.time.Instant.parse(iso)).seconds
+    (Instant.parse(iso) - Clock.System.now()).inWholeSeconds
 }.getOrDefault(Long.MAX_VALUE)
 
 /** "125" -> "2:05" (mm:ss), clamped at zero. */

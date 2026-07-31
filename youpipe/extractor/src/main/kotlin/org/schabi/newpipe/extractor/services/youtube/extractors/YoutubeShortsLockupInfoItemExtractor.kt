@@ -14,30 +14,33 @@ import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
+import org.schabi.newpipe.extractor.utils.orEmptyObject
 
-internal class YoutubeShortsLockupInfoItemExtractor(
+internal open class YoutubeShortsLockupInfoItemExtractor(
     private val shortsLockupViewModel: JsonObject
 ) : StreamInfoItemExtractor {
 
     @Throws(ParsingException::class)
     override fun getName(): String {
-        return shortsLockupViewModel.getObject("overlayMetadata")!!
-            .getObject("primaryText")!!
-            .getString("content")!!
+        return shortsLockupViewModel.getObject("overlayMetadata").orEmptyObject()
+            .getObject("primaryText").orEmptyObject()
+            .getString("content")
+            ?: throw ParsingException("Could not get name")
     }
 
     @Throws(ParsingException::class)
     override fun getUrl(): String {
-        var videoId = shortsLockupViewModel.getObject("onTap")!!
-            .getObject("innertubeCommand")!!
-            .getObject("reelWatchEndpoint")!!
+        var videoId = shortsLockupViewModel.getObject("onTap").orEmptyObject()
+            .getObject("innertubeCommand").orEmptyObject()
+            .getObject("reelWatchEndpoint").orEmptyObject()
             .getString("videoId")
 
         if (isNullOrEmpty(videoId)) {
-            videoId = shortsLockupViewModel.getObject("inlinePlayerData")!!
-                .getObject("onVisible")!!
-                .getObject("innertubeCommand")!!
-                .getObject("watchEndpoint")!!
+            videoId = shortsLockupViewModel.getObject("inlinePlayerData").orEmptyObject()
+                .getObject("onVisible").orEmptyObject()
+                .getObject("innertubeCommand").orEmptyObject()
+                .getObject("watchEndpoint").orEmptyObject()
                 .getString("videoId")
         }
 
@@ -56,16 +59,16 @@ internal class YoutubeShortsLockupInfoItemExtractor(
     override fun getThumbnails(): List<Image> {
         return if (shortsLockupViewModel.containsKey("thumbnail")) {
             getImagesFromThumbnailsArray(
-                shortsLockupViewModel.getObject("thumbnail")!!
-                    .getArray("sources")!!
+                shortsLockupViewModel.getObject("thumbnail").orEmptyObject()
+                    .getArray("sources").orEmptyArray()
             )
         } else {
             getImagesFromThumbnailsArray(
                 shortsLockupViewModel
-                    .getObject("thumbnailViewModel")!!
-                    .getObject("thumbnailViewModel")!!
-                    .getObject("image")!!
-                    .getArray("sources")!!
+                    .getObject("thumbnailViewModel").orEmptyObject()
+                    .getObject("thumbnailViewModel").orEmptyObject()
+                    .getObject("image").orEmptyObject()
+                    .getArray("sources").orEmptyArray()
             )
         }
     }
@@ -75,8 +78,8 @@ internal class YoutubeShortsLockupInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun getViewCount(): Long {
-        val viewCountText = shortsLockupViewModel.getObject("overlayMetadata")!!
-            .getObject("secondaryText")!!
+        val viewCountText = shortsLockupViewModel.getObject("overlayMetadata").orEmptyObject()
+            .getObject("secondaryText").orEmptyObject()
             .getString("content")
         if (!isNullOrEmpty(viewCountText)) {
             if (viewCountText!!.contains("✪")) {

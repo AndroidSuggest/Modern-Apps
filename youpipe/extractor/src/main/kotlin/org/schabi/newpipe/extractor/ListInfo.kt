@@ -32,17 +32,10 @@ abstract class ListInfo<T : InfoItem> : Info {
         this.sortFilter = listUrlIdHandler.sortFilter
     }
 
-    fun getRelatedItems(): List<T>? = relatedItems
-    fun setRelatedItems(relatedItems: List<T>) {
-        this.relatedItems = relatedItems
-    }
 
     fun hasNextPage(): Boolean = Page.isValid(nextPage)
-    fun getNextPage(): Page? = nextPage
-    fun setNextPage(page: Page) {
+    fun setNextPage(page: Page?) {
         this.nextPage = page
     }
 
-    fun getContentFilters(): List<String> = contentFilters
-    fun getSortFilter(): String = sortFilter
 }

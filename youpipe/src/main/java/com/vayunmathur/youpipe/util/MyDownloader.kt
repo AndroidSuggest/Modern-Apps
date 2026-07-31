@@ -19,14 +19,14 @@ import org.schabi.newpipe.extractor.localization.Localization
  */
 class MyDownloader : Downloader() {
     override fun execute(request: Request): Response = runBlocking {
-        val url = request.url()
-        val method = request.httpMethod()
-        val body = request.dataToSend()
+        val url = request.url
+        val method = request.httpMethod
+        val body = request.dataToSend
 
         val response = NetworkClient.performRequest(
             url = url,
             method = method,
-            headers = withDefaultHeaders(request.headers()),
+            headers = withDefaultHeaders(request.headers),
             body = body
         )
 
@@ -41,7 +41,7 @@ class MyDownloader : Downloader() {
 
     override fun getStreaming(
         url: String,
-        headers: MutableMap<String, MutableList<String>>?,
+        headers: Map<String, List<String>>?,
         localization: Localization?
     ): StreamingResponse = runBlocking {
         executeStreamingSync(url, "GET", headers, null, timeoutMs = null)
@@ -49,7 +49,7 @@ class MyDownloader : Downloader() {
 
     override fun getStreaming(
         url: String,
-        headers: MutableMap<String, MutableList<String>>?,
+        headers: Map<String, List<String>>?,
         localization: Localization?,
         timeoutMs: Long
     ): StreamingResponse = runBlocking {
@@ -58,7 +58,7 @@ class MyDownloader : Downloader() {
 
     override fun postStreaming(
         url: String,
-        headers: MutableMap<String, MutableList<String>>?,
+        headers: Map<String, List<String>>?,
         dataToSend: ByteArray?,
         localization: Localization?
     ): StreamingResponse = runBlocking {

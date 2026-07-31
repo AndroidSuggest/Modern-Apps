@@ -1,5 +1,7 @@
 package com.vayunmathur.code.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.code.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -195,7 +197,7 @@ private fun FindBar(
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Find") },
+                placeholder = { Text(stringResource(R.string.find)) },
                 singleLine = true,
             )
             val label = if (matchCount == 0) "0/0" else "${activeMatch + 1}/$matchCount"
@@ -210,11 +212,11 @@ private fun FindBar(
                 value = replacement,
                 onValueChange = onReplacementChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Replace") },
+                placeholder = { Text(stringResource(R.string.replace)) },
                 singleLine = true,
             )
-            TextButton(onClick = onReplace, enabled = matchCount > 0) { Text("Replace") }
-            TextButton(onClick = onReplaceAll, enabled = matchCount > 0) { Text("All") }
+            TextButton(onClick = onReplace, enabled = matchCount > 0) { Text(stringResource(R.string.replace)) }
+            TextButton(onClick = onReplaceAll, enabled = matchCount > 0) { Text(stringResource(R.string.all)) }
         }
         Box {
             TextButton(onClick = onToggleCase) {

@@ -1,5 +1,7 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.web.R
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -59,7 +61,7 @@ fun PermissionPromptSheet(
 
     AlertDialog(
         onDismissRequest = onDeny,
-        title = { Text("Allow ${BrowserUtils.hostFromUrl(origin)} to access?") },
+        title = { Text(stringResource(R.string.allow_to_access, BrowserUtils.hostFromUrl(origin))) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(origin, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -78,11 +80,11 @@ fun PermissionPromptSheet(
                         })
                     }
                 }
-                Text("Your choice is saved per site. Change it in Settings → Site data.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.your_choice_is_saved_per_site_change_it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = { onGrant(selected.toList()) }, enabled = selected.isNotEmpty()) { Text("Allow") } },
-        dismissButton = { TextButton(onClick = onDeny) { Text("Block") } }
+        confirmButton = { TextButton(onClick = { onGrant(selected.toList()) }, enabled = selected.isNotEmpty()) { Text(stringResource(R.string.allow)) } },
+        dismissButton = { TextButton(onClick = onDeny) { Text(stringResource(R.string.block)) } }
     )
 }
 
@@ -94,16 +96,16 @@ fun GeolocationPromptSheet(
 ) {
     AlertDialog(
         onDismissRequest = onDeny,
-        title = { Text("Allow location?") },
+        title = { Text(stringResource(R.string.allow_location)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${BrowserUtils.hostFromUrl(origin)} wants to know your location.")
+                Text(stringResource(R.string.wants_to_know_your_location, BrowserUtils.hostFromUrl(origin)))
                 Text(origin, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Uses system location services. Private tabs never grant location.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.uses_system_location_services_private_ta), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = onAllow) { Text("Allow") } },
-        dismissButton = { TextButton(onClick = onDeny) { Text("Block") } }
+        confirmButton = { TextButton(onClick = onAllow) { Text(stringResource(R.string.allow)) } },
+        dismissButton = { TextButton(onClick = onDeny) { Text(stringResource(R.string.block)) } }
     )
 }
 
@@ -116,17 +118,17 @@ fun FileChooserSheet(
 ) {
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Choose files") },
+        title = { Text(stringResource(R.string.choose_files)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Select files to upload.")
+                Text(stringResource(R.string.select_files_to_upload))
                 if (mimeTypes.isNotEmpty()) {
-                    Text("Accepted: ${mimeTypes.joinToString()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.accepted, mimeTypes.joinToString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onTriggerPicker) { Text("Pick files") } },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } }
+        confirmButton = { TextButton(onClick = onTriggerPicker) { Text(stringResource(R.string.pick_files)) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -142,7 +144,7 @@ fun SiteDataPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Site data") },
+                title = { Text(stringResource(R.string.site_data)) },
                 navigationIcon = { IconNavigation(backStack) },
                 actions = {
                     if (storages.isNotEmpty() || permissions.isNotEmpty()) {
@@ -159,7 +161,7 @@ fun SiteDataPage(
             if (storages.isEmpty() && permissions.isEmpty()) {
                 item {
                     Text(
-                        "No site data yet. Cookies, localStorage, IndexedDB and permissions persist across loads in the WebView profile dir. Private tabs are excluded.",
+                        stringResource(R.string.no_site_data_yet_cookies_localstorage_in),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -167,7 +169,7 @@ fun SiteDataPage(
             }
 
             if (storages.isNotEmpty()) {
-                item { Text("Storage", style = MaterialTheme.typography.titleMedium) }
+                item { Text(stringResource(R.string.storage), style = MaterialTheme.typography.titleMedium) }
                 items(storages, key = { it.id }) { info ->
                     StorageInfoCard(info, viewModel)
                 }
@@ -176,7 +178,7 @@ fun SiteDataPage(
             if (permissions.isNotEmpty()) {
                 item {
                     Spacer(Modifier.height(8.dp))
-                    Text("Permissions", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.permissions), style = MaterialTheme.typography.titleMedium)
                 }
                 items(permissions, key = { it.id }) { perm ->
                     PermissionInfoCard(perm, viewModel)
@@ -228,7 +230,7 @@ private fun PermissionInfoCard(perm: SitePermission, viewModel: WebViewModel) {
                 PermRow("Notifications", perm.notificationsAllowed) { viewModel.revokePermission(perm.origin, SitePermissionType.NOTIFICATIONS) }
             }
             if (perm.cameraAllowed == null && perm.microphoneAllowed == null && perm.locationAllowed == null && perm.notificationsAllowed == null) {
-                Text("No permissions set", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.no_permissions_set), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -239,7 +241,7 @@ private fun PermRow(label: String, allowed: Boolean?, onClear: () -> Unit) {
     if (allowed == null) return
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("$label: ${if (allowed) "Allowed" else "Blocked"}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-        TextButton(onClick = onClear) { Text("Clear") }
+        TextButton(onClick = onClear) { Text(stringResource(R.string.clear)) }
     }
 }
 

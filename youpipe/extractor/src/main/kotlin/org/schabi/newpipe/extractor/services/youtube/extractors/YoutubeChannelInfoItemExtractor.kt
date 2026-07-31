@@ -13,6 +13,7 @@ import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getObject
 import org.schabi.newpipe.extractor.utils.getString
+import org.schabi.newpipe.extractor.utils.orEmptyArray
 
 class YoutubeChannelInfoItemExtractor(
     private val channelInfoItem: JsonObject
@@ -73,7 +74,7 @@ class YoutubeChannelInfoItemExtractor(
             if (withHandle) {
                 if (channelInfoItem.containsKey("videoCountText")) {
                     return Utils.mixedNumberWordToLong(
-                        getTextFromObject(channelInfoItem.getObject("videoCountText"))
+                        getTextFromObject(channelInfoItem.getObject("videoCountText"))!!
                     )
                 } else {
                     return -1
@@ -81,7 +82,7 @@ class YoutubeChannelInfoItemExtractor(
             }
 
             return Utils.mixedNumberWordToLong(
-                getTextFromObject(channelInfoItem.getObject("subscriberCountText"))
+                getTextFromObject(channelInfoItem.getObject("subscriberCountText"))!!
             )
         } catch (e: Exception) {
             throw ParsingException("Could not get subscriber count", e)
@@ -99,7 +100,7 @@ class YoutubeChannelInfoItemExtractor(
 
             return java.lang.Long.parseLong(
                 Utils.removeNonDigitCharacters(
-                    getTextFromObject(channelInfoItem.getObject("videoCountText"))
+                    getTextFromObject(channelInfoItem.getObject("videoCountText"))!!
                 )
             )
         } catch (e: Exception) {
@@ -109,7 +110,7 @@ class YoutubeChannelInfoItemExtractor(
 
     @Throws(ParsingException::class)
     override fun isVerified(): Boolean {
-        return YoutubeParsingHelper.isVerified(channelInfoItem.getArray("ownerBadges")!!)
+        return YoutubeParsingHelper.isVerified(channelInfoItem.getArray("ownerBadges").orEmptyArray())
     }
 
     @Throws(ParsingException::class)

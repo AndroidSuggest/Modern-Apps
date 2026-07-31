@@ -5,7 +5,6 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
-import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
 import java.security.PublicKey
 import java.security.Signature
@@ -74,7 +73,7 @@ class SabrScriptPolicy {
                 if (nowMs < from || nowMs >= until) throw IllegalArgumentException("SABR JavaScript policy is not currently valid")
                 return SabrScriptPolicy(
                     revision, from, until,
-                    String(source, StandardCharsets.UTF_8), payload.clone()
+                    String(source, Charsets.UTF_8), payload.clone()
                 )
             } catch (error: IOException) {
                 throw IllegalArgumentException("Malformed SABR JavaScript policy", error)
@@ -82,7 +81,7 @@ class SabrScriptPolicy {
         }
 
         private fun encode(revision: Long, from: Long, until: Long, source: String): ByteArray {
-            val script = source.toByteArray(StandardCharsets.UTF_8)
+            val script = source.toByteArray(Charsets.UTF_8)
             if (script.isEmpty() || script.size > MAX_SOURCE_BYTES) {
                 throw IllegalArgumentException("Invalid SABR JavaScript source size")
             }

@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.util.Log
 import org.json.JSONException
 import org.json.JSONObject
-import java.util.LinkedHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 

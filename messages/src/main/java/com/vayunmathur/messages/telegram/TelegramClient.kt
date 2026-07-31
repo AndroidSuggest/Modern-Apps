@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package com.vayunmathur.messages.telegram
 
+import kotlin.concurrent.atomics.*
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -19,7 +22,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 object TelegramClient {
@@ -114,7 +116,7 @@ object TelegramClient {
     }
 
     fun start() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         if (_state.value is State.Connected) return
         scope.launch {
             val auth = TelegramAuthData.load(appContext)
@@ -243,7 +245,7 @@ object TelegramClient {
      * as a fallback.
      */
     fun startQrLogin() {
-        if (!initialized.get()) return
+        if (!initialized.load()) return
         _state.value = State.Connecting
         scope.launch {
             try {
@@ -285,7 +287,7 @@ object TelegramClient {
             val client = apiClient ?: return
             exportLoginToken(client, firstCall = false)
         } finally {
-            qrRefreshing.set(false)
+            qrRefreshing.store(false)
         }
     }
 
@@ -1545,7 +1547,7 @@ object TelegramClient {
     private suspend fun recoverGap() {
         if (currentPts == 0) return
         if (!gapRecovering.compareAndSet(false, true)) return // already recovering
-        val client = apiClient ?: run { gapRecovering.set(false); return }
+        val client = apiClient ?: run { gapRecovering.store(false); return }
         try {
             var fetching = true
             while (fetching) {
@@ -1587,7 +1589,7 @@ object TelegramClient {
             Log.w(TAG, "recoverGap failed: ${t.message} — falling back to full backfill")
             kickoffBackfill()
         } finally {
-            gapRecovering.set(false)
+            gapRecovering.store(false)
         }
     }
 

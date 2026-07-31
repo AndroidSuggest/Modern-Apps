@@ -1,20 +1,17 @@
 //! Native `.om` decoder for the Weather app map.
 //!
 //! Decodes Open-Meteo spatial `.om` files from a keyless
-//! `map-tiles.open-meteo.com` bucket using **HTTP Range requests** initiated
-//! from Kotlin (`OmRangeFetcher`, HttpURLConnection) via a JNI callback
-//! backend. This restores the old `HttpRangeBackend` efficiency (64 KB blocks,
-//! only covering chunks) without pulling `ureq` + `rustls` + `ring` + `icu` + `url`
-//! (~90 crates) in Rust, which was the supply-chain motivation for the
-//! `SliceBackend` experiment.
+//! `map-tiles.open-meteo.com` bucket using **HTTP Range requests** (64 KB blocks, only the
+//! chunks a view actually covers) with a process-wide LRU of backends (12 files) and a
+//! per-backend block cache, so panning reuses already-fetched bytes.
 //!
-//! The `SliceBackend` experiment switched to full-file
-//! `NetworkClient.performRequestBytes` (~148 MB per pan/zoom) in
-//! `WeatherMapPage.kt`, causing OOM and map crash. This version keeps the
-//! supply-chain win but uses `JvmRangeBackend` that calls back to
-//! `com.vayunmathur.weather.map.OmRangeFetcher` for size + range fetches,
-//! with a process-wide LRU of backends (12 files) and per-backend 64 KB block
-//! cache, so panning reuses already-fetched blocks.
+//! Never fetch the whole file: an earlier `SliceBackend` experiment used
+//! `NetworkClient.performRequestBytes` (~148 MB per pan/zoom) and OOM-crashed the map.
+//!
+//! Ranges are fetched natively — see [`http_range`]. This previously called back into Kotlin
+//! (`OmRangeFetcher`) to avoid `ureq`'s ~90-crate default feature set; restricted to
+//! `default-features = false` + `rustls` it is 26 crates already in the workspace lockfile, and
+//! dropping the callback removes a `JavaVM::attach_current_thread` from every block read.
 //!
 //! Color mapping stays in Kotlin; this crate returns raw `f32` values (NaN where no data).
 //! Grid geometry and interpolation logic ported from open-meteo/weather-map-layer `src/grids/regular.ts`.
@@ -23,11 +20,11 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex, OnceLock};
 
+mod http_range;
 mod om;
 
 use crate::om::{OmBackend, OmReader};
 
-use jni::objects::{JByteArray, JValue};
 use jni::JavaVM;
 
 // ---------------------------------------------------------------------------
@@ -50,76 +47,6 @@ fn ensure_global_vm(env: &mut jni::JNIEnv) {
     }
 }
 
-fn fetch_range_via_jvm(url: &str, offset: u64, len: u64) -> Result<Vec<u8>, String> {
-    if len == 0 {
-        return Ok(Vec::new());
-    }
-    let vm = GLOBAL_VM.get().ok_or_else(|| "GLOBAL_VM not initialized".to_string())?;
-    let mut guard = vm
-        .attach_current_thread()
-        .map_err(|e| format!("attach_current_thread failed: {e:?}"))?;
-    let env = &mut *guard;
-    // new_string for url
-    let jurl = env
-        .new_string(url)
-        .map_err(|e| format!("new_string url failed: {e:?}"))?;
-    let res = env
-        .call_static_method(
-            "com/vayunmathur/weather/map/OmRangeFetcher",
-            "fetchRange",
-            "(Ljava/lang/String;JJ)[B",
-            &[
-                JValue::Object(&jurl),
-                JValue::Long(offset as i64),
-                JValue::Long(len as i64),
-            ],
-        )
-        .map_err(|e| format!("fetchRange JNI call failed: {e:?}"))?;
-    let obj = res.l().map_err(|e| format!("fetchRange result l() failed: {e:?}"))?;
-    if obj.is_null() {
-        return Err("fetchRange returned null".to_string());
-    }
-    // SAFETY: we just got a [B from Java, so it is a byte array.
-    let jarr = unsafe { JByteArray::from_raw(obj.into_raw()) };
-    let bytes = env
-        .convert_byte_array(&jarr)
-        .map_err(|e| format!("convert_byte_array failed: {e:?}"))?;
-    // If server ignored Range and gave 200 full file, slice handled in Kotlin
-    // but also trim here if we asked for a sub-range of a 200 response that returned
-    // huge buffer (Kotlin already slices for 200 case). For safety, if bytes.len() > len
-    // and offset < bytes.len(), assume full file and slice from offset.
-    if bytes.len() as u64 > len && bytes.len() as u64 > 100 * 1024 * 1024 {
-        let from = offset as usize;
-        let to = (offset + len) as usize;
-        if from < bytes.len() {
-            return Ok(bytes[from..to.min(bytes.len())].to_vec());
-        }
-    }
-    Ok(bytes)
-}
-
-fn get_file_size_via_jvm(url: &str, env: &mut jni::JNIEnv) -> Result<usize, String> {
-    ensure_global_vm(env);
-    let jurl = env
-        .new_string(url)
-        .map_err(|e| format!("new_string url failed: {e:?}"))?;
-    let res = env
-        .call_static_method(
-            "com/vayunmathur/weather/map/OmRangeFetcher",
-            "getFileSize",
-            "(Ljava/lang/String;)J",
-            &[JValue::Object(&jurl)],
-        )
-        .map_err(|e| format!("getFileSize JNI call failed: {e:?}"))?;
-    let size = res
-        .j()
-        .map_err(|e| format!("getFileSize j() failed: {e:?}"))? as i64;
-    if size <= 0 {
-        return Err(format!("invalid file size {size} for {url}"));
-    }
-    Ok(size as usize)
-}
-
 // ---------------------------------------------------------------------------
 // Backends
 // ---------------------------------------------------------------------------
@@ -127,13 +54,13 @@ fn get_file_size_via_jvm(url: &str, env: &mut jni::JNIEnv) -> Result<usize, Stri
 /// JNI callback backend – fetches only needed 64 KB blocks via Kotlin
 /// `OmRangeFetcher`. Implements the same block-cache logic as the old
 /// `HttpRangeBackend` (which used `ureq`), but without any native HTTP crate.
-struct JvmRangeBackend {
+struct RangeBackend {
     url: String,
     size: usize,
     cache: Mutex<HashMap<u64, Vec<u8>>>,
 }
 
-impl JvmRangeBackend {
+impl RangeBackend {
     fn new(url: String, size: usize) -> Self {
         Self {
             url,
@@ -151,13 +78,13 @@ impl JvmRangeBackend {
             return Ok(());
         }
         let len = BLOCK.min(self.size as u64 - start);
-        let data = fetch_range_via_jvm(&self.url, start, len)?;
+        let data = http_range::fetch_range(&self.url, start, len)?;
         self.cache.lock().unwrap().insert(block, data);
         Ok(())
     }
 }
 
-impl OmBackend for JvmRangeBackend {
+impl OmBackend for RangeBackend {
     fn count(&self) -> usize {
         self.size
     }
@@ -189,14 +116,14 @@ impl OmBackend for JvmRangeBackend {
     }
 }
 
-// Process-wide cache of open JvmRangeBackends keyed by .om URL, so panning /
+// Process-wide cache of open RangeBackends keyed by .om URL, so panning /
 // measure / time scrubbing reuse file size + already-fetched blocks. Matches
 // old `cached_backend` cap of 12.
-fn cached_jvm_backend(
+fn cached_backend(
     url: &str,
     env: &mut jni::JNIEnv,
-) -> Result<Arc<JvmRangeBackend>, String> {
-    static CACHE: OnceLock<Mutex<HashMap<String, Arc<JvmRangeBackend>>>> = OnceLock::new();
+) -> Result<Arc<RangeBackend>, String> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Arc<RangeBackend>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     {
         let guard = cache.lock().unwrap();
@@ -204,8 +131,8 @@ fn cached_jvm_backend(
             return Ok(b.clone());
         }
     }
-    let size = get_file_size_via_jvm(url, env)?;
-    let backend = Arc::new(JvmRangeBackend::new(url.to_string(), size));
+    let size = http_range::file_size(url)?;
+    let backend = Arc::new(RangeBackend::new(url.to_string(), size));
     let mut guard = cache.lock().unwrap();
     if guard.len() >= 12 {
         guard.clear();
@@ -371,7 +298,7 @@ fn decode_region_url_inner(
     let sub_nx = win.x1 - win.x0;
     let sub_ny = win.y1 - win.y0;
 
-    let backend = cached_jvm_backend(url, env)?;
+    let backend = cached_backend(url, env)?;
     let root = OmReader::new(backend).map_err(|e| format!("open failed: {e}"))?;
 
     let data = read_subgrid_generic(&root, variable, &win)?;

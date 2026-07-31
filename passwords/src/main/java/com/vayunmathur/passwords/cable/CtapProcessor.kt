@@ -2,7 +2,8 @@ package com.vayunmathur.passwords.cable
 
 import android.util.Log
 import com.vayunmathur.passwords.data.PasskeyDao
-import java.util.Base64
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Handles decrypted CTAP2 commands for the caBLE authenticator and produces the response bytes
@@ -13,13 +14,14 @@ import java.util.Base64
  * existing [PasskeyDao] store, so cross-device sign-in produces byte-identical assertions to the
  * same-device Credential Manager path.
  */
+@OptIn(ExperimentalEncodingApi::class)
 class CtapProcessor(
     private val passkeyDao: PasskeyDao,
     /** Whether the user was verified (biometric) when the session was approved. */
     private val userVerified: Boolean,
 ) {
-    private val urlDecoder = Base64.getUrlDecoder()
-    private val urlEncoder = Base64.getUrlEncoder().withoutPadding()
+    private val urlDecoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
+    private val urlEncoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
     /** Processes one CTAP command message; never throws (errors map to CTAP status bytes). */
     suspend fun process(command: ByteArray): ByteArray {
@@ -82,7 +84,7 @@ class CtapProcessor(
     private suspend fun resolveCredential(req: CtapGetAssertionRequest) =
         if (req.allowList.isNotEmpty()) {
             req.allowList.firstNotNullOfOrNull { desc ->
-                passkeyDao.getByCredentialId(urlEncoder.encodeToString(desc.id))
+                passkeyDao.getByCredentialId(urlEncoder.encode(desc.id))
                     ?.takeIf { it.rpId == req.rpId }
             }
         } else {
