@@ -234,4 +234,5 @@
     <string name="wallpaper_set_success">壁纸已应用！</string>
     <string name="wallpaper_set_failed">无法设置壁纸：<xliff:g id="error" example="IO error">%1$s</xliff:g></string>
     <string name="wallpaper_load_failed">无法加载图片</string>
+    <string name="file_size">大小：<xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
 </resources>
