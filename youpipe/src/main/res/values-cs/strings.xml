@@ -103,4 +103,8 @@
     <string name="clear">Smazat</string>
     <string name="downloads">Stažené</string>
     <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Vybraných</string>
+    <string name="label_general">Obecné</string>
+    <string name="label_default_page">Otevřít na</string>
+    <string name="page_home">Domov</string>
+    <string name="page_downloads">Stažené</string>
 </resources>
