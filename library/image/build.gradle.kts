@@ -9,8 +9,7 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // SVG rendering – replaces coil-svg
-    implementation(libs.androidsvg)
+    // SVG rendering is now internal via Android stdlib (Canvas/Path/Paint/XmlPullParser) – no third-party
 
     // Foundation needed for Image composable in AsyncImage
     implementation(libs.androidx.compose.foundation)

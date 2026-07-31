@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
  * - [MemoryCache] (LruCache<String, Bitmap>)
  * - [DiskCache] (file LRU raw bytes)
  * - Fetcher registry (http/content/file/asset/bytearray/bitmap)
- * - Decoders: SVG via androidsvg, Video via MediaMetadataRetriever, Bitmap via BitmapFactory/ImageDecoder
+ * - Decoders: SVG via internal Android stdlib renderer (Canvas/Path), Video via MediaMetadataRetriever, Bitmap via BitmapFactory/ImageDecoder
  */
 class ImageLoader private constructor(
     private val appContext: Context,

@@ -14,7 +14,7 @@ class SolarAndPlanetaryTest {
         // At J2000 sun RA ~ 18h45m ~ 281 deg, Dec ~ -23 deg (approx solstice offset?) Actually J2000 sun was at ~280 deg lon
         // We check that our calc doesn't explode and dec in [-24,24]
         val sun = SolarCalculator.calc(TimeEngine.J2000)
-        assertTrue(sun.raDec.decDeg in -24.0..24.0, "sun dec ${sun.decDeg}")
+        assertTrue(sun.raDec.decDeg in -24.0..24.0, "sun dec ${sun.raDec.decDeg}")
         assertTrue(sun.distanceAu in 0.97..1.03)
     }
 

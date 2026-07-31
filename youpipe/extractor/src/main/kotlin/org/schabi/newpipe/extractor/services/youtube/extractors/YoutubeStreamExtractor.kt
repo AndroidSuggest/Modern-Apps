@@ -1,0 +1,1563 @@
+package org.schabi.newpipe.extractor.services.youtube.extractors
+
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import org.schabi.newpipe.extractor.Image
+import org.schabi.newpipe.extractor.MediaFormat
+import org.schabi.newpipe.extractor.MetaInfo
+import org.schabi.newpipe.extractor.MultiInfoItemsCollector
+import org.schabi.newpipe.extractor.StreamingService
+import org.schabi.newpipe.extractor.downloader.Downloader
+import org.schabi.newpipe.extractor.exceptions.AccountTerminatedException
+import org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
+import org.schabi.newpipe.extractor.exceptions.ExtractionException
+import org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException
+import org.schabi.newpipe.extractor.exceptions.PaidContentException
+import org.schabi.newpipe.extractor.exceptions.ParsingException
+import org.schabi.newpipe.extractor.exceptions.PrivateContentException
+import org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException
+import org.schabi.newpipe.extractor.exceptions.YoutubeMusicPremiumContentException
+import org.schabi.newpipe.extractor.linkhandler.LinkHandler
+import org.schabi.newpipe.extractor.localization.ContentCountry
+import org.schabi.newpipe.extractor.localization.DateWrapper
+import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.localization.TimeAgoParser
+import org.schabi.newpipe.extractor.localization.TimeAgoPatternsManager
+import org.schabi.newpipe.extractor.services.youtube.ItagItem
+import org.schabi.newpipe.extractor.services.youtube.PoTokenProvider
+import org.schabi.newpipe.extractor.services.youtube.PoTokenResult
+import org.schabi.newpipe.extractor.services.youtube.YoutubeDescriptionHelper.attributedDescriptionToHtml
+import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
+import org.schabi.newpipe.extractor.services.youtube.YoutubeMetaInfoHelper
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.CONTENT_CHECK_OK
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.CPN
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.RACY_CHECK_OK
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.VIDEO_ID
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.fixThumbnailUrl
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.generateContentPlaybackNonce
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getImagesFromThumbnailsArray
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getJsonPostResponse
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getTextFromObject
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.prepareDesktopJsonBuilder
+import org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeChannelLinkHandlerFactory
+import org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrClientProfile
+import org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrFormat
+import org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrProbe
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.DeliveryMethod
+import org.schabi.newpipe.extractor.stream.Description
+import org.schabi.newpipe.extractor.stream.Frameset
+import org.schabi.newpipe.extractor.stream.Stream
+import org.schabi.newpipe.extractor.stream.StreamExtractor
+import org.schabi.newpipe.extractor.stream.StreamSegment
+import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.extractor.stream.SubtitlesStream
+import org.schabi.newpipe.extractor.stream.VideoStream
+import org.schabi.newpipe.extractor.utils.ExtractorLogger
+import org.schabi.newpipe.extractor.utils.JsonUtils
+import org.schabi.newpipe.extractor.utils.LocaleCompat
+import org.schabi.newpipe.extractor.utils.Pair
+import org.schabi.newpipe.extractor.utils.Parser
+import org.schabi.newpipe.extractor.utils.Utils
+import org.schabi.newpipe.extractor.utils.getArray
+import org.schabi.newpipe.extractor.utils.getBoolean
+import org.schabi.newpipe.extractor.utils.getInt
+import org.schabi.newpipe.extractor.utils.getObject
+import org.schabi.newpipe.extractor.utils.getString
+import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.ArrayList
+import java.util.Collections
+import java.util.Locale
+
+class YoutubeStreamExtractor(
+    service: StreamingService,
+    linkHandler: LinkHandler
+) : StreamExtractor(service, linkHandler) {
+
+    companion object {
+        private const val PREMIERED = "Premiered "
+        private const val PREMIERED_ON = "Premiered on "
+        private const val FORMATS = "formats"
+        private const val ADAPTIVE_FORMATS = "adaptiveFormats"
+        private const val STREAMING_DATA = "streamingData"
+        private const val NEXT = "next"
+        private const val SIGNATURE_CIPHER = "signatureCipher"
+        private const val CIPHER = "cipher"
+        private const val PLAYER_CAPTIONS_TRACKLIST_RENDERER = "playerCaptionsTracklistRenderer"
+        private const val CAPTIONS = "captions"
+        private const val PLAYABILITY_STATUS = "playabilityStatus"
+        private const val THUMBNAIL = "thumbnail"
+        private const val THUMBNAILS = "thumbnails"
+        private const val VIDEO_DETAILS = "videoDetails"
+        private const val TITLE = "title"
+
+        @JvmField
+        var poTokenProvider: PoTokenProvider? = null
+
+        @JvmField
+        var fetchIosClient: Boolean = false
+
+        @JvmStatic
+        fun setPoTokenProvider(provider: PoTokenProvider?) {
+            poTokenProvider = provider
+        }
+
+        @JvmStatic
+        fun setFetchIosClient(fetch: Boolean) {
+            fetchIosClient = fetch
+        }
+
+        @JvmStatic
+        @Throws(ParsingException::class)
+        private fun checkPlayabilityStatus(playabilityStatus: JsonObject) {
+            val status = playabilityStatus.getString("status")
+            if (status == null || status.equals("ok", ignoreCase = true)) {
+                return
+            }
+            val reason = playabilityStatus.getString("reason")
+            if (reason != null) {
+                if (status.equals("login_required", ignoreCase = true)) {
+                    if (reason.contains("inappropriate for some users")) {
+                        throw AgeRestrictedContentException(
+                            "This age-restricted video cannot be watched anonymously"
+                        )
+                    }
+                    if (reason.contains("private")) {
+                        throw PrivateContentException("This video is private")
+                    }
+                    if (reason.contains("a bot")) {
+                        throw SignInConfirmNotBotException(
+                            "YouTube probably temporarily blocked anonymous watch access with this" +
+                                " IP , got error $status: \"$reason\""
+                        )
+                    }
+                }
+                if (status.equals("unplayable", ignoreCase = true) ||
+                    status.equals("error", ignoreCase = true)
+                ) {
+                    if (reason.contains("Music Premium")) {
+                        throw YoutubeMusicPremiumContentException()
+                    }
+                    if (reason.contains("payment")) {
+                        throw PaidContentException("This video is a paid video")
+                    }
+                    if (reason.contains("members")) {
+                        throw PaidContentException(
+                            "This video is only available for members of the channel of this video"
+                        )
+                    }
+                    if (reason.contains("country")) {
+                        throw GeographicRestrictionException(
+                            "This video is not available in client's country."
+                        )
+                    }
+                    if (reason.contains("closed") || reason.contains("terminated")) {
+                        throw AccountTerminatedException(reason)
+                    }
+                }
+            }
+            throw ContentNotAvailableException("Got error $status: \"$reason\"")
+        }
+
+        private fun isPlayerResponseNotValid(
+            playerResponse: JsonObject?,
+            videoId: String
+        ): Boolean {
+            if (playerResponse == null) return true
+            return videoId != playerResponse.getObject(VIDEO_DETAILS)?.getString("videoId")
+        }
+
+        @JvmStatic
+        fun getManifestUrl(
+            manifestType: String,
+            streamingDataObjects: List<Pair<JsonObject?, String?>>,
+            partToAppendToManifestUrlEnd: String
+        ): String {
+            val manifestKey = manifestType + "ManifestUrl"
+            for (obj in streamingDataObjects) {
+                val streamingData = obj.getFirst()
+                if (streamingData != null) {
+                    val manifestUrl = streamingData.getString(manifestKey)
+                    if (manifestUrl.isNullOrEmpty()) continue
+                    val second = obj.getSecond()
+                    return if (second == null) {
+                        "$manifestUrl?$partToAppendToManifestUrlEnd"
+                    } else {
+                        "$manifestUrl?pot=$second&$partToAppendToManifestUrlEnd"
+                    }
+                }
+            }
+            return ""
+        }
+
+        private fun parseLikeCountFromLikeButtonRenderer(
+            topLevelButtons: JsonArray?
+        ): Long {
+            if (topLevelButtons == null) throw ParsingException("topLevelButtons null")
+            var likesString: String? = null
+            val likeToggleButtonRenderer = topLevelButtons.filterIsInstance<JsonObject>()
+                .mapNotNull { button ->
+                    button.getObject("segmentedLikeDislikeButtonRenderer")
+                        ?.getObject("likeButton")
+                        ?.getObject("toggleButtonRenderer")
+                }
+                .firstOrNull { !Utils.isNullOrEmpty(it) }
+
+            if (likeToggleButtonRenderer != null) {
+                likesString = likeToggleButtonRenderer.getObject("accessibilityData")
+                    ?.getObject("accessibilityData")
+                    ?.getString("label")
+
+                if (likesString == null) {
+                    likesString = likeToggleButtonRenderer.getObject("accessibility")
+                        ?.getString("label")
+                }
+
+                if (likesString == null) {
+                    likesString = likeToggleButtonRenderer.getObject("defaultText")
+                        ?.getObject("accessibility")
+                        ?.getObject("accessibilityData")
+                        ?.getString("label")
+                }
+
+                if (likesString != null && likesString!!.lowercase().contains("no likes")) {
+                    return 0
+                }
+            }
+
+            if (likesString == null) {
+                throw ParsingException("Could not get like count from accessibility data")
+            }
+
+            try {
+                return java.lang.Long.parseLong(Utils.removeNonDigitCharacters(likesString))
+            } catch (e: NumberFormatException) {
+                throw ParsingException("Could not parse \"$likesString\" as a long", e)
+            }
+        }
+
+        private fun parseLikeCountFromLikeButtonViewModel(
+            topLevelButtons: JsonArray?
+        ): Long {
+            if (topLevelButtons == null) throw ParsingException("topLevelButtons null")
+            val likeToggleButtonViewModel = topLevelButtons.filterIsInstance<JsonObject>()
+                .mapNotNull { button ->
+                    button.getObject("segmentedLikeDislikeButtonViewModel")
+                        ?.getObject("likeButtonViewModel")
+                        ?.getObject("likeButtonViewModel")
+                        ?.getObject("toggleButtonViewModel")
+                        ?.getObject("toggleButtonViewModel")
+                        ?.getObject("defaultButtonViewModel")
+                        ?.getObject("buttonViewModel")
+                }
+                .firstOrNull { !Utils.isNullOrEmpty(it) }
+
+            if (likeToggleButtonViewModel == null) {
+                throw ParsingException("Could not find buttonViewModel object")
+            }
+
+            val accessibilityText = likeToggleButtonViewModel.getString("accessibilityText")
+                ?: throw ParsingException("Could not find buttonViewModel's accessibilityText string")
+
+            try {
+                return java.lang.Long.parseLong(Utils.removeNonDigitCharacters(accessibilityText))
+            } catch (e: NumberFormatException) {
+                throw ParsingException("Could not parse \"$accessibilityText\" as a long", e)
+            }
+        }
+
+        @Throws(ParsingException::class)
+        private fun buildSabrItagItem(format: YoutubeSabrFormat): ItagItem? {
+            val mimeType = format.mimeType ?: ""
+            val codec = if (mimeType.contains("codecs")) {
+                // mimeType like video/mp4; codecs="avc1..."
+                val parts = mimeType.split("\"")
+                if (parts.size > 1) parts[1] else ""
+            } else ""
+            val webm = mimeType.contains("webm")
+            val itagItem: ItagItem = if (format.isAudio()) {
+                val mediaFormat = if (webm) {
+                    if (codec.contains("opus")) MediaFormat.WEBMA_OPUS else MediaFormat.WEBMA
+                } else MediaFormat.M4A
+                ItagItem(format.itag, ItagItem.ItagType.AUDIO, mediaFormat, kotlin.math.max(format.bitrate, 0))
+            } else {
+                val mediaFormat = if (webm) MediaFormat.WEBM else MediaFormat.MPEG_4
+                val resolution = if (format.height > 0) "${format.height}p" else ""
+                val item = ItagItem(format.itag, ItagItem.ItagType.VIDEO_ONLY, mediaFormat, resolution)
+                item.setWidth(format.width)
+                item.setHeight(format.height)
+                item
+            }
+            itagItem.setBitrate(format.bitrate)
+            itagItem.setCodec(codec)
+            itagItem.setContentLength(format.contentLength)
+            itagItem.setApproxDurationMs(format.approxDurationMs)
+            return itagItem
+        }
+    }
+
+    private var playerResponse: JsonObject? = null
+    private var nextResponse: JsonObject? = null
+
+    private var visionOsStreamingData: JsonObject? = null
+    private var iosStreamingData: JsonObject? = null
+    private var androidStreamingData: JsonObject? = null
+
+    private var videoPrimaryInfoRenderer: JsonObject? = null
+    private var videoSecondaryInfoRenderer: JsonObject? = null
+    private var playerMicroFormatRenderer: JsonObject? = null
+    private var playerCaptionsTracklistRenderer: JsonObject? = null
+    private var thumbnailsArray: JsonArray? = null
+    private var ageLimit: Int = -1
+    private var streamType: StreamType? = null
+
+    private var visionOsCpn: String? = null
+    private var iosCpn: String? = null
+    private var androidCpn: String? = null
+
+    private var androidStreamingUrlsPoToken: String? = null
+    private var iosStreamingUrlsPoToken: String? = null
+
+    private var sabrStreamsBuilt: Boolean = false
+    private val sabrAudioStreams: MutableList<AudioStream> = ArrayList()
+    private val sabrVideoOnlyStreams: MutableList<VideoStream> = ArrayList()
+
+    @Throws(ParsingException::class)
+    override fun getName(): String {
+        assertPageFetched()
+        var title: String? = playerResponse?.getObject(VIDEO_DETAILS)?.getString(TITLE)
+
+        if (Utils.isNullOrEmpty(title)) {
+            title = getTextFromObject(getVideoPrimaryInfoRenderer().getObject(TITLE))
+            if (Utils.isNullOrEmpty(title)) {
+                throw ParsingException("Could not get name")
+            }
+        }
+        return title!!
+    }
+
+    override fun getTextualUploadDate(): String? {
+        var timestamp = playerMicroFormatRenderer?.getString("uploadDate", "") ?: ""
+        if (timestamp.isEmpty()) {
+            timestamp = playerMicroFormatRenderer?.getString("publishDate", "") ?: ""
+        }
+        if (timestamp.isNotEmpty()) return timestamp
+
+        val liveDetails = playerMicroFormatRenderer?.getObject("liveBroadcastDetails")
+        timestamp = liveDetails?.getString("endTimestamp", "") ?: ""
+        if (timestamp.isEmpty()) {
+            timestamp = liveDetails?.getString("startTimestamp", "") ?: ""
+        }
+        if (timestamp.isNotEmpty()) return timestamp
+        if (getStreamType() == StreamType.LIVE_STREAM) {
+            return null
+        }
+
+        val textObject = getVideoPrimaryInfoRenderer().getObject("dateText")
+        val rendererDateText = getTextFromObject(textObject)
+        if (rendererDateText == null) {
+            return null
+        } else if (rendererDateText.startsWith(PREMIERED_ON)) {
+            return rendererDateText.substring(PREMIERED_ON.length)
+        } else if (rendererDateText.startsWith(PREMIERED)) {
+            return rendererDateText.substring(PREMIERED.length)
+        } else {
+            return rendererDateText
+        }
+    }
+
+    @Throws(ParsingException::class)
+    override fun getUploadDate(): DateWrapper? {
+        val dateText = getTextualUploadDate()
+        try {
+            return DateWrapper.fromOffsetDateTime(dateText)
+        } catch (e: ParsingException) {
+        }
+
+        try {
+            val localization = Localization("en")
+            return TimeAgoPatternsManager.getTimeAgoParserFor(localization).parse(dateText)
+        } catch (e: ParsingException) {
+        }
+
+        return parseOptionalDate(dateText, "MMM dd, yyyy")
+            .or { parseOptionalDate(dateText, "dd MMM yyyy") }
+            .map { date -> DateWrapper(date.atStartOfDay(), true) }
+            .orElseThrow { ParsingException("Could not parse upload date \"$dateText\"") }
+    }
+
+    private fun parseOptionalDate(date: String?, pattern: String): java.util.Optional<LocalDate> {
+        try {
+            val formatter = DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH)
+            return java.util.Optional.of(LocalDate.parse(date, formatter))
+        } catch (e: java.time.format.DateTimeParseException) {
+            return java.util.Optional.empty()
+        }
+    }
+
+    @Throws(ParsingException::class)
+    override fun getThumbnails(): List<Image> {
+        assertPageFetched()
+        try {
+            return getImagesFromThumbnailsArray(thumbnailsArray!!)
+        } catch (e: Exception) {
+            throw ParsingException("Could not get thumbnails")
+        }
+    }
+
+    @Throws(ParsingException::class)
+    override fun getDescription(): Description {
+        assertPageFetched()
+        val videoSecondaryInfoRendererDescription = getTextFromObject(
+            getVideoSecondaryInfoRenderer().getObject("description"), true
+        )
+        if (!Utils.isNullOrEmpty(videoSecondaryInfoRendererDescription)) {
+            return Description(videoSecondaryInfoRendererDescription, Description.HTML)
+        }
+
+        val attributedDescription = attributedDescriptionToHtml(
+            getVideoSecondaryInfoRenderer().getObject("attributedDescription")
+        )
+        if (!Utils.isNullOrEmpty(attributedDescription)) {
+            return Description(attributedDescription, Description.HTML)
+        }
+
+        var description = playerResponse?.getObject(VIDEO_DETAILS)?.getString("shortDescription")
+        if (description == null) {
+            val descriptionObject = playerMicroFormatRenderer?.getObject("description")
+            description = getTextFromObject(descriptionObject)
+        }
+
+        return Description(description, Description.PLAIN_TEXT)
+    }
+
+    @Throws(ParsingException::class)
+    override fun getAgeLimit(): Int {
+        if (ageLimit != -1) {
+            return ageLimit
+        }
+
+        val ageRestricted = getVideoSecondaryInfoRenderer()
+            .getObject("metadataRowContainer")
+            ?.getObject("metadataRowContainerRenderer")
+            ?.getArray("rows")
+            ?.filterIsInstance<JsonObject>()
+            ?.asSequence()
+            ?.flatMap { metadataRow ->
+                metadataRow.getObject("metadataRowRenderer")
+                    ?.getArray("contents")
+                    ?.filterIsInstance<JsonObject>() ?: emptyList()
+            }
+            ?.flatMap { content ->
+                content.getArray("runs")?.filterIsInstance<JsonObject>() ?: emptyList()
+            }
+            ?.map { run -> run.getString("text", "") ?: "" }
+            ?.any { rowText -> rowText.contains("Age-restricted") } ?: false
+
+        ageLimit = if (ageRestricted) 18 else NO_AGE_LIMIT
+        return ageLimit
+    }
+
+    @Throws(ParsingException::class)
+    override fun getLength(): Long {
+        assertPageFetched()
+
+        try {
+            val duration = playerResponse?.getObject(VIDEO_DETAILS)?.getString("lengthSeconds")
+            if (!duration.isNullOrEmpty()) return java.lang.Long.parseLong(duration)
+        } catch (e: Exception) {
+        }
+        return getDurationFromFirstAdaptiveFormat(
+            listOf(androidStreamingData, iosStreamingData)
+        ).toLong()
+    }
+
+    @Throws(ParsingException::class)
+    private fun getDurationFromFirstAdaptiveFormat(streamingDatas: List<JsonObject?>): Int {
+        for (streamingData in streamingDatas) {
+            if (streamingData == null) continue
+            val adaptiveFormats = streamingData.getArray(ADAPTIVE_FORMATS) ?: continue
+            if (adaptiveFormats.isEmpty()) continue
+            val first = adaptiveFormats.getObject(0) ?: continue
+            val durationMs = first.getString("approxDurationMs") ?: continue
+            try {
+                return Math.round(java.lang.Long.parseLong(durationMs) / 1000f)
+            } catch (ignored: NumberFormatException) {
+            }
+        }
+
+        throw ParsingException("Could not get duration")
+    }
+
+    @Throws(ParsingException::class)
+    override fun getTimeStamp(): Long {
+        val timestamp = getTimestampSeconds("((#|&|\\?)t=\\d*h?\\d*m?\\d+s?)")
+        if (timestamp == -2L) {
+            return 0
+        }
+        return timestamp
+    }
+
+    @Throws(ParsingException::class)
+    override fun getViewCount(): Long {
+        var views = getTextFromObject(
+            getVideoPrimaryInfoRenderer().getObject("viewCount")
+                ?.getObject("videoViewCountRenderer")
+                ?.getObject("viewCount")
+        )
+
+        if (Utils.isNullOrEmpty(views)) {
+            views = playerResponse?.getObject(VIDEO_DETAILS)?.getString("viewCount")
+
+            if (Utils.isNullOrEmpty(views)) {
+                throw ParsingException("Could not get view count")
+            }
+        }
+
+        if (views!!.lowercase().contains("no views")) {
+            return 0
+        }
+
+        return java.lang.Long.parseLong(Utils.removeNonDigitCharacters(views))
+    }
+
+    @Throws(ParsingException::class)
+    override fun getLikeCount(): Long {
+        assertPageFetched()
+
+        if (playerResponse?.getObject(VIDEO_DETAILS)?.getBoolean("allowRatings") != true) {
+            return -1L
+        }
+
+        val topLevelButtons = getVideoPrimaryInfoRenderer()
+            .getObject("videoActions")
+            ?.getObject("menuRenderer")
+            ?.getArray("topLevelButtons")
+
+        try {
+            return parseLikeCountFromLikeButtonViewModel(topLevelButtons)
+        } catch (ignored: ParsingException) {
+        }
+
+        try {
+            return parseLikeCountFromLikeButtonRenderer(topLevelButtons)
+        } catch (e: ParsingException) {
+            throw ParsingException("Could not get like count", e)
+        }
+    }
+
+    @Throws(ParsingException::class)
+    override fun getUploaderUrl(): String {
+        assertPageFetched()
+        val uploaderId = playerResponse?.getObject(VIDEO_DETAILS)?.getString("channelId")
+        if (!Utils.isNullOrEmpty(uploaderId)) {
+            return YoutubeChannelLinkHandlerFactory.getInstance().getUrl("channel/$uploaderId")
+        }
+
+        throw ParsingException("Could not get uploader url")
+    }
+
+    @Throws(ParsingException::class)
+    override fun getUploaderName(): String {
+        assertPageFetched()
+        val uploaderName = playerResponse?.getObject(VIDEO_DETAILS)?.getString("author")
+        if (Utils.isNullOrEmpty(uploaderName)) {
+            throw ParsingException("Could not get uploader name")
+        }
+
+        return uploaderName!!
+    }
+
+    @Throws(ParsingException::class)
+    override fun isUploaderVerified(): Boolean {
+        val videoOwnerRenderer = getVideoSecondaryInfoRenderer()
+            .getObject("owner")
+            ?.getObject("videoOwnerRenderer")
+
+        if (videoOwnerRenderer == null) return false
+
+        if (videoOwnerRenderer.containsKey("badges")) {
+            return YoutubeParsingHelper.isVerified(videoOwnerRenderer.getArray("badges"))
+        }
+
+        val channel = YoutubeParsingHelper.getFirstCollaborator(
+            videoOwnerRenderer.getObject("navigationEndpoint")
+        )
+        if (channel == null) {
+            return false
+        }
+
+        return YoutubeParsingHelper.hasArtistOrVerifiedIconBadgeAttachment(
+            channel.getObject(TITLE)?.getArray("attachmentRuns") ?: JsonArray(emptyList())
+        )
+    }
+
+    @Throws(ParsingException::class)
+    override fun getUploaderAvatars(): List<Image> {
+        assertPageFetched()
+        val owner = getVideoSecondaryInfoRenderer().getObject("owner")
+            ?.getObject("videoOwnerRenderer")
+            ?: throw ParsingException("Could not get uploader avatars")
+
+        val imageList: List<Image> = if (owner.containsKey("avatarStack")) {
+            getImagesFromThumbnailsArray(
+                owner.getObject("avatarStack")
+                    ?.getObject("avatarStackViewModel")
+                    ?.getArray("avatars")
+                    ?.getObject(0)
+                    ?.getObject("avatarViewModel")
+                    ?.getObject("image")
+                    ?.getArray("sources") ?: JsonArray(emptyList())
+            )
+        } else {
+            getImagesFromThumbnailsArray(
+                owner.getObject(THUMBNAIL)?.getArray(THUMBNAILS) ?: JsonArray(emptyList())
+            )
+        }
+
+        if (imageList.isEmpty() && ageLimit == NO_AGE_LIMIT) {
+            throw ParsingException("Could not get uploader avatars")
+        }
+
+        return imageList
+    }
+
+    @Throws(ParsingException::class)
+    override fun getUploaderSubscriberCount(): Long {
+        val videoOwnerRenderer = JsonUtils.getObject(
+            videoSecondaryInfoRenderer!!,
+            "owner.videoOwnerRenderer"
+        )
+
+        var subscriberCountText: String? = null
+        if (videoOwnerRenderer.containsKey("subscriberCountText")) {
+            subscriberCountText = getTextFromObject(videoOwnerRenderer.getObject("subscriberCountText"))
+        } else {
+            val content = YoutubeParsingHelper.getFirstCollaborator(
+                videoOwnerRenderer.getObject("navigationEndpoint")
+            )?.getObject("subtitle")?.getString("content") ?: ""
+            val parts = content.split("•")
+            subscriberCountText = if (parts.size > 1) parts[1] else ""
+        }
+
+        if (Utils.isNullOrEmpty(subscriberCountText)) {
+            return UNKNOWN_SUBSCRIBER_COUNT
+        }
+
+        try {
+            return Utils.mixedNumberWordToLong(subscriberCountText)
+        } catch (e: NumberFormatException) {
+            throw ParsingException("Could not get uploader subscriber count", e)
+        }
+    }
+
+    @Throws(ParsingException::class)
+    override fun getDashMpdUrl(): String {
+        assertPageFetched()
+        return getManifestUrl(
+            "dash",
+            listOf(Pair(androidStreamingData, androidStreamingUrlsPoToken)),
+            "mpd_version=7"
+        )
+    }
+
+    @Throws(ParsingException::class)
+    override fun getHlsUrl(): String {
+        assertPageFetched()
+        return getManifestUrl(
+            "hls",
+            listOf(
+                Pair(visionOsStreamingData, null),
+                Pair(iosStreamingData, iosStreamingUrlsPoToken),
+                Pair(androidStreamingData, androidStreamingUrlsPoToken)
+            ),
+            ""
+        )
+    }
+
+    @Throws(ExtractionException::class)
+    override fun getAudioStreams(): List<AudioStream> {
+        assertPageFetched()
+        val streams = getItags(
+            ADAPTIVE_FORMATS, ItagItem.ItagType.AUDIO,
+            getAudioStreamBuilderHelper(), "audio"
+        )
+        buildSabrStreamsIfNeeded()
+        streams.addAll(sabrAudioStreams)
+        return streams
+    }
+
+    @Throws(ExtractionException::class)
+    override fun getVideoStreams(): List<VideoStream> {
+        assertPageFetched()
+        return getItags(
+            FORMATS, ItagItem.ItagType.VIDEO,
+            getVideoStreamBuilderHelper(false), "video"
+        )
+    }
+
+    @Throws(ExtractionException::class)
+    override fun getVideoOnlyStreams(): List<VideoStream> {
+        assertPageFetched()
+        val streams = getItags(
+            ADAPTIVE_FORMATS, ItagItem.ItagType.VIDEO_ONLY,
+            getVideoStreamBuilderHelper(true), "video-only"
+        )
+        buildSabrStreamsIfNeeded()
+        streams.addAll(sabrVideoOnlyStreams)
+        return streams
+    }
+
+    @Throws(ParsingException::class)
+    override fun getSubtitlesDefault(): List<SubtitlesStream> {
+        return getSubtitles(MediaFormat.TTML)
+    }
+
+    @Throws(ParsingException::class)
+    override fun getSubtitles(format: MediaFormat): List<SubtitlesStream> {
+        assertPageFetched()
+
+        val subtitlesToReturn = ArrayList<SubtitlesStream>()
+        val captionsArray = playerCaptionsTracklistRenderer?.getArray("captionTracks")
+            ?: JsonArray(emptyList())
+
+        for (i in 0 until captionsArray.size) {
+            val obj = captionsArray.getObject(i) ?: continue
+            val languageCode = obj.getString("languageCode")
+            val baseUrl = obj.getString("baseUrl")
+            val vssId = obj.getString("vssId")
+
+            if (languageCode != null && baseUrl != null && vssId != null) {
+                val isAutoGenerated = vssId.startsWith("a.")
+                val cleanUrl = baseUrl
+                    .replace(Regex("&fmt=[^&]*"), "")
+                    .replace(Regex("&tlang=[^&]*"), "")
+
+                subtitlesToReturn.add(
+                    SubtitlesStream.Builder()
+                        .setContent(cleanUrl + "&fmt=" + format.getSuffix(), true)
+                        .setMediaFormat(format)
+                        .setLanguageCode(languageCode)
+                        .setAutoGenerated(isAutoGenerated)
+                        .build()
+                )
+            }
+        }
+
+        return subtitlesToReturn
+    }
+
+    @Throws(ParsingException::class)
+    override fun getStreamType(): StreamType {
+        assertPageFetched()
+        return streamType!!
+    }
+
+    private fun setStreamType() {
+        val playability = playerResponse?.getObject(PLAYABILITY_STATUS)
+        streamType = when {
+            playability?.containsKey("liveStreamability") == true -> StreamType.LIVE_STREAM
+            playerResponse?.getObject(VIDEO_DETAILS)?.getBoolean("isPostLiveDvr", false) == true ->
+                StreamType.POST_LIVE_STREAM
+            else -> StreamType.VIDEO_STREAM
+        }
+    }
+
+    @Throws(ExtractionException::class)
+    override fun getRelatedItems(): MultiInfoItemsCollector? {
+        assertPageFetched()
+
+        if (getAgeLimit() != NO_AGE_LIMIT) {
+            return null
+        }
+
+        try {
+            val collector = MultiInfoItemsCollector(serviceId)
+
+            val results = nextResponse
+                ?.getObject("contents")
+                ?.getObject("twoColumnWatchNextResults")
+                ?.getObject("secondaryResults")
+                ?.getObject("secondaryResults")
+                ?.getArray("results") ?: JsonArray(emptyList())
+
+            val timeAgoParser: TimeAgoParser = getTimeAgoParser()
+            results.filterIsInstance<JsonObject>()
+                .mapNotNull { result ->
+                    when {
+                        result.containsKey("compactVideoRenderer") -> {
+                            YoutubeStreamInfoItemExtractor(
+                                result.getObject("compactVideoRenderer")!!, timeAgoParser
+                            )
+                        }
+                        result.containsKey("compactRadioRenderer") -> {
+                            YoutubeMixOrPlaylistInfoItemExtractor(
+                                result.getObject("compactRadioRenderer")!!
+                            )
+                        }
+                        result.containsKey("compactPlaylistRenderer") -> {
+                            YoutubeMixOrPlaylistInfoItemExtractor(
+                                result.getObject("compactPlaylistRenderer")!!
+                            )
+                        }
+                        result.containsKey("lockupViewModel") -> {
+                            val lockupViewModel = result.getObject("lockupViewModel")!!
+                            val contentType = lockupViewModel.getString("contentType")
+                            when (contentType) {
+                                "LOCKUP_CONTENT_TYPE_PLAYLIST",
+                                "LOCKUP_CONTENT_TYPE_PODCAST" ->
+                                    YoutubeMixOrPlaylistLockupInfoItemExtractor(lockupViewModel)
+                                "LOCKUP_CONTENT_TYPE_VIDEO" ->
+                                    YoutubeStreamInfoItemLockupExtractor(lockupViewModel, timeAgoParser)
+                                else -> null
+                            }
+                        }
+                        else -> null
+                    }
+                }
+                .forEach { collector.commit(it) }
+
+            return collector
+        } catch (e: Exception) {
+            throw ParsingException("Could not get related videos", e)
+        }
+    }
+
+    override fun getErrorMessage(): String? {
+        return try {
+            getTextFromObject(
+                playerResponse?.getObject(PLAYABILITY_STATUS)
+                    ?.getObject("errorScreen")
+                    ?.getObject("playerErrorMessageRenderer")
+                    ?.getObject("reason")
+            )
+        } catch (e: NullPointerException) {
+            null
+        }
+    }
+
+    @Throws(IOException::class, ExtractionException::class)
+    override fun onFetchPage(downloader: Downloader) {
+        val videoId = id
+
+        val localization = extractorLocalization
+        val contentCountry = extractorContentCountry
+
+        val poTokenProviderInstance = poTokenProvider
+        val noPoTokenProviderSet = poTokenProviderInstance == null
+
+        val androidPoTokenResult = if (noPoTokenProviderSet) null
+        else poTokenProviderInstance!!.getAndroidClientPoToken(videoId)
+
+        fetchAndroidClient(localization, contentCountry, videoId, androidPoTokenResult)
+
+        setStreamType()
+
+        if (fetchIosClient) {
+            val iosPoTokenResult = if (noPoTokenProviderSet) null
+            else poTokenProviderInstance!!.getIosClientPoToken(videoId)
+            fetchIosClient(localization, contentCountry, videoId, iosPoTokenResult)
+        }
+
+        fetchVisionOsClient(localization, contentCountry, videoId)
+
+        fetchWebClientMetadataAndSetThumbnails(localization, contentCountry, videoId)
+
+        val nextBody = prepareDesktopJsonBuilder(localization, contentCountry)
+            .value(VIDEO_ID, videoId)
+            .value(CONTENT_CHECK_OK, true)
+            .value(RACY_CHECK_OK, true)
+            .done().toString()
+            .toByteArray(StandardCharsets.UTF_8)
+        nextResponse = getJsonPostResponse(NEXT, nextBody, localization)
+    }
+
+    @Throws(IOException::class, ExtractionException::class)
+    private fun fetchAndroidClient(
+        localization: Localization,
+        contentCountry: ContentCountry,
+        videoId: String,
+        androidPoTokenResult: PoTokenResult?
+    ) {
+        androidCpn = generateContentPlaybackNonce()
+
+        playerResponse = if (androidPoTokenResult == null) {
+            YoutubeStreamHelper.getAndroidReelPlayerResponse(
+                contentCountry, localization, videoId, androidCpn!!
+            )
+        } else {
+            YoutubeStreamHelper.getAndroidPlayerResponse(
+                contentCountry, localization, videoId, androidCpn!!,
+                androidPoTokenResult
+            )
+        }
+
+        checkPlayabilityStatus(playerResponse!!.getObject(PLAYABILITY_STATUS)!!)
+        if (isPlayerResponseNotValid(playerResponse, videoId)) {
+            throw ExtractionException("ANDROID player response is not valid")
+        }
+
+        androidStreamingData = playerResponse?.getObject(STREAMING_DATA)
+
+        playerCaptionsTracklistRenderer = playerResponse?.getObject(CAPTIONS)
+            ?.getObject(PLAYER_CAPTIONS_TRACKLIST_RENDERER)
+
+        if (androidPoTokenResult != null) {
+            androidStreamingUrlsPoToken = androidPoTokenResult.streamingDataPoToken
+        }
+    }
+
+    private fun fetchIosClient(
+        localization: Localization,
+        contentCountry: ContentCountry,
+        videoId: String,
+        iosPoTokenResult: PoTokenResult?
+    ) {
+        try {
+            iosCpn = generateContentPlaybackNonce()
+
+            val iosPlayerResponse = YoutubeStreamHelper.getIosPlayerResponse(
+                contentCountry, localization, videoId, iosCpn!!, iosPoTokenResult
+            )
+
+            if (!isPlayerResponseNotValid(iosPlayerResponse, videoId)) {
+                iosStreamingData = iosPlayerResponse.getObject(STREAMING_DATA)
+
+                if (Utils.isNullOrEmpty(playerCaptionsTracklistRenderer)) {
+                    playerCaptionsTracklistRenderer = iosPlayerResponse.getObject(CAPTIONS)
+                        ?.getObject(PLAYER_CAPTIONS_TRACKLIST_RENDERER)
+                }
+
+                if (iosPoTokenResult != null) {
+                    iosStreamingUrlsPoToken = iosPoTokenResult.streamingDataPoToken
+                }
+            }
+        } catch (ignored: Exception) {
+        }
+    }
+
+    private fun fetchVisionOsClient(
+        localization: Localization,
+        contentCountry: ContentCountry,
+        videoId: String
+    ) {
+        try {
+            visionOsCpn = generateContentPlaybackNonce()
+
+            val visionOsPlayerResponse = YoutubeStreamHelper.getVisionOsPlayerResponse(
+                contentCountry, localization, videoId, visionOsCpn!!
+            )
+
+            if (!isPlayerResponseNotValid(visionOsPlayerResponse, videoId)) {
+                visionOsStreamingData = visionOsPlayerResponse.getObject(STREAMING_DATA)
+
+                if (Utils.isNullOrEmpty(playerCaptionsTracklistRenderer)) {
+                    playerCaptionsTracklistRenderer = visionOsPlayerResponse.getObject(CAPTIONS)
+                        ?.getObject(PLAYER_CAPTIONS_TRACKLIST_RENDERER)
+                }
+            }
+        } catch (ignored: Exception) {
+        }
+    }
+
+    private fun fetchWebClientMetadataAndSetThumbnails(
+        localization: Localization,
+        contentCountry: ContentCountry,
+        videoId: String
+    ) {
+        try {
+            val webPlayerResponse = YoutubeStreamHelper.getWebMetadataPlayerResponse(
+                localization, contentCountry, videoId
+            )
+
+            if (!isPlayerResponseNotValid(webPlayerResponse, videoId)) {
+                playerMicroFormatRenderer = webPlayerResponse.getObject("microformat")
+                    ?.getObject("playerMicroformatRenderer")
+
+                val thumbnailWebJsonObj = webPlayerResponse.getObject(VIDEO_DETAILS)
+                    ?.getObject(THUMBNAIL)
+                if (thumbnailWebJsonObj?.containsKey(THUMBNAILS) == true) {
+                    thumbnailsArray = thumbnailWebJsonObj.getArray(THUMBNAILS)
+                } else {
+                    thumbnailsArray = playerResponse?.getObject(VIDEO_DETAILS)
+                        ?.getObject(THUMBNAIL)
+                        ?.getArray(THUMBNAILS)
+                }
+            }
+        } catch (e: Exception) {
+            playerMicroFormatRenderer = JsonObject(emptyMap())
+            thumbnailsArray = playerResponse?.getObject(VIDEO_DETAILS)
+                ?.getObject(THUMBNAIL)
+                ?.getArray(THUMBNAILS)
+        }
+    }
+
+    private fun getVideoPrimaryInfoRenderer(): JsonObject {
+        if (videoPrimaryInfoRenderer != null) {
+            return videoPrimaryInfoRenderer!!
+        }
+
+        videoPrimaryInfoRenderer = getVideoInfoRenderer("videoPrimaryInfoRenderer")
+        return videoPrimaryInfoRenderer!!
+    }
+
+    private fun getVideoSecondaryInfoRenderer(): JsonObject {
+        if (videoSecondaryInfoRenderer != null) {
+            return videoSecondaryInfoRenderer!!
+        }
+
+        videoSecondaryInfoRenderer = getVideoInfoRenderer("videoSecondaryInfoRenderer")
+        return videoSecondaryInfoRenderer!!
+    }
+
+    private fun getVideoInfoRenderer(videoRendererName: String): JsonObject {
+        return nextResponse?.getObject("contents")
+            ?.getObject("twoColumnWatchNextResults")
+            ?.getObject("results")
+            ?.getObject("results")
+            ?.getArray("contents")
+            ?.filterIsInstance<JsonObject>()
+            ?.firstOrNull { it.containsKey(videoRendererName) }
+            ?.getObject(videoRendererName) ?: JsonObject(emptyMap())
+    }
+
+    private fun buildSabrStreamsIfNeeded() {
+        if (sabrStreamsBuilt) {
+            return
+        }
+        sabrStreamsBuilt = true
+        val videoId: String = try {
+            id
+        } catch (e: Exception) {
+            return
+        }
+        val sabrInfo: org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrInfo = try {
+            YoutubeSabrProbe.fetchSabrInfo(
+                videoId,
+                YoutubeSabrClientProfile.WEB,
+                extractorLocalization,
+                extractorContentCountry
+            )
+        } catch (e: Exception) {
+            ExtractorLogger.d("YoutubeSabr", "SABR fetch failed for {}: {}", videoId, e)
+            return
+        }
+        if (sabrInfo.formats.isEmpty() && sabrInfo.serverAbrStreamingUrl.isNullOrEmpty()) {
+            // still check formats via getFormats for compatibility
+        }
+        // Use getter for java compatibility + kotlin property both exist
+        val formats = try {
+            sabrInfo.getFormats()
+        } catch (e: Exception) {
+            // fallback to property via reflection not needed; try formats list directly via internal?
+            emptyList<YoutubeSabrFormat>()
+        }
+        // Also try direct access if getFormats empty: use YoutubeSabrInfo's internal formats? But we also have property via earlier version?
+        // We'll just use formats above; if empty and actual list available via extension, keep empty logic.
+
+        val actualFormats = if (formats.isNotEmpty()) formats else {
+            // Try to get via property if kotlin class exposes getFormats
+            try {
+                // SabrInfo was just converted, it has getFormats()
+                sabrInfo.getFormats()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+        if (actualFormats.isEmpty()) {
+            ExtractorLogger.d("YoutubeSabr", "SABR fetch returned no info/formats for {}", videoId)
+            // still continue to allow serverAbrStreamingUrl check
+        }
+        val serverAbrStreamingUrl = sabrInfo.getServerAbrStreamingUrl()
+        var av1Count = 0
+        for (format in actualFormats) {
+            try {
+                val itagItem = buildSabrItagItem(format) ?: continue
+                val idStr = format.itag.toString()
+
+                if (format.isAudio()) {
+                    val builder = AudioStream.Builder()
+                        .setContent(serverAbrStreamingUrl, false)
+                        .setMediaFormat(itagItem.getMediaFormat())
+                        .setAverageBitrate(format.bitrate)
+                        .setItagItem(itagItem)
+                        .setDeliveryMethod(DeliveryMethod.SABR)
+                        .setDeliveryMethodInfo(sabrInfo)
+                    var streamId = idStr
+                    val trackId = format.audioTrackId
+                    if (!trackId.isNullOrEmpty()) {
+                        val langPart = trackId.split(".")[0]
+                        val displayName = format.audioTrackDisplayName
+                        builder.setAudioTrackId(trackId)
+                            .setAudioTrackName(displayName ?: langPart)
+                            .setAudioLocale(Locale(langPart.split("-")[0]))
+                        streamId = "$idStr-$trackId"
+                    }
+                    val audioStreamId = streamId
+                    val stream = builder.setId(audioStreamId).build()
+                    if (sabrAudioStreams.none { audioStreamId == it.getId() }) {
+                        sabrAudioStreams.add(stream)
+                    }
+                } else if (format.isVideo()) {
+                    val codec = itagItem.getCodec()
+                    if (codec != null && codec.contains("av01")) {
+                        av1Count++
+                    }
+                    val qualityLabel = format.qualityLabel
+                    val resolution = if (!qualityLabel.isNullOrEmpty()) qualityLabel
+                    else if (format.height > 0) "${format.height}p" else ""
+                    val stream = VideoStream.Builder()
+                        .setId(idStr)
+                        .setContent(serverAbrStreamingUrl, false)
+                        .setMediaFormat(itagItem.getMediaFormat())
+                        .setIsVideoOnly(true)
+                        .setItagItem(itagItem)
+                        .setResolution(resolution)
+                        .setDeliveryMethod(DeliveryMethod.SABR)
+                        .setDeliveryMethodInfo(sabrInfo)
+                        .build()
+                    if (sabrVideoOnlyStreams.none { idStr == it.getId() }) {
+                        sabrVideoOnlyStreams.add(stream)
+                    }
+                }
+            } catch (e: Exception) {
+            }
+        }
+        ExtractorLogger.d(
+            "YoutubeSabr", "SABR built video={} audio={} (av1={}) for {}",
+            sabrVideoOnlyStreams.size, sabrAudioStreams.size, av1Count, videoId
+        )
+        sabrAudioStreams.sortByDescending { it.getAverageBitrate() }
+    }
+
+    private fun <T : Stream> getItags(
+        streamingDataKey: String,
+        itagTypeWanted: ItagItem.ItagType,
+        streamBuilderHelper: java.util.function.Function<ItagInfo, T>,
+        streamTypeExceptionMessage: String
+    ): MutableList<T> {
+        try {
+            val videoId = id
+            val streamList = mutableListOf<T>()
+
+            val pairs = listOf(
+                Pair(androidStreamingData, Pair(androidCpn, androidStreamingUrlsPoToken)),
+                Pair(visionOsStreamingData, Pair(visionOsCpn, null as String?)),
+                Pair(iosStreamingData, Pair(iosCpn, iosStreamingUrlsPoToken))
+            )
+
+            for (pair in pairs) {
+                val streamingData = pair.getFirst()
+                val second = pair.getSecond()
+                val cpn = second.getFirst()
+                val poToken = second.getSecond()
+                if (streamingData == null || cpn == null) continue
+                getStreamsFromStreamingDataKey(
+                    videoId, streamingData, streamingDataKey,
+                    itagTypeWanted, cpn, poToken
+                ).forEach { itagInfo ->
+                    val stream = streamBuilderHelper.apply(itagInfo)
+                    if (!Stream.containSimilarStream(stream, streamList)) {
+                        streamList.add(stream)
+                    }
+                }
+            }
+
+            return streamList
+        } catch (e: Exception) {
+            throw ParsingException("Could not get $streamTypeExceptionMessage streams", e)
+        }
+    }
+
+    private fun getAudioStreamBuilderHelper(): java.util.function.Function<ItagInfo, AudioStream> {
+        return java.util.function.Function { itagInfo ->
+            val itagItem = itagInfo.getItagItem()
+            val builder = AudioStream.Builder()
+                .setId(itagItem.id.toString())
+                .setContent(itagInfo.getContent(), itagInfo.getIsUrl())
+                .setMediaFormat(itagItem.getMediaFormat())
+                .setAverageBitrate(itagItem.getAverageBitrate())
+                .setAudioTrackId(itagItem.getAudioTrackId())
+                .setAudioTrackName(itagItem.getAudioTrackName())
+                .setAudioLocale(itagItem.getAudioLocale())
+                .setAudioTrackType(itagItem.getAudioTrackType())
+                .setItagItem(itagItem)
+
+            if (streamType == StreamType.LIVE_STREAM ||
+                streamType == StreamType.POST_LIVE_STREAM ||
+                !itagInfo.getIsUrl()
+            ) {
+                builder.setDeliveryMethod(DeliveryMethod.DASH)
+            }
+
+            builder.build()
+        }
+    }
+
+    private fun getVideoStreamBuilderHelper(
+        areStreamsVideoOnly: Boolean
+    ): java.util.function.Function<ItagInfo, VideoStream> {
+        return java.util.function.Function { itagInfo ->
+            val itagItem = itagInfo.getItagItem()
+            val builder = VideoStream.Builder()
+                .setId(itagItem.id.toString())
+                .setContent(itagInfo.getContent(), itagInfo.getIsUrl())
+                .setMediaFormat(itagItem.getMediaFormat())
+                .setIsVideoOnly(areStreamsVideoOnly)
+                .setItagItem(itagItem)
+
+            val resolutionString = itagItem.getResolutionString()
+            builder.setResolution(resolutionString ?: "")
+
+            if (streamType != StreamType.VIDEO_STREAM || !itagInfo.getIsUrl()) {
+                builder.setDeliveryMethod(DeliveryMethod.DASH)
+            }
+
+            builder.build()
+        }
+    }
+
+    private fun getStreamsFromStreamingDataKey(
+        videoId: String,
+        streamingData: JsonObject,
+        streamingDataKey: String,
+        itagTypeWanted: ItagItem.ItagType,
+        contentPlaybackNonce: String,
+        poToken: String?
+    ): Sequence<ItagInfo> {
+        if (!streamingData.containsKey(streamingDataKey)) {
+            return emptySequence()
+        }
+
+        val array = streamingData.getArray(streamingDataKey) ?: return emptySequence()
+        return array.filterIsInstance<JsonObject>()
+            .asSequence()
+            .mapNotNull { formatData ->
+                try {
+                    val itagInt = formatData.getInt("itag") ?: return@mapNotNull null
+                    val itagItem = ItagItem.getItag(itagInt)
+                    if (itagItem.itagType == itagTypeWanted) {
+                        buildAndAddItagInfoToList(
+                            videoId, formatData, itagItem,
+                            itagItem.itagType, contentPlaybackNonce, poToken
+                        )
+                    } else null
+                } catch (ignored: ExtractionException) {
+                    null
+                }
+            }
+    }
+
+    @Throws(ExtractionException::class)
+    private fun buildAndAddItagInfoToList(
+        videoId: String,
+        formatData: JsonObject,
+        itagItem: ItagItem,
+        itagType: ItagItem.ItagType,
+        contentPlaybackNonce: String,
+        poToken: String?
+    ): ItagInfo? {
+        var streamUrl: String? = null
+        if (formatData.containsKey("url")) {
+            streamUrl = formatData.getString("url")
+        } else {
+            var cipherString = formatData.getString(CIPHER)
+            if (cipherString == null) {
+                cipherString = formatData.getString(SIGNATURE_CIPHER)
+            }
+
+            if (Utils.isNullOrEmpty(cipherString)) {
+                return null
+            }
+
+            val cipher = Parser.compatParseMap(cipherString!!)
+            val signature = YoutubeJavaScriptPlayerManager.deobfuscateSignature(
+                videoId, cipher.getOrDefault("s", "")
+            )
+            streamUrl = cipher["url"] + "&" + cipher["sp"] + "=" + signature
+        }
+
+        if (streamUrl == null) return null
+
+        streamUrl = YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
+            videoId, streamUrl
+        )
+
+        streamUrl += "&$CPN=$contentPlaybackNonce"
+
+        if (poToken != null) {
+            streamUrl += "&pot=$poToken"
+        }
+
+        val initRange = formatData.getObject("initRange")
+        val indexRange = formatData.getObject("indexRange")
+        val mimeType = formatData.getString("mimeType", "") ?: ""
+        val codec = if (mimeType.contains("codecs")) {
+            val parts = mimeType.split("\"")
+            if (parts.size > 1) parts[1] else ""
+        } else ""
+
+        itagItem.setBitrate(formatData.getInt("bitrate") ?: 0)
+        itagItem.setWidth(formatData.getInt("width") ?: 0)
+        itagItem.setHeight(formatData.getInt("height") ?: 0)
+        itagItem.setInitStart(
+            initRange?.getString("start", "-1")?.toIntOrNull() ?: -1
+        )
+        itagItem.setInitEnd(
+            initRange?.getString("end", "-1")?.toIntOrNull() ?: -1
+        )
+        itagItem.setIndexStart(
+            indexRange?.getString("start", "-1")?.toIntOrNull() ?: -1
+        )
+        itagItem.setIndexEnd(
+            indexRange?.getString("end", "-1")?.toIntOrNull() ?: -1
+        )
+        itagItem.setQuality(formatData.getString("quality"))
+        itagItem.setCodec(codec)
+        itagItem.setIsDrc(formatData.getBoolean("isDrc", false))
+        itagItem.setLastModified(
+            formatData.getString("lastModified", "-1")?.toLongOrNull() ?: -1
+        )
+        itagItem.setXtags(formatData.getString("xtags"))
+
+        if (streamType == StreamType.LIVE_STREAM || streamType == StreamType.POST_LIVE_STREAM) {
+            itagItem.setTargetDurationSec(formatData.getInt("targetDurationSec") ?: -1)
+        }
+
+        if (itagType == ItagItem.ItagType.VIDEO || itagType == ItagItem.ItagType.VIDEO_ONLY) {
+            itagItem.setFps(formatData.getInt("fps") ?: -1)
+        } else if (itagType == ItagItem.ItagType.AUDIO) {
+            val audioSampleRateStr = formatData.getString("audioSampleRate") ?: "0"
+            itagItem.setSampleRate(audioSampleRateStr.toIntOrNull() ?: 0)
+            itagItem.setAudioChannels(
+                formatData.getInt("audioChannels", 2)
+            )
+
+            val audioTrackId = formatData.getObject("audioTrack")?.getString("id")
+            if (!Utils.isNullOrEmpty(audioTrackId)) {
+                itagItem.setAudioTrackId(audioTrackId)
+                val dot = audioTrackId!!.indexOf(".")
+                if (dot != -1) {
+                    LocaleCompat.forLanguageTag(
+                        audioTrackId.substring(0, dot)
+                    ).ifPresent { locale -> itagItem.setAudioLocale(locale) }
+                }
+                itagItem.setAudioTrackType(
+                    YoutubeParsingHelper.extractAudioTrackType(itagItem.getXtags())
+                )
+            }
+
+            itagItem.setAudioTrackName(
+                formatData.getObject("audioTrack")?.getString("displayName")
+            )
+        }
+
+        itagItem.setContentLength(
+            formatData.getString("contentLength", ItagItem.CONTENT_LENGTH_UNKNOWN.toString())
+                ?.toLongOrNull() ?: ItagItem.CONTENT_LENGTH_UNKNOWN
+        )
+        itagItem.setApproxDurationMs(
+            formatData.getString("approxDurationMs", ItagItem.APPROX_DURATION_MS_UNKNOWN.toString())
+                ?.toLongOrNull() ?: ItagItem.APPROX_DURATION_MS_UNKNOWN
+        )
+
+        val itagInfo = ItagInfo(streamUrl, itagItem)
+
+        if (streamType == StreamType.VIDEO_STREAM) {
+            itagInfo.setIsUrl(
+                !(formatData.getString("type", "") ?: "")
+                    .equals("FORMAT_STREAM_TYPE_OTF", ignoreCase = true)
+            )
+        } else {
+            itagInfo.setIsUrl(streamType != StreamType.POST_LIVE_STREAM)
+        }
+
+        return itagInfo
+    }
+
+    @Throws(ExtractionException::class)
+    override fun getFrames(): List<Frameset> {
+        try {
+            val storyboards = playerResponse?.getObject("storyboards")
+            val storyboardsRenderer = storyboards?.let { sb ->
+                if (sb.containsKey("playerLiveStoryboardSpecRenderer")) {
+                    sb.getObject("playerLiveStoryboardSpecRenderer")
+                } else {
+                    sb.getObject("playerStoryboardSpecRenderer")
+                }
+            }
+
+            if (storyboardsRenderer == null) {
+                return Collections.emptyList()
+            }
+
+            val storyboardsRendererSpec = storyboardsRenderer.getString("spec")
+                ?: return Collections.emptyList()
+
+            val spec = storyboardsRendererSpec.split("|")
+            val url = spec[0]
+            val result = ArrayList<Frameset>(spec.size - 1)
+
+            for (i in 1 until spec.size) {
+                val parts = spec[i].split("#")
+                if (parts.size != 8 || parts[5].toIntOrNull() == 0) {
+                    continue
+                }
+                val totalCount = parts[2].toInt()
+                val framesPerPageX = parts[3].toInt()
+                val framesPerPageY = parts[4].toInt()
+                val baseUrl = url.replace("\$L", (i - 1).toString())
+                    .replace("\$N", parts[6]) + "&sigh=" + parts[7]
+                val urls: List<String>
+                if (baseUrl.contains("\$M")) {
+                    val totalPages = Math.ceil(totalCount / (framesPerPageX * framesPerPageY).toDouble()).toInt()
+                    urls = ArrayList(totalPages)
+                    for (j in 0 until totalPages) {
+                        (urls as ArrayList).add(baseUrl.replace("\$M", j.toString()))
+                    }
+                } else {
+                    urls = Collections.singletonList(baseUrl)
+                }
+                result.add(
+                    Frameset(
+                        urls,
+                        parts[0].toInt(),
+                        parts[1].toInt(),
+                        totalCount,
+                        parts[5].toInt(),
+                        framesPerPageX,
+                        framesPerPageY
+                    )
+                )
+            }
+            return result
+        } catch (e: Exception) {
+            throw ExtractionException("Could not get frames", e)
+        }
+    }
+
+    @Throws(ParsingException::class)
+    override fun getPrivacy(): Privacy {
+        val isUnlisted = playerMicroFormatRenderer?.getBoolean("isUnlisted") ?: false
+        val badges = getVideoPrimaryInfoRenderer().getArray("badges")
+        val hasUnlistedBadge = badges?.filterIsInstance<JsonObject>()
+            ?.any { badge ->
+                "PRIVACY_UNLISTED" == badge.getObject("metadataBadgeRenderer")
+                    ?.getObject("icon")
+                    ?.getString("iconType")
+            } ?: false
+        return if (isUnlisted || hasUnlistedBadge) Privacy.UNLISTED else Privacy.PUBLIC
+    }
+
+    @Throws(ParsingException::class)
+    override fun getCategory(): String {
+        return playerMicroFormatRenderer?.getString("category", "") ?: ""
+    }
+
+    @Throws(ParsingException::class)
+    override fun getLicence(): String {
+        val metadataRowRenderer = getVideoSecondaryInfoRenderer()
+            .getObject("metadataRowContainer")
+            ?.getObject("metadataRowContainerRenderer")
+            ?.getArray("rows")
+            ?.getObject(0)
+            ?.getObject("metadataRowRenderer")
+            ?: return "YouTube licence"
+
+        val contents = metadataRowRenderer.getArray("contents")
+        val license = contents?.getObject(0)?.let { getTextFromObject(it) }
+        return if (license != null && "Licence" == getTextFromObject(metadataRowRenderer.getObject(TITLE))) {
+            license
+        } else "YouTube licence"
+    }
+
+    override fun getLanguageInfo(): Locale? = null
+
+    @Throws(ParsingException::class)
+    override fun getTags(): List<String> {
+        return JsonUtils.getStringListFromJsonArray(
+            playerResponse?.getObject(VIDEO_DETAILS)?.getArray("keywords")
+                ?: JsonArray(emptyList())
+        )
+    }
+
+    @Throws(ParsingException::class)
+    override fun getStreamSegments(): List<StreamSegment> {
+        val engagementPanels = nextResponse?.getArray("engagementPanels")
+            ?: return Collections.emptyList()
+
+        val segmentsArray = engagementPanels.filterIsInstance<JsonObject>()
+            .firstOrNull { panel ->
+                "engagement-panel-macro-markers-description-chapters" ==
+                    panel.getObject("engagementPanelSectionListRenderer")
+                        ?.getString("panelIdentifier")
+            }
+            ?.getObject("engagementPanelSectionListRenderer")
+            ?.getObject("content")
+            ?.getObject("macroMarkersListRenderer")
+            ?.getArray("contents")
+
+        if (segmentsArray == null) {
+            return Collections.emptyList()
+        }
+
+        val duration = getLength()
+        val segments = mutableListOf<StreamSegment>()
+        val iterator = segmentsArray.filterIsInstance<JsonObject>()
+            .mapNotNull { it.getObject("macroMarkersListItemRenderer") }
+            .iterator()
+
+        while (iterator.hasNext()) {
+            val segmentJson = iterator.next()
+            val startTimeSeconds = segmentJson.getObject("onTap")
+                ?.getObject("watchEndpoint")
+                ?.getInt("startTimeSeconds", -1) ?: -1
+
+            if (startTimeSeconds == -1) {
+                throw ParsingException("Could not get stream segment start time.")
+            }
+            if (startTimeSeconds > duration) break
+
+            val title = getTextFromObject(segmentJson.getObject(TITLE))
+            if (Utils.isNullOrEmpty(title)) {
+                throw ParsingException("Could not get stream segment title.")
+            }
+
+            val segment = StreamSegment(title!!, startTimeSeconds)
+            segment.setUrl(url + "?t=" + startTimeSeconds)
+            if (segmentJson.containsKey(THUMBNAIL)) {
+                val previewsArray = segmentJson.getObject(THUMBNAIL)
+                    ?.getArray(THUMBNAILS)
+                if (previewsArray != null && !previewsArray.isEmpty()) {
+                    val previewUrl = previewsArray.getObject(previewsArray.size - 1)
+                        ?.getString("url")
+                    if (previewUrl != null) {
+                        segment.setPreviewUrl(fixThumbnailUrl(previewUrl))
+                    }
+                }
+            }
+            segments.add(segment)
+        }
+        return segments
+    }
+
+    @Throws(ParsingException::class)
+    override fun getMetaInfo(): List<MetaInfo> {
+        return YoutubeMetaInfoHelper.getMetaInfo(
+            nextResponse
+                ?.getObject("contents")
+                ?.getObject("twoColumnWatchNextResults")
+                ?.getObject("results")
+                ?.getObject("results")
+                ?.getArray("contents") ?: JsonArray(emptyList())
+        )
+    }
+}

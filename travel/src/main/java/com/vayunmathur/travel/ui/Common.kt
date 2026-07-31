@@ -252,7 +252,7 @@ fun AirlineLogo(
         IataBadge(iata, size, modifier)
         return
     }
-    // library:image includes SVG decoding (androidsvg) built-in.
+    // library:image includes SVG decoding (internal Android stdlib) built-in.
     com.vayunmathur.library.image.compose.AsyncImage(
         model = logoUrl,
         contentDescription = iata,

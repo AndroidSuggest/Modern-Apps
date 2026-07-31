@@ -22,7 +22,7 @@ dependencyResolutionManagement {
         mavenLocal()
         google()
         mavenCentral()
-        // JitPack kept only for Stockfish-Library (games:chess) — nanojson vendored to :third_party:nanojson
+        // JitPack kept only for Stockfish-Library (games:chess)
         maven("https://jitpack.io")
         // sherpa-onnx (offline Piper TTS in :speech) isn't on Maven Central; the official
         // Apache-2.0 AAR is vendored into speech/libs by scripts/speech/fetch_sherpa_onnx.sh.
@@ -31,7 +31,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "apps"
-include(":third_party:nanojson")
 include(":library")
 include(":library:network")
 include(":library:biometric")

@@ -48,6 +48,12 @@ private fun RRule.EndCondition.describeSuffix(context: Context): String = when (
     is RRule.EndCondition.Until -> context.getString(R.string.rrule_until_suffix, date.format(dateFormat))
 }
 
+private fun RRule.EndCondition.toStringSuffix(): String = when (this) {
+    is RRule.EndCondition.Never -> ""
+    is RRule.EndCondition.Count -> ", $count times"
+    is RRule.EndCondition.Until -> ", Until ${date.format(dateFormat)}"
+}
+
 @Serializable
 sealed class RRule {
     abstract val endCondition: EndCondition
@@ -63,6 +69,11 @@ sealed class RRule {
         return describeImpl(context) + endCondition.describeSuffix(context)
     }
     protected abstract fun describeImpl(context: Context): String
+
+    protected abstract fun toStringImpl(): String
+    final override fun toString(): String {
+        return toStringImpl() + endCondition.toStringSuffix()
+    }
 
     companion object {
         fun parse(content: String, timeZone: TimeZone): RRule? {
@@ -191,6 +202,8 @@ sealed class RRule {
         override fun describeImpl(context: Context): String =
             if (years == 1) context.getString(R.string.rrule_yearly)
             else context.resources.getQuantityString(R.plurals.rrule_every_years, years, years)
+
+        override fun toStringImpl(): String = if (years == 1) "Yearly" else "Every $years years"
     }
 
     @Serializable
@@ -222,6 +235,8 @@ sealed class RRule {
         override fun describeImpl(context: Context): String =
             if (months == 1) context.getString(R.string.rrule_monthly)
             else context.resources.getQuantityString(R.plurals.rrule_every_months, months, months)
+
+        override fun toStringImpl(): String = if (months == 1) "Monthly" else "Every $months months"
     }
 
     @Serializable
@@ -251,6 +266,15 @@ sealed class RRule {
             }
             return context.getString(R.string.rrule_on_days, prefix, days)
         }
+
+        override fun toStringImpl(): String {
+            val prefix = if (weeks == 1) "Weekly" else "Every $weeks weeks"
+            if (daysOfWeek.isEmpty()) return prefix
+            val days = daysOfWeek.sorted().joinToString(", ") {
+                it.name.take(3).lowercase().replaceFirstChar { c -> c.titlecase() }
+            }
+            return "$prefix on $days"
+        }
     }
 
     @Serializable
@@ -272,5 +296,7 @@ sealed class RRule {
         override fun describeImpl(context: Context): String =
             if (days == 1) context.getString(R.string.rrule_daily)
             else context.resources.getQuantityString(R.plurals.rrule_every_days, days, days)
+
+        override fun toStringImpl(): String = if (days == 1) "Daily" else "Every $days days"
     }
 }
