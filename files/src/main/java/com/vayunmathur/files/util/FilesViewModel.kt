@@ -16,10 +16,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.vayunmathur.files.R
-import com.vayunmathur.files.deleteRecursively
-import com.vayunmathur.files.fs
-import com.vayunmathur.files.isDirectory
-import com.vayunmathur.files.listFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -30,12 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import okio.FileSystem
-import okio.Path
-import okio.Path.Companion.toOkioPath
-import okio.Path.Companion.toPath
-import okio.openZip
-import okio.source
+import java.io.File
+import java.util.zip.ZipFile
 
 class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -47,7 +39,6 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private val _isFilesGranted = MutableStateFlow(Environment.isExternalStorageManager())
     val isFilesGranted: StateFlow<Boolean> = _isFilesGranted.asStateFlow()
 
-    /** Re-checks the MANAGE_EXTERNAL_STORAGE permission (call from MainActivity onResume). */
     fun refreshPermissions() {
         val granted = Environment.isExternalStorageManager()
         if (_isFilesGranted.value != granted) {
@@ -67,42 +58,47 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- Navigation state ----
 
-    /** Stable storage-root path used for "home" / back-handler base. */
-    val rootDirectory: Path = Environment.getExternalStorageDirectory().toOkioPath()
-
-    private val _currentFileSystem = MutableStateFlow<FileSystem>(fs)
-    val currentFileSystem: StateFlow<FileSystem> = _currentFileSystem.asStateFlow()
+    val rootDirectory: File = Environment.getExternalStorageDirectory()
 
     private val _currentDirectory = MutableStateFlow(rootDirectory)
-    val currentDirectory: StateFlow<Path> = _currentDirectory.asStateFlow()
+    val currentDirectory: StateFlow<File> = _currentDirectory.asStateFlow()
 
-    /** The on-disk zip file when browsing inside an opened archive; `null` otherwise. */
-    private val _zipPath = MutableStateFlow<Path?>(null)
-    val zipPath: StateFlow<Path?> = _zipPath.asStateFlow()
+    /** The on-disk zip file when browsing inside an opened archive; null otherwise. */
+    private val _zipPath = MutableStateFlow<File?>(null)
+    val zipPath: StateFlow<File?> = _zipPath.asStateFlow()
+
+    /** Relative path inside the opened zip, "" = root. */
+    private val _zipInternalPath = MutableStateFlow("")
+    val zipInternalPath: StateFlow<String> = _zipInternalPath.asStateFlow()
+
+    fun isZipMode(): Boolean = _zipPath.value != null
 
     // ---- Directory listing ----
 
-    /** (directories, files) for [currentDirectory], partitioned & sorted on Dispatchers.IO. */
     private val _entries =
-        MutableStateFlow<Pair<List<Path>, List<Path>>>(emptyList<Path>() to emptyList())
-    val entries: StateFlow<Pair<List<Path>, List<Path>>> = _entries.asStateFlow()
+        MutableStateFlow<Pair<List<File>, List<File>>>(emptyList<File>() to emptyList())
+    val entries: StateFlow<Pair<List<File>, List<File>>> = _entries.asStateFlow()
 
     // ---- Selection ----
 
-    private val _selectedPaths = MutableStateFlow<Set<Path>>(emptySet())
-    val selectedPaths: StateFlow<Set<Path>> = _selectedPaths.asStateFlow()
+    private val _selectedPaths = MutableStateFlow<Set<File>>(emptySet())
+    val selectedPaths: StateFlow<Set<File>> = _selectedPaths.asStateFlow()
 
     fun clearSelection() {
         if (_selectedPaths.value.isNotEmpty()) _selectedPaths.value = emptySet()
     }
 
-    fun addToSelection(path: Path) {
+    fun addToSelection(path: File) {
         _selectedPaths.value = _selectedPaths.value + path
     }
 
-    fun toggleSelection(path: Path) {
+    fun toggleSelection(path: File) {
         val current = _selectedPaths.value
-        _selectedPaths.value = if (path in current) current - path else current + path
+        _selectedPaths.value = if (current.any { it.absolutePath == path.absolutePath && it.name == path.name }) {
+            current.filterNot { it.absolutePath == path.absolutePath && it.name == path.name }.toSet()
+        } else {
+            current + path
+        }
     }
 
     // ---- Incoming share-intent URIs ----
@@ -124,10 +120,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     val snackbarMessages: SharedFlow<String> = _snackbarMessages.asSharedFlow()
 
     private val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 4)
-    /** Emits ACTION_VIEW intents for files the user taps; MainActivity launches them. */
     val intents: SharedFlow<Intent> = _intents.asSharedFlow()
-
-    // ---- FileObserver lifecycle ----
 
     private var observerJob: Job? = null
 
@@ -136,25 +129,32 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         restartObserver()
     }
 
-    /** Re-list the current directory off the main thread. */
     fun loadDirectory() {
-        val dir = _currentDirectory.value
-        val fileSystem = _currentFileSystem.value
-        viewModelScope.launch(Dispatchers.IO) {
-            _entries.value = dir.listFiles(fileSystem).partition { it.isDirectory(fileSystem) }
+        val zipFile = _zipPath.value
+        if (zipFile == null) {
+            val dir = _currentDirectory.value
+            viewModelScope.launch(Dispatchers.IO) {
+                val files = dir.listFiles()?.toList() ?: emptyList()
+                _entries.value = files.partition { it.isDirectory }
+            }
+        } else {
+            val internalPath = _zipInternalPath.value
+            viewModelScope.launch(Dispatchers.IO) {
+                _entries.value = listZipEntries(zipFile, internalPath)
+            }
         }
     }
 
     private fun restartObserver() {
         observerJob?.cancel()
-        if (_currentFileSystem.value != fs) {
+        if (isZipMode()) {
             observerJob = null
             return
         }
         val dir = _currentDirectory.value
         observerJob = viewModelScope.launch {
             val observer = object : FileObserver(
-                dir.toFile(), CREATE or DELETE or MOVED_FROM or MOVED_TO,
+                dir, CREATE or DELETE or MOVED_FROM or MOVED_TO,
             ) {
                 override fun onEvent(event: Int, path: String?) {
                     loadDirectory()
@@ -169,20 +169,34 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Navigate to [path] on [fileSystem]; clears selection and the open zip when leaving zip mode. */
-    fun navigateTo(path: Path, fileSystem: FileSystem) {
-        _currentFileSystem.value = fileSystem
+    fun navigateTo(path: File) {
+        if (isZipMode()) {
+            // If navigating while in zip mode via breadcrumb real-FS part, exit zip mode
+            _zipPath.value = null
+            _zipInternalPath.value = ""
+        }
         _currentDirectory.value = path
-        if (fileSystem == fs) _zipPath.value = null
         clearSelection()
         loadDirectory()
         restartObserver()
     }
 
-    /**
-     * Back-handler logic mirroring the original `BackHandler` body. Returns `true` if it consumed
-     * the event.
-     */
+    /** Navigate into a sub-directory inside the opened zip. */
+    fun navigateIntoZipDir(dirName: String) {
+        val current = _zipInternalPath.value
+        val newPath = if (current.isEmpty()) dirName else "$current/$dirName"
+        _zipInternalPath.value = newPath
+        clearSelection()
+        loadDirectory()
+    }
+
+    fun navigateToZipInternalPath(fullInternalPath: String) {
+        // fullInternalPath is the directory path inside zip, e.g. "a/b"
+        _zipInternalPath.value = fullInternalPath
+        clearSelection()
+        loadDirectory()
+    }
+
     fun handleBack(): Boolean {
         if (_selectedPaths.value.isNotEmpty()) {
             clearSelection()
@@ -191,17 +205,22 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         val z = _zipPath.value
         when {
             z != null -> {
-                val cur = _currentDirectory.value
-                if (cur.toString() == "/" || cur.name.isEmpty()) {
-                    navigateTo(z.parent ?: rootDirectory, fs)
+                val internal = _zipInternalPath.value
+                if (internal.isEmpty()) {
+                    // Exit zip mode to parent of zip file
+                    val parent = z.parentFile ?: rootDirectory
+                    _zipPath.value = null
+                    _currentDirectory.value = parent
                 } else {
-                    _currentDirectory.value = cur.parent ?: "/".toPath()
-                    loadDirectory()
-                    restartObserver()
+                    // Go up one level inside zip
+                    val parentInternal = if (internal.contains("/")) internal.substringBeforeLast("/") else ""
+                    _zipInternalPath.value = parentInternal
                 }
+                loadDirectory()
+                restartObserver()
             }
             _currentDirectory.value != rootDirectory -> {
-                _currentDirectory.value = _currentDirectory.value.parent ?: _currentDirectory.value
+                _currentDirectory.value = _currentDirectory.value.parentFile ?: _currentDirectory.value
                 loadDirectory()
                 restartObserver()
             }
@@ -212,11 +231,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- File ops ----
 
-    fun rename(path: Path, newName: String) {
-        val fileSystem = _currentFileSystem.value
+    fun rename(path: File, newName: String) {
+        if (isZipMode()) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                fileSystem.atomicMove(path, path.parent!!.resolve(newName))
+                val target = File(path.parentFile, newName)
+                path.atomicMoveTo(target)
                 clearSelection()
                 loadDirectory()
             } catch (e: Exception) {
@@ -226,36 +246,39 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteSelection() {
-        val fileSystem = _currentFileSystem.value
+        if (isZipMode()) return
         val selection = _selectedPaths.value
         viewModelScope.launch(Dispatchers.IO) {
-            selection.forEach { it.deleteRecursively(fileSystem) }
+            selection.forEach { it.deleteRecursively() }
             clearSelection()
             loadDirectory()
         }
     }
 
-    fun moveInto(sources: List<Path>, target: Path) {
-        if (!target.isDirectory(_currentFileSystem.value)) return
-        moveFiles(sources, target, _currentFileSystem.value) { source ->
-            source != target && !target.toString().startsWith(source.toString())
+    fun moveInto(sources: List<File>, target: File) {
+        if (isZipMode()) return
+        if (!target.isDirectory) return
+        moveFiles(sources, target) { source ->
+            source != target && !target.absolutePath.startsWith(source.absolutePath)
         }
     }
 
-    fun moveToBreadcrumb(sources: List<Path>, target: Path) {
-        moveFiles(sources, target, fs) { source ->
-            source.parent != target && source != target
+    fun moveToBreadcrumb(sources: List<File>, target: File) {
+        if (isZipMode()) return
+        moveFiles(sources, target) { source ->
+            source.parentFile != target && source != target
         }
     }
 
-    private fun moveFiles(sources: List<Path>, target: Path, fileSystem: FileSystem, canMove: (Path) -> Boolean) {
+    private fun moveFiles(sources: List<File>, target: File, canMove: (File) -> Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             var movedAny = false
             var lastError: Exception? = null
             sources.forEach { source ->
                 if (canMove(source)) {
                     try {
-                        fileSystem.atomicMove(source, target.resolve(source.name))
+                        val dest = File(target, source.name)
+                        source.atomicMoveTo(dest)
                         movedAny = true
                     } catch (e: Exception) {
                         lastError = e
@@ -270,15 +293,14 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Try to open [path] as a zip and descend into it. */
-    fun openZipFile(path: Path) {
-        val fileSystem = _currentFileSystem.value
+    fun openZipFile(path: File) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val zipFs = fileSystem.openZip(path)
-                if (_zipPath.value == null) _zipPath.value = path
-                _currentFileSystem.value = zipFs
-                _currentDirectory.value = "/".toPath()
+                // Validate it can be opened
+                ZipFile(path).use { _ -> }
+                _zipPath.value = path
+                _zipInternalPath.value = ""
+                _currentDirectory.value = File("/") // fake placeholder for zip root display
                 clearSelection()
                 loadDirectory()
                 restartObserver()
@@ -291,17 +313,16 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Enqueue a [ZipWorker] archiving the current selection into [archiveName] in the current dir. */
     fun archive(archiveName: String) {
+        if (isZipMode()) return
         val ctx = getApplication<Application>()
         val sources = _selectedPaths.value
-        val destPath = _currentDirectory.value.resolve(
-            if (archiveName.endsWith(".zip")) archiveName else "$archiveName.zip",
-        )
+        val destFileName = if (archiveName.endsWith(".zip")) archiveName else "$archiveName.zip"
+        val destFile = File(_currentDirectory.value, destFileName)
         val zipWork = OneTimeWorkRequestBuilder<ZipWorker>().setInputData(
             workDataOf(
-                "source_paths" to sources.map { it.toString() }.toTypedArray(),
-                "dest_path" to destPath.toString(),
+                "source_paths" to sources.map { it.absolutePath }.toTypedArray(),
+                "dest_path" to destFile.absolutePath,
             ),
         ).build()
         WorkManager.getInstance(ctx).enqueue(zipWork)
@@ -309,13 +330,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         emit(ctx.getString(R.string.archiving_started))
     }
 
-    /** Enqueue an [UnzipWorker] for the single selected zip extracting into [destPath]. */
-    fun unzip(zipPath: Path, destPath: Path) {
+    fun unzip(zipPath: File, destPath: File) {
         val ctx = getApplication<Application>()
         val unzipWork = OneTimeWorkRequestBuilder<UnzipWorker>().setInputData(
             workDataOf(
-                "zip_path" to zipPath.toString(),
-                "dest_path" to destPath.toString(),
+                "zip_path" to zipPath.absolutePath,
+                "dest_path" to destPath.absolutePath,
             ),
         ).build()
         WorkManager.getInstance(ctx).enqueue(unzipWork)
@@ -323,11 +343,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         emit(ctx.getString(R.string.unzipping_started_to, destPath.name))
     }
 
-    /** Save any URIs queued in [incomingUris] into [currentDirectory], then clear them. */
     fun saveIncomingUris() {
         val ctx = getApplication<Application>()
         val uris = _incomingUris.value ?: return
         val target = _currentDirectory.value
+        if (isZipMode()) return
         viewModelScope.launch(Dispatchers.IO) {
             uris.forEach { uri -> saveUriToPath(ctx, uri, target) }
             clearIncomingUris()
@@ -336,23 +356,18 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Open [path] with an external app via ACTION_VIEW. The intent is emitted on [intents]
-     * and launched by MainActivity; in zip-browse mode emits a snackbar instead.
-     */
-    fun openFile(path: Path) {
+    fun openFile(path: File) {
         val ctx = getApplication<Application>()
-        if (_currentFileSystem.value != fs) {
+        if (isZipMode()) {
             emit(ctx.getString(R.string.zip_browse_only))
             return
         }
-        val file = path.toFile()
-        val extension = file.extension
+        val extension = path.extension
         val mimeType =
             MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
         val intent = Intent(Intent.ACTION_VIEW).apply {
             val uri = FileProvider.getUriForFile(
-                ctx, "${ctx.packageName}.fileprovider", file,
+                ctx, "${ctx.packageName}.fileprovider", path,
             )
             setDataAndType(uri, mimeType)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -377,11 +392,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    private fun saveUriToPath(context: Context, uri: Uri, targetDir: Path) {
+    private fun saveUriToPath(context: Context, uri: Uri, targetDir: File) {
         val name = getFileName(context, uri) ?: "shared_file_${System.currentTimeMillis()}"
-        val targetPath = targetDir.resolve(name)
+        val targetFile = File(targetDir, name)
         context.contentResolver.openInputStream(uri)?.use { input ->
-            fs.write(targetPath) { writeAll(input.source()) }
+            targetFile.outputStream().use { out -> input.copyTo(out) }
         }
     }
 
@@ -395,5 +410,81 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         return uri.path?.substringAfterLast('/')
+    }
+
+    private fun listZipEntries(zipFile: File, internalDir: String): Pair<List<File>, List<File>> {
+        return try {
+            ZipFile(zipFile).use { zf ->
+                val prefix = if (internalDir.isEmpty()) "" else "$internalDir/"
+                val childDirNames = mutableSetOf<String>()
+                val childFiles = mutableListOf<File>()
+
+                // Collect entries
+                val entries = zf.entries().toList()
+                for (entry in entries) {
+                    val name = entry.name
+                    if (name == internalDir || name == prefix) continue
+                    if (!name.startsWith(prefix)) continue
+                    var remainder = name.removePrefix(prefix)
+                    if (remainder.isEmpty()) continue
+                    // Skip leading slash if any
+                    remainder = remainder.trimStart('/')
+                    if (remainder.isEmpty()) continue
+                    if (remainder.contains("/")) {
+                        val first = remainder.substringBefore("/")
+                        if (first.isNotEmpty()) childDirNames.add(first)
+                    } else {
+                        // direct child
+                        if (entry.isDirectory) {
+                            childDirNames.add(remainder.trimEnd('/'))
+                        } else {
+                            // fake file with name = remainder, path inside zip = prefix+remainder
+                            // Use a File whose name is remainder and absolutePath encodes internal path for navigation
+                            val fake = object : File("/zip/$prefix$remainder") {
+                                override fun getName(): String = remainder
+                                override fun isDirectory(): Boolean = false
+                                override fun length(): Long = entry.size.takeIf { it >= 0 } ?: 0L
+                            }
+                            childFiles.add(fake)
+                        }
+                    }
+                }
+
+                // For directories that are implicit (no explicit dir entry), we still have names
+                val dirFiles = childDirNames.map { dirName ->
+                    object : File("/zip/$prefix$dirName") {
+                        override fun getName(): String = dirName
+                        override fun isDirectory(): Boolean = true
+                        override fun length(): Long = 0L
+                    }
+                }
+
+                // For entries list we need real File objects for directories that may have size? we already
+                dirFiles.toList() to childFiles.toList()
+            }
+        } catch (e: Exception) {
+            emptyList<File>() to emptyList()
+        }
+    }
+
+    private fun File.atomicMoveTo(target: File) {
+        try {
+            java.nio.file.Files.move(
+                this.toPath(),
+                target.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE
+            )
+        } catch (_: Exception) {
+            if (!this.renameTo(target)) {
+                // fallback copy+delete
+                if (this.isDirectory) {
+                    this.copyRecursively(target, overwrite = true)
+                    this.deleteRecursively()
+                } else {
+                    this.copyTo(target, overwrite = true)
+                    this.delete()
+                }
+            }
+        }
     }
 }

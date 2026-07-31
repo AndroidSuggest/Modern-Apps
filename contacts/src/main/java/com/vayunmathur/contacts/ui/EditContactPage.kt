@@ -91,7 +91,6 @@ import com.vayunmathur.library.ui.IconRemoveCircle
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.ResultEffect
 import kotlinx.datetime.LocalDate
-import okio.Buffer
 import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalMaterial3Api::class)

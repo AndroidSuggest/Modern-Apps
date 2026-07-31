@@ -78,9 +78,6 @@ import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.CommonSearchBar
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import okio.FileSystem
-import okio.Path.Companion.toOkioPath
-import okio.buffer
 import android.content.Intent
 import androidx.compose.ui.platform.LocalResources
 

@@ -26,7 +26,6 @@ android {
 dependencies {
     implementation(project(":library:image"))
     implementation(project(":youpipe:extractor"))
-    implementation(project(":third_party:nanojson"))
     implementation(libs.quickjs.kt)
     implementation(libs.androidx.webkit)
 

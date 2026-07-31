@@ -38,17 +38,12 @@ object ImageLoader {
     fun init(context: Context) {
         imageLoader = LibImageLoader.Builder(context)
             .memoryCache {
-                MemoryCache.Builder(context)
-                    .maxSizePercent(0.25) // Use 25% of available RAM
-                    .build()
+                MemoryCache.Builder(context).maxSizePercent(0.25).build()
             }
             .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.05) // Use 5% of disk space (or a fixed size like 512MB)
-                    .build()
+                DiskCache.Builder().directory(context.cacheDir.resolve("image_cache")).maxSizePercent(0.05).build()
             }
-            .respectCacheHeaders(false) // Important for local files/mediastore
+            .respectCacheHeaders(false)
             .build()
     }
 
@@ -68,11 +63,11 @@ object ImageLoader {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(photo.uri.toUri())
-                    .videoFrameMillis(1000) // Grabs frame at 1s mark
+                    .videoFrameMillis(1000)
                     .diskCacheKey("thumb_${photo.id}_${photo.dateModified}")
                     .memoryCacheKey("thumb_${photo.id}_${photo.dateModified}")
                     .crossfade(true)
-                    .size(256) // Increased slightly for better quality on high-DPI screens
+                    .size(256)
                     .build(),
                 imageLoader = imageLoader,
                 contentDescription = null,
@@ -81,7 +76,6 @@ object ImageLoader {
             )
 
             if (isVideo) {
-                // Semi-transparent circle background for the icon
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -141,7 +135,6 @@ object ImageLoader {
                             color = Color.Black.copy(alpha = 0.3f),
                             modifier = Modifier.size(24.dp)
                         ) {
-                            // Empty circle
                         }
                     }
                 }

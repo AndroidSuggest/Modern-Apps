@@ -1,16 +1,14 @@
 package com.vayunmathur.files.util
 import android.content.Context
 import androidx.work.WorkerParameters
-import okio.Buffer
-import okio.FileSystem
-import okio.ForwardingSink
-import okio.Path
-import okio.Path.Companion.toPath
-import okio.buffer
-import okio.sink
+import com.vayunmathur.files.R
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.FilterOutputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import com.vayunmathur.files.R
 
 class ZipWorker(context: Context, params: WorkerParameters) : ProgressNotificationWorker(
     context,
@@ -24,23 +22,21 @@ class ZipWorker(context: Context, params: WorkerParameters) : ProgressNotificati
     override suspend fun doWork(): Result {
         val sourcePaths = inputData.getStringArray("source_paths") ?: return Result.failure()
         val destPathString = inputData.getString("dest_path") ?: return Result.failure()
-        val destPath = destPathString.toPath()
+        val destFile = File(destPathString)
 
         createNotificationChannel()
         setForeground(createForegroundInfo(0))
 
         return try {
-            val fileSystem = FileSystem.SYSTEM
-
             var totalSize = 0L
-            sourcePaths.forEach { totalSize += calculateTotalSize(fileSystem, it.toPath()) }
+            sourcePaths.forEach { totalSize += calculateTotalSize(File(it)) }
 
             var bytesZipped = 0L
 
-            fileSystem.write(destPath) {
-                ZipOutputStream(outputStream()).use { zipOutputStream ->
+            FileOutputStream(destFile).use { fos ->
+                ZipOutputStream(fos).use { zipOut ->
                     sourcePaths.forEach { pathString ->
-                        addToZip(fileSystem, pathString.toPath(), "", zipOutputStream) { bytes ->
+                        addToZip(File(pathString), "", zipOut) { bytes ->
                             bytesZipped += bytes
                             updateProgress(bytesZipped, totalSize)
                         }
@@ -56,43 +52,53 @@ class ZipWorker(context: Context, params: WorkerParameters) : ProgressNotificati
         }
     }
 
-    private fun calculateTotalSize(fileSystem: FileSystem, path: Path): Long {
-        val metadata = fileSystem.metadataOrNull(path) ?: return 0L
-        return if (metadata.isDirectory) fileSystem.list(path).sumOf { calculateTotalSize(fileSystem, it) }
-        else metadata.size ?: 0L
+    private fun calculateTotalSize(file: File): Long {
+        if (!file.exists()) return 0L
+        return if (file.isDirectory) {
+            file.listFiles()?.sumOf { calculateTotalSize(it) } ?: 0L
+        } else {
+            file.length()
+        }
     }
 
     private fun addToZip(
-        fileSystem: FileSystem,
-        path: Path,
+        file: File,
         base: String,
         zipOutputStream: ZipOutputStream,
         onProgress: (Long) -> Unit
     ) {
-        val entryName = if (base.isEmpty()) path.name else "$base/${path.name}"
-        val metadata = fileSystem.metadataOrNull(path) ?: return
+        if (!file.exists()) return
+        val entryName = if (base.isEmpty()) file.name else "$base/${file.name}"
 
-        if (metadata.isDirectory) {
-            val children = fileSystem.list(path)
-            if (children.isEmpty()) {
+        if (file.isDirectory) {
+            val children = file.listFiles()
+            if (children == null || children.isEmpty()) {
                 zipOutputStream.putNextEntry(ZipEntry("$entryName/"))
                 zipOutputStream.closeEntry()
             } else {
                 children.forEach { child ->
-                    addToZip(fileSystem, child, entryName, zipOutputStream, onProgress)
+                    addToZip(child, entryName, zipOutputStream, onProgress)
                 }
             }
         } else {
             zipOutputStream.putNextEntry(ZipEntry(entryName))
-            val countingSink = object : ForwardingSink(zipOutputStream.sink()) {
-                override fun write(source: Buffer, byteCount: Long) {
-                    super.write(source, byteCount)
-                    onProgress(byteCount)
-                }
-            }.buffer()
-            fileSystem.read(path) { readAll(countingSink) }
-            countingSink.flush()
+            val countingOut = CountingOutputStream(zipOutputStream, onProgress)
+            FileInputStream(file).use { input ->
+                input.copyTo(countingOut)
+            }
+            countingOut.flush()
             zipOutputStream.closeEntry()
+        }
+    }
+
+    private class CountingOutputStream(out: OutputStream, private val onProgress: (Long) -> Unit) : FilterOutputStream(out) {
+        override fun write(b: ByteArray, off: Int, len: Int) {
+            super.write(b, off, len)
+            onProgress(len.toLong())
+        }
+        override fun write(b: Int) {
+            super.write(b)
+            onProgress(1)
         }
     }
 }

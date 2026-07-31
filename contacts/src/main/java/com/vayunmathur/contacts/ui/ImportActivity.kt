@@ -25,7 +25,6 @@ import com.vayunmathur.contacts.MainActivity
 import com.vayunmathur.contacts.data.ContactDetails
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconSave
-import okio.source
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.util.VcfUtils
 import com.vayunmathur.contacts.R
@@ -36,8 +35,8 @@ class ImportActivity : ComponentActivity() {
 
         val uri = intent.data ?: return
 
-        val contacts = contentResolver.openInputStream(uri)?.source()?.use { stream ->
-            VcfUtils.parseContacts(stream)
+        val contacts = contentResolver.openInputStream(uri)?.use { input ->
+            VcfUtils.parseContacts(input)
         } ?: emptyList()
 
         setContent {

@@ -9,20 +9,15 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Properties
-import java.util.concurrent.TimeUnit
 
 /**
- * Anonymous auth via Aurora dispenser.
- * Ported from AuroraStore's AuthProvider.
+ * Anonymous auth via Aurora dispenser — now using HttpURLConnection.
+ * Ported from AuroraStore's AuthProvider; previously used OkHttp.
  */
-class AnonymousAuthRepository(
-    private val okHttpClient: OkHttpClient = defaultClient()
-) {
+class AnonymousAuthRepository {
 
     companion object {
         private const val TAG = "AnonAuthRepo"
@@ -30,12 +25,6 @@ class AnonymousAuthRepository(
         val FALLBACK_DISPENSERS = listOf(
             "https://auroraoss.com/api/auth"
         )
-
-        private fun defaultClient() = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
-            .build()
 
         private val json = Json { ignoreUnknownKeys = true }
     }
@@ -76,20 +65,35 @@ class AnonymousAuthRepository(
             } catch (_: Exception) { "1" }
 
             val userAgent = "$appId-$versionName-$versionCode"
-            val body = propsJson.toRequestBody("application/json".toMediaTypeOrNull())
+            val bodyBytes = propsJson.toByteArray(Charsets.UTF_8)
 
-            val request = Request.Builder()
-                .url(dispenserUrl)
-                .header("User-Agent", userAgent)
-                .header("Content-Type", "application/json")
-                .post(body)
-                .build()
+            val conn = (URL(dispenserUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 15_000
+                requestMethod = "POST"
+                doOutput = true
+                doInput = true
+                instanceFollowRedirects = false
+                useCaches = false
+                setRequestProperty("User-Agent", userAgent)
+                setRequestProperty("Content-Type", "application/json")
+                setFixedLengthStreamingMode(bodyBytes.size)
+            }
+            conn.outputStream.use { it.write(bodyBytes) }
 
-            val response = okHttpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
+            val code = try { conn.responseCode } catch (e: Exception) {
+                conn.disconnect()
+                return@withContext Result.failure(AuthError.Network(e.message))
+            }
+            val responseBody = try {
+                val stream = if (code >= 400) conn.errorStream ?: conn.inputStream else conn.inputStream
+                stream?.bufferedReader(Charsets.UTF_8)?.readText() ?: ""
+            } catch (_: Exception) { "" } finally {
+                conn.disconnect()
+            }
 
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(mapError(response.code, responseBody))
+            if (code !in 200..299) {
+                return@withContext Result.failure(mapError(code, responseBody))
             }
 
             try {
@@ -97,7 +101,7 @@ class AnonymousAuthRepository(
                 Result.success(auth)
             } catch (e: Exception) {
                 Log.w(TAG, "Parse auth failed: ${e.message}")
-                Result.failure(AuthError.Unknown(response.code, responseBody))
+                Result.failure(AuthError.Unknown(code, responseBody))
             }
         } catch (e: Exception) {
             Result.failure(AuthError.Network(e.message))
@@ -106,7 +110,6 @@ class AnonymousAuthRepository(
 
     /**
      * Build AuthData from dispenser response using gplayapi AuthHelper.
-     * AuthHelper.build(email, token, Token.AUTH, isAnonymous=true, properties, locale)
      */
     suspend fun buildAuthData(
         context: Context,

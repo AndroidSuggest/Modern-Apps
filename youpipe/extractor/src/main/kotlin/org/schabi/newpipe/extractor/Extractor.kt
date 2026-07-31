@@ -40,7 +40,7 @@ abstract class Extractor(
     }
 
     @Nonnull
-    fun getLinkHandler(): LinkHandler = linkHandler
+    open fun getLinkHandler(): LinkHandler = linkHandler
 
     @Throws(IOException::class, ExtractionException::class)
     fun fetchPage() {
@@ -66,7 +66,7 @@ abstract class Extractor(
 
     @Nonnull
     @Throws(ParsingException::class)
-    fun getId(): String = linkHandler.id
+    open fun getId(): String = linkHandler.id
 
     @Nonnull
     @Throws(ParsingException::class)
@@ -74,40 +74,40 @@ abstract class Extractor(
 
     @Nonnull
     @Throws(ParsingException::class)
-    fun getOriginalUrl(): String = linkHandler.originalUrl
+    open fun getOriginalUrl(): String = linkHandler.originalUrl
 
     @Nonnull
     @Throws(ParsingException::class)
-    fun getUrl(): String = linkHandler.url
+    open fun getUrl(): String = linkHandler.url
 
     @Nonnull
     @Throws(ParsingException::class)
-    fun getBaseUrl(): String = linkHandler.getBaseUrl()
+    open fun getBaseUrl(): String = linkHandler.getBaseUrl()
 
     @Nonnull
-    fun getService(): StreamingService = service
+    open fun getService(): StreamingService = service
 
-    fun getServiceId(): Int = service.serviceId
-    fun getDownloader(): Downloader = downloader
+    open fun getServiceId(): Int = service.serviceId
+    open fun getDownloader(): Downloader = downloader
 
-    fun forceLocalization(localization: Localization) {
+    open fun forceLocalization(localization: Localization) {
         this.forcedLocalization = localization
     }
 
-    fun forceContentCountry(contentCountry: ContentCountry) {
+    open fun forceContentCountry(contentCountry: ContentCountry) {
         this.forcedContentCountry = contentCountry
     }
 
     @Nonnull
-    fun getExtractorLocalization(): Localization =
+    open fun getExtractorLocalization(): Localization =
         forcedLocalization ?: service.getLocalization()
 
     @Nonnull
-    fun getExtractorContentCountry(): ContentCountry =
+    open fun getExtractorContentCountry(): ContentCountry =
         forcedContentCountry ?: service.getContentCountry()
 
     @Nonnull
-    fun getTimeAgoParser(): TimeAgoParser =
+    open fun getTimeAgoParser(): TimeAgoParser =
         service.getTimeAgoParser(getExtractorLocalization())
 
     override fun toString(): String = javaClass.simpleName

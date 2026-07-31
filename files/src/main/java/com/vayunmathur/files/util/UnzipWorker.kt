@@ -1,11 +1,12 @@
 package com.vayunmathur.files.util
 import android.content.Context
 import androidx.work.WorkerParameters
-import okio.FileSystem
-import okio.Path.Companion.toPath
-import okio.source
-import java.util.zip.ZipInputStream
 import com.vayunmathur.files.R
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.FilterInputStream
+import java.util.zip.ZipInputStream
 
 class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotificationWorker(
     context,
@@ -20,19 +21,19 @@ class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotifica
         val zipPathString = inputData.getString("zip_path") ?: return Result.failure()
         val destPathString = inputData.getString("dest_path") ?: return Result.failure()
 
-        val zipPath = zipPathString.toPath()
-        val destPath = destPathString.toPath()
+        val zipFile = File(zipPathString)
+        val destDir = File(destPathString)
+        val destDirCanonical = destDir.canonicalFile
 
         createNotificationChannel()
         setForeground(createForegroundInfo(0))
 
         return try {
-            val fileSystem = FileSystem.SYSTEM
-            val zipFileSize = fileSystem.metadataOrNull(zipPath)?.size ?: 0L
+            val zipFileSize = zipFile.length()
             var totalBytesRead = 0L
 
-            fileSystem.read(zipPath) {
-                val countingInputStream = object : java.io.FilterInputStream(inputStream()) {
+            FileInputStream(zipFile).use { fis ->
+                val countingInputStream = object : FilterInputStream(fis) {
                     override fun read(): Int {
                         val b = super.read()
                         if (b != -1) {
@@ -55,19 +56,17 @@ class UnzipWorker(context: Context, params: WorkerParameters) : ProgressNotifica
                 ZipInputStream(countingInputStream).use { zipInputStream ->
                     var entry = zipInputStream.nextEntry
                     while (entry != null) {
-                        val entryFile = java.io.File(destPath.toString(), entry.name).canonicalFile
-                        val destFile = java.io.File(destPath.toString()).canonicalFile
-                        if (!entryFile.path.startsWith(destFile.path)) {
+                        val entryFile = File(destDir, entry.name).canonicalFile
+                        if (!entryFile.path.startsWith(destDirCanonical.path)) {
                             entry = zipInputStream.nextEntry
                             continue
                         }
-                        val entryPath = entryFile.path.toPath()
                         if (entry.isDirectory) {
-                            fileSystem.createDirectories(entryPath)
+                            entryFile.mkdirs()
                         } else {
-                            fileSystem.createDirectories(entryPath.parent!!)
-                            fileSystem.write(entryPath) {
-                                writeAll(zipInputStream.source())
+                            entryFile.parentFile?.mkdirs()
+                            FileOutputStream(entryFile).use { out ->
+                                zipInputStream.copyTo(out)
                             }
                         }
                         zipInputStream.closeEntry()

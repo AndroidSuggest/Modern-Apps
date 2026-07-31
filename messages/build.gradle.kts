@@ -168,9 +168,9 @@ dependencies {
     // HTTP + streaming for the gmessages / gvoice bridges (HttpURLConnection based).
     implementation(project(":library:network"))
     implementation(libs.okio) // isolated: MetaMqtt/WhatsApp uses okio.ByteString
+    implementation(libs.okhttp) // Meta Instagram/WhatsApp/Messenger clients use OkHttp directly – was previously transitive via Coil
 
-    // Coil — loads device-contact photo URIs (content://) into the
-    // conversation-row avatars in InboxScreen / ConversationScreen.
+    // Async avatar loading via library:image (replaces coil).
     implementation(project(":library:image"))
 
     // CameraX — built-in capture fallback when no system camera app

@@ -1,8 +1,6 @@
 package com.vayunmathur.library.image.compose
 
-import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.asImageBitmap
 
 /**
  * Mirrors Coil's AsyncImagePainter.State hierarchy plus SubcroppedImage usage
@@ -20,12 +18,19 @@ sealed class AsyncImageState {
 }
 
 /**
- * Back-compat alias – some files check `AsyncImagePainter.State.Success`.
- * We expose inner State so `coil.compose.AsyncImagePainter` import migration is easy:
- * previously `import coil.compose.AsyncImagePainter` + check `is AsyncImagePainter.State.Success`.
- * We provide both `com.vayunmathur.library.image.compose.AsyncImagePainter` and
- * the nested `State` alias.
+ * Compat shims so legacy checks `is AsyncImagePainter.State.Success` still compile.
+ * Coil had `class AsyncImagePainter { sealed class State { ... } }`.
+ * We expose both `AsyncImagePainter` object with nested typealias and top-level compat.
+ * For best compatibility we also provide a real class `State` via typealias chain – but
+ * Kotlin disallows `Typealias.State` resolution in some versions, so we also fix call sites
+ * to check `is AsyncImageState.Success`.
+ *
+ * To keep source compat for any remaining call site that still does
+ * `AsyncImagePainter.State.Success`, we expose a wrapper object whose `State` contains `Success` ctor.
  */
 object AsyncImagePainter {
     typealias State = AsyncImageState
 }
+
+// Top-level alias for convenience if file did `import coil.compose.AsyncImagePainter` and then `State`
+typealias AsyncImagePainterState = AsyncImageState

@@ -31,9 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okio.FileSystem
-import okio.Path.Companion.toOkioPath
-import okio.buffer
+import java.io.File
 
 /** Display name with optional nickname suffix (e.g. "Jane Doe (Janey)"). */
 @Composable
@@ -57,7 +55,7 @@ fun ContactAvatar(
     initialsStyle: TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
     val photoBase64 = contact.photo?.photo
-    val avatarBitmap by produceState<Bitmap?>(null, photoBase64, viewModel) {
+    val avatarBitmap by produceState<Bitmap?>(initialValue = null, key1 = photoBase64, key2 = viewModel) {
         value = if (photoBase64 != null) {
             withContext(Dispatchers.IO) { viewModel?.decodePhoto(photoBase64) }
         } else null
@@ -95,9 +93,9 @@ fun shareContactsAsVcf(
     chooserTitle: String,
 ) {
     scope.launch(Dispatchers.IO) {
-        val vcfFile = context.cacheDir.toOkioPath().resolve(filename)
-        FileSystem.SYSTEM.sink(vcfFile).buffer().use { VcfUtils.exportContacts(contacts, it) }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", vcfFile.toFile())
+        val vcfFile = File(context.cacheDir, filename)
+        vcfFile.outputStream().use { out -> VcfUtils.exportContacts(contacts, out) }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", vcfFile)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/x-vcard"
             putExtra(Intent.EXTRA_STREAM, uri)

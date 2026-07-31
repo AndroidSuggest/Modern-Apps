@@ -3,26 +3,19 @@ package com.vayunmathur.appstore.data.installer
 import android.content.Context
 import android.util.Log
 import com.aurora.gplayapi.data.models.PlayFile
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.File
-import java.util.concurrent.TimeUnit
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Downloads Play Store split APKs with resume + SHA verification,
- * then delegates to SessionInstaller.
+ * then delegates to SessionInstaller — now using HttpURLConnection.
  */
 class PlayDownloader(
-    private val context: Context,
-    private val okHttpClient: OkHttpClient = defaultClient()
+    private val context: Context
 ) {
     companion object {
         private const val TAG = "PlayDownloader"
-        private fun defaultClient() = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
     }
 
     class ExpiredUrlException(message: String) : Exception(message)
@@ -47,7 +40,6 @@ class PlayDownloader(
                 val destFile = File(baseDir, fileName)
                 val tmpFile = File(baseDir, "$fileName.tmp")
 
-                // Skip if already exists and size matches
                 if (destFile.exists() && destFile.length() > 0) {
                     if (gFile.size <= 0 || destFile.length() == gFile.size) {
                         localFiles.add(destFile)
@@ -70,8 +62,6 @@ class PlayDownloader(
                 }
 
                 val file = result.getOrNull()!!
-                // Lenient verification for V1 – hashes present but format may vary
-                // We skip strict blocking; just log mismatch
                 localFiles.add(file)
                 totalDownloaded += file.length()
             }
@@ -90,27 +80,39 @@ class PlayDownloader(
         progressCallback: (Long) -> Unit
     ): Result<File> {
         return try {
-            val url = gFile.url.takeIf { it.isNotBlank() } ?: return Result.failure(Exception("Empty URL for ${gFile.name}"))
-
+            val urlString = gFile.url.takeIf { it.isNotBlank() } ?: return Result.failure(Exception("Empty URL for ${gFile.name}"))
             val existing = if (tmpFile.exists()) tmpFile.length() else 0L
-            val requestBuilder = Request.Builder().url(url)
-            if (existing > 0) {
-                requestBuilder.addHeader("Range", "bytes=$existing-")
-            }
-            val request = requestBuilder.build()
-            val response = okHttpClient.newCall(request).execute()
 
-            if (!response.isSuccessful && response.code != 206) {
-                if (response.code == 403 || response.code == 410) {
-                    return Result.failure(ExpiredUrlException("URL expired ${response.code}"))
+            val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 30_000
+                readTimeout = 60_000
+                instanceFollowRedirects = true
+                useCaches = false
+                if (existing > 0) {
+                    setRequestProperty("Range", "bytes=$existing-")
                 }
-                return Result.failure(Exception("HTTP ${response.code}"))
             }
 
-            val body = response.body ?: return Result.failure(Exception("Empty body"))
-            val input = body.byteStream()
+            val code = try { conn.responseCode } catch (e: Exception) {
+                conn.disconnect()
+                throw e
+            }
 
-            // Use append if resuming
+            if (code !in 200..299 && code != 206) {
+                conn.disconnect()
+                if (code == 403 || code == 410) {
+                    return Result.failure(ExpiredUrlException("URL expired $code"))
+                }
+                return Result.failure(Exception("HTTP $code"))
+            }
+
+            val input = try {
+                conn.inputStream
+            } catch (_: Exception) {
+                conn.disconnect()
+                return Result.failure(Exception("Empty body"))
+            }
+
             val output = if (existing > 0) {
                 java.io.FileOutputStream(tmpFile, true)
             } else {
@@ -118,16 +120,20 @@ class PlayDownloader(
             }
 
             var downloaded = existing
-            output.use { out ->
-                input.use { inp ->
-                    val buffer = ByteArray(8192)
-                    var read: Int
-                    while (inp.read(buffer).also { read = it } != -1) {
-                        out.write(buffer, 0, read)
-                        downloaded += read
-                        progressCallback(downloaded)
+            try {
+                output.use { out ->
+                    input.use { inp ->
+                        val buffer = ByteArray(8192)
+                        var read: Int
+                        while (inp.read(buffer).also { read = it } != -1) {
+                            out.write(buffer, 0, read)
+                            downloaded += read
+                            progressCallback(downloaded)
+                        }
                     }
                 }
+            } finally {
+                conn.disconnect()
             }
 
             if (tmpFile.exists()) {

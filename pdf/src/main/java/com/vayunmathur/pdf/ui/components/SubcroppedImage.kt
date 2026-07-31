@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.library.image.compose.AsyncImage
-import com.vayunmathur.library.image.compose.AsyncImagePainter
+import com.vayunmathur.library.image.compose.AsyncImageState
 import com.vayunmathur.pdf.model.CapturedImage
 import com.vayunmathur.pdf.model.Quadrilateral
 import com.vayunmathur.pdf.util.warpQuadToBitmap
@@ -99,7 +99,7 @@ private fun BoundingBoxCroppedImage(
             model = image.uri,
             contentDescription = null,
             onState = { state ->
-                if (state is AsyncImagePainter.State.Success) {
+                if (state is AsyncImageState.Success) {
                     painterSize = state.painter.intrinsicSize
                 }
             },

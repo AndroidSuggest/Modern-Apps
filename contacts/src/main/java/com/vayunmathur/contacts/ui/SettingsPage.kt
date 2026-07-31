@@ -30,7 +30,6 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.launch
-import okio.sink
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +57,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
             uri?.let {
                 coroutineScope.launch {
                     try {
-                        context.contentResolver.openOutputStream(it)?.sink()?.use { outputStream ->
+                        context.contentResolver.openOutputStream(it)?.use { outputStream ->
                             VcfUtils.exportContacts(contacts, outputStream)
                         }
                     } catch (e: Exception) {

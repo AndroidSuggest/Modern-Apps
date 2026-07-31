@@ -30,7 +30,6 @@ import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.contacts.data.Photo
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
-import okio.source
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -305,8 +304,8 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             val allContacts = mutableListOf<Contact>()
             uris.forEach { uri ->
                 try {
-                    app.contentResolver.openInputStream(uri)?.source()?.use { source ->
-                        allContacts.addAll(VcfUtils.parseContacts(source))
+                    app.contentResolver.openInputStream(uri)?.use { input ->
+                        allContacts.addAll(VcfUtils.parseContacts(input))
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("ContactViewModel", "Error parsing VCF file: $uri", e)
@@ -623,9 +622,9 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             val scaled = if (bitmap.width != 1024 || bitmap.height != 1024) {
                 Bitmap.createScaledBitmap(bitmap, 1024, 1024, true)
             } else bitmap
-            val baos = okio.Buffer()
-            scaled.compress(Bitmap.CompressFormat.JPEG, 100, baos.outputStream())
-            val encoded = Base64.encode(baos.readByteArray())
+            val baos = java.io.ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 100, baos)
+            val encoded = Base64.encode(baos.toByteArray())
             updateEditDraft { draft ->
                 val newPhoto = draft.photo?.withValue(encoded)
                     ?: com.vayunmathur.contacts.data.Photo(0, encoded)

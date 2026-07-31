@@ -23,9 +23,7 @@ metadataScreenshots {
 }
 
 dependencies {
-
-    // External Libraries
-    implementation(libs.okio) // isolated: VCF export/import, FileSystem – not networking
+    // VCF export/import now uses java.io BufferedReader/Writer – no okio needed
     implementation(libs.libphonenumber)
     implementation(libs.androidx.work.runtime.ktx)
 }
