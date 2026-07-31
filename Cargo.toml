@@ -8,6 +8,7 @@ members = [
   "camera/src/main/rust",
   "maps/src/main/rust",
   "passwords/src/main/rust",
+  "vpn/src/main/rust",
   "library/e2ee-p2p/src/main/rust",
   "third_party/om-file-format-sys",
 ]

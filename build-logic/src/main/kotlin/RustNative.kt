@@ -72,7 +72,10 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
 
             val clang = "$ndkBin/$triple$androidApiLevel-clang"
             val linkerVar = "CARGO_TARGET_${triple.uppercase().replace('-', '_')}_LINKER"
-            val soOut = file("src/main/rust/target/$triple/release/lib$crate.so")
+            // Per-crate target (may exist from older isolated builds) and workspace root target
+            // (current scheme since Cargo.toml workspace unified to root).
+            val perCrateSoOut = file("src/main/rust/target/$triple/release/lib$crate.so")
+            val workspaceSoOut = rootProject.file("target/$triple/release/lib$crate.so")
             val destSo = layout.buildDirectory.file("rustJniLibs/$abiDir/lib$crate.so").get().asFile
 
             inputs.dir("src/main/rust/src")
@@ -125,7 +128,12 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
 
             doLast {
                 destSo.parentFile.mkdirs()
-                soOut.copyTo(destSo, overwrite = true)
+                val src = when {
+                    perCrateSoOut.exists() -> perCrateSoOut
+                    workspaceSoOut.exists() -> workspaceSoOut
+                    else -> error("Neither per-crate ${perCrateSoOut.path} nor workspace ${workspaceSoOut.path} exists for $crate")
+                }
+                src.copyTo(destSo, overwrite = true)
             }
         }
     }

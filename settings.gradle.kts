@@ -24,6 +24,9 @@ dependencyResolutionManagement {
         mavenCentral()
         // JitPack kept only for Stockfish-Library (games:chess) — nanojson vendored to :third_party:nanojson
         maven("https://jitpack.io")
+        // sherpa-onnx (offline Piper TTS in :speech) isn't on Maven Central; the official
+        // Apache-2.0 AAR is vendored into speech/libs by scripts/speech/fetch_sherpa_onnx.sh.
+        flatDir { dirs("speech/libs") }
     }
 }
 
@@ -84,6 +87,7 @@ include(":calculator")
 include(":code")
 include(":keyboard")
 include(":speech")
+include(":vpn")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
