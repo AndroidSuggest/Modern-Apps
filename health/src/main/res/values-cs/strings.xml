@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="cancel">Zrušit</string>
     <string name="search">Hledat</string>
-    <string name="month_year_format">%1$s %2$d</string>
+    <string name="month_year_format">&lt;xliff:g id=\"month\" example=\"Leden\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2026\"&gt;%2$d&lt;/xliff:g&gt;</string>
     <string name="save">Uložit</string>
     <string name="add">Přidat</string>
     <string name="app_name">Zdraví</string>
@@ -11,12 +11,12 @@
     <string name="tab_week">Týden</string>
     <string name="tab_month">Měsíc</string>
     <string name="tab_year">Rok</string>
-    <string name="week_range">%1$s - %2$s</string>
+    <string name="week_range">&lt;xliff:g id=\"start_date\" example=\"Kvě 12.\"&gt;%1$s&lt;/xliff:g&gt; – &lt;xliff:g id=\"end_date\" example=\"Kvě 18.\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="no_data_available">Nejsou dostupná žádna data pro toto období</string>
-    <string name="unit_per_day_avg_format">%1$s denně (průměr)</string>
-    <string name="unit_only_format">" %1$s"</string>
-    <string name="value_unit_space_format">%1$s %2$s</string>
-    <string name="k_format">%1$sk</string>
+    <string name="unit_per_day_avg_format">&lt;xliff:g id=\"unit\" example=\"kroků\"&gt;%1$s&lt;/xliff:g&gt; za den (prům)</string>
+    <string name="unit_only_format">" &lt;xliff:g id=\"unit\" example=\"steps\"&gt;%1$s&lt;/xliff:g&gt;"</string>
+    <string name="value_unit_space_format">&lt;xliff:g id=\"value\" example=\"12 345\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"unit\" example=\"kroky\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="k_format">&lt;xliff:g id=\"thousands\" example=\"12\"&gt;%1$s&lt;/xliff:g&gt; tis.</string>
     <string name="metric_energy_burned">Spálené kalorie</string>
     <string name="metric_active_calories">Aktivní kalorie</string>
     <string name="metric_basal_metabolic_rate">Bazální metabolismus</string>
@@ -50,10 +50,10 @@
     <string name="section_body_composition">Tělesné složení</string>
     <string name="label_active">Aktivní</string>
     <string name="label_today">Dnes</string>
-    <string name="slash_value_format">%1$s/%2$s</string>
-    <string name="dash_value_format">%1$s - %2$s</string>
-    <string name="hours_minutes_format">%1$dh %2$d min</string>
-    <string name="minutes_format">%1$d min</string>
+    <string name="slash_value_format">&lt;xliff:g id=\"first\" example=\"120\"&gt;%1$s&lt;/xliff:g&gt;/&lt;xliff:g id=\"second\" example=\"80\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="dash_value_format"><xliff:g id="min" example="60">%1$s</xliff:g> - <xliff:g id="max" example="140">%2$s</xliff:g></string>
+    <string name="hours_minutes_format">&lt;xliff:g id=\"hours\" example=\"7\"&gt;%1$d&lt;/xliff:g&gt;h &lt;xliff:g id=\"minutes\" example=\"30\"&gt;%2$d&lt;/xliff:g&gt;min</string>
+    <string name="minutes_format">&lt;xliff:g id=\"minutes\" example=\"25\"&gt;%1$d&lt;/xliff:g&gt; min</string>
     <string name="label_steps">Kroky</string>
     <string name="label_wheelchair_pushes">Odrazy na vozíku</string>
     <string name="label_mindfulness">Všímavost</string>
@@ -93,7 +93,7 @@
     <string name="custom_name">Vlastní název</string>
     <string name="recipe_name">Název receptu</string>
     <string name="save_recipe">Uložit recept</string>
-    <string name="set_quantity_for_format">Nastavit množství pro %1$s</string>
+    <string name="set_quantity_for_format">Nastavit množství pro &lt;xliff:g id=\"ingredient\" example=\"Tomato\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="quantity">Množství</string>
     <string name="unit">Jednotka</string>
     <string name="confirm">Potvrdit</string>
@@ -111,4 +111,32 @@
     <string name="section_this_week">Tento týden</string>
     <string name="label_exercise">Cvičení</string>
     <string name="no_workouts">Žádné zaznamenané cviky</string>
+    <string name="log_body_metric">Zapsat <xliff:g id="metric" example="váha">%1$s</xliff:g></string>
+    <string name="view_full_breakdown">Zobrazit celý rozpis</string>
+    <string name="no_results_found">Nenalezeny žádné výsledky</string>
+    <string name="online">Online</string>
+    <string name="original_1">Originál: <xliff:g id="original_name" example="Rajče">%1$s</xliff:g></string>
+    <string name="downloaded">Stažené</string>
+    <string name="saved_locally">Uložené lokálně</string>
+    <string name="segments">Segmenty</string>
+    <string name="laps">Kola</string>
+    <string name="lap">Kolo <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
+    <string name="route_recorded">Trasa zapsána</string>
+    <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> opakování</string>
+    <string name="ingredient">(Ingredience)</string>
+    <string name="calories">Kalorie</string>
+    <string name="kcal"><xliff:g id="current_cal" example="1200">%1$s</xliff:g> / <xliff:g id="goal_cal" example="2000">%2$s</xliff:g> kcal</string>
+    <string name="create_recipe">Vytvořit recept</string>
+    <string name="add_your_first_ingredient">Přidejte první ingredienci</string>
+    <string name="create_your_first_recipe">Vytvořte svůj první recept</string>
+    <string name="edit_recipe">Upravit recept</string>
+    <string name="no_meals_logged_today">Dneska nejsou zaznamenána žádna jídla</string>
+    <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> jídla · <xliff:g id="total_cal" example="850">%2$s</xliff:g> kcal</string>
+    <string name="hydration_liters">Litry</string>
+    <string name="hydration_milliliters">Mililitry</string>
+    <string name="hydration_ounces">Unce</string>
+    <string name="hydration_cups">Hrnků</string>
+    <string name="select_recipe">Vybrat recept</string>
+    <string name="quantity_x_100g">Počet (x 100g)</string>
+    <string name="servings">Porcí</string>
 </resources>
