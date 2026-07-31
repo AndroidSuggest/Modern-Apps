@@ -32,13 +32,13 @@ class YoutubeTrendingExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        val body = prepareDesktopJsonBuilder(extractorLocalization, extractorContentCountry)
+        val body = prepareDesktopJsonBuilder(getExtractorLocalization(), getExtractorContentCountry())
             .value("browseId", "FEtrending")
             .value("params", VIDEOS_TAB_PARAMS)
             .done().toString()
             .toByteArray(StandardCharsets.UTF_8)
 
-        initialData = getJsonPostResponse("browse", body, extractorLocalization)
+        initialData = getJsonPostResponse("browse", body, getExtractorLocalization())
     }
 
     override fun getPage(page: Page): InfoItemsPage<StreamInfoItem> {
@@ -66,7 +66,7 @@ class YoutubeTrendingExtractor(
 
     @Throws(ParsingException::class)
     override fun getInitialPage(): InfoItemsPage<StreamInfoItem> {
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
         val timeAgoParser = getTimeAgoParser()
         val tab = getTrendingTab()
         val tabContent = tab.getObject("content")!!

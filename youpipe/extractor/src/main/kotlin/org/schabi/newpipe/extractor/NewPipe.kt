@@ -34,7 +34,7 @@ object NewPipe {
         ExtractorLogger.d(TAG, "Default init called with localization={}")
         init(
             d, l,
-            if (l.countryCode.isEmpty()) ContentCountry.DEFAULT else ContentCountry(l.countryCode)
+            if (l.getCountryCode().isEmpty()) ContentCountry.DEFAULT else ContentCountry(l.getCountryCode())
         )
     }
 
@@ -101,8 +101,8 @@ object NewPipe {
         preferredContentCountry = if (thePreferredContentCountry != null) {
             thePreferredContentCountry
         } else {
-            if (thePreferredLocalization.countryCode.isEmpty()) ContentCountry.DEFAULT
-            else ContentCountry(thePreferredLocalization.countryCode)
+            if (thePreferredLocalization.getCountryCode().isEmpty()) ContentCountry.DEFAULT
+            else ContentCountry(thePreferredLocalization.getCountryCode())
         }
     }
 

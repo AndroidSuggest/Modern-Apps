@@ -10,7 +10,7 @@ object TimeAgoPatternsManager {
 
     @Nullable
     private fun getPatternsFor(@Nonnull localization: Localization): PatternsHolder? =
-        PatternsManager.getPatterns(localization.languageCode, localization.countryCode)
+        PatternsManager.getPatterns(localization.languageCode, localization.getCountryCode())
 
     @JvmStatic
     @Nullable

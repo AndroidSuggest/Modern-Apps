@@ -779,7 +779,7 @@ class YoutubeStreamExtractor(
         }
 
         try {
-            val collector = MultiInfoItemsCollector(serviceId)
+            val collector = MultiInfoItemsCollector(getServiceId())
 
             val results = nextResponse
                 ?.getObject("contents")
@@ -845,10 +845,10 @@ class YoutubeStreamExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        val videoId = id
+        val videoId = getId()
 
-        val localization = extractorLocalization
-        val contentCountry = extractorContentCountry
+        val localization = getExtractorLocalization()
+        val contentCountry = getExtractorContentCountry()
 
         val poTokenProviderInstance = poTokenProvider
         val noPoTokenProviderSet = poTokenProviderInstance == null
@@ -1034,7 +1034,7 @@ class YoutubeStreamExtractor(
         }
         sabrStreamsBuilt = true
         val videoId: String = try {
-            id
+            getId()
         } catch (e: Exception) {
             return
         }
@@ -1042,8 +1042,8 @@ class YoutubeStreamExtractor(
             YoutubeSabrProbe.fetchSabrInfo(
                 videoId,
                 YoutubeSabrClientProfile.WEB,
-                extractorLocalization,
-                extractorContentCountry
+                getExtractorLocalization(),
+                getExtractorContentCountry()
             )
         } catch (e: Exception) {
             ExtractorLogger.d("YoutubeSabr", "SABR fetch failed for {}: {}", videoId, e)
@@ -1076,7 +1076,7 @@ class YoutubeStreamExtractor(
             ExtractorLogger.d("YoutubeSabr", "SABR fetch returned no info/formats for {}", videoId)
             // still continue to allow serverAbrStreamingUrl check
         }
-        val serverAbrStreamingUrl = sabrInfo.getServerAbrStreamingUrl()
+        val serverAbrStreamingUrl = sabrInfo.serverAbrStreamingUrl
         var av1Count = 0
         for (format in actualFormats) {
             try {
@@ -1086,7 +1086,7 @@ class YoutubeStreamExtractor(
                 if (format.isAudio()) {
                     val builder = AudioStream.Builder()
                         .setContent(serverAbrStreamingUrl, false)
-                        .setMediaFormat(itagItem.getMediaFormat())
+                        .setMediaFormat(itagItem.mediaFormat)
                         .setAverageBitrate(format.bitrate)
                         .setItagItem(itagItem)
                         .setDeliveryMethod(DeliveryMethod.SABR)
@@ -1107,7 +1107,7 @@ class YoutubeStreamExtractor(
                         sabrAudioStreams.add(stream)
                     }
                 } else if (format.isVideo()) {
-                    val codec = itagItem.getCodec()
+                    val codec = itagItem.codec
                     if (codec != null && codec.contains("av01")) {
                         av1Count++
                     }
@@ -1117,7 +1117,7 @@ class YoutubeStreamExtractor(
                     val stream = VideoStream.Builder()
                         .setId(idStr)
                         .setContent(serverAbrStreamingUrl, false)
-                        .setMediaFormat(itagItem.getMediaFormat())
+                        .setMediaFormat(itagItem.mediaFormat)
                         .setIsVideoOnly(true)
                         .setItagItem(itagItem)
                         .setResolution(resolution)
@@ -1145,7 +1145,7 @@ class YoutubeStreamExtractor(
         streamTypeExceptionMessage: String
     ): MutableList<T> {
         try {
-            val videoId = id
+            val videoId = getId()
             val streamList = mutableListOf<T>()
 
             val pairs = listOf(
@@ -1155,10 +1155,10 @@ class YoutubeStreamExtractor(
             )
 
             for (pair in pairs) {
-                val streamingData = pair.getFirst()
-                val second = pair.getSecond()
-                val cpn = second.getFirst()
-                val poToken = second.getSecond()
+                val streamingData = pair.first
+                val second = pair.second
+                val cpn = second.first
+                val poToken = second.second
                 if (streamingData == null || cpn == null) continue
                 getStreamsFromStreamingDataKey(
                     videoId, streamingData, streamingDataKey,
@@ -1182,13 +1182,13 @@ class YoutubeStreamExtractor(
             val itagItem = itagInfo.getItagItem()
             val builder = AudioStream.Builder()
                 .setId(itagItem.id.toString())
-                .setContent(itagInfo.getContent(), itagInfo.getIsUrl())
-                .setMediaFormat(itagItem.getMediaFormat())
-                .setAverageBitrate(itagItem.getAverageBitrate())
-                .setAudioTrackId(itagItem.getAudioTrackId())
-                .setAudioTrackName(itagItem.getAudioTrackName())
-                .setAudioLocale(itagItem.getAudioLocale())
-                .setAudioTrackType(itagItem.getAudioTrackType())
+                .setContent(itagInfo.content, itagInfo.getIsUrl())
+                .setMediaFormat(itagItem.mediaFormat)
+                .setAverageBitrate(itagItem.averageBitrate)
+                .setAudioTrackId(itagItem.audioTrackId)
+                .setAudioTrackName(itagItem.audioTrackName)
+                .setAudioLocale(itagItem.audioLocale)
+                .setAudioTrackType(itagItem.audioTrackType)
                 .setItagItem(itagItem)
 
             if (streamType == StreamType.LIVE_STREAM ||
@@ -1209,12 +1209,12 @@ class YoutubeStreamExtractor(
             val itagItem = itagInfo.getItagItem()
             val builder = VideoStream.Builder()
                 .setId(itagItem.id.toString())
-                .setContent(itagInfo.getContent(), itagInfo.getIsUrl())
-                .setMediaFormat(itagItem.getMediaFormat())
+                .setContent(itagInfo.content, itagInfo.getIsUrl())
+                .setMediaFormat(itagItem.mediaFormat)
                 .setIsVideoOnly(areStreamsVideoOnly)
                 .setItagItem(itagItem)
 
-            val resolutionString = itagItem.getResolutionString()
+            val resolutionString = itagItem.resolutionString
             builder.setResolution(resolutionString ?: "")
 
             if (streamType != StreamType.VIDEO_STREAM || !itagInfo.getIsUrl()) {
@@ -1351,7 +1351,7 @@ class YoutubeStreamExtractor(
                     ).ifPresent { locale -> itagItem.setAudioLocale(locale) }
                 }
                 itagItem.setAudioTrackType(
-                    YoutubeParsingHelper.extractAudioTrackType(itagItem.getXtags())
+                    YoutubeParsingHelper.extractAudioTrackType(itagItem.xtags)
                 )
             }
 
@@ -1532,7 +1532,7 @@ class YoutubeStreamExtractor(
             }
 
             val segment = StreamSegment(title!!, startTimeSeconds)
-            segment.setUrl(url + "?t=" + startTimeSeconds)
+            segment.setUrl(getUrl() + "?t=" + startTimeSeconds)
             if (segmentJson.containsKey(THUMBNAIL)) {
                 val previewsArray = segmentJson.getObject(THUMBNAIL)
                     ?.getArray(THUMBNAILS)

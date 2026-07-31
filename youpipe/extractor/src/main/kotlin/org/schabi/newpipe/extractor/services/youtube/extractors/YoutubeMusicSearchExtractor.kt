@@ -68,7 +68,7 @@ class YoutubeMusicSearchExtractor(
                     put("clientName", "WEB_REMIX")
                     put("clientVersion", getYoutubeMusicClientVersion())
                     put("hl", "en-GB")
-                    put("gl", extractorContentCountry.countryCode)
+                    put("gl", getExtractorContentCountry().countryCode)
                     put("platform", "DESKTOP")
                     put("utcOffsetMinutes", 0)
                 }
@@ -80,7 +80,7 @@ class YoutubeMusicSearchExtractor(
                     put("lockedSafetyMode", false)
                 }
             }
-            put("query", searchString)
+            put("query", getSearchString())
             if (params != null) {
                 put("params", params)
             }
@@ -152,7 +152,7 @@ class YoutubeMusicSearchExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<InfoItem> {
-        val collector = MultiInfoItemsCollector(serviceId)
+        val collector = MultiInfoItemsCollector(getServiceId())
 
         val contents = JsonUtils.getArray(
             JsonUtils.getArray(initialData!!, "contents.tabbedSearchResultsRenderer.tabs").getObject(0)!!,
@@ -181,7 +181,7 @@ class YoutubeMusicSearchExtractor(
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 
-        val collector = MultiInfoItemsCollector(serviceId)
+        val collector = MultiInfoItemsCollector(getServiceId())
 
         val jsonBody = buildJsonObject {
             putJsonObject("context") {
@@ -189,7 +189,7 @@ class YoutubeMusicSearchExtractor(
                     put("clientName", "WEB_REMIX")
                     put("clientVersion", getYoutubeMusicClientVersion())
                     put("hl", "en-GB")
-                    put("gl", extractorContentCountry.countryCode)
+                    put("gl", getExtractorContentCountry().countryCode)
                     put("platform", "DESKTOP")
                     put("utcOffsetMinutes", 0)
                 }

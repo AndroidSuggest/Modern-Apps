@@ -39,7 +39,6 @@ fun FreeCellSlot(
         if (card != null) {
             DraggableCard(
                 card = card,
-                cards = listOf(card),
                 sourceId = "freecell_$index",
                 viewModel = viewModel,
                 cardWidth = cardWidth,

@@ -37,7 +37,7 @@ abstract class ListExtractor<R : InfoItem>(
         val errors: List<Throwable>
 
         constructor(collector: InfoItemsCollector<T, *>, @Nullable nextPage: Page?) :
-            this(collector.items, nextPage, collector.errors)
+            this(collector.getItems(), nextPage, collector.errors)
 
         constructor(itemsList: List<T>, @Nullable nextPage: Page?, errors: List<Throwable>) {
             this.itemsList = itemsList

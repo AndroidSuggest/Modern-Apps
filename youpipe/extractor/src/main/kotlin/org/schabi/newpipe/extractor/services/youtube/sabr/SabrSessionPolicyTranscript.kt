@@ -29,10 +29,10 @@ class SabrSessionPolicyTranscript(private val capacity: Int) {
         route: SabrSessionPolicy.DemandRoute
     ) {
         append(
-            "v1 event=demand-route target=" + event.getTargetItag() + ':' +
-                event.getTargetSequenceNumber() + " elapsedMs=" +
+            "v1 event=demand-route target=" + event.targetItag + ':' +
+                event.targetSequenceNumber + " elapsedMs=" +
                 event.getState().getElapsedMs() + " omissions=" +
-                event.getState().getResponsesWithoutDemandedSegment() + " recoveries=" +
+                event.getState().responsesWithoutDemandedSegment + " recoveries=" +
                 event.getState().getRecoveryCount() + " route=$route"
         )
     }
@@ -43,13 +43,13 @@ class SabrSessionPolicyTranscript(private val capacity: Int) {
         decision: SabrSessionPolicy.DemandResponseDecision
     ) {
         append(
-            "v1 event=demand-response target=" + event.getTargetItag() + ':' +
-                event.getTargetSequenceNumber() + " segments=" + event.getSegmentCount() +
-                " targetTrack=" + event.getTargetTrackSegmentCount() + " returned=" +
+            "v1 event=demand-response target=" + event.targetItag + ':' +
+                event.targetSequenceNumber + " segments=" + event.segmentCount +
+                " targetTrack=" + event.targetTrackSegmentCount + " returned=" +
                 event.getReturnedSegments().size + " truncated=" +
                 event.areReturnedSegmentsTruncated() + " omissions=" +
-                event.getState().getResponsesWithoutDemandedSegment() + " outcome=" +
-                decision.getOutcome() + " retryDelayMs=" + decision.getRetryDelayMs()
+                event.getState().responsesWithoutDemandedSegment + " outcome=" +
+                decision.outcome + " retryDelayMs=" + decision.getRetryDelayMs()
         )
     }
 
@@ -103,8 +103,8 @@ class SabrSessionPolicyTranscript(private val capacity: Int) {
     }
 
     private fun state(state: SabrSessionPolicy.State): String {
-        return state.getRequestNumber().toString() + "," + state.getRedirectCount() + "," +
-            state.getPoTokenRefreshes() + "," + state.getReloads()
+        return state.requestNumber.toString() + "," + state.redirectCount + "," +
+            state.poTokenRefreshes + "," + state.getReloads()
     }
 
     private class Entry(val decision: String) {

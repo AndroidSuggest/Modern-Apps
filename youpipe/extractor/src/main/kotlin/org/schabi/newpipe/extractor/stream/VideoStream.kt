@@ -89,16 +89,16 @@ class VideoStream : Stream {
         if (itagItem != null) {
             this.itagItem = itagItem
             this.itag = itagItem.id
-            this.bitrate = itagItem.getBitrate()
-            this.initStart = itagItem.getInitStart()
-            this.initEnd = itagItem.getInitEnd()
-            this.indexStart = itagItem.getIndexStart()
-            this.indexEnd = itagItem.getIndexEnd()
-            this.codec = itagItem.getCodec()
-            this.height = itagItem.getHeight()
-            this.width = itagItem.getWidth()
-            this.quality = itagItem.getQuality()
-            this.fps = itagItem.getFps()
+            this.bitrate = itagItem.bitrate
+            this.initStart = itagItem.initStart
+            this.initEnd = itagItem.initEnd
+            this.indexStart = itagItem.indexStart
+            this.indexEnd = itagItem.indexEnd
+            this.codec = itagItem.codec
+            this.height = itagItem.height
+            this.width = itagItem.width
+            this.quality = itagItem.quality
+            this.fps = itagItem.fps
         }
         this.resolution = resolution
         this.isVideoOnly = isVideoOnly

@@ -8,9 +8,9 @@ class SabrContextSendingPolicy private constructor() {
     private val discardPolicy: MutableList<Int> = ArrayList()
 
     private fun readPolicyValues(field: SabrProto.Field, output: MutableList<Int>) {
-        if (field.getWireType() == SabrProto.WIRE_VARINT) {
-            output.add(field.getVarint().toInt())
-        } else if (field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+        if (field.wireType == SabrProto.WIRE_VARINT) {
+            output.add(field.varint.toInt())
+        } else if (field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
             for (value in SabrProto.readPackedVarints(field.getBytes())) {
                 output.add(value.toInt())
             }
@@ -52,7 +52,7 @@ class SabrContextSendingPolicy private constructor() {
         internal fun decode(data: ByteArray): SabrContextSendingPolicy {
             val policy = SabrContextSendingPolicy()
             for (field in SabrProto.readFields(data)) {
-                when (field.getNumber()) {
+                when (field.number) {
                     1 -> policy.readPolicyValues(field, policy.startPolicy)
                     2 -> policy.readPolicyValues(field, policy.stopPolicy)
                     3 -> policy.readPolicyValues(field, policy.discardPolicy)

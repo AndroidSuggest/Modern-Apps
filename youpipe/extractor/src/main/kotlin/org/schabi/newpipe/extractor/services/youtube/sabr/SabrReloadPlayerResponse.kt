@@ -9,7 +9,7 @@ class SabrReloadPlayerResponse private constructor(
         fun decode(data: ByteArray): SabrReloadPlayerResponse {
             var token: String? = null
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                     token = decodeReloadPlaybackContext(field.getBytes())
                 }
             }
@@ -19,7 +19,7 @@ class SabrReloadPlayerResponse private constructor(
         @Throws(SabrProtocolException::class)
         private fun decodeReloadPlaybackContext(data: ByteArray): String? {
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                     return decodeReloadPlaybackParams(field.getBytes())
                 }
             }
@@ -29,7 +29,7 @@ class SabrReloadPlayerResponse private constructor(
         @Throws(SabrProtocolException::class)
         private fun decodeReloadPlaybackParams(data: ByteArray): String? {
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                     return field.getString()
                 }
             }

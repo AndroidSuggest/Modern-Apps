@@ -16,7 +16,7 @@ class YoutubeTrendingMusicExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        if (!YT_CHARTS_SUPPORTED_COUNTRY_CODES.contains(extractorContentCountry.countryCode)) {
+        if (!YT_CHARTS_SUPPORTED_COUNTRY_CODES.contains(getExtractorContentCountry().countryCode)) {
             throw UnsupportedContentInCountryException(
                 "YouTube Charts doesn't support this country for trending music videos charts"
             )

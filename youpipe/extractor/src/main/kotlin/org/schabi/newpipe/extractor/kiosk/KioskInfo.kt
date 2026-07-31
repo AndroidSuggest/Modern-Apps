@@ -25,7 +25,7 @@ class KioskInfo private constructor(
             url: String,
             page: Page
         ): ListExtractor.InfoItemsPage<StreamInfoItem> {
-            return service.kioskList.getExtractorByUrl(url, page).getPage(page)
+            return service.getKioskList().getExtractorByUrl(url, page).getPage(page)
         }
 
         @JvmStatic
@@ -37,7 +37,7 @@ class KioskInfo private constructor(
         @JvmStatic
         @Throws(IOException::class, ExtractionException::class)
         fun getInfo(service: StreamingService, url: String): KioskInfo {
-            val extractor = service.kioskList.getExtractorByUrl(url, null)
+            val extractor = service.getKioskList().getExtractorByUrl(url, null)
             extractor.fetchPage()
             return getInfo(extractor)
         }
@@ -51,9 +51,9 @@ class KioskInfo private constructor(
         @Throws(ExtractionException::class)
         fun getInfo(extractor: KioskExtractor<*>): KioskInfo {
             val info = KioskInfo(
-                extractor.serviceId,
+                extractor.getServiceId(),
                 extractor.linkHandler,
-                extractor.name
+                extractor.getName()
             )
 
             val itemsPage: ListExtractor.InfoItemsPage<StreamInfoItem> =

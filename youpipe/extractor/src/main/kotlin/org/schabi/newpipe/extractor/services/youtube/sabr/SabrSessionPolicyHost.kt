@@ -46,19 +46,19 @@ class SabrSessionPolicyHost(
     @Throws(SabrProtocolException::class)
     fun evaluateDemandResponse(event: SabrSessionPolicy.DemandResponseEvent): SabrSessionPolicy.DemandResponseDecision {
         validateDemandEvent(event)
-        if (event.getSegmentCount() <= 0 ||
-            event.getTargetTrackSegmentCount() < 0 ||
-            event.getTargetTrackSegmentCount() > event.getSegmentCount() ||
+        if (event.segmentCount <= 0 ||
+            event.targetTrackSegmentCount < 0 ||
+            event.targetTrackSegmentCount > event.segmentCount ||
             event.getReturnedSegments().size > SabrSessionPolicy.MAX_DEMAND_RETURNED_SEGMENTS ||
-            (!event.areReturnedSegmentsTruncated() && event.getReturnedSegments().size > event.getSegmentCount())
+            (!event.areReturnedSegmentsTruncated() && event.getReturnedSegments().size > event.segmentCount)
         ) {
             throw IllegalArgumentException("Invalid SABR demand response event")
         }
         for (segment in event.getReturnedSegments()) {
             if (segment == null ||
-                segment.getItag() <= 0 ||
-                segment.getSequenceNumber() < 0 ||
-                segment.getStartMs() < 0 ||
+                segment.itag <= 0 ||
+                segment.sequenceNumber < 0 ||
+                segment.startMs < 0 ||
                 segment.getDurationMs() < 0
             ) {
                 throw IllegalArgumentException("Invalid SABR returned segment identity")
@@ -66,13 +66,13 @@ class SabrSessionPolicyHost(
         }
         val decision = policy.evaluateDemandResponse(event)
         if (decision == null ||
-            decision.getOutcome() == null ||
+            decision.outcome == null ||
             decision.getRetryDelayMs() < 0 ||
             decision.getRetryDelayMs() > SabrSessionPolicy.MAX_DEMAND_RETRY_DELAY_MS
         ) {
             throw IllegalStateException("Invalid SABR demand response decision")
         }
-        if (decision.getOutcome() != SabrSessionPolicy.DemandOutcome.CONTINUE &&
+        if (decision.outcome != SabrSessionPolicy.DemandOutcome.CONTINUE &&
             decision.getRetryDelayMs() != 0
         ) {
             throw IllegalStateException("Terminal SABR demand decision requested retry delay")
@@ -104,9 +104,9 @@ class SabrSessionPolicyHost(
 
     companion object Validator {
         private fun validateState(state: SabrSessionPolicy.State) {
-            if (state.getRequestNumber() < 0 ||
-                state.getRedirectCount() < 0 ||
-                state.getPoTokenRefreshes() < 0 ||
+            if (state.requestNumber < 0 ||
+                state.redirectCount < 0 ||
+                state.poTokenRefreshes < 0 ||
                 state.getReloads() < 0
             ) {
                 throw IllegalStateException("Invalid SABR policy state")
@@ -115,15 +115,15 @@ class SabrSessionPolicyHost(
 
         private fun validateDemandEvent(event: SabrSessionPolicy.DemandEvent) {
             val st = event.getState()
-            if (event.getTargetItag() <= 0 ||
-                event.getTargetSequenceNumber() < 0 ||
-                event.getTargetStartMs() < 0 ||
-                event.getBufferedEdgeMs() < 0 ||
-                st.getCreatedAtMs() < 0 ||
-                st.getNowMs() < st.getCreatedAtMs() ||
-                st.getResponsesWithoutDemandedSegment() < 0 ||
+            if (event.targetItag <= 0 ||
+                event.targetSequenceNumber < 0 ||
+                event.targetStartMs < 0 ||
+                event.bufferedEdgeMs < 0 ||
+                st.createdAtMs < 0 ||
+                st.nowMs < st.createdAtMs ||
+                st.responsesWithoutDemandedSegment < 0 ||
                 st.getRecoveryCount() < 0 ||
-                st.getRecoveryCount() > st.getResponsesWithoutDemandedSegment()
+                st.getRecoveryCount() > st.responsesWithoutDemandedSegment
             ) {
                 throw IllegalArgumentException("Invalid SABR demand policy event")
             }
@@ -137,9 +137,9 @@ class SabrSessionPolicyHost(
             if (result == null || result.getActions().isEmpty()) {
                 throw IllegalStateException("SABR policy returned no result")
             }
-            validateState(result.getNextState())
+            validateState(result.nextState)
             if (event is SabrSessionPolicy.RequestEvent) {
-                val expected = if (state.getRequestNumber() == 0)
+                val expected = if (state.requestNumber == 0)
                     SabrSessionPolicy.ActionType.SEND_INITIAL_REQUEST
                 else
                     SabrSessionPolicy.ActionType.SEND_FOLLOW_UP_REQUEST
@@ -148,14 +148,14 @@ class SabrSessionPolicyHost(
                     result.getRequestBody() == null ||
                     result.getRequestBody()!!.isEmpty() ||
                     result.getRequestBody()!!.size > MAX_REQUEST_BYTES ||
-                    result.getControlDecision() != null ||
-                    state != result.getNextState()
+                    result.controlDecision != null ||
+                    state != result.nextState
                 ) {
                     throw IllegalStateException("Invalid SABR request policy result")
                 }
                 return
             }
-            if (result.getRequestBody() != null || result.getControlDecision() == null) {
+            if (result.getRequestBody() != null || result.controlDecision == null) {
                 throw IllegalStateException("Invalid SABR control policy result")
             }
             val actions = result.getActions()
@@ -172,7 +172,7 @@ class SabrSessionPolicyHost(
             if (terminalCount != 1 || !TERMINAL.contains(actions[actions.size - 1].getType())) {
                 throw IllegalStateException("SABR control policy has no terminal action")
             }
-            val decision = result.getControlDecision()!!
+            val decision = result.controlDecision!!
             if (seen.contains(SabrSessionPolicy.ActionType.APPLY_RESPONSE_STATE) != (result.getStatePatch() != null)) {
                 throw IllegalStateException("SABR response state action/patch mismatch")
             }
@@ -182,34 +182,34 @@ class SabrSessionPolicyHost(
                 throw IllegalStateException("SABR response state actions are mutually exclusive")
             }
             if (seen.contains(SabrSessionPolicy.ActionType.APPLY_REDIRECT) !=
-                (decision.getRedirectUrl() != null && decision.getRedirectUrl()!!.isNotEmpty())
+                (decision.redirectUrl != null && decision.redirectUrl!!.isNotEmpty())
             ) {
                 throw IllegalStateException("SABR redirect action/value mismatch")
             }
             val control = event as SabrSessionPolicy.ControlResponseEvent
             val reset = seen.contains(SabrSessionPolicy.ActionType.RESET_RECOVERY_BUDGETS)
             val redirect = seen.contains(SabrSessionPolicy.ActionType.APPLY_REDIRECT)
-            val expectedRedirects = if (reset) 0 else state.getRedirectCount() + if (redirect) 1 else 0
-            val expectedRefreshes = if (reset) 0 else state.getPoTokenRefreshes()
-            val next = result.getNextState()
-            if (next.getRequestNumber() != state.getRequestNumber() ||
+            val expectedRedirects = if (reset) 0 else state.redirectCount + if (redirect) 1 else 0
+            val expectedRefreshes = if (reset) 0 else state.poTokenRefreshes
+            val next = result.nextState
+            if (next.requestNumber != state.requestNumber ||
                 next.getReloads() != state.getReloads() ||
-                next.getRedirectCount() != expectedRedirects ||
-                next.getPoTokenRefreshes() != expectedRefreshes ||
-                reset && (control.getMode() != SabrSessionPolicy.ControlMode.PUMP || control.getSegmentCount() <= 0)
+                next.redirectCount != expectedRedirects ||
+                next.poTokenRefreshes != expectedRefreshes ||
+                reset && (control.mode != SabrSessionPolicy.ControlMode.PUMP || control.segmentCount <= 0)
             ) {
                 throw IllegalStateException("Invalid SABR recovery state transition")
             }
             if (seen.contains(SabrSessionPolicy.ActionType.SLEEP_BACKOFF) !=
-                (decision.getBackoffTimeMs() > 0 && control.shouldHonorBackoff()) ||
+                (decision.backoffTimeMs > 0 && control.shouldHonorBackoff()) ||
                 seen.contains(SabrSessionPolicy.ActionType.DEFER_BACKOFF) !=
-                (decision.getBackoffTimeMs() > 0 && !control.shouldHonorBackoff()) ||
+                (decision.backoffTimeMs > 0 && !control.shouldHonorBackoff()) ||
                 seen.contains(SabrSessionPolicy.ActionType.CLEAR_DEMAND_BACKOFF) &&
-                (decision.getBackoffTimeMs() > 0 || control.shouldHonorBackoff()) ||
+                (decision.backoffTimeMs > 0 || control.shouldHonorBackoff()) ||
                 seen.contains(SabrSessionPolicy.ActionType.REQUIRE_PO_TOKEN) &&
-                control.getMode() != SabrSessionPolicy.ControlMode.FETCH_SEGMENT ||
+                control.mode != SabrSessionPolicy.ControlMode.FETCH_SEGMENT ||
                 seen.contains(SabrSessionPolicy.ActionType.REFRESH_PO_TOKEN) &&
-                control.getMode() != SabrSessionPolicy.ControlMode.PUMP
+                control.mode != SabrSessionPolicy.ControlMode.PUMP
             ) {
                 throw IllegalStateException("SABR Host action/event mismatch")
             }

@@ -10,10 +10,10 @@ import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 
 class SabrMediaSegment private constructor(
-    private val header: SabrMediaHeader,
+    val header: SabrMediaHeader,
     private val data: ByteArray?,
     private val file: File?,
-    private val length: Int,
+    val length: Int,
     private val progressiveState: ProgressiveFileState?
 ) {
 
@@ -32,8 +32,6 @@ class SabrMediaSegment private constructor(
             return SabrMediaSegment(header, file, length, ProgressiveFileState(length))
         }
     }
-
-    fun getHeader(): SabrMediaHeader = header
 
     /**
      * Read-only: callers must not mutate the returned array. Disk-backed segments are loaded only
@@ -104,8 +102,6 @@ class SabrMediaSegment private constructor(
             file.deleteOnExit()
         }
     }
-
-    fun getLength(): Int = length
 
     internal fun getFile(): File? = file
 

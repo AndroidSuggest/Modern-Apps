@@ -60,7 +60,7 @@ class SabrResponseDecoder private constructor() {
             val decoded = SabrDecodedResponse()
             var currentOnesieHeader: SabrOnesieHeader? = null
             for (part in parts) {
-                val partData = part.rawData
+                val partData = part.getRawData()
                 decoded.addPart(part)
                 if (part.type != mediaProtocol.getMediaPartType() && part.type != mediaProtocol.getEndPartType()) {
                     try {
@@ -139,8 +139,8 @@ class SabrResponseDecoder private constructor() {
                         STREAM_PROTECTION_STATUS -> {
                             val streamProtection = SabrStreamProtectionStatus.decode(partData)
                             decoded.setStreamProtection(streamProtection)
-                            decoded.setStreamProtectionStatus(streamProtection.getStatus())
-                            decoded.setStreamProtectionMaxRetries(streamProtection.getMaxRetries())
+                            decoded.setStreamProtectionStatus(streamProtection.status)
+                            decoded.setStreamProtectionMaxRetries(streamProtection.maxRetries)
                             decoded.addGenericPartDescription(part.type, streamProtection.summarize())
                         }
                         PLAYBACK_START_POLICY -> {
@@ -201,7 +201,7 @@ class SabrResponseDecoder private constructor() {
                         }
                     }
                 } catch (e: SabrProtocolException) {
-                    decoded.addMalformedPart(part.type, part.getSize(), e)
+                    decoded.addMalformedPart(part.type, part.size, e)
                 }
             }
             return decoded
@@ -211,10 +211,10 @@ class SabrResponseDecoder private constructor() {
         private fun decodeNextRequestPolicy(data: ByteArray, decoded: SabrDecodedResponse): SabrNextRequestPolicy {
             val policy = SabrNextRequestPolicy.decode(data)
             decoded.setNextRequestPolicy(policy)
-            decoded.setBackoffTimeMs(policy.getBackoffTimeMs())
+            decoded.setBackoffTimeMs(policy.backoffTimeMs)
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 4 && field.getWireType() == SabrProto.WIRE_VARINT) {
-                    decoded.setBackoffTimeMs(field.getVarint().toInt())
+                if (field.number == 4 && field.wireType == SabrProto.WIRE_VARINT) {
+                    decoded.setBackoffTimeMs(field.varint.toInt())
                 }
             }
             return policy

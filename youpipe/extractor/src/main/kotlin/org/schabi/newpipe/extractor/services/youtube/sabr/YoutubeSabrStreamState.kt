@@ -79,8 +79,8 @@ class YoutubeSabrStreamState(
         if (nextPolicy != null) {
             this.nextRequestPolicy = nextPolicy
         }
-        if (nextPolicy?.rawPlaybackCookie != null) {
-            playbackCookie = nextPolicy.rawPlaybackCookie!!.clone()
+        if (nextPolicy?.getRawPlaybackCookie() != null) {
+            playbackCookie = nextPolicy.getRawPlaybackCookie()!!.clone()
         }
         for (meta in patch.getLiveMetadata()) {
             live = true
@@ -349,7 +349,7 @@ class YoutubeSabrStreamState(
     }
 
     private fun ingestContextUpdate(contextUpdate: SabrContextUpdate) {
-        if (contextUpdate.type < 0 || contextUpdate.valueLength == 0) return
+        if (contextUpdate.type < 0 || contextUpdate.getValueLength() == 0) return
         if (contextUpdate.writePolicy == SabrContextUpdate.WRITE_POLICY_KEEP_EXISTING && sabrContexts.containsKey(contextUpdate.type)) return
         sabrContexts[contextUpdate.type] = contextUpdate
         if (contextUpdate.isSendByDefault) activeSabrContextTypes.add(contextUpdate.type)
@@ -482,7 +482,7 @@ class YoutubeSabrStreamState(
         }
         fun getSegmentEndMs(sequenceNumber: Int): Long {
             val idx = segmentIndex
-            if (idx != null) { val entry = idx.getEntry(sequenceNumber); if (entry != null) return entry.endMs }
+            if (idx != null) { val entry = idx.getEntry(sequenceNumber); if (entry != null) return entry.getEndMs() }
             if (sequenceNumber <= 0) return -1
             return sequenceNumber * averageDurationMs
         }
@@ -490,7 +490,7 @@ class YoutubeSabrStreamState(
             if (timeMs <= 0) return 1
             val idx = segmentIndex
             if (idx != null) {
-                for (i in 1..idx.size()) { val entry = idx.getEntry(i); if (entry != null && entry.endMs > timeMs) return entry.sequenceNumber }
+                for (i in 1..idx.size()) { val entry = idx.getEntry(i); if (entry != null && entry.getEndMs() > timeMs) return entry.sequenceNumber }
                 return if (idx.size() == Int.MAX_VALUE) Int.MAX_VALUE else maxOf(1, idx.size() + 1)
             }
             val durationMs = maxOf(1, averageDurationMs)

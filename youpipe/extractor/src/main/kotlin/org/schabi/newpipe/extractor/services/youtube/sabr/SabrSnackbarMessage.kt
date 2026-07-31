@@ -13,8 +13,8 @@ class SabrSnackbarMessage private constructor(
         internal fun decode(data: ByteArray): SabrSnackbarMessage {
             var id = -1
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT) {
-                    id = field.getVarint().toInt()
+                if (field.number == 1 && field.wireType == SabrProto.WIRE_VARINT) {
+                    id = field.varint.toInt()
                 }
             }
             return SabrSnackbarMessage(id)

@@ -7,19 +7,19 @@ import javax.annotation.Nullable
 
 class YoutubeSabrInfo internal constructor(
     @field:Nonnull
-    private val profile: YoutubeSabrClientProfile,
+    val profile: YoutubeSabrClientProfile,
     @field:Nonnull
-    private val videoId: String,
+    val videoId: String,
     @field:Nonnull
-    private val cpn: String,
+    val cpn: String,
     @field:Nonnull
-    private val clientVersion: String,
+    val clientVersion: String,
     @field:Nullable
-    private val visitorData: String?,
+    val visitorData: String?,
     @field:Nullable
-    private val serverAbrStreamingUrl: String?,
+    val serverAbrStreamingUrl: String?,
     @field:Nullable
-    private val videoPlaybackUstreamerConfig: String?,
+    val videoPlaybackUstreamerConfig: String?,
     @field:Nonnull
     private val formats: List<YoutubeSabrFormat>
 ) : Serializable {
@@ -27,27 +27,6 @@ class YoutubeSabrInfo internal constructor(
     companion object {
         private const val serialVersionUID = 1L
     }
-
-    @Nonnull
-    fun getProfile(): YoutubeSabrClientProfile = profile
-
-    @Nonnull
-    fun getVideoId(): String = videoId
-
-    @Nonnull
-    fun getCpn(): String = cpn
-
-    @Nonnull
-    fun getClientVersion(): String = clientVersion
-
-    @Nullable
-    fun getVisitorData(): String? = visitorData
-
-    @Nullable
-    fun getServerAbrStreamingUrl(): String? = serverAbrStreamingUrl
-
-    @Nullable
-    fun getVideoPlaybackUstreamerConfig(): String? = videoPlaybackUstreamerConfig
 
     @Nonnull
     fun getFormats(): List<YoutubeSabrFormat> = Collections.unmodifiableList(formats)

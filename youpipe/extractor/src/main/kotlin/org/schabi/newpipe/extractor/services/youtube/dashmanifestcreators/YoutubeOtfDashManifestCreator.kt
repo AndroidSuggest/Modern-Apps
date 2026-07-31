@@ -46,7 +46,7 @@ object YoutubeOtfDashManifestCreator {
         durationSecondsFallback: Long
     ): String {
         if (OTF_STREAMS_CACHE.containsKey(otfBaseStreamingUrl)) {
-            return OTF_STREAMS_CACHE.get(otfBaseStreamingUrl)!!.second
+            return OTF_STREAMS_CACHE.get(otfBaseStreamingUrl)!!.getSecond()
         }
 
         var realOtfBaseStreamingUrl = otfBaseStreamingUrl

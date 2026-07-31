@@ -64,7 +64,7 @@ open class YoutubeChannelTabExtractor(
 
         val data = getChannelResponse(
             channelIdFromId,
-            params, extractorLocalization, extractorContentCountry
+            params, getExtractorLocalization(), getExtractorContentCountry()
         )
 
         jsonResponse = data.jsonResponse
@@ -96,7 +96,7 @@ open class YoutubeChannelTabExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<InfoItem> {
-        val collector = MultiInfoItemsCollector(serviceId)
+        val collector = MultiInfoItemsCollector(getServiceId())
 
         var items: JsonArray = JsonArray(emptyList())
         val tab = getTabData()
@@ -153,9 +153,9 @@ open class YoutubeChannelTabExtractor(
         }
 
         val channelIds = page.ids
-        val collector = MultiInfoItemsCollector(serviceId)
+        val collector = MultiInfoItemsCollector(getServiceId())
 
-        val ajaxJson = getJsonPostResponse("browse", page.body, extractorLocalization)
+        val ajaxJson = getJsonPostResponse("browse", page.body, getExtractorLocalization())
 
         val sectionListContinuation = ajaxJson.getArray("onResponseReceivedActions")!!
             .filterIsInstance<JsonObject>()
@@ -245,7 +245,7 @@ open class YoutubeChannelTabExtractor(
         channelName: String?,
         channelUrl: String?
     ): Optional<JsonObject> {
-        val timeAgoParser: TimeAgoParser = timeAgoParser
+        val timeAgoParser: TimeAgoParser = getTimeAgoParser()
 
         if (item.containsKey("richItemRenderer")) {
             val richItem = item.getObject("richItemRenderer")!!.getObject("content")!!
@@ -506,7 +506,7 @@ open class YoutubeChannelTabExtractor(
         val continuation = continuationEndpoint.getObject("continuationCommand")!!
             .getString("token")!!
 
-        val body = prepareDesktopJsonBuilder(extractorLocalization, extractorContentCountry)
+        val body = prepareDesktopJsonBuilder(getExtractorLocalization(), getExtractorContentCountry())
             .value("continuation", continuation)
             .done().toString()
             .toByteArray(StandardCharsets.UTF_8)

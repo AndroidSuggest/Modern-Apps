@@ -45,10 +45,8 @@ fun TableauColumn(
             }
             val faceDownOffset = FACE_DOWN_OVERLAP * pile.faceDown.size
             pile.faceUp.forEachIndexed { index, card ->
-                val cardsFromHere = pile.faceUp.subList(index, pile.faceUp.size)
                 DraggableCard(
                     card = card,
-                    cards = cardsFromHere,
                     sourceId = "tableau_${columnIndex}_$index",
                     viewModel = viewModel,
                     modifier = Modifier.offset(y = faceDownOffset + FACE_UP_OVERLAP * index),
@@ -87,10 +85,8 @@ fun FreeCellTableauColumn(
                 EmptySlot(cardWidth = cardWidth, cardHeight = cardHeight)
             }
             pile.forEachIndexed { index, card ->
-                val cardsFromHere = pile.subList(index, pile.size)
                 DraggableCard(
                     card = card,
-                    cards = cardsFromHere,
                     sourceId = "tableau_${columnIndex}_$index",
                     viewModel = viewModel,
                     modifier = Modifier.offset(y = FACE_UP_OVERLAP * index),

@@ -9,7 +9,7 @@ class SabrRedirect private constructor(
         fun decode(data: ByteArray): SabrRedirect {
             var url: String? = null
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                     url = field.getString()
                 }
             }

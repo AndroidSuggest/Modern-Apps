@@ -22,7 +22,7 @@ class ContentCountry(@field:Nonnull @get:Nonnull val countryCode: String) : Seri
 
     companion object {
         @JvmField
-        val DEFAULT: ContentCountry = ContentCountry(Localization.DEFAULT.countryCode)
+        val DEFAULT: ContentCountry = ContentCountry(Localization.DEFAULT.getCountryCode())
 
         @JvmStatic
         fun listFrom(vararg countryCodeList: String): List<ContentCountry> {

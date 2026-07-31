@@ -173,8 +173,8 @@ class YoutubeCommentsExtractor(
             throw IllegalArgumentException("Page doesn't have the continuation.")
         }
 
-        val localization: Localization = extractorLocalization
-        val body = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val localization: Localization = getExtractorLocalization()
+        val body = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("continuation", page.id)
             .done().toString()
             .toByteArray(StandardCharsets.UTF_8)
@@ -186,7 +186,7 @@ class YoutubeCommentsExtractor(
 
     @Throws(ExtractionException::class)
     private fun extractComments(jsonObject: JsonObject): InfoItemsPage<CommentsInfoItem> {
-        val collector = CommentsInfoItemsCollector(serviceId)
+        val collector = CommentsInfoItemsCollector(getServiceId())
         collectCommentsFrom(collector, jsonObject)
         return InfoItemsPage(collector, getNextPage(jsonObject))
     }
@@ -233,7 +233,7 @@ class YoutubeCommentsExtractor(
             .getObject("entityBatchUpdate")!!
             .getArray("mutations")!!
         val videoUrl = getUrl()
-        val timeAgoParser = timeAgoParser
+        val timeAgoParser = getTimeAgoParser()
 
         for (o in mutableContents) {
             if (o !is JsonObject) continue
@@ -319,8 +319,8 @@ class YoutubeCommentsExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        val localization = extractorLocalization
-        val body = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val localization = getExtractorLocalization()
+        val body = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("videoId", getId())
             .done().toString()
             .toByteArray(StandardCharsets.UTF_8)
@@ -333,7 +333,7 @@ class YoutubeCommentsExtractor(
             return
         }
 
-        val ajaxBody = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val ajaxBody = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("continuation", initialToken)
             .done().toString()
             .toByteArray(StandardCharsets.UTF_8)

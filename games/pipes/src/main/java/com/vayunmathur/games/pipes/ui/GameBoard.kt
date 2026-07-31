@@ -64,6 +64,27 @@ fun GameBoard(
         }?.key
     }
 
+    val boardBounds = if (cellRects.isEmpty()) Rect.Zero else Rect(
+        left = cellRects.values.minOf { it.left },
+        top = cellRects.values.minOf { it.top },
+        right = cellRects.values.maxOf { it.right },
+        bottom = cellRects.values.maxOf { it.bottom }
+    )
+
+    // While dragging, a finger that leaves the board keeps driving the border
+    // cell nearest to it, so the user doesn't have to come back inside to
+    // continue the pipe.
+    fun hitTestDrag(offset: Offset): CellPos? {
+        hitTest(offset)?.let { return it }
+        if (cellRects.isEmpty() || boardBounds.contains(offset)) return null
+        return cellRects.entries.minWithOrNull(
+            compareBy(
+                { squaredDistanceToRect(it.value, offset) },
+                { (it.value.center - offset).getDistanceSquared() }
+            )
+        )?.key
+    }
+
     Canvas(
         modifier = Modifier
             .size(boardSize)
@@ -80,7 +101,7 @@ fun GameBoard(
                                 if (cell != null) onStartDraw(cell)
                             }
                             event.changes.any { it.pressed } -> {
-                                val cell = hitTest(pos)
+                                val cell = hitTestDrag(pos)
                                 if (cell != null) onExtendPath(cell)
                             }
                             event.changes.any { !it.pressed && it.previousPressed } -> {
@@ -124,6 +145,12 @@ fun GameBoard(
         }
     }
     }
+}
+
+private fun squaredDistanceToRect(rect: Rect, point: Offset): Float {
+    val dx = maxOf(rect.left - point.x, 0f, point.x - rect.right)
+    val dy = maxOf(rect.top - point.y, 0f, point.y - rect.bottom)
+    return dx * dx + dy * dy
 }
 
 private fun directionBetween(from: CellPos, to: CellPos): Direction? {

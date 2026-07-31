@@ -15,12 +15,10 @@ class SabrSegmentIndex(
     fun size(): Int = entries.size
 
     class Entry(
-        private val sequenceNumber: Int,
-        private val startMs: Long,
+        val sequenceNumber: Int,
+        val startMs: Long,
         private val durationMs: Long
     ) {
-        fun getSequenceNumber(): Int = sequenceNumber
-        fun getStartMs(): Long = startMs
         fun getDurationMs(): Long = durationMs
         fun getEndMs(): Long = startMs + durationMs
     }

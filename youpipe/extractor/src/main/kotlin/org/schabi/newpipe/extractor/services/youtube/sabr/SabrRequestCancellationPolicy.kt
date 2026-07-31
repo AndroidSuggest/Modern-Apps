@@ -4,7 +4,7 @@ import java.util.Collections
 
 class SabrRequestCancellationPolicy private constructor(
     private val field1: Int,
-    private val field3: Int,
+    val field3: Int,
     items: List<Item>
 ) {
     private val items: List<Item> = Collections.unmodifiableList(ArrayList(items))
@@ -17,20 +17,18 @@ class SabrRequestCancellationPolicy private constructor(
             var field3 = 0
             val items = mutableListOf<Item>()
             for (field in SabrProto.readFields(data)) {
-                if (field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT) {
-                    field1 = field.getVarint().toInt()
-                } else if (field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                if (field.number == 1 && field.wireType == SabrProto.WIRE_VARINT) {
+                    field1 = field.varint.toInt()
+                } else if (field.number == 2 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                     items.add(Item.decode(field.getBytes()))
-                } else if (field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_VARINT) {
-                    field3 = field.getVarint().toInt()
+                } else if (field.number == 3 && field.wireType == SabrProto.WIRE_VARINT) {
+                    field3 = field.varint.toInt()
                 }
             }
             return SabrRequestCancellationPolicy(field1, field3, items)
         }
     }
 
-    fun getField1(): Int = field1
-    fun getField3(): Int = field3
     fun getItems(): List<Item> = items
 
     fun summarize(): String {
@@ -48,8 +46,8 @@ class SabrRequestCancellationPolicy private constructor(
     }
 
     class Item private constructor(
-        private val field1: Int,
-        private val field2: Int,
+        val field1: Int,
+        val field2: Int,
         private val minReadaheadMs: Int
     ) {
         companion object {
@@ -60,19 +58,17 @@ class SabrRequestCancellationPolicy private constructor(
                 var field2 = 0
                 var minReadaheadMs = 0
                 for (field in SabrProto.readFields(data)) {
-                    if (field.getWireType() != SabrProto.WIRE_VARINT) continue
-                    when (field.getNumber()) {
-                        1 -> field1 = field.getVarint().toInt()
-                        2 -> field2 = field.getVarint().toInt()
-                        3 -> minReadaheadMs = field.getVarint().toInt()
+                    if (field.wireType != SabrProto.WIRE_VARINT) continue
+                    when (field.number) {
+                        1 -> field1 = field.varint.toInt()
+                        2 -> field2 = field.varint.toInt()
+                        3 -> minReadaheadMs = field.varint.toInt()
                     }
                 }
                 return Item(field1, field2, minReadaheadMs)
             }
         }
 
-        fun getField1(): Int = field1
-        fun getField2(): Int = field2
         fun getMinReadaheadMs(): Int = minReadaheadMs
 
         fun summarize(): String = "field1=$field1/field2=$field2/minReadaheadMs=$minReadaheadMs"

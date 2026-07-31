@@ -1,7 +1,7 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrSegmentRequest private constructor(
-    private val format: YoutubeSabrFormat,
+    val format: YoutubeSabrFormat,
     private val initializationSegment: Boolean,
     private val sequenceNumber: Int
 ) {
@@ -18,12 +18,11 @@ class SabrSegmentRequest private constructor(
     }
 
     internal fun matches(header: SabrMediaHeader): Boolean {
-        if (header.getItag() != format.getItag()) return false
+        if (header.itag != format.itag) return false
         if (initializationSegment) return header.isInitSegment()
-        return !header.isInitSegment() && header.getSequenceNumber() == sequenceNumber
+        return !header.isInitSegment() && header.sequenceNumber == sequenceNumber
     }
 
-    fun getFormat(): YoutubeSabrFormat = format
     fun isInitializationSegment(): Boolean = initializationSegment
     fun getSequenceNumber(): Int = sequenceNumber
 }

@@ -61,8 +61,8 @@ abstract class YoutubeChartsBaseKioskExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        val localization = extractorLocalization
-        val contentCountry = extractorContentCountry
+        val localization = getExtractorLocalization()
+        val contentCountry = getExtractorContentCountry()
 
         val innertubeClientRequestInfo = InnertubeClientRequestInfo.ofWebMusicAnalyticsChartsClient()
 
@@ -106,7 +106,7 @@ abstract class YoutubeChartsBaseKioskExtractor(
             .getObject(0)!!
             .getArray("videoViews")!!
 
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
 
         videos.filterIsInstance<JsonObject>()
             .forEach { video -> collector.commit(YoutubeChartsVideoInfoItemExtractor(video)) }

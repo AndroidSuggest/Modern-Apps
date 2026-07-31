@@ -2,14 +2,12 @@ package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrFormatSelectionConfig private constructor(
     itags: List<Int>,
-    private val videoId: String?,
+    val videoId: String?,
     private val resolution: Int
 ) {
     private val itags: List<Int> = itags.toList()
 
     fun getItags(): List<Int> = itags
-
-    fun getVideoId(): String? = videoId
 
     fun getResolution(): Int = resolution
 
@@ -38,21 +36,21 @@ class SabrFormatSelectionConfig private constructor(
             var videoId: String? = null
             var resolution = 0
             for (field in SabrProto.readFields(data)) {
-                when (field.getNumber()) {
+                when (field.number) {
                     2 -> {
-                        if (field.getWireType() == SabrProto.WIRE_VARINT) {
-                            itags.add(field.getVarint().toInt())
-                        } else if (field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                        if (field.wireType == SabrProto.WIRE_VARINT) {
+                            itags.add(field.varint.toInt())
+                        } else if (field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                             for (itag in SabrProto.readPackedVarints(field.getBytes())) {
                                 itags.add(itag.toInt())
                             }
                         }
                     }
-                    3 -> if (field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED) {
+                    3 -> if (field.wireType == SabrProto.WIRE_LENGTH_DELIMITED) {
                         videoId = field.getString()
                     }
-                    4 -> if (field.getWireType() == SabrProto.WIRE_VARINT) {
-                        resolution = field.getVarint().toInt()
+                    4 -> if (field.wireType == SabrProto.WIRE_VARINT) {
+                        resolution = field.varint.toInt()
                     }
                 }
             }

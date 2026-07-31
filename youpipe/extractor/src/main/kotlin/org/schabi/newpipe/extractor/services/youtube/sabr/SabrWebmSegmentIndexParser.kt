@@ -15,8 +15,8 @@ internal object SabrWebmSegmentIndexParser {
     fun parse(initData: ByteArray, metadata: SabrFormatInitializationMetadata): SabrSegmentIndex {
         return parse(
             initData, metadata,
-            if (metadata.getDurationUnits() > 0 && metadata.getDurationTimescale() > 0)
-                scaleToMs(metadata.getDurationUnits(), metadata.getDurationTimescale())
+            if (metadata.durationUnits > 0 && metadata.getDurationTimescale() > 0)
+                scaleToMs(metadata.durationUnits, metadata.getDurationTimescale())
             else -1
         )
     }
@@ -24,7 +24,7 @@ internal object SabrWebmSegmentIndexParser {
     @JvmStatic
     @Throws(SabrProtocolException::class)
     fun parse(initData: ByteArray, format: YoutubeSabrFormat): SabrSegmentIndex {
-        return parse(initData, null, format.getApproxDurationMs())
+        return parse(initData, null, format.approxDurationMs)
     }
 
     @Throws(SabrProtocolException::class)
@@ -40,8 +40,8 @@ internal object SabrWebmSegmentIndexParser {
         else
             findElement(
                 initData,
-                checkedRangeOffset(metadata.getIndexRangeStart(), initData.size),
-                checkedRangeEnd(metadata.getIndexRangeEnd(), initData.size),
+                checkedRangeOffset(metadata.indexRangeStart, initData.size),
+                checkedRangeEnd(metadata.indexRangeEnd, initData.size),
                 CUES_ID
             )
         val cueTimes = readCueTimes(initData, cues, timecodeScaleNanos)

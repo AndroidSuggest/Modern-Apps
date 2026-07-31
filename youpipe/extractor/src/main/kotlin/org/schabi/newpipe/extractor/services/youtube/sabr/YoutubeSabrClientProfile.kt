@@ -1,11 +1,11 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 enum class YoutubeSabrClientProfile(
-    private val clientName: String,
-    private val clientId: String,
-    private val clientVersion: String,
-    private val osName: String?,
-    private val osVersion: String?,
+    val clientName: String,
+    val clientId: String,
+    val clientVersion: String,
+    val osName: String?,
+    val osVersion: String?,
     private val webLike: Boolean,
     private val userAgent: String?
 ) {
@@ -35,11 +35,6 @@ enum class YoutubeSabrClientProfile(
             "(KHTML, like Gecko) Version/15.4 Safari/605.1.15"
     );
 
-    fun getClientName(): String = clientName
-    fun getClientId(): String = clientId
-    fun getClientVersion(): String = clientVersion
-    fun getOsName(): String? = osName
-    fun getOsVersion(): String? = osVersion
     fun isWebLike(): Boolean = webLike
     fun getUserAgent(): String? = userAgent
 

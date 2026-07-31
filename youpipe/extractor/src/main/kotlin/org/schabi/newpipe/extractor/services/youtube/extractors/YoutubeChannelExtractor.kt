@@ -51,7 +51,7 @@ class YoutubeChannelExtractor(
         // Fetch Videos tab
         val data = getChannelResponse(
             id,
-            "EgZ2aWRlb3PyBgQKAjoA", extractorLocalization, extractorContentCountry
+            "EgZ2aWRlb3PyBgQKAjoA", getExtractorLocalization(), getExtractorContentCountry()
         )
 
         jsonResponse = data.jsonResponse

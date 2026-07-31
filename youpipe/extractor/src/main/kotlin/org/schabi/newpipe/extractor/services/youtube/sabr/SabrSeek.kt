@@ -1,8 +1,8 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrSeek private constructor(
-    private val seekMediaTime: Long,
-    private val seekMediaTimescale: Int,
+    val seekMediaTime: Long,
+    val seekMediaTimescale: Int,
     private val seekSource: Int
 ) {
     internal companion object {
@@ -14,20 +14,18 @@ class SabrSeek private constructor(
             var seekSource = -1
             for (field in SabrProto.readFields(data)) {
                 when {
-                    field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT ->
-                        seekMediaTime = field.getVarint()
-                    field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT ->
-                        seekMediaTimescale = field.getVarint().toInt()
-                    field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_VARINT ->
-                        seekSource = field.getVarint().toInt()
+                    field.number == 1 && field.wireType == SabrProto.WIRE_VARINT ->
+                        seekMediaTime = field.varint
+                    field.number == 2 && field.wireType == SabrProto.WIRE_VARINT ->
+                        seekMediaTimescale = field.varint.toInt()
+                    field.number == 3 && field.wireType == SabrProto.WIRE_VARINT ->
+                        seekSource = field.varint.toInt()
                 }
             }
             return SabrSeek(seekMediaTime, seekMediaTimescale, seekSource)
         }
     }
 
-    fun getSeekMediaTime(): Long = seekMediaTime
-    fun getSeekMediaTimescale(): Int = seekMediaTimescale
     fun getSeekSource(): Int = seekSource
 
     fun summarize(): String = "seek=$seekMediaTime/$seekMediaTimescale, source=$seekSource"

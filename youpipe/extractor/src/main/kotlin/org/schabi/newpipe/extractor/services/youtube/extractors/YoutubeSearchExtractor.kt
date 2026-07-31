@@ -58,10 +58,10 @@ class YoutubeSearchExtractor(
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
         val query = super.getSearchString()
-        val localization = extractorLocalization
+        val localization = getExtractorLocalization()
         val params = getSearchParameter(searchType)
 
-        val jsonBuilder = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val jsonBuilder = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("query", query)
         if (!isNullOrEmpty(params)) {
             jsonBuilder.value("params", params)
@@ -74,7 +74,7 @@ class YoutubeSearchExtractor(
 
     @Throws(ParsingException::class)
     override fun getUrl(): String {
-        return super.getUrl() + "&gl=" + extractorContentCountry.countryCode
+        return super.getUrl() + "&gl=" + getExtractorContentCountry().countryCode
     }
 
     @Throws(ParsingException::class)
@@ -126,7 +126,7 @@ class YoutubeSearchExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<InfoItem> {
-        val collector = MultiInfoItemsCollector(serviceId)
+        val collector = MultiInfoItemsCollector(getServiceId())
 
         val sections = initialData!!.getObject("contents")!!
             .getObject("twoColumnSearchResultsRenderer")!!
@@ -158,20 +158,20 @@ class YoutubeSearchExtractor(
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 
-        val localization = extractorLocalization
-        val collector = MultiInfoItemsCollector(serviceId)
+        val localization = getExtractorLocalization()
+        val collector = MultiInfoItemsCollector(getServiceId())
 
         val jsonBody = buildJsonObject {
             // prepareDesktopJsonBuilder equivalent - we need to build a proper JSON
             // The original Java used prepareDesktopJsonBuilder + value("continuation", token)
             // Use YoutubeParsingHelper's builder via JsonUtils for portability
-            put("context", prepareDesktopJsonBuilder(localization, extractorContentCountry)
+            put("context", prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
                 .getObject("context") ?: buildJsonObject {})
             put("continuation", page.id)
         }
 
         // Actually we need full builder pattern, fallback to direct use of helper
-        val rawBody = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val rawBody = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("continuation", page.id)
             .done().toString().toByteArray(StandardCharsets.UTF_8)
 
@@ -198,7 +198,7 @@ class YoutubeSearchExtractor(
         collector: MultiInfoItemsCollector,
         contents: JsonArray
     ) {
-        val timeAgoParser = timeAgoParser
+        val timeAgoParser = getTimeAgoParser()
 
         for (content in contents) {
             val item = content as JsonObject

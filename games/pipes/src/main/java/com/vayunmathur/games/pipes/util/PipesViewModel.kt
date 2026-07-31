@@ -100,20 +100,18 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         val endpointColor = levelData.endpoints.find { ep -> cell in ep.cells }?.colorIndex
 
         if (endpointColor != null) {
-            val currentPath = s.gameState.paths[endpointColor] ?: emptyList()
-            val activePath = when {
-                currentPath.isEmpty() -> listOf(cell)
-                currentPath.last() == cell -> currentPath
-                currentPath.first() == cell -> {
-                    val ep = levelData.endpoints.find { it.colorIndex == endpointColor }
-                    val isComplete = ep != null && currentPath.size >= 2 &&
-                        setOf(currentPath.first(), currentPath.last()) == ep.cells.toSet()
-                    if (!isComplete) return
-                    currentPath.reversed()
-                }
-                else -> listOf(cell)
+            // Grabbing an endpoint always restarts that color: its current line breaks
+            // right away (like grabbing a line partway does) so the drag is free to take
+            // a different route. Releasing without drawing leaves the line cleared.
+            val brokenState = clearColor(s.gameState, endpointColor)
+            _uiState.update {
+                it.copy(
+                    activeColor = endpointColor,
+                    activePath = listOf(cell),
+                    gameState = brokenState,
+                    preDrawState = it.gameState
+                )
             }
-            _uiState.update { it.copy(activeColor = endpointColor, activePath = activePath, preDrawState = it.gameState) }
             return
         }
 
@@ -123,6 +121,14 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         if (idx >= 0) {
             _uiState.update { it.copy(activeColor = ownerColor, activePath = path.take(idx + 1), preDrawState = it.gameState) }
         }
+    }
+
+    /** Removes [color]'s line from the board, leaving every other color untouched. */
+    private fun clearColor(state: PipesGameState, color: Int): PipesGameState {
+        val path = state.paths[color] ?: return state
+        val newCellOwner = state.cellOwner.toMutableMap()
+        path.forEach { c -> if (newCellOwner[c] == color) newCellOwner.remove(c) }
+        return PipesGameState(state.paths - color, newCellOwner)
     }
 
     fun extendPath(cell: CellPos) {
@@ -161,45 +167,13 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         if (cell in otherEndpoints) return
 
         val existingOwner = s.gameState.cellOwner[cell]
-        if (existingOwner != null && existingOwner != activeColor) {
-            if (cell in levelData.bridges) {
-                _uiState.update { it.copy(activePath = currentPath + cell) }
-            } else {
-                val newGameState = breakPipe(s.gameState, existingOwner, cell, levelData)
-                _uiState.update { it.copy(activePath = currentPath + cell, gameState = newGameState) }
-            }
-        } else {
-            _uiState.update { it.copy(activePath = currentPath + cell) }
-        }
-    }
-
-    private fun breakPipe(state: PipesGameState, color: Int, collisionCell: CellPos, levelData: LevelData): PipesGameState {
-        val path = state.paths[color] ?: return state
-        val idx = path.indexOf(collisionCell)
-        if (idx < 0) return state
-
-        val ep = levelData.endpoints.find { it.colorIndex == color }
-        val isComplete = ep != null && path.size >= 2 &&
-            setOf(path.first(), path.last()) == ep.cells.toSet()
-
-        val kept = if (isComplete) {
-            val seg1 = path.take(idx)
-            val seg2 = path.drop(idx + 1)
-            if (seg1.size >= seg2.size) seg1 else seg2.reversed()
-        } else {
-            path.take(idx)
+        if (existingOwner != null && existingOwner != activeColor && cell !in levelData.bridges) {
+            // Occupied by another pipe: ignore the movement instead of breaking it.
+            // The path stays put until the finger reaches an actually free neighbor.
+            return
         }
 
-        val newPaths = state.paths.toMutableMap()
-        val newCellOwner = state.cellOwner.toMutableMap()
-        path.forEach { c -> if (newCellOwner[c] == color) newCellOwner.remove(c) }
-        if (kept.isNotEmpty()) {
-            newPaths[color] = kept
-            kept.forEach { newCellOwner[it] = color }
-        } else {
-            newPaths.remove(color)
-        }
-        return PipesGameState(newPaths, newCellOwner)
+        _uiState.update { it.copy(activePath = currentPath + cell) }
     }
 
     fun commitDraw() {
@@ -211,7 +185,19 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         val preDrawState = s.preDrawState ?: s.gameState
 
         if (newPath.size < 2) {
-            _uiState.update { it.copy(activeColor = null, activePath = emptyList(), gameState = preDrawState, preDrawState = null) }
+            if (s.gameState != preDrawState) {
+                // Tapped an endpoint without drawing: keep the line broken, but make it undoable.
+                _uiState.update {
+                    it.copy(
+                        history = it.history + preDrawState,
+                        activeColor = null,
+                        activePath = emptyList(),
+                        preDrawState = null
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(activeColor = null, activePath = emptyList(), gameState = preDrawState, preDrawState = null) }
+            }
             return
         }
 

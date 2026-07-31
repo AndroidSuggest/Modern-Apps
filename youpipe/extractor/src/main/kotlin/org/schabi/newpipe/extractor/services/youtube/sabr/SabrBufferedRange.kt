@@ -52,9 +52,9 @@ class SabrBufferedRange(
         @JvmStatic
         internal fun full(format: YoutubeSabrFormat): SabrBufferedRange {
             return SabrBufferedRange(
-                format.getItag(),
-                format.getLastModified(),
-                format.getXtags(),
+                format.itag,
+                format.lastModified,
+                format.xtags,
                 0,
                 MAX_INT32_VALUE.toLong(),
                 MAX_INT32_VALUE,

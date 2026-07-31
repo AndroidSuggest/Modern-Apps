@@ -762,25 +762,56 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- Shared ---
 
-    fun tryMoveByDrag(cards: List<Card>, sourceId: String, dropOffset: Offset) {
+    /**
+     * The cards a drag from [sourceId] carries, read from the live state rather than
+     * from whatever the UI captured when the gesture was set up. Empty when the source
+     * no longer holds a card (a stale slot), which is the signal not to start a drag.
+     */
+    private fun draggedCards(sourceId: String): List<Card> = with(_uiState.value) {
+        when {
+            sourceId == "waste" -> klondike?.waste?.lastOrNull()?.let { listOf(it) } ?: emptyList()
+            sourceId.startsWith("freecell_") -> {
+                val ci = sourceId.removePrefix("freecell_").toIntOrNull() ?: return emptyList()
+                freeCell?.freeCells?.getOrNull(ci)?.let { listOf(it) } ?: emptyList()
+            }
+            sourceId.startsWith("tableau_") -> {
+                val parts = sourceId.removePrefix("tableau_").split("_")
+                val col = parts.getOrNull(0)?.toIntOrNull() ?: return emptyList()
+                val idx = parts.getOrNull(1)?.toIntOrNull() ?: return emptyList()
+                val faceUp = when (gameMode) {
+                    GameMode.KLONDIKE -> klondike?.tableauPiles?.getOrNull(col)?.faceUp
+                    GameMode.SPIDER -> spider?.tableauPiles?.getOrNull(col)?.faceUp
+                    GameMode.FREECELL -> freeCell?.tableauPiles?.getOrNull(col)
+                    else -> null
+                } ?: return emptyList()
+                if (idx in faceUp.indices) faceUp.subList(idx, faceUp.size) else emptyList()
+            }
+            else -> emptyList()
+        }
+    }
+
+    /** A foundation only ever accepts a drag that carries the single top card. */
+    private fun isSingleCardDrag(sourceId: String): Boolean = draggedCards(sourceId).size == 1
+
+    fun tryMoveByDrag(sourceId: String, dropOffset: Offset) {
         val targetId = dropTargets.entries.find { (_, rect) ->
             rect.contains(dropOffset)
         }?.key ?: return
 
         when (_uiState.value.gameMode) {
-            GameMode.KLONDIKE -> handleKlondikeDrop(cards, sourceId, targetId)
-            GameMode.SPIDER -> handleSpiderDrop(cards, sourceId, targetId)
-            GameMode.FREECELL -> handleFreeCellDrop(cards, sourceId, targetId)
+            GameMode.KLONDIKE -> handleKlondikeDrop(sourceId, targetId)
+            GameMode.SPIDER -> handleSpiderDrop(sourceId, targetId)
+            GameMode.FREECELL -> handleFreeCellDrop(sourceId, targetId)
             GameMode.PYRAMID -> {} // Pyramid is tap-based, not drag-based.
             null -> {}
         }
     }
 
-    private fun handleKlondikeDrop(cards: List<Card>, sourceId: String, targetId: String) {
+    private fun handleKlondikeDrop(sourceId: String, targetId: String) {
         when {
             targetId.startsWith("foundation_") -> {
                 val fi = targetId.removePrefix("foundation_").toInt()
-                if (cards.size == 1) {
+                if (isSingleCardDrag(sourceId)) {
                     when {
                         sourceId == "waste" -> klondikeMoveWasteToFoundation(fi)
                         sourceId.startsWith("tableau_") -> {
@@ -805,7 +836,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun handleSpiderDrop(cards: List<Card>, sourceId: String, targetId: String) {
+    private fun handleSpiderDrop(sourceId: String, targetId: String) {
         if (!targetId.startsWith("tableau_") || !sourceId.startsWith("tableau_")) return
         val toCol = targetId.removePrefix("tableau_").toInt()
         val parts = sourceId.removePrefix("tableau_").split("_")
@@ -814,7 +845,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         spiderMoveCards(fromCol, cardIdx, toCol)
     }
 
-    private fun handleFreeCellDrop(cards: List<Card>, sourceId: String, targetId: String) {
+    private fun handleFreeCellDrop(sourceId: String, targetId: String) {
         when {
             targetId.startsWith("freecell_") -> {
                 val ci = targetId.removePrefix("freecell_").toInt()
@@ -825,7 +856,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
             }
             targetId.startsWith("foundation_") -> {
                 val fi = targetId.removePrefix("foundation_").toInt()
-                if (cards.size == 1) {
+                if (isSingleCardDrag(sourceId)) {
                     when {
                         sourceId.startsWith("freecell_") -> {
                             val ci = sourceId.removePrefix("freecell_").toInt()
@@ -856,8 +887,18 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun startDrag(cards: List<Card>, sourceId: String, startPos: Offset = Offset.Zero) {
+    /**
+     * Starts a drag from [sourceId], deriving the carried cards from current state.
+     * Returns false (and starts nothing) when that source holds no card.
+     */
+    fun startDrag(sourceId: String, startPos: Offset = Offset.Zero): Boolean {
+        val cards = draggedCards(sourceId)
+        if (cards.isEmpty()) {
+            _dragInfo.value = null
+            return false
+        }
         _dragInfo.value = DragInfo(cards, sourceId, startPos, startPos)
+        return true
     }
 
     fun updateDrag(offset: Offset) {
@@ -866,7 +907,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun endDrag(dropOffset: Offset) {
         val info = _dragInfo.value ?: return
-        tryMoveByDrag(info.cards, info.sourceId, dropOffset)
+        tryMoveByDrag(info.sourceId, dropOffset)
         _dragInfo.value = null
     }
 

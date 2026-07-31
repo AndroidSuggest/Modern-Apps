@@ -36,7 +36,7 @@ class YoutubeFeedExtractor(
 
     override fun getInitialPage(): ListExtractor.InfoItemsPage<StreamInfoItem> {
         val entries = document!!.select("feed > entry")
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
 
         for (entryElement in entries) {
             collector.commit(YoutubeFeedInfoItemExtractor(entryElement))

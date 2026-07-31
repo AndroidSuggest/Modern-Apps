@@ -55,13 +55,13 @@ class YoutubeMixPlaylistExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        val localization = extractorLocalization
-        val url = stringToURL(url)
+        val localization = getExtractorLocalization()
+        val url = stringToURL(getUrl())
         val mixPlaylistId = getId()
         val videoId = getQueryValue(url, "v")
         val playlistIndexString = getQueryValue(url, "index")
 
-        val jsonBodyBuilder = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val jsonBodyBuilder = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("playlistId", mixPlaylistId)
         if (videoId != null) {
             jsonBodyBuilder.value("videoId", videoId)
@@ -138,7 +138,7 @@ class YoutubeMixPlaylistExtractor(
     @Throws(IOException::class, ExtractionException::class)
     @Suppress("UNCHECKED_CAST")
     override fun getInitialPage(): ListExtractor.InfoItemsPage<StreamInfoItem> {
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
         collectStreamsFrom(collector, playlistData!!.getArray("contents"))
 
         val cookies = mutableMapOf<String, String>()
@@ -164,7 +164,7 @@ class YoutubeMixPlaylistExtractor(
         val index = watchEndpoint.getInt("index")!!
         val params = watchEndpoint.getString("params")!!
         val body = prepareDesktopJsonBuilder(
-            extractorLocalization, extractorContentCountry
+            getExtractorLocalization(), getExtractorContentCountry()
         )
             .value("videoId", videoId)
             .value("playlistId", playlistId)
@@ -189,12 +189,12 @@ class YoutubeMixPlaylistExtractor(
             throw IllegalArgumentException("Cookie '$COOKIE_NAME' is missing")
         }
 
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
         val headers = getYouTubeHeaders()
 
         val response = getDownloader().postWithContentTypeJson(
             page.url, headers,
-            page.body, extractorLocalization
+            page.body, getExtractorLocalization()
         )
         val ajaxJson = JsonUtils.toJsonObject(getValidJsonResponseBody(response))
         val playlistJson = ajaxJson.getObject("contents")!!
@@ -218,7 +218,7 @@ class YoutubeMixPlaylistExtractor(
             return
         }
 
-        val timeAgoParser = timeAgoParser
+        val timeAgoParser = getTimeAgoParser()
 
         JsonArray(streams).filterIsInstance<JsonObject>()
             .map { stream ->

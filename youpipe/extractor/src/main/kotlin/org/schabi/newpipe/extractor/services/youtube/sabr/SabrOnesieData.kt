@@ -7,8 +7,8 @@ import java.util.zip.GZIPInputStream
 
 class SabrOnesieData private constructor(
     private val encrypted: Boolean,
-    private val payloadBytes: Int,
-    private val header: SabrOnesieHeader?,
+    val payloadBytes: Int,
+    val header: SabrOnesieHeader?,
     private val innertubeResponse: SabrOnesieInnertubeResponse?
 ) {
     companion object {
@@ -65,10 +65,6 @@ class SabrOnesieData private constructor(
     }
 
     fun isEncrypted(): Boolean = encrypted
-
-    fun getPayloadBytes(): Int = payloadBytes
-
-    fun getHeader(): SabrOnesieHeader? = header
 
     fun getInnertubeResponse(): SabrOnesieInnertubeResponse? = innertubeResponse
 

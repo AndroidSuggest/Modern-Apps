@@ -81,10 +81,9 @@ class SabrPlaybackStartPolicy private constructor(
     }
 
     class ReadaheadPolicy(
-        private val minBandwidthBytesPerSecond: Int,
+        val minBandwidthBytesPerSecond: Int,
         private val minReadaheadMs: Int
     ) {
-        fun getMinBandwidthBytesPerSecond(): Int = minBandwidthBytesPerSecond
 
         fun getMinReadaheadMs(): Int = minReadaheadMs
 

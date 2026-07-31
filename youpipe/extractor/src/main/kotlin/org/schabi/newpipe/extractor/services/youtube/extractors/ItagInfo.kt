@@ -15,7 +15,7 @@ import javax.annotation.Nonnull
  */
 internal class ItagInfo(
     @field:Nonnull
-    private val content: String,
+    val content: String,
     @field:Nonnull
     private val itagItem: ItagItem
 ) : Serializable {
@@ -37,9 +37,6 @@ internal class ItagInfo(
      *
      * @return the content stored in this [ItagInfo] instance
      */
-    @Nonnull
-    fun getContent(): String = content
-
     /**
      * Gets the [ItagItem] associated with this [ItagInfo] instance.
      *

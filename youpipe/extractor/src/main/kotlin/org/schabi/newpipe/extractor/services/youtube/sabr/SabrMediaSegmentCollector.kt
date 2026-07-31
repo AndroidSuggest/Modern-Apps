@@ -20,8 +20,8 @@ class SabrMediaSegmentCollector private constructor() {
         fun collect(response: SabrDecodedResponse): List<SabrMediaSegment> {
             val segments = ArrayList<SabrMediaSegment>()
             val openSegments = HashMap<Int, OpenSegment>()
-            for (part in response.parts) {
-                val partData = part.rawData
+            for (part in response.getParts()) {
+                val partData = part.getRawData()
                 when (part.type) {
                     SabrResponseDecoder.MEDIA_HEADER -> {
                         val header = SabrMediaHeader.decode(partData)
@@ -51,7 +51,7 @@ class SabrMediaSegmentCollector private constructor() {
         @JvmStatic
         fun find(response: SabrDecodedResponse, request: SabrSegmentRequest): SabrMediaSegment? {
             for (segment in collect(response)) {
-                if (request.matches(segment.getHeader())) {
+                if (request.matches(segment.header)) {
                     return segment
                 }
             }

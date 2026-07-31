@@ -164,8 +164,8 @@ class Request(
             }
             val languageCode = localization.languageCode
             val languageCodeList = Collections.singletonList(
-                if (localization.countryCode.isEmpty()) languageCode
-                else localization.localizationCode + ", " + languageCode + ";q=0.9"
+                if (localization.getCountryCode().isEmpty()) languageCode
+                else localization.getLocalizationCode() + ", " + languageCode + ";q=0.9"
             )
             return Collections.singletonMap("Accept-Language", languageCodeList)
         }

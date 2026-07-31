@@ -7,7 +7,7 @@ import javax.annotation.Nonnull
  */
 class YoutubeSessionPoToken(
     @field:Nonnull
-    private val visitorData: String,
+    val visitorData: String,
     @field:Nonnull
     private val poToken: String
 ) {
@@ -15,9 +15,6 @@ class YoutubeSessionPoToken(
         requireNotNull(visitorData)
         requireNotNull(poToken)
     }
-
-    @Nonnull
-    fun getVisitorData(): String = visitorData
 
     @Nonnull
     fun getPoToken(): String = poToken

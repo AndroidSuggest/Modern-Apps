@@ -271,9 +271,9 @@ object YoutubeDashManifestCreatorsUtils {
                 }
             }
 
-            if (itagItem.itagType == ItagItem.ItagType.AUDIO && itagItem.sampleRate > 0) {
+            if (itagItem.itagType == ItagItem.ItagType.AUDIO && itagItem.getSampleRate() > 0) {
                 val audioSamplingRateAttribute: Attr = doc.createAttribute("audioSamplingRate")
-                audioSamplingRateAttribute.value = itagItem.sampleRate.toString()
+                audioSamplingRateAttribute.value = itagItem.getSampleRate().toString()
             }
 
             adaptationSetElement.appendChild(representationElement)
@@ -294,15 +294,15 @@ object YoutubeDashManifestCreatorsUtils {
                 "urn:mpeg:dash:23003:3:audio_channel_configuration:2011"
             )
 
-            if (itagItem.audioChannels <= 0) {
+            if (itagItem.getAudioChannels() <= 0) {
                 throw CreationException(
                     "the number of audioChannels in the ItagItem is <= 0: " +
-                            itagItem.audioChannels
+                            itagItem.getAudioChannels()
                 )
             }
             setAttribute(
                 audioChannelConfigurationElement, doc, "value",
-                itagItem.audioChannels.toString()
+                itagItem.getAudioChannels().toString()
             )
 
             representationElement.appendChild(audioChannelConfigurationElement)

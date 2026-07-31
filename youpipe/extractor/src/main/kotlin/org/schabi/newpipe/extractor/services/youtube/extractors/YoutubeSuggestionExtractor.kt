@@ -21,7 +21,7 @@ class YoutubeSuggestionExtractor(service: StreamingService) : SuggestionExtracto
         val url = "https://suggestqueries-clients6.youtube.com/complete/search" +
             "?client=youtube" +
             "&ds=yt" +
-            "&gl=" + Utils.encodeUrlUtf8(extractorContentCountry.countryCode) +
+            "&gl=" + Utils.encodeUrlUtf8(getExtractorContentCountry().countryCode) +
             "&q=" + Utils.encodeUrlUtf8(query) +
             "&xhr=t"
 
@@ -30,7 +30,7 @@ class YoutubeSuggestionExtractor(service: StreamingService) : SuggestionExtracto
         headers["Referer"] = Collections.singletonList("https://www.youtube.com")
 
         val response = NewPipe.getDownloader()
-            .get(url, headers, extractorLocalization)
+            .get(url, headers, getExtractorLocalization())
 
         val contentTypeHeader = response.getHeader("Content-Type")
         if (isNullOrEmpty(contentTypeHeader) || !contentTypeHeader!!.contains("application/json")) {

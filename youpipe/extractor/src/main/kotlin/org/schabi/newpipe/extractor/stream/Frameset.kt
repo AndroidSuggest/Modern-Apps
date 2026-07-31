@@ -3,22 +3,16 @@ package org.schabi.newpipe.extractor.stream
 import java.io.Serializable
 
 class Frameset(
-    private val urls: List<String>,
-    private val frameWidth: Int,
-    private val frameHeight: Int,
-    private val totalCount: Int,
-    private val durationPerFrame: Int,
-    private val framesPerPageX: Int,
+    val urls: List<String>,
+    val frameWidth: Int,
+    val frameHeight: Int,
+    val totalCount: Int,
+    val durationPerFrame: Int,
+    val framesPerPageX: Int,
     private val framesPerPageY: Int
 ) : Serializable {
 
-    fun getUrls(): List<String> = urls
-    fun getTotalCount(): Int = totalCount
-    fun getFramesPerPageX(): Int = framesPerPageX
     fun getFramesPerPageY(): Int = framesPerPageY
-    fun getFrameWidth(): Int = frameWidth
-    fun getFrameHeight(): Int = frameHeight
-    fun getDurationPerFrame(): Int = durationPerFrame
 
     fun getFrameBoundsAt(position: Long): IntArray {
         if (position < 0 || position > (totalCount + 1).toLong() * durationPerFrame) {

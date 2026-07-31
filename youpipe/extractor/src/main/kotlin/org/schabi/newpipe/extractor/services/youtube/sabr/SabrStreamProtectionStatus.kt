@@ -1,12 +1,10 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrStreamProtectionStatus private constructor(
-    private val status: Int,
-    private val maxRetries: Int,
+    val status: Int,
+    val maxRetries: Int,
     private val unknownFields: String
 ) {
-    fun getStatus(): Int = status
-    fun getMaxRetries(): Int = maxRetries
     fun getUnknownFields(): String = unknownFields
 
     fun summarize(): String {
@@ -23,11 +21,11 @@ class SabrStreamProtectionStatus private constructor(
             val unknownFields = SabrProto.summarizeUnknownFields(data, 1, 2)
             for (field in SabrProto.readFields(data)) {
                 when {
-                    field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                        status = field.getVarint().toInt()
+                    field.number == 1 && field.wireType == SabrProto.WIRE_VARINT -> {
+                        status = field.varint.toInt()
                     }
-                    field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                        maxRetries = field.getVarint().toInt()
+                    field.number == 2 && field.wireType == SabrProto.WIRE_VARINT -> {
+                        maxRetries = field.varint.toInt()
                     }
                 }
             }

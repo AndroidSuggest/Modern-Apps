@@ -56,7 +56,7 @@ class YoutubeChannelTabPlaylistExtractor @Throws(
         if (!playlistExisting) {
             return InfoItemsPage.emptyPage()
         }
-        return playlistExtractorInstance.initialPage
+        return playlistExtractorInstance.getInitialPage()
     }
 
     @Throws(IOException::class, ExtractionException::class)

@@ -15,7 +15,7 @@ object ExtractorHelper {
         extractor: ListExtractor<T>
     ): InfoItemsPage<T> {
         return try {
-            val page = extractor.initialPage
+            val page = extractor.getInitialPage()
             info.addAllErrors(page.errors)
             page
         } catch (e: Exception) {
@@ -27,10 +27,10 @@ object ExtractorHelper {
     @JvmStatic
     fun getRelatedItemsOrLogError(info: StreamInfo, extractor: StreamExtractor): List<InfoItem> {
         return try {
-            val collector = extractor.relatedItems ?: return emptyList()
+            val collector = extractor.getRelatedItems() ?: return emptyList()
             info.addAllErrors(collector.errors)
             @Suppress("UNCHECKED_CAST")
-            collector.items as List<InfoItem>
+            collector.getItems() as List<InfoItem>
         } catch (e: Exception) {
             info.addError(e)
             emptyList()

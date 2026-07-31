@@ -1,36 +1,24 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrLiveMetadata private constructor(
-    private val broadcastId: String?,
-    private val headSequenceNumber: Long,
-    private val headTimeMs: Long,
-    private val wallTimeMs: Long,
+    val broadcastId: String?,
+    val headSequenceNumber: Long,
+    val headTimeMs: Long,
+    val wallTimeMs: Long,
     private val videoId: String?,
     private val postLiveDvr: Boolean,
     private val headm: Long,
-    private val minSeekableTimeTicks: Long,
-    private val minSeekableTimescale: Int,
-    private val maxSeekableTimeTicks: Long,
+    val minSeekableTimeTicks: Long,
+    val minSeekableTimescale: Int,
+    val maxSeekableTimeTicks: Long,
     private val maxSeekableTimescale: Int
 ) {
     /** Latest segment the live edge has reached, or -1 if unknown. */
-    fun getHeadSequenceNumber(): Long = headSequenceNumber
 
     /** Wall-clock-ish position (ms) of the live head, or -1 if unknown. */
-    fun getHeadTimeMs(): Long = headTimeMs
-
-    fun getWallTimeMs(): Long = wallTimeMs
 
     /** True for an ended live stream still seekable as DVR. */
     fun isPostLiveDvr(): Boolean = postLiveDvr
-
-    fun getBroadcastId(): String? = broadcastId
-
-    fun getMinSeekableTimeTicks(): Long = minSeekableTimeTicks
-
-    fun getMinSeekableTimescale(): Int = minSeekableTimescale
-
-    fun getMaxSeekableTimeTicks(): Long = maxSeekableTimeTicks
 
     fun getMaxSeekableTimescale(): Int = maxSeekableTimescale
 
@@ -84,18 +72,18 @@ class SabrLiveMetadata private constructor(
             var maxSeekableTimeTicks: Long = -1
             var maxSeekableTimescale = -1
             for (field in SabrProto.readFields(data)) {
-                when (field.getNumber()) {
+                when (field.number) {
                     1 -> broadcastId = field.getString()
-                    3 -> headSequenceNumber = field.getVarint()
-                    4 -> headTimeMs = field.getVarint()
-                    5 -> wallTimeMs = field.getVarint()
+                    3 -> headSequenceNumber = field.varint
+                    4 -> headTimeMs = field.varint
+                    5 -> wallTimeMs = field.varint
                     6 -> videoId = field.getString()
-                    8 -> postLiveDvr = field.getVarint() != 0L
-                    10 -> headm = field.getVarint()
-                    12 -> minSeekableTimeTicks = field.getVarint()
-                    13 -> minSeekableTimescale = field.getVarint().toInt()
-                    14 -> maxSeekableTimeTicks = field.getVarint()
-                    15 -> maxSeekableTimescale = field.getVarint().toInt()
+                    8 -> postLiveDvr = field.varint != 0L
+                    10 -> headm = field.varint
+                    12 -> minSeekableTimeTicks = field.varint
+                    13 -> minSeekableTimescale = field.varint.toInt()
+                    14 -> maxSeekableTimeTicks = field.varint
+                    15 -> maxSeekableTimescale = field.varint.toInt()
                 }
             }
             return SabrLiveMetadata(

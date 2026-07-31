@@ -4,13 +4,13 @@ import java.util.Collections
 import java.util.LinkedHashMap
 
 class SabrPlaybackCookie private constructor(
-    private val resolution: Int,
-    private val field2: Int,
-    private val videoItag: Int,
-    private val videoLastModified: Long,
+    val resolution: Int,
+    val field2: Int,
+    val videoItag: Int,
+    val videoLastModified: Long,
     private val videoXtagsPresent: Boolean,
-    private val audioItag: Int,
-    private val audioLastModified: Long,
+    val audioItag: Int,
+    val audioLastModified: Long,
     private val audioXtagsPresent: Boolean,
     extraVarints: Map<Int, Long>,
     private val extraFields: String
@@ -81,19 +81,7 @@ class SabrPlaybackCookie private constructor(
         }
     }
 
-    fun getResolution(): Int = resolution
-
-    fun getField2(): Int = field2
-
-    fun getVideoItag(): Int = videoItag
-
-    fun getVideoLastModified(): Long = videoLastModified
-
     fun isVideoXtagsPresent(): Boolean = videoXtagsPresent
-
-    fun getAudioItag(): Int = audioItag
-
-    fun getAudioLastModified(): Long = audioLastModified
 
     fun isAudioXtagsPresent(): Boolean = audioXtagsPresent
 

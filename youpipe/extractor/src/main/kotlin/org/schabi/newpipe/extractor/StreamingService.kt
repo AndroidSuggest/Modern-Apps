@@ -167,7 +167,7 @@ abstract class StreamingService(
         val targetParser = TimeAgoPatternsManager.getTimeAgoParserFor(localization)
         if (targetParser != null) return targetParser
 
-        if (localization.countryCode.isNotEmpty()) {
+        if (localization.getCountryCode().isNotEmpty()) {
             val lessSpecific = Localization(localization.languageCode)
             val lessSpecificParser = TimeAgoPatternsManager.getTimeAgoParserFor(lessSpecific)
             if (lessSpecificParser != null) return lessSpecificParser

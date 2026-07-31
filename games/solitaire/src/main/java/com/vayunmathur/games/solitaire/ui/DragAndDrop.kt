@@ -24,10 +24,14 @@ import androidx.compose.ui.zIndex
 import com.vayunmathur.games.solitaire.data.Card
 import com.vayunmathur.games.solitaire.util.SolitaireViewModel
 
+/**
+ * A card the player can pick up. [sourceId] identifies the pile position it comes from;
+ * the cards the drag actually carries are derived from live game state by the view model,
+ * so nothing here can go stale between recompositions.
+ */
 @Composable
 fun DraggableCard(
     card: Card,
-    cards: List<Card>,
     sourceId: String,
     viewModel: SolitaireViewModel,
     modifier: Modifier = Modifier,
@@ -49,9 +53,8 @@ fun DraggableCard(
             .pointerInput(card, sourceId) {
                 detectDragGestures(
                     onDragStart = {
-                        isDragging = true
                         dragOffset = Offset.Zero
-                        viewModel.startDrag(cards, sourceId, startPos)
+                        isDragging = viewModel.startDrag(sourceId, startPos)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()

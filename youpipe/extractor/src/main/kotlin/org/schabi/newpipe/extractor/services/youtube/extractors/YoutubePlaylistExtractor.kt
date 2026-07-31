@@ -56,10 +56,10 @@ class YoutubePlaylistExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun onFetchPage(downloader: Downloader) {
-        val playlistId = id
+        val playlistId = getId()
 
-        val localization = extractorLocalization
-        val body = prepareDesktopJsonBuilder(localization, extractorContentCountry)
+        val localization = getExtractorLocalization()
+        val body = prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
             .value("browseId", "VL$playlistId")
             .value("params", "wgYCCAA%3D")
             .done().toString()
@@ -87,7 +87,7 @@ class YoutubePlaylistExtractor(
 
         initialBrowseContinuationResponse = getJsonPostResponse(
             BROWSE_ENDPOINT,
-            prepareDesktopJsonBuilder(localization, extractorContentCountry)
+            prepareDesktopJsonBuilder(localization, getExtractorContentCountry())
                 .value(
                     "continuation",
                     Utils.encodeUrlUtf8(
@@ -312,7 +312,7 @@ class YoutubePlaylistExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getInitialPage(): InfoItemsPage<StreamInfoItem> {
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
 
         var initialItems = initialBrowseContinuationResponse!!
             .getArray(ON_RESPONSE_RECEIVED_ACTIONS)!!
@@ -338,9 +338,9 @@ class YoutubePlaylistExtractor(
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
 
-        val ajaxJson = getJsonPostResponse(BROWSE_ENDPOINT, page.body, extractorLocalization)
+        val ajaxJson = getJsonPostResponse(BROWSE_ENDPOINT, page.body, getExtractorLocalization())
 
         val continuation = ajaxJson.getArray(ON_RESPONSE_RECEIVED_ACTIONS)!!
             .getObject(0)!!
@@ -393,7 +393,7 @@ class YoutubePlaylistExtractor(
             return null
         }
 
-        val body = prepareDesktopJsonBuilder(extractorLocalization, extractorContentCountry)
+        val body = prepareDesktopJsonBuilder(getExtractorLocalization(), getExtractorContentCountry())
             .value("continuation", continuation)
             .done().toString()
             .toByteArray(StandardCharsets.UTF_8)
@@ -418,7 +418,7 @@ class YoutubePlaylistExtractor(
                         @Throws(ParsingException::class)
                         override fun getUploaderName(): String {
                             if (isCoursePlaylistResult) {
-                                return playlistExtractor.uploaderName
+                                return playlistExtractor.getUploaderName()
                             }
                             return super.getUploaderName()
                         }
@@ -426,7 +426,7 @@ class YoutubePlaylistExtractor(
                         @Throws(ParsingException::class)
                         override fun getUploaderUrl(): String {
                             if (isCoursePlaylistResult) {
-                                return playlistExtractor.uploaderUrl
+                                return playlistExtractor.getUploaderUrl()
                             }
                             return super.getUploaderUrl()
                         }
@@ -454,7 +454,7 @@ class YoutubePlaylistExtractor(
                         @Throws(ParsingException::class)
                         override fun getUploaderName(): String {
                             if (isCoursePlaylistResult) {
-                                return playlistExtractor.uploaderName
+                                return playlistExtractor.getUploaderName()
                             }
                             return super.getUploaderName()
                         }
@@ -462,7 +462,7 @@ class YoutubePlaylistExtractor(
                         @Throws(ParsingException::class)
                         override fun getUploaderUrl(): String {
                             if (isCoursePlaylistResult) {
-                                return playlistExtractor.uploaderUrl
+                                return playlistExtractor.getUploaderUrl()
                             }
                             return super.getUploaderUrl()
                         }
@@ -474,7 +474,7 @@ class YoutubePlaylistExtractor(
 
     @Throws(ParsingException::class)
     override fun getPlaylistType(): PlaylistInfo.PlaylistType {
-        return extractPlaylistTypeFromPlaylistUrl(url)
+        return extractPlaylistTypeFromPlaylistUrl(getUrl())
     }
 
     companion object {

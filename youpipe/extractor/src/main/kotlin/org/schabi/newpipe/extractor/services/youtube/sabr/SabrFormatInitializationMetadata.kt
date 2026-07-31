@@ -1,47 +1,24 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrFormatInitializationMetadata private constructor(
-    private val videoId: String?,
+    val videoId: String?,
     private val rawSummaryBytes: ByteArray,
-    private val itag: Int,
-    private val lastModified: Long,
-    private val xtags: String?,
+    val itag: Int,
+    val lastModified: Long,
+    val xtags: String?,
     private val endTimeMs: Long,
-    private val endSegmentNumber: Long,
-    private val mimeType: String?,
-    private val initRangeStart: Long,
-    private val initRangeEnd: Long,
-    private val indexRangeStart: Long,
-    private val indexRangeEnd: Long,
-    private val field8: Long,
-    private val durationUnits: Long,
+    val endSegmentNumber: Long,
+    val mimeType: String?,
+    val initRangeStart: Long,
+    val initRangeEnd: Long,
+    val indexRangeStart: Long,
+    val indexRangeEnd: Long,
+    val field8: Long,
+    val durationUnits: Long,
     private val durationTimescale: Long
 ) {
-    fun getVideoId(): String? = videoId
-
-    fun getItag(): Int = itag
-
-    fun getLastModified(): Long = lastModified
-
-    fun getXtags(): String? = xtags
-
-    fun getEndSegmentNumber(): Long = endSegmentNumber
-
-    fun getMimeType(): String? = mimeType
-
-    fun getDurationUnits(): Long = durationUnits
 
     fun getDurationTimescale(): Long = durationTimescale
-
-    fun getInitRangeStart(): Long = initRangeStart
-
-    fun getInitRangeEnd(): Long = initRangeEnd
-
-    fun getIndexRangeStart(): Long = indexRangeStart
-
-    fun getIndexRangeEnd(): Long = indexRangeEnd
-
-    fun getField8(): Long = field8
 
     fun summarize(): String {
         var unknown = "unknown-error"
@@ -104,19 +81,19 @@ class SabrFormatInitializationMetadata private constructor(
             var durationTimescale: Long = -1
 
             for (field in SabrProto.readFields(data)) {
-                when (field.getNumber()) {
+                when (field.number) {
                     1 -> videoId = field.getString()
                     2 -> {
                         for (formatField in SabrProto.readFields(field.getBytes())) {
-                            when (formatField.getNumber()) {
-                                1 -> itag = formatField.getVarint().toInt()
-                                2 -> lastModified = formatField.getVarint()
+                            when (formatField.number) {
+                                1 -> itag = formatField.varint.toInt()
+                                2 -> lastModified = formatField.varint
                                 3 -> xtags = formatField.getString()
                             }
                         }
                     }
-                    3 -> endTimeMs = field.getVarint()
-                    4 -> endSegmentNumber = field.getVarint()
+                    3 -> endTimeMs = field.varint
+                    4 -> endSegmentNumber = field.varint
                     5 -> mimeType = field.getString()
                     6 -> {
                         val initRange = decodeRange(field.getBytes())
@@ -128,9 +105,9 @@ class SabrFormatInitializationMetadata private constructor(
                         indexRangeStart = indexRange.start
                         indexRangeEnd = indexRange.end
                     }
-                    8 -> field8 = field.getVarint()
-                    9 -> durationUnits = field.getVarint()
-                    10 -> durationTimescale = field.getVarint()
+                    8 -> field8 = field.varint
+                    9 -> durationUnits = field.varint
+                    10 -> durationTimescale = field.varint
                 }
             }
 
@@ -146,14 +123,14 @@ class SabrFormatInitializationMetadata private constructor(
             var start: Long = -1
             var end: Long = -1
             for (field in SabrProto.readFields(data)) {
-                if ((field.getNumber() == 1 || field.getNumber() == 3)
-                    && field.getWireType() == SabrProto.WIRE_VARINT
+                if ((field.number == 1 || field.number == 3)
+                    && field.wireType == SabrProto.WIRE_VARINT
                 ) {
-                    start = field.getVarint()
-                } else if ((field.getNumber() == 2 || field.getNumber() == 4)
-                    && field.getWireType() == SabrProto.WIRE_VARINT
+                    start = field.varint
+                } else if ((field.number == 2 || field.number == 4)
+                    && field.wireType == SabrProto.WIRE_VARINT
                 ) {
-                    end = field.getVarint()
+                    end = field.varint
                 }
             }
             return Range(start, end)

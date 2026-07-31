@@ -963,7 +963,7 @@ object YoutubeParsingHelper {
         val base = buildJsonObject {
             putJsonObject("context") {
                 putJsonObject("client") {
-                    put("hl", localization.localizationCode)
+                    put("hl", localization.getLocalizationCode())
                     put("gl", contentCountry.countryCode)
                     put("clientName", WEB_CLIENT_NAME)
                     put("clientVersion", getClientVersion())
@@ -987,14 +987,14 @@ object YoutubeParsingHelper {
     fun getAndroidUserAgent(localization: Localization?): String {
         return "com.google.android.youtube/" + ANDROID_CLIENT_VERSION +
                 " (Linux; U; Android 15; " +
-                (localization ?: Localization.DEFAULT).countryCode + ") gzip"
+                (localization ?: Localization.DEFAULT).getCountryCode() + ") gzip"
     }
 
     @JvmStatic
     fun getIosUserAgent(localization: Localization?): String {
         return "com.google.ios.youtube/" + IOS_CLIENT_VERSION + "(" + IOS_DEVICE_MODEL +
                 "; U; CPU iOS " + IOS_USER_AGENT_VERSION + " like Mac OS X; " +
-                (localization ?: Localization.DEFAULT).countryCode + ")"
+                (localization ?: Localization.DEFAULT).getCountryCode() + ")"
     }
 
     @JvmStatic
@@ -1002,7 +1002,7 @@ object YoutubeParsingHelper {
         return "com.google.visionos.youtube/" + VISIONOS_CLIENT_VERSION + "(" +
                 VISIONOS_DEVICE_MODEL + "; U; CPU visionOS " + VISIONOS_USER_AGENT_VERSION +
                 " like Mac OS X; " +
-                (localization ?: Localization.DEFAULT).countryCode + ")"
+                (localization ?: Localization.DEFAULT).getCountryCode() + ")"
     }
 
     @JvmStatic
@@ -1308,7 +1308,7 @@ object YoutubeParsingHelper {
                     if (osVersion != null) put("osVersion", osVersion)
                     val sdk = innertubeClientRequestInfo.deviceInfo.androidSdkVersion
                     if (sdk > 0) put("androidSdkVersion", sdk)
-                    put("hl", localization.localizationCode)
+                    put("hl", localization.getLocalizationCode())
                     put("gl", contentCountry.countryCode)
                     put("utcOffsetMinutes", 0)
                 }

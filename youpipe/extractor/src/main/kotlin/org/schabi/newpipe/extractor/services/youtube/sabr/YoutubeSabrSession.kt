@@ -412,7 +412,7 @@ class YoutubeSabrSession {
                 startedConsumer,
                 segmentSpoolDirectory,
                 localization,
-                sessionPolicyHost.mediaProtocol
+                sessionPolicyHost.getMediaProtocol()
             )
         } catch (e: IOException) {
             addDiagnosticEvent("request_failed n=$requestNumber type=${e.javaClass.simpleName} message=${e.message}")
@@ -479,7 +479,7 @@ class YoutubeSabrSession {
     private fun maybeReload(localization: Localization): Boolean {
         if (reloads >= MAX_RELOADS_PER_SESSION) return false
         reloads++
-        val contentCountry = if (localization.countryCode.isEmpty()) ContentCountry.DEFAULT else ContentCountry(localization.countryCode)
+        val contentCountry = if (localization.getCountryCode().isEmpty()) ContentCountry.DEFAULT else ContentCountry(localization.getCountryCode())
         val fresh = YoutubeSabrProbe.fetchSabrInfo(info.videoId, info.profile, localization, contentCountry)
         if (fresh.serverAbrStreamingUrl.isNullOrEmpty()) return false
         info = fresh

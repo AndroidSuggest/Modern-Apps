@@ -1,10 +1,9 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrError private constructor(
-    private val type: String?,
+    val type: String?,
     private val code: Int
 ) {
-    fun getType(): String? = type
 
     fun getCode(): Int = code
 
@@ -18,11 +17,11 @@ class SabrError private constructor(
             var code = 0
             for (field in SabrProto.readFields(data)) {
                 when {
-                    field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
                         type = field.getString()
                     }
-                    field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                        code = field.getVarint().toInt()
+                    field.number == 2 && field.wireType == SabrProto.WIRE_VARINT -> {
+                        code = field.varint.toInt()
                     }
                 }
             }

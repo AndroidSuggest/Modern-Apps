@@ -1,11 +1,11 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrContextUpdate private constructor(
-    private val type: Int,
-    private val scope: Int,
+    val type: Int,
+    val scope: Int,
     value: ByteArray,
     private val sendByDefault: Boolean,
-    private val writePolicy: Int,
+    val writePolicy: Int,
     private val decodedValue: SabrContextValue?
 ) {
     private val value: ByteArray = value.clone()
@@ -17,17 +17,11 @@ class SabrContextUpdate private constructor(
         return context.toByteArray()
     }
 
-    fun getType(): Int = type
-
-    fun getScope(): Int = scope
-
     fun getValue(): ByteArray = value.clone()
 
     internal fun getValueLength(): Int = value.size
 
     fun isSendByDefault(): Boolean = sendByDefault
-
-    fun getWritePolicy(): Int = writePolicy
 
     fun getDecodedValue(): SabrContextValue? = decodedValue
 
@@ -64,9 +58,9 @@ class SabrContextUpdate private constructor(
             var decodedValue: SabrContextValue? = null
 
             for (field in SabrProto.readFields(data)) {
-                when (field.getNumber()) {
-                    1 -> type = field.getVarint().toInt()
-                    2 -> scope = field.getVarint().toInt()
+                when (field.number) {
+                    1 -> type = field.varint.toInt()
+                    2 -> scope = field.varint.toInt()
                     3 -> {
                         value = field.getBytes()
                         decodedValue = try {
@@ -75,8 +69,8 @@ class SabrContextUpdate private constructor(
                             null
                         }
                     }
-                    4 -> sendByDefault = field.getVarint() != 0L
-                    5 -> writePolicy = field.getVarint().toInt()
+                    4 -> sendByDefault = field.varint != 0L
+                    5 -> writePolicy = field.varint.toInt()
                 }
             }
 

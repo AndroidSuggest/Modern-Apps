@@ -32,7 +32,7 @@ object YoutubeProgressiveDashManifestCreator {
         durationSecondsFallback: Long
     ): String {
         if (PROGRESSIVE_STREAMS_CACHE.containsKey(progressiveStreamingBaseUrl)) {
-            return PROGRESSIVE_STREAMS_CACHE.get(progressiveStreamingBaseUrl)!!.second
+            return PROGRESSIVE_STREAMS_CACHE.get(progressiveStreamingBaseUrl)!!.getSecond()
         }
 
         val itagItemDuration = itagItem.approxDurationMs

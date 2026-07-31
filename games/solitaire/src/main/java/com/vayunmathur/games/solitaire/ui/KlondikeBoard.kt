@@ -57,7 +57,6 @@ fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier:
                             if (isTop) {
                                 DraggableCard(
                                     card = card,
-                                    cards = listOf(card),
                                     sourceId = "waste",
                                     viewModel = viewModel,
                                     modifier = Modifier.offset(x = fanOffset * index),

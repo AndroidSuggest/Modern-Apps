@@ -101,13 +101,13 @@ class AudioStream : Stream {
         if (builder.itagItem != null) {
             this.itagItem = builder.itagItem
             this.itag = builder.itagItem!!.id
-            this.quality = builder.itagItem!!.getQuality()
-            this.bitrate = builder.itagItem!!.getBitrate()
-            this.initStart = builder.itagItem!!.getInitStart()
-            this.initEnd = builder.itagItem!!.getInitEnd()
-            this.indexStart = builder.itagItem!!.getIndexStart()
-            this.indexEnd = builder.itagItem!!.getIndexEnd()
-            this.codec = builder.itagItem!!.getCodec()
+            this.quality = builder.itagItem!!.quality
+            this.bitrate = builder.itagItem!!.bitrate
+            this.initStart = builder.itagItem!!.initStart
+            this.initEnd = builder.itagItem!!.initEnd
+            this.indexStart = builder.itagItem!!.indexStart
+            this.indexEnd = builder.itagItem!!.indexEnd
+            this.codec = builder.itagItem!!.codec
         }
         this.averageBitrate = builder.averageBitrate
         this.audioTrackId = builder.audioTrackId

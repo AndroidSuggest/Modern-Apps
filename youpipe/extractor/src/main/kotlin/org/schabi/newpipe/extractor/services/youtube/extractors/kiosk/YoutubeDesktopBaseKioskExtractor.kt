@@ -44,8 +44,8 @@ abstract class YoutubeDesktopBaseKioskExtractor(
         responseData = YoutubeChannelHelper.getChannelResponse(
             browseId,
             params,
-            extractorLocalization,
-            extractorContentCountry
+            getExtractorLocalization(),
+            getExtractorContentCountry()
         )
     }
 
@@ -98,7 +98,7 @@ abstract class YoutubeDesktopBaseKioskExtractor(
             throw IllegalArgumentException("Page is null or doesn't contain a body")
         }
 
-        val continuationResponse = getJsonPostResponse("browse", page.body, extractorLocalization)
+        val continuationResponse = getJsonPostResponse("browse", page.body, getExtractorLocalization())
 
         val continuationItems = continuationResponse.getArray("onResponseReceivedActions")!!
             .filterIsInstance<JsonObject>()
@@ -114,7 +114,7 @@ abstract class YoutubeDesktopBaseKioskExtractor(
         items: JsonArray,
         visitorData: String?
     ): InfoItemsPage<StreamInfoItem> {
-        val collector = StreamInfoItemsCollector(serviceId)
+        val collector = StreamInfoItemsCollector(getServiceId())
 
         val nextPage: Page?
         if (items.isEmpty()) {
@@ -180,8 +180,8 @@ abstract class YoutubeDesktopBaseKioskExtractor(
         webClientRequestInfo.clientInfo.visitorData = visitorData
 
         val body = prepareJsonBuilder(
-            extractorLocalization,
-            extractorContentCountry,
+            getExtractorLocalization(),
+            getExtractorContentCountry(),
             webClientRequestInfo,
             null
         )

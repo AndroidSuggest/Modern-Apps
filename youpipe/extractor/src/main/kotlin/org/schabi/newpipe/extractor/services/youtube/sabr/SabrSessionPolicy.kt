@@ -54,14 +54,11 @@ interface SabrSessionPolicy : AutoCloseable {
     }
 
     class State(
-        private val requestNumber: Int,
-        private val redirectCount: Int,
-        private val poTokenRefreshes: Int,
+        val requestNumber: Int,
+        val redirectCount: Int,
+        val poTokenRefreshes: Int,
         private val reloads: Int
     ) {
-        fun getRequestNumber(): Int = requestNumber
-        fun getRedirectCount(): Int = redirectCount
-        fun getPoTokenRefreshes(): Int = poTokenRefreshes
         fun getReloads(): Int = reloads
 
         fun resetRecoveryBudgets(): State {
@@ -86,22 +83,19 @@ interface SabrSessionPolicy : AutoCloseable {
 
     /** Immutable Host-owned counters exposed to demand policy decisions. */
     class DemandState(
-        private val createdAtMs: Long,
-        private val nowMs: Long,
-        private val responsesWithoutDemandedSegment: Int,
+        val createdAtMs: Long,
+        val nowMs: Long,
+        val responsesWithoutDemandedSegment: Int,
         private val recoveryCount: Int
     ) {
-        fun getCreatedAtMs(): Long = createdAtMs
-        fun getNowMs(): Long = nowMs
         fun getElapsedMs(): Long = (nowMs - createdAtMs).coerceAtLeast(0)
-        fun getResponsesWithoutDemandedSegment(): Int = responsesWithoutDemandedSegment
         fun getRecoveryCount(): Int = recoveryCount
     }
 
     abstract class DemandEvent(
-        private val targetItag: Int,
-        private val targetSequenceNumber: Int,
-        private val targetStartMs: Long,
+        val targetItag: Int,
+        val targetSequenceNumber: Int,
+        val targetStartMs: Long,
         private val bufferedEdgeMs: Long,
         private val state: DemandState
     ) {
@@ -109,10 +103,6 @@ interface SabrSessionPolicy : AutoCloseable {
             Objects.requireNonNull(state)
         }
 
-        fun getTargetItag(): Int = targetItag
-        fun getTargetSequenceNumber(): Int = targetSequenceNumber
-        fun getTargetStartMs(): Long = targetStartMs
-        fun getBufferedEdgeMs(): Long = bufferedEdgeMs
         fun getState(): DemandState = state
     }
 
@@ -126,14 +116,11 @@ interface SabrSessionPolicy : AutoCloseable {
 
     /** Payload-free identity of one media segment returned while a reader demand was pending. */
     class DemandReturnedSegment(
-        private val itag: Int,
-        private val sequenceNumber: Int,
-        private val startMs: Long,
+        val itag: Int,
+        val sequenceNumber: Int,
+        val startMs: Long,
         private val durationMs: Long
     ) {
-        fun getItag(): Int = itag
-        fun getSequenceNumber(): Int = sequenceNumber
-        fun getStartMs(): Long = startMs
         fun getDurationMs(): Long = durationMs
     }
 
@@ -144,7 +131,7 @@ interface SabrSessionPolicy : AutoCloseable {
         bufferedEdgeMs: Long,
         state: DemandState,
         private val segmentCount: Int,
-        private val targetTrackSegmentCount: Int,
+        val targetTrackSegmentCount: Int,
         returnedSegments: List<DemandReturnedSegment>,
         private val returnedSegmentsTruncated: Boolean
     ) : DemandEvent(targetItag, targetSequenceNumber, targetStartMs, bufferedEdgeMs, state) {
@@ -152,44 +139,37 @@ interface SabrSessionPolicy : AutoCloseable {
         private val returnedSegments: List<DemandReturnedSegment> =
             Collections.unmodifiableList(ArrayList(Objects.requireNonNull(returnedSegments)))
 
-        fun getSegmentCount(): Int = segmentCount
-        fun getTargetTrackSegmentCount(): Int = targetTrackSegmentCount
         fun getReturnedSegments(): List<DemandReturnedSegment> = returnedSegments
         fun areReturnedSegmentsTruncated(): Boolean = returnedSegmentsTruncated
     }
 
     class DemandResponseDecision(
-        private val outcome: DemandOutcome,
+        val outcome: DemandOutcome,
         private val retryDelayMs: Int
     ) {
         init {
             Objects.requireNonNull(outcome)
         }
 
-        fun getOutcome(): DemandOutcome = outcome
         fun getRetryDelayMs(): Int = retryDelayMs
     }
 
     class RequestEvent(
-        private val playerTimeMs: Long,
-        private val bufferedEdgeMs: Long,
-        private val poTokenBytes: Int,
-        private val bufferedRangeCount: Int,
+        val playerTimeMs: Long,
+        val bufferedEdgeMs: Long,
+        val poTokenBytes: Int,
+        val bufferedRangeCount: Int,
         proposedBody: ByteArray
     ) : Event() {
         private val proposedBody: ByteArray = proposedBody.clone()
 
-        fun getPlayerTimeMs(): Long = playerTimeMs
-        fun getBufferedEdgeMs(): Long = bufferedEdgeMs
-        fun getPoTokenBytes(): Int = poTokenBytes
-        fun getBufferedRangeCount(): Int = bufferedRangeCount
         fun getProposedBody(): ByteArray = proposedBody.clone()
     }
 
     class ControlResponseEvent(
-        private val segmentCount: Int,
+        val segmentCount: Int,
         private val honorBackoff: Boolean,
-        private val mode: ControlMode,
+        val mode: ControlMode,
         private val response: SabrDecodedResponse
     ) : Event() {
         init {
@@ -197,9 +177,7 @@ interface SabrSessionPolicy : AutoCloseable {
             Objects.requireNonNull(response)
         }
 
-        fun getSegmentCount(): Int = segmentCount
         fun shouldHonorBackoff(): Boolean = honorBackoff
-        fun getMode(): ControlMode = mode
         fun getResponse(): SabrDecodedResponse = response
     }
 
@@ -222,24 +200,22 @@ interface SabrSessionPolicy : AutoCloseable {
 
     /** Values interpreted by Host capabilities; protocol parsing remains in the policy. */
     class ControlDecision(
-        private val backoffTimeMs: Int,
-        private val redirectUrl: String?,
+        val backoffTimeMs: Int,
+        val redirectUrl: String?,
         private val errorDetails: String?
     ) {
         init {
             if (backoffTimeMs < 0) throw IllegalArgumentException("Negative SABR backoff")
         }
 
-        fun getBackoffTimeMs(): Int = backoffTimeMs
-        fun getRedirectUrl(): String? = redirectUrl
         fun getErrorDetails(): String? = errorDetails
     }
 
     class Result private constructor(
-        private val nextState: State,
+        val nextState: State,
         actions: List<Action>,
         requestBody: ByteArray?,
-        private val controlDecision: ControlDecision?,
+        val controlDecision: ControlDecision?,
         private val statePatch: SabrResponseStatePatch?
     ) {
         private val actions: List<Action> = Collections.unmodifiableList(ArrayList(actions))
@@ -267,10 +243,8 @@ interface SabrSessionPolicy : AutoCloseable {
             }
         }
 
-        fun getNextState(): State = nextState
         fun getActions(): List<Action> = actions
         fun getRequestBody(): ByteArray? = requestBody?.clone()
-        fun getControlDecision(): ControlDecision? = controlDecision
         fun getStatePatch(): SabrResponseStatePatch? = statePatch
     }
 
@@ -284,19 +258,19 @@ interface SabrSessionPolicy : AutoCloseable {
     @Throws(SabrProtocolException::class)
     fun evaluateDemandRoute(event: DemandRouteEvent): DemandRoute {
         val demand = event.getState()
-        if (demand.getResponsesWithoutDemandedSegment() > demand.getRecoveryCount()) {
-            if (event.getTargetStartMs() < event.getBufferedEdgeMs()) {
+        if (demand.responsesWithoutDemandedSegment > demand.getRecoveryCount()) {
+            if (event.targetStartMs < event.bufferedEdgeMs) {
                 return DemandRoute.RECOVER_REWIND
             }
-            if (event.getTargetStartMs() > event.getBufferedEdgeMs() + 30_000) {
+            if (event.targetStartMs > event.bufferedEdgeMs + 30_000) {
                 return DemandRoute.RECOVER_FORWARD
             }
             return DemandRoute.RECOVER_MISSING
         }
-        if (event.getTargetStartMs() < event.getBufferedEdgeMs()) {
+        if (event.targetStartMs < event.bufferedEdgeMs) {
             return DemandRoute.REWIND
         }
-        if (event.getTargetStartMs() > event.getBufferedEdgeMs() + 30_000) {
+        if (event.targetStartMs > event.bufferedEdgeMs + 30_000) {
             return DemandRoute.FORWARD
         }
         return DemandRoute.STREAM
@@ -306,12 +280,12 @@ interface SabrSessionPolicy : AutoCloseable {
     @Throws(SabrProtocolException::class)
     fun evaluateDemandResponse(event: DemandResponseEvent): DemandResponseDecision {
         val demand = event.getState()
-        if (demand.getResponsesWithoutDemandedSegment() >= 3) {
+        if (demand.responsesWithoutDemandedSegment >= 3) {
             return DemandResponseDecision(DemandOutcome.FAIL_REPEATED_TARGET_OMISSION, 0)
         }
         if (demand.getElapsedMs() >= 15_000) {
             return DemandResponseDecision(
-                if (event.getTargetTrackSegmentCount() > 0)
+                if (event.targetTrackSegmentCount > 0)
                     DemandOutcome.FAIL_REPEATED_TARGET_OMISSION
                 else
                     DemandOutcome.FAIL_NO_TARGET_MEDIA,

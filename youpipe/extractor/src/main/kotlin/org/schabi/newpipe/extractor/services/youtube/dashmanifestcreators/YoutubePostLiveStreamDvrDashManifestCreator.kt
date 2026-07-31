@@ -38,7 +38,7 @@ object YoutubePostLiveStreamDvrDashManifestCreator {
         durationSecondsFallback: Long
     ): String {
         if (POST_LIVE_DVR_STREAMS_CACHE.containsKey(postLiveStreamDvrStreamingUrl)) {
-            return POST_LIVE_DVR_STREAMS_CACHE.get(postLiveStreamDvrStreamingUrl)!!.second
+            return POST_LIVE_DVR_STREAMS_CACHE.get(postLiveStreamDvrStreamingUrl)!!.getSecond()
         }
 
         var realPostLiveStreamDvrStreamingUrl = postLiveStreamDvrStreamingUrl

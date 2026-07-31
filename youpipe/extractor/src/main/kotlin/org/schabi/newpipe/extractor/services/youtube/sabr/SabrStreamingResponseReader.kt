@@ -149,7 +149,7 @@ object SabrStreamingResponseReader {
                         controlParts.add(UmpPart(type, payload.size, payload))
                         if (segment != null) {
                             segmentCount[0]++
-                            maxSegmentBytes[0] = maxOf(maxSegmentBytes[0], segment.getLength().toLong())
+                            maxSegmentBytes[0] = maxOf(maxSegmentBytes[0], segment.length.toLong())
                             if (segmentConsumer == null) {
                                 segments.add(segment)
                             } else {
@@ -207,26 +207,17 @@ object SabrStreamingResponseReader {
 
     /** The decoded control response plus the segments assembled while streaming. */
     class Result(
-        private val decodedResponse: SabrDecodedResponse,
-        private val segments: List<SabrMediaSegment>,
-        private val segmentCount: Int,
-        private val mediaPayloadBytes: Long,
-        private val mediaPartPayloadBytes: Long,
-        private val controlPayloadBytes: Long,
-        private val totalPayloadBytes: Long,
-        private val maxPartBytes: Long,
-        private val maxMediaPartPayloadBytes: Long,
+        val decodedResponse: SabrDecodedResponse,
+        val segments: List<SabrMediaSegment>,
+        val segmentCount: Int,
+        val mediaPayloadBytes: Long,
+        val mediaPartPayloadBytes: Long,
+        val controlPayloadBytes: Long,
+        val totalPayloadBytes: Long,
+        val maxPartBytes: Long,
+        val maxMediaPartPayloadBytes: Long,
         private val maxSegmentBytes: Long
     ) {
-        fun getDecodedResponse(): SabrDecodedResponse = decodedResponse
-        fun getSegments(): List<SabrMediaSegment> = segments
-        fun getSegmentCount(): Int = segmentCount
-        fun getMediaPayloadBytes(): Long = mediaPayloadBytes
-        fun getMediaPartPayloadBytes(): Long = mediaPartPayloadBytes
-        fun getControlPayloadBytes(): Long = controlPayloadBytes
-        fun getTotalPayloadBytes(): Long = totalPayloadBytes
-        fun getMaxPartBytes(): Long = maxPartBytes
-        fun getMaxMediaPartPayloadBytes(): Long = maxMediaPartPayloadBytes
         fun getMaxSegmentBytes(): Long = maxSegmentBytes
     }
 }

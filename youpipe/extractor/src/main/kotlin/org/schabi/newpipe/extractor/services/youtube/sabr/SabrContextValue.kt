@@ -1,13 +1,10 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrContextValue private constructor(
-    private val timingInfo: TimingInfo?,
-    private val signatureLength: Int,
+    val timingInfo: TimingInfo?,
+    val signatureLength: Int,
     private val field5: Int
 ) {
-    fun getTimingInfo(): TimingInfo? = timingInfo
-
-    fun getSignatureLength(): Int = signatureLength
 
     fun getField5(): Int = field5
 
@@ -23,14 +20,14 @@ class SabrContextValue private constructor(
             var field5 = -1
             for (field in SabrProto.readFields(data)) {
                 when {
-                    field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
                         timingInfo = TimingInfo.decode(field.getBytes())
                     }
-                    field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                    field.number == 2 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
                         signatureLength = field.getBytes().size
                     }
-                    field.getNumber() == 5 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                        field5 = field.getVarint().toInt()
+                    field.number == 5 && field.wireType == SabrProto.WIRE_VARINT -> {
+                        field5 = field.varint.toInt()
                     }
                 }
             }
@@ -39,13 +36,10 @@ class SabrContextValue private constructor(
     }
 
     class TimingInfo private constructor(
-        private val timestampMs: Long,
-        private val durationMs: Int,
+        val timestampMs: Long,
+        val durationMs: Int,
         private val contentInfo: ContentInfo?
     ) {
-        fun getTimestampMs(): Long = timestampMs
-
-        fun getDurationMs(): Int = durationMs
 
         fun getContentInfo(): ContentInfo? = contentInfo
 
@@ -60,13 +54,13 @@ class SabrContextValue private constructor(
                 var contentInfo: ContentInfo? = null
                 for (field in SabrProto.readFields(data)) {
                     when {
-                        field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                            timestampMs = field.getVarint()
+                        field.number == 1 && field.wireType == SabrProto.WIRE_VARINT -> {
+                            timestampMs = field.varint
                         }
-                        field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                            durationMs = field.getVarint().toInt()
+                        field.number == 2 && field.wireType == SabrProto.WIRE_VARINT -> {
+                            durationMs = field.varint.toInt()
                         }
-                        field.getNumber() == 3 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                        field.number == 3 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
                             contentInfo = ContentInfo.decode(field.getBytes())
                         }
                     }
@@ -77,10 +71,9 @@ class SabrContextValue private constructor(
     }
 
     class ContentInfo private constructor(
-        private val contentId: String?,
+        val contentId: String?,
         private val contentType: Int
     ) {
-        fun getContentId(): String? = contentId
 
         fun getContentType(): Int = contentType
 
@@ -96,11 +89,11 @@ class SabrContextValue private constructor(
                 var contentType = -1
                 for (field in SabrProto.readFields(data)) {
                     when {
-                        field.getNumber() == 1 && field.getWireType() == SabrProto.WIRE_LENGTH_DELIMITED -> {
+                        field.number == 1 && field.wireType == SabrProto.WIRE_LENGTH_DELIMITED -> {
                             contentId = field.getString()
                         }
-                        field.getNumber() == 2 && field.getWireType() == SabrProto.WIRE_VARINT -> {
-                            contentType = field.getVarint().toInt()
+                        field.number == 2 && field.wireType == SabrProto.WIRE_VARINT -> {
+                            contentType = field.varint.toInt()
                         }
                     }
                 }

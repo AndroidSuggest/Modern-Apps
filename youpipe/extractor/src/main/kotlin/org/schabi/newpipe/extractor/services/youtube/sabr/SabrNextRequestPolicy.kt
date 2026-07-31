@@ -1,15 +1,15 @@
 package org.schabi.newpipe.extractor.services.youtube.sabr
 
 class SabrNextRequestPolicy private constructor(
-    private val targetAudioReadaheadMs: Int,
-    private val targetVideoReadaheadMs: Int,
-    private val maxTimeSinceLastRequestMs: Int,
-    private val backoffTimeMs: Int,
-    private val minAudioReadaheadMs: Int,
-    private val minVideoReadaheadMs: Int,
+    val targetAudioReadaheadMs: Int,
+    val targetVideoReadaheadMs: Int,
+    val maxTimeSinceLastRequestMs: Int,
+    val backoffTimeMs: Int,
+    val minAudioReadaheadMs: Int,
+    val minVideoReadaheadMs: Int,
     playbackCookie: ByteArray?,
-    private val decodedPlaybackCookie: SabrPlaybackCookie?,
-    private val videoId: String?,
+    val decodedPlaybackCookie: SabrPlaybackCookie?,
+    val videoId: String?,
     private val unknownFields: String
 ) {
     private val playbackCookie: ByteArray? = playbackCookie?.clone()
@@ -76,25 +76,9 @@ class SabrNextRequestPolicy private constructor(
         }
     }
 
-    fun getTargetAudioReadaheadMs(): Int = targetAudioReadaheadMs
-
-    fun getTargetVideoReadaheadMs(): Int = targetVideoReadaheadMs
-
-    fun getMaxTimeSinceLastRequestMs(): Int = maxTimeSinceLastRequestMs
-
-    fun getBackoffTimeMs(): Int = backoffTimeMs
-
-    fun getMinAudioReadaheadMs(): Int = minAudioReadaheadMs
-
-    fun getMinVideoReadaheadMs(): Int = minVideoReadaheadMs
-
     fun getPlaybackCookie(): ByteArray? = playbackCookie?.clone()
 
     internal fun getRawPlaybackCookie(): ByteArray? = playbackCookie
-
-    fun getDecodedPlaybackCookie(): SabrPlaybackCookie? = decodedPlaybackCookie
-
-    fun getVideoId(): String? = videoId
 
     fun getUnknownFields(): String = unknownFields
 
