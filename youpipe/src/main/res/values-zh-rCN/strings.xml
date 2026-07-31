@@ -103,4 +103,8 @@
     <string name="chapter">章节</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">确定要清除所有观看历史记录吗？</string>
     <string name="resolution">分辨率</string>
+    <string name="label_general">常规</string>
+    <string name="label_default_page">打开</string>
+    <string name="page_home">首页</string>
+    <string name="page_downloads">下载</string>
 </resources>
