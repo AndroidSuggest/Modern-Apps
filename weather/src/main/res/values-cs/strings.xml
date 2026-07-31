@@ -9,4 +9,89 @@
     <string name="add_location">Přidat místo</string>
     <string name="map_time">Čas</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
+    <string name="delete">Smazat</string>
+    <string name="no_locations_yet">Zatím žádné místa</string>
+    <string name="add_a_city_or_use_your_current_location">Přidejte město nebo použijte vaši aktuální polohu pro zobrazení předpovědi.</string>
+    <string name="use_current_location">Použít aktuální polohu</string>
+    <string name="locating">Hledání…</string>
+    <string name="detect_your_device_s_current_location_au">Automaticky detekovat aktuální polohu zařízení a přidat ji do seznamu</string>
+    <string name="current_location">Aktuální poloha</string>
+    <string name="locations">Místa</string>
+    <string name="no_matches">Žádné shody</string>
+    <string name="couldn_t_determine_location">Nepodařilo se určit polohu</string>
+    <string name="location_permission_denied">Byl zakázán přístup k poloze</string>
+    <string name="max_min">Max <xliff:g id="max" example="28 °C">%1$s</xliff:g> Min <xliff:g id="min" example="14 °C">%2$s</xliff:g></string>
+    <string name="feels_like">Pocitově <xliff:g id="temp" example="26 °C">%1$s</xliff:g></string>
+    <string name="dew_point">Rosný bod</string>
+    <string name="from_gusts">Z <xliff:g id="direction" example="NW">%1$s</xliff:g> · Nárazy <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
+    <string name="not_enough_data_to_plot">Nedostatek dat pro zobrazení.</string>
+    <string name="condition_clear">Jasno</string>
+    <string name="condition_partly_cloudy">Polojasno</string>
+    <string name="condition_cloudy">Zataženo</string>
+    <string name="condition_fog">Mlha</string>
+    <string name="condition_drizzle">Mrholení</string>
+    <string name="condition_rain">Déšť</string>
+    <string name="condition_snow">Sníh</string>
+    <string name="condition_thunderstorm">Bouřka</string>
+    <string name="condition_unknown">Neznámé</string>
+    <string name="metric_temperature">Teplota</string>
+    <string name="metric_feels_like">Pocitově</string>
+    <string name="metric_humidity">Vlhkost</string>
+    <string name="metric_precipitation">Srážky</string>
+    <string name="metric_wind_speed">Rychlost větru</string>
+    <string name="metric_wind_gusts">Nárazy větru</string>
+    <string name="metric_pressure">Tlak</string>
+    <string name="metric_visibility">Viditelnost</string>
+    <string name="metric_uv_index">UV index</string>
+    <string name="metric_cloud_cover">Oblačnost</string>
+    <string name="block_sun">Slunce</string>
+    <string name="block_pollen">Pyl</string>
+    <string name="block_wind">Vítr</string>
+    <string name="block_air_quality">Kvalita vzduchu</string>
+    <string name="hourly_forecast">Hodinová předpověď</string>
+    <string name="daily_forecast">Denní předpověď</string>
+    <string name="now">Nyní</string>
+    <string name="today">Dnes</string>
+    <string name="today_short">DNE</string>
+    <string name="tomorrow_short">ZTR</string>
+    <string name="level_none">Žádný</string>
+    <string name="level_low">Nízký</string>
+    <string name="level_medium">Střední</string>
+    <string name="level_moderate">Mírný</string>
+    <string name="level_high">Vysoký</string>
+    <string name="level_very_high">Velmi vysoký</string>
+    <string name="level_extreme">Extrémní</string>
+    <string name="level_severe">Silný</string>
+    <string name="cloud_clear">Jasno</string>
+    <string name="cloud_mostly_clear">Skoro jasno</string>
+    <string name="cloud_partly_cloudy">Polojasno</string>
+    <string name="cloud_mostly_cloudy">Skoro zataženo</string>
+    <string name="cloud_overcast">Zataženo</string>
+    <string name="aqi_good">Dobrá</string>
+    <string name="aqi_moderate">Mírná</string>
+    <string name="aqi_unhealthy_sensitive">Nezdravá (citlivé skupiny)</string>
+    <string name="aqi_unhealthy">Nezdravá</string>
+    <string name="aqi_very_unhealthy">Velmi nezdravá</string>
+    <string name="aqi_hazardous">Nebezpečná</string>
+    <string name="precip_raining_now">Právě prší</string>
+    <string name="precip_no_rain_next_2h">Žádný déšť v příštích 2 hodinách</string>
+    <string name="precip_rain_starting_now">Právě začíná pršet</string>
+    <string name="precip_rain_in_min">Déšť za ~<xliff:g id="minutes" example="15">%1$d</xliff:g> min</string>
+    <string name="last_updated">Naposledy aktualizováno <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
+    <string name="no_data_yet">Zatím žádná data</string>
+    <string name="just_now">právě teď</string>
+    <string name="minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g> min nazpět</string>
+    <string name="hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g> h nazpět</string>
+    <string name="days_ago"><xliff:g id="days" example="3">%1$d</xliff:g>d nazpět</string>
+    <string name="duration_h_m"><xliff:g id="hours" example="11">%1$d</xliff:g>h <xliff:g id="minutes" example="30">%2$d</xliff:g>min</string>
+    <string name="summary_title">Přehled</string>
+    <string name="summary_mixed_conditions">proměnlivé počasí</string>
+    <string name="summary_expect_conditions">Očekávejte <xliff:g id="conditions" example="lehký déšť">%1$s</xliff:g> přes den.</string>
+    <string name="summary_high_low">Nejvyšší <xliff:g id="high" example="24°C">%1$s</xliff:g>, nejnižší <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
+    <string name="summary_rain_likely">Déšť je očekávaný - vemte si deštník.</string>
+    <string name="summary_showers_possible">Později jsou možné přeháňky.</string>
+    <string name="summary_slight_chance_rain">Malá pravděpodobnost deště.</string>
+    <string name="summary_winds_noticeable">Dnes bude znatelný vítr.</string>
+    <string name="weather_no_data">-</string>
+    <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
 </resources>
