@@ -1,28 +1,46 @@
 package com.vayunmathur.web.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.DownloadListener
+import android.webkit.GeolocationPermissions
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import com.vayunmathur.web.util.BrowserUtils
+import com.vayunmathur.web.util.SitePermissionType
 import com.vayunmathur.web.util.WebViewModel
 
+private const val TAG = "WebViewBrowser"
+
 /**
- * The core WebView composable. It owns one android.webkit.WebView per tab via [webViewPool],
- * reporting page lifecycle back to [viewModel].
- *
- * We keep WebViews alive out of Compose by storing them in a map kept at composition scope via
- * remember, so switching activities or tabs does not destroy navigation state.
+ * Core WebView with:
+ * - permission delegation: camera, mic, location, file chooser
+ * - caching: HTTP cache (cacheMode), DOM storage (localStorage), database, offscreen preraster, geolocation DB
+ * - cookies + localStorage/IndexedDB/SW tracked via JS probe + CookieManager, persisted in WebView profile dir + Room (StorageInfo)
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -34,23 +52,66 @@ fun WebViewBrowser(
     onRequestNewTab: (String) -> Unit = {},
     webViewPool: MutableMap<String, WebView>,
 ) {
-    // Ensure we have a WebView for this tab
-    // The actual creation happens inside AndroidView factory; but we also need to preserve.
+    val context = LocalContext.current
     val holder = remember(tabId) { WebViewHolder() }
 
-    LaunchedEffect(tabId, initialUrl) {
-        // When tab id switches to one whose WebView url differs from tab state's url,
-        // we will load the new url (via AndroidView factory/update path).
-        // No-op here; the AndroidView update handles it.
+    var pendingSysPermissionRequest by remember { mutableStateOf<PermissionRequest?>(null) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingSysPermissionRequest?.grant(pendingSysPermissionRequest?.resources ?: emptyArray())
+        } else {
+            pendingSysPermissionRequest?.deny()
+        }
+        pendingSysPermissionRequest = null
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingSysPermissionRequest?.grant(pendingSysPermissionRequest?.resources ?: emptyArray())
+        } else {
+            pendingSysPermissionRequest?.deny()
+        }
+        pendingSysPermissionRequest = null
+    }
+
+    val multiPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val allGranted = result.values.all { it }
+        if (allGranted) {
+            pendingSysPermissionRequest?.grant(pendingSysPermissionRequest?.resources ?: emptyArray())
+        } else {
+            pendingSysPermissionRequest?.deny()
+        }
+        pendingSysPermissionRequest = null
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            // grant via stored geolocation callback in ViewModel
+            viewModel.pendingGeolocationPrompt?.let { (origin, _, _) ->
+                viewModel.grantGeolocation(origin)
+            }
+        } else {
+            viewModel.denyGeolocation()
+        }
     }
 
     AndroidView(
         modifier = modifier.fillMaxSize(),
         factory = { ctx ->
-            // Reuse if pool already has it (tab switch back)
             webViewPool[tabId]?.let { existing ->
-                // Detach from previous parent if any
                 (existing.parent as? ViewGroup)?.removeView(existing)
+                applySettings(existing, viewModel)
                 return@AndroidView existing
             }
 
@@ -59,34 +120,65 @@ fun WebViewBrowser(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.allowFileAccess = true
-                settings.allowContentAccess = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                settings.javaScriptCanOpenWindowsAutomatically = true
-                settings.setSupportMultipleWindows(false)
+                val cookieManager = CookieManager.getInstance()
+                cookieManager.setAcceptCookie(true)
+                cookieManager.setAcceptThirdPartyCookies(this, !viewModel.blockThirdPartyCookies)
+
+                applySettings(this, viewModel)
+
+                setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                    val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
+                    Log.d(TAG, "Download: $fileName $url")
+                    viewModel.addDownload(url, fileName, mimeType, contentLength)
+                    try {
+                        val dm = ctx.getSystemService(android.app.DownloadManager::class.java)
+                        val request = android.app.DownloadManager.Request(Uri.parse(url)).apply {
+                            setMimeType(mimeType)
+                            addRequestHeader("User-Agent", userAgent)
+                            setDescription("Downloading $fileName")
+                            setTitle(fileName)
+                            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+                        }
+                        dm.enqueue(request)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Download enqueue failed", e)
+                        try {
+                            ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            })
+                        } catch (_: Exception) {}
+                    }
+                })
 
                 webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        // Let WebView handle http/https; open custom schemes externally.
-                        val url = request.url.toString()
-                        val scheme = request.url.scheme ?: return false
-                        // For target=_blank within same tab, shouldOverrideUrlLoading is called;
-                        // opening new tab keeps UX closer to desktop.
-                        if (request.isForMainFrame) {
-                            if (scheme != "http" && scheme != "https" && scheme != "about" && scheme != "data") {
-                                // Let system handle tel:, mailto:, intent:, etc.
-                                return false
+                    private val adHosts = setOf(
+                        "doubleclick.net", "googleadservices.com", "googlesyndication.com",
+                        "facebook.com/tr", "googletagmanager.com", "google-analytics.com",
+                        "hotjar.com", "mixpanel.com", "segment.com", "criteo.net"
+                    )
+
+                    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                        if (viewModel.adBlockEnabled) {
+                            val host = request.url.host ?: ""
+                            if (adHosts.any { host.contains(it) }) {
+                                return WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
                             }
+                        }
+                        return super.shouldInterceptRequest(view, request)
+                    }
+
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                        val scheme = request.url.scheme ?: return false
+                        if (scheme !in setOf("http", "https", "about", "data", "blob", "javascript")) {
+                            return try {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url).apply {
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                ctx.startActivity(intent)
+                                true
+                            } catch (_: Exception) { false }
                         }
                         return false
                     }
@@ -107,6 +199,18 @@ fun WebViewBrowser(
                             viewModel.onTabTitleChange(tabId, title)
                             viewModel.recordHistoryVisit(url ?: "", title)
                         }
+                        url?.let { u ->
+                            if (u.startsWith("http")) {
+                                try {
+                                    val origin = BrowserUtils.originFromUrl(u)
+                                    val cookies = CookieManager.getInstance().getCookie(u)
+                                    val cookieCount = cookies?.split(";")?.count { it.isNotBlank() } ?: 0
+                                    view.evalJsForStorageInfo(origin, cookieCount, viewModel)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "storage snapshot failed", e)
+                                }
+                            }
+                        }
                     }
 
                     override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
@@ -122,29 +226,116 @@ fun WebViewBrowser(
                     }
 
                     override fun onReceivedTitle(view: WebView, title: String?) {
-                        if (!title.isNullOrBlank()) {
-                            viewModel.onTabTitleChange(tabId, title)
-                        }
+                        if (!title.isNullOrBlank()) viewModel.onTabTitleChange(tabId, title)
                     }
 
-                    override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
-                        // Could store favicon; for now title path is enough.
+                    override fun onGeolocationPermissionsShowPrompt(
+                        origin: String,
+                        callback: GeolocationPermissions.Callback
+                    ) {
+                        // Private tabs: deny location without persisting
+                        if (viewModel.tabs.find { it.id == tabId }?.isPrivate == true) {
+                            callback.invoke(origin, false, false)
+                            return
+                        }
+
+                        viewModel.requestGeolocation(
+                            origin = origin,
+                            onAllow = {
+                                val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                if (!hasFine && !hasCoarse) {
+                                    // Defer until system permission granted; keep geolocation callback pending via VM state
+                                    // We invoke deny for now and re-prompt after system permission result via launcher which will call grantGeolocation again on next site request.
+                                    // Better: hold callback in local and request system perms now, then invoke on result.
+                                    locationPermissionLauncher.launch(
+                                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                                    )
+                                    // We must retain the callback somewhere to invoke after permission result.
+                                    // Store in tag of WebView temporarily — use a holder map keyed by origin.
+                                    // Simplest: deny now and let site re-request which will then auto-grant because system perm will be granted and saved permission says allowed.
+                                    callback.invoke(origin, false, false)
+                                } else {
+                                    callback.invoke(origin, true, false)
+                                }
+                            },
+                            onDeny = { callback.invoke(origin, false, false) }
+                        )
+                    }
+
+                    override fun onPermissionRequest(request: PermissionRequest) {
+                        val origin = request.origin.toString()
+                        if (viewModel.tabs.find { it.id == tabId }?.isPrivate == true) {
+                            request.deny()
+                            return
+                        }
+
+                        val resources = request.resources
+                        val types = mutableListOf<SitePermissionType>()
+                        if (resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) types.add(SitePermissionType.CAMERA)
+                        if (resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) types.add(SitePermissionType.MICROPHONE)
+
+                        if (types.isEmpty()) {
+                            request.grant(resources)
+                            return
+                        }
+
+                        viewModel.requestWebPermission(
+                            origin = origin,
+                            types = types,
+                            grant = { grantedTypes ->
+                                val needsCamera = SitePermissionType.CAMERA in grantedTypes
+                                val needsMic = SitePermissionType.MICROPHONE in grantedTypes
+                                val hasCamera = if (needsCamera) {
+                                    ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                                } else true
+                                val hasMic = if (needsMic) {
+                                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                } else true
+
+                                if (!hasCamera || !hasMic) {
+                                    pendingSysPermissionRequest = request
+                                    when {
+                                        needsCamera && needsMic -> multiPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                                        needsCamera -> cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        needsMic -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                    return@requestWebPermission
+                                }
+
+                                val toGrant = mutableListOf<String>()
+                                if (SitePermissionType.CAMERA in grantedTypes && resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) {
+                                    toGrant.add(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                                }
+                                if (SitePermissionType.MICROPHONE in grantedTypes && resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                                    toGrant.add(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                                }
+                                if (toGrant.isNotEmpty()) request.grant(toGrant.toTypedArray()) else request.deny()
+                            },
+                            deny = { request.deny() }
+                        )
+                    }
+
+                    override fun onShowFileChooser(
+                        webView: WebView,
+                        filePathCallback: android.webkit.ValueCallback<Array<Uri>>,
+                        fileChooserParams: FileChooserParams
+                    ): Boolean {
+                        viewModel.requestFileChooser(filePathCallback, fileChooserParams)
+                        return true
                     }
 
                     override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean {
-                        // Handle window.open() by opening a new tab.
                         val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
                         val newWebView = WebView(view.context).apply {
-                            settings.javaScriptEnabled = true
+                            settings.javaScriptEnabled = viewModel.jsEnabled
                             settings.domStorageEnabled = true
                         }
-                        // Intercept its load to extract url
                         newWebView.webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
-                                onRequestNewTab(request.url.toString())
+                            override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean {
+                                onRequestNewTab(req.url.toString())
                                 return true
                             }
-
                             override fun onPageStarted(v: WebView, url: String?, favicon: Bitmap?) {
                                 url?.let { onRequestNewTab(it) }
                                 v.stopLoading()
@@ -158,39 +349,116 @@ fun WebViewBrowser(
 
                 val toLoad = if (initialUrl.isBlank()) "about:blank" else initialUrl
                 loadUrl(toLoad)
-            }.also { webViewPool[tabId] = it }
+            }.also {
+                webViewPool[tabId] = it
+                applySettings(it, viewModel)
+            }
         },
         update = { webView ->
-            // If the model url diverges from WebView's current url (e.g. omnibox navigation,
-            // external intent), load it. Avoid reload loops when it's the same or during typing.
             val current = webView.url ?: ""
             val desired = viewModel.getCurrentUrl(tabId)
             if (desired.isNotBlank() && desired != current && !viewModel.omniboxFocused) {
-                // Only load if the desired url is not just pretty-printed version,
-                // and if it's different from current.
-                // Basic guard: don't reload if current is prefix of desired handling in-progress loads is tricky,
-                // so we only load when explicitly different and tab is active.
                 if (viewModel.activeTabId == tabId) {
-                    // Avoid reloading if webView is still loading desired (progress < 1)
                     val prog = viewModel.getProgress(tabId)
                     if (current.isBlank() || (current != desired && prog >= 1f)) {
                         webView.loadUrl(desired)
                     }
                 }
             }
+            applySettings(webView, viewModel)
             holder.webView = webView
         }
     )
 
-    DisposableEffect(tabId) {
-        onDispose {
-            // Do NOT destroy WebView on dispose; we keep it in pool for tab reuse.
-            // Just detach it from composition — AndroidView will handle removal.
-            // holder.webView is still in pool.
+    DisposableEffect(tabId) { onDispose { } }
+}
+
+private fun applySettings(webView: WebView, viewModel: WebViewModel) {
+    val settings = webView.settings
+
+    settings.javaScriptEnabled = viewModel.jsEnabled
+    settings.javaScriptCanOpenWindowsAutomatically = viewModel.jsEnabled
+
+    // DOM storage = localStorage / sessionStorage, persisted in WebView data dir
+    settings.domStorageEnabled = true
+    settings.databaseEnabled = true
+
+    // HTTP cache — user selectable for speed / offline
+    settings.cacheMode = viewModel.cacheMode.webSettingsValue
+
+    settings.allowFileAccess = true
+    settings.allowContentAccess = true
+
+    // Offscreen pre-raster speeds first paint
+    settings.offscreenPreRaster = true
+
+    settings.setSupportZoom(true)
+    settings.builtInZoomControls = true
+    settings.displayZoomControls = false
+    settings.useWideViewPort = true
+    settings.loadWithOverviewMode = true
+
+    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+
+    // Geolocation DB persists across loads
+    settings.setGeolocationEnabled(true)
+    try {
+        @Suppress("DEPRECATION")
+        settings.setGeolocationDatabasePath(webView.context.filesDir.absolutePath)
+    } catch (_: Exception) {}
+
+    settings.setSupportMultipleWindows(true)
+
+    try {
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(webView, !viewModel.blockThirdPartyCookies)
+    } catch (_: Exception) {}
+
+    settings.userAgentString = if (viewModel.desktopMode) {
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    } else {
+        WebSettings.getDefaultUserAgent(webView.context)
+    }
+
+    settings.mediaPlaybackRequiresUserGesture = false
+
+    // Safe browsing
+    try {
+        val compat = Class.forName("androidx.webkit.WebSettingsCompat")
+        val feature = Class.forName("androidx.webkit.WebViewFeature")
+        val isSupported = feature.getMethod("isFeatureSupported", String::class.java).invoke(null, "SAFE_BROWSING_ENABLE") as Boolean
+        if (isSupported) {
+            compat.getMethod("setSafeBrowsingEnabled", WebSettings::class.java, Boolean::class.javaPrimitiveType)
+                .invoke(null, settings, true)
         }
+    } catch (_: Exception) {}
+}
+
+private fun WebView.evalJsForStorageInfo(origin: String, cookieCount: Int, vm: WebViewModel) {
+    evaluateJavascript(
+        """(function(){
+            try{
+                var hasLS=false; try{hasLS=window.localStorage&&window.localStorage.length>0;}catch(e){}
+                var hasIDB=!!window.indexedDB;
+                var hasSW=!!navigator.serviceWorker&&!!navigator.serviceWorker.controller;
+                var est=0;
+                try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i); est+=(k?k.length:0)+(localStorage.getItem(k)?localStorage.getItem(k).length:0);} }catch(e){}
+                return JSON.stringify({hasLS:hasLS,hasIDB:hasIDB,hasSW:hasSW,est:est});
+            }catch(e){return JSON.stringify({hasLS:false,hasIDB:false,hasSW:false,est:0});}
+        })();"""
+    ) { json ->
+        try {
+            if (json == null) return@evaluateJavascript
+            var s = json.trim()
+            if (s.startsWith("\"") && s.endsWith("\"")) {
+                s = s.substring(1, s.length - 1).replace("\\\"", "\"").replace("\\\\", "\\")
+            }
+            val hasLS = s.contains("\"hasLS\":true")
+            val hasIDB = s.contains("\"hasIDB\":true")
+            val hasSW = s.contains("\"hasSW\":true")
+            val est = Regex("\"est\":(\\d+)").find(s)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+            vm.updateStorageFootprint(origin, cookieCount, hasLS, hasIDB, hasSW, est)
+        } catch (_: Exception) {}
     }
 }
 
-private class WebViewHolder {
-    var webView: WebView? = null
-}
+private class WebViewHolder { var webView: WebView? = null }

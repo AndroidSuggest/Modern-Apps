@@ -63,7 +63,6 @@ object PlayStoreDataSource {
             val ratingText = doc.selectFirst("div.TT9eCd")?.text()
             val rating = ratingText?.toFloatOrNull()
 
-            // Try to infer targetSdk from page text (best effort)
             val pageText = doc.text()
             val targetSdk = Regex("Target.*API.*?(\\d{2})|targetSdk.*?(\\d{2})", RegexOption.IGNORE_CASE)
                 .find(pageText)?.groupValues?.filter { it.toIntOrNull() != null }?.lastOrNull()?.toIntOrNull()

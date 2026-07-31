@@ -3,23 +3,13 @@ package com.vayunmathur.messages.gvoice
 import android.util.Base64
 import android.util.Log
 import com.google.protobuf.Message
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.NetworkDataStream
+import com.vayunmathur.library.network.RawResponse
+import com.vayunmathur.library.network.SimpleResponse
+import com.vayunmathur.library.network.Urls
+import com.vayunmathur.library.network.asNetworkDataStream
 import com.vayunmathur.messages.gmessages.PbLite
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.headers
-import io.ktor.client.request.preparePost
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.ContentType
-import io.ktor.http.HttpMethod
-import io.ktor.http.URLBuilder
-import io.ktor.http.contentType
-import io.ktor.http.encodedPath
-import io.ktor.utils.io.ByteReadChannel
 import java.security.MessageDigest
 
 /**
@@ -30,7 +20,7 @@ import java.security.MessageDigest
  *    when explicitly requested.
  *  - Per-host header bundles (`Sec-Fetch-Site`, `X-Client-Version`,
  *    `X-ClientDetails`, `X-Goog-Api-Key`, etc) vary by destination
- *    domain — see [applyHeaders].
+ *    domain — see [buildHeaders].
  *  - Cookies are sent on every request; the `SAPISID` cookie also
  *    materializes as an `Authorization: SAPISIDHASH …` header (same
  *    algorithm libgm uses).
@@ -44,46 +34,11 @@ class GVoiceRpcClient(
 ) {
     var onCookiesChanged: ((Map<String, String>) -> Unit)? = null
 
-    private val normal: HttpClient = HttpClient(OkHttp) {
-        engine {
-            config {
-                // OkHttp properly handles hostname verification with SNI
-                // Required for Android domain-specific TLS configurations
-                retryOnConnectionFailure(true)
-            }
-        }
-        install(HttpTimeout) {
-            requestTimeoutMillis = 120_000
-            connectTimeoutMillis = 15_000
-            socketTimeoutMillis = 120_000
-        }
-    }
-
-    private val realtime: HttpClient = HttpClient(OkHttp) {
-        // BrowserChannel long-polls can stay open for several minutes.
-        engine {
-            config {
-                retryOnConnectionFailure(true)
-                // Extended timeouts for long polling
-                readTimeout(java.util.concurrent.TimeUnit.MINUTES.toMillis(6), java.util.concurrent.TimeUnit.MILLISECONDS)
-                connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            }
-        }
-        install(HttpTimeout) {
-            requestTimeoutMillis = 6 * 60 * 1000
-            connectTimeoutMillis = 15_000
-            socketTimeoutMillis = 90_000
-        }
-    }
-
     fun updateCookies(newCookies: Map<String, String>) {
         cookies = newCookies
     }
 
-    fun close() {
-        runCatching { normal.close() }
-        runCatching { realtime.close() }
-    }
+    fun close() = Unit
 
     /** POST [body] as pblite. Returns the decoded response of type [T]. */
     suspend fun <T : Message> postPbLite(
@@ -125,7 +80,7 @@ class GVoiceRpcClient(
         url: String,
         form: Map<String, String>,
         extraHeaders: Map<String, String> = emptyMap(),
-    ): HttpResponse {
+    ): RawResponse {
         val body = form.entries.joinToString("&") { (k, v) ->
             java.net.URLEncoder.encode(k, "UTF-8") + "=" + java.net.URLEncoder.encode(v, "UTF-8")
         }
@@ -140,27 +95,33 @@ class GVoiceRpcClient(
 
     /**
      * GET a streaming response — used by the BrowserChannel long-poll.
-     * Caller reads the body via [onResponse] which gets the raw
-     * [HttpResponse]; keeping the connection open for the duration of
-     * the callback (preparePost-style execution).
+     * [onResponse] gets the response head plus the still-open body stream;
+     * the connection stays open for the duration of the callback.
+     *
+     * `Accept-Encoding: identity` keeps the utf16 chunk framing readable as
+     * it arrives instead of wrapped in a compressed envelope.
      */
     suspend fun <T> getStreaming(
         url: String,
         extraQuery: Map<String, String> = emptyMap(),
-        onResponse: suspend (HttpResponse) -> T,
+        onResponse: suspend (SimpleResponse, NetworkDataStream?) -> T,
     ): T {
         val finalUrl = buildUrl(url, extraQuery)
-        return realtime.preparePost(finalUrl) {
-            method = HttpMethod.Get
-            applyHeaders(finalUrl, accept = "*/*")
-        }.execute { response ->
-            refreshCookies(response)
-            onResponse(response)
+        var result: T? = null
+        NetworkClient.stream(
+            url = finalUrl,
+            method = "GET",
+            headers = buildHeaders(finalUrl, accept = "*/*") +
+                mapOf("Accept-Encoding" to "identity"),
+            connectTimeoutMs = 15_000L,
+            readTimeoutMs = 6 * 60 * 1000L,
+        ) { stream, response ->
+            refreshCookies(response.headers, response.url)
+            result = onResponse(response, stream)
         }
+        @Suppress("UNCHECKED_CAST")
+        return result as T
     }
-
-    /** Stream the body of a still-open response. Used by [Utf16ChunkReader]. */
-    suspend fun bodyChannel(response: HttpResponse): ByteReadChannel = response.bodyAsChannel()
 
     /**
      * GET a raw resource (e.g. media attachment). Returns the raw bytes
@@ -171,16 +132,19 @@ class GVoiceRpcClient(
         extraQuery: Map<String, String> = emptyMap(),
     ): Pair<ByteArray, String> {
         val finalUrl = buildUrl(url, extraQuery)
-        val resp = normal.request(finalUrl) {
-            method = HttpMethod.Get
-            applyHeaders(finalUrl, accept = "*/*")
+        val resp = NetworkClient.execute(
+            url = finalUrl,
+            method = "GET",
+            headers = buildHeaders(finalUrl, accept = "*/*"),
+            connectTimeoutMs = CONNECT_TIMEOUT_MS,
+            readTimeoutMs = READ_TIMEOUT_MS,
+        )
+        if (!resp.isSuccess) {
+            error("HTTP ${resp.status} on GET $url")
         }
-        if (resp.status.value !in 200..299) {
-            error("HTTP ${resp.status.value} on GET $url")
-        }
-        refreshCookies(resp)
-        val mime = resp.headers["Content-Type"]?.substringBefore(';')?.trim() ?: "application/octet-stream"
-        return resp.bodyAsBytes() to mime
+        refreshCookies(resp.headers, resp.url)
+        val mime = resp.header("Content-Type")?.substringBefore(';')?.trim() ?: "application/octet-stream"
+        return resp.bytes to mime
     }
 
     // ----------------------------------------------------------------
@@ -194,18 +158,22 @@ class GVoiceRpcClient(
         contentType: String? =
             if (pbLite) "application/json+protobuf" else "application/x-protobuf",
         extraHeaders: Map<String, String> = emptyMap(),
-    ): HttpResponse {
+    ): RawResponse {
         val finalUrl = buildUrl(url, emptyMap())
+        val headers = buildHeaders(finalUrl, accept = "*/*") +
+            (if (contentType != null) mapOf("Content-Type" to contentType) else emptyMap()) +
+            extraHeaders
         var attempt = 0
         while (true) {
             val resp = try {
-                normal.request(finalUrl) {
-                    method = HttpMethod.Post
-                    if (contentType != null) contentType(ContentType.parse(contentType))
-                    applyHeaders(finalUrl, accept = "*/*")
-                    for ((k, v) in extraHeaders) headers.append(k, v)
-                    setBody(body)
-                }
+                NetworkClient.execute(
+                    url = finalUrl,
+                    method = "POST",
+                    headers = headers,
+                    body = body,
+                    connectTimeoutMs = CONNECT_TIMEOUT_MS,
+                    readTimeoutMs = READ_TIMEOUT_MS,
+                )
             } catch (t: Throwable) {
                 if (attempt > MAX_RETRIES) throw t
                 attempt++
@@ -214,13 +182,13 @@ class GVoiceRpcClient(
                 continue
             }
             // Retry only on 5xx; 4xx is the caller's problem.
-            if (resp.status.value in 500..599 && attempt <= MAX_RETRIES) {
+            if (resp.status in 500..599 && attempt <= MAX_RETRIES) {
                 attempt++
-                Log.w(TAG, "POST $url ${resp.status.value} attempt=$attempt")
+                Log.w(TAG, "POST $url ${resp.status} attempt=$attempt")
                 kotlinx.coroutines.delay((attempt * 2_000L))
                 continue
             }
-            refreshCookies(resp)
+            refreshCookies(resp.headers, resp.url)
             return resp
         }
     }
@@ -230,69 +198,63 @@ class GVoiceRpcClient(
      * query parameters that libgv adds for the API + Contacts domains.
      */
     private fun buildUrl(url: String, extraQuery: Map<String, String>): String {
-        val builder = URLBuilder(url)
-        val host = builder.host
+        val host = Urls.host(url)
+        val params = LinkedHashMap<String, String>()
         if (host.endsWith(VoiceEndpoints.ApiDomain) && host != VoiceEndpoints.WaaDomain) {
-            builder.parameters.append("key", VoiceEndpoints.ApiKey)
+            params["key"] = VoiceEndpoints.ApiKey
             if (host == VoiceEndpoints.ApiDomain || host == VoiceEndpoints.ContactsDomain) {
-                builder.parameters.append("alt", "proto")
+                params["alt"] = "proto"
             }
         }
-        for ((k, v) in extraQuery) builder.parameters.append(k, v)
-        return builder.buildString()
+        params.putAll(extraQuery)
+        return Urls.appendQuery(url, params)
     }
 
     /**
-     * Apply the per-host header bundle the bridge documents. Includes the
-     * cookie jar + (when SAPISID is present) the SAPISIDHASH authorization.
+     * The per-host header bundle the bridge documents. Includes the cookie
+     * jar + (when SAPISID is present) the SAPISIDHASH authorization.
      * Content-Type is NOT set here (matches Go's prepareHeaders); the caller
-     * sets it via Ktor's contentType() before calling this method.
+     * merges it in.
      */
-    private fun io.ktor.client.request.HttpRequestBuilder.applyHeaders(
-        url: String,
-        accept: String,
-    ) {
-        val host = URLBuilder(url).host
-        headers {
-            append("Sec-Ch-Ua", VoiceEndpoints.SecChUa)
-            append("Sec-Ch-Ua-Platform", VoiceEndpoints.SecChPlatform)
-            append("Sec-Ch-Ua-Mobile", "?0")
-            append("User-Agent", VoiceEndpoints.UserAgent)
-            append("X-Goog-AuthUser", "0")
-            if (host == VoiceEndpoints.ApiDomain) {
-                append("X-Client-Version", VoiceEndpoints.ClientVersion)
-                append("X-ClientDetails", VoiceEndpoints.ClientDetails)
-                append("X-JavaScript-User-Agent", VoiceEndpoints.JavaScriptUserAgent)
-                append("X-Requested-With", "XMLHttpRequest")
-                append("X-Goog-Encode-Response-If-Executable", "base64")
-            }
-            if (host == VoiceEndpoints.ContactsDomain) {
-                append("X-Goog-Api-Key", VoiceEndpoints.ApiKey)
-                append("X-Goog-Encode-Response-If-Executable", "base64")
-            }
-            if (host == VoiceEndpoints.WaaDomain) {
-                append("X-Goog-Api-Key", VoiceEndpoints.WaaApiKey)
-                append("X-User-Agent", VoiceEndpoints.WaaXUserAgent)
-            }
-            append("Sec-Fetch-Dest", "empty")
-            append("Sec-Fetch-Mode", "cors")
-            val site = if (host.endsWith(".${VoiceEndpoints.ApiDomain}")) "same-site" else "same-origin"
-            append("Sec-Fetch-Site", site)
-            append("Accept", accept)
-            append("Accept-Language", "en-US,en;q=0.5")
-            if (host == VoiceEndpoints.UploadDomain) {
-                append("Origin", "https://${VoiceEndpoints.UploadDomain}")
-                append("Referer", "https://${VoiceEndpoints.UploadDomain}/")
-            } else {
-                append("Origin", VoiceEndpoints.Origin)
-                append("Referer", "${VoiceEndpoints.Origin}/")
-            }
-            // Cookies + SAPISIDHASH.
-            val cookieHeader = cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
-            if (cookieHeader.isNotEmpty()) append("Cookie", cookieHeader)
-            cookies["SAPISID"]?.let { sapisid ->
-                append("Authorization", sapisidHash(VoiceEndpoints.Origin, sapisid))
-            }
+    private fun buildHeaders(url: String, accept: String): Map<String, String> = buildMap {
+        val host = Urls.host(url)
+        put("Sec-Ch-Ua", VoiceEndpoints.SecChUa)
+        put("Sec-Ch-Ua-Platform", VoiceEndpoints.SecChPlatform)
+        put("Sec-Ch-Ua-Mobile", "?0")
+        put("User-Agent", VoiceEndpoints.UserAgent)
+        put("X-Goog-AuthUser", "0")
+        if (host == VoiceEndpoints.ApiDomain) {
+            put("X-Client-Version", VoiceEndpoints.ClientVersion)
+            put("X-ClientDetails", VoiceEndpoints.ClientDetails)
+            put("X-JavaScript-User-Agent", VoiceEndpoints.JavaScriptUserAgent)
+            put("X-Requested-With", "XMLHttpRequest")
+            put("X-Goog-Encode-Response-If-Executable", "base64")
+        }
+        if (host == VoiceEndpoints.ContactsDomain) {
+            put("X-Goog-Api-Key", VoiceEndpoints.ApiKey)
+            put("X-Goog-Encode-Response-If-Executable", "base64")
+        }
+        if (host == VoiceEndpoints.WaaDomain) {
+            put("X-Goog-Api-Key", VoiceEndpoints.WaaApiKey)
+            put("X-User-Agent", VoiceEndpoints.WaaXUserAgent)
+        }
+        put("Sec-Fetch-Dest", "empty")
+        put("Sec-Fetch-Mode", "cors")
+        put("Sec-Fetch-Site", if (host.endsWith(".${VoiceEndpoints.ApiDomain}")) "same-site" else "same-origin")
+        put("Accept", accept)
+        put("Accept-Language", "en-US,en;q=0.5")
+        if (host == VoiceEndpoints.UploadDomain) {
+            put("Origin", "https://${VoiceEndpoints.UploadDomain}")
+            put("Referer", "https://${VoiceEndpoints.UploadDomain}/")
+        } else {
+            put("Origin", VoiceEndpoints.Origin)
+            put("Referer", "${VoiceEndpoints.Origin}/")
+        }
+        // Cookies + SAPISIDHASH.
+        val cookieHeader = cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+        if (cookieHeader.isNotEmpty()) put("Cookie", cookieHeader)
+        cookies["SAPISID"]?.let { sapisid ->
+            put("Authorization", sapisidHash(VoiceEndpoints.Origin, sapisid))
         }
     }
 
@@ -302,11 +264,12 @@ class GVoiceRpcClient(
 
     private val ignoredCookieNames = setOf("__Secure-1PSIDCC", "__Secure-3PSIDCC", "SIDCC")
 
-    private fun refreshCookies(resp: HttpResponse) {
-        val setCookies = resp.headers.getAll("Set-Cookie")
+    private fun refreshCookies(headers: Map<String, List<String>>, url: String) {
+        val setCookies = headers.entries
+            .firstOrNull { it.key.equals("Set-Cookie", ignoreCase = true) }?.value
         if (setCookies.isNullOrEmpty()) return
 
-        val host = runCatching { URLBuilder(resp.call.request.url.toString()).host }.getOrNull() ?: return
+        val host = Urls.host(url)
         if (!host.endsWith(VoiceEndpoints.ApiDomain)) return
 
         val updated = cookies.toMutableMap()
@@ -355,25 +318,22 @@ class GVoiceRpcClient(
     // Response decoding
     // ----------------------------------------------------------------
 
-    private suspend fun <T : Message> decodeResponse(resp: HttpResponse, template: T): T {
-        if (resp.status.value !in 200..299) {
-            val body = runCatching { resp.bodyAsBytes() }.getOrNull()?.let {
-                String(it, Charsets.UTF_8).take(500)
-            } ?: "<no body>"
-            error("HTTP ${resp.status.value}: $body")
+    private suspend fun <T : Message> decodeResponse(resp: RawResponse, template: T): T {
+        if (!resp.isSuccess) {
+            error("HTTP ${resp.status}: ${resp.text.take(500).ifEmpty { "<no body>" }}")
         }
-        val plainMime = resp.headers["Content-Type"]?.substringBefore(';')?.trim().orEmpty().lowercase()
-        val safetyMime = resp.headers["X-Goog-Safety-Content-Type"]
+        val plainMime = resp.header("Content-Type")?.substringBefore(';')?.trim().orEmpty().lowercase()
+        val safetyMime = resp.header("X-Goog-Safety-Content-Type")
             ?.substringBefore(';')?.trim().orEmpty().lowercase()
         val realMime = safetyMime.ifEmpty { plainMime }
 
         // utf16-chunk framing on the safety mime. Voice uses this on
         // some endpoints to defeat naive XSSI-style attacks.
         val raw: ByteArray = if (realMime == "text/plain") {
-            val channel = resp.bodyAsChannel()
-            Utf16ChunkReader(channel).readChunk() ?: error("empty utf16chunk body")
+            Utf16ChunkReader(resp.bytes.asNetworkDataStream()).readChunk()
+                ?: error("empty utf16chunk body")
         } else {
-            resp.bodyAsBytes()
+            resp.bytes
         }
 
         @Suppress("UNCHECKED_CAST")
@@ -398,6 +358,8 @@ class GVoiceRpcClient(
     companion object {
         private const val TAG = "GVoice/Rpc"
         private const val MAX_RETRIES = 10
+        private const val CONNECT_TIMEOUT_MS = 15_000L
+        private const val READ_TIMEOUT_MS = 120_000L
 
         /** Same algorithm as libgm's SAPISIDHASH. Reproduced inline to
          *  avoid a cross-module import. */

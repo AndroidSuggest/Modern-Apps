@@ -275,6 +275,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     private val sensorManager by lazy { app.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
     // Dedicated single thread for portrait segmentation so main thread stays free for preview rendering.
     private val bokehExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    // Bakes the same bokeh into the saved still. Separate from the preview's BokehAnalyzer, which is
+    // owned by the composable and torn down with it; this one loads its model on the first capture.
+    private val stillBokeh = StillBokehRenderer(app)
     private val levelListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             val x = event.values[0]
@@ -2398,13 +2401,16 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             val warmth = _warmth.value
             val shadows = _shadows.value
             val mirror = mirrorCaptures
-            if (warmth != 0f || shadows != 0f) {
-                // The warmth/shadows adjustment only lives in the preview RenderEffect, so bake
-                // it into the pixels here: capture in-memory, apply the same color matrix, then
-                // re-encode. Re-encoding drops the JPEG's EXIF, so we copy it back from the
-                // original frame (plus GPS and the orientation tag) to match the normal path.
+            val bokeh = _cameraMode.value == CameraMode.PORTRAIT
+            val strength = _blurStrength.value
+            if (bokeh || warmth != 0f || shadows != 0f) {
+                // The warmth/shadows adjustment and the portrait bokeh only live in the preview
+                // RenderEffect, so bake them into the pixels here: capture in-memory, re-run the
+                // same shader/color matrix over the full-resolution frame, then re-encode.
+                // Re-encoding drops the JPEG's EXIF, so we copy it back from the original frame
+                // (plus GPS and the orientation tag) to match the normal path.
                 // Caveat: this processed path is always SDR JPEG — decoding to an ARGB_8888 bitmap
-                // discards any Ultra HDR gain map, so warmth/shadows captures lose HDR even when
+                // discards any Ultra HDR gain map, so processed captures lose HDR even when
                 // Ultra HDR is otherwise active. Normal (unprocessed) captures keep the gain map.
                 capture.takePicture(
                     ContextCompat.getMainExecutor(app),
@@ -2427,7 +2433,13 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                                         BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size),
                                         cropRect
                                     )
-                                    val adjusted = applyColorAdjustments(decoded, warmth, shadows, mirror)
+                                    // The bokeh renderer folds the colour matrix and the mirror in
+                                    // as it composites; it leaves `decoded` alone if it can't run,
+                                    // so fall back to the plain colour pass.
+                                    val adjusted = (if (bokeh) {
+                                        stillBokeh.render(decoded, degrees, strength, warmth, shadows, mirror)
+                                    } else null)
+                                        ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
                                     val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
                                     MediaStoreSaver.saveBitmap(app.contentResolver, values, adjusted)
                                         ?.also { writeCaptureExif(it, sourceJpeg, degrees) }
@@ -2871,6 +2883,14 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         val executor = ContextCompat.getMainExecutor(app)
         val outputUri = resultOutputUri
 
+        // Portrait bokeh / warmth / shadows only exist in the preview, so a shot taken in those
+        // modes has to be re-processed before it goes back to the caller, exactly as
+        // captureSinglePhoto() does for the gallery.
+        if (_cameraMode.value == CameraMode.PORTRAIT || _warmth.value != 0f || _shadows.value != 0f) {
+            capturePhotoForResultProcessed(capture, outputUri, onSaved, onError)
+            return
+        }
+
         if (outputUri != null) {
             val outputStream = try {
                 app.contentResolver.openOutputStream(outputUri)
@@ -2916,6 +2936,107 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                 }
             })
         }
+    }
+
+    /**
+     * [capturePhotoForResult] for a shot that needs the preview's portrait bokeh / colour
+     * adjustments baked in: capture in-memory, re-run them over the full-resolution frame, then
+     * either re-encode into the caller's EXTRA_OUTPUT stream or hand back the "data" thumbnail.
+     * Shares captureSinglePhoto()'s Ultra HDR caveat — the decode to ARGB_8888 drops the gain map.
+     */
+    private fun capturePhotoForResultProcessed(
+        capture: ImageCapture,
+        outputUri: Uri?,
+        onSaved: (Bitmap?) -> Unit,
+        onError: () -> Unit,
+    ) {
+        val warmth = _warmth.value
+        val shadows = _shadows.value
+        val mirror = mirrorCaptures
+        val bokeh = _cameraMode.value == CameraMode.PORTRAIT
+        val strength = _blurStrength.value
+
+        capture.takePicture(
+            ContextCompat.getMainExecutor(app),
+            object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    val degrees = image.imageInfo.rotationDegrees
+                    val cropRect = Rect(image.cropRect)
+                    val sourceJpeg = try {
+                        image.planes[0].buffer.let { buf ->
+                            ByteArray(buf.remaining()).also { buf.get(it) }
+                        }
+                    } finally {
+                        image.close()
+                    }
+                    viewModelScope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val decoded = cropToRect(
+                                    BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size),
+                                    cropRect
+                                )
+                                val adjusted = (if (bokeh) {
+                                    stillBokeh.render(decoded, degrees, strength, warmth, shadows, mirror)
+                                } else null)
+                                    ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
+                                // The gallery path leaves rotation to the EXIF tag, but a caller's
+                                // Uri may not open "rw" for writeCaptureExif, so bake it into the
+                                // pixels here and tag the result upright.
+                                val upright = uprightCopy(adjusted, degrees, if (outputUri == null) 512 else 0)
+                                adjusted.recycle()
+                                if (outputUri == null) {
+                                    upright
+                                } else {
+                                    val wrote = try {
+                                        app.contentResolver.openOutputStream(outputUri)?.use { out ->
+                                            upright.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                                        } ?: false
+                                    } finally {
+                                        upright.recycle()
+                                    }
+                                    if (!wrote) error("Could not write to EXTRA_OUTPUT")
+                                    writeCaptureExif(outputUri, sourceJpeg, 0)
+                                    null
+                                }
+                            }
+                        }
+                        _isCapturing.value = false
+                        result.fold(
+                            onSuccess = { onSaved(it) },
+                            onFailure = {
+                                Log.e("CameraViewModel", "Processed IMAGE_CAPTURE failed", it)
+                                onError()
+                            }
+                        )
+                    }
+                }
+                override fun onError(exception: ImageCaptureException) {
+                    _isCapturing.value = false
+                    Log.e("CameraViewModel", "Processed IMAGE_CAPTURE capture failed", exception)
+                    onError()
+                }
+            }
+        )
+    }
+
+    /**
+     * Rotates an already-processed capture's pixels upright, optionally scaling its long side down
+     * to [maxSide] (0 = keep full resolution) for the result "data" thumbnail. Unlike
+     * [downscaledThumbnail] it does not mirror — the processed bitmap already is. Always returns a
+     * bitmap distinct from [src] so the caller can recycle it.
+     */
+    private fun uprightCopy(src: Bitmap, rotationDegrees: Int, maxSide: Int): Bitmap {
+        val scale = if (maxSide > 0) {
+            (maxSide.toFloat() / maxOf(src.width, src.height)).coerceAtMost(1f)
+        } else 1f
+        val matrix = Matrix().apply {
+            postRotate(rotationDegrees.toFloat())
+            if (scale < 1f) postScale(scale, scale)
+        }
+        val out = Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
+        // createBitmap hands back the input itself when the transform is an identity.
+        return if (out === src) src.copy(Bitmap.Config.ARGB_8888, false) else out
     }
 
     /** Rotates the captured frame upright (mirroring for the front camera) and scales it down for the result "data" thumbnail. */
@@ -3216,6 +3337,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         unregisterLevelSensor()
         try { bokehExecutor.shutdown() } catch (_: Exception) {}
+        try { stillBokeh.close() } catch (_: Exception) {}
         super.onCleared()
     }
 }

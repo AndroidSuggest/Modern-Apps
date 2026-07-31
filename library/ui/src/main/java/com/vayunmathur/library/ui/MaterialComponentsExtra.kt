@@ -250,6 +250,33 @@ fun PrimaryScrollableTabRow(
     tabs: @Composable () -> Unit,
 ) = androidx.compose.material3.PrimaryScrollableTabRow(selectedTabIndex = selectedTabIndex, modifier = modifier, tabs = tabs)
 
+// --- SearchBar InputField (wrapper over SearchBarDefaults.InputField) ---
+@Suppress("NO_TAIL_COMMA")
+@Composable
+fun SearchBarInputField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: (String) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    placeholder: @Composable (() -> Unit)? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+) = androidx.compose.material3.SearchBarDefaults.InputField(
+    query = query,
+    onQueryChange = onQueryChange,
+    onSearch = onSearch,
+    expanded = expanded,
+    onExpandedChange = onExpandedChange,
+    modifier = modifier,
+    enabled = enabled,
+    placeholder = placeholder,
+    leadingIcon = leadingIcon,
+    trailingIcon = trailingIcon,
+)
+
 // --- Adaptive navigation suite (openassistant) ---
 @Composable
 fun NavigationSuiteScaffold(

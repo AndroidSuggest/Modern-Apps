@@ -46,9 +46,8 @@ private val metadataJson = Json { ignoreUnknownKeys = true }
  * only a hint — the response lists every variable in the run — so we pass a
  * stable one. Returns `null` on network/parse failure.
  *
- * The bucket serves `latest.json` as `application/octet-stream`, so we can't use
- * Ktor content negotiation (it only deserializes matching content types); we
- * fetch the raw body and parse it ourselves.
+ * The bucket serves `latest.json` as `application/octet-stream`, so content-type
+ * based deserialization won't fire; we fetch the raw body and parse it ourselves.
  */
 suspend fun fetchOmMapMetadata(domain: OmDomain): OmMapMetadata? {
     val url = "$SPATIAL_BASE/${domain.model}/latest.json?variable=temperature_2m"

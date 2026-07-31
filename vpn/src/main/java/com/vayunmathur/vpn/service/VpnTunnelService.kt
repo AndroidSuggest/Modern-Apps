@@ -10,10 +10,14 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.vpn.R
+import com.vayunmathur.vpn.data.DB_NAME
 import com.vayunmathur.vpn.data.VpnConfig
+import com.vayunmathur.vpn.data.VpnDatabase
 import com.vayunmathur.vpn.data.endpointHost
 import com.vayunmathur.vpn.data.endpointPort
+import com.vayunmathur.vpn.data.toModel
 import com.vayunmathur.vpn.util.VpnNative
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -24,6 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -34,9 +39,10 @@ import kotlinx.serialization.json.Json
  * Foreground VpnService that bridges Android TUN fd <-> UDP socket.
  *
  * Crypto is all in Rust/gotatun via VpnNative (Mullvad's BoringTun fork):
- * X25519 + Noise IK + ChaCha20-Poly1305 + BLAKE2s, plus rekey/keepalive timers.
+ * X25519 + Noise IK + ChaCha20Poly1305 + BLAKE2s, plus rekey/keepalive timers.
  *
- * Kotlin only handles TUN↔UDP plumbing.
+ * Kotlin handles TUN<->UDP plumbing plus per-flow logging (packet inspection,
+ * DNS snooping, SNI, per-app attribution via getConnectionOwnerUid).
  */
 class VpnTunnelService : VpnService() {
 
@@ -53,7 +59,8 @@ class VpnTunnelService : VpnService() {
 
     private var tunPfd: ParcelFileDescriptor? = null
     private var job: Job? = null
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private var flushJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val stopFlag = AtomicBoolean(false)
 
     override fun onCreate() {
@@ -68,14 +75,42 @@ class VpnTunnelService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return when (intent?.action) {
-            ACTION_DISCONNECT, null -> { stopVpn(); START_NOT_STICKY }
-            ACTION_CONNECT -> {
-                val j = intent.getStringExtra(EXTRA_CONFIG_JSON) ?: return START_NOT_STICKY
+        return when {
+            intent == null || intent.action == null -> {
+                // Null intent/action = system start (Always-On VPN, or sticky restart).
+                // Go foreground straight away — the config lookup below is async and the
+                // system will not wait for it before enforcing the background-start timeout.
+                Log.i(TAG, "onStartCommand system start — attempting Always-On restore")
+                goForeground(notification("VPN (WireGuard/gotatun)", "Connecting…"))
+                scope.launch {
+                    try {
+                        val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
+                        val all = db.vpnConfigDao().getAll()
+                        val lastUsed = all.maxByOrNull { it.lastUsed }
+                        if (lastUsed != null) {
+                            Log.i(TAG, "Always-On restoring ${lastUsed.name}")
+                            startVpn(lastUsed.toModel())
+                        } else {
+                            Log.i(TAG, "Always-On restore: no configs found")
+                            stopVpn()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Always-On restore failed", e)
+                        stopVpn()
+                    }
+                }
+                START_STICKY
+            }
+            intent.action == ACTION_DISCONNECT -> {
+                stopVpn()
+                START_NOT_STICKY
+            }
+            intent.action == ACTION_CONNECT -> {
+                val j = intent.getStringExtra(EXTRA_CONFIG_JSON) ?: return START_STICKY
                 runCatching { Json.decodeFromString<VpnConfig>(j) }.onSuccess { startVpn(it) }
                 START_STICKY
             }
-            else -> START_NOT_STICKY
+            else -> START_STICKY
         }
     }
 
@@ -88,16 +123,19 @@ class VpnTunnelService : VpnService() {
             .setSmallIcon(R.mipmap.ic_launcher).setOngoing(true).build()
     }
 
-    private fun startVpn(config: VpnConfig) {
-        if (isRunning) stopVpn()
-        stopFlag.set(false)
-        runningConfigName = config.name
-        val notif = notification("VPN (WireGuard/gotatun) — ${config.name}", config.peerEndpoint)
+    private fun goForeground(notif: Notification) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(NOTIFICATION_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
             } else startForeground(NOTIFICATION_ID, notif)
         } catch (e: Exception) { Log.e(TAG, "foreground", e) }
+    }
+
+    private fun startVpn(config: VpnConfig) {
+        if (isRunning) stopVpn()
+        stopFlag.set(false)
+        runningConfigName = config.name
+        goForeground(notification("VPN (WireGuard/gotatun) — ${config.name}", config.peerEndpoint))
 
         job = scope.launch { runBlocking { runTunnel(config) } }
     }
@@ -105,6 +143,7 @@ class VpnTunnelService : VpnService() {
     private fun stopVpn() {
         stopFlag.set(true)
         job?.cancel(); job = null
+        flushJob?.cancel(); flushJob = null
         isRunning = false
         runningConfigName = ""
         try { tunPfd?.close() } catch (_: Exception) {}
@@ -143,6 +182,7 @@ class VpnTunnelService : VpnService() {
                 try { b.addDnsServer(d) } catch (_: Exception) {}
             }
         }
+        try { b.setUnderlyingNetworks(null) } catch (_: Exception) {}
 
         val pfd = try { b.establish() } catch (e: Exception) {
             Log.e(TAG, "establish", e); VpnNative.freeTunnel(handle); stopVpn(); return
@@ -166,6 +206,106 @@ class VpnTunnelService : VpnService() {
             pfd.close(); VpnNative.freeTunnel(handle); stopVpn(); return
         }
 
+        // --- Logging infrastructure ---
+        val dnsCache = DnsCache()
+        val tracker = ConnectionTracker.getOrCreate()
+        tracker.setDnsCache(dnsCache)
+        val appResolver = AppResolver(this)
+
+        // Batched Room upsert job (1.5s) — tracker keeps cumulative TX/RX in memory,
+        // so each drain returns full accumulated totals for dirty flows.
+        flushJob = scope.launch(Dispatchers.IO) {
+            while (isActive && !stopFlag.get()) {
+                delay(1500)
+                try {
+                    val batch = tracker.drainDirty()
+                    if (batch.isNotEmpty()) {
+                        val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
+                        val dao = db.connectionLogDao()
+                        val toUpsert = mutableListOf<com.vayunmathur.vpn.data.ConnectionLogEntity>()
+                        for (entity in batch) {
+                            if (entity.id != 0L) {
+                                toUpsert.add(entity)
+                            } else {
+                                val existing = dao.findIdentical(
+                                    remoteIp = entity.remoteIp,
+                                    remotePort = entity.remotePort,
+                                    protocol = entity.protocol,
+                                    localPort = entity.localPort,
+                                )
+                                if (existing != null) {
+                                    val attributed = entity.uid >= 0
+                                    toUpsert.add(
+                                        entity.copy(
+                                            id = existing.id,
+                                            timestampStart = minOf(existing.timestampStart, entity.timestampStart),
+                                            txBytes = maxOf(existing.txBytes, entity.txBytes),
+                                            rxBytes = maxOf(existing.rxBytes, entity.rxBytes),
+                                            domain = entity.domain ?: existing.domain,
+                                            uid = if (attributed) entity.uid else existing.uid,
+                                            packageName = if (attributed) entity.packageName else existing.packageName,
+                                            appLabel = if (attributed) entity.appLabel else existing.appLabel,
+                                        )
+                                    )
+                                } else {
+                                    toUpsert.add(entity)
+                                }
+                            }
+                        }
+                        if (toUpsert.isNotEmpty()) {
+                            dao.upsertAll(toUpsert)
+                            tracker.updateIds(toUpsert)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "flush logs", e)
+                }
+            }
+        }
+
+        fun handleLoggingForPacket(
+            ipBytes: ByteArray,
+            direction: ConnectionTracker.Direction,
+            rawBytesLen: Int,
+        ) {
+            try {
+                val parsed = PacketInspector.parse(ipBytes) ?: return
+
+                // DNS snooping populates IP->domain LRU
+                if (parsed.protocol == "UDP" && (parsed.srcPort == 53 || parsed.dstPort == 53)) {
+                    try { dnsCache.onPacket(parsed, ipBytes) } catch (_: Exception) {}
+                }
+
+                // Domain resolution: DNS cache then SNI for TLS 443
+                var domain: String? = dnsCache.get(
+                    if (direction == ConnectionTracker.Direction.TX) parsed.dstIp else parsed.srcIp
+                )
+                if (domain == null && parsed.protocol == "TCP") {
+                    val isTlsPort = if (direction == ConnectionTracker.Direction.TX) parsed.dstPort == 443 else parsed.srcPort == 443
+                    if (isTlsPort && parsed.payloadLength > 0) {
+                        domain = SniParser.extractSni(ipBytes, parsed.payloadOffset, parsed.payloadLength)
+                        if (domain != null) {
+                            val ipForCache = if (direction == ConnectionTracker.Direction.TX) parsed.dstIp else parsed.srcIp
+                            dnsCache.put(ipForCache, domain)
+                        }
+                    }
+                }
+
+                val resolved = appResolver.resolve(parsed, direction)
+                tracker.onPacket(
+                    parsed = parsed,
+                    direction = direction,
+                    bytes = rawBytesLen,
+                    domainOverride = domain,
+                    uid = resolved.uid,
+                    packageName = resolved.packageName,
+                    appLabel = resolved.appLabel,
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "logging parse", e)
+            }
+        }
+
         val tunIn = FileInputStream(pfd.fileDescriptor).channel
         val tunOut = FileOutputStream(pfd.fileDescriptor).channel
 
@@ -184,6 +324,7 @@ class VpnTunnelService : VpnService() {
                     while (tunIn.read(tunBuf) > 0) {
                         tunBuf.flip()
                         val ip = ByteArray(tunBuf.remaining()); tunBuf.get(ip); tunBuf.clear()
+                        handleLoggingForPacket(ip, ConnectionTracker.Direction.TX, ip.size)
                         val enc = VpnNative.encapsulate(handle, ip)
                         if (enc != null && enc.isNotEmpty()) {
                             try { channel.write(ByteBuffer.wrap(enc)) } catch (e: Exception) { Log.w(TAG, "udp write", e) }
@@ -206,7 +347,10 @@ class VpnTunnelService : VpnService() {
                         val payload = tagged.copyOfRange(1, tagged.size)
                         when (tag) {
                             1 -> if (payload.isNotEmpty()) { try { channel.write(ByteBuffer.wrap(payload)) } catch (_: Exception) {} }
-                            2 -> if (payload.isNotEmpty()) { try { tunOut.write(ByteBuffer.wrap(payload)) } catch (e: Exception) { if (!stopFlag.get()) Log.w(TAG, "tun write", e) } }
+                            2 -> if (payload.isNotEmpty()) {
+                                handleLoggingForPacket(payload, ConnectionTracker.Direction.RX, payload.size)
+                                try { tunOut.write(ByteBuffer.wrap(payload)) } catch (e: Exception) { if (!stopFlag.get()) Log.w(TAG, "tun write", e) }
+                            }
                             3 -> { /* keepalive absorbed */ }
                         }
                     }
@@ -226,6 +370,14 @@ class VpnTunnelService : VpnService() {
                 delay(10)
             }
         } finally {
+            try {
+                val finalBatch = tracker.drainDirty()
+                if (finalBatch.isNotEmpty()) {
+                    val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
+                    db.connectionLogDao().upsertAll(finalBatch)
+                }
+            } catch (_: Exception) {}
+            flushJob?.cancel(); flushJob = null
             try { tunIn.close() } catch (_: Exception) {}
             try { tunOut.close() } catch (_: Exception) {}
             try { channel.close() } catch (_: Exception) {}

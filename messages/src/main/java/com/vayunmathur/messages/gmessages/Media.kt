@@ -9,16 +9,8 @@ import client.Client.DownloadAttachmentRequest
 import client.Client.StartMediaUploadRequest
 import client.Client.UploadMediaResponse
 import conversations.Conversations.MediaContent
+import com.vayunmathur.library.network.NetworkClient
 import conversations.Conversations.MediaFormats
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.headers
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.HttpMethod
 
 /**
  * Port of `pkg/libgm/media.go` (mautrix-gmessages).
@@ -45,18 +37,7 @@ import io.ktor.http.HttpMethod
  */
 class Media(private val authProvider: () -> AuthData) {
 
-    private val http: HttpClient = HttpClient(CIO) {
-        engine { requestTimeout = 120_000 }
-        install(HttpTimeout) {
-            requestTimeoutMillis = 120_000
-            connectTimeoutMillis = 30_000
-            socketTimeoutMillis = 120_000
-        }
-    }
-
-    fun close() {
-        runCatching { http.close() }
-    }
+    fun close() = Unit
 
     /** End-to-end: encrypt + start + finalize, return [MediaContent]. */
     suspend fun upload(data: ByteArray, fileName: String, mime: String): MediaContent {
@@ -106,14 +87,17 @@ class Media(private val authProvider: () -> AuthData) {
             )
             .build()
         val metadata = Base64.encodeToString(downloadReq.toByteArray(), Base64.NO_WRAP)
-        val resp: HttpResponse = http.request(Endpoints.UploadMediaUrl) {
-            method = HttpMethod.Get
-            downloadHeaders(metadata)
+        val resp = NetworkClient.execute(
+            url = Endpoints.UploadMediaUrl,
+            method = "GET",
+            headers = downloadHeaders(metadata),
+            connectTimeoutMs = CONNECT_TIMEOUT_MS,
+            readTimeoutMs = READ_TIMEOUT_MS,
+        )
+        if (!resp.isSuccess) {
+            error("media download HTTP ${resp.status}")
         }
-        if (resp.status.value !in 200..299) {
-            error("media download HTTP ${resp.status.value}")
-        }
-        val encryptedBytes = resp.bodyAsBytes()
+        val encryptedBytes = resp.bytes
         val cipher = AesGcm(key)
         return cipher.decryptData(encryptedBytes)
     }
@@ -143,25 +127,28 @@ class Media(private val authProvider: () -> AuthData) {
     private suspend fun startUpload(encrypted: ByteArray, mime: String): StartedUpload {
         val payload = buildStartPayload()
         val sizeStr = encrypted.size.toString()
-        val resp: HttpResponse = http.request(Endpoints.UploadMediaUrl) {
-            method = HttpMethod.Post
-            uploadHeaders(
+        val resp = NetworkClient.execute(
+            url = Endpoints.UploadMediaUrl,
+            method = "POST",
+            headers = uploadHeaders(
                 contentLength = sizeStr,
                 command = "start",
                 offset = null,
                 contentMime = mime,
                 protocol = "resumable",
-            )
-            setBody(payload.toByteArray(Charsets.UTF_8))
+            ),
+            body = payload.toByteArray(Charsets.UTF_8),
+            connectTimeoutMs = CONNECT_TIMEOUT_MS,
+            readTimeoutMs = READ_TIMEOUT_MS,
+        )
+        if (!resp.isSuccess) {
+            error("start-upload HTTP ${resp.status}")
         }
-        if (resp.status.value !in 200..299) {
-            error("start-upload HTTP ${resp.status.value}")
-        }
-        val uploadUrl = resp.headers["x-goog-upload-url"]
+        val uploadUrl = resp.header("x-goog-upload-url")
             ?: error("start-upload: missing x-goog-upload-url")
         return StartedUpload(
             uploadUrl = uploadUrl,
-            chunkGranularity = resp.headers["x-goog-upload-chunk-granularity"]?.toLongOrNull() ?: 0L,
+            chunkGranularity = resp.header("x-goog-upload-chunk-granularity")?.toLongOrNull() ?: 0L,
             mime = mime,
             encrypted = encrypted,
         )
@@ -169,21 +156,24 @@ class Media(private val authProvider: () -> AuthData) {
 
     /** POST the encrypted bytes to the resumable URL and decode the response. */
     private suspend fun finalizeUpload(start: StartedUpload): FinalizedUpload {
-        val resp: HttpResponse = http.request(start.uploadUrl) {
-            method = HttpMethod.Post
-            uploadHeaders(
+        val resp = NetworkClient.execute(
+            url = start.uploadUrl,
+            method = "POST",
+            headers = uploadHeaders(
                 contentLength = start.encrypted.size.toString(),
                 command = "upload, finalize",
                 offset = "0",
                 contentMime = start.mime,
                 protocol = null,
-            )
-            setBody(start.encrypted)
+            ),
+            body = start.encrypted,
+            connectTimeoutMs = CONNECT_TIMEOUT_MS,
+            readTimeoutMs = READ_TIMEOUT_MS,
+        )
+        if (!resp.isSuccess) {
+            error("finalize-upload HTTP ${resp.status}")
         }
-        if (resp.status.value !in 200..299) {
-            error("finalize-upload HTTP ${resp.status.value}")
-        }
-        var bodyBytes = resp.bodyAsBytes()
+        var bodyBytes = resp.bytes
         val parsed = try {
             UploadMediaResponse.parseFrom(bodyBytes)
         } catch (_: Throwable) {
@@ -201,53 +191,49 @@ class Media(private val authProvider: () -> AuthData) {
      * The relay's anti-abuse layer inspects these alongside the URL +
      * Origin to decide whether the request looks like a real browser.
      */
-    private fun io.ktor.client.request.HttpRequestBuilder.uploadHeaders(
+    private fun uploadHeaders(
         contentLength: String,
         command: String?,
         offset: String?,
         contentMime: String?,
         protocol: String?,
-    ) {
-        headers {
-            append("sec-ch-ua", Endpoints.SecUA)
-            if (protocol != null) append("x-goog-upload-protocol", protocol)
-            append("x-goog-upload-header-content-length", contentLength)
-            append("sec-ch-ua-mobile", Endpoints.SecUAMobile)
-            append("user-agent", Endpoints.UserAgent)
-            if (contentMime != null) append("x-goog-upload-header-content-type", contentMime)
-            append("content-type", "application/x-www-form-urlencoded;charset=UTF-8")
-            if (command != null) append("x-goog-upload-command", command)
-            if (offset != null) append("x-goog-upload-offset", offset)
-            append("sec-ch-ua-platform", "\"${Endpoints.UAPlatform}\"")
-            append("accept", "*/*")
-            append("origin", "https://messages.google.com")
-            append("sec-fetch-site", "cross-site")
-            append("sec-fetch-mode", "cors")
-            append("sec-fetch-dest", "empty")
-            append("referer", "https://messages.google.com/")
-            append("accept-encoding", "gzip, deflate, br")
-            append("accept-language", "en-US,en;q=0.9")
-        }
+    ): Map<String, String> = buildMap {
+        put("sec-ch-ua", Endpoints.SecUA)
+        if (protocol != null) put("x-goog-upload-protocol", protocol)
+        put("x-goog-upload-header-content-length", contentLength)
+        put("sec-ch-ua-mobile", Endpoints.SecUAMobile)
+        put("user-agent", Endpoints.UserAgent)
+        if (contentMime != null) put("x-goog-upload-header-content-type", contentMime)
+        put("content-type", "application/x-www-form-urlencoded;charset=UTF-8")
+        if (command != null) put("x-goog-upload-command", command)
+        if (offset != null) put("x-goog-upload-offset", offset)
+        put("sec-ch-ua-platform", "\"${Endpoints.UAPlatform}\"")
+        put("accept", "*/*")
+        put("origin", "https://messages.google.com")
+        put("sec-fetch-site", "cross-site")
+        put("sec-fetch-mode", "cors")
+        put("sec-fetch-dest", "empty")
+        put("referer", "https://messages.google.com/")
+        put("accept-encoding", "gzip, deflate, br")
+        put("accept-language", "en-US,en;q=0.9")
     }
 
     /** Port of util/func.go.BuildUploadHeaders — used for media download. */
-    private fun io.ktor.client.request.HttpRequestBuilder.downloadHeaders(metadata: String) {
-        headers {
-            append("x-goog-download-metadata", metadata)
-            append("sec-ch-ua", Endpoints.SecUA)
-            append("sec-ch-ua-mobile", Endpoints.SecUAMobile)
-            append("user-agent", Endpoints.UserAgent)
-            append("sec-ch-ua-platform", "\"${Endpoints.UAPlatform}\"")
-            append("accept", "*/*")
-            append("origin", "https://messages.google.com")
-            append("sec-fetch-site", "cross-site")
-            append("sec-fetch-mode", "cors")
-            append("sec-fetch-dest", "empty")
-            append("referer", "https://messages.google.com/")
-            append("accept-encoding", "gzip, deflate, br")
-            append("accept-language", "en-US,en;q=0.9")
-        }
-    }
+    private fun downloadHeaders(metadata: String): Map<String, String> = linkedMapOf(
+        "x-goog-download-metadata" to metadata,
+        "sec-ch-ua" to Endpoints.SecUA,
+        "sec-ch-ua-mobile" to Endpoints.SecUAMobile,
+        "user-agent" to Endpoints.UserAgent,
+        "sec-ch-ua-platform" to "\"${Endpoints.UAPlatform}\"",
+        "accept" to "*/*",
+        "origin" to "https://messages.google.com",
+        "sec-fetch-site" to "cross-site",
+        "sec-fetch-mode" to "cors",
+        "sec-fetch-dest" to "empty",
+        "referer" to "https://messages.google.com/",
+        "accept-encoding" to "gzip, deflate, br",
+        "accept-language" to "en-US,en;q=0.9",
+    )
 
     /**
      * MIME-string → wire-enum mapping. Mirrors libgm's `MimeToMediaType`
@@ -314,5 +300,7 @@ class Media(private val authProvider: () -> AuthData) {
 
     companion object {
         private const val TAG = "GMessages/Media"
+        private const val CONNECT_TIMEOUT_MS = 30_000L
+        private const val READ_TIMEOUT_MS = 120_000L
     }
 }

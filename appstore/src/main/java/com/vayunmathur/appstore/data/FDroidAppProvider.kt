@@ -1,10 +1,12 @@
 package com.vayunmathur.appstore.data
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class FDroidAppProvider(
-    private val db: AppDatabase
+    private val db: AppDatabase,
+    private val appContext: Context
 ) : AppProvider {
     override val id = "fdroid"
     override val name = "F-Droid"
@@ -16,7 +18,7 @@ class FDroidAppProvider(
         val repos = db.repoDao().all().filter { it.enabled }
         val all = mutableListOf<UnifiedApp>()
         for (repo in repos) {
-            try { all += FDroidRepository.fetchRepoIndex(repo.url) } catch (_: Exception) { }
+            try { all += FDroidRepository.fetchRepoIndex(appContext, repo.url) } catch (_: Exception) { }
         }
         val filtered = AppProvider.filterTargetSdk(all).distinctBy { it.packageName }
         cachedPackageNames = filtered.map { it.packageName }.toSet()
@@ -29,7 +31,7 @@ class FDroidAppProvider(
         val live = mutableListOf<UnifiedApp>()
         for (url in listOf(DefaultRepos.FDROID_MAIN, DefaultRepos.IZVYZID)) {
             try {
-                live += FDroidRepository.fetchRepoIndex(url).filter {
+                live += FDroidRepository.fetchRepoIndex(appContext, url).filter {
                     it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q) || it.summary.lowercase().contains(q)
                 }
             } catch (_: Exception) {}
@@ -54,12 +56,13 @@ class FDroidAppProvider(
         } catch (_: Exception) { null }
     }
 
-    suspend fun syncIntoDb(): Int = withContext(Dispatchers.IO) {
+    suspend fun syncIntoDb(context: Context? = null): Int = withContext(Dispatchers.IO) {
+        val ctx = context ?: appContext
         val repos = db.repoDao().all().filter { it.enabled }
         var total = 0
         for (repo in repos) {
             try {
-                val apps = FDroidRepository.fetchRepoIndex(repo.url)
+                val apps = FDroidRepository.fetchRepoIndex(ctx, repo.url)
                 val filtered = AppProvider.filterTargetSdk(apps)
                 val entities = filtered.map { it.toEntity() }
                 db.cachedAppDao().deleteByRepo(repo.url.trimEnd('/'))

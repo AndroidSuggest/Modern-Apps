@@ -27,7 +27,7 @@ data class DavCollection(
 
 /**
  * WebDAV client for CalDAV (RFC 4791) and CardDAV (RFC 6352) over the shared
- * ktor [NetworkClient], using the custom methods PROPFIND / REPORT / PUT / DELETE.
+ * [NetworkClient], using the custom methods PROPFIND / REPORT / PUT / DELETE.
  * Change detection uses collection ctags and per-resource ETags; the caller
  * decides what to re-fetch.
  */

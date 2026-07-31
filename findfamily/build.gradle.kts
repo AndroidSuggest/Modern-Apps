@@ -16,7 +16,7 @@ android {
 
 dependencies {
 
-    // ktor
+    // HTTP + JSON
     implementation(project(":library:network"))
     implementation(project(":library:e2ee-p2p"))
 

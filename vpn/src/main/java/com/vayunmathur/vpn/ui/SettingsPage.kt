@@ -1,8 +1,11 @@
 package com.vayunmathur.vpn.ui
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,9 +16,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.vpn.Route
@@ -24,6 +29,7 @@ import com.vayunmathur.library.util.NavBackStack
 
 @Composable
 fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
+    val context = LocalContext.current
     Scaffold(
         topBar = { TopAppBar(title = { Text("Settings / About") }, navigationIcon = { IconNavigation(backStack) }) }
     ) { pad ->
@@ -32,6 +38,33 @@ fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // Always-On card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Always-On VPN", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Enable Always-On in Android system VPN settings to keep the VPN connected even after reboot. " +
+                        "Go to Settings → Network & Internet → VPN → gear next to this app → enable Always-On VPN.\n\n" +
+                        "This app declares SUPPORTS_ALWAYS_ON and uses START_STICKY with last-used tunnel restore on null intent.",
+                        fontSize = 12.sp,
+                    )
+                    Button(onClick = {
+                        try {
+                            context.startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+                        } catch (_: Exception) {
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                            } catch (_: Exception) {}
+                        }
+                    }) {
+                        Text("Open system VPN settings")
+                    }
+                }
+            }
+
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("VPN (WireGuard) — gotatun / BoringTun fork", style = MaterialTheme.typography.titleMedium)
@@ -50,6 +83,9 @@ fun SettingsPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                         "The loop bridges TUN fd (plaintext IP) <-> encapsulate and UDP " +
                         "(encrypted WG) <-> consumeIncomingPacketDetailed. Timer ticks every 100ms emit " +
                         "keepalives and handshake retransmits.\n\n" +
+                        "Logging: packet inspection in Kotlin on plaintext IP from TUN (IPv4/IPv6 UDP/TCP parsing), DNS snooping " +
+                        "for UDP dport 53 to map IP→domain, SNI extraction from TLS ClientHello for DoH fallback, per-app " +
+                        "attribution via ConnectivityManager.getConnectionOwnerUid(). Batched 1.5s upserts to encrypted Room.\n\n" +
                         "Config storage: Room encrypted db (vpn-db) via :library:room / SQLCipher — each " +
                         "config stores Interface Address/DNS/MTU and Peer PublicKey/PresharedKey/AllowedIPs/" +
                         "Endpoint/PersistentKeepalive plus device Private/Public keys. " +

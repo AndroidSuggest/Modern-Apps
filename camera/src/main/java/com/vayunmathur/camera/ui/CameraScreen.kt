@@ -140,6 +140,8 @@ import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.GuideDot
 import com.vayunmathur.camera.util.GuideDotState
 import com.vayunmathur.camera.util.FlashMode
+import com.vayunmathur.camera.util.BOKEH_SHADER
+import com.vayunmathur.camera.util.bokehBlurScale
 import com.vayunmathur.camera.util.buildColorAdjustmentMatrix
 import com.vayunmathur.camera.util.formatZoomLabel
 import com.vayunmathur.camera.util.PhotoAnalyzer
@@ -150,60 +152,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-
-private const val BOKEH_SHADER = """
-    uniform shader cameraInput;
-    uniform shader alphaMask;
-    uniform float blurScale;
-
-    half4 main(float2 fragCoord) {
-        float maskAlpha = alphaMask.eval(fragCoord).a;
-        half4 sharp = cameraInput.eval(fragCoord);
-
-        // 3-pass separable bokeh: blur along 0°, 120°, 240° axes then average.
-        // Each pass samples 13 taps along its direction (radius ~36px).
-        float2 dir0 = float2(1.0, 0.0);
-        float2 dir1 = float2(-0.5, 0.866);
-        float2 dir2 = float2(-0.5, -0.866);
-
-        // 1D Gaussian-ish weights for 13 taps (symmetric, sum ≈ 1)
-        float w0 = 0.14;
-        float w1 = 0.13;
-        float w2 = 0.11;
-        float w3 = 0.09;
-        float w4 = 0.06;
-        float w5 = 0.04;
-        float w6 = 0.02;
-
-        half4 pass0 = cameraInput.eval(fragCoord) * w0;
-        half4 pass1 = cameraInput.eval(fragCoord) * w0;
-        half4 pass2 = cameraInput.eval(fragCoord) * w0;
-
-        for (float i = 1.0; i <= 6.0; i += 1.0) {
-            float w;
-            if (i < 1.5) w = w1;
-            else if (i < 2.5) w = w2;
-            else if (i < 3.5) w = w3;
-            else if (i < 4.5) w = w4;
-            else if (i < 5.5) w = w5;
-            else w = w6;
-
-            float2 off0 = dir0 * i * 6.0 * blurScale;
-            float2 off1 = dir1 * i * 6.0 * blurScale;
-            float2 off2 = dir2 * i * 6.0 * blurScale;
-
-            pass0 += cameraInput.eval(fragCoord + off0) * w;
-            pass0 += cameraInput.eval(fragCoord - off0) * w;
-            pass1 += cameraInput.eval(fragCoord + off1) * w;
-            pass1 += cameraInput.eval(fragCoord - off1) * w;
-            pass2 += cameraInput.eval(fragCoord + off2) * w;
-            pass2 += cameraInput.eval(fragCoord - off2) * w;
-        }
-
-        half4 blur = (pass0 + pass1 + pass2) / 3.0;
-        return mix(blur, sharp, maskAlpha);
-    }
-"""
 
 private enum class CameraSetting {
     BRIGHTNESS, SHADOWS, WARMTH, EXPOSURE_TIME, PORTRAIT_BLUR, ISO
@@ -619,7 +567,7 @@ fun CameraScreen(
                                                     matrix.setScale(size.width / localMask.width, size.height / localMask.height)
                                                     maskShader.setLocalMatrix(matrix)
                                                     shader.setInputShader("alphaMask", maskShader)
-                                                    shader.setFloatUniform("blurScale", 0.4f + blurStrength * 1.4f)
+                                                    shader.setFloatUniform("blurScale", bokehBlurScale(blurStrength))
                                                     effect = RenderEffect.createRuntimeShaderEffect(shader, "cameraInput")
                                                 } catch (_: Exception) {
                                                     // Mask may be recycled between snapshot and render – skip bokeh this frame

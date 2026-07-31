@@ -26,6 +26,8 @@ import com.vayunmathur.web.ui.BookmarksPage
 import com.vayunmathur.web.ui.BrowserPage
 import com.vayunmathur.web.ui.HistoryPage
 import com.vayunmathur.web.ui.SettingsPage
+import com.vayunmathur.web.ui.DownloadsPage
+import com.vayunmathur.web.ui.SiteDataPage
 import com.vayunmathur.web.util.WebViewModel
 import com.vayunmathur.web.util.WebViewModelFactory
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +50,9 @@ class MainActivity : ComponentActivity() {
             val factory = WebViewModelFactory(
                 historyDao = db.historyDao(),
                 bookmarkDao = db.bookmarkDao(),
+                sitePermissionDao = db.sitePermissionDao(),
+                storageInfoDao = db.storageInfoDao(),
+                downloadDao = db.downloadDao(),
                 context = applicationContext
             )
             withContext(Dispatchers.Main) {
@@ -61,7 +66,6 @@ class MainActivity : ComponentActivity() {
             DynamicTheme {
                 Box(Modifier.fillMaxSize()) {
                     if (!readyState.value || factoryState == null) {
-                        // Simple empty while DB loads — avoids white flash? DynamicTheme bg covers anyway.
                         Box(Modifier.fillMaxSize())
                     } else {
                         AppRoot(factoryState!!, externalUrlState.value) {
@@ -93,11 +97,9 @@ class MainActivity : ComponentActivity() {
     private fun extractHttpUrl(text: String): String? {
         val trimmed = text.trim()
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            // If SEND contains extra text, grab first url.
             val match = Regex("https?://\\S+").find(trimmed)
             return match?.value ?: trimmed.substringBefore(" ")
         }
-        // For SEND we may receive plain text that contains a url somewhere
         Regex("https?://\\S+").find(trimmed)?.let { return it.value }
         return null
     }
@@ -105,17 +107,12 @@ class MainActivity : ComponentActivity() {
 
 @Serializable
 sealed interface Route : NavKey {
-    @Serializable
-    data object Browser : Route
-
-    @Serializable
-    data object History : Route
-
-    @Serializable
-    data object Bookmarks : Route
-
-    @Serializable
-    data object Settings : Route
+    @Serializable data object Browser : Route
+    @Serializable data object History : Route
+    @Serializable data object Bookmarks : Route
+    @Serializable data object Settings : Route
+    @Serializable data object Downloads : Route
+    @Serializable data object SiteData : Route
 }
 
 @Composable
@@ -140,17 +137,11 @@ private fun AppRoot(
 fun Navigation(viewModel: WebViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Browser)
     MainNavigation(backStack) {
-        entry<Route.Browser> {
-            BrowserPage(viewModel = viewModel, backStack = backStack)
-        }
-        entry<Route.History> {
-            HistoryPage(viewModel = viewModel, backStack = backStack)
-        }
-        entry<Route.Bookmarks> {
-            BookmarksPage(viewModel = viewModel, backStack = backStack)
-        }
-        entry<Route.Settings> {
-            SettingsPage(viewModel = viewModel, backStack = backStack)
-        }
+        entry<Route.Browser> { BrowserPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.History> { HistoryPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.Bookmarks> { BookmarksPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.Settings> { SettingsPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.Downloads> { DownloadsPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.SiteData> { SiteDataPage(viewModel = viewModel, backStack = backStack) }
     }
 }

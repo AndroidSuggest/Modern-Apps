@@ -1,59 +1,149 @@
 package com.vayunmathur.passwords.cable
 
-import org.bouncycastle.crypto.digests.SHA256Digest
-import org.bouncycastle.crypto.generators.HKDFBytesGenerator
-import org.bouncycastle.crypto.params.HKDFParameters
-import org.bouncycastle.jce.ECNamedCurveTable
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.math.BigInteger
 import java.security.interfaces.ECPublicKey
 
 /**
- * Verifies the platform-crypto (Conscrypt/SunEC) replacements for the former Bouncy Castle
- * code produce byte-identical results. BC stays on the *test* classpath as the oracle only.
+ * Known-answer tests for the platform-crypto (Conscrypt/SunEC) implementations behind the
+ * caBLE handshake.
+ *
+ * These used to compare against Bouncy Castle as a live oracle; they now pin the same
+ * behaviour to published constants instead — RFC 5869 Appendix A for HKDF-SHA256, and the
+ * NIST P-256 domain parameters for point decompression — so the crypto is checked against
+ * the standard rather than against another implementation, with no extra dependency.
  */
 class CryptoParityTest {
 
-    private fun bcHkdf(ikm: ByteArray, salt: ByteArray?, info: ByteArray, len: Int): ByteArray {
-        val gen = HKDFBytesGenerator(SHA256Digest())
-        gen.init(HKDFParameters(ikm, salt, info))
-        return ByteArray(len).also { gen.generateBytes(it, 0, len) }
+    private fun hex(s: String): ByteArray {
+        require(s.length % 2 == 0)
+        return ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    }
+
+    // ---------------------------------------------------------------------
+    // HKDF-SHA256 — RFC 5869 Appendix A test vectors
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun hkdf_matches_rfc5869_basic_vector() {
+        // A.1: IKM 22x0b, 13-byte salt, 10-byte info, L = 42.
+        assertArrayEquals(
+            hex("3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf" +
+                "34007208d5b887185865"),
+            CableKeys.hkdf(
+                ikm = ByteArray(22) { 0x0b },
+                salt = ByteArray(13) { it.toByte() },
+                info = ByteArray(10) { (0xf0 + it).toByte() },
+                length = 42,
+            ),
+        )
     }
 
     @Test
-    fun hkdf_matches_bouncycastle() {
+    fun hkdf_matches_rfc5869_long_input_vector() {
+        // A.2: 80-byte IKM, 80-byte salt, 80-byte info, L = 82 — spans several expand rounds.
+        assertArrayEquals(
+            hex("b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c" +
+                "59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71" +
+                "cc30c58179ec3e87c14c01d5c1f3434f1d87"),
+            CableKeys.hkdf(
+                ikm = ByteArray(0x50) { it.toByte() },
+                salt = ByteArray(0x50) { (0x60 + it).toByte() },
+                info = ByteArray(0x50) { (0xb0 + it).toByte() },
+                length = 82,
+            ),
+        )
+    }
+
+    @Test
+    fun hkdf_matches_rfc5869_empty_salt_vector() {
+        // A.3: zero-length salt and info — the shape caBLE uses for the QR-derived keys.
+        val expected = hex(
+            "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8"
+        )
+        val ikm = ByteArray(22) { 0x0b }
+        assertArrayEquals(expected, CableKeys.hkdf(ikm, ByteArray(0), ByteArray(0), 42))
+        // A null salt must be treated as the RFC's zero salt, identically to an empty one
+        // (BoringSSL parity — Chromium relies on this for the QR secret).
+        assertArrayEquals(expected, CableKeys.hkdf(ikm, null, ByteArray(0), 42))
+    }
+
+    @Test
+    fun hkdf_output_lengths_are_prefixes_of_each_other() {
+        // Expand is a counter-mode stream: a shorter request must be a prefix of a longer one.
         val ikm = ByteArray(16) { it.toByte() }
         val info = "test-info".toByteArray()
-        val cases = listOf<ByteArray?>(null, ByteArray(0), "some-salt".toByteArray())
-        for (salt in cases) {
+        for (salt in listOf<ByteArray?>(null, ByteArray(0), "some-salt".toByteArray())) {
+            val full = CableKeys.hkdf(ikm, salt, info, 100)
             for (len in intArrayOf(10, 16, 32, 64, 100)) {
                 assertArrayEquals(
                     "salt=${salt?.size} len=$len",
-                    bcHkdf(ikm, salt, info, len),
+                    full.copyOf(len),
                     CableKeys.hkdf(ikm, salt, info, len),
                 )
             }
         }
     }
 
+    // ---------------------------------------------------------------------
+    // P-256 point encoding — NIST domain parameters
+    // ---------------------------------------------------------------------
+
+    private val p = BigInteger(
+        "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff", 16
+    )
+    private val curveB = BigInteger(
+        "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b", 16
+    )
+
+    /** y² == x³ - 3x + b (mod p) */
+    private fun onCurve(x: BigInteger, y: BigInteger): Boolean =
+        y.multiply(y).subtract(
+            x.multiply(x).multiply(x).subtract(x.multiply(BigInteger.valueOf(3))).add(curveB)
+        ).mod(p).signum() == 0
+
     @Test
-    fun p256_compressed_decode_matches_bouncycastle() {
-        val bcCurve = ECNamedCurveTable.getParameterSpec("secp256r1").curve
+    fun p256_decompresses_the_standard_base_point() {
+        // The secp256r1 generator, as published in SEC 2 / FIPS 186-4.
+        val gx = BigInteger(
+            "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", 16
+        )
+        val gy = BigInteger(
+            "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", 16
+        )
+        // Gy is odd, so the compressed form carries the 0x03 prefix.
+        val compressed = hex(
+            "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+        )
+        val decoded = P256.decodePoint(compressed) as ECPublicKey
+        assertEquals(gx, decoded.w.affineX)
+        assertEquals(gy, decoded.w.affineY)
+    }
+
+    @Test
+    fun p256_compressed_decode_round_trips_and_stays_on_curve() {
         repeat(20) {
             val kp = P256.generateKeyPair()
-            val compressed = P256.toCompressed(kp.public)
-            // Our decode.
-            val mine = P256.decodePoint(compressed) as ECPublicKey
-            // BC decode of the same bytes.
-            val bc = bcCurve.decodePoint(compressed).normalize()
-            assertEquals(bc.affineXCoord.toBigInteger(), mine.w.affineX)
-            assertEquals(bc.affineYCoord.toBigInteger(), mine.w.affineY)
-            // Round-trip: uncompressed decode too.
-            val uncompressed = P256.toUncompressed(kp.public)
-            val mine2 = P256.decodePoint(uncompressed) as ECPublicKey
-            assertEquals(mine.w.affineX, mine2.w.affineX)
-            assertEquals(mine.w.affineY, mine2.w.affineY)
+            val original = kp.public as ECPublicKey
+
+            val fromCompressed = P256.decodePoint(P256.toCompressed(kp.public)) as ECPublicKey
+            assertEquals(original.w.affineX, fromCompressed.w.affineX)
+            assertEquals(original.w.affineY, fromCompressed.w.affineY)
+
+            val fromUncompressed = P256.decodePoint(P256.toUncompressed(kp.public)) as ECPublicKey
+            assertEquals(original.w.affineX, fromUncompressed.w.affineX)
+            assertEquals(original.w.affineY, fromUncompressed.w.affineY)
+
+            assertTrue(
+                "decompressed point off curve",
+                onCurve(fromCompressed.w.affineX, fromCompressed.w.affineY),
+            )
+            // The recovered Y's parity must match the prefix that was encoded.
+            val prefix = P256.toCompressed(kp.public)[0].toInt() and 0xff
+            assertEquals(prefix == 0x03, fromCompressed.w.affineY.testBit(0))
         }
     }
 

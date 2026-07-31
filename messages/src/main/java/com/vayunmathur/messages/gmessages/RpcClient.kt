@@ -2,21 +2,10 @@ package com.vayunmathur.messages.gmessages
 
 import android.util.Log
 import com.google.protobuf.Message
-import com.google.protobuf.MessageOrBuilder
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.headers
-import io.ktor.client.request.preparePost
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.ContentType
-import io.ktor.http.HttpMethod
-import io.ktor.http.contentType
-import io.ktor.utils.io.ByteReadChannel
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.NetworkDataStream
+import com.vayunmathur.library.network.RawResponse
+import com.vayunmathur.library.network.SimpleResponse
 
 /**
  * HTTP transport for the Google-Messages-for-Web RPC protocol.
@@ -29,42 +18,12 @@ import io.ktor.utils.io.ByteReadChannel
  *     [Endpoints] + `util/func.go.BuildRelayHeaders` (Sec-CH-UA,
  *     User-Agent, X-Goog-API-Key, etc).
  *
- * Two underlying Ktor clients exist because long-poll requests need a
- * much longer read timeout than normal RPC.
+ * Long-poll requests use a much longer read timeout than normal RPC, so
+ * the two paths pass different per-request timeouts.
  */
 class RpcClient {
 
-    private val normal: HttpClient = HttpClient(CIO) {
-        engine {
-            requestTimeout = 120_000  // 2 min (matches Go's http.Client{Timeout: 2 * time.Minute})
-        }
-        install(HttpTimeout) {
-            requestTimeoutMillis = 120_000
-            connectTimeoutMillis = 15_000
-            socketTimeoutMillis = 30_000
-        }
-    }
-
-    private val longPoll: HttpClient = HttpClient(CIO) {
-        engine {
-            // No request-level timeout — long polls can sit open for
-            // several minutes between heartbeats.
-            requestTimeout = 0
-        }
-        install(HttpTimeout) {
-            // Total request budget: 6 minutes. Beyond that we cycle.
-            requestTimeoutMillis = 6 * 60 * 1000
-            connectTimeoutMillis = 15_000
-            // Socket-level idle timeout above 1 minute so heartbeats
-            // (every ~minute) keep the stream alive.
-            socketTimeoutMillis = 90_000
-        }
-    }
-
-    fun close() {
-        runCatching { normal.close() }
-        runCatching { longPoll.close() }
-    }
+    fun close() = Unit
 
     /**
      * POST [body] as binary protobuf and decode the response as the
@@ -75,7 +34,7 @@ class RpcClient {
         body: Message,
         responseTemplate: T,
     ): T {
-        val resp = post(url, body.toByteArray(), ContentTypes.Protobuf, longPoll = false)
+        val resp = post(url, body.toByteArray(), ContentTypes.Protobuf)
         return decodeBody(resp, responseTemplate)
     }
 
@@ -100,41 +59,47 @@ class RpcClient {
     suspend fun postPbLite(
         url: String,
         body: Message,
-    ): HttpResponse {
+    ): RawResponse {
         val json = PbLite.encode(body)
-        return post(url, json.toByteArray(Charsets.UTF_8), ContentTypes.PbLite, longPoll = false)
+        return post(url, json.toByteArray(Charsets.UTF_8), ContentTypes.PbLite)
     }
 
     /**
      * Open a long-poll: POSTs the request body as pblite and invokes
-     * [onResponse] with the live [HttpResponse]. The body MUST be
-     * consumed via the streaming channel API ([bodyAsChannel]); calling
-     * [HttpResponse.bodyAsBytes] would buffer-then-block.
+     * [onResponse] with the response head plus the still-open body
+     * stream. The body MUST be consumed incrementally — buffering it
+     * would block until the relay closes the connection.
      *
      * The connection is held open for the duration of the callback,
      * then closed cleanly. Returns whatever [onResponse] returned.
      *
-     * Implemented via `preparePost().execute { ... }` rather than
-     * `request()` because the latter eagerly reads the entire response
-     * body before returning — fine for short RPCs, fatal for long-poll
-     * where the body is an unbounded stream of pushed events.
+     * `Accept-Encoding: identity` keeps the relay from framing the push
+     * stream inside a compressed envelope.
      */
     suspend fun <T> openLongPoll(
         url: String,
         body: Message,
-        onResponse: suspend (HttpResponse) -> T,
+        onResponse: suspend (SimpleResponse, NetworkDataStream?) -> T,
     ): T {
         val json = PbLite.encode(body)
         val bytes = json.toByteArray(Charsets.UTF_8)
         Log.d(TAG, "POST $url (${bytes.size} bytes, ${ContentTypes.PbLite}) [long-poll]")
-        return longPoll.preparePost(url) {
-            method = HttpMethod.Post
-            contentType(ContentType.parse(ContentTypes.PbLite))
-            applyRelayHeaders(ContentTypes.PbLite, accept = "*/*")
-            setBody(bytes)
-        }.execute { response ->
-            onResponse(response)
+        var result: T? = null
+        NetworkClient.stream(
+            url = url,
+            method = "POST",
+            headers = relayHeaders(ContentTypes.PbLite, accept = "*/*") +
+                mapOf("accept-encoding" to "identity"),
+            body = bytes,
+            connectTimeoutMs = 15_000L,
+            // Heartbeats arrive about once a minute; anything under that
+            // would tear down a healthy stream.
+            readTimeoutMs = 6 * 60 * 1000L,
+        ) { stream, response ->
+            result = onResponse(response, stream)
         }
+        @Suppress("UNCHECKED_CAST")
+        return result as T
     }
 
     /**
@@ -148,22 +113,25 @@ class RpcClient {
         accept: String = "*/*",
     ): T {
         Log.d(TAG, "GET $url")
-        val resp = normal.request(url) {
-            method = HttpMethod.Get
-            headers {
-                append("sec-ch-ua", Endpoints.SecUA)
-                append("x-goog-api-key", Endpoints.GoogleApiKey)
-                append("sec-ch-ua-mobile", Endpoints.SecUAMobile)
-                append("user-agent", Endpoints.UserAgent)
-                append("sec-ch-ua-platform", "\"${Endpoints.UAPlatform}\"")
-                append("accept", accept)
-                append("sec-fetch-site", "same-origin")
-                append("sec-fetch-mode", "cors")
-                append("sec-fetch-dest", "empty")
-                append("referer", "https://messages.google.com/")
-                append("accept-language", "en-US,en;q=0.9")
-            }
-        }
+        val resp = NetworkClient.execute(
+            url = url,
+            method = "GET",
+            headers = linkedMapOf(
+                "sec-ch-ua" to Endpoints.SecUA,
+                "x-goog-api-key" to Endpoints.GoogleApiKey,
+                "sec-ch-ua-mobile" to Endpoints.SecUAMobile,
+                "user-agent" to Endpoints.UserAgent,
+                "sec-ch-ua-platform" to "\"${Endpoints.UAPlatform}\"",
+                "accept" to accept,
+                "sec-fetch-site" to "same-origin",
+                "sec-fetch-mode" to "cors",
+                "sec-fetch-dest" to "empty",
+                "referer" to "https://messages.google.com/",
+                "accept-language" to "en-US,en;q=0.9",
+            ),
+            connectTimeoutMs = 15_000L,
+            readTimeoutMs = 30_000L,
+        )
         return decodeBody(resp, responseTemplate)
     }
 
@@ -171,49 +139,46 @@ class RpcClient {
         url: String,
         body: ByteArray,
         contentType: String,
-        longPoll: Boolean,
-    ): HttpResponse {
-        val client = if (longPoll) this.longPoll else normal
+    ): RawResponse {
         Log.d(TAG, "POST $url (${body.size} bytes, $contentType)")
-        return client.request(url) {
-            method = HttpMethod.Post
-            contentType(ContentType.parse(contentType))
-            applyRelayHeaders(contentType, accept = "*/*")
-            setBody(body)
-        }
+        return NetworkClient.execute(
+            url = url,
+            method = "POST",
+            headers = relayHeaders(contentType, accept = "*/*"),
+            body = body,
+            connectTimeoutMs = 15_000L,
+            readTimeoutMs = 120_000L,
+        )
     }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.applyRelayHeaders(
-        contentType: String,
-        accept: String,
-    ) {
-        // Port of util.BuildRelayHeaders. Each `Sec-Fetch-*` header is
-        // what real Chrome sends for the cross-site fetch; Google's
-        // anti-abuse layer reads these to distinguish browser traffic
-        // from random clients.
-        headers {
-            append("sec-ch-ua", Endpoints.SecUA)
-            append("x-user-agent", Endpoints.XUserAgent)
-            append("x-goog-api-key", Endpoints.GoogleApiKey)
-            append("sec-ch-ua-mobile", Endpoints.SecUAMobile)
-            append("user-agent", Endpoints.UserAgent)
-            append("sec-ch-ua-platform", "\"${Endpoints.UAPlatform}\"")
-            append("accept", accept)
-            append("origin", "https://messages.google.com")
-            append("sec-fetch-site", "cross-site")
-            append("sec-fetch-mode", "cors")
-            append("sec-fetch-dest", "empty")
-            append("referer", "https://messages.google.com/")
-            append("accept-language", "en-US,en;q=0.9")
-        }
-    }
+    /**
+     * Port of util.BuildRelayHeaders. Each `Sec-Fetch-*` header is what
+     * real Chrome sends for the cross-site fetch; Google's anti-abuse
+     * layer reads these to distinguish browser traffic from random
+     * clients, so the set and its order are kept verbatim.
+     */
+    private fun relayHeaders(contentType: String, accept: String): Map<String, String> =
+        linkedMapOf(
+            "sec-ch-ua" to Endpoints.SecUA,
+            "x-user-agent" to Endpoints.XUserAgent,
+            "x-goog-api-key" to Endpoints.GoogleApiKey,
+            "sec-ch-ua-mobile" to Endpoints.SecUAMobile,
+            "user-agent" to Endpoints.UserAgent,
+            "sec-ch-ua-platform" to "\"${Endpoints.UAPlatform}\"",
+            "accept" to accept,
+            "origin" to "https://messages.google.com",
+            "sec-fetch-site" to "cross-site",
+            "sec-fetch-mode" to "cors",
+            "sec-fetch-dest" to "empty",
+            "referer" to "https://messages.google.com/",
+            "accept-language" to "en-US,en;q=0.9",
+            "content-type" to contentType,
+        )
 
-    private suspend fun <T : Message> decodeBody(resp: HttpResponse, template: T): T {
-        require(resp.status.value in 200..299) {
-            "HTTP ${resp.status.value} ${resp.status.description}"
-        }
-        val ct = resp.headers["Content-Type"].orEmpty().lowercase()
-        val bytes = resp.bodyAsBytes()
+    private fun <T : Message> decodeBody(resp: RawResponse, template: T): T {
+        require(resp.isSuccess) { "HTTP ${resp.status} ${resp.statusMessage}" }
+        val ct = resp.header("Content-Type").orEmpty().lowercase()
+        val bytes = resp.bytes
         @Suppress("UNCHECKED_CAST")
         return when {
             ct.contains("x-protobuf") -> template.parserForType.parseFrom(bytes) as T
@@ -229,6 +194,3 @@ class RpcClient {
         private const val TAG = "GMessages/RpcClient"
     }
 }
-
-/** Convenience: open a long-poll's body channel for streaming reads. */
-suspend fun HttpResponse.bodyChannel(): ByteReadChannel = bodyAsChannel()

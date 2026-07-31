@@ -8,7 +8,8 @@ import androidx.room.RoomDatabase
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
-const val DB_NAME = "web-db"
+// Bumped to new file name to avoid old migration crash — fresh install uses this DB.
+const val DB_NAME = "web-browser-db"
 
 @Dao
 interface HistoryDao {
@@ -64,12 +65,82 @@ interface BookmarkDao {
     suspend fun deleteByFolder(folderId: Long)
 }
 
+@Dao
+interface SitePermissionDao {
+    @Query("SELECT * FROM SitePermission ORDER BY origin ASC")
+    fun allFlow(): Flow<List<SitePermission>>
+
+    @Query("SELECT * FROM SitePermission WHERE origin = :origin LIMIT 1")
+    suspend fun byOrigin(origin: String): SitePermission?
+
+    @Query("SELECT * FROM SitePermission WHERE origin = :origin LIMIT 1")
+    fun byOriginFlow(origin: String): Flow<SitePermission?>
+
+    @Upsert
+    suspend fun upsert(p: SitePermission): Long
+
+    @Delete
+    suspend fun delete(p: SitePermission)
+
+    @Query("DELETE FROM SitePermission")
+    suspend fun clearAll()
+
+    @Query("DELETE FROM SitePermission WHERE origin = :origin")
+    suspend fun deleteOrigin(origin: String)
+}
+
+@Dao
+interface StorageInfoDao {
+    @Query("SELECT * FROM StorageInfo ORDER BY lastSeen DESC")
+    fun allFlow(): Flow<List<StorageInfo>>
+
+    @Query("SELECT * FROM StorageInfo WHERE origin = :origin LIMIT 1")
+    suspend fun byOrigin(origin: String): StorageInfo?
+
+    @Upsert
+    suspend fun upsert(info: StorageInfo): Long
+
+    @Delete
+    suspend fun delete(info: StorageInfo)
+
+    @Query("DELETE FROM StorageInfo WHERE origin = :origin")
+    suspend fun deleteOrigin(origin: String)
+
+    @Query("DELETE FROM StorageInfo")
+    suspend fun clearAll()
+}
+
+@Dao
+interface DownloadDao {
+    @Query("SELECT * FROM DownloadEntry ORDER BY startedAt DESC")
+    fun allFlow(): Flow<List<DownloadEntry>>
+
+    @Upsert
+    suspend fun upsert(d: DownloadEntry): Long
+
+    @Query("DELETE FROM DownloadEntry WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM DownloadEntry")
+    suspend fun clearAll()
+}
+
 @Database(
-    entities = [HistoryEntry::class, Bookmark::class, BookmarkFolder::class],
+    entities = [
+        HistoryEntry::class,
+        Bookmark::class,
+        BookmarkFolder::class,
+        SitePermission::class,
+        StorageInfo::class,
+        DownloadEntry::class
+    ],
     version = 1,
     exportSchema = false
 )
 abstract class WebDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun bookmarkDao(): BookmarkDao
+    abstract fun sitePermissionDao(): SitePermissionDao
+    abstract fun storageInfoDao(): StorageInfoDao
+    abstract fun downloadDao(): DownloadDao
 }

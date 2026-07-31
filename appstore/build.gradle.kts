@@ -18,10 +18,12 @@ dependencies {
     implementRoom(libs)
     implementation(project(":library:room"))
     implementation(project(":library:network"))
+    implementation(project(":library:work"))
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
     implementation(libs.jsoup)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.auroraoss.gplayapi)
 }

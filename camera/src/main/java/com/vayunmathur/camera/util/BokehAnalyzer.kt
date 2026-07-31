@@ -2,7 +2,6 @@ package com.vayunmathur.camera.util
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.Matrix
 import android.os.SystemClock
 import android.util.Log
@@ -24,13 +23,18 @@ class BokehAnalyzer(
     private val onMaskGenerated: (Bitmap) -> Unit
 ) : ImageAnalysis.Analyzer {
 
+    // Guard for the native handle and buffer fields – analyze() runs on bokehExecutor
+    // while close() runs on the main composable's DisposableEffect. Without mutual
+    // exclusion, close() destroys the ncnn net while openmp_worker threads are still
+    // reading it → SEGV_MTESERR tagged fault in libncnn_android.so.
+    private val lock = Any()
     private var prevMask: FloatArray? = null
     private var blurTemp: FloatArray? = null
     private var blurDst: FloatArray? = null
     private var pixelBuffer: IntArray? = null
     private var lastSegmentMs: Long = 0L
     @Volatile private var closed = false
-    private val segmenter = PortraitSegmenter(context, "erdnet.param", "erdnet.bin")
+    private var segmenter: PortraitSegmenter? = PortraitSegmenter(context, "erdnet.param", "erdnet.bin")
 
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
@@ -68,54 +72,69 @@ class BokehAnalyzer(
             }
 
             // Synchronous forward pass; runs on dedicated bokehExecutor with KEEP_ONLY_LATEST.
-            val result = try {
-                segmenter.segment(frame)
-            } catch (e: IllegalStateException) {
-                // PortraitSegmenter is closed – analyzer disposed while frame in-flight
-                Log.w("BokehAnalyzer", "segmenter closed mid-frame", e)
-                frame.recycle()
-                return
+            // Hold lock across the native call so close() blocks until OpenMP workers finish,
+            // preventing the SEGV_MTESERR use-after-free seen in tombstones.
+            val result = synchronized(lock) {
+                if (closed) {
+                    frame.recycle()
+                    return
+                }
+                val seg = segmenter
+                if (seg == null) {
+                    frame.recycle()
+                    return
+                }
+                try {
+                    seg.segment(frame)
+                } catch (e: IllegalStateException) {
+                    // PortraitSegmenter is closed – analyzer disposed while frame in-flight
+                    Log.w("BokehAnalyzer", "segmenter closed mid-frame", e)
+                    frame.recycle()
+                    return
+                }
             }
             frame.recycle()
             if (closed) return
 
-            val w = result.width
-            val h = result.height
-            val current = result.mask // foreground prob [0,1], row-major
+            synchronized(lock) {
+                if (closed) return
+                val w = result.width
+                val h = result.height
+                val current = result.mask // foreground prob [0,1], row-major
 
-            // Temporal smoothing: in-place blend into current array when possible to avoid alloc.
-            val prev = prevMask
-            val smoothed = if (prev != null && prev.size == current.size) {
-                for (i in current.indices) {
-                    current[i] = current[i] * (1f - TEMPORAL_WEIGHT) + prev[i] * TEMPORAL_WEIGHT
+                // Temporal smoothing: in-place blend into current array when possible to avoid alloc.
+                val prev = prevMask
+                val smoothed = if (prev != null && prev.size == current.size) {
+                    for (i in current.indices) {
+                        current[i] = current[i] * (1f - TEMPORAL_WEIGHT) + prev[i] * TEMPORAL_WEIGHT
+                    }
+                    current
+                } else {
+                    current
                 }
-                current
-            } else {
-                current
-            }
-            prevMask = smoothed
+                prevMask = smoothed
 
-            // Blur for soft edges – reuses temp/dst buffers.
-            val blurred = blurMask(smoothed, w, h)
-
-            // Reuse pixel buffer.
-            var pixels = pixelBuffer
-            if (pixels == null || pixels.size != w * h) {
-                pixels = IntArray(w * h)
-                pixelBuffer = pixels
-            }
-            for (i in 0 until w * h) {
-                val v = blurred[i]
-                val clamped = when {
-                    v < 0f -> 0f
-                    v > 1f -> 1f
-                    else -> v
+                // Blur for soft edges – reuses temp/dst buffers across frames to avoid GC pressure.
+                var temp = blurTemp
+                if (temp == null || temp.size != w * h) {
+                    temp = FloatArray(w * h)
+                    blurTemp = temp
                 }
-                val alpha = (clamped * 255f).toInt()
-                pixels[i] = Color.argb(alpha, 255, 255, 255)
+                var dst = blurDst
+                if (dst == null || dst.size != w * h) {
+                    dst = FloatArray(w * h)
+                    blurDst = dst
+                }
+                val blurred = blurMask(smoothed, w, h, temp, dst)
+
+                // Reuse pixel buffer.
+                var pixels = pixelBuffer
+                if (pixels == null || pixels.size != w * h) {
+                    pixels = IntArray(w * h)
+                    pixelBuffer = pixels
+                }
+                onMaskGenerated(maskToBitmap(blurred, w, h, pixels))
             }
-            val maskBitmap = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
-            onMaskGenerated(maskBitmap)
         } catch (e: Throwable) {
             Log.e("BokehAnalyzer", "segmentation failed", e)
         } finally {
@@ -124,12 +143,21 @@ class BokehAnalyzer(
     }
 
     fun close() {
-        closed = true
-        try { segmenter.close() } catch (_: Exception) {}
-        prevMask = null
-        blurTemp = null
-        blurDst = null
-        pixelBuffer = null
+        val toClose: PortraitSegmenter?
+        synchronized(lock) {
+            if (closed) return
+            closed = true
+            toClose = segmenter
+            segmenter = null
+            prevMask = null
+            blurTemp = null
+            blurDst = null
+            pixelBuffer = null
+        }
+        // Destroy outside lock after nulling handle, but close() itself was blocked until
+        // any in-flight segment() finished (lock held across native call), so no OpenMP
+        // worker is still reading the net.
+        try { toClose?.close() } catch (_: Exception) {}
     }
 
     private fun downscaleIfNeeded(src: Bitmap, maxSide: Int): Bitmap {
@@ -154,87 +182,5 @@ class BokehAnalyzer(
         matrix.postRotate(rotationDegrees.toFloat())
         if (isFrontFacing) matrix.postScale(-1f, 1f) // preview mirrors the front lens
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, false)
-    }
-
-    private fun blurMask(src: FloatArray, w: Int, h: Int): FloatArray {
-        // Two-pass separable Gaussian blur (radius 3, sigma ~1.5)
-        // Reuse buffers to avoid per-frame allocs that caused GC pressure.
-        val wh = w * h
-        var temp = blurTemp
-        if (temp == null || temp.size != wh) {
-            temp = FloatArray(wh)
-            blurTemp = temp
-        }
-        var dst = blurDst
-        if (dst == null || dst.size != wh) {
-            dst = FloatArray(wh)
-            blurDst = dst
-        }
-
-        // Horizontal pass – manual clamp instead of coerceIn in inner loop
-        for (y in 0 until h) {
-            val row = y * w
-            for (x in 0 until w) {
-                var sum = 0f
-                var sx: Int
-                // k = -3
-                sx = x - 3
-                if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-                sum += src[row + sx] * 0.06f
-                // k = -2
-                sx = x - 2
-                if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-                sum += src[row + sx] * 0.12f
-                // k = -1
-                sx = x - 1
-                if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-                sum += src[row + sx] * 0.18f
-                // k = 0
-                sum += src[row + x] * 0.28f
-                // k = 1
-                sx = x + 1
-                if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-                sum += src[row + sx] * 0.18f
-                // k = 2
-                sx = x + 2
-                if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-                sum += src[row + sx] * 0.12f
-                // k = 3
-                sx = x + 3
-                if (sx < 0) sx = 0 else if (sx >= w) sx = w - 1
-                sum += src[row + sx] * 0.06f
-
-                temp[row + x] = sum
-            }
-        }
-        // Vertical pass
-        for (x in 0 until w) {
-            for (y in 0 until h) {
-                var sum = 0f
-                var sy: Int
-                sy = y - 3
-                if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-                sum += temp[sy * w + x] * 0.06f
-                sy = y - 2
-                if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-                sum += temp[sy * w + x] * 0.12f
-                sy = y - 1
-                if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-                sum += temp[sy * w + x] * 0.18f
-                sum += temp[y * w + x] * 0.28f
-                sy = y + 1
-                if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-                sum += temp[sy * w + x] * 0.18f
-                sy = y + 2
-                if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-                sum += temp[sy * w + x] * 0.12f
-                sy = y + 3
-                if (sy < 0) sy = 0 else if (sy >= h) sy = h - 1
-                sum += temp[sy * w + x] * 0.06f
-
-                dst[y * w + x] = sum
-            }
-        }
-        return dst
     }
 }

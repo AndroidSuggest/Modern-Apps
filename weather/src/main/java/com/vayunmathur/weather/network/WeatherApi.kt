@@ -5,7 +5,7 @@ import com.vayunmathur.library.network.NetworkClient
 /**
  * Thin wrapper over the shared [NetworkClient] for the two Open-Meteo
  * endpoints we use. Open-Meteo requires no API key and returns JSON, so this
- * is just URL construction + delegation to the existing Ktor client.
+ * is just URL construction + delegation to the shared client.
  *
  * Everything is requested in metric units; the UI converts at display time so
  * toggling °C/°F doesn't trigger another HTTP call.

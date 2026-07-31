@@ -13,7 +13,6 @@ import rpc.Rpc.OutgoingRPCMessage
 import rpc.Rpc.OutgoingRPCResponse
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import io.ktor.client.statement.bodyAsBytes
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -144,10 +143,9 @@ class SessionHandler(
         try {
             val url = sendMessageUrl()
             val resp = rpc.postPbLite(url, envelope)
-            val respBytes = try { resp.bodyAsBytes() } catch (_: Throwable) { ByteArray(0) }
-            Log.i(TAG, "SendMessage HTTP ${resp.status.value}, response body: ${String(respBytes, Charsets.UTF_8).take(500)}")
-            if (resp.status.value !in 200..299) {
-                Log.w(TAG, "sendAndWait $action: HTTP ${resp.status.value}")
+            Log.i(TAG, "SendMessage HTTP ${resp.status}, response body: ${resp.text.take(500)}")
+            if (resp.status !in 200..299) {
+                Log.w(TAG, "sendAndWait $action: HTTP ${resp.status}")
                 waiters.remove(requestId)
                 return null
             }
@@ -170,7 +168,7 @@ class SessionHandler(
         return try {
             val url = sendMessageUrl()
             val resp = rpc.postPbLite(url, envelope)
-            resp.status.value in 200..299
+            resp.status in 200..299
         } catch (t: Throwable) {
             Log.e(TAG, "sendNoWait $action failed", t)
             false
@@ -188,7 +186,7 @@ class SessionHandler(
         try {
             val url = sendMessageUrl()
             val resp = rpc.postPbLite(url, envelope)
-            if (resp.status.value !in 200..299) {
+            if (resp.status !in 200..299) {
                 waiters.remove(requestId)
                 return null
             }
@@ -213,7 +211,7 @@ class SessionHandler(
         return try {
             val url = sendMessageUrl()
             val resp = rpc.postPbLite(url, envelope)
-            if (resp.status.value !in 200..299) {
+            if (resp.status !in 200..299) {
                 waiters.remove(requestId)
                 null
             } else {
@@ -231,7 +229,7 @@ class SessionHandler(
         return try {
             val url = sendMessageUrl()
             val resp = rpc.postPbLite(url, envelope)
-            resp.status.value in 200..299
+            resp.status in 200..299
         } catch (t: Throwable) {
             Log.e(TAG, "sendMessageNoResponse ${params.action} failed", t)
             false

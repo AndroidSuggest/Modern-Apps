@@ -7,18 +7,21 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.GZIPInputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 /**
  * Android-only HTTP engine backed by HttpURLConnection.
  *
  * - withContext(IO) opens (URL(url).openConnection() as HttpURLConnection)
- * - connectTimeout 30000, readTimeout 60000
+ * - connectTimeout 30000, readTimeout 60000 – both overridable per request
  * - custom verbs via reflection getDeclaredField("method")
  * - headers Map<String, *> where Iterable expands to multiple header lines
  * - body String/ByteArray with setFixedLengthStreamingMode, chunked fallback
  * - when body == null -> doOutput=false, no Content-Type forced (critical for SABR)
  * - manual redirect 301/302/303/307/308 up to 5 hops
- * - Content-Encoding br via org.brotli.dec.BrotliInputStream, gzip via GZIPInputStream
+ * - Content-Encoding br via org.brotli.dec.BrotliInputStream, gzip via GZIPInputStream,
+ *   deflate via InflaterInputStream
  */
 internal object HttpUrlEngine {
 
@@ -39,11 +42,12 @@ internal object HttpUrlEngine {
         method: String,
         headers: Map<String, *>,
         bodyBytes: ByteArray?,
-        timeoutMs: Long?,
+        connectTimeoutMs: Long?,
+        readTimeoutMs: Long? = connectTimeoutMs,
     ): HttpURLConnection {
         val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
-            connectTimeout = timeoutMs?.toInt() ?: CONNECT_TIMEOUT
-            readTimeout = timeoutMs?.toInt() ?: READ_TIMEOUT
+            connectTimeout = connectTimeoutMs?.toInt() ?: CONNECT_TIMEOUT
+            readTimeout = readTimeoutMs?.toInt() ?: READ_TIMEOUT
             instanceFollowRedirects = false
             useCaches = false
             doInput = true
@@ -113,6 +117,11 @@ internal object HttpUrlEngine {
         return when {
             lower.contains("br") -> try { org.brotli.dec.BrotliInputStream(raw) } catch (_: Throwable) { raw }
             lower.contains("gzip") -> try { GZIPInputStream(raw) } catch (_: Exception) { raw }
+            // nowrap=true first: servers advertising "deflate" usually send raw
+            // DEFLATE rather than the zlib wrapper the RFC asks for.
+            lower.contains("deflate") -> try {
+                InflaterInputStream(raw, Inflater(true))
+            } catch (_: Exception) { raw }
             else -> raw
         }
     }
@@ -130,7 +139,8 @@ internal object HttpUrlEngine {
         headers: Map<String, *>,
         bodyBytes: ByteArray?,
         followRedirects: Boolean,
-        timeoutMs: Long?,
+        connectTimeoutMs: Long?,
+        readTimeoutMs: Long? = connectTimeoutMs,
     ): InternalResult = withContext(Dispatchers.IO) {
         var currentUrl = url
         var currentMethod = method
@@ -139,7 +149,7 @@ internal object HttpUrlEngine {
         var result: InternalResult? = null
 
         while (result == null) {
-            val conn = openConnection(currentUrl, currentMethod, headers, currentBody, timeoutMs)
+            val conn = openConnection(currentUrl, currentMethod, headers, currentBody, connectTimeoutMs, readTimeoutMs)
             val status = try {
                 conn.responseCode
             } catch (e: Exception) {

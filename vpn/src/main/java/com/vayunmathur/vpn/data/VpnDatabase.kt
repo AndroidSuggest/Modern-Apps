@@ -8,6 +8,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vayunmathur.library.util.DatabaseItem
 import com.vayunmathur.library.util.DatabaseMigrations
 import kotlinx.coroutines.flow.Flow
@@ -68,11 +70,40 @@ interface VpnConfigDao {
     suspend fun touch(id: Long, ts: Long)
 }
 
-@Database(entities = [VpnConfigEntity::class], version = 1, exportSchema = false)
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `ConnectionLogEntity` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `timestampStart` INTEGER NOT NULL,
+                `timestampLast` INTEGER NOT NULL,
+                `uid` INTEGER NOT NULL,
+                `packageName` TEXT,
+                `appLabel` TEXT NOT NULL,
+                `protocol` TEXT NOT NULL,
+                `localIp` TEXT NOT NULL,
+                `localPort` INTEGER NOT NULL,
+                `remoteIp` TEXT NOT NULL,
+                `remotePort` INTEGER NOT NULL,
+                `domain` TEXT,
+                `txBytes` INTEGER NOT NULL,
+                `rxBytes` INTEGER NOT NULL,
+                `requestCount` INTEGER NOT NULL
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_packageName_domain_timestampLast_remoteIp_uid_protocol` ON `ConnectionLogEntity` (`packageName`, `domain`, `timestampLast`, `remoteIp`, `uid`, `protocol`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_remoteIp_remotePort_protocol_uid` ON `ConnectionLogEntity` (`remoteIp`, `remotePort`, `protocol`, `uid`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_domain` ON `ConnectionLogEntity` (`domain`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ConnectionLogEntity_packageName` ON `ConnectionLogEntity` (`packageName`)")
+    }
+}
+
+@Database(entities = [VpnConfigEntity::class, ConnectionLogEntity::class], version = 2, exportSchema = false)
 abstract class VpnDatabase : RoomDatabase() {
     abstract fun vpnConfigDao(): VpnConfigDao
+    abstract fun connectionLogDao(): ConnectionLogDao
 
     companion object : DatabaseMigrations {
-        override val migrations = emptyList<androidx.room.migration.Migration>()
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2)
     }
 }

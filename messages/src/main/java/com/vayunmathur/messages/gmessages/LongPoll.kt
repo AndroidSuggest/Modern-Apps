@@ -6,9 +6,8 @@ import authentication.Authentication.AuthMessage
 import authentication.Authentication.PairedData
 import client.Client.ReceiveMessagesRequest
 import com.google.protobuf.InvalidProtocolBufferException
+import com.vayunmathur.library.network.NetworkDataStream
 import events.Events.RPCPairData
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -123,18 +122,18 @@ class LongPoll(
         Log.i(TAG, "opening long-poll (network=${auth.authNetwork()})")
         val url = if (auth.hasCookies())
             Endpoints.ReceiveMessagesUrlGoogle else Endpoints.ReceiveMessagesUrl
-        return rpc.openLongPoll(url, payload) { response ->
-            val status = response.status.value
+        return rpc.openLongPoll(url, payload) { response, stream ->
+            val status = response.status
             if (status == 401 || status == 403) {
                 throw FatalLongPollException("HTTP $status (unauthorized/forbidden)")
             }
-            if (status !in 200..299) {
+            if (status !in 200..299 || stream == null) {
                 Log.e(TAG, "long-poll HTTP $status")
                 onEvent(LongPollEvent.TemporaryError("long-poll HTTP $status"))
                 return@openLongPoll false
             }
             Log.i(TAG, "long-poll open (HTTP $status)")
-            val sawEvents = consumeBody(response.bodyAsChannel())
+            val sawEvents = consumeBody(stream)
             if (!sawEvents) {
                 onEvent(LongPollEvent.NoDataReceived)
             }
@@ -142,7 +141,7 @@ class LongPoll(
         }
     }
 
-    private suspend fun consumeBody(channel: io.ktor.utils.io.ByteReadChannel): Boolean {
+    private suspend fun consumeBody(channel: NetworkDataStream): Boolean {
         val readBuf = ByteArray(64 * 1024)
         val accumulator = ByteArrayBuilder()
         var sawAnyEvent = false
@@ -154,7 +153,7 @@ class LongPoll(
         var totalBytesRead = 0L
 
         while (!channel.isClosedForRead) {
-            val n = channel.readAvailable(readBuf, 0, readBuf.size)
+            val n = channel.read(readBuf, 0, readBuf.size)
             if (n <= 0) break
             totalBytesRead += n
             if (totalBytesRead <= 512) {

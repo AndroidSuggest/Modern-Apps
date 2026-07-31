@@ -1,7 +1,6 @@
 package com.vayunmathur.messages.gvoice
 
-import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.readAvailable
+import com.vayunmathur.library.network.NetworkDataStream
 import java.io.EOFException
 
 /**
@@ -13,11 +12,11 @@ import java.io.EOFException
  * UTF-16 code units, not bytes, so surrogate-pair code points count as 2
  * even though they occupy 4 UTF-8 bytes.
  *
- * Reads from a [ByteReadChannel] (the Ktor streaming response body) and
- * exposes a single suspending [readChunk] that returns the next UTF-8
- * payload, or null on EOF.
+ * Reads from a [NetworkDataStream] (a live streaming response body, or a
+ * buffered one via `ByteArray.asNetworkDataStream()`) and exposes a single
+ * suspending [readChunk] that returns the next UTF-8 payload, or null on EOF.
  */
-class Utf16ChunkReader(private val channel: ByteReadChannel) {
+class Utf16ChunkReader(private val channel: NetworkDataStream) {
 
     private val buf = ByteArray(32 * 1024)
     private var ptr: Int = 0
@@ -28,7 +27,7 @@ class Utf16ChunkReader(private val channel: ByteReadChannel) {
         var idx = if (ptr != 0) buf.indexOfNewlineUntil(n) else -1
         while (idx == -1 && n < 10) {
             val readN = try {
-                channel.readAvailable(buf, ptr, buf.size - ptr)
+                channel.read(buf, ptr, buf.size - ptr)
             } catch (e: EOFException) {
                 return null
             }
@@ -63,7 +62,7 @@ class Utf16ChunkReader(private val channel: ByteReadChannel) {
         data.write(output)
         ptr = 0
         while (expectedLength > 0) {
-            val readN = channel.readAvailable(buf, 0, buf.size)
+            val readN = channel.read(buf, 0, buf.size)
             if (readN <= 0) error("EOF mid-chunk (need $expectedLength more code units)")
             val (received, consumed) = utf16Length(buf, 0, readN, expectedLength)
             expectedLength -= received

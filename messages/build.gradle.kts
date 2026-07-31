@@ -159,11 +159,9 @@ dependencies {
     // pairing QR ourselves in a native Compose composable.
     implementation(libs.zxing.core)
 
-    // Ktor (transitive from :library:network is implementation-scoped
-    // so we need to declare directly). TODO: remove after :messages migrates to :library:network
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
-    implementation(libs.okio) // isolated: MetaMqtt/WhatsApp uses okio.ByteString – keep until migrated
+    // HTTP + streaming for the gmessages / gvoice bridges (HttpURLConnection based).
+    implementation(project(":library:network"))
+    implementation(libs.okio) // isolated: MetaMqtt/WhatsApp uses okio.ByteString
 
     // Coil — loads device-contact photo URIs (content://) into the
     // conversation-row avatars in InboxScreen / ConversationScreen.
@@ -188,9 +186,6 @@ dependencies {
     // into a private package (see :whatsapp-signal) so it does not collide with the app's
     // protobuf 4.x. libsignal-android 0.86 (Signal bridge) cannot decrypt WhatsApp's X3DH pkmsgs.
     implementation(project(mapOf("path" to ":whatsapp-signal", "configuration" to "shaded")))
-
-    // Ktor OkHttp engine — required for proper TLS hostname verification (fixes GVoice "hostname aware checkServerTrusted" error)
-    implementation(libs.ktor.client.okhttp)
 
     // kotlinx.serialization — session data persistence
     implementation(libs.kotlinx.serialization.json)

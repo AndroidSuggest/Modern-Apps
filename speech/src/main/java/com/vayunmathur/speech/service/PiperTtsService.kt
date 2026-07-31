@@ -41,17 +41,31 @@ class PiperTtsService : TextToSpeechService() {
     }
 
     // --- Language support: English (en-US) only. ---
+    // The Settings Play button is enabled only if:
+    //   isLanguageAvailable >= LANG_AVAILABLE AND getDefaultVoiceNameFor returns a
+    //   non-empty name that exists in getVoices().
+    // Log "Couldn't find the default voice for eng-USA-" means the default
+    // implementation of onGetDefaultVoiceNameFor returned null because
+    // onIsLanguageAvailable always returned VAR_AVAILABLE, but the framework
+    // expected COUNTRY_AVAILABLE for en-US (mismatch in onIsValidVoiceName).
+    // Fix: proper hierarchy + override default voice to a name we publish.
+    // Extraction happens right after download in MainActivity (IO), never here.
+
+    private fun isEnglishIso3(lang: String?): Boolean {
+        if (lang == null) return false
+        val l = lang.lowercase()
+        return l == "eng" || l == "en" || l.startsWith("en-") || l.startsWith("en_") || l == "en-us" || l == "en_us"
+    }
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
-        // Guard against nulls — old implementations crashed calling equals() on null country.
-        val l = lang?.lowercase() ?: return TextToSpeech.LANG_NOT_SUPPORTED
-        if (l != "eng" && l != "en") return TextToSpeech.LANG_NOT_SUPPORTED
-        // If voice isn't installed yet, still report as available so the framework doesn't
-        // hide us; CheckVoiceDataActivity will report FAIL and the Settings will show
-        // the download prompt. Once extracted we report country-level availability.
-        val c = country?.lowercase()
+        if (!isEnglishIso3(lang)) return TextToSpeech.LANG_NOT_SUPPORTED
+        // Framework expects LANG_AVAILABLE for lang only, LANG_COUNTRY_AVAILABLE for
+        // lang+country, LANG_COUNTRY_VAR_AVAILABLE for lang+country+variant.
+        val hasCountry = !country.isNullOrEmpty()
+        val hasVariant = !variant.isNullOrEmpty()
         return when {
-            c == null || c.isEmpty() || c == "usa" || c == "us" -> TextToSpeech.LANG_COUNTRY_AVAILABLE
+            hasCountry && hasVariant -> TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE
+            hasCountry -> TextToSpeech.LANG_COUNTRY_AVAILABLE
             else -> TextToSpeech.LANG_AVAILABLE
         }
     }
@@ -61,25 +75,66 @@ class PiperTtsService : TextToSpeechService() {
 
     override fun onGetLanguage(): Array<String> = arrayOf("eng", "USA", "")
 
-    // Provide a Voice list so modern Settings (API 21+) shows a voice and enables the Play
-    // button. Without this, some OEM / AOSP builds disable Play when getVoices() is empty.
-    // Do NOT extract here — that would ANR the TTS binder thread. Extraction happens
-    // right after download in MainActivity (PiperModel.download + installIfNeeded on IO).
+    // Critical: override to bypass default logic that calls onIsValidVoiceName and
+    // fails when we always returned VAR_AVAILABLE. Return a voice name that we
+    // actually publish in onGetVoices().
+    override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String? {
+        if (onIsLanguageAvailable(lang, country, variant) == TextToSpeech.LANG_NOT_SUPPORTED) return null
+        if (!PiperModel.isExtracted(applicationContext)) return null
+        // Must match a Voice from onGetVoices() — use BCP-47 "en-US" so
+        // Locale.forLanguageTag succeeds and Settings finds it.
+        return "en-US"
+    }
+
+    override fun onIsValidVoiceName(voiceName: String?): Int {
+        if (voiceName == null) return TextToSpeech.ERROR
+        // Accept our published names + any English BCP-47
+        if (voiceName.equals("en-US", ignoreCase = true) || voiceName == "eng-USA") return TextToSpeech.SUCCESS
+        if (voiceName.lowercase().startsWith("en")) {
+            // "en-us-x-ma-speech-local" etc.
+            return TextToSpeech.SUCCESS
+        }
+        return try {
+            super.onIsValidVoiceName(voiceName)
+        } catch (_: Throwable) {
+            TextToSpeech.ERROR
+        }
+    }
+
+    override fun onLoadVoice(voiceName: String?): Int {
+        if (voiceName == null) return TextToSpeech.ERROR
+        return onIsValidVoiceName(voiceName)
+    }
+
     override fun onGetVoices(): MutableList<Voice> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return super.onGetVoices()
         val ctx = applicationContext
-        if (!PiperModel.isExtracted(ctx)) return mutableListOf()
-        val locale = Locale("en", "US")
-        // Name must be stable, quality high, local (no network) so Settings enables preview.
-        val voice = Voice(
-            "en-us-x-ma-speech-local",
-            locale,
-            Voice.QUALITY_HIGH,
+        val extracted = try {
+            PiperModel.isExtracted(ctx)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!extracted) return mutableListOf()
+        // Publish both the BCP-47 tag the framework looks up ("en-US") and the legacy
+        // ISO3 tag used by CHECK_TTS_DATA ("eng-USA") so legacy + modern paths both
+        // find a default voice and enable Play.
+        val v1 = Voice(
+            "en-US",
+            Locale.US,
+            Voice.QUALITY_VERY_HIGH,
             Voice.LATENCY_NORMAL,
             false,
             emptySet()
         )
-        return mutableListOf(voice)
+        val v2 = Voice(
+            "eng-USA",
+            Locale("en", "US"),
+            Voice.QUALITY_VERY_HIGH,
+            Voice.LATENCY_NORMAL,
+            false,
+            emptySet()
+        )
+        return mutableListOf(v1, v2)
     }
 
     override fun onStop() {

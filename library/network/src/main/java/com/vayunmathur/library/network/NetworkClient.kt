@@ -13,9 +13,10 @@ import java.net.URL
  *
  * Public API binary-compatible:
  *  SimpleResponse(status,statusMessage,body,headers,url){ isSuccess, contentLength }
- *  NetworkDataStream { suspend read(buffer), isClosedForRead }
- *  performRequestBytes / Full / performRequest / stream / getContentLength / performRequestInputStream
- *  callJson / getJson via kotlinx-serialization-json
+ *  RawResponse(status,statusMessage,bytes,headers,url){ isSuccess, text, header(), headerValues() }
+ *  NetworkDataStream { suspend read(buffer[,offset,length]), isClosedForRead }
+ *  performRequestBytes / Full / performRequest / execute / stream / getContentLength /
+ *  performRequestInputStream / callJson / getJson via kotlinx-serialization-json
  */
 data class SimpleResponse(
     val status: Int,
@@ -28,11 +29,60 @@ data class SimpleResponse(
     val contentLength: Long? get() = headers.entries.firstOrNull {
         it.key.equals("Content-Length", ignoreCase = true)
     }?.value?.firstOrNull()?.toLongOrNull()
+
+    /** Case-insensitive single-value header lookup. */
+    fun header(name: String): String? = headerValues(name).firstOrNull()
+
+    /** Case-insensitive all-values header lookup (e.g. multiple Set-Cookie). */
+    fun headerValues(name: String): List<String> =
+        headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value ?: emptyList()
+}
+
+/**
+ * Byte-oriented response. Use instead of [SimpleResponse] when the body is
+ * binary (protobuf, images, ciphertext) and a UTF-8 round-trip would corrupt it.
+ */
+class RawResponse(
+    val status: Int,
+    val statusMessage: String,
+    val bytes: ByteArray,
+    val headers: Map<String, List<String>>,
+    val url: String,
+) {
+    val isSuccess: Boolean get() = status in 200..299
+
+    /** The body decoded as UTF-8. Only meaningful for textual responses. */
+    val text: String get() = bytes.toString(Charsets.UTF_8)
+
+    /** Case-insensitive single-value header lookup. */
+    fun header(name: String): String? = headerValues(name).firstOrNull()
+
+    /** Case-insensitive all-values header lookup (e.g. multiple Set-Cookie). */
+    fun headerValues(name: String): List<String> =
+        headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value ?: emptyList()
 }
 
 interface NetworkDataStream {
-    suspend fun read(buffer: ByteArray): Int
+    suspend fun read(buffer: ByteArray, offset: Int, length: Int): Int
+    suspend fun read(buffer: ByteArray): Int = read(buffer, 0, buffer.size)
     val isClosedForRead: Boolean
+}
+
+/** Adapts already-buffered bytes to [NetworkDataStream] so the same framing/parsing
+ *  code can run over a live stream or a buffered body. */
+fun ByteArray.asNetworkDataStream(): NetworkDataStream {
+    val src = this
+    return object : NetworkDataStream {
+        private var pos = 0
+        override val isClosedForRead: Boolean get() = pos >= src.size
+        override suspend fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (pos >= src.size) return -1
+            val n = minOf(length, src.size - pos)
+            System.arraycopy(src, pos, buffer, offset, n)
+            pos += n
+            return n
+        }
+    }
 }
 
 object NetworkClient {
@@ -57,7 +107,7 @@ object NetworkClient {
     ): Pair<Int, ByteArray> {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
-            followRedirects = true, timeoutMs = null,
+            followRedirects = true, connectTimeoutMs = null,
         )
         return r.status to r.bodyBytes
     }
@@ -70,7 +120,7 @@ object NetworkClient {
     ): Triple<Int, Map<String, List<String>>, ByteArray> {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
-            followRedirects = true, timeoutMs = null,
+            followRedirects = true, connectTimeoutMs = null,
         )
         return Triple(r.status, r.headers, r.bodyBytes)
     }
@@ -83,23 +133,54 @@ object NetworkClient {
     ): SimpleResponse {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
-            followRedirects = true, timeoutMs = null,
+            followRedirects = true, connectTimeoutMs = null,
         )
         return SimpleResponse(r.status, r.statusMessage, r.bodyBytes.toString(Charsets.UTF_8), r.headers, r.finalUrl)
+    }
+
+    /**
+     * Full-control buffered request: binary body, per-request timeouts and
+     * optional redirect suppression. Does not throw on 4xx/5xx — inspect
+     * [RawResponse.status].
+     */
+    suspend fun execute(
+        url: String,
+        method: String = "GET",
+        headers: Map<String, *> = emptyMap<String, Any>(),
+        body: Any? = null,
+        followRedirects: Boolean = true,
+        connectTimeoutMs: Long? = null,
+        readTimeoutMs: Long? = connectTimeoutMs,
+    ): RawResponse {
+        val r = HttpUrlEngine.internalExecute(
+            url, method, headers, HttpUrlEngine.toBodyBytes(body),
+            followRedirects, connectTimeoutMs, readTimeoutMs,
+        )
+        return RawResponse(r.status, r.statusMessage, r.bodyBytes, r.headers, r.finalUrl)
     }
 
     // ------------------------------------------------------------------
     // Streaming variants
     // ------------------------------------------------------------------
 
+    /**
+     * Open a response and hand its body to [block] as a live stream, keeping the
+     * connection open for the duration of the callback. On a non-streamable status
+     * the block gets a null stream and the (buffered) error body in
+     * [SimpleResponse.body].
+     */
     suspend fun stream(
         url: String,
         method: String = "GET",
         headers: Map<String, *> = emptyMap<String, Any>(),
+        body: Any? = null,
+        connectTimeoutMs: Long? = null,
+        readTimeoutMs: Long? = connectTimeoutMs,
         block: suspend (stream: NetworkDataStream?, response: SimpleResponse) -> Unit,
     ): SimpleResponse {
         var currentUrl = url
         var currentMethod = method
+        var currentBody = HttpUrlEngine.toBodyBytes(body)
         var redirects = 0
         var lastConn: HttpURLConnection? = null
         var finalStatus = 0
@@ -109,7 +190,9 @@ object NetworkClient {
 
         withContext(Dispatchers.IO) {
             while (true) {
-                val conn = HttpUrlEngine.openConnection(currentUrl, currentMethod, headers, null, null)
+                val conn = HttpUrlEngine.openConnection(
+                    currentUrl, currentMethod, headers, currentBody, connectTimeoutMs, readTimeoutMs,
+                )
                 lastConn = conn
                 finalStatus = conn.responseCode
                 finalMessage = conn.responseMessage ?: ""
@@ -120,7 +203,10 @@ object NetworkClient {
                     val loc = conn.getHeaderField("Location") ?: conn.getHeaderField("location")
                     if (loc != null) {
                         currentUrl = URL(URL(currentUrl), loc).toString()
-                        if (finalStatus == 303) currentMethod = "GET"
+                        if (finalStatus == 303) {
+                            currentMethod = "GET"
+                            currentBody = null
+                        }
                         redirects++
                         conn.disconnect()
                         continue
@@ -130,7 +216,7 @@ object NetworkClient {
             }
         }
 
-        val simple = SimpleResponse(finalStatus, finalMessage, "", finalHeaders, finalUrl)
+        var simple = SimpleResponse(finalStatus, finalMessage, "", finalHeaders, finalUrl)
         val conn = lastConn!!
 
         if (simple.isSuccess || simple.status == 206) {
@@ -145,16 +231,17 @@ object NetworkClient {
                 var closed = false
                 val streamObj = object : NetworkDataStream {
                     override val isClosedForRead: Boolean get() = closed
-                    override suspend fun read(buffer: ByteArray): Int = withContext(Dispatchers.IO) {
-                        try {
-                            val n = raw.read(buffer)
-                            if (n == -1) closed = true
-                            n
-                        } catch (_: Exception) {
-                            closed = true
-                            -1
+                    override suspend fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val n = raw.read(buffer, offset, length)
+                                if (n == -1) closed = true
+                                n
+                            } catch (_: Exception) {
+                                closed = true
+                                -1
+                            }
                         }
-                    }
                 }
                 try {
                     block(streamObj, simple)
@@ -169,7 +256,19 @@ object NetworkClient {
                 block(null, simple)
             }
         } else {
-            withContext(Dispatchers.IO) { conn.disconnect() }
+            // Not streamable – buffer whatever the server said so the caller can
+            // read the error body (it is never large on an error response).
+            val errorBody = withContext(Dispatchers.IO) {
+                val s = try {
+                    if (finalStatus >= 400) conn.errorStream else conn.inputStream
+                } catch (_: Exception) { null }
+                val bytes = try {
+                    HttpUrlEngine.maybeDecompress(conn, s)?.use { it.readBytes() } ?: ByteArray(0)
+                } catch (_: Exception) { ByteArray(0) }
+                conn.disconnect()
+                bytes.toString(Charsets.UTF_8)
+            }
+            simple = simple.copy(body = errorBody)
             block(null, simple)
         }
         return simple

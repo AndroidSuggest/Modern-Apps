@@ -33,23 +33,47 @@ object PiperModel {
         ModelDownloadItem("${BASE}voice.zip", ARCHIVE, "Piper voice (TTS)"),
     )
 
-    private fun archive(context: Context): File =
-        File(context.getExternalFilesDir(null), ARCHIVE)
+    private fun rootDir(context: Context): File? {
+        // TTS service binder thread may have external storage unavailable momentarily;
+        // fallback to filesDir so File() doesn't become relative.
+        return context.getExternalFilesDir(null) ?: context.filesDir
+    }
+
+    private fun archive(context: Context): File {
+        val root = rootDir(context) ?: return File(ARCHIVE)
+        return File(root, ARCHIVE)
+    }
 
     /** The extracted voice directory sherpa-onnx loads from. */
-    fun voiceDir(context: Context): File =
-        File(context.getExternalFilesDir(null), "$DIR/voice")
+    fun voiceDir(context: Context): File {
+        val root = rootDir(context) ?: return File("$DIR/voice")
+        return File(root, "$DIR/voice")
+    }
 
-    fun onnxFile(context: Context): File? =
-        voiceDir(context).listFiles { f -> f.name.endsWith(".onnx") }?.firstOrNull()
+    fun onnxFile(context: Context): File? {
+        val dir = voiceDir(context)
+        val files = dir.listFiles() ?: return null
+        return files.firstOrNull { it.name.endsWith(".onnx") }
+    }
 
     /** True once the voice has been extracted and looks complete. */
     fun isExtracted(context: Context): Boolean {
         val dir = voiceDir(context)
-        return dir.isDirectory &&
-            onnxFile(context) != null &&
+        val result = dir.isDirectory &&
+            (dir.listFiles()?.any { it.name.endsWith(".onnx") } == true) &&
             File(dir, TOKENS).exists() &&
             File(dir, ESPEAK_DATA).isDirectory
+        Log.d(TAG, "isExtracted dir=$dir exists=${dir.exists()} isDir=${dir.isDirectory} root=${rootDir(context)} result=$result")
+        if (!result) {
+            // Also probe the known external absolute path as fallback diagnostic
+            try {
+                val ext = context.getExternalFilesDir(null)
+                Log.d(TAG, "extDir=$ext tokensExists=${File(dir, TOKENS).exists()} espeakExists=${File(dir, ESPEAK_DATA).exists()} list=${dir.list()?.toList()}")
+            } catch (t: Throwable) {
+                Log.d(TAG, "isExtracted probe failed", t)
+            }
+        }
+        return result
     }
 
     /** True if TTS can run now (extracted). Extraction happens immediately after download. */

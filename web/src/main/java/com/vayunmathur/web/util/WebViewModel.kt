@@ -1,6 +1,7 @@
 package com.vayunmathur.web.util
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -11,12 +12,17 @@ import androidx.lifecycle.viewModelScope
 import com.vayunmathur.web.data.Bookmark
 import com.vayunmathur.web.data.BookmarkDao
 import com.vayunmathur.web.data.BookmarkFolder
+import com.vayunmathur.web.data.DownloadDao
+import com.vayunmathur.web.data.DownloadEntry
 import com.vayunmathur.web.data.HistoryDao
 import com.vayunmathur.web.data.HistoryEntry
+import com.vayunmathur.web.data.SitePermission
+import com.vayunmathur.web.data.SitePermissionDao
+import com.vayunmathur.web.data.StorageInfo
+import com.vayunmathur.web.data.StorageInfoDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -26,45 +32,76 @@ import java.util.UUID
 private const val TAG = "WebViewModel"
 private const val P_SAVED_TABS = "web_saved_tabs"
 private const val P_ACTIVE_TAB = "web_active_tab_id"
-private const val P_SEARCH_ENGINE = "web_search_engine"
-private const val P_HOMEPAGE = "web_homepage"
+private const val P_CACHE_MODE = "web_cache_mode"
+private const val P_JS_ENABLED = "web_js_enabled"
+private const val P_BLOCK_THIRD_PARTY = "web_block_third_party"
+private const val P_DESKTOP_MODE = "web_desktop_mode"
+private const val P_ADBLOCK = "web_adblock"
+
+data class PermissionPrompt(
+    val id: String = UUID.randomUUID().toString(),
+    val origin: String,
+    val types: List<SitePermissionType>,
+    val onGrant: (List<SitePermissionType>) -> Unit,
+    val onDeny: () -> Unit,
+)
 
 class WebViewModel(
     private val historyDao: HistoryDao,
     private val bookmarkDao: BookmarkDao,
+    private val sitePermissionDao: SitePermissionDao,
+    private val storageInfoDao: StorageInfoDao,
+    private val downloadDao: DownloadDao,
     private val context: Context,
 ) : ViewModel() {
 
-    // ---- Tabs ----
     val tabs = mutableStateListOf<BrowserTab>()
     var activeTabId by mutableStateOf<String?>(null)
         private set
 
-    // ---- Omnibox ----
     var omniboxText by mutableStateOf("")
     var omniboxFocused by mutableStateOf(false)
+    var searchDraft by mutableStateOf("")
 
-    // ---- Settings ----
-    var searchEngine by mutableStateOf(SearchEngine.DUCKDUCKGO)
-    var homepage by mutableStateOf(SearchEngine.DUCKDUCKGO.homepage)
+    // DuckDuckGo only — engine choice removed
+    val searchEngine: SearchEngine = SearchEngine.DEFAULT
+    val homepage: String = BrowserUtils.HOMEPAGE
 
-    // ---- Bookmarks ----
+    var cacheMode by mutableStateOf(CacheMode.DEFAULT)
+    var jsEnabled by mutableStateOf(true)
+    var blockThirdPartyCookies by mutableStateOf(false)
+    var desktopMode by mutableStateOf(false)
+    var adBlockEnabled by mutableStateOf(false)
+
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks
 
     private val _folders = MutableStateFlow<List<BookmarkFolder>>(emptyList())
     val folders: StateFlow<List<BookmarkFolder>> = _folders
 
-    // ---- History ----
     private val _history = MutableStateFlow<List<HistoryEntry>>(emptyList())
     val history: StateFlow<List<HistoryEntry>> = _history
 
-    // ---- UI ----
-    var showTabSwitcher by mutableStateOf(false)
-    var showBookmarkSheet by mutableStateOf(false)
-    var showMenu by mutableStateOf(false)
+    private val _sitePermissions = MutableStateFlow<List<SitePermission>>(emptyList())
+    val sitePermissions: StateFlow<List<SitePermission>> = _sitePermissions
 
-    // ---- Per-tab live WebView state tracked from callbacks ----
+    private val _storageInfos = MutableStateFlow<List<StorageInfo>>(emptyList())
+    val storageInfos: StateFlow<List<StorageInfo>> = _storageInfos
+
+    private val _downloads = MutableStateFlow<List<DownloadEntry>>(emptyList())
+    val downloads: StateFlow<List<DownloadEntry>> = _downloads
+
+    var pendingPermissionPrompt by mutableStateOf<PermissionPrompt?>(null)
+        private set
+
+    var pendingGeolocationPrompt by mutableStateOf<Triple<String, () -> Unit, () -> Unit>?>(null)
+        private set
+
+    var pendingFileChooser by mutableStateOf<Pair<android.webkit.ValueCallback<Array<Uri>>, android.webkit.WebChromeClient.FileChooserParams>?>(null)
+        private set
+
+    var showTabSwitcher by mutableStateOf(false)
+
     private val tabTitles = mutableMapOf<String, String>()
     private val tabProgress = mutableMapOf<String, Float>()
     private val tabCanGoBack = mutableMapOf<String, Boolean>()
@@ -74,22 +111,24 @@ class WebViewModel(
     private val json = Json { ignoreUnknownKeys = true }
 
     init {
-        // Load persisted settings
         viewModelScope.launch {
-            val prefsCtx = context
-            // Load from SharedPreferences fallback wrapped in DataStore style (simpler: use context.files)
             withContext(Dispatchers.IO) {
                 try {
-                    val sp = prefsCtx.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
-                    val engineName = sp.getString(P_SEARCH_ENGINE, null)
-                    val hp = sp.getString(P_HOMEPAGE, null)
+                    val sp = context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
                     val savedTabs = sp.getString(P_SAVED_TABS, null)
                     val activeId = sp.getString(P_ACTIVE_TAB, null)
-                    viewModelScope.launch(Dispatchers.Main) {
-                        engineName?.let {
-                            runCatching { SearchEngine.valueOf(it) }.getOrNull()?.let { e -> searchEngine = e }
-                        }
-                        hp?.let { homepage = it }
+                    val cacheModeName = sp.getString(P_CACHE_MODE, null)
+                    val js = sp.getBoolean(P_JS_ENABLED, true)
+                    val blockThird = sp.getBoolean(P_BLOCK_THIRD_PARTY, false)
+                    val desktop = sp.getBoolean(P_DESKTOP_MODE, false)
+                    val adblock = sp.getBoolean(P_ADBLOCK, false)
+                    withContext(Dispatchers.Main) {
+                        cacheModeName?.let { runCatching { CacheMode.valueOf(it) }.getOrNull()?.let { cm -> cacheMode = cm } }
+                        jsEnabled = js
+                        blockThirdPartyCookies = blockThird
+                        desktopMode = desktop
+                        adBlockEnabled = adblock
+
                         if (savedTabs != null) {
                             runCatching {
                                 val decoded = json.decodeFromString<List<BrowserTab>>(savedTabs)
@@ -100,21 +139,32 @@ class WebViewModel(
                             }
                         }
                         if (tabs.isEmpty()) {
-                            val tab = BrowserTab(id = UUID.randomUUID().toString(), url = homepage)
+                            val tab = BrowserTab(id = UUID.randomUUID().toString(), url = "")
                             tabs.add(tab)
                             activeTabId = tab.id
                         } else {
+                            // Migrate legacy new-tabs that were saved as duckduckgo.com -> blank New Tab
+                            val migrated = tabs.map { t ->
+                                val isHomepage = t.url == BrowserUtils.HOMEPAGE || t.url == "${BrowserUtils.HOMEPAGE}/"
+                                val isPlaceholderTitle = t.title.isBlank() || t.title == BrowserUtils.HOMEPAGE || t.title == "${BrowserUtils.HOMEPAGE}/"
+                                if (isHomepage && isPlaceholderTitle) t.copy(url = "", title = "") else t
+                            }
+                            if (migrated != tabs.toList()) {
+                                tabs.clear()
+                                tabs.addAll(migrated)
+                            }
                             activeTabId = activeId ?: tabs.firstOrNull()?.id
                         }
                         activeTab?.let {
-                            omniboxText = BrowserUtils.prettyUrl(it.url)
+                            omniboxText = if (it.url.isBlank() || it.url == "about:blank") "" else it.url
+                            searchDraft = omniboxText
                         }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to load prefs", e)
-                    viewModelScope.launch(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         if (tabs.isEmpty()) {
-                            val tab = BrowserTab(id = UUID.randomUUID().toString(), url = homepage)
+                            val tab = BrowserTab(id = UUID.randomUUID().toString(), url = "")
                             tabs.add(tab)
                             activeTabId = tab.id
                         }
@@ -123,19 +173,12 @@ class WebViewModel(
             }
         }
 
-        viewModelScope.launch {
-            combine(
-                bookmarkDao.allFlow(),
-                bookmarkDao.foldersFlow(),
-                historyDao.allFlow(),
-            ) { bm, fo, hi ->
-                Triple(bm, fo, hi)
-            }.collect { (bm, fo, hi) ->
-                _bookmarks.value = bm
-                _folders.value = fo
-                _history.value = hi
-            }
-        }
+        viewModelScope.launch { bookmarkDao.allFlow().collect { _bookmarks.value = it } }
+        viewModelScope.launch { bookmarkDao.foldersFlow().collect { _folders.value = it } }
+        viewModelScope.launch { historyDao.allFlow().collect { _history.value = it } }
+        viewModelScope.launch { sitePermissionDao.allFlow().collect { _sitePermissions.value = it } }
+        viewModelScope.launch { storageInfoDao.allFlow().collect { _storageInfos.value = it } }
+        viewModelScope.launch { downloadDao.allFlow().collect { _downloads.value = it } }
     }
 
     val activeTab: BrowserTab? get() = tabs.find { it.id == activeTabId }
@@ -145,7 +188,19 @@ class WebViewModel(
         updateTab(tabId) { it.copy(url = url) }
         persistTabs()
         if (tabId == activeTabId && !omniboxFocused) {
-            omniboxText = BrowserUtils.prettyUrl(url)
+            omniboxText = if (url.isBlank() || url == "about:blank") "" else url
+        }
+        if (url.startsWith("http")) {
+            val origin = BrowserUtils.originFromUrl(url)
+            val host = BrowserUtils.hostFromUrl(url)
+            viewModelScope.launch {
+                val existing = storageInfoDao.byOrigin(origin)
+                if (existing == null) {
+                    storageInfoDao.upsert(StorageInfo(origin = origin, host = host, lastSeen = System.currentTimeMillis()))
+                } else {
+                    storageInfoDao.upsert(existing.copy(lastSeen = System.currentTimeMillis(), host = host))
+                }
+            }
         }
     }
 
@@ -155,14 +210,10 @@ class WebViewModel(
         persistTabs()
     }
 
-    fun onTabProgress(tabId: String, progress: Float) {
-        tabProgress[tabId] = progress
-    }
-
+    fun onTabProgress(tabId: String, progress: Float) { tabProgress[tabId] = progress }
     fun onTabCanGoBack(tabId: String, value: Boolean) { tabCanGoBack[tabId] = value }
     fun onTabCanGoForward(tabId: String, value: Boolean) { tabCanGoForward[tabId] = value }
 
-    fun getTitle(tabId: String) = tabTitles[tabId] ?: ""
     fun getProgress(tabId: String) = tabProgress[tabId] ?: 0f
     fun getCanGoBack(tabId: String) = tabCanGoBack[tabId] ?: false
     fun getCanGoForward(tabId: String) = tabCanGoForward[tabId] ?: false
@@ -173,13 +224,14 @@ class WebViewModel(
         if (idx >= 0) tabs[idx] = transform(tabs[idx])
     }
 
-    fun newTab(url: String = homepage, makeActive: Boolean = true, isPrivate: Boolean = false) {
+    fun newTab(url: String = "", makeActive: Boolean = true, isPrivate: Boolean = false) {
         val tab = BrowserTab(id = UUID.randomUUID().toString(), url = url, isPrivate = isPrivate)
         tabs.add(tab)
         if (makeActive) {
             activeTabId = tab.id
             omniboxFocused = false
-            omniboxText = BrowserUtils.prettyUrl(url)
+            omniboxText = if (url.isBlank() || url == "about:blank") "" else url
+            searchDraft = if (url.isBlank() || url == "about:blank") "" else url
         }
         persistTabs()
     }
@@ -196,59 +248,55 @@ class WebViewModel(
         if (activeTabId == tabId) {
             activeTabId = when {
                 tabs.isEmpty() -> {
-                    val tab = BrowserTab(id = UUID.randomUUID().toString(), url = homepage)
+                    val tab = BrowserTab(id = UUID.randomUUID().toString(), url = "")
                     tabs.add(tab)
                     tab.id
                 }
                 idx < tabs.size -> tabs[idx].id
                 else -> tabs.last().id
             }
-            activeTab?.let { omniboxText = BrowserUtils.prettyUrl(it.url) }
+            val cur = activeTab
+            omniboxText = if (cur == null || cur.url.isBlank() || cur.url == "about:blank") "" else cur.url
+            searchDraft = omniboxText
         }
         persistTabs()
     }
 
     fun switchToTab(tabId: String) {
         activeTabId = tabId
-        activeTab?.let { omniboxText = BrowserUtils.prettyUrl(it.url) }
+        val cur = activeTab
+        omniboxText = if (cur == null || cur.url.isBlank() || cur.url == "about:blank") "" else cur.url
+        searchDraft = omniboxText
         showTabSwitcher = false
         persistTabs()
     }
 
     fun navigateActiveTab(input: String) {
         val active = activeTab ?: return
-        val dest = BrowserUtils.toNavigationUrl(input, searchEngine)
+        val dest = BrowserUtils.toNavigationUrl(input)
         onTabUrlChange(active.id, dest)
         omniboxFocused = false
     }
 
     fun recordHistoryVisit(url: String, title: String) {
-        if (url.isBlank() || url == "about:blank") return
-        val active = activeTab
-        if (active?.isPrivate == true) return
+        if (url.isBlank() || url == "about:blank" || url.startsWith("data:")) return
+        if (activeTab?.isPrivate == true) return
         viewModelScope.launch {
-            runCatching {
-                historyDao.upsert(HistoryEntry(url = url, title = title))
-            }.onFailure { Log.e(TAG, "recordHistory", it) }
+            runCatching { historyDao.upsert(HistoryEntry(url = url, title = title)) }
+                .onFailure { Log.e(TAG, "recordHistory", it) }
         }
     }
 
     fun addBookmark(url: String, title: String, folderId: Long? = null) {
-        viewModelScope.launch {
-            runCatching { bookmarkDao.upsert(Bookmark(url = url, title = title, folderId = folderId)) }
-        }
+        viewModelScope.launch { runCatching { bookmarkDao.upsert(Bookmark(url = url, title = title, folderId = folderId)) } }
     }
 
     fun removeBookmark(bookmark: Bookmark) {
         viewModelScope.launch { bookmarkDao.delete(bookmark) }
     }
 
-    fun isBookmarkedFlow(url: String) = bookmarkDao.byUrlFlow(url)
-
     fun createFolder(name: String) {
-        viewModelScope.launch {
-            runCatching { bookmarkDao.upsertFolder(BookmarkFolder(name = name)) }
-        }
+        viewModelScope.launch { runCatching { bookmarkDao.upsertFolder(BookmarkFolder(name = name)) } }
     }
 
     fun deleteFolder(folder: BookmarkFolder) {
@@ -264,23 +312,225 @@ class WebViewModel(
         viewModelScope.launch { historyDao.clearAll() }
     }
 
-    fun updateSearchEngine(engine: SearchEngine) {
-        searchEngine = engine
-        homepage = engine.homepage
+    fun updateCacheMode(mode: CacheMode) {
+        cacheMode = mode
         persistPrefs()
     }
 
-    fun updateHomepage(url: String) {
-        if (url.isBlank()) return
-        val normalized = if (url.startsWith("http")) url else "https://$url"
-        homepage = normalized
+    fun updateJsEnabled(enabled: Boolean) {
+        jsEnabled = enabled
         persistPrefs()
     }
 
-    /** Called by Compose save — persisted to SharedPreferences, cheap + synchronous save. */
-    fun onClearedPersist() {
-        persistTabsSync()
+    fun updateBlockThirdParty(block: Boolean) {
+        blockThirdPartyCookies = block
+        persistPrefs()
     }
+
+    fun updateDesktopMode(enabled: Boolean) {
+        desktopMode = enabled
+        persistPrefs()
+    }
+
+    fun updateAdBlock(enabled: Boolean) {
+        adBlockEnabled = enabled
+        persistPrefs()
+    }
+
+    // ---- Site permissions ----
+    fun requestWebPermission(
+        origin: String,
+        types: List<SitePermissionType>,
+        grant: (List<SitePermissionType>) -> Unit,
+        deny: () -> Unit
+    ) {
+        viewModelScope.launch {
+            val saved = sitePermissionDao.byOrigin(origin)
+            val (toAsk, preGranted) = if (saved != null) {
+                val determined = types.mapNotNull { t ->
+                    when (t) {
+                        SitePermissionType.CAMERA -> saved.cameraAllowed?.let { t to it }
+                        SitePermissionType.MICROPHONE -> saved.microphoneAllowed?.let { t to it }
+                        SitePermissionType.LOCATION -> saved.locationAllowed?.let { t to it }
+                        SitePermissionType.NOTIFICATIONS -> saved.notificationsAllowed?.let { t to it }
+                    }
+                }
+                val grantedFromSaved = determined.filter { it.second }.map { it.first }
+                val remaining = types.filter { type -> determined.none { it.first == type } }
+                remaining to grantedFromSaved
+            } else {
+                types to emptyList()
+            }
+
+            if (toAsk.isEmpty()) {
+                if (preGranted.isNotEmpty()) {
+                    withContext(Dispatchers.Main) { grant(preGranted) }
+                } else {
+                    withContext(Dispatchers.Main) { deny() }
+                }
+                return@launch
+            }
+
+            withContext(Dispatchers.Main) {
+                pendingPermissionPrompt = PermissionPrompt(
+                    origin = origin,
+                    types = toAsk,
+                    onGrant = { grantedNow ->
+                        persistPermission(origin, grantedNow, toAsk)
+                        grant(preGranted + grantedNow)
+                    },
+                    onDeny = {
+                        persistPermission(origin, emptyList(), toAsk)
+                        if (preGranted.isNotEmpty()) grant(preGranted) else deny()
+                    }
+                )
+            }
+        }
+    }
+
+    private fun persistPermission(origin: String, granted: List<SitePermissionType>, requested: List<SitePermissionType>) {
+        viewModelScope.launch {
+            val existing = sitePermissionDao.byOrigin(origin) ?: SitePermission(origin = origin)
+            var updated = existing
+            requested.forEach { t ->
+                val isGranted = t in granted
+                updated = when (t) {
+                    SitePermissionType.CAMERA -> updated.copy(cameraAllowed = isGranted)
+                    SitePermissionType.MICROPHONE -> updated.copy(microphoneAllowed = isGranted)
+                    SitePermissionType.LOCATION -> updated.copy(locationAllowed = isGranted)
+                    SitePermissionType.NOTIFICATIONS -> updated.copy(notificationsAllowed = isGranted)
+                }
+            }
+            sitePermissionDao.upsert(updated.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun clearPermissionPrompt() { pendingPermissionPrompt = null }
+
+    fun requestGeolocation(origin: String, onAllow: () -> Unit, onDeny: () -> Unit) {
+        viewModelScope.launch {
+            val saved = sitePermissionDao.byOrigin(origin)
+            when (saved?.locationAllowed) {
+                true -> { withContext(Dispatchers.Main) { onAllow() }; return@launch }
+                false -> { withContext(Dispatchers.Main) { onDeny() }; return@launch }
+                null -> {}
+            }
+            withContext(Dispatchers.Main) {
+                pendingGeolocationPrompt = Triple(origin, onAllow, onDeny)
+            }
+        }
+    }
+
+    fun grantGeolocation(origin: String) {
+        pendingGeolocationPrompt?.let { (orig, allow, _) ->
+            persistPermission(orig, listOf(SitePermissionType.LOCATION), listOf(SitePermissionType.LOCATION))
+            allow()
+        }
+        pendingGeolocationPrompt = null
+    }
+
+    fun denyGeolocation() {
+        pendingGeolocationPrompt?.let { (orig, _, deny) ->
+            persistPermission(orig, emptyList(), listOf(SitePermissionType.LOCATION))
+            deny()
+        }
+        pendingGeolocationPrompt = null
+    }
+
+    fun requestFileChooser(
+        callback: android.webkit.ValueCallback<Array<Uri>>,
+        params: android.webkit.WebChromeClient.FileChooserParams
+    ) {
+        pendingFileChooser = callback to params
+    }
+
+    fun clearFileChooser() {
+        pendingFileChooser?.first?.onReceiveValue(null)
+        pendingFileChooser = null
+    }
+
+    fun deliverFileChooserResult(uris: Array<Uri>?) {
+        pendingFileChooser?.first?.onReceiveValue(uris)
+        pendingFileChooser = null
+    }
+
+    fun updateStorageFootprint(
+        origin: String,
+        cookieCount: Int,
+        hasLocalStorage: Boolean,
+        hasIndexedDb: Boolean,
+        hasServiceWorker: Boolean,
+        estBytes: Long
+    ) {
+        viewModelScope.launch {
+            val existing = storageInfoDao.byOrigin(origin)
+            val info = if (existing != null) {
+                existing.copy(
+                    cookieCount = cookieCount,
+                    hasLocalStorage = hasLocalStorage || existing.hasLocalStorage,
+                    hasIndexedDb = hasIndexedDb || existing.hasIndexedDb,
+                    hasServiceWorker = hasServiceWorker || existing.hasServiceWorker,
+                    estimatedBytes = if (estBytes > 0) estBytes else existing.estimatedBytes,
+                    lastSeen = System.currentTimeMillis()
+                )
+            } else {
+                StorageInfo(
+                    origin = origin,
+                    host = BrowserUtils.hostFromUrl(origin),
+                    cookieCount = cookieCount,
+                    hasLocalStorage = hasLocalStorage,
+                    hasIndexedDb = hasIndexedDb,
+                    hasServiceWorker = hasServiceWorker,
+                    estimatedBytes = estBytes,
+                    lastSeen = System.currentTimeMillis()
+                )
+            }
+            storageInfoDao.upsert(info)
+        }
+    }
+
+    fun clearSiteData(origin: String) {
+        viewModelScope.launch {
+            storageInfoDao.deleteOrigin(origin)
+            sitePermissionDao.deleteOrigin(origin)
+        }
+    }
+
+    fun clearAllSiteData() {
+        viewModelScope.launch {
+            storageInfoDao.clearAll()
+            sitePermissionDao.clearAll()
+        }
+    }
+
+    fun revokePermission(origin: String, type: SitePermissionType) {
+        viewModelScope.launch {
+            val existing = sitePermissionDao.byOrigin(origin) ?: return@launch
+            val updated = when (type) {
+                SitePermissionType.CAMERA -> existing.copy(cameraAllowed = null)
+                SitePermissionType.MICROPHONE -> existing.copy(microphoneAllowed = null)
+                SitePermissionType.LOCATION -> existing.copy(locationAllowed = null)
+                SitePermissionType.NOTIFICATIONS -> existing.copy(notificationsAllowed = null)
+            }
+            if (updated.cameraAllowed == null && updated.microphoneAllowed == null && updated.locationAllowed == null && updated.notificationsAllowed == null) {
+                sitePermissionDao.delete(updated)
+            } else {
+                sitePermissionDao.upsert(updated.copy(updatedAt = System.currentTimeMillis()))
+            }
+        }
+    }
+
+    fun addDownload(url: String, fileName: String, mime: String?, length: Long) {
+        viewModelScope.launch {
+            downloadDao.upsert(DownloadEntry(url = url, fileName = fileName, mimeType = mime, contentLength = length))
+        }
+    }
+
+    fun clearAllDownloads() {
+        viewModelScope.launch { downloadDao.clearAll() }
+    }
+
+    fun onClearedPersist() { persistTabsSync() }
 
     override fun onCleared() {
         onClearedPersist()
@@ -294,15 +544,12 @@ class WebViewModel(
     private fun persistTabsSync() {
         try {
             val sp = context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
-            // Do not persist incognito tabs.
             val toSave = tabs.filter { !it.isPrivate }
             sp.edit()
                 .putString(P_SAVED_TABS, json.encodeToString(toSave))
                 .putString(P_ACTIVE_TAB, activeTabId)
                 .apply()
-        } catch (e: Exception) {
-            Log.e(TAG, "persistTabs failed", e)
-        }
+        } catch (e: Exception) { Log.e(TAG, "persistTabs failed", e) }
     }
 
     private fun persistPrefs() {
@@ -310,18 +557,18 @@ class WebViewModel(
             try {
                 val sp = context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
                 sp.edit()
-                    .putString(P_SEARCH_ENGINE, searchEngine.name)
-                    .putString(P_HOMEPAGE, homepage)
+                    .putString(P_CACHE_MODE, cacheMode.name)
+                    .putBoolean(P_JS_ENABLED, jsEnabled)
+                    .putBoolean(P_BLOCK_THIRD_PARTY, blockThirdPartyCookies)
+                    .putBoolean(P_DESKTOP_MODE, desktopMode)
+                    .putBoolean(P_ADBLOCK, adBlockEnabled)
                     .apply()
-            } catch (e: Exception) {
-                Log.e(TAG, "persistPrefs failed", e)
-            }
+            } catch (e: Exception) { Log.e(TAG, "persistPrefs failed", e) }
         }
     }
 
     fun externalIntentUrl(url: String) {
-        // If we only have one blank-ish tab pointing at homepage, reuse it; else new tab.
-        if (tabs.size == 1 && (tabs[0].url == homepage || tabs[0].url.isEmpty())) {
+        if (tabs.size == 1 && tabs[0].url.isBlank()) {
             onTabUrlChange(tabs[0].id, url)
             activeTabId = tabs[0].id
         } else {
@@ -333,12 +580,15 @@ class WebViewModel(
 class WebViewModelFactory(
     private val historyDao: HistoryDao,
     private val bookmarkDao: BookmarkDao,
+    private val sitePermissionDao: SitePermissionDao,
+    private val storageInfoDao: StorageInfoDao,
+    private val downloadDao: DownloadDao,
     private val context: Context,
 ) : androidx.lifecycle.ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WebViewModel::class.java)) {
-            return WebViewModel(historyDao, bookmarkDao, context) as T
+            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, context) as T
         }
         throw IllegalArgumentException("Unknown ViewModel $modelClass")
     }

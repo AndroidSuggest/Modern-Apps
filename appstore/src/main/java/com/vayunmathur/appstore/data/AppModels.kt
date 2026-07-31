@@ -1,13 +1,10 @@
 package com.vayunmathur.appstore.data
 
-import kotlinx.serialization.Serializable
-
 enum class AppSource {
     FDROID,
     PLAYSTORE
 }
 
-@Serializable
 data class UnifiedApp(
     val packageName: String,
     val source: AppSource,
@@ -22,8 +19,6 @@ data class UnifiedApp(
     val sizeBytes: Long = 0L,
     val apkUrl: String? = null,
     val targetSdk: Int? = null,
-    val screenshotUrls: List<String> = emptyList(),
-    val rating: Float? = null,
     val license: String? = null,
     val website: String? = null,
     val sourceCode: String? = null,
@@ -31,8 +26,11 @@ data class UnifiedApp(
     val addedTimestamp: Long = 0L,
     val lastUpdated: Long = 0L,
     val antiFeatures: List<String> = emptyList(),
-    val isFree: Boolean = true,
-    val repoUrl: String? = null
+    val repoUrl: String? = null,
+    val offerType: Int = 0,
+    val rating: Float? = null,
+    val containsSplit: Boolean = false,
+    val isFree: Boolean = true
 )
 
 data class InstalledInfo(
@@ -40,7 +38,7 @@ data class InstalledInfo(
     val name: String,
     val versionName: String?,
     val versionCode: Long,
-    val isSystem: Boolean = false
+    val enabled: Boolean = true
 )
 
 object DefaultRepos {
@@ -48,11 +46,3 @@ object DefaultRepos {
     const val FDROID_ARCHIVE = "https://f-droid.org/archive"
     const val IZVYZID = "https://apt.izzysoft.de/fdroid/repo"
 }
-
-@Serializable
-data class RepoInfo(
-    val url: String,
-    val name: String,
-    val enabled: Boolean = true,
-    val fingerprint: String? = null
-)

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * Thin wrapper over the shared [NetworkClient] for the `/api/travel` endpoints
  * on the self-hosted proxy (`api.vayunmathur.com`). The proxy holds the Duffel
  * token server-side, so the app ships no secret; it just does URL/body
- * construction + delegation to the Ktor client.
+ * construction + delegation to the shared client.
  *
  * Each call throws on network/parse failure; callers (the ViewModel) wrap in
  * try/catch and surface an error state.

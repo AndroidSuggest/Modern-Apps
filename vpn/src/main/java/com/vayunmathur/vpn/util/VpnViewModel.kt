@@ -14,11 +14,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.vpn.data.AppUsageSummary
+import com.vayunmathur.vpn.data.ConnectionLogDao
+import com.vayunmathur.vpn.data.DomainBytesSummary
+import com.vayunmathur.vpn.data.DomainCountSummary
 import com.vayunmathur.vpn.data.VpnConfig
 import com.vayunmathur.vpn.data.VpnConfigDao
 import com.vayunmathur.vpn.data.WgConfigParser
 import com.vayunmathur.vpn.data.toEntity
 import com.vayunmathur.vpn.data.toModel
+import com.vayunmathur.vpn.service.AppResolver
+import com.vayunmathur.vpn.service.ConnectionTracker
 import com.vayunmathur.vpn.service.VpnTunnelService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -35,6 +41,7 @@ import kotlinx.serialization.json.Json
 class VpnViewModel(
     application: Application,
     private val dao: VpnConfigDao,
+    private val logDao: ConnectionLogDao,
 ) : AndroidViewModel(application) {
 
     val configs: StateFlow<List<VpnConfig>> =
@@ -47,12 +54,40 @@ class VpnViewModel(
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
 
+    // --- Logging leaderboards ---
+    val topAppsFlow: StateFlow<List<AppUsageSummary>> =
+        logDao.flowTopApps().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val domainsByCountFlow: StateFlow<List<DomainCountSummary>> =
+        logDao.flowDomainsByCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val domainsByBytesFlow: StateFlow<List<DomainBytesSummary>> =
+        logDao.flowDomainsByBytes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     init {
         viewModelScope.launch {
             while (true) {
                 delay(500)
                 if (!VpnTunnelService.isRunning) _connectingId.value = null
             }
+        }
+        backfillAppNames()
+    }
+
+    /**
+     * Rows logged before the app could see other packages stored a bare UID as their label.
+     * Now that they resolve, give those rows their real name instead of making the user wipe logs.
+     */
+    private fun backfillAppNames() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val resolver = AppResolver(getApplication<Application>())
+                for (uid in logDao.unnamedUids()) {
+                    val app = resolver.resolveUid(uid)
+                    val pkg = app.packageName ?: continue
+                    logDao.nameUid(uid, pkg, app.appLabel)
+                }
+            }.onFailure { Log.w("VpnVM", "backfillAppNames", it) }
         }
     }
 
@@ -138,6 +173,14 @@ class VpnViewModel(
         }
     }
 
+    fun deleteAllLogs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            logDao.deleteAll()
+            ConnectionTracker.getOrCreate().clear()
+        }
+        _status.value = "Logs cleared"
+    }
+
     fun clearStatus() { _status.value = null }
 
     @Composable
@@ -149,11 +192,12 @@ class VpnViewModel(
 
 class VpnViewModelFactory(
     private val application: Application,
-    private val dao: VpnConfigDao,
+    private val configDao: VpnConfigDao,
+    private val logDao: ConnectionLogDao,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(VpnViewModel::class.java))
-        return VpnViewModel(application, dao) as T
+        return VpnViewModel(application, configDao, logDao) as T
     }
 }

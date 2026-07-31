@@ -1,10 +1,10 @@
 package com.vayunmathur.messages.gvoice
 
 import android.util.Log
+import com.vayunmathur.library.network.NetworkDataStream
+import com.vayunmathur.library.network.Urls
+import com.vayunmathur.library.network.asNetworkDataStream
 import com.vayunmathur.messages.gmessages.PbLite
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.client.statement.bodyAsChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -127,15 +127,14 @@ class RealtimeChannel(
             val outcome = rpc.getStreaming(
                 VoiceEndpoints.EndpointRealtimeChannel,
                 extraQuery = query,
-            ) { resp ->
-                if (resp.status.value !in 200..299) {
-                    val body = runCatching { resp.bodyAsBytes() }.getOrNull()
-                        ?.let { String(it, Charsets.UTF_8) } ?: ""
+            ) { resp, stream ->
+                if (resp.status !in 200..299 || stream == null) {
+                    val body = resp.body
                     if (body.contains("Unknown SID")) {
                         ChannelOutcome.UnknownSid
                     } else {
-                        Log.w(TAG, "long-poll HTTP ${resp.status.value}; body=${body.take(200)}")
-                        ChannelOutcome.Error(resp.status.value)
+                        Log.w(TAG, "long-poll HTTP ${resp.status}; body=${body.take(200)}")
+                        ChannelOutcome.Error(resp.status)
                     }
                 } else {
                     // A 2xx long-poll means the channel is healthy regardless of
@@ -143,7 +142,7 @@ class RealtimeChannel(
                     // retry budget on clean-vs-error, not on event presence.
                     connectedThisRun = true
                     if (failedRequests > 0 || ackId == 0L) onEvent(RealtimeEvent.Connected)
-                    val newAckId = readChunks(resp, ackId)
+                    val newAckId = readChunks(stream, ackId)
                     ackId = newAckId.lastAckId
                     if (newAckId.eventCount > 0) failedRequests = 0
                     if (newAckId.needResubscribe) {
@@ -193,11 +192,11 @@ class RealtimeChannel(
 
     private data class ReadOutcome(val lastAckId: Long, val needResubscribe: Boolean, val eventCount: Int)
 
-    private suspend fun readChunks(resp: HttpResponse, startAckId: Long): ReadOutcome {
+    private suspend fun readChunks(stream: NetworkDataStream, startAckId: Long): ReadOutcome {
         var ackId = startAckId
         var needResubscribe = false
         var eventCount = 0
-        val reader = Utf16ChunkReader(resp.bodyAsChannel())
+        val reader = Utf16ChunkReader(stream)
         while (true) {
             val chunk = reader.readChunk() ?: break
             // Each chunk is a top-level JSON array of entries.
@@ -292,14 +291,16 @@ class RealtimeChannel(
         Log.i(TAG, "subscribe: gSessionID=$gSessionId")
 
         val rid = Random.nextInt(0, 100_000)
-        val createUrl = with(io.ktor.http.URLBuilder(VoiceEndpoints.EndpointRealtimeChannel)) {
-            parameters.append("VER", "8")
-            parameters.append("gsessionid", gSessionId)
-            parameters.append("RID", rid.toString())
-            parameters.append("CVER", "22")
-            parameters.append("t", "1")
-            buildString()
-        }
+        val createUrl = Urls.appendQuery(
+            VoiceEndpoints.EndpointRealtimeChannel,
+            linkedMapOf(
+                "VER" to "8",
+                "gsessionid" to gSessionId,
+                "RID" to rid.toString(),
+                "CVER" to "22",
+                "t" to "1",
+            ),
+        )
         val form = mapOf(
             "count" to "7",
             "ofs" to "0",
@@ -316,24 +317,24 @@ class RealtimeChannel(
             form,
             extraHeaders = mapOf("X-WebChannel-Content-Type" to "application/json+protobuf"),
         )
-        if (createResp.status.value !in 200..299) {
-            Log.e(TAG, "createChannel HTTP ${createResp.status.value}")
+        if (!createResp.isSuccess) {
+            Log.e(TAG, "createChannel HTTP ${createResp.status}")
             return null
         }
         // createChannel's response uses the same utf16chunk safety
         // framing the other punctual endpoints do — the body is
         // `<utf16-length>\n<pblite-json>` rather than just the JSON.
         // Detect via X-Goog-Safety-Content-Type and unwrap when needed.
-        val safetyMime = createResp.headers["X-Goog-Safety-Content-Type"]
+        val safetyMime = createResp.header("X-Goog-Safety-Content-Type")
             ?.substringBefore(';')?.trim().orEmpty().lowercase()
-        val plainMime = createResp.headers["Content-Type"]
+        val plainMime = createResp.header("Content-Type")
             ?.substringBefore(';')?.trim().orEmpty().lowercase()
         val realMime = safetyMime.ifEmpty { plainMime }
         val raw: ByteArray = if (realMime == "text/plain") {
-            Utf16ChunkReader(createResp.bodyAsChannel()).readChunk()
+            Utf16ChunkReader(createResp.bytes.asNetworkDataStream()).readChunk()
                 ?: error("createChannel: empty utf16chunk body")
         } else {
-            createResp.bodyAsBytes()
+            createResp.bytes
         }
         val parsed = PbLite.decode<Webchannel.RespCreateChannel>(
             String(raw, Charsets.UTF_8),

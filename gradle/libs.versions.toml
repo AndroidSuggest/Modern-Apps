@@ -1,96 +1,149 @@
 [versions]
-# rhino 1.9.0 requires Android minSDK >= 26; rhino-engine only published for 1.8.x
-rhino = "1.8.1"
-jsr305 = "3.0.2"
-protobufJavalite = "4.35.0"
-protobufPlugin = "0.10.0"
-quickjs = "1.0.5"
-brotli = "0.1.2"
-# Build & Core Language
+
+# =============================================================================
+# GOOGLE / ANDROID / JETBRAINS
+# =============================================================================
+
+# Build & tooling
 agp = "9.4.0-alpha04"
-flatgeobuf = "3.29.0"
 kotlin = "2.4.0"
 kotlinGradlePlugin = "2.3.20"
 ksp = "2.3.10"
+protobufPlugin = "0.10.0"
+protoc = "4.28.3"
+desugarJdkLibs = "2.1.5"
 
-# Instrumented screenshot tests (metadata generation)
-junit = "4.13.2"
-androidxTestRunner = "1.7.0"
-androidxTestExtJunit = "1.3.0"
-
-# AndroidX Core & Lifecycle
-coreKtx = "1.19.0"
-# litertlm 0.14.0 is compiled against coroutines 1.11.0 (close$default moved onto
-# the SendChannel interface via -Xjvm-default=all); older versions crash its JNI
-# callback with NoSuchMethodError. Request it directly so it wins conflict resolution.
+# Kotlin stdlib ecosystem (JetBrains)
 kotlinxCoroutines = "1.11.0"
+kotlinxSerializationJson = "1.11.0"
+kotlinxDatetime = "0.8.0"
+
+# AndroidX – core & lifecycle
+coreKtx = "1.19.0"
+fragmentKtx = "1.9.0-alpha02"
 lifecycle = "2.11.0"
-litertlmAndroid = "0.14.0"
-sqlcipherAndroid = "4.17.0"
 sqlite = "2.7.0"
 workRuntimeKtx = "2.11.2"
 datastorePreferences = "1.3.0-alpha09"
 
-# Compose & UI Foundations
+# AndroidX – Compose & UI
 composeBom = "2026.06.01"
 activityCompose = "1.13.0"
 material3 = "1.5.0-alpha23"
+material3AdaptiveNavigationSuite = "1.5.0-alpha23"
+foundation = "1.12.0-beta02"
 wearComposeMaterial = "1.7.0-alpha05"
 
-# Navigation
+# AndroidX – navigation
 navigation3 = "1.2.0-alpha05"
 adaptiveNavigation3 = "1.3.0-rc01"
 
-# Media & Images
+# AndroidX – media, camera & images
 media3Exoplayer = "1.11.0-beta01"
-coilCompose = "2.7.0"
-exifinterface = "1.4.2"
 camerax = "1.7.0-alpha02"
-jsoup = "1.22.2"
-webkit = "1.17.0-alpha03"
+exifinterface = "1.4.2"
 
-# Networking & Data
-ktor = "3.5.1" # TODO: remove after :messages migrates to :library:network (RpcClient, GVoice, Meta, Signal, WhatsApp)
-okio = "3.17.0" # isolated: contacts/files VCF+zip + messages MetaMqtt/Signal/WhatsApp ByteString – NOT networking
-okhttp = "4.12.0" # isolated: media3-datasource-okhttp (youpipe player) + Vonage SDK (dooraccess) + messages GVoice TLS
-kotlinxSerializationJson = "1.11.0"
-kotlinxDatetime = "0.8.0"
+# AndroidX – storage
 room = "2.8.4"
-autofill = "1.3.0"
-credentials = "1.7.0-alpha02"
+
+# AndroidX – widgets, web & browser
+glance = "1.3.0-alpha02"
+webkit = "1.17.0-alpha03"
 browser = "1.9.0"
 
-# Special Features (PDF, Maps, Health, Crypto)
+# AndroidX – security, identity & health
 biometric = "1.4.0-alpha07"
-glance = "1.3.0-alpha02"
+credentials = "1.7.0-alpha02"
+autofill = "1.3.0"
 connectClient = "1.2.0-alpha04"
-cryptographyCore = "0.6.0"
-libphonenumber = "9.0.34"
-material3AdaptiveNavigationSuite = "1.5.0-alpha23"
-maplibre = "0.13.0"
-foundation = "1.12.0-beta02"
+
+# AndroidX – ink
 ink = "1.1.0-alpha04"
+
+# AndroidX – testing
+androidxTestRunner = "1.7.0"
+androidxTestExtJunit = "1.3.0"
+
+# Google libraries
 protobuf = "4.36.0-RC1"
-keepassJava2 = "2.2.4"
+protobufJavalite = "4.35.0"
+jsr305 = "3.0.2"
 zxing = "3.5.4"
-bouncycastle = "1.85"
+libphonenumber = "9.0.34"
+litertlmAndroid = "0.14.0"
+brotli = "0.1.2"
+
+# =============================================================================
+# THIRD PARTY
+# =============================================================================
+
+# Networking (Square)
+okio = "3.17.0" # isolated: contacts/files VCF+zip + messages MetaMqtt/Signal/WhatsApp ByteString – NOT networking
+okhttp = "4.12.0" # isolated: media3-datasource-okhttp (youpipe player) + Vonage SDK (dooraccess)
+
+# Images
+coilCompose = "2.7.0"
+
+# Maps & geospatial
+maplibre = "0.13.0"
+flatgeobuf = "3.29.0"
+
+# JavaScript engines & HTML
+# rhino 1.9.0 requires Android minSDK >= 26; rhino-engine only published for 1.8.x
+rhino = "1.8.1"
+quickjs = "1.0.5"
+jsoup = "1.22.2"
+
+# On-device AI
 onnxruntimeAndroid = "1.27.0"
-jakartaMail = "2.0.3"
-stockfishLibrary = "1.1.0"
-ncnnAndroid = "1.6.1"
-kxml2 = "2.3.0"
+
+# Crypto, security & credential storage
+cryptographyCore = "0.6.0"
+sqlcipherAndroid = "4.17.0"
 libsignalAndroid = "0.86.5"
 signalProtocolJava = "2.8.1"
-fragmentKtx = "1.9.0-alpha02"
-desugarJdkLibs = "2.1.5"
-protoc = "4.28.3"
+
+# Mail & XML
+jakartaMail = "2.0.3"
+kxml2 = "2.3.0"
+
+# Payments, telephony & auth
+stripe = "21.12.0"
 vonageVoice = "2.6.0"
 appauth = "0.11.1"
-stripe = "21.12.0"
+
+# Own libraries (vayun-mathur, via JitPack)
+stockfishLibrary = "1.1.0"
+ncnnAndroid = "1.6.1"
+
+# Testing
+junit = "4.13.2"
+gplayapi = "3.6.4"
+
+# Gradle plugins
 shadow = "9.0.0"
 
 [libraries]
-# AndroidX Core & Lifecycle
+
+# =============================================================================
+# GOOGLE / ANDROID / JETBRAINS
+# =============================================================================
+
+# Gradle plugin artifacts (build-logic classpath)
+gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlinGradlePlugin" }
+kotlin-compose-gradle = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
+kotlin-serialization-gradle = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
+symbol-processing-gradle-plugin = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
+
+# Kotlin stdlib ecosystem (JetBrains)
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
+kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
+
+# AndroidX – core & lifecycle
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
@@ -99,8 +152,32 @@ androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "l
 androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "sqlite" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntimeKtx" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastorePreferences" }
-androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
-androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+
+# AndroidX – Compose & UI (unversioned entries come from the BOM)
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite", version.ref = "material3AdaptiveNavigationSuite" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-wear-compose-material = { group = "androidx.wear.compose", name = "compose-material", version.ref = "wearComposeMaterial" }
+androidx-wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearComposeMaterial" }
+
+# AndroidX – navigation
+androidx-navigation3-runtime = { group = "androidx.navigation3", name = "navigation3-runtime", version.ref = "navigation3" }
+androidx-navigation3-ui = { group = "androidx.navigation3", name = "navigation3-ui", version.ref = "navigation3" }
+androidx-compose-adaptive-navigation3 = { group = "androidx.compose.material3.adaptive", name = "adaptive-navigation3", version.ref = "adaptiveNavigation3" }
+
+# AndroidX – Media3 (ExoPlayer & session)
+androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3Exoplayer" }
+androidx-media3-exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash", version.ref = "media3Exoplayer" }
+androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3Exoplayer" }
+androidx-media3-ui-compose-material3 = { module = "androidx.media3:media3-ui-compose-material3", version.ref = "media3Exoplayer" }
+androidx-media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3Exoplayer" }
+
+# AndroidX – CameraX & images
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
@@ -108,119 +185,120 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 androidx-camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "camerax" }
 androidx-camera-extensions = { group = "androidx.camera", name = "camera-extensions", version.ref = "camerax" }
-androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
-jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
-rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
-rhino-engine = { module = "org.mozilla:rhino-engine", version.ref = "rhino" }
-google-jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "jsr305" }
-protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufJavalite" }
-quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
-brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 
-# Instrumented screenshot tests (metadata generation)
-junit = { module = "junit:junit", version.ref = "junit" }
-androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
-androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
-androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+# AndroidX – Room
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 
-# Jetpack Compose (BOM Managed)
-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
-androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
-androidx-wear-compose-material = { group = "androidx.wear.compose", name = "compose-material", version.ref = "wearComposeMaterial" }
-androidx-wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearComposeMaterial" }
-# Navigation
-androidx-navigation3-runtime = { group = "androidx.navigation3", name = "navigation3-runtime", version.ref = "navigation3" }
-androidx-navigation3-ui = { group = "androidx.navigation3", name = "navigation3-ui", version.ref = "navigation3" }
-androidx-compose-adaptive-navigation3 = { group = "androidx.compose.material3.adaptive", name = "adaptive-navigation3", version.ref = "adaptiveNavigation3" }
-androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite", version.ref = "material3AdaptiveNavigationSuite" }
-
-# Media3 (ExoPlayer & Session)
-androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3Exoplayer" }
-androidx-media3-exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash", version.ref = "media3Exoplayer" }
-androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3Exoplayer" }
-androidx-media3-ui-compose-material3 = { module = "androidx.media3:media3-ui-compose-material3", version.ref = "media3Exoplayer" }
-androidx-media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3Exoplayer" }
-
-# Images & Visuals
-coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
-coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coilCompose" }
-coil-video = { module = "io.coil-kt:coil-video", version.ref = "coilCompose" }
-kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlinGradlePlugin" }
-litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
-kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
-
-# Maps – spatialk comes transitively via maplibre-compose (used by :maps), no direct dep needed
-maplibre-compose = { module = "org.maplibre.compose:maplibre-compose", version.ref = "maplibre" }
-flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
-
-# On-device AI
-onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
-
-# App Widgets (Glance)
+# AndroidX – app widgets (Glance)
 androidx-glance = { module = "androidx.glance:glance", version.ref = "glance" }
 androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 androidx-glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "glance" }
 
-# Ktor & Networking – TODO: migrate :messages (core/cio/okhttp) to :library:network, then remove ktor version + libs
-ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
-ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
-ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
-okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" } # isolated: contacts/files + messages ByteString
-okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" } # isolated: media3-datasource-okhttp + Vonage SDK
-
-# Data Storage & Serialization
-androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
-androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
-androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
-kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
-kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
-
-# Specialized Utilities
-androidx-connect-client = { module = "androidx.health.connect:connect-client", version.ref = "connectClient" }
-cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptographyCore" }
-cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptographyCore" }
-libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
-jakarta-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "jakartaMail" }
-androidx-autofill = { group = "androidx.autofill", name = "autofill", version.ref = "autofill" }
-androidx-credentials-lib = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+# AndroidX – web & browser
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 
-gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
-kotlin-compose-gradle = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
-kotlin-serialization-gradle = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
-sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipherAndroid" }
-symbol-processing-gradle-plugin = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
-androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+# AndroidX – security, identity & health
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+androidx-credentials-lib = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+androidx-autofill = { group = "androidx.autofill", name = "autofill", version.ref = "autofill" }
+androidx-connect-client = { module = "androidx.health.connect:connect-client", version.ref = "connectClient" }
+
+# AndroidX – ink
 androidx-ink-authoring = { group = "androidx.ink", name = "ink-authoring", version.ref = "ink" }
 androidx-ink-brush = { group = "androidx.ink", name = "ink-brush", version.ref = "ink" }
 androidx-ink-geometry = { group = "androidx.ink", name = "ink-geometry", version.ref = "ink" }
 androidx-ink-strokes = { group = "androidx.ink", name = "ink-strokes", version.ref = "ink" }
 androidx-ink-rendering = { group = "androidx.ink", name = "ink-rendering", version.ref = "ink" }
+
+# AndroidX – testing
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+
+# Google libraries
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufJavalite" }
+google-jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "jsr305" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
-keepassjava2-dom = { module = "org.linguafranca.pwdb:KeePassJava2-dom", version.ref = "keepassJava2" }
-bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-stockfish-library = { module = "com.github.vayun-mathur:Stockfish-Library", version.ref = "stockfishLibrary" }
-ncnn-android = { module = "com.github.vayun-mathur:ncnn-android", version.ref = "ncnnAndroid" }
-kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
+libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
+litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
+brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
+
+# =============================================================================
+# THIRD PARTY
+# =============================================================================
+
+# Networking (Square)
+okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" } # isolated: contacts/files + messages ByteString
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" } # isolated: media3-datasource-okhttp + Vonage SDK
+
+# Images
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
+coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coilCompose" }
+coil-video = { module = "io.coil-kt:coil-video", version.ref = "coilCompose" }
+
+# Maps & geospatial
+maplibre-compose = { module = "org.maplibre.compose:maplibre-compose", version.ref = "maplibre" }
+flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
+
+# JavaScript engines & HTML
+# rhino 1.9.0 requires Android minSDK >= 26; rhino-engine only published for 1.8.x
+rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
+rhino-engine = { module = "org.mozilla:rhino-engine", version.ref = "rhino" }
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+
+# On-device AI
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
+
+# Crypto, security & credential storage
+cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptographyCore" }
+cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptographyCore" }
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipherAndroid" }
 libsignal-android = { module = "org.signal:libsignal-android", version.ref = "libsignalAndroid" }
 signal-protocol-java = { module = "org.whispersystems:signal-protocol-java", version.ref = "signalProtocolJava" }
-androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
-kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
-desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
+
+# Mail & XML
+jakarta-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "jakartaMail" }
+kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
+
+# Payments, telephony & auth
+stripe-android = { module = "com.stripe:stripe-android", version.ref = "stripe" }
 vonage-client-sdk-voice = { group = "com.vonage", name = "client-sdk-voice", version.ref = "vonageVoice" }
 appauth = { group = "net.openid", name = "appauth", version.ref = "appauth" }
-stripe-android = { module = "com.stripe:stripe-android", version.ref = "stripe" }
+
+# Own libraries (vayun-mathur, via JitPack)
+stockfish-library = { module = "com.github.vayun-mathur:Stockfish-Library", version.ref = "stockfishLibrary" }
+ncnn-android = { module = "com.github.vayun-mathur:ncnn-android", version.ref = "ncnnAndroid" }
+
+# AppStore – Play install via Aurora
+auroraoss-gplayapi = { module = "com.auroraoss:gplayapi", version.ref = "gplayapi" }
+
+# Testing
+junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
+
+# =============================================================================
+# GOOGLE / ANDROID / JETBRAINS
+# =============================================================================
+
+# Android & Kotlin
 android-application = { id = "com.android.application", version.ref = "agp" }
-shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+
+# =============================================================================
+# THIRD PARTY
+# =============================================================================
+
+# Packaging
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

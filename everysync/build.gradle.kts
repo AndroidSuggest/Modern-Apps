@@ -50,7 +50,7 @@ dependencies {
     // Background sync
     implementation(libs.androidx.work.runtime.ktx)
 
-    // ktor client (custom WebDAV methods + JSON)
+    // HTTP client (custom WebDAV methods + JSON)
     implementation(project(":library:network"))
 
 }

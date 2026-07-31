@@ -152,8 +152,9 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
 
     packaging {
         resources {
-            // bouncycastle 1.85 (bcprov/bcpkix/bcutil) each ship these license files,
-            // which collide during Java-resource merge.
+            // :email's jakarta.mail stack (org.eclipse.angus:jakarta.mail,
+            // jakarta.activation-api, angus-activation) each ship these license
+            // files, which collide during Java-resource merge.
             excludes += setOf(
                 "META-INF/LICENSE.md",
                 "META-INF/NOTICE.md",
