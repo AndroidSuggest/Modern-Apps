@@ -1,5 +1,7 @@
 package com.vayunmathur.appstore.ui
 
+import android.graphics.drawable.Drawable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,13 +12,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
@@ -31,6 +37,7 @@ fun AppRow(
     app: UnifiedApp,
     isInstalled: Boolean,
     progress: Float?,
+    installedIcon: Drawable? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -40,12 +47,34 @@ fun AppRow(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    model = app.iconUrl,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                )
+                // Use installed drawable if available, else remote icon via coil
+                if (installedIcon != null) {
+                    val bitmap = remember(installedIcon) {
+                        try { installedIcon.toBitmap(width = 96, height = 96).asImageBitmap() } catch (_: Exception) { null }
+                    }
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        AsyncImage(
+                            model = app.iconUrl,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                } else {
+                    AsyncImage(
+                        model = app.iconUrl,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -91,13 +120,11 @@ fun AppRow(
 fun SourceBadge(source: AppSource) {
     val label = when (source) {
         AppSource.FDROID -> "F-Droid"
-        AppSource.PLAYSTORE -> "Play"
-        AppSource.UNKNOWN -> "?"
+        AppSource.PLAYSTORE -> "Play Store"
     }
     val color = when (source) {
         AppSource.FDROID -> MaterialTheme.colorScheme.primaryContainer
         AppSource.PLAYSTORE -> MaterialTheme.colorScheme.secondaryContainer
-        AppSource.UNKNOWN -> MaterialTheme.colorScheme.surface
     }
     Card(colors = CardDefaults.cardColors(containerColor = color)) {
         Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))

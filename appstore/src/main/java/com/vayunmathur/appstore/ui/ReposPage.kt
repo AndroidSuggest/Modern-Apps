@@ -35,6 +35,7 @@ import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.TopAppBar
 
 @Composable
 fun ReposPage(viewModel: AppStoreViewModel) {
@@ -45,10 +46,9 @@ fun ReposPage(viewModel: AppStoreViewModel) {
     var newName by remember { mutableStateOf("") }
 
     Scaffold(
+        topBar = { TopAppBar(title = { Text("Repositories") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAdd = true }) {
-                IconAdd()
-            }
+            FloatingActionButton(onClick = { showAdd = true }) { IconAdd() }
         }
     ) { padding ->
         LazyColumn(
@@ -60,7 +60,7 @@ fun ReposPage(viewModel: AppStoreViewModel) {
                 Text("F-Droid Repositories", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Add F-Droid compatible repos. Play Store listings are always enabled and searched live.",
+                    "Add F-Droid compatible repos. Apps available on F-Droid are marked F-Droid, others Play Store.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -86,9 +86,7 @@ fun ReposPage(viewModel: AppStoreViewModel) {
                                 }
                             }
                             Switch(checked = repo.enabled, onCheckedChange = { viewModel.toggleRepo(repo.url) })
-                            IconButton(onClick = { viewModel.deleteRepo(repo.url) }) {
-                                IconDelete()
-                            }
+                            IconButton(onClick = { viewModel.deleteRepo(repo.url) }) { IconDelete() }
                         }
                     }
                 }

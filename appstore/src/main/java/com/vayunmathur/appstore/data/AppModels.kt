@@ -4,16 +4,7 @@ import kotlinx.serialization.Serializable
 
 enum class AppSource {
     FDROID,
-    PLAYSTORE,
-    UNKNOWN
-}
-
-enum class InstallStatus {
-    NOT_INSTALLED,
-    INSTALLED,
-    UPDATE_AVAILABLE,
-    DOWNLOADING,
-    INSTALLING
+    PLAYSTORE
 }
 
 @Serializable
@@ -40,7 +31,7 @@ data class UnifiedApp(
     val lastUpdated: Long = 0L,
     val antiFeatures: List<String> = emptyList(),
     val isFree: Boolean = true,
-    val repoUrl: String? = null // for F-Droid
+    val repoUrl: String? = null
 )
 
 data class InstalledInfo(
@@ -48,16 +39,8 @@ data class InstalledInfo(
     val name: String,
     val versionName: String?,
     val versionCode: Long,
-    val icon: android.graphics.drawable.Drawable? = null,
     val isSystem: Boolean = false
 )
-
-data class SearchResult(
-    val fdroidApps: List<UnifiedApp> = emptyList(),
-    val playApps: List<UnifiedApp> = emptyList()
-) {
-    val combined: List<UnifiedApp> get() = fdroidApps + playApps
-}
 
 object DefaultRepos {
     const val FDROID_MAIN = "https://f-droid.org/repo"

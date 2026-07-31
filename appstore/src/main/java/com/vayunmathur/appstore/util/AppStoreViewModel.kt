@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
@@ -15,19 +16,16 @@ import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.CachedAppEntity
 import com.vayunmathur.appstore.data.DefaultRepos
 import com.vayunmathur.appstore.data.FDroidRepository
-import com.vayunmathur.appstore.data.FavoriteEntity
 import com.vayunmathur.appstore.data.InstalledInfo
 import com.vayunmathur.appstore.data.PlayStoreDataSource
 import com.vayunmathur.appstore.data.RepoEntity
 import com.vayunmathur.appstore.data.UnifiedApp
-import com.vayunmathur.library.room.buildDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,7 +59,10 @@ class AppStoreViewModel(
     private val _installedApps = MutableStateFlow<List<InstalledInfo>>(emptyList())
     val installedApps: StateFlow<List<InstalledInfo>> = _installedApps
 
-    private val _activeRepo = MutableStateFlow<String?>(null) // filter
+    private val _installedIcons = MutableStateFlow<Map<String, Drawable>>(emptyMap())
+    val installedIcons: StateFlow<Map<String, Drawable>> = _installedIcons
+
+    private val _activeRepo = MutableStateFlow<String?>(null)
 
     val repos = db.repoDao().allFlow()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -69,28 +70,39 @@ class AppStoreViewModel(
     val cachedApps = db.cachedAppDao().allFlow()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val favorites = db.favoriteDao().allFlow()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
     val combinedBrowse: StateFlow<List<UnifiedApp>> = combine(
         cachedApps, _playSearchResults, _topCharts, _searchQuery, _activeRepo
     ) { cached, playSearch, topCharts, query, activeRepo ->
-        val fdroid = cached.map { it.toUnifiedApp() }
-            .let { list -> if (activeRepo != null) list.filter { it.repoUrl == activeRepo || activeRepo == "all" } else list }
+        val fdroidAll = cached.map { it.toUnifiedApp() }
+        val fdroid = if (activeRepo != null) fdroidAll.filter { it.repoUrl == activeRepo || activeRepo == "all" } else fdroidAll
+        // Infer overlay: if package exists in any F-Droid repo, force FDROID source; otherwise PLAYSTORE
+        val fdroidPkgs = fdroidAll.map { it.packageName }.toSet()
+        val infPlaySearch = playSearch.map { it.copy(source = inferSource(it.packageName, fdroidPkgs)) }
+        val infTop = topCharts.map { it.copy(source = inferSource(it.packageName, fdroidPkgs)) }
 
         if (query.isBlank()) {
-            // Browse mode: F-Droid cached + top Play charts
-            val all = fdroid + if (playSearch.isEmpty()) topCharts else playSearch
+            val all = fdroid + (if (infPlaySearch.isEmpty()) infTop else infPlaySearch)
             all.distinctBy { it.packageName }.sortedBy { it.name.lowercase() }
         } else {
             val q = query.lowercase()
             val filteredFdroid = fdroid.filter {
                 it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q) || it.summary.lowercase().contains(q)
             }
-            val combined = (filteredFdroid + playSearch).distinctBy { it.packageName }
+            val combined = (filteredFdroid + infPlaySearch).distinctBy { it.packageName }.map {
+                it.copy(source = inferSource(it.packageName, fdroidPkgs))
+            }
             combined.sortedBy { it.name.lowercase() }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private fun inferSource(pkg: String, fdroidPkgs: Set<String>): AppSource {
+        return if (fdroidPkgs.contains(pkg)) AppSource.FDROID else AppSource.PLAYSTORE
+    }
+
+    fun inferSourceForInstalled(pkg: String): AppSource {
+        val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
+        return inferSource(pkg, fdroidPkgs)
+    }
 
     var searchJob: Job? = null
     var topJob: Job? = null
@@ -130,7 +142,7 @@ class AppStoreViewModel(
             return
         }
         searchJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(400) // debounce
+            kotlinx.coroutines.delay(400)
             _syncMessage.value = "Searching Play Store..."
             val play = PlayStoreDataSource.search(q)
             _playSearchResults.value = play
@@ -170,7 +182,10 @@ class AppStoreViewModel(
     fun refreshInstalled() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val installed = pm.getInstalledApplications(PackageManager.MATCH_ALL).mapNotNull { ai ->
+            // Only user apps: exclude system partition apps
+            val allApps = pm.getInstalledApplications(PackageManager.MATCH_ALL)
+            val userApps = allApps.filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+            val installed = userApps.mapNotNull { ai ->
                 try {
                     val pi = pm.getPackageInfo(ai.packageName, 0)
                     InstalledInfo(
@@ -178,21 +193,31 @@ class AppStoreViewModel(
                         name = pm.getApplicationLabel(ai).toString(),
                         versionName = pi.versionName,
                         versionCode = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong(),
-                        isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                        isSystem = false
                     )
                 } catch (_: Exception) { null }
             }.sortedBy { it.name.lowercase() }
+
+            val icons = userApps.mapNotNull { ai ->
+                try { ai.packageName to pm.getApplicationIcon(ai.packageName) } catch (_: Exception) { null }
+            }.toMap()
+
             _installedApps.value = installed
+            _installedIcons.value = icons
         }
     }
 
     fun selectApp(app: UnifiedApp) {
-        _selectedApp.value = app
-        // If Play Store app with no details yet, fetch them
-        if (app.source == AppSource.PLAYSTORE && app.description.isBlank()) {
+        // Re-infer source based on F-Droid cache at selection time too
+        val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
+        val inferred = app.copy(source = inferSource(app.packageName, fdroidPkgs))
+        _selectedApp.value = inferred
+        if (inferred.source == AppSource.PLAYSTORE && inferred.description.isBlank()) {
             viewModelScope.launch {
-                val details = PlayStoreDataSource.appDetails(app.packageName)
-                if (details != null) _selectedApp.value = details
+                val details = PlayStoreDataSource.appDetails(inferred.packageName)
+                if (details != null) {
+                    _selectedApp.value = details.copy(source = inferSource(details.packageName, fdroidPkgs))
+                }
             }
         }
     }
@@ -212,18 +237,11 @@ class AppStoreViewModel(
     }
 
     fun openInBrowser(url: String) {
+        if (url.isBlank()) return
         try {
             val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             context.startActivity(i)
         } catch (_: Exception) { }
-    }
-
-    fun toggleFavorite(pkg: String) {
-        viewModelScope.launch {
-            val isFav = db.favoriteDao().isFavFlow(pkg).first()
-            if (isFav) db.favoriteDao().deleteByPackage(pkg)
-            else db.favoriteDao().upsert(FavoriteEntity(pkg))
-        }
     }
 
     fun addRepo(url: String, name: String) {
@@ -248,11 +266,15 @@ class AppStoreViewModel(
     }
 
     fun downloadAndInstall(app: UnifiedApp) {
-        if (app.source == AppSource.PLAYSTORE) {
+        // Inferred source decides: FDROID = direct APK, PLAYSTORE = market intent
+        val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
+        val src = inferSource(app.packageName, fdroidPkgs)
+        if (src == AppSource.PLAYSTORE) {
             openInPlayStore(app.packageName)
             return
         }
-        val apkUrl = app.apkUrl ?: return
+        // Resolve APK from F-Droid cache if current listing lacks it
+        val apkUrl = app.apkUrl ?: cachedApps.value.find { it.packageName == app.packageName }?.apkUrl ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _downloadProgress.value = _downloadProgress.value + (app.packageName to 0.01f)
@@ -277,9 +299,7 @@ class AppStoreViewModel(
                     }
                 }
                 _downloadProgress.value = _downloadProgress.value - app.packageName
-                withContext(Dispatchers.Main) {
-                    installApk(file)
-                }
+                withContext(Dispatchers.Main) { installApk(file) }
             } catch (e: Exception) {
                 _downloadProgress.value = _downloadProgress.value - app.packageName
                 _syncMessage.value = "Download failed: ${e.message}"
@@ -299,10 +319,6 @@ class AppStoreViewModel(
             _syncMessage.value = "Install failed: ${e.message}"
         }
     }
-
-    fun isAppInstalled(pkg: String): Boolean = _installedApps.value.any { it.packageName == pkg }
-
-    fun getInstalledVersion(pkg: String): InstalledInfo? = _installedApps.value.find { it.packageName == pkg }
 
     fun setActiveRepoFilter(repoUrl: String?) {
         _activeRepo.value = repoUrl

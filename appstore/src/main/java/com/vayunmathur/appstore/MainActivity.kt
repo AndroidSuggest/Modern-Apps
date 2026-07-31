@@ -20,7 +20,6 @@ import com.vayunmathur.appstore.data.AppDatabase
 import com.vayunmathur.appstore.data.DB_NAME
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.ui.AppDetailPage
-import com.vayunmathur.appstore.ui.FavoritesPage
 import com.vayunmathur.appstore.ui.InstalledPage
 import com.vayunmathur.appstore.ui.ReposPage
 import com.vayunmathur.appstore.ui.UpdatesPage
@@ -29,12 +28,9 @@ import com.vayunmathur.appstore.util.AppStoreViewModelFactory
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconDownload
-import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconPackage
-import com.vayunmathur.library.ui.IconStar
-import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
@@ -56,7 +52,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val db = buildDatabase<AppDatabase>(dbName = DB_NAME)
+            val db = buildDatabase<AppDatabase>(dbName = DB_NAME, migrations = AppDatabase.migrations)
             val factory = AppStoreViewModelFactory(applicationContext, db)
             withContext(Dispatchers.Main) {
                 factoryState = factory
@@ -72,7 +68,6 @@ class MainActivity : ComponentActivity() {
                         Box(Modifier.fillMaxSize())
                     } else {
                         val vm: AppStoreViewModel = viewModel(factory = factoryState!!)
-                        // handle deep link pkg after vm ready
                         LaunchedEffect(externalPkg) {
                             externalPkg?.let { pkg ->
                                 val cached = vm.cachedApps.value.find { it.packageName == pkg }
@@ -121,10 +116,8 @@ class MainActivity : ComponentActivity() {
 @Serializable
 sealed interface Route : NavKey {
     @Serializable data object Browse : Route
-    @Serializable data object Search : Route
     @Serializable data object Installed : Route
     @Serializable data object Updates : Route
-    @Serializable data object Favorites : Route
     @Serializable data object Repos : Route
     @Serializable data object Detail : Route
 }
@@ -139,7 +132,6 @@ private fun AppRoot(
     val backStack = rememberNavBackStack<Route>(initial)
     val current = backStack.last()
 
-    // If an app is selected and we are not already on Detail, push Detail
     LaunchedEffect(selected) {
         if (selected != null && current !is Route.Detail) {
             backStack.add(Route.Detail)
@@ -156,7 +148,6 @@ private fun AppRoot(
                         BottomBarItem("Browse", Route.Browse) { IconHome() },
                         BottomBarItem("Installed", Route.Installed) { IconPackage() },
                         BottomBarItem("Updates", Route.Updates) { IconDownload() },
-                        BottomBarItem("Favorites", Route.Favorites) { IconStar() },
                         BottomBarItem("Repos", Route.Repos) { IconSettings() },
                     ),
                     current
@@ -178,12 +169,6 @@ private fun AppRoot(
         }
         entry<Route.Updates> {
             UpdatesPage(viewModel = viewModel, onAppClick = { app ->
-                viewModel.selectApp(app)
-                backStack.add(Route.Detail)
-            })
-        }
-        entry<Route.Favorites> {
-            FavoritesPage(viewModel = viewModel, onAppClick = { app ->
                 viewModel.selectApp(app)
                 backStack.add(Route.Detail)
             })

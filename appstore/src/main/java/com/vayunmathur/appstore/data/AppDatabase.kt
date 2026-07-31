@@ -8,6 +8,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 const val DB_NAME = "appstore-db"
@@ -30,19 +32,13 @@ data class CachedAppEntity(
     val description: String,
     val iconUrl: String?,
     val author: String?,
-    val categories: String, // json joined
+    val categories: String, // comma joined
     val versionName: String?,
     val versionCode: Long,
     val sizeBytes: Long,
     val apkUrl: String?,
     val repoUrl: String?,
     val lastUpdated: Long
-)
-
-@Entity
-data class FavoriteEntity(
-    @PrimaryKey val packageName: String,
-    val addedAt: Long = System.currentTimeMillis()
 )
 
 @Dao
@@ -87,28 +83,22 @@ interface CachedAppDao {
     suspend fun clearAll()
 }
 
-@Dao
-interface FavoriteDao {
-    @Query("SELECT * FROM FavoriteEntity ORDER BY addedAt DESC")
-    fun allFlow(): Flow<List<FavoriteEntity>>
-
-    @Query("SELECT EXISTS(SELECT 1 FROM FavoriteEntity WHERE packageName = :pkg)")
-    fun isFavFlow(pkg: String): Flow<Boolean>
-
-    @Upsert
-    suspend fun upsert(fav: FavoriteEntity)
-
-    @Query("DELETE FROM FavoriteEntity WHERE packageName = :pkg")
-    suspend fun deleteByPackage(pkg: String)
-}
-
 @Database(
-    entities = [RepoEntity::class, CachedAppEntity::class, FavoriteEntity::class],
-    version = 1,
+    entities = [RepoEntity::class, CachedAppEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun repoDao(): RepoDao
     abstract fun cachedAppDao(): CachedAppDao
-    abstract fun favoriteDao(): FavoriteDao
+
+    companion object {
+        val migrations = listOf(
+            object : Migration(1, 2) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("DROP TABLE IF EXISTS FavoriteEntity")
+                }
+            }
+        )
+    }
 }

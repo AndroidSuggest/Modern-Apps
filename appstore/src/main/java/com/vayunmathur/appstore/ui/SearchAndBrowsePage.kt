@@ -27,7 +27,11 @@ import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.appstore.Route
 
 @Composable
 fun SearchAndBrowsePage(
@@ -40,60 +44,74 @@ fun SearchAndBrowsePage(
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncMsg by viewModel.syncMessage.collectAsState()
     val progressMap by viewModel.downloadProgress.collectAsState()
+    val icons by viewModel.installedIcons.collectAsState()
 
-    Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { viewModel.setSearch(it) },
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            placeholder = { Text("Search F-Droid & Play Store") },
-            leadingIcon = { IconSearch() },
-            trailingIcon = {
-                if (query.isNotBlank()) {
-                    IconButton(onClick = { viewModel.setSearch("") }) {
-                        IconClose()
-                    }
-                }
-            },
-            singleLine = true
-        )
-
-        if (syncMsg.isNotBlank()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (isSyncing) {
-                    CircularProgressIndicator(Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(syncMsg, style = MaterialTheme.typography.labelSmall)
-            }
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("App Store") })
         }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (apps.isEmpty() && query.isNotBlank()) {
-                item {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("No results for \"$query\"", style = MaterialTheme.typography.bodyMedium)
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { viewModel.setSearch(it) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                placeholder = { Text("Search F-Droid & Play Store") },
+                leadingIcon = { IconSearch() },
+                trailingIcon = {
+                    if (query.isNotBlank()) {
+                        IconButton(onClick = { viewModel.setSearch("") }) { IconClose() }
                     }
+                },
+                singleLine = true
+            )
+
+            if (syncMsg.isNotBlank()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(syncMsg, style = MaterialTheme.typography.labelSmall)
                 }
-            } else if (apps.isEmpty()) {
-                item {
-                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Welcome to App Store", style = MaterialTheme.typography.titleMedium)
-                            Text("Combines F-Droid repos with Play Store listings", style = MaterialTheme.typography.bodySmall)
-                            Text("Tap Sync in Repos to fetch F-Droid apps, or search for Play apps", style = MaterialTheme.typography.bodySmall)
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (apps.isEmpty() && query.isNotBlank()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Text("No results for \"$query\"", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                }
-            } else {
-                items(apps, key = { it.packageName + it.source.name }) { app ->
-                    val isInstalled = installed.any { it.packageName == app.packageName }
-                    val progress = progressMap[app.packageName]
-                    AppRow(app = app, isInstalled = isInstalled, progress = progress, onClick = { onAppClick(app) })
+                } else if (apps.isEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Welcome to App Store", style = MaterialTheme.typography.titleMedium)
+                                Text("Combines F-Droid repos with Play Store listings", style = MaterialTheme.typography.bodySmall)
+                                Text("Tap Sync in Repos to fetch F-Droid apps, or search for Play apps", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                } else {
+                    items(apps, key = { it.packageName + it.source.name }) { app ->
+                        val isInstalled = installed.any { it.packageName == app.packageName }
+                        val progress = progressMap[app.packageName]
+                        AppRow(
+                            app = app,
+                            isInstalled = isInstalled,
+                            progress = progress,
+                            installedIcon = if (isInstalled) icons[app.packageName] else null,
+                            onClick = { onAppClick(app) }
+                        )
+                    }
                 }
             }
         }
