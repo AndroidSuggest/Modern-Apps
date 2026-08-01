@@ -61,9 +61,6 @@
     <string name="backup_and_export">Kopia zapasowa i eksport</string>
     <string name="grant_calendar_permissions">Udziel uprawnień do kalendarza</string>
     <string name="delete_selected_contacts_title">Usuń wybrane kontakty</string>
-    <plurals name="delete_selected_contacts_confirm">
-        <item quantity="other">Czy na pewno chcesz usunąć <xliff:g id="count" example="5">%1$d</xliff:g> zaznaczonych kontaktów? Tej czynności nie można cofnąć.</item>
-    </plurals>
     <string name="selected_count">Zaznaczono: <xliff:g id="count" example="3">%1$d</xliff:g></string>
     <string name="show_account_labels">Pokaż konta kontaktów</string>
     <string name="display">Wyświetl</string>
@@ -83,17 +80,11 @@
     <string name="telegram">Telegram</string>
     <string name="google_meet">Google Meet</string>
     <string name="no_groups_found">Nie znaleziono grup. Utwórz grupę w zakładce Grupy.</string>
-    <plurals name="contacts_count">
-        <item quantity="other">Kontakty: <xliff:g id="count" example="42">%1$d</xliff:g></item>
-    </plurals>
     <string name="done">Zrobione</string>
     <string name="import_vcf_file">Importuj plik .vcf</string>
     <string name="import_to_existing_account">Importuj do istniejącego konta</string>
     <string name="create_new_account_option">Utwórz nowe konto</string>
     <string name="no_contacts_found">Nie znaleziono kontaktów</string>
-    <plurals name="import_summary_contacts">
-        <item quantity="other">Kontakty gotowe do zaimportowania: <xliff:g id="count" example="10">%1$d</xliff:g></item>
-    </plurals>
     <string name="select_account">Wybierz konto</string>
     <string name="no_name">(Bez nazwy)</string>
     <string name="add_number_to_contact">Dodaj numer do kontaktu</string>
