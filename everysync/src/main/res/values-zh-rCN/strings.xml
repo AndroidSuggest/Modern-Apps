@@ -1,3 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="cancel">取消</string>
+    <string name="app_name">EverySync</string>
+    <string name="accounts_title">EverySync</string>
+    <string name="no_accounts">尚无账号。点按 + 添加一个。</string>
+    <string name="sync_now">立即同步</string>
+    <string name="syncing">正在同步…</string>
+    <string name="last_synced">最后同步：<xliff:g id="date" example="Today 10:30 AM">%1$s</xliff:g></string>
+    <string name="never_synced">从未同步</string>
+    <string name="add_account_title">添加账号</string>
+    <string name="provider_via_health_connect">通过 Health Connect</string>
+    <string name="dav_login_title"><xliff:g id="provider" example="iCloud">%1$s</xliff:g> 登录</string>
+    <string name="dav_base_url">服务器网址</string>
+    <string name="dav_username">用户名/邮箱</string>
+    <string name="dav_password">密码（App 专用）</string>
+    <string name="login">登录</string>
+    <string name="icloud_app_password_steps">iCloud 需要一个 App 专用密码（不是您的 Apple ID 密码）：\n\n1. 登录 account.apple.com\n2. 打开登录和安全 → App 专用密码”\n3. 创建一个并命名为“EverySync”\n4. 在下方输入您的 Apple ID 邮箱和该密码</string>
+    <string name="icloud_create_password">创建 App 专用密码</string>
+    <string name="apple_id_email">Apple ID 邮箱</string>
+    <string name="app_specific_password">App 专用密码</string>
+    <string name="sync_contacts">同步联系人</string>
+    <string name="sync_calendar">同步日历</string>
+    <string name="sync_health">同步健康</string>
+    <string name="remove_account">移除账号</string>
+    <string name="settings_title">设置</string>
+    <string name="global_interval">同步间隔（分钟）</string>
+    <string name="wifi_only">仅在 Wi-Fi 上同步</string>
+    <string name="conflict_policy">冲突解决</string>
+    <string name="conflict_lww">最后写入者优先</string>
+    <string name="conflict_remote">首选服务器</string>
+    <string name="conflict_local">首选设备</string>
+    <string name="need_permissions">EverySync 需要访问联系人和日历才能同步您的账号。</string>
+    <string name="everysync_privacy_policy">EverySync 会在您的云账号和此设备之间同步联系人、日历和健康数据。数据仅存储在此设备和您配置的服务器上。</string>
 </resources>
