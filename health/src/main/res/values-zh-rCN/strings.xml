@@ -120,7 +120,6 @@
     <string name="saved_locally">已保存在本地</string>
     <string name="servings">份量</string>
     <string name="quantity_x_100g">数量（× 100克）</string>
-    <string name="online">在线</string>
     <string name="lap">第 <xliff:g id="lap_index" example="1">%1$s</xliff:g> 圈</string>
     <string name="hydration_cups">杯</string>
     <string name="add_your_first_ingredient">添加您的第一个配料</string>
@@ -128,7 +127,6 @@
     <string name="edit_recipe">编辑食谱</string>
     <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> 餐 · <xliff:g id="total_cal" example="850">%2$s</xliff:g> 卡路里</string>
     <string name="ingredient">（配料）</string>
-    <string name="downloaded">已下载</string>
     <string name="laps">圈数</string>
     <string name="calories">卡路里</string>
     <string name="hydration_ounces">盎司</string>

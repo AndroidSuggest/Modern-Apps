@@ -44,6 +44,8 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.SeatCabinDto
 import com.vayunmathur.travel.network.SeatElementDto
 import com.vayunmathur.travel.network.SeatRowDto
+import com.vayunmathur.travel.util.SeatMapActions
+import com.vayunmathur.travel.util.SeatMapState
 import com.vayunmathur.travel.util.TravelViewModel
 import androidx.compose.ui.res.stringResource
 
@@ -88,7 +90,7 @@ private fun computeLayout(cabin: SeatCabinDto): CabinLayout {
 /** Total width a section block occupies (its columns plus the gaps between them). */
 private fun blockWidth(columns: Int) = CELL * columns + GAP * (columns - 1).coerceAtLeast(0)
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [TravelViewModel] and the back stack to the stateless [SeatMapScreen]. */
 @Composable
 fun SeatMapPage(
     backStack: NavBackStack<Route>,
@@ -100,15 +102,46 @@ fun SeatMapPage(
 
     LaunchedEffect(route.offerId) { viewModel.loadSeatMaps(route.offerId) }
 
+    val actions = remember(viewModel, backStack) {
+        object : SeatMapActions {
+            override fun toggleSeat(segmentId: String, seat: SeatElementDto) =
+                viewModel.toggleSeat(segmentId, seat)
+
+            override fun done() = backStack.pop()
+            override fun back() = backStack.pop()
+        }
+    }
+
+    SeatMapScreen(
+        segmentId = route.segmentId,
+        state = state,
+        selectedSeats = selectedSeats,
+        actions = actions,
+    )
+}
+
+/**
+ * The seat picker for one segment, with no dependency on the ViewModel or the back stack so
+ * it can be rendered from a `@Preview` — see `src/screenshotTest`, which is where the store
+ * listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SeatMapScreen(
+    segmentId: String,
+    state: SeatMapState,
+    selectedSeats: Map<String, SeatElementDto>,
+    actions: SeatMapActions,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.choose_seats)) },
-                navigationIcon = { IconNavigation(backStack) },
+                navigationIcon = { IconNavigation { actions.back() } },
             )
         },
     ) { padding ->
-        val cabins = state.cabins.filter { it.segmentId == route.segmentId }
+        val cabins = state.cabins.filter { it.segmentId == segmentId }
         if (state.loading || state.error != null || cabins.isEmpty()) {
             StatusBox(
                 loading = state.loading,
@@ -124,10 +157,10 @@ fun SeatMapPage(
         ) {
             SeatLegend()
             cabins.forEach { cabin ->
-                CabinView(cabin, route.segmentId, selectedSeats) { viewModel.toggleSeat(route.segmentId, it) }
+                CabinView(cabin, segmentId, selectedSeats) { actions.toggleSeat(segmentId, it) }
             }
             Button(
-                onClick = { backStack.pop() },
+                onClick = { actions.done() },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             ) { Text(stringResource(R.string.done)) }
         }

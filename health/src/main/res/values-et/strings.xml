@@ -90,7 +90,6 @@
     <string name="label_exercise">Treening</string>
     <string name="no_results_found">Tulemusi ei leidu</string>
     <string name="original_1">Algne: <xliff:g id="original_name" example="Tomat">%1$s</xliff:g></string>
-    <string name="downloaded">Allalaaditud</string>
     <string name="saved_locally">Salvestatud kohalikus seadmes</string>
     <string name="calories">Kaloreid</string>
     <string name="kcal"><xliff:g id="current_cal" example="1200">%1$s</xliff:g> / <xliff:g id="goal_cal" example="2000">%2$s</xliff:g> kcal</string>

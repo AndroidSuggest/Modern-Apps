@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:clock:metadata` task name either way.
+    id("common-conventions-preview-metadata")
     alias(libs.plugins.ksp)
 }
 
@@ -12,11 +14,6 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.clock"
     }
-}
-
-metadataScreenshots {
-    permissions.add("android.permission.POST_NOTIFICATIONS")
-    appops.addAll("SCHEDULE_EXACT_ALARM", "USE_FULL_SCREEN_INTENT")
 }
 
 dependencies {

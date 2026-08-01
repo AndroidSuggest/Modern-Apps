@@ -107,13 +107,62 @@ mkdir -p distribution_apks
 echo "📂 Collecting APKs into distribution_apks/..."
 find . -path "*/build/outputs/apk/release/*.apk" -exec cp {} distribution_apks/ \;
 
+# 5b. Build index.json for the :appstore "Modern Apps" source.
+# The store cannot map an asset filename back to a package name on its own
+# (:games:chess builds chess-release.apk but installs as com.vayunmathur.games.chess),
+# so the release has to state it. This index is NOT signed and does not need to be:
+# :appstore verifies every APK from this source against its own signing certificate,
+# so a rewritten index can change which bytes are offered but not which bytes install.
+echo "🧾 Generating distribution_apks/index.json..."
+AAPT2=$(ls -1 "${ANDROID_HOME:-$HOME/Library/Android/sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+if [ -z "$AAPT2" ]; then
+    echo "❌ aapt2 not found under \$ANDROID_HOME/build-tools; cannot generate index.json"
+    exit 1
+fi
+
+{
+    printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "apps": [\n' "$VERSION_CODE" "$VERSION_NAME"
+    first=true
+    for apk in distribution_apks/*.apk; do
+        [ -e "$apk" ] || continue
+        badging=$("$AAPT2" dump badging "$apk" 2>/dev/null)
+        pkg=$(echo "$badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+        vcode=$(echo "$badging" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")
+        vname=$(echo "$badging" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")
+        tsdk=$(echo "$badging" | sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p")
+        label=$(echo "$badging" | sed -n "s/^application-label:'\([^']*\)'.*/\1/p")
+        if [ -z "$pkg" ]; then
+            echo "⚠️  Skipping $apk (aapt2 could not read a package name)" >&2
+            continue
+        fi
+        [ -n "$label" ] || label="$pkg"
+        sha=$(shasum -a 256 "$apk" | cut -d' ' -f1)
+        size=$(wc -c < "$apk" | tr -d ' ')
+        # Short description = first line of the F-Droid metadata, when there is one.
+        module_key=$(grep -rl "applicationId = \"$pkg\"" --include=build.gradle.kts . 2>/dev/null \
+            | head -1 | sed 's|^\./||; s|/build.gradle.kts$||; s|/|-|g')
+        summary=""
+        if [ -n "$module_key" ] && [ -f "metadata_data/${module_key}.md" ]; then
+            summary=$(head -n 1 "metadata_data/${module_key}.md" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        fi
+        $first || printf ',\n'
+        first=false
+        printf '    {"packageName": "%s", "label": "%s", "apk": "%s", "sha256": "%s", "size": %s, "versionCode": %s, "versionName": "%s", "targetSdk": %s, "summary": "%s"}' \
+            "$pkg" "$(echo "$label" | sed 's/\\/\\\\/g; s/"/\\"/g')" "$(basename "$apk")" \
+            "$sha" "$size" "${vcode:-0}" "${vname:-$VERSION_NAME}" "${tsdk:-0}" "$summary"
+    done
+    printf '\n  ]\n}\n'
+} > distribution_apks/index.json
+
+echo "   $(grep -c '"packageName"' distribution_apks/index.json) apps indexed"
+
 # 6. Push Tag and Create GitHub Release
 echo "📤 Pushing tag $VERSION_NAME to origin..."
 git push origin "$VERSION_NAME"
 
 if [ "$HAS_GH" = true ]; then
     echo "🎁 Creating GitHub Release..."
-    gh release create "$VERSION_NAME" distribution_apks/*.apk \
+    gh release create "$VERSION_NAME" distribution_apks/*.apk distribution_apks/index.json \
         --title "Release $VERSION_NAME" \
         --notes "Automated multi-module release. Version Code: $VERSION_CODE" \
         --draft

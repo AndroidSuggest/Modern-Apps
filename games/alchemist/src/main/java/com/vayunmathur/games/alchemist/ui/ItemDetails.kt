@@ -35,12 +35,13 @@ import com.vayunmathur.games.alchemist.R
 import com.vayunmathur.games.alchemist.Route
 import com.vayunmathur.games.alchemist.data.AlchemyRecipe
 import com.vayunmathur.games.alchemist.util.AlchemistViewModel
+import com.vayunmathur.games.alchemist.util.ItemDetailsUiState
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [AlchemistViewModel] to the stateless [ItemDetailsScreen]. */
 @Composable
-fun ItemDetailsScreen(
+fun ItemDetailsPage(
     backStack: NavBackStack<Route>,
     viewModel: AlchemistViewModel,
     itemId: Int
@@ -51,10 +52,30 @@ fun ItemDetailsScreen(
 
     val item = remember(allItems, itemId) { allItems.firstOrNull { it.id == itemId.toLong() } }
 
+    ItemDetailsScreen(
+        state = ItemDetailsUiState(item = item, recipes = recipes, discoveredIds = itemsIds),
+        onBack = { backStack.pop() }
+    )
+}
+
+/**
+ * The recipe breakdown for one element, with no dependency on the ViewModel so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ItemDetailsScreen(
+    state: ItemDetailsUiState,
+    onBack: () -> Unit
+) {
+    val item = state.item
+    val recipes = state.recipes
+    val itemsIds = state.discoveredIds
+
     Scaffold(topBar = {
         TopAppBar(
             { Text(stringResource(R.string.item_details)) },
-            navigationIcon = { IconNavigation(backStack) }
+            navigationIcon = { IconNavigation(onBack) }
         )
     }) { paddingValues ->
         if (item == null) {
@@ -88,7 +109,7 @@ fun ItemDetailsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         DynamicAlchemyIcon(
-                            iconId = itemId.toLong(),
+                            iconId = item.id,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

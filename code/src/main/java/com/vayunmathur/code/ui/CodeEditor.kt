@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.code.syntax.SyntaxTransformation
 import com.vayunmathur.code.syntax.rememberSyntaxColors
-import com.vayunmathur.code.util.EditorViewModel
-import com.vayunmathur.code.util.OpenTab
+import com.vayunmathur.code.util.CodeActions
+import com.vayunmathur.code.util.TabUiState
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconChevronRight
@@ -53,18 +53,22 @@ import com.vayunmathur.library.ui.TextButton
  */
 @Composable
 fun CodeEditor(
-    viewModel: EditorViewModel,
-    tab: OpenTab,
+    tab: TabUiState,
+    actions: CodeActions,
     softWrap: Boolean,
     showFind: Boolean,
     onCloseFind: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Preview seam: the query the find bar starts on. The app always starts it empty. */
+    initialQuery: String = "",
 ) {
-    // Find/replace state is per-tab, so it resets when switching files.
-    var query by remember(tab) { mutableStateOf("") }
-    var replacement by remember(tab) { mutableStateOf("") }
-    var caseSensitive by remember(tab) { mutableStateOf(false) }
-    var activeMatch by remember(tab) { mutableStateOf(0) }
+    // Find/replace state is per-tab, so it resets when switching files. Keyed on the file
+    // name rather than the tab value: the latter is rebuilt on every keystroke, which would
+    // clear the query as the user types.
+    var query by remember(tab.name) { mutableStateOf(initialQuery) }
+    var replacement by remember(tab.name) { mutableStateOf("") }
+    var caseSensitive by remember(tab.name) { mutableStateOf(false) }
+    var activeMatch by remember(tab.name) { mutableStateOf(0) }
 
     val text = tab.value.text
     val matches = remember(text, query, caseSensitive) {
@@ -90,7 +94,7 @@ fun CodeEditor(
             val idx = ((target % matches.size) + matches.size) % matches.size
             activeMatch = idx
             val range = matches[idx]
-            viewModel.setSelection(TextRange(range.first, range.last + 1))
+            actions.setSelection(TextRange(range.first, range.last + 1))
         }
     }
 
@@ -109,10 +113,10 @@ fun CodeEditor(
                 onPrev = { goTo(activeMatch - 1) },
                 onReplace = {
                     if (matches.isNotEmpty()) {
-                        viewModel.replaceRange(matches[activeMatch], replacement)
+                        actions.replaceRange(matches[activeMatch], replacement)
                     }
                 },
-                onReplaceAll = { viewModel.replaceAll(matches, replacement) },
+                onReplaceAll = { actions.replaceAll(matches, replacement) },
                 onClose = onCloseFind,
             )
             HorizontalDivider()
@@ -138,7 +142,7 @@ fun CodeEditor(
             LineGutter(lineCount, verticalScroll, editorStyle)
             BasicTextField(
                 value = tab.value,
-                onValueChange = viewModel::onEditorChange,
+                onValueChange = actions::onEditorChange,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()

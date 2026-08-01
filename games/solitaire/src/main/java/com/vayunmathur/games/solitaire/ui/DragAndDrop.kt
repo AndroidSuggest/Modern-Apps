@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.vayunmathur.games.solitaire.data.Card
-import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 
 /**
  * A card the player can pick up. [sourceId] identifies the pile position it comes from;
@@ -33,7 +33,7 @@ import com.vayunmathur.games.solitaire.util.SolitaireViewModel
 fun DraggableCard(
     card: Card,
     sourceId: String,
-    viewModel: SolitaireViewModel,
+    actions: SolitaireActions,
     modifier: Modifier = Modifier,
     cardWidth: Dp = CARD_WIDTH,
     cardHeight: Dp = CARD_HEIGHT,
@@ -54,21 +54,21 @@ fun DraggableCard(
                 detectDragGestures(
                     onDragStart = {
                         dragOffset = Offset.Zero
-                        isDragging = viewModel.startDrag(sourceId, startPos)
+                        isDragging = actions.startDrag(sourceId, startPos)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
                         dragOffset += dragAmount
-                        viewModel.updateDrag(startPos + dragOffset)
+                        actions.updateDrag(startPos + dragOffset)
                     },
                     onDragEnd = {
                         val center = Offset(cardSize.width / 2f, cardSize.height / 2f)
-                        viewModel.endDrag(startPos + dragOffset + center)
+                        actions.endDrag(startPos + dragOffset + center)
                         isDragging = false
                         dragOffset = Offset.Zero
                     },
                     onDragCancel = {
-                        viewModel.cancelDrag()
+                        actions.cancelDrag()
                         isDragging = false
                         dragOffset = Offset.Zero
                     }
@@ -84,12 +84,12 @@ fun DraggableCard(
 
 @Composable
 fun DragOverlay(
-    viewModel: SolitaireViewModel,
+    actions: SolitaireActions,
     cardWidth: Dp,
     cardHeight: Dp,
     modifier: Modifier = Modifier
 ) {
-    val dragInfo by viewModel.dragInfo.collectAsState()
+    val dragInfo by actions.dragInfo.collectAsState()
     var overlayPos by remember { mutableStateOf(Offset.Zero) }
 
     val faceUpOverlap = 22.dp
@@ -126,7 +126,7 @@ fun DragOverlay(
 @Composable
 fun DropTarget(
     targetId: String,
-    viewModel: SolitaireViewModel,
+    actions: SolitaireActions,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -134,7 +134,7 @@ fun DropTarget(
         modifier = modifier.onGloballyPositioned { coords ->
             val pos = coords.positionInRoot()
             val size = coords.size
-            viewModel.dropTargets[targetId] = androidx.compose.ui.geometry.Rect(
+            actions.dropTargets[targetId] = androidx.compose.ui.geometry.Rect(
                 pos.x, pos.y,
                 pos.x + size.width, pos.y + size.height
             )

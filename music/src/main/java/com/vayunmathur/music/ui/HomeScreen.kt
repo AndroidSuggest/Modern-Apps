@@ -37,11 +37,33 @@ import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.library.ui.ListPage
 import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.music.util.AlbumArt
+import com.vayunmathur.music.util.MusicActions
 import com.vayunmathur.music.util.MusicViewModel
+import com.vayunmathur.music.util.NowPlayingUiState
+import com.vayunmathur.music.util.SongsUiState
 import com.vayunmathur.music.util.AddToPlaylistButton
 import com.vayunmathur.music.R
 import com.vayunmathur.music.Route
 import com.vayunmathur.music.data.Music
+
+/** Queue id the songs tab plays under; [SOURCE_ALL_SONGS_NAME] is its display label. */
+private const val SOURCE_ALL_SONGS = "all_songs"
+private const val SOURCE_ALL_SONGS_NAME = "All Songs"
+
+/** Binds [SongsScreen] to the ViewModel. */
+@Composable
+fun HomeTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
+    val music by musicViewModel.music.collectAsState()
+
+    SongsScreen(
+        state = SongsUiState(
+            songs = music,
+            playingSongId = musicViewModel.playingSongIdFrom(SOURCE_ALL_SONGS),
+        ),
+        actions = musicViewModel,
+        backStack = backStack,
+    )
+}
 
 /**
  * Songs tab content. No Scaffold / no BottomNavBar — those live in the
@@ -49,13 +71,9 @@ import com.vayunmathur.music.data.Music
  * the TopAppBar with the embedded search bar and the shuffle FAB).
  */
 @Composable
-fun HomeTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
-    val currentMediaItem by musicViewModel.currentMediaItem.collectAsState()
-    val currentSource by musicViewModel.currentSource.collectAsState()
-    val music by musicViewModel.music.collectAsState()
-
-    ListPage<Music, Route, Route.Song>(backStack, music, stringResource(R.string.page_title_music), { song ->
-        val isPlaying = currentMediaItem?.mediaId == song.id.toString() && currentSource == "all_songs"
+fun SongsScreen(state: SongsUiState, actions: MusicActions, backStack: NavBackStack<Route>) {
+    ListPage<Music, Route, Route.Song>(backStack, state.songs, stringResource(R.string.page_title_music), { song ->
+        val isPlaying = song.id == state.playingSongId
         Text(
             text = song.title,
             color = if (isPlaying) MaterialTheme.colorScheme.primary else Color.Unspecified,
@@ -64,12 +82,12 @@ fun HomeTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewMode
     }, {
         Text(it.artist)
     }, { toPlay ->
-        val allSongs = musicViewModel.music.value
+        val allSongs = state.songs
         val toPlayIndex = allSongs.indexOfFirst { it.id == toPlay }
-        musicViewModel.playSong(allSongs, toPlayIndex, sourceId = "all_songs", sourceName = "All Songs")
+        actions.playSong(allSongs, toPlayIndex, sourceId = SOURCE_ALL_SONGS, sourceName = SOURCE_ALL_SONGS_NAME)
         Route.Song
     }, leadingContent = { song ->
-        val isPlaying = currentMediaItem?.mediaId == song.id.toString() && currentSource == "all_songs"
+        val isPlaying = song.id == state.playingSongId
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isPlaying) {
                 IconPlay(
@@ -82,11 +100,12 @@ fun HomeTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewMode
     }, trailingContent = { song ->
         AddToPlaylistButton(backStack, song)
     }, itemModifier = { song ->
-        val isPlaying = currentMediaItem?.mediaId == song.id.toString() && currentSource == "all_songs"
-        if (isPlaying) Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.secondaryContainer)
+        if (song.id == state.playingSongId) Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.secondaryContainer)
         else Modifier
     }, searchEnabled = true, fab = {
-        ShufflePlayFab(musicViewModel)
+        ShufflePlayFab(state.songs) {
+            actions.playShuffled(state.songs, sourceId = SOURCE_ALL_SONGS, sourceName = SOURCE_ALL_SONGS_NAME)
+        }
     }, sortOrder = Comparator.comparing { it.title })
 }
 
@@ -94,35 +113,44 @@ fun HomeTabContent(backStack: NavBackStack<Route>, musicViewModel: MusicViewMode
 fun ShufflePlayFab(musicViewModel: MusicViewModel) {
     val allSongs by musicViewModel.music.collectAsState()
 
-    if(allSongs.isNotEmpty()) {
-        FloatingActionButton({
-            musicViewModel.playShuffled(allSongs, sourceId = "all_songs", sourceName = "All Songs")
-        }) {
+    ShufflePlayFab(allSongs) {
+        musicViewModel.playShuffled(allSongs, sourceId = SOURCE_ALL_SONGS, sourceName = SOURCE_ALL_SONGS_NAME)
+    }
+}
+
+/** Shuffle-everything FAB. Hidden while the library is still empty. */
+@Composable
+fun ShufflePlayFab(songs: List<Music>, onShuffle: () -> Unit) {
+    if (songs.isNotEmpty()) {
+        FloatingActionButton(onShuffle) {
             IconShuffle()
         }
     }
 }
 
 
+/** Binds [NowPlayingBar] to the ViewModel; renders nothing while the queue is empty. */
 @Composable
 fun PlayingBottomBar(
     musicViewModel: MusicViewModel,
     backStack: NavBackStack<Route>
 ) {
-    val currentItem by musicViewModel.currentMediaItem.collectAsState()
-    val isPlaying by musicViewModel.isPlaying.collectAsState()
-    val progress by musicViewModel.currentPosition.collectAsState()
-    val duration by musicViewModel.duration.collectAsState()
+    val state = musicViewModel.nowPlayingState() ?: return
+    NowPlayingBar(state, musicViewModel) { backStack.add(Route.Song) }
+}
 
-    val progressFactor = if (duration > 0) progress.toFloat() / duration.toFloat() else 0f
-
-    val item = currentItem ?: return
-    val metadata = item.mediaMetadata
+/** The mini player docked above the tab bar. Tapping anywhere opens the full player. */
+@Composable
+fun NowPlayingBar(
+    state: NowPlayingUiState,
+    actions: MusicActions,
+    onOpen: () -> Unit,
+) {
+    val progressFactor =
+        if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs.toFloat() else 0f
 
     BottomAppBar(
-        Modifier.height(100.dp).invisibleClickable{
-            backStack.add(Route.Song)
-        }
+        Modifier.height(100.dp).invisibleClickable(onOpen)
     ) {
         Column {
             // Progress bar pinned to the top of the bar
@@ -138,27 +166,27 @@ fun PlayingBottomBar(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 content = {
                     Text(
-                        text = metadata.title?.toString() ?: stringResource(R.string.unknown_title),
+                        text = state.title,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 supportingContent = {
                     Text(
-                        text = metadata.artist?.toString() ?: stringResource(R.string.unknown_artist),
+                        text = state.artist,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 leadingContent = {
-                    AlbumArt(metadata.artworkUri!!, Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
+                    AlbumArt(state.artworkUri, Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
                 },
                 trailingContent = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { musicViewModel.togglePlayPause() }) {
-                            if (isPlaying) IconPause() else IconPlay()
+                        IconButton(onClick = { actions.togglePlayPause() }) {
+                            if (state.isPlaying) IconPause() else IconPlay()
                         }
-                        IconButton(onClick = { musicViewModel.skipNext() }) {
+                        IconButton(onClick = { actions.skipNext() }) {
                             IconSkipNext()
                         }
                     }

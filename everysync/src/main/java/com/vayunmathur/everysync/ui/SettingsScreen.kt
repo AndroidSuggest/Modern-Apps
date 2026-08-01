@@ -28,23 +28,56 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.everysync.R
 import com.vayunmathur.everysync.Route
 import com.vayunmathur.everysync.Settings
+import com.vayunmathur.everysync.util.SettingsActions
+import com.vayunmathur.everysync.util.SettingsUiState
 import com.vayunmathur.library.util.NavBackStack
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EverySyncViewModel] and the back stack to the stateless [SettingsScreen]. */
 @Composable
 fun SettingsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel) {
     val context = LocalContext.current
     val interval by viewModel.interval.collectAsStateWithLifecycle()
     val wifiOnly by viewModel.wifiOnly.collectAsStateWithLifecycle()
-    var intervalText by remember(interval) { mutableStateOf(interval.toString()) }
+    // The conflict policy is a plain stored value rather than a flow, so the current
+    // choice is held here and echoed back into the state on every change.
     var conflict by remember { mutableStateOf(Settings.conflictPolicy(context)) }
+    val actions = remember(viewModel, backStack) {
+        object : SettingsActions {
+            override fun setInterval(minutes: Long) = viewModel.setInterval(minutes)
+
+            override fun setWifiOnly(value: Boolean) = viewModel.setWifiOnly(value)
+
+            override fun setConflictPolicy(policy: String) {
+                conflict = policy
+                viewModel.setConflictPolicy(policy)
+            }
+
+            override fun back() = backStack.pop()
+        }
+    }
+
+    SettingsScreen(
+        state = SettingsUiState(intervalMinutes = interval, wifiOnly = wifiOnly, conflictPolicy = conflict),
+        actions = actions,
+    )
+}
+
+/**
+ * The settings screen, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
+    var intervalText by remember(state.intervalMinutes) { mutableStateOf(state.intervalMinutes.toString()) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { backStack.pop() }) {
+                    IconButton(onClick = { actions.back() }) {
                         IconBack()
                     }
                 },
@@ -56,23 +89,23 @@ fun SettingsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel
                 value = intervalText,
                 onValueChange = {
                     intervalText = it.filter { c -> c.isDigit() }
-                    intervalText.toLongOrNull()?.let { m -> viewModel.setInterval(m) }
+                    intervalText.toLongOrNull()?.let { m -> actions.setInterval(m) }
                 },
                 label = { Text(stringResource(R.string.global_interval)) },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             )
             ListItem(
                 content = { Text(stringResource(R.string.wifi_only)) },
-                trailingContent = { Switch(checked = wifiOnly, onCheckedChange = { viewModel.setWifiOnly(it) }) },
+                trailingContent = { Switch(checked = state.wifiOnly, onCheckedChange = { actions.setWifiOnly(it) }) },
             )
             HorizontalDivider()
             Text(
                 stringResource(R.string.conflict_policy),
                 Modifier.padding(16.dp),
             )
-            ConflictOption(R.string.conflict_lww, Settings.CONFLICT_LWW, conflict) { conflict = it; viewModel.setConflictPolicy(it) }
-            ConflictOption(R.string.conflict_remote, Settings.CONFLICT_REMOTE, conflict) { conflict = it; viewModel.setConflictPolicy(it) }
-            ConflictOption(R.string.conflict_local, Settings.CONFLICT_LOCAL, conflict) { conflict = it; viewModel.setConflictPolicy(it) }
+            ConflictOption(R.string.conflict_lww, Settings.CONFLICT_LWW, state.conflictPolicy) { actions.setConflictPolicy(it) }
+            ConflictOption(R.string.conflict_remote, Settings.CONFLICT_REMOTE, state.conflictPolicy) { actions.setConflictPolicy(it) }
+            ConflictOption(R.string.conflict_local, Settings.CONFLICT_LOCAL, state.conflictPolicy) { actions.setConflictPolicy(it) }
         }
     }
 }

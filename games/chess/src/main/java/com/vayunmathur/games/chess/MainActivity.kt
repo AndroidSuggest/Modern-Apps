@@ -61,10 +61,13 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.games.chess.util.ChessActions
 import com.vayunmathur.games.chess.util.ChessViewModel
 import com.vayunmathur.games.chess.util.ChessUiState
 import com.vayunmathur.games.chess.util.GameMode
 import com.vayunmathur.games.chess.util.GameResult
+import com.vayunmathur.games.chess.util.PuzzleActions
+import com.vayunmathur.games.chess.util.PuzzleUiState
 import com.vayunmathur.games.chess.util.PuzzleViewModel
 import com.vayunmathur.games.chess.util.PuzzleStatus
 import com.vayunmathur.games.chess.util.PuzzleDifficulty
@@ -171,8 +174,6 @@ class MainActivity : ComponentActivity() {
 
                             ChessGame(
                                 viewModel = viewModel,
-                                onSquareClick = viewModel::onSquareClick,
-                                onPromote = viewModel::onPromote,
                                 onNewGame = { showNewGameDialog = true },
                                 onOpenGameCenter = { backStack.add(Route.GameCenter) },
                                 achievementsManager = achievementsManager
@@ -312,12 +313,10 @@ fun NewGameDialog(onNewGame: (GameMode) -> Unit) {
         )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ChessViewModel] to the stateless [ChessGameScreen] and drives the achievements. */
 @Composable
 fun ChessGame(
     viewModel: ChessViewModel,
-    onSquareClick: (Position) -> Unit,
-    onPromote: (PieceType) -> Unit,
     onNewGame: () -> Unit,
     onOpenGameCenter: () -> Unit,
     achievementsManager: AchievementsManager
@@ -362,8 +361,30 @@ fun ChessGame(
             }
         }
     }
-    if (uiState.board.promotionPosition != null) {
-        PawnPromotionDialog(uiState.turn, onPromote = onPromote)
+
+    ChessGameScreen(
+        state = uiState,
+        actions = viewModel,
+        onNewGame = onNewGame,
+        onOpenGameCenter = onOpenGameCenter
+    )
+}
+
+/**
+ * The play screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ * Nothing here touches Stockfish; the engine is only ever reached through the ViewModel.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChessGameScreen(
+    state: ChessUiState,
+    actions: ChessActions,
+    onNewGame: () -> Unit,
+    onOpenGameCenter: () -> Unit
+) {
+    if (state.board.promotionPosition != null) {
+        PawnPromotionDialog(state.turn, onPromote = actions::onPromote)
     }
 
     Scaffold(
@@ -387,11 +408,11 @@ fun ChessGame(
             val boardComposable = @Composable {
                 Box(Modifier.size(boardSide)) {
                     BoardGrid(
-                        board = uiState.board,
-                        selectedPiece = uiState.selectedPiece,
-                        isFlipped = uiState.isBoardFlipped,
-                        turn = uiState.turn,
-                        onSquareClick = onSquareClick
+                        board = state.board,
+                        selectedPiece = state.selectedPiece,
+                        isFlipped = state.isBoardFlipped,
+                        turn = state.turn,
+                        onSquareClick = actions::onSquareClick
                     )
                 }
             }
@@ -410,14 +431,14 @@ fun ChessGame(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CapturedPiecesRow(uiState.board.capturedByBlack)
-                        MovesList(moves = uiState.board.moves, turn = uiState.turn)
-                        CapturedPiecesRow(uiState.board.capturedByWhite)
+                        CapturedPiecesRow(state.board.capturedByBlack)
+                        MovesList(moves = state.board.moves, turn = state.turn)
+                        CapturedPiecesRow(state.board.capturedByWhite)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = onNewGame) {
                             Text(stringResource(R.string.new_game))
                         }
-                        uiState.gameStatus?.let {
+                        state.gameStatus?.let {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         }
@@ -429,18 +450,18 @@ fun ChessGame(
                     Arrangement.Center,
                     Alignment.CenterHorizontally
                 ) {
-                    CapturedPiecesRow(uiState.board.capturedByBlack)
+                    CapturedPiecesRow(state.board.capturedByBlack)
                     Spacer(modifier = Modifier.height(16.dp))
-                    MovesList(moves = uiState.board.moves, turn = uiState.turn)
+                    MovesList(moves = state.board.moves, turn = state.turn)
                     boardComposable()
                     Spacer(modifier = Modifier.height(16.dp))
-                    CapturedPiecesRow(uiState.board.capturedByWhite)
+                    CapturedPiecesRow(state.board.capturedByWhite)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = onNewGame) {
                         Text(stringResource(R.string.new_game))
                     }
 
-                    uiState.gameStatus?.let {
+                    state.gameStatus?.let {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(it, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
@@ -1058,17 +1079,27 @@ fun LearnBoard(ui: LearnUiState, onSquareClick: (Position) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [PuzzleViewModel] to the stateless [PuzzleBoardScreen] and deals the first puzzle. */
 @Composable
 fun PuzzleScreen(viewModel: PuzzleViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
-        if (uiState.puzzle == null) viewModel.loadRandom()
+        if (uiState.puzzle == null) viewModel.loadRandom(uiState.difficulty)
     }
 
-    if (uiState.board.promotionPosition != null) {
-        PawnPromotionDialog(uiState.playerColor, onPromote = viewModel::onPromote)
+    PuzzleBoardScreen(state = uiState, actions = viewModel)
+}
+
+/**
+ * The puzzle screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
+    if (state.board.promotionPosition != null) {
+        PawnPromotionDialog(state.playerColor, onPromote = actions::onPromote)
     }
 
     Scaffold(
@@ -1091,8 +1122,8 @@ fun PuzzleScreen(viewModel: PuzzleViewModel) {
                 PuzzleDifficulty.entries.forEachIndexed { idx, diff ->
                     SegmentedButton(
                         shape = SegmentedButtonDefaults.itemShape(idx, PuzzleDifficulty.entries.size),
-                        onClick = { if (uiState.difficulty != diff) viewModel.loadRandom(diff) },
-                        selected = uiState.difficulty == diff,
+                        onClick = { if (state.difficulty != diff) actions.loadRandom(diff) },
+                        selected = state.difficulty == diff,
                         label = { Text(labels[idx], style = MaterialTheme.typography.labelSmall) }
                     )
                 }
@@ -1100,11 +1131,11 @@ fun PuzzleScreen(viewModel: PuzzleViewModel) {
             Spacer(Modifier.height(12.dp))
 
             Text(
-                stringResource(R.string.puzzle_rating, uiState.rating),
+                stringResource(R.string.puzzle_rating, state.rating),
                 fontWeight = FontWeight.Bold
             )
             Text(
-                if (uiState.playerColor == PieceColor.WHITE)
+                if (state.playerColor == PieceColor.WHITE)
                     stringResource(R.string.puzzle_white_to_move)
                 else stringResource(R.string.puzzle_black_to_move),
                 style = MaterialTheme.typography.bodyMedium
@@ -1112,16 +1143,16 @@ fun PuzzleScreen(viewModel: PuzzleViewModel) {
             Spacer(Modifier.height(8.dp))
 
             BoardGrid(
-                board = uiState.board,
-                selectedPiece = uiState.selectedPiece,
-                isFlipped = uiState.isBoardFlipped,
-                turn = uiState.playerColor,
-                onSquareClick = viewModel::onSquareClick,
+                board = state.board,
+                selectedPiece = state.selectedPiece,
+                isFlipped = state.isBoardFlipped,
+                turn = state.playerColor,
+                onSquareClick = actions::onSquareClick,
                 showLastMove = true
             )
             Spacer(Modifier.height(16.dp))
 
-            val statusText = when (uiState.status) {
+            val statusText = when (state.status) {
                 PuzzleStatus.Loading -> stringResource(R.string.puzzle_loading)
                 PuzzleStatus.Solving -> stringResource(R.string.puzzle_your_move)
                 PuzzleStatus.Solved -> stringResource(R.string.puzzle_solved)
@@ -1139,19 +1170,19 @@ fun PuzzleScreen(viewModel: PuzzleViewModel) {
             // Reserve the action-row height whether or not the Failed buttons are
             // shown, so the board and everything above it never shift.
             Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
-                if (uiState.status == PuzzleStatus.Failed) {
+                if (state.status == PuzzleStatus.Failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.retry() }) {
+                        Button(onClick = { actions.retry() }) {
                             Text(stringResource(R.string.puzzle_retry))
                         }
-                        OutlinedButton(onClick = { viewModel.showSolution() }) {
+                        OutlinedButton(onClick = { actions.showSolution() }) {
                             Text(stringResource(R.string.puzzle_show_solution))
                         }
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Button(onClick = { viewModel.loadRandom() }) {
+            Button(onClick = { actions.loadRandom(state.difficulty) }) {
                 Text(stringResource(R.string.puzzle_next))
             }
         }

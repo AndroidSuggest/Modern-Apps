@@ -48,7 +48,7 @@ class ClockViewModel(
     application: Application,
     private val timerDao: TimerDao,
     private val alarmDao: AlarmDao,
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), StopwatchActions {
 
     private val ds = DataStoreUtils.getInstance(application)
 
@@ -192,7 +192,7 @@ class ClockViewModel(
         Duration.ZERO,
     )
 
-    fun toggleStopwatch() {
+    override fun toggleStopwatch() {
         val ctx = getApplication<Application>()
         if (_stopwatchRunning.value) {
             _stopwatchTotal.value = _stopwatchTotal.value + (Clock.System.now() - _stopwatchStart.value)
@@ -205,7 +205,7 @@ class ClockViewModel(
         StopwatchNotificationHelper.updateNotification(ctx)
     }
 
-    fun resetStopwatch() {
+    override fun resetStopwatch() {
         val ctx = getApplication<Application>()
         _stopwatchRunning.value = false
         _stopwatchTotal.value = Duration.ZERO
@@ -214,23 +214,11 @@ class ClockViewModel(
         StopwatchNotificationHelper.updateNotification(ctx)
     }
 
-    fun addLap() {
+    override fun addLap() {
         val ctx = getApplication<Application>()
         _lapTimes.update { it + stopwatchCountingTime.value }
         persistStopwatchState()
         StopwatchNotificationHelper.updateNotification(ctx)
-    }
-
-    // --- Timer countdown helper ----------------------------------------------
-
-    /** Remaining duration for [timer] at instant [now], clamped to >= 0. */
-    fun timerRemaining(timer: Timer, now: Instant): Duration {
-        val raw = if (timer.isRunning) {
-            timer.remainingLength - (now - timer.remainingStartTime)
-        } else {
-            timer.remainingLength
-        }
-        return raw.coerceAtLeast(Duration.ZERO)
     }
 
     // --- Inbound AlarmClock intent dispatch ----------------------------------

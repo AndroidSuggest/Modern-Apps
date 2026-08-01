@@ -66,6 +66,8 @@ import kotlin.time.Clock
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
 import com.vayunmathur.findfamily.util.FindFamilyViewModelFactory
 import com.vayunmathur.findfamily.util.Platform
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -83,6 +85,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // FIRST_PARTY: api.vayunmathur.com + data.vayunmathur.com + findfamily.cc (Cloudflare ISRG+GTS)
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
         val db = buildDatabase<FFDatabase>()
         userDao = db.userDao()

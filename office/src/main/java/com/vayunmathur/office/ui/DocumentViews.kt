@@ -1255,6 +1255,36 @@ private fun MathNodeView(node: MathNode, sizeSp: Float, color: Color) {
 
 // --- Spreadsheet ---
 
+/**
+ * The evaluated text of each cell, i.e. what a formula resolves to. Behind the real
+ * spreadsheet this is the native formula engine; the indirection exists so the view can
+ * also be rendered from literal values (a `@Preview`, where the engine cannot be loaded).
+ */
+interface SpreadsheetValues {
+    fun display(sheet: Int, row: Int, col: Int): String
+    fun isNumeric(sheet: Int, row: Int, col: Int): Boolean
+}
+
+/**
+ * The native formula workbook: built once per document snapshot over the SAME ordered sheet
+ * list ([OdfDocument.Spreadsheet.sheets]) whose index is passed as sheetIdx, so cross-sheet
+ * references resolve correctly.
+ */
+@Composable
+fun rememberNativeSpreadsheetValues(doc: OdfDocument.Spreadsheet): SpreadsheetValues {
+    val handle = remember(doc) { OfficeNative.createWorkbook(doc.sheets, System.currentTimeMillis()) }
+    DisposableEffect(doc) { onDispose { OfficeNative.nativeFree(handle) } }
+    return remember(handle) {
+        object : SpreadsheetValues {
+            override fun display(sheet: Int, row: Int, col: Int): String =
+                OfficeNative.nativeDisplayValue(handle, sheet, row, col) ?: ""
+
+            override fun isNumeric(sheet: Int, row: Int, col: Int): Boolean =
+                OfficeNative.nativeIsNumeric(handle, sheet, row, col)
+        }
+    }
+}
+
 @Composable
 fun SpreadsheetView(
     doc: OdfDocument.Spreadsheet, searchQuery: String = "", fontSizeMultiplier: Float = 1f,
@@ -1274,7 +1304,13 @@ fun SpreadsheetView(
     onFloatingTextChange: (Int, Int, String) -> Unit = { _, _, _ -> },
     onFloatingDelete: (Int, Int) -> Unit = { _, _ -> },
     onFloatingCrop: (Int, Int) -> Unit = { _, _ -> },
-    onSetFreeze: (Int, Int, Int) -> Unit = { _, _, _ -> }
+    onSetFreeze: (Int, Int, Int) -> Unit = { _, _, _ -> },
+    /**
+     * Where evaluated cell text comes from. Defaults to the native formula engine, which is
+     * what the app wants; a `@Preview` passes a literal source instead, because Layoutlib
+     * cannot load `office_engine` and merely touching [OfficeNative] would try to.
+     */
+    values: SpreadsheetValues = rememberNativeSpreadsheetValues(doc)
 ) {
     if (doc.sheets.isEmpty()) { Text(stringResource(R.string.empty_spreadsheet), modifier = Modifier.padding(16.dp)); return }
 
@@ -1362,10 +1398,6 @@ fun SpreadsheetView(
         }
 
         val sheet = doc.sheets[selectedSheet]
-        // Native formula workbook: built once per document snapshot over the SAME ordered sheet list
-        // (doc.sheets) whose index we pass as sheetIdx, so cross-sheet references resolve correctly.
-        val wbHandle = remember(doc) { OfficeNative.createWorkbook(doc.sheets, System.currentTimeMillis()) }
-        DisposableEffect(doc) { onDispose { OfficeNative.nativeFree(wbHandle) } }
         val maxCols = sheet.rows.maxOfOrNull { it.cells.count { c -> !c.isCovered } } ?: 0
         fun colWidthDp(start: Int, span: Int): androidx.compose.ui.unit.Dp {
             var w = 0f
@@ -1414,7 +1446,7 @@ fun SpreadsheetView(
                                         colspanSkip = if (cell.spannedColumns > 1) cell.spannedColumns - 1 else 0
                                         val isEditing = editingCell?.let { it.first == selectedSheet && it.second == rowIdx && it.third == cellIdx } == true
                                         val isMatch = searchQuery.isNotEmpty() && cell.text.contains(searchQuery, ignoreCase = true)
-                                        val displayText = OfficeNative.nativeDisplayValue(wbHandle, selectedSheet, rowIdx, cellIdx) ?: ""
+                                        val displayText = values.display(selectedSheet, rowIdx, cellIdx)
                                         val cf = if (cell.condFormats.isEmpty()) null else evalCondFormat(cell.condFormats, cell.numberValue ?: displayText.toDoubleOrNull(), displayText)
                                         val effBg = cf?.backgroundColor ?: cell.backgroundColor
                                         Box(
@@ -1439,7 +1471,7 @@ fun SpreadsheetView(
                                                 } else Modifier)
                                                 .padding(8.dp, 4.dp)
                                         ) {
-                                            val cellAlign = cell.alignment ?: if (OfficeNative.nativeIsNumeric(wbHandle, selectedSheet, rowIdx, cellIdx)) TextAlign.End else null
+                                            val cellAlign = cell.alignment ?: if (values.isNumeric(selectedSheet, rowIdx, cellIdx)) TextAlign.End else null
                                             Text(displayText,
                                                 style = MaterialTheme.typography.bodyMedium.let { if (fontSizeMultiplier != 1f && it.fontSize != TextUnit.Unspecified) it.copy(fontSize = it.fontSize * fontSizeMultiplier) else it },
                                                 fontWeight = if (cell.bold) FontWeight.Bold else null,

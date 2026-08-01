@@ -8,8 +8,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Downloads Play Store split APKs with resume + SHA verification,
- * then delegates to SessionInstaller — now using HttpURLConnection.
+ * Downloads Play Store split APKs with resume support.
+ *
+ * There is deliberately no publisher-key check here and there cannot be one: Play App
+ * Signing means Google holds the key, so nothing Play returns can be pinned to a
+ * publisher. What integrity checking is possible happens in
+ * [com.vayunmathur.appstore.data.security.InstallVerifier] just before install — package
+ * identity, a single consistent signer across all splits, and continuity with the copy
+ * already on the device.
  */
 class PlayDownloader(
     private val context: Context
@@ -148,22 +154,4 @@ class PlayDownloader(
         }
     }
 
-    /**
-     * Full pipeline: download + install
-     */
-    suspend fun downloadAndInstall(
-        packageName: String,
-        versionCode: Long,
-        gplayFiles: List<PlayFile>,
-        installer: SessionInstaller,
-        progressCallback: (Float) -> Unit = {}
-    ): Result<Boolean> {
-        val downloadResult = downloadFiles(packageName, versionCode, gplayFiles, progressCallback)
-        if (downloadResult.isFailure) return Result.failure(downloadResult.exceptionOrNull()!!)
-
-        val files = downloadResult.getOrNull()!!
-        val totalSize = files.sumOf { it.length() }
-        val installed = installer.installSplits(packageName, files, totalSize)
-        return if (installed) Result.success(true) else Result.failure(Exception("Installer failed"))
-    }
 }

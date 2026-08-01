@@ -42,7 +42,7 @@ data class FileBrowserItem(
     val key: String,
 )
 
-class FilesViewModel(application: Application) : AndroidViewModel(application) {
+class FilesViewModel(application: Application) : AndroidViewModel(application), FilesActions {
 
     private val prefs =
         application.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
@@ -90,16 +90,16 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedPaths = MutableStateFlow<Set<FileBrowserItem>>(emptySet())
     val selectedPaths: StateFlow<Set<FileBrowserItem>> = _selectedPaths.asStateFlow()
 
-    fun clearSelection() {
+    override fun clearSelection() {
         if (_selectedPaths.value.isNotEmpty()) _selectedPaths.value = emptySet()
     }
 
-    fun addToSelection(item: FileBrowserItem) {
+    override fun addToSelection(item: FileBrowserItem) {
         if (isZipMode()) return
         _selectedPaths.value = _selectedPaths.value + item
     }
 
-    fun toggleSelection(item: FileBrowserItem) {
+    override fun toggleSelection(item: FileBrowserItem) {
         if (isZipMode()) return
         val current = _selectedPaths.value
         _selectedPaths.value = if (current.any { it.key == item.key }) {
@@ -161,7 +161,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun navigateTo(path: File) {
+    override fun navigateTo(path: File) {
         if (isZipMode()) {
             _zipPath.value = null
             _zipInternalPath.value = ""
@@ -172,7 +172,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         restartObserver()
     }
 
-    fun navigateIntoZipDir(dirName: String) {
+    override fun navigateIntoZipDir(dirName: String) {
         val current = _zipInternalPath.value
         val newPath = if (current.isEmpty()) dirName else "$current/$dirName"
         _zipInternalPath.value = newPath
@@ -180,13 +180,13 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         loadDirectory()
     }
 
-    fun navigateToZipInternalPath(fullInternalPath: String) {
+    override fun navigateToZipInternalPath(fullInternalPath: String) {
         _zipInternalPath.value = fullInternalPath
         clearSelection()
         loadDirectory()
     }
 
-    fun navigateToZipParentRealFolder(target: File) {
+    override fun navigateToZipParentRealFolder(target: File) {
         // breadcrumb click on real-FS part while in zip mode → exit zip
         _zipPath.value = null
         _zipInternalPath.value = ""
@@ -196,7 +196,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         restartObserver()
     }
 
-    fun handleBack(): Boolean {
+    override fun handleBack(): Boolean {
         if (_selectedPaths.value.isNotEmpty()) { clearSelection(); return true }
         val z = _zipPath.value
         when {
@@ -223,7 +223,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun rename(item: FileBrowserItem, newName: String) {
+    override fun rename(item: FileBrowserItem, newName: String) {
         if (isZipMode()) return
         val path = item.realFile ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -236,7 +236,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteSelection() {
+    override fun deleteSelection() {
         if (isZipMode()) return
         val selection = _selectedPaths.value.mapNotNull { it.realFile }
         viewModelScope.launch(Dispatchers.IO) {
@@ -246,13 +246,13 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun moveInto(sources: List<File>, target: File) {
+    override fun moveInto(sources: List<File>, target: File) {
         if (isZipMode()) return
         if (!target.isDirectory) return
         moveFiles(sources, target) { source -> source != target && !target.absolutePath.startsWith(source.absolutePath) }
     }
 
-    fun moveToBreadcrumb(sources: List<File>, target: File) {
+    override fun moveToBreadcrumb(sources: List<File>, target: File) {
         if (isZipMode()) return
         moveFiles(sources, target) { source -> source.parentFile != target && source != target }
     }
@@ -275,7 +275,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openZipFile(item: FileBrowserItem) {
+    override fun openZipFile(item: FileBrowserItem) {
         val file = item.realFile ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -292,7 +292,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun archive(archiveName: String) {
+    override fun archive(archiveName: String) {
         if (isZipMode()) return
         val ctx = getApplication<Application>()
         val sources = _selectedPaths.value.mapNotNull { it.realFile?.absolutePath }.toTypedArray()
@@ -318,7 +318,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         emit(ctx.getString(R.string.unzipping_started_to, destPath.name))
     }
 
-    fun saveIncomingUris() {
+    override fun saveIncomingUris() {
         if (isZipMode()) return
         val ctx = getApplication<Application>()
         val uris = _incomingUris.value ?: return
@@ -331,7 +331,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openFile(item: FileBrowserItem) {
+    override fun openFile(item: FileBrowserItem) {
         val ctx = getApplication<Application>()
         if (isZipMode()) {
             emit(ctx.getString(R.string.zip_browse_only))

@@ -24,6 +24,8 @@ import com.vayunmathur.health.data.RecordType
 import com.vayunmathur.health.ui.components.GroupedSection
 import com.vayunmathur.health.ui.components.MetricRing
 import com.vayunmathur.health.util.HealthViewModel
+import com.vayunmathur.health.util.NutritionActions
+import com.vayunmathur.health.util.NutritionUiState
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.round
 import com.vayunmathur.library.ui.*
@@ -85,10 +87,10 @@ internal val nutrientCatalog: List<NutrientDV> = listOf(
 internal val hydrationNutrient = NutrientDV("Hydration", 3.0, "L") { 0.0 }
 
 /**
- * Slim nutrition home — answers "how am I doing on nutrition today?" at a glance.
- * Full meal log + nutrient breakdown live in [NutritionDetailsPage].
+ * Binds [HealthViewModel] and the back stack to the stateless [NutritionScreen], and hosts
+ * the two logging dialogs — those still need the ViewModel, so the screen only asks for
+ * them to be opened.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
     val tz = TimeZone.currentSystemDefault()
@@ -99,15 +101,10 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
     val totals by remember(dayStart, dayEnd) {
         viewModel.sumNutritionInRange(RecordType.Nutrition, dayStart, dayEnd)
     }.collectAsState(NutritionData())
-    val totalCalories = totals.calories
-    val totalProtein = totals.protein
-    val totalCarbs = totals.carbohydrates
-    val totalFat = totals.fat
     val loggedMeals by remember(dayStart, dayEnd) {
         viewModel.getAllRecordsInRange(RecordType.Nutrition, dayStart, dayEnd)
     }.collectAsState(emptyList())
 
-    var fabExpanded by remember { mutableStateOf(false) }
     var showHydrationDialog by remember { mutableStateOf(false) }
     var showMealDialog by remember { mutableStateOf(false) }
 
@@ -117,6 +114,49 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
     if (showMealDialog) {
         LogMealDialog(viewModel = viewModel, initialTime = null, onDismiss = { showMealDialog = false })
     }
+
+    NutritionScreen(
+        state = NutritionUiState(
+            totals = totals,
+            mealCount = loggedMeals.size,
+            mealCalories = loggedMeals.sumOf { it.nutritionData?.calories ?: 0.0 },
+        ),
+        actions = object : NutritionActions {
+            override fun logHydration() {
+                showHydrationDialog = true
+            }
+
+            override fun logMeal() {
+                showMealDialog = true
+            }
+
+            override fun openRecipes() {
+                backStack.add(Route.RecipeManagement)
+            }
+
+            override fun openFullBreakdown() {
+                backStack.add(Route.NutritionFullBreakdown)
+            }
+        },
+    )
+}
+
+/**
+ * Slim nutrition home — answers "how am I doing on nutrition today?" at a glance.
+ * Full meal log + nutrient breakdown live in [NutritionDetailsPage].
+ *
+ * No dependency on the ViewModel so it can be rendered from a `@Preview` — see
+ * `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun NutritionScreen(state: NutritionUiState, actions: NutritionActions) {
+    val totalCalories = state.totals.calories
+    val totalProtein = state.totals.protein
+    val totalCarbs = state.totals.carbohydrates
+    val totalFat = state.totals.fat
+
+    var fabExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -132,17 +172,17 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                 }
             ) {
                 FloatingActionButtonMenuItem(
-                    onClick = { fabExpanded = false; showHydrationDialog = true },
+                    onClick = { fabExpanded = false; actions.logHydration() },
                     text = { Text(stringResource(R.string.log_hydration)) },
                     icon = { IconFire() }
                 )
                 FloatingActionButtonMenuItem(
-                    onClick = { fabExpanded = false; showMealDialog = true },
+                    onClick = { fabExpanded = false; actions.logMeal() },
                     text = { Text(stringResource(R.string.log_meal)) },
                     icon = { IconFire() }
                 )
                 FloatingActionButtonMenuItem(
-                    onClick = { fabExpanded = false; backStack.add(Route.RecipeManagement) },
+                    onClick = { fabExpanded = false; actions.openRecipes() },
                     text = { Text(stringResource(R.string.recipes)) },
                     icon = { IconAdd() }
                 )
@@ -203,12 +243,11 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
 
             // Meals link + breakdown CTA
             GroupedSection(accentColor = HealthColors.Nutrition) {
-                val totalCal = loggedMeals.sumOf { it.nutritionData?.calories ?: 0.0 }
                 ListItem(
                     content = {
                         Text(
-                            if (loggedMeals.isEmpty()) stringResource(R.string.no_meals_logged_today)
-                            else stringResource(R.string.meals_cal, loggedMeals.size, totalCal.round(0).toInt())
+                            if (state.mealCount == 0) stringResource(R.string.no_meals_logged_today)
+                            else stringResource(R.string.meals_cal, state.mealCount, state.mealCalories.round(0).toInt())
                         )
                     },
                     supportingContent = { Text(stringResource(R.string.view_full_breakdown)) },
@@ -218,7 +257,7 @@ fun NutritionPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                         )
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.clickable { backStack.add(Route.NutritionFullBreakdown) },
+                    modifier = Modifier.clickable { actions.openFullBreakdown() },
                 )
             }
         }

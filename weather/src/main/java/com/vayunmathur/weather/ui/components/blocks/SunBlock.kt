@@ -39,7 +39,14 @@ import kotlin.math.sin
  * progress, and a translucent bottom panel with sunrise / sunset times.
  */
 @Composable
-fun SunBlock(sunriseEpochSec: Long?, sunsetEpochSec: Long?, use24Hour: Boolean, daylightDurationSec: Double? = null) {
+fun SunBlock(
+    sunriseEpochSec: Long?,
+    sunsetEpochSec: Long?,
+    use24Hour: Boolean,
+    daylightDurationSec: Double? = null,
+    /** Where to put the sun marker. Pinned by previews so the arc renders identically. */
+    nowEpochSec: Long = System.currentTimeMillis() / 1000,
+) {
     SquareBlock {
         Box(Modifier.align(Alignment.TopStart)) {
             BlockHeader(icon = { m, c -> IconSunny(m, c) }, title = stringResource(R.string.block_sun))
@@ -47,10 +54,9 @@ fun SunBlock(sunriseEpochSec: Long?, sunsetEpochSec: Long?, use24Hour: Boolean, 
 
         val arcColor = MaterialTheme.colorScheme.tertiaryContainer
         val sunColor = MaterialTheme.colorScheme.primary
-        val now = System.currentTimeMillis() / 1000
 
         val progress: Float = if (sunriseEpochSec != null && sunsetEpochSec != null && sunsetEpochSec > sunriseEpochSec) {
-            ((now - sunriseEpochSec).toDouble() / (sunsetEpochSec - sunriseEpochSec))
+            ((nowEpochSec - sunriseEpochSec).toDouble() / (sunsetEpochSec - sunriseEpochSec))
                 .coerceIn(0.0, 1.0).toFloat()
         } else 0f
 

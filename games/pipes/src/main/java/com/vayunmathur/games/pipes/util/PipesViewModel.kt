@@ -37,7 +37,7 @@ data class PipesUiState(
     val preDrawState: PipesGameState? = null
 )
 
-class PipesViewModel(application: Application) : AndroidViewModel(application) {
+class PipesViewModel(application: Application) : AndroidViewModel(application), PipesActions {
 
     val repository: CompletedLevelsRepository = CompletedLevelsRepository(application)
 
@@ -85,7 +85,7 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun startDraw(cell: CellPos) {
+    override fun startDraw(cell: CellPos) {
         val s = _uiState.value
         if (s.isLevelWon || s.levelData == null) return
 
@@ -124,7 +124,7 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         return PipesGameState(state.paths - color, newCellOwner)
     }
 
-    fun extendPath(cell: CellPos) {
+    override fun extendPath(cell: CellPos) {
         val s = _uiState.value
         val activeColor = s.activeColor ?: return
         val levelData = s.levelData ?: return
@@ -169,7 +169,7 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(activePath = currentPath + cell) }
     }
 
-    fun commitDraw() {
+    override fun commitDraw() {
         val s = _uiState.value
         val activeColor = s.activeColor ?: return
         if (s.isLevelWon) return
@@ -276,7 +276,7 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getCurrentMoves(): Int = _uiState.value.history.size
 
-    fun onUndo() {
+    override fun onUndo() {
         val s = _uiState.value
         if (s.history.isEmpty() || s.isLevelWon) return
         _uiState.update {
@@ -289,7 +289,7 @@ class PipesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onRestart() {
+    override fun onRestart() {
         val s = _uiState.value
         if (s.history.isEmpty() || s.isLevelWon || s.packIndex < 0) return
         _uiState.update {

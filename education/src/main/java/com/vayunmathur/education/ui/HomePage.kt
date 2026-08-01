@@ -28,29 +28,93 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
 import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.EducationViewModel
+import com.vayunmathur.education.util.HomeActions
+import com.vayunmathur.education.util.HomeCourse
+import com.vayunmathur.education.util.HomeDeadline
+import com.vayunmathur.education.util.HomeSection
+import com.vayunmathur.education.util.HomeUiState
 import com.vayunmathur.library.ui.IconChevronRight
 import com.vayunmathur.library.ui.IconEmojiEvents
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.ui.res.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EducationViewModel] and the back stack to the stateless [ScholarHomeScreen]. */
 @Composable
 fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
     val learner by viewModel.learner.collectAsStateWithLifecycle()
     val deadlines by viewModel.deadlines.collectAsStateWithLifecycle()
     val l = learner ?: return
     val content = viewModel.content
+    // Bound out here so the override below is unambiguously the free function, not itself.
+    val onParentArea = { openParentArea(backStack, viewModel) }
 
+    ScholarHomeScreen(
+        state = HomeUiState(
+            learnerName = l.name,
+            streakCount = l.streakCount,
+            totalStars = l.totalStars,
+            deadlines = deadlines.map { d ->
+                val type = runCatching { ModuleType.valueOf(d.moduleType) }.getOrNull()
+                HomeDeadline(
+                    id = d.id,
+                    title = type?.let { content.moduleTitle(it, d.moduleId) } ?: "Assignment",
+                    dueEpochDay = d.dueEpochDay,
+                    moduleType = type,
+                    moduleId = d.moduleId,
+                )
+            },
+            sections = content.subjects.map { subject ->
+                HomeSection(
+                    subject = subject,
+                    courses = content.coursesForSubject(subject).map {
+                        HomeCourse(it.id, it.title, it.units.size)
+                    },
+                )
+            },
+        ),
+        actions = object : HomeActions {
+            override fun openBadges() {
+                backStack.add(Route.Badges)
+            }
+
+            override fun openParentArea() {
+                onParentArea()
+            }
+
+            override fun openCourse(courseId: String) {
+                backStack.add(Route.Course(courseId))
+            }
+
+            override fun openDeadline(deadline: HomeDeadline) {
+                navigateToModule(backStack, deadline.moduleType, deadline.moduleId)
+            }
+        },
+    )
+}
+
+/**
+ * The catalog, with no dependency on the ViewModel or the back stack so it can be rendered
+ * from a `@Preview` — see `src/screenshotTest`, which is where the store listing images
+ * come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScholarHomeScreen(state: HomeUiState, actions: HomeActions) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (l.name.isBlank()) stringResource(R.string.learn) else stringResource(R.string.hi_1, l.name)) },
+                title = {
+                    Text(
+                        if (state.learnerName.isBlank()) stringResource(R.string.learn)
+                        else stringResource(R.string.hi_1, state.learnerName)
+                    )
+                },
                 actions = {
-                    IconButton(onClick = { backStack.add(Route.Badges) }) {
+                    IconButton(onClick = { actions.openBadges() }) {
                         IconEmojiEvents()
                     }
-                    IconButton(onClick = { openParentArea(backStack, viewModel) }) {
+                    IconButton(onClick = { actions.openParentArea() }) {
                         IconSettings()
                     }
                 },
@@ -70,21 +134,19 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    StreakChip(l.streakCount)
-                    StarsChip(l.totalStars)
+                    StreakChip(state.streakCount)
+                    StarsChip(state.totalStars)
                 }
             }
 
-            if (deadlines.isNotEmpty()) {
+            if (state.deadlines.isNotEmpty()) {
                 item { SectionHeader(stringResource(R.string.due_soon)) }
-                items(deadlines, key = { it.id }) { d ->
-                    val type = runCatching { ModuleType.valueOf(d.moduleType) }.getOrNull()
-                    val title = type?.let { content.moduleTitle(it, d.moduleId) } ?: "Assignment"
+                items(state.deadlines, key = { it.id }) { d ->
                     OutlinedCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clickable { navigateToModule(backStack, type, d.moduleId) },
+                            .clickable { actions.openDeadline(d) },
                     ) {
                         Row(
                             Modifier
@@ -93,21 +155,21 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(title, style = MaterialTheme.typography.titleMedium)
+                            Text(d.title, style = MaterialTheme.typography.titleMedium)
                             DeadlineChip(d.dueEpochDay)
                         }
                     }
                 }
             }
 
-            content.subjects.forEach { subject ->
-                item { SectionHeader(stringResource(subject.displayNameRes)) }
-                items(content.coursesForSubject(subject), key = { it.id }) { course ->
+            state.sections.forEach { section ->
+                item { SectionHeader(stringResource(section.subject.displayNameRes)) }
+                items(section.courses, key = { it.id }) { course ->
                     ElevatedCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clickable { backStack.add(Route.Course(course.id)) },
+                            .clickable { actions.openCourse(course.id) },
                     ) {
                         Row(
                             Modifier
@@ -118,7 +180,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
                             Column(Modifier.weight(1f)) {
                                 Text(course.title, style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    pluralStringResource(R.plurals.units, course.units.size, course.units.size),
+                                    pluralStringResource(R.plurals.units, course.unitCount, course.unitCount),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -129,7 +191,7 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
                 }
             }
 
-            if (content.courses.isEmpty()) {
+            if (state.sections.isEmpty()) {
                 item {
                     Text(
                         stringResource(R.string.no_content_packs_are_installed_yet),

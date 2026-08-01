@@ -39,12 +39,10 @@ import com.vayunmathur.weather.util.formatTemperatureCompact
 import com.vayunmathur.weather.util.parseLocalIsoToEpochSec
 import com.vayunmathur.weather.util.weatherConditionForCode
 import androidx.compose.ui.unit.sp
-import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
-import kotlinx.datetime.todayIn
 import kotlin.time.Instant
 
 /**
@@ -63,8 +61,14 @@ fun HourlyCard(
     selectedIsoTime: String? = null,
     onHourSelected: (String) -> Unit = {},
     scrollToIsoDate: String? = null,
+    /**
+     * "Now" for the strip: hours before it are dropped and the first surviving cell is
+     * labelled Now. A parameter rather than a direct clock read so a preview can pin it —
+     * otherwise fixed sample data ages out and the whole card disappears.
+     */
+    nowEpochSec: Long = System.currentTimeMillis() / 1000,
 ) {
-    val nowSec = System.currentTimeMillis() / 1000
+    val nowSec = nowEpochSec
     val cells = hourly.time.indices
         .mapNotNull { i ->
             val iso = hourly.time.getOrNull(i) ?: return@mapNotNull null
@@ -102,7 +106,7 @@ fun HourlyCard(
                     if (index == 0) Spacer(Modifier.width(10.dp))
                     HourlyItem(
                         time = if (index == 0) stringResource(R.string.now) else formatStripHour(cell.epochSec, use24Hour),
-                        dayLabel = formatDayLabel(cell.epochSec),
+                        dayLabel = formatDayLabel(cell.epochSec, nowEpochSec),
                         precipitationProbability = cell.precip,
                         temperature = cell.temperature,
                         isNow = index == 0,
@@ -189,10 +193,10 @@ private data class HourCell(
 )
 
 @Composable
-private fun formatDayLabel(epochSec: Long): String {
+private fun formatDayLabel(epochSec: Long, nowEpochSec: Long): String {
     val tz = TimeZone.currentSystemDefault()
     val date = Instant.fromEpochSeconds(epochSec).toLocalDateTime(tz).date
-    val today = Clock.System.todayIn(tz)
+    val today = Instant.fromEpochSeconds(nowEpochSec).toLocalDateTime(tz).date
     val tomorrow = today.plus(1, DateTimeUnit.DAY)
     return when (date) {
         today -> stringResource(R.string.today_short)

@@ -13,14 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.code.util.EditorViewModel
-import com.vayunmathur.code.util.TreeNode
+import com.vayunmathur.code.util.CodeActions
+import com.vayunmathur.code.util.CodeUiState
+import com.vayunmathur.code.util.TreeRowUiState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
@@ -40,7 +41,8 @@ import com.vayunmathur.library.ui.Text
  */
 @Composable
 fun FileTreePane(
-    viewModel: EditorViewModel,
+    state: CodeUiState,
+    actions: CodeActions,
     onOpenFolder: () -> Unit,
     onOpenFile: () -> Unit,
     onFileOpened: () -> Unit,
@@ -51,7 +53,7 @@ fun FileTreePane(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = viewModel.rootName ?: "Explorer",
+                text = state.rootName ?: "Explorer",
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -62,7 +64,7 @@ fun FileTreePane(
         }
         HorizontalDivider()
 
-        if (viewModel.treeUri == null) {
+        if (!state.folderOpen) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
                 verticalArrangement = Arrangement.Center,
@@ -79,10 +81,12 @@ fun FileTreePane(
             }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
-                items(viewModel.nodes, key = { it.entry.uri.toString() }) { node ->
+                // Positional keys: the flat tree can hold two files with the same name at the
+                // same depth, and the rows themselves carry no state worth preserving.
+                itemsIndexed(state.nodes) { index, node ->
                     TreeRow(node) {
-                        val wasFile = !node.entry.isDirectory
-                        viewModel.toggle(node)
+                        val wasFile = !node.isDirectory
+                        actions.toggleNode(index)
                         if (wasFile) onFileOpened()
                     }
                 }
@@ -92,7 +96,7 @@ fun FileTreePane(
 }
 
 @Composable
-private fun TreeRow(node: TreeNode, onClick: () -> Unit) {
+private fun TreeRow(node: TreeRowUiState, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -100,20 +104,20 @@ private fun TreeRow(node: TreeNode, onClick: () -> Unit) {
             .padding(start = (node.depth * 16 + 8).dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (node.entry.isDirectory) {
+        if (node.isDirectory) {
             if (node.expanded) IconKeyboardArrowDown(Modifier.size(20.dp)) else IconChevronRight(Modifier.size(20.dp))
         } else {
             Spacer(Modifier.width(20.dp))
         }
         Spacer(Modifier.width(4.dp))
         when {
-            node.entry.isDirectory && node.expanded -> IconFolderOpen(Modifier.size(20.dp))
-            node.entry.isDirectory -> IconFolder(Modifier.size(20.dp))
+            node.isDirectory && node.expanded -> IconFolderOpen(Modifier.size(20.dp))
+            node.isDirectory -> IconFolder(Modifier.size(20.dp))
             else -> IconFile(Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            text = node.entry.name,
+            text = node.name,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

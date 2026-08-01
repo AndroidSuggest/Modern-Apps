@@ -56,7 +56,7 @@ sealed interface SelectedDateOrTime {
 class WeatherViewModel(
     application: Application,
     private val dao: WeatherDao,
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), WeatherActions {
 
     /**
      * Saved locations, or null until Room's first emission lands. The null
@@ -92,10 +92,10 @@ class WeatherViewModel(
 
     fun selectDay(isoDate: String) { _selected.value = SelectedDateOrTime.Day(isoDate) }
 
-    fun clearSelection() { _selected.value = null }
+    override fun clearSelection() { _selected.value = null }
 
     /** Select the hour, or clear it if it's already the selected one. */
-    fun toggleTime(isoTime: String) {
+    override fun toggleTime(isoTime: String) {
         val current = _selected.value
         _selected.value = if (current is SelectedDateOrTime.Time && current.isoTime == isoTime) {
             null
@@ -105,7 +105,7 @@ class WeatherViewModel(
     }
 
     /** Select the day, or clear it if it's already the selected one. */
-    fun toggleDay(isoDate: String) {
+    override fun toggleDay(isoDate: String) {
         val current = _selected.value
         _selected.value = if (current is SelectedDateOrTime.Day && current.isoDate == isoDate) {
             null
@@ -249,13 +249,15 @@ class WeatherViewModel(
      * [force] is set (pull-to-refresh), so a 60-second poll won't spam the
      * network.
      */
-    fun refreshAll(force: Boolean = false) {
+    // The default for `force` is inherited from WeatherActions; an override may not
+    // restate it.
+    override fun refreshAll(force: Boolean) {
         for (location in savedLocations.value.orEmpty()) {
             ensureForecast(location, force)
         }
     }
 
-    fun deleteLocation(location: SavedLocation) {
+    override fun deleteLocation(location: SavedLocation) {
         viewModelScope.launch {
             dao.deleteLocation(location)
             _forecasts.update { it - location.id }
@@ -267,7 +269,7 @@ class WeatherViewModel(
      * full list in its new display order; each row's [SavedLocation.displayOrder]
      * is rewritten to its index.
      */
-    fun reorderLocations(ordered: List<SavedLocation>) {
+    override fun reorderLocations(ordered: List<SavedLocation>) {
         viewModelScope.launch {
             ordered.forEachIndexed { index, loc ->
                 if (loc.displayOrder != index) dao.setOrder(loc.id, index)

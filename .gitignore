@@ -43,3 +43,16 @@ target/
 
 # Small100 quantized binaries > 100MB — do not commit, fetch via quantize_small100.sh or R2
 scripts/translate/quantized/
+
+# Nutrition database asset — large binary, regenerate with scripts/generate_food_db.py
+health/src/main/assets/food.bin
+health/src/main/assets/food.bin.br
+health/src/main/assets/food.bin.meta.json
+health/src/main/assets/staging.db
+
+# Compose preview screenshot rendering (common-conventions-preview-metadata). These PNGs
+# are an intermediate: the `metadata` task copies them into metadata_data/photos/<module>,
+# which is what is committed and what release.sh reads. Committing them too would store
+# every listing image twice. Remove this ignore if you ever want
+# `validate<Variant>ScreenshotTest` to act as UI regression testing.
+**/src/screenshotTest*/reference/

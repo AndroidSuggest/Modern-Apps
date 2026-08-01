@@ -61,31 +61,18 @@ fun MusicTabsScreen(
         SyncWorker.enqueue(context)
     }
 
-    val tabs = listOf<Triple<String, @Composable () -> Unit, Int>>(
-        Triple(stringResource(R.string.nav_home), { IconLibraryMusic() }, 0),
-        Triple(stringResource(R.string.nav_albums), { IconAlbum() }, 1),
-        Triple(stringResource(R.string.nav_artists), { IconPerson() }, 2),
-        Triple(stringResource(R.string.nav_playlists), { IconLibraryMusic() }, 3),
-    )
-
     Scaffold(
         bottomBar = {
             Column(Modifier.fillMaxWidth()) {
                 PlayingBottomBar(musicViewModel, backStack)
-                FlexibleBottomAppBar {
-                    tabs.forEach { (name, icon, index) ->
-                        NavigationBarItem(
-                            selected = pagerState.currentPage == index,
-                            onClick = {
-                                if (pagerState.currentPage != index) {
-                                    scope.launch { pagerState.animateScrollToPage(index) }
-                                }
-                            },
-                            icon = icon,
-                            label = { Text(name) },
-                        )
-                    }
-                }
+                MusicTabsBar(
+                    selectedTab = pagerState.currentPage,
+                    onSelectTab = { index ->
+                        if (pagerState.currentPage != index) {
+                            scope.launch { pagerState.animateScrollToPage(index) }
+                        }
+                    },
+                )
             }
         }
     ) { padding ->
@@ -104,6 +91,33 @@ fun MusicTabsScreen(
                 2 -> ArtistsTabContent(backStack, musicViewModel)
                 3 -> PlaylistsTabContent(backStack, musicViewModel)
             }
+        }
+    }
+}
+
+/**
+ * The four-tab bar. Split out of [MusicTabsScreen] so it takes a plain index plus a
+ * callback rather than reaching into the pager — which is what lets the store-listing
+ * previews render it without one.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun MusicTabsBar(selectedTab: Int, onSelectTab: (Int) -> Unit) {
+    val tabs = listOf<Triple<String, @Composable () -> Unit, Int>>(
+        Triple(stringResource(R.string.nav_home), { IconLibraryMusic() }, 0),
+        Triple(stringResource(R.string.nav_albums), { IconAlbum() }, 1),
+        Triple(stringResource(R.string.nav_artists), { IconPerson() }, 2),
+        Triple(stringResource(R.string.nav_playlists), { IconLibraryMusic() }, 3),
+    )
+
+    FlexibleBottomAppBar {
+        tabs.forEach { (name, icon, index) ->
+            NavigationBarItem(
+                selected = selectedTab == index,
+                onClick = { onSelectTab(index) },
+                icon = icon,
+                label = { Text(name) },
+            )
         }
     }
 }

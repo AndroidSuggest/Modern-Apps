@@ -8,14 +8,18 @@ import kotlin.concurrent.atomics.*
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.util.Log
+import android.util.Rational
 import android.util.Size
 import android.view.Surface
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -26,13 +30,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -53,12 +58,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -79,7 +86,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** Minimum gap between the *end* of one OCR pass and the start of the next (ms). */
@@ -149,6 +155,12 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
     var frameH by remember { mutableStateOf(0) }
     var frozenFrame by remember { mutableStateOf<Bitmap?>(null) }
 
+    // Size of the preview area and the rotation it is being shown at. Both go into the
+    // ViewPort that ties the two camera streams to one field of view, so a change to
+    // either has to rebind rather than just retarget.
+    var viewSize by remember { mutableStateOf(IntSize.Zero) }
+    var boundRotation by remember { mutableStateOf(Surface.ROTATION_0) }
+
     // Read by the analysis-thread callback; kept fresh via rememberUpdatedState.
     val pausedState = rememberUpdatedState(paused)
 
@@ -194,7 +206,10 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
             override fun onDisplayRemoved(displayId: Int) = Unit
             override fun onDisplayChanged(displayId: Int) {
                 if (previewView.display?.displayId == displayId) {
-                    analysis.targetRotation = displayRotation()
+                    // Rebind rather than just retarget the analyser: the ViewPort is
+                    // built for a rotation, so retargeting alone would leave the two
+                    // streams disagreeing about what they are looking at again.
+                    boundRotation = displayRotation()
                 }
             }
         }
@@ -219,12 +234,11 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
         camera?.cameraControl?.enableTorch(torchOn)
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(viewSize, boundRotation) {
+        if (viewSize.width <= 0 || viewSize.height <= 0) return@LaunchedEffect
         val cameraProvider = ProcessCameraProvider.awaitInstance(context)
         provider = cameraProvider
         val preview = Preview.Builder()
-            // Same aspect ratio as the analysis stream, so the two share a field of
-            // view and the centre-crop mapping below is exact.
             .setResolutionSelector(
                 ResolutionSelector.Builder()
                     .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
@@ -247,6 +261,9 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
                 null
             }
             val rotation = proxy.imageInfo.rotationDegrees
+            // The ViewPort's share of this buffer: exactly what the preview is showing.
+            // Copied because the proxy's own Rect is recycled with it.
+            val crop = Rect(proxy.cropRect)
             proxy.close()
             if (bmp == null) {
                 inFlight.store(false)
@@ -257,8 +274,12 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
             // full-frame copy and OCR suspends onto Dispatchers.Default itself.
             scope.launch {
                 try {
+                    // Cropping to the viewport before OCR means the boxes come back in
+                    // the coordinates of the region the user can actually see, and OCR
+                    // stops spending its time on the strips either side that the preview
+                    // never shows.
                     val upright = withContext(Dispatchers.Default) {
-                        rotateBitmap(bmp, rotation).also { if (it !== bmp) bmp.recycle() }
+                        cropAndRotate(bmp, crop, rotation).also { if (it !== bmp) bmp.recycle() }
                     }
                     val result = viewModel.ocr.recognizeDetailed(upright)
                     frameW = upright.width
@@ -280,15 +301,28 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
 
         try {
             cameraProvider.unbindAll()
+            // A ViewPort is what makes the preview and the analysis stream agree on a
+            // field of view. Bound as two loose use cases they each got their own crop
+            // rect off a different resolution (1600×1200 vs 1280×960) — which is why the
+            // frozen still was framed differently from the live preview, and why every
+            // OCR box landed somewhere the text wasn't. With one, CameraX crops both to
+            // the same region and hands us that region as `ImageProxy.cropRect`.
+            val viewPort = ViewPort
+                .Builder(Rational(viewSize.width, viewSize.height), boundRotation)
+                .setScaleType(ViewPort.FILL_CENTER) // matches PreviewView's scale type
+                .build()
             camera = cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 CameraSelector.DEFAULT_BACK_CAMERA,
-                preview,
-                analysis,
+                UseCaseGroup.Builder()
+                    .setViewPort(viewPort)
+                    .addUseCase(preview)
+                    .addUseCase(analysis)
+                    .build(),
             )
             // Safe (and required) only after binding — setting it on the builder would
             // change the frame [ANALYSIS_SIZE] is resolved in.
-            analysis.targetRotation = displayRotation()
+            analysis.targetRotation = boundRotation
         } catch (t: Throwable) {
             Log.e(TAG, "Camera bind failed", t)
         }
@@ -323,10 +357,14 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val viewW = constraints.maxWidth.toFloat()
-            val viewH = constraints.maxHeight.toFloat()
-
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged {
+                    viewSize = it
+                    boundRotation = displayRotation()
+                },
+        ) {
             // The preview stays composed even while paused — swapping it out tears the
             // camera surface down and back up, which flashes black on every toggle.
             AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
@@ -337,22 +375,29 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
                     bitmap = frozen.asImageBitmap(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+                    // Already cropped to the viewport, so it covers the preview area
+                    // exactly — there is no second crop left to get wrong.
+                    contentScale = ContentScale.FillBounds,
                 )
             }
 
-            // Map analysed-bitmap coords -> view coords. PreviewView is FILL_CENTER
-            // (centre-crop) and both streams are 4:3, so: scale by the larger ratio,
-            // then centre.
-            if (frameW > 0 && frameH > 0) {
-                val scale = max(viewW / frameW, viewH / frameH)
-                val dx = (viewW - frameW * scale) / 2f
-                val dy = (viewH - frameH * scale) / 2f
+            // The analysed frame *is* the visible region now, so placing a box is a
+            // straight stretch — no centre-crop arithmetic that can disagree with what
+            // PreviewView chose to show.
+            if (frameW > 0 && frameH > 0 && viewSize.width > 0 && viewSize.height > 0) {
+                val sx = viewSize.width.toFloat() / frameW
+                val sy = viewSize.height.toFloat() / frameH
                 overlays.forEach { ob ->
-                    val l = ob.left * scale + dx
-                    val t = ob.top * scale + dy
-                    val w = (ob.right - ob.left) * scale
-                    val h = (ob.bottom - ob.top) * scale
+                    // Until a line's translation lands, leave the original text visible
+                    // rather than covering it with a blank plate — a screenful of black
+                    // boxes over text nobody can read was most of why this looked broken.
+                    // With no model installed none will ever land, so show what was read.
+                    val label = translations[ob.text]
+                        ?: if (translationAvailable) return@forEach else ob.text
+                    val l = ob.left * sx
+                    val t = ob.top * sy
+                    val w = (ob.right - ob.left) * sx
+                    val h = (ob.bottom - ob.top) * sy
                     if (w <= 0f || h <= 0f) return@forEach
                     Box(
                         modifier = Modifier
@@ -367,12 +412,14 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
                         contentAlignment = Alignment.Center,
                     ) {
                         // A translation is usually longer than the source line it has to
-                        // sit on top of, so a fixed font size + maxLines=1 ellipsised
-                        // nearly every label down to "…". Shrink to fit instead.
+                        // sit on top of, so a fixed font size ellipsised nearly every
+                        // label down to "…". Shrink to fit instead. One line only: the
+                        // plate is exactly as tall as the line it covers, so allowing two
+                        // just halved the font and spilled out of the box.
                         BasicText(
-                            text = translations[ob.text] ?: ob.text,
+                            text = label,
                             style = TextStyle(color = Color.White, textAlign = TextAlign.Center),
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             autoSize = TextAutoSize.StepBased(
                                 minFontSize = 6.sp,
@@ -385,11 +432,13 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
             }
         }
 
-        // Back button (top-left).
+        // Back button (top-left). The preview runs edge-to-edge behind the system bars,
+        // so every control on top of it has to inset itself out from under them.
         IconButton(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .statusBarsPadding()
                 .padding(8.dp)
                 .background(Color(0x99000000), RoundedCornerShape(24.dp)),
         ) {
@@ -402,16 +451,20 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .statusBarsPadding()
                     .padding(top = 12.dp)
                     .background(Color(0xB3000000), RoundedCornerShape(12.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
 
-        // Bottom controls: language pickers + pause/resume + torch.
+        // Bottom controls: language pickers + pause/resume + torch. Inset above the
+        // gesture bar — sitting in it meant a tap on pause was liable to be swallowed by
+        // system navigation instead.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
                 .fillMaxWidth()
                 .padding(12.dp)
                 .background(Color(0xB3000000), RoundedCornerShape(24.dp))
@@ -441,11 +494,28 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
     }
 }
 
-/** Rotate [src] by [degrees] so OCR sees an upright image. Returns [src] if 0°. */
-private fun rotateBitmap(src: Bitmap, degrees: Int): Bitmap {
-    if (degrees % 360 == 0) return src
-    val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
-    return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
+/**
+ * Take [crop] out of [src] and rotate it by [degrees], so OCR sees an upright image of
+ * just the region the preview is showing. May return [src] itself when there is nothing
+ * to do, so callers must compare identities before recycling.
+ */
+private fun cropAndRotate(src: Bitmap, crop: Rect, degrees: Int): Bitmap {
+    var left = crop.left.coerceIn(0, src.width)
+    var top = crop.top.coerceIn(0, src.height)
+    var width = crop.width().coerceIn(0, src.width - left)
+    var height = crop.height().coerceIn(0, src.height - top)
+    // An unresolved viewport gives an empty rect; fall back to the whole frame.
+    if (width <= 0 || height <= 0) {
+        left = 0
+        top = 0
+        width = src.width
+        height = src.height
+    }
+    if (width <= 0 || height <= 0) return src
+    val matrix = if (degrees % 360 == 0) null else Matrix().apply { postRotate(degrees.toFloat()) }
+    val whole = left == 0 && top == 0 && width == src.width && height == src.height
+    if (matrix == null && whole) return src
+    return Bitmap.createBitmap(src, left, top, width, height, matrix, true)
 }
 
 private const val TAG = "CameraTranslate"

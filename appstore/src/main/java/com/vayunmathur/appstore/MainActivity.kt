@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.appstore.data.AppDatabase
@@ -25,6 +26,8 @@ import com.vayunmathur.appstore.ui.ReposPage
 import com.vayunmathur.appstore.ui.UpdatesPage
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.appstore.util.AppStoreViewModelFactory
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconDownload
@@ -50,6 +53,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // STANDARD includes GTS R1-R4 (needed for Play Store -> play.google.com / android.clients.google.com)
+        // + ISRG X1/X2 (F-Droid) + DigiCert G2/G3 (GitHub). Covers all appstore hosts without full system ~140 roots.
+        NetworkClient.init(this, TrustBundle.STANDARD)
         enableEdgeToEdge()
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -128,6 +134,7 @@ sealed interface Route : NavKey {
     @Serializable data object Updates : Route
     @Serializable data object Repos : Route
     @Serializable data object Detail : Route
+    @Serializable data object SecurityTiers : Route
 }
 
 @Composable
@@ -149,14 +156,14 @@ private fun AppRoot(
     MainNavigation(
         backStack,
         bottomBar = {
-            if (current !is Route.Detail) {
+            if (current !is Route.Detail && current !is Route.SecurityTiers) {
                 BottomNavBar(
                     backStack,
                     listOf(
-                        BottomBarItem("Browse", Route.Browse) { IconHome() },
-                        BottomBarItem("Installed", Route.Installed) { IconPackage() },
-                        BottomBarItem("Updates", Route.Updates) { IconDownload() },
-                        BottomBarItem("Repos", Route.Repos) { IconSettings() },
+                        BottomBarItem(stringResource(R.string.nav_browse), Route.Browse) { IconHome() },
+                        BottomBarItem(stringResource(R.string.nav_installed), Route.Installed) { IconPackage() },
+                        BottomBarItem(stringResource(R.string.nav_updates), Route.Updates) { IconDownload() },
+                        BottomBarItem(stringResource(R.string.nav_sources), Route.Repos) { IconSettings() },
                     ),
                     current
                 )
@@ -182,10 +189,20 @@ private fun AppRoot(
             })
         }
         entry<Route.Repos> {
-            ReposPage(viewModel = viewModel)
+            ReposPage(viewModel = viewModel, onOpenTiers = { backStack.add(Route.SecurityTiers) })
         }
         entry<Route.Detail> {
-            AppDetailPage(viewModel = viewModel, onBack = { backStack.pop() })
+            AppDetailPage(
+                viewModel = viewModel,
+                onBack = { backStack.pop() },
+                onOpenTiers = { backStack.add(Route.SecurityTiers) },
+            )
+        }
+        entry<Route.SecurityTiers> {
+            com.vayunmathur.appstore.ui.SecurityTiersPage(
+                ownSigningCertificates = viewModel.ownSigningCertificates,
+                onBack = { backStack.pop() },
+            )
         }
     }
 }

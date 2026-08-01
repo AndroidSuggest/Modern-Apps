@@ -26,27 +26,70 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
 import com.vayunmathur.education.content.ModuleType
+import com.vayunmathur.education.util.CourseActions
+import com.vayunmathur.education.util.CourseUiState
+import com.vayunmathur.education.util.CourseUnitRow
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.ui.res.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EducationViewModel] and the back stack to the stateless [ScholarCourseScreen]. */
 @Composable
 fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, courseId: String) {
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val content = viewModel.content
     val course = content.course(courseId)
 
+    ScholarCourseScreen(
+        state = CourseUiState(
+            title = course?.title ?: stringResource(R.string.course),
+            description = course?.description.orEmpty(),
+            available = course != null,
+            units = course?.units.orEmpty().map { unit ->
+                CourseUnitRow(
+                    id = unit.id,
+                    title = unit.title,
+                    lessonCount = unit.lessons.size,
+                    stars = averageStars(content.skillIdsOfUnit(unit), progress),
+                    dueEpochDay = viewModel.deadlineFor(ModuleType.UNIT, unit.id)?.dueEpochDay,
+                )
+            },
+            challenge = course?.challenge,
+        ),
+        actions = object : CourseActions {
+            override fun navigateUp() {
+                backStack.pop()
+            }
+
+            override fun openUnit(unitId: String) {
+                backStack.add(Route.UnitScreen(unitId))
+            }
+
+            override fun openExercise(exerciseId: String) {
+                backStack.add(Route.Quiz(exerciseId))
+            }
+        },
+    )
+}
+
+/**
+ * A course's units, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScholarCourseScreen(state: CourseUiState, actions: CourseActions) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(course?.title ?: stringResource(R.string.course)) },
-                navigationIcon = { IconNavigation(backStack) },
+                title = { Text(state.title) },
+                navigationIcon = { IconNavigation({ actions.navigateUp() }) },
             )
         },
     ) { padding ->
-        if (course == null) {
+        if (!state.available) {
             MissingContent(padding, stringResource(R.string.this_course_is_unavailable))
             return@Scaffold
         }
@@ -56,24 +99,22 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
                 .padding(padding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
         ) {
-            if (course.description.isNotBlank()) {
+            if (state.description.isNotBlank()) {
                 item {
                     Text(
-                        course.description,
+                        state.description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
             }
-            items(course.units, key = { it.id }) { unit ->
-                val skills = content.skillIdsOfUnit(unit)
-                val deadline = viewModel.deadlineFor(ModuleType.UNIT, unit.id)
+            items(state.units, key = { it.id }) { unit ->
                 ElevatedCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .clickable { backStack.add(Route.UnitScreen(unit.id)) },
+                        .clickable { actions.openUnit(unit.id) },
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(
@@ -82,23 +123,23 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(unit.title, style = MaterialTheme.typography.titleMedium)
-                            StarRow(averageStars(skills, progress))
+                            StarRow(unit.stars)
                         }
                         Text(
-                            pluralStringResource(R.plurals.lessons, unit.lessons.size, unit.lessons.size),
+                            pluralStringResource(R.plurals.lessons, unit.lessonCount, unit.lessonCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        deadline?.let {
-                            Row(Modifier.padding(top = 8.dp)) { DeadlineChip(it.dueEpochDay) }
+                        unit.dueEpochDay?.let {
+                            Row(Modifier.padding(top = 8.dp)) { DeadlineChip(it) }
                         }
                     }
                 }
             }
-            course.challenge?.let { challenge ->
+            state.challenge?.let { challenge ->
                 item {
                     FilledTonalButton(
-                        onClick = { backStack.add(Route.Quiz(challenge.id)) },
+                        onClick = { actions.openExercise(challenge.id) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),

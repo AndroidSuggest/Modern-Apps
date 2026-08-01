@@ -59,9 +59,13 @@ import com.vayunmathur.contacts.data.CDKEmail
 import com.vayunmathur.contacts.data.CDKPhone
 import com.vayunmathur.contacts.data.CDKStructuredPostal
 import com.vayunmathur.contacts.data.Contact
+import com.vayunmathur.contacts.data.ContactGroup
+import com.vayunmathur.contacts.util.ContactListUiState
 import com.vayunmathur.contacts.util.ContactSorting.groupKey
 import com.vayunmathur.contacts.util.ContactSorting.sortedLocale
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.ContactsActions
+import com.vayunmathur.contacts.util.ContactsTab
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.NavBackStack
@@ -77,12 +81,11 @@ import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.CommonSearchBar
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import android.content.Intent
 import androidx.compose.ui.platform.LocalResources
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ContactViewModel] to the stateless [ContactListScreen]. */
 @Composable
 fun ContactList(
     viewModel: ContactViewModel,
@@ -93,16 +96,60 @@ fun ContactList(
     val context = LocalContext.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
-    
+
     LaunchedEffect(Unit) {
         viewModel.loadContacts()
         viewModel.loadAccounts()
     }
 
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val groups by viewModel.groups.collectAsStateWithLifecycle()
+    val showAccountLabels by viewModel.showAccountLabels.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+
+    val last = backStack.last()
+
+    ContactListScreen(
+        state = ContactListUiState(
+            contacts = contacts,
+            groups = groups,
+            searchQuery = searchQuery,
+            showAccountLabels = showAccountLabels,
+            openContactId = when (last) {
+                is Route.ContactDetail -> last.contactId
+                is Route.EditContact -> last.contactId
+                else -> null
+            },
+            showAddButton = last !is Route.EditContact,
+        ),
+        actions = object : ContactsActions by viewModel {
+            override fun openContact(contact: Contact) = onContactClick(contact)
+
+            override fun addContact() = onAddContactClick()
+
+            override fun addToGroup(contactIds: List<Long>) {
+                backStack.add(Route.AddToGroupDialog(contactIds))
+            }
+
+            override fun shareContacts(contacts: List<Contact>, filename: String) {
+                shareContactsAsVcf(scope, context, contacts, filename, resources.getString(R.string.share_contact))
+            }
+
+            override fun selectTab(tab: ContactsTab) = navigateToTab(backStack, tab)
+        },
+    )
+}
+
+/**
+ * The contact list, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
+    val contacts = state.contacts
     val selectedIds = remember { mutableStateListOf<Long>() }
     val isSelectionMode = selectedIds.isNotEmpty()
-    val showAccountLabels by viewModel.showAccountLabels.collectAsStateWithLifecycle()
 
     val (favorites, otherContacts) = remember(contacts) { contacts.partition { it.isFavorite } }
     val groupedContacts = remember(otherContacts) {
@@ -127,7 +174,7 @@ fun ContactList(
             confirmButton = {
                 TextButton(onClick = {
                     val toDelete = contacts.filter { it.id in selectedIds }
-                    toDelete.forEach { viewModel.deleteContact(it) }
+                    toDelete.forEach { actions.deleteContact(it) }
                     selectedIds.clear()
                     showDeleteConfirmation = false
                 }) {
@@ -142,18 +189,12 @@ fun ContactList(
         )
     }
 
-    val selectedID = when (val last = backStack.last()) {
-        is Route.ContactDetail -> last.contactId
-        is Route.EditContact -> last.contactId
-        else -> null
-    }
-
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val selectedID = state.openContactId
 
     // While the search bar has text, intercept back to clear it instead of
     // popping the screen. Empty search → back propagates normally.
-    androidx.activity.compose.BackHandler(enabled = searchQuery.isNotEmpty() && !isSelectionMode) {
-        viewModel.setSearchQuery("")
+    androidx.activity.compose.BackHandler(enabled = state.searchQuery.isNotEmpty() && !isSelectionMode) {
+        actions.setSearchQuery("")
     }
 
     // When contacts are selected (selection mode), intercept back to unselect
@@ -174,12 +215,12 @@ fun ContactList(
                     },
                     actions = {
                         IconButton(onClick = {
-                            backStack.add(Route.AddToGroupDialog(selectedIds.toList()))
+                            actions.addToGroup(selectedIds.toList())
                         }) {
                             IconGroup()
                         }
                         IconButton(onClick = {
-                            shareContactsAsVcf(scope, context, contacts.filter { it.id in selectedIds }, "selected_contacts.vcf", resources.getString(R.string.share_contact))
+                            actions.shareContacts(contacts.filter { it.id in selectedIds }, "selected_contacts.vcf")
                         }) {
                             IconShare()
                         }
@@ -192,8 +233,8 @@ fun ContactList(
                 TopAppBar(
                     title = {
                         CommonSearchBar(
-                            value = searchQuery,
-                            onValueChange = { viewModel.setSearchQuery(it) },
+                            value = state.searchQuery,
+                            onValueChange = { actions.setSearchQuery(it) },
                             placeholder = stringResource(R.string.search_contacts),
                             padding = PaddingValues(0.dp),
                             modifier = Modifier
@@ -220,7 +261,7 @@ fun ContactList(
                         )
                     },
                     actions = {
-                        IconButton(onClick = { shareContactsAsVcf(scope, context, contacts, "all_contacts.vcf", resources.getString(R.string.share_contact)) }) {
+                        IconButton(onClick = { actions.shareContacts(contacts, "all_contacts.vcf") }) {
                             IconShare()
                         }
                     }
@@ -228,15 +269,15 @@ fun ContactList(
             }
         },
         floatingActionButton = {
-            if(backStack.last() !is Route.EditContact && !isSelectionMode) {
-                FloatingActionButton(onClick = { onAddContactClick() }) {
+            if(state.showAddButton && !isSelectionMode) {
+                FloatingActionButton(onClick = { actions.addContact() }) {
                     IconAdd()
                 }
             }
         },
         bottomBar = {
             if (!isSelectionMode) {
-                ContactsBottomNavBar(backStack)
+                ContactsBottomNavBar(ContactsTab.Contacts, actions::selectTab)
             }
         }
     ) { paddingValues ->
@@ -254,11 +295,12 @@ fun ContactList(
                             ContactItem(
                                 contact = contact,
                                 isSelected = if (isSelectionMode) contact.id in selectedIds else selectedID == contact.id,
-                                showAccountLabels = showAccountLabels,
-                                viewModel = viewModel,
+                                showAccountLabels = state.showAccountLabels,
+                                allGroups = state.groups,
+                                decodePhoto = actions::decodePhoto,
                                 embeddedInCard = true,
                                 onClick = {
-                                    if (isSelectionMode) toggleSelection(contact.id) else onContactClick(contact)
+                                    if (isSelectionMode) toggleSelection(contact.id) else actions.openContact(contact)
                                 },
                                 onLongClick = {
                                     if (!isSelectionMode) selectedIds.add(contact.id)
@@ -276,11 +318,12 @@ fun ContactList(
                             ContactItem(
                                 contact = contact,
                                 isSelected = if (isSelectionMode) contact.id in selectedIds else selectedID == contact.id,
-                                showAccountLabels = showAccountLabels,
-                                viewModel = viewModel,
+                                showAccountLabels = state.showAccountLabels,
+                                allGroups = state.groups,
+                                decodePhoto = actions::decodePhoto,
                                 embeddedInCard = true,
                                 onClick = {
-                                    if (isSelectionMode) toggleSelection(contact.id) else onContactClick(contact)
+                                    if (isSelectionMode) toggleSelection(contact.id) else actions.openContact(contact)
                                 },
                                 onLongClick = {
                                     if (!isSelectionMode) selectedIds.add(contact.id)
@@ -459,8 +502,10 @@ fun ContactItem(
     contact: Contact,
     isSelected: Boolean,
     showAccountLabels: Boolean,
-    viewModel: ContactViewModel? = null,
     onClick: () -> Unit,
+    /** Every group in the app; the row labels itself with the ones this contact is in. */
+    allGroups: List<ContactGroup> = emptyList(),
+    decodePhoto: ((String) -> Bitmap?)? = null,
     onLongClick: (() -> Unit)? = null,
     dropdownList: List<String>? = null,
     dropdownListClick: (Int) -> Unit = {},
@@ -476,7 +521,6 @@ fun ContactItem(
         modifier
     }
 
-    val allGroups by (viewModel?.groups ?: flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
     val contactGroups = contactGroupsOf(contact, allGroups)
 
     val trimmedOrg = contact.org.company.trim()
@@ -509,7 +553,7 @@ fun ContactItem(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ContactAvatar(contact, viewModel, Modifier.size(50.dp))
+                ContactAvatar(contact, decodePhoto, Modifier.size(50.dp))
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

@@ -61,7 +61,10 @@ import com.vayunmathur.clock.Route
 import com.vayunmathur.clock.data.Timer
 import com.vayunmathur.clock.mainPages
 import com.vayunmathur.clock.util.ClockViewModel
+import com.vayunmathur.clock.util.TimerActions
 import com.vayunmathur.clock.util.TimerReceiver
+import com.vayunmathur.clock.util.TimerUiState
+import com.vayunmathur.clock.util.timerRemaining
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
@@ -77,13 +80,105 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ClockViewModel] to the stateless [TimerScreen]. */
 @Composable
 fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
     val now by clockViewModel.now.collectAsState()
     val timers by clockViewModel.timers.collectAsState()
-    var isAddingTimer by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // Every action both persists the timer and re-posts (or clears) its countdown
+    // notification, which needs a Context — so the adapter lives here rather than on the
+    // ViewModel.
+    val actions = remember(clockViewModel, context) {
+        object : TimerActions {
+            override fun start(duration: Duration, name: String) {
+                val timer = Timer(true, name, Clock.System.now(), duration, duration)
+                clockViewModel.upsert(timer) {
+                    sendTimerNotification(context, timer.copy(id = it), true)
+                }
+            }
+
+            override fun delete(timer: Timer) {
+                sendTimerNotification(context, timer, false)
+                clockViewModel.delete(timer)
+            }
+
+            override fun addMinute(timer: Timer) {
+                val updated = timer.copy(
+                    remainingLength = timer.remainingLength + 1.minutes,
+                    totalLength = timer.totalLength + 1.minutes,
+                )
+                clockViewModel.upsert(updated)
+                if (timer.isRunning) sendTimerNotification(context, updated, true)
+            }
+
+            override fun reset(timer: Timer) {
+                clockViewModel.upsert(
+                    timer.copy(
+                        isRunning = false,
+                        remainingLength = timer.totalLength,
+                        remainingStartTime = Clock.System.now(),
+                    )
+                )
+                sendTimerNotification(context, timer, false)
+            }
+
+            override fun toggle(timer: Timer) {
+                // Same "completed" test the card draws with: a paused timer's remaining
+                // length no longer moves, so this needs no reference instant.
+                when {
+                    !timer.isRunning && timer.remainingLength <= Duration.ZERO -> {
+                        val restarted = timer.copy(
+                            isRunning = true,
+                            remainingLength = timer.totalLength,
+                            remainingStartTime = Clock.System.now(),
+                        )
+                        clockViewModel.upsert(restarted)
+                        sendTimerNotification(context, restarted, true)
+                    }
+                    timer.isRunning -> {
+                        clockViewModel.upsert(timer.stopped())
+                        sendTimerNotification(context, timer, false)
+                    }
+                    else -> {
+                        val started = timer.started()
+                        clockViewModel.upsert(started)
+                        sendTimerNotification(context, started, true)
+                    }
+                }
+            }
+        }
+    }
+
+    TimerScreen(
+        backStack = backStack,
+        state = TimerUiState(now = now, timers = timers),
+        actions = actions,
+    )
+}
+
+/**
+ * The timer tab — keypad while there is nothing to show, countdown cards otherwise — with
+ * no dependency on the ViewModel so it can be rendered from a `@Preview`. See
+ * `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimerScreen(
+    backStack: NavBackStack<Route>,
+    state: TimerUiState,
+    actions: TimerActions,
+    /**
+     * Seeds for the screen's own UI-only state (whether the keypad is up over an existing
+     * list of timers, and what has been punched into it). The app always takes the
+     * defaults; previews set them to capture the keypad mid-entry.
+     */
+    initialAddingTimer: Boolean = false,
+    initialKeypadInput: String = "",
+) {
+    val timers = state.timers
+    var isAddingTimer by remember { mutableStateOf(initialAddingTimer) }
 
     val showKeypad = timers.isEmpty() || isAddingTimer
 
@@ -108,10 +203,7 @@ fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
             TimerKeypadContent(
                 paddingValues = paddingValues,
                 onStart = { duration, name ->
-                    val timer = Timer(true, name, Clock.System.now(), duration, duration)
-                    clockViewModel.upsert(timer) {
-                        sendTimerNotification(context, timer.copy(id = it), true)
-                    }
+                    actions.start(duration, name)
                     isAddingTimer = false
                 },
                 onCancel = {
@@ -119,7 +211,8 @@ fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
                         isAddingTimer = false
                     }
                 },
-                showCancel = timers.isNotEmpty()
+                showCancel = timers.isNotEmpty(),
+                initialInput = initialKeypadInput
             )
         } else {
             LazyColumn(
@@ -128,7 +221,7 @@ fun TimerPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(timers, key = { it.id }) { timer ->
-                    TimerCard(timer, now, clockViewModel)
+                    TimerCard(timer, state.now, actions)
                 }
             }
         }
@@ -140,9 +233,11 @@ fun TimerKeypadContent(
     paddingValues: PaddingValues,
     onStart: (Duration, String) -> Unit,
     onCancel: () -> Unit,
-    showCancel: Boolean
+    showCancel: Boolean,
+    /** Preview seam: what is already punched into the keypad. Always empty in the app. */
+    initialInput: String = ""
 ) {
-    var input by remember { mutableStateOf("") }
+    var input by remember { mutableStateOf(initialInput) }
     var timerName by remember { mutableStateOf("") }
 
     Column(
@@ -276,12 +371,10 @@ fun KeypadButton(text: String, modifier: Modifier = Modifier, onClick: () -> Uni
 }
 
 @Composable
-fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
-    val context = LocalContext.current
-
-    // Calculate actual remaining time for the UI via the shared VM helper.
+fun TimerCard(timer: Timer, now: Instant, actions: TimerActions) {
+    // Calculate actual remaining time for the UI via the shared helper.
     val realRemainingTime = remember(timer, now) {
-        clockViewModel.timerRemaining(timer, now)
+        timerRemaining(timer, now)
     }
 
     val isCompleted = realRemainingTime == Duration.ZERO && !timer.isRunning
@@ -338,10 +431,7 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
                         colors = chipColors
                     )
                 }
-                IconButton(onClick = {
-                    sendTimerNotification(context, timer, false)
-                    clockViewModel.delete(timer)
-                }) {
+                IconButton(onClick = { actions.delete(timer) }) {
                     IconDelete()
                 }
             }
@@ -389,36 +479,14 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (!isCompleted) {
-                    FilledTonalButton(
-                        onClick = {
-                            val newLength = timer.remainingLength + 1.minutes
-                            val updatedTimer = timer.copy(
-                                remainingLength = newLength,
-                                totalLength = timer.totalLength + 1.minutes
-                            )
-                            clockViewModel.upsert(updatedTimer)
-                            if (timer.isRunning) {
-                                sendTimerNotification(context, updatedTimer, true)
-                            }
-                        }
-                    ) {
+                    FilledTonalButton(onClick = { actions.addMinute(timer) }) {
                         Text(stringResource(R.string.button_add_minute))
                     }
                     if (showReset) Spacer(Modifier.width(8.dp))
                 }
 
                 if (showReset) {
-                    FilledTonalButton(
-                        onClick = {
-                            val resetTimer = timer.copy(
-                                isRunning = false,
-                                remainingLength = timer.totalLength,
-                                remainingStartTime = Clock.System.now()
-                            )
-                            clockViewModel.upsert(resetTimer)
-                            sendTimerNotification(context, timer, false)
-                        }
-                    ) {
+                    FilledTonalButton(onClick = { actions.reset(timer) }) {
                         IconRestartAlt()
                         Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.action_reset))
@@ -431,28 +499,7 @@ fun TimerCard(timer: Timer, now: Instant, clockViewModel: ClockViewModel) {
                 }
 
                 FloatingActionButton(
-                    onClick = {
-                        when {
-                            isCompleted -> {
-                                val restarted = timer.copy(
-                                    isRunning = true,
-                                    remainingLength = timer.totalLength,
-                                    remainingStartTime = Clock.System.now()
-                                )
-                                clockViewModel.upsert(restarted)
-                                sendTimerNotification(context, restarted, true)
-                            }
-                            timer.isRunning -> {
-                                clockViewModel.upsert(timer.stopped())
-                                sendTimerNotification(context, timer, false)
-                            }
-                            else -> {
-                                val startedTimer = timer.started()
-                                clockViewModel.upsert(startedTimer)
-                                sendTimerNotification(context, startedTimer, true)
-                            }
-                        }
-                    },
+                    onClick = { actions.toggle(timer) },
                     containerColor = when {
                         isCompleted -> MaterialTheme.colorScheme.primaryContainer
                         timer.isRunning -> MaterialTheme.colorScheme.tertiaryContainer

@@ -72,12 +72,51 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
         status?.let { snackbar.showSnackbar(it); vm.clearStatus() }
     }
 
+    ConfigListContent(
+        configs = configs,
+        connectingId = connectingId,
+        // A tunnel only counts as connected once the service is actually up; between the tap
+        // and that point the row shows the spinner instead.
+        activeId = connectingId?.takeIf { VpnTunnelService.isRunning },
+        snackbar = snackbar,
+        onSettings = { backStack.add(Route.Settings) },
+        // Open a .conf file — only import option per user request.
+        onImport = { filePicker.launch(arrayOf("*/*")) },
+        onToggleConnect = { cfg ->
+            if (connectingId != null && VpnTunnelService.isRunning) {
+                vm.stopVpn()
+            } else {
+                if (activity != null) vm.startVpn(activity, cfg)
+                else Toast.makeText(context, context.getString(R.string.need_activity_to_grant_vpn_permission), Toast.LENGTH_SHORT).show()
+            }
+        },
+        onOpen = { cfg -> backStack.add(Route.Detail(cfg.id)) },
+        onDelete = { cfg -> vm.delete(cfg) },
+    )
+}
+
+/**
+ * The tunnel list, with no ViewModel and no back stack so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun ConfigListContent(
+    configs: List<VpnConfig>,
+    connectingId: Long?,
+    activeId: Long?,
+    snackbar: SnackbarHostState = remember { SnackbarHostState() },
+    onSettings: () -> Unit = {},
+    onImport: () -> Unit = {},
+    onToggleConnect: (VpnConfig) -> Unit = {},
+    onOpen: (VpnConfig) -> Unit = {},
+    onDelete: (VpnConfig) -> Unit = {},
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.vpn_wireguard_gotatun)) },
                 actions = {
-                    androidx.compose.material3.IconButton({ backStack.add(Route.Settings) }) {
+                    androidx.compose.material3.IconButton(onSettings) {
                         IconSettings()
                     }
                 },
@@ -85,10 +124,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                // Open a .conf file — only import option per user request.
-                filePicker.launch(arrayOf("*/*"))
-            }) {
+            FloatingActionButton(onClick = onImport) {
                 IconAdd()
             }
         },
@@ -103,7 +139,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                         Text(stringResource(R.string.no_tunnels_yet), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Text(stringResource(R.string.add_a_connection_by_opening_a_conf_file), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
-                        Button({ filePicker.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.open_conf_file)) }
+                        Button(onImport) { Text(stringResource(R.string.open_conf_file)) }
                     }
                 }
             } else {
@@ -111,18 +147,11 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                     items(configs, key = { it.id }) { cfg ->
                         ConfigRow(
                             cfg,
-                            isActive = connectingId == cfg.id && VpnTunnelService.isRunning,
+                            isActive = activeId == cfg.id,
                             isConnecting = connectingId == cfg.id,
-                            onConnect = {
-                                if (connectingId != null && VpnTunnelService.isRunning) {
-                                    vm.stopVpn()
-                                } else {
-                                    if (activity != null) vm.startVpn(activity, cfg)
-                                    else Toast.makeText(context, context.getString(R.string.need_activity_to_grant_vpn_permission), Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            onClick = { backStack.add(Route.Detail(cfg.id)) },
-                            onDelete = { vm.delete(cfg) },
+                            onConnect = { onToggleConnect(cfg) },
+                            onClick = { onOpen(cfg) },
+                            onDelete = { onDelete(cfg) },
                         )
                     }
                 }

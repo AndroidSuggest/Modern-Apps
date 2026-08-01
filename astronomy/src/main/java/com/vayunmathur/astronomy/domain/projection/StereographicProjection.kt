@@ -13,6 +13,12 @@ import kotlin.math.*
  */
 fun projectAll(viewState: ViewState, altAzList: List<AltAz>): List<Offset?> {
     if (altAzList.isEmpty()) return emptyList()
+    if (!AstronomyNative.available) {
+        // Layoutlib (Compose previews, and so the store-listing screenshots) has no .so.
+        // Same projection, one point at a time.
+        val projection = StereographicProjection(viewState)
+        return altAzList.map { projection.project(it) }
+    }
     val input = DoubleArray(altAzList.size * 2)
     for (i in altAzList.indices) {
         input[2 * i] = altAzList[i].azRad

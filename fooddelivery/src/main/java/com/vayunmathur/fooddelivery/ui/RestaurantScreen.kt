@@ -64,25 +64,46 @@ fun RestaurantScreen(
 ) {
     var merchant by remember { mutableStateOf<MerchantDetail?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var customizeItem by remember { mutableStateOf<MenuItem?>(null) }
-    var customizeMerchantName by remember { mutableStateOf("") }
 
     LaunchedEffect(merchantId) {
         merchant = BitesApi.getMerchantDetail(merchantId)
         loading = false
     }
 
+    RestaurantContent(
+        merchant = merchant,
+        loading = loading,
+        onBack = onBack,
+        onAddItem = { item, selectedModifiers ->
+            onAddToCart(CartItem(
+                menuItem = item,
+                merchantId = merchantId,
+                merchantName = merchant?.name ?: "",
+                selectedModifiers = selectedModifiers
+            ))
+        },
+    )
+}
+
+/**
+ * The menu, with no API call of its own so it can be rendered from a `@Preview` — see
+ * `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun RestaurantContent(
+    merchant: MerchantDetail?,
+    loading: Boolean = false,
+    onBack: () -> Unit = {},
+    onAddItem: (MenuItem, List<DataModifier>) -> Unit = { _, _ -> },
+) {
+    var customizeItem by remember { mutableStateOf<MenuItem?>(null) }
+
     customizeItem?.let { item ->
         ModifierDialog(
             item = item,
             onDismiss = { customizeItem = null },
             onConfirm = { selectedModifiers ->
-                onAddToCart(CartItem(
-                    menuItem = item,
-                    merchantId = merchantId,
-                    merchantName = customizeMerchantName,
-                    selectedModifiers = selectedModifiers
-                ))
+                onAddItem(item, selectedModifiers)
                 customizeItem = null
             }
         )
@@ -182,14 +203,9 @@ fun RestaurantScreen(
                         items(categoryItems) { menuItem ->
                             MenuItemRow(menuItem) {
                                 if (menuItem.modifierGroups.isNotEmpty()) {
-                                    customizeMerchantName = m.name
                                     customizeItem = menuItem
                                 } else {
-                                    onAddToCart(CartItem(
-                                        menuItem = menuItem,
-                                        merchantId = merchantId,
-                                        merchantName = m.name
-                                    ))
+                                    onAddItem(menuItem, emptyList())
                                 }
                             }
                         }

@@ -53,6 +53,8 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconChevronRight
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconSettings
+import com.vayunmathur.clock.util.AlarmActions
+import com.vayunmathur.clock.util.AlarmUiState
 import com.vayunmathur.clock.util.ClockViewModel
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.ResultEffect
@@ -61,7 +63,7 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.Padding
 import kotlinx.datetime.format.char
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ClockViewModel] to the stateless [AlarmScreen]. */
 @Composable
 fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, newAlarmParams: Route.NewAlarmDialog? = null) {
     val alarms by clockViewModel.alarms.collectAsState()
@@ -81,9 +83,48 @@ fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, ne
         }
         pickingAlarmId = null
     }
-    val onPickRingtone: (Alarm) -> Unit = { alarm ->
-        pickingAlarmId = alarm.id
-        ringtoneLauncher.launch(ringtonePickerIntent(alarm.ringtoneUri))
+
+    // Editing an alarm always means "persist it, then re-arm (or cancel) its schedule",
+    // which needs a Context — and the ringtone picker needs the Activity launcher above —
+    // so the adapter lives here rather than on the ViewModel.
+    val actions = remember(clockViewModel, context) {
+        object : AlarmActions {
+            private fun save(alarm: Alarm) {
+                if (alarm.enabled) alarmScheduler.schedule(context, alarm)
+                clockViewModel.upsert(alarm)
+            }
+
+            override fun setTime(alarm: Alarm, time: LocalTime) = save(alarm.copy(time = time))
+            override fun setDays(alarm: Alarm, days: Int) = save(alarm.copy(days = days))
+
+            override fun setEnabled(alarm: Alarm, enabled: Boolean) {
+                val updated = alarm.copy(enabled = enabled)
+                if (enabled) alarmScheduler.schedule(context, updated) else alarmScheduler.cancel(context, updated)
+                clockViewModel.upsert(updated)
+            }
+
+            override fun delete(alarm: Alarm) {
+                alarmScheduler.cancel(context, alarm)
+                clockViewModel.delete(alarm)
+            }
+
+            override fun pickRingtone(alarm: Alarm) {
+                pickingAlarmId = alarm.id
+                ringtoneLauncher.launch(ringtonePickerIntent(alarm.ringtoneUri))
+            }
+
+            override fun setVibrate(alarm: Alarm, vibrate: Boolean) {
+                clockViewModel.upsert(alarm.copy(vibrate = vibrate))
+            }
+
+            override fun setSnoozeMinutes(alarm: Alarm, minutes: Int) {
+                clockViewModel.upsert(alarm.copy(snoozeMinutes = minutes))
+            }
+
+            override fun setGradualVolumeSeconds(alarm: Alarm, seconds: Int) {
+                clockViewModel.upsert(alarm.copy(gradualVolumeSeconds = seconds))
+            }
+        }
     }
 
     ResultEffect<LocalTime>("alarm_time") {
@@ -96,6 +137,31 @@ fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, ne
             alarmScheduler.schedule(context, newAlarm.copy(id = id))
         }
     }
+
+    AlarmScreen(
+        backStack = backStack,
+        state = AlarmUiState(alarms = alarms, is24Hour = DateFormat.is24HourFormat(context)),
+        actions = actions,
+    )
+}
+
+/**
+ * The alarm list, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AlarmScreen(
+    backStack: NavBackStack<Route>,
+    state: AlarmUiState,
+    actions: AlarmActions,
+    /**
+     * Seed for a card's own UI-only state: the alarm whose options drawer starts open. The
+     * app always takes the default; a preview sets it to capture the expanded card.
+     */
+    initialExpandedAlarmId: Long? = null,
+) {
+    val alarms = state.alarms
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(stringResource(R.string.label_alarm)) },
@@ -133,7 +199,13 @@ fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, ne
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(alarms, key = { it.id }) { alarm ->
-                    AlarmCard(backStack, alarm, clockViewModel, alarmScheduler, onPickRingtone)
+                    AlarmCard(
+                        backStack = backStack,
+                        alarm = alarm,
+                        is24Hour = state.is24Hour,
+                        actions = actions,
+                        initialExpanded = alarm.id == initialExpandedAlarmId,
+                    )
                 }
             }
         }
@@ -145,19 +217,12 @@ fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, ne
 fun AlarmCard(
     backStack: NavBackStack<Route>,
     alarm: Alarm,
-    clockViewModel: ClockViewModel,
-    alarmScheduler: AlarmScheduler,
-    onPickRingtone: (Alarm) -> Unit,
+    is24Hour: Boolean,
+    actions: AlarmActions,
+    initialExpanded: Boolean = false,
 ) {
-    val context = LocalContext.current
-    var expanded by remember { androidx.compose.runtime.mutableStateOf(false) }
-    ResultEffect<LocalTime>("alarm_set_time_${alarm.id}") {
-        val newAlarm = alarm.copy(time = it)
-        if(newAlarm.enabled) {
-            alarmScheduler.schedule(context, newAlarm)
-        }
-        clockViewModel.upsert(newAlarm)
-    }
+    var expanded by remember { androidx.compose.runtime.mutableStateOf(initialExpanded) }
+    ResultEffect<LocalTime>("alarm_set_time_${alarm.id}") { actions.setTime(alarm, it) }
     Card(
         onClick = { backStack.add(Route.AlarmSetTimeDialog(alarm.id, alarm.time)) },
         shape = MaterialTheme.shapes.extraLarge,
@@ -180,26 +245,15 @@ fun AlarmCard(
                         )
                     }
                     Text(
-                        formatAlarmTime(context, alarm.time),
+                        formatAlarmTime(is24Hour, alarm.time),
                         style = MaterialTheme.typography.displayMedium,
                         color = if (alarm.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = alarm.enabled, onCheckedChange = {
-                        val newAlarm = alarm.copy(enabled = it)
-                        if(newAlarm.enabled) {
-                            alarmScheduler.schedule(context, newAlarm)
-                        } else {
-                            alarmScheduler.cancel(context, newAlarm)
-                        }
-                        clockViewModel.upsert(alarm.copy(enabled = it))
-                    })
+                    Switch(checked = alarm.enabled, onCheckedChange = { actions.setEnabled(alarm, it) })
                     Spacer(Modifier.width(8.dp))
-                    IconButton({
-                        alarmScheduler.cancel(context, alarm)
-                        clockViewModel.delete(alarm)
-                    }) {
+                    IconButton({ actions.delete(alarm) }) {
                         IconDelete()
                     }
                     IconButton({ expanded = !expanded }) {
@@ -215,11 +269,7 @@ fun AlarmCard(
                         checked = isSelected,
                         onCheckedChange = {
                             val newDays = if (isSelected) alarm.days and (1 shl idx).inv() else alarm.days or (1 shl idx)
-                            val newAlarm = alarm.copy(days = newDays)
-                            if(newAlarm.enabled) {
-                                alarmScheduler.schedule(context, newAlarm)
-                            }
-                            clockViewModel.upsert(newAlarm)
+                            actions.setDays(alarm, newDays)
                         }
                     ) {
                         Text(day.toString())
@@ -233,10 +283,10 @@ fun AlarmCard(
                     vibrate = alarm.vibrate,
                     snoozeMinutes = alarm.snoozeMinutes,
                     gradualVolumeSeconds = alarm.gradualVolumeSeconds,
-                    onRingtoneClick = { onPickRingtone(alarm) },
-                    onVibrateChange = { clockViewModel.upsert(alarm.copy(vibrate = it)) },
-                    onSnoozeChange = { clockViewModel.upsert(alarm.copy(snoozeMinutes = it)) },
-                    onGradualChange = { clockViewModel.upsert(alarm.copy(gradualVolumeSeconds = it)) },
+                    onRingtoneClick = { actions.pickRingtone(alarm) },
+                    onVibrateChange = { actions.setVibrate(alarm, it) },
+                    onSnoozeChange = { actions.setSnoozeMinutes(alarm, it) },
+                    onGradualChange = { actions.setGradualVolumeSeconds(alarm, it) },
                 )
             }
         }
@@ -247,8 +297,16 @@ fun AlarmCard(
  * Format [time] for display, honoring the device's 12h/24h setting.
  * Shared by the alarm list and the full-screen ringing activity.
  */
-fun formatAlarmTime(context: Context, time: LocalTime): String {
-    val format = if (DateFormat.is24HourFormat(context)) {
+fun formatAlarmTime(context: Context, time: LocalTime): String =
+    formatAlarmTime(DateFormat.is24HourFormat(context), time)
+
+/**
+ * As above, but with the 12h/24h choice already resolved — the alarm list reads it once
+ * into [AlarmUiState] so the cards themselves need no [Context], and so a preview renders
+ * the same clock format on any machine.
+ */
+fun formatAlarmTime(is24Hour: Boolean, time: LocalTime): String {
+    val format = if (is24Hour) {
         LocalTime.Format {
             hour(Padding.ZERO)
             char(':')

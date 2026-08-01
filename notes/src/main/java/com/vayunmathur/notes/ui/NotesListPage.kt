@@ -8,6 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -50,21 +51,65 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.notes.Route
 import com.vayunmathur.notes.data.Note
 import com.vayunmathur.notes.data.noteDbConfigs
+import com.vayunmathur.notes.util.NotesListActions
+import com.vayunmathur.notes.util.NotesListUiState
 import com.vayunmathur.notes.util.NotesViewModel
 import com.vayunmathur.library.ui.ReorderableItem
 import com.vayunmathur.library.ui.rememberReorderableLazyListState
 import com.vayunmathur.library.ui.reorderDragHandle
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/** Binds [NotesViewModel] and the nav back stack to the stateless [NotesListScreen]. */
 @Composable
 fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
     val context = LocalContext.current
     val notes by viewModel.notes.collectAsStateWithLifecycle()
 
-    var searchQuery by remember { mutableStateOf("") }
-    val filtered = remember(notes, searchQuery) {
-        if (searchQuery.isBlank()) notes
-        else notes.filter { it.toString().contains(searchQuery, true) }
+    val actions = remember(backStack, viewModel) {
+        object : NotesListActions {
+            override fun openNote(id: Long) { backStack.add(Route.Note(id)) }
+            override fun createNote() { backStack.add(Route.Note(0)) }
+            override fun delete(note: Note) { viewModel.delete(note) }
+            override fun upsertAll(notes: List<Note>) { viewModel.upsertAll(notes) }
+        }
+    }
+
+    NotesListScreen(
+        state = NotesListUiState(notes = notes, showAddButton = backStack.last() !is Route.Note),
+        actions = actions,
+        // Passed in rather than built inside the screen: the backup buttons need the
+        // database passphrase, which only exists on a real device.
+        backupButtons = {
+            BackupButtons(
+                dbConfigs = remember { noteDbConfigs(context) },
+                dbCodec = SqlCipherDbCodec,
+                extraFiles = emptyList()
+            )
+        },
+    )
+}
+
+/**
+ * The notes list, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun NotesListScreen(
+    state: NotesListUiState,
+    actions: NotesListActions,
+    /** Top-bar backup/restore buttons; empty in a preview, which has no database. */
+    backupButtons: @Composable RowScope.() -> Unit = {},
+    /**
+     * Seed for the screen's own UI-only search state. The app always takes the default;
+     * previews set it so the search results can be captured without typing.
+     */
+    initialSearchQuery: String = "",
+) {
+    var searchQuery by remember { mutableStateOf(initialSearchQuery) }
+    val filtered = remember(state.notes, searchQuery) {
+        if (searchQuery.isBlank()) state.notes
+        else state.notes.filter { it.toString().contains(searchQuery, true) }
     }
 
     BackHandler(enabled = searchQuery.isNotEmpty()) {
@@ -145,7 +190,7 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
     val isDragging = reorderState.isAnyItemDragging
     LaunchedEffect(isDragging) {
         if (!isDragging && hasDragged) {
-            viewModel.upsertAll(localData)
+            actions.upsertAll(localData)
             hasDragged = false
         }
     }
@@ -163,7 +208,7 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
                     actions = {
                         val selectedNotes = localData.filter { it.id in selectedIds }
                         IconButton(onClick = {
-                            selectedNotes.forEach { viewModel.delete(it) }
+                            selectedNotes.forEach { actions.delete(it) }
                             selectedIds.clear()
                         }) {
                             IconDelete()
@@ -180,19 +225,13 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
                             padding = PaddingValues(0.dp)
                         )
                     },
-                    actions = {
-                        BackupButtons(
-                            dbConfigs = remember { noteDbConfigs(context) },
-                            dbCodec = SqlCipherDbCodec,
-                            extraFiles = emptyList()
-                        )
-                    }
+                    actions = backupButtons
                 )
             }
         },
         floatingActionButton = {
-            if (backStack.last() !is Route.Note && !isSelectionMode) {
-                FloatingActionButton(onClick = { backStack.add(Route.Note(0)) }) {
+            if (state.showAddButton && !isSelectionMode) {
+                FloatingActionButton(onClick = { actions.createNote() }) {
                     IconAdd()
                 }
             }
@@ -225,7 +264,7 @@ fun NotesListPage(backStack: NavBackStack<Route>, viewModel: NotesViewModel) {
                                         if (isSelected) selectedIds.remove(note.id)
                                         else selectedIds.add(note.id)
                                     } else {
-                                        backStack.add(Route.Note(note.id))
+                                        actions.openNote(note.id)
                                     }
                                 },
                                 onLongClick = {

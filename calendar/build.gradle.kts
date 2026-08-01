@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:calendar:metadata` task name either way.
+    id("common-conventions-preview-metadata")
 }
 
 launcherIcon {
@@ -11,10 +13,6 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.calendar"
     }
-}
-
-metadataScreenshots {
-    permissions.addAll("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR")
 }
 
 dependencies {

@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:photos:metadata` task name either way.
+    id("common-conventions-preview-metadata")
     alias(libs.plugins.ksp)
 }
 
@@ -35,15 +37,6 @@ androidComponents {
 // Native pixel filters (Rust). See photos/src/main/rust/.
 rustNativeLib("photos_fx", "photos")
 
-metadataScreenshots {
-    permissions.addAll(
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.ACCESS_MEDIA_LOCATION",
-    )
-    appops.add("MANAGE_MEDIA")
-}
-
 dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.fragment.ktx)
@@ -69,7 +62,4 @@ dependencies {
     // Semantic photo search now delegates image/text embedding to the
     // OpenAssistant app via this thin cross-app client (no on-device CLIP).
     implementation(project(":sdk:openassistant"))
-
-    // The metadata screenshot generator writes EXIF GPS into seeded JPEGs.
-    androidTestImplementation(libs.androidx.exifinterface)
 }

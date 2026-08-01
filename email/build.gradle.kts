@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:email:metadata` task name either way.
+    id("common-conventions-preview-metadata")
 }
 
 launcherIcon {
@@ -58,4 +60,6 @@ dependencies {
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
     implementation(project(":library:widgets"))
+    // Reduced CA hardening: need NetworkClient.init(SYSTEM) for dynamic IMAP hosts (any-cert via Jakarta trust=*).
+    implementation(project(":library:network"))
 }

@@ -68,7 +68,7 @@ sealed class EvalStatus {
     data class Cycle(val ids: List<String>) : EvalStatus()
 }
 
-class LogicViewModel(application: Application) : AndroidViewModel(application) {
+class LogicViewModel(application: Application) : AndroidViewModel(application), LogicActions {
     private val repo = LogicProgressRepository(application)
     private val ds = DataStoreUtils.getInstance(application)
     private val ctx: Context get() = getApplication()
@@ -140,7 +140,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun selectLevel(levelId: String) {
+    override fun selectLevel(levelId: String) {
         val loaded = allCircuits[levelId] ?: Circuit()
         undoStacks.getOrPut(levelId) { mutableListOf() }
         redoStacks.getOrPut(levelId) { mutableListOf() }
@@ -154,7 +154,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addGate(chipId: String) { addGateAt(chipId, null, null) }
 
-    fun addGateAt(chipId: String, x: Float?, y: Float?): String {
+    override fun addGateAt(chipId: String, x: Float?, y: Float?): String {
         val state = _uiState.value
         val newId = "G_${Uuid.random().toString().take(6)}"
         val cnt = state.circuit.gates.size
@@ -169,7 +169,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         return newId
     }
 
-    fun removeGate(instanceId: String) {
+    override fun removeGate(instanceId: String) {
         val s = _uiState.value.circuit
         pushHistory(s)
         val newGates = s.gates.filterNot { it.instanceId==instanceId }
@@ -178,14 +178,14 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         updateCircuit(s.copy(gates=newGates, wires=newWires, outputMappings=newOuts))
     }
 
-    fun clearCircuit() {
+    override fun clearCircuit() {
         val s = _uiState.value.circuit
         if (s.gates.isEmpty() && s.wires.isEmpty() && s.outputMappings.isEmpty()) return
         pushHistory(s)
         updateCircuit(Circuit())
     }
 
-    fun selectGate(id: String?) { _uiState.update { it.copy(selectedGateInstanceId = id) } }
+    override fun selectGate(id: String?) { _uiState.update { it.copy(selectedGateInstanceId = id) } }
 
     fun deleteSelected() {
         val id = _uiState.value.selectedGateInstanceId ?: return
@@ -230,7 +230,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun undo() {
+    override fun undo() {
         val lvl = _uiState.value.currentLevelId ?: return
         val uStack = undoStacks[lvl] ?: return
         if (uStack.isEmpty()) return
@@ -243,7 +243,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         evaluateCurrent()
     }
 
-    fun redo() {
+    override fun redo() {
         val lvl = _uiState.value.currentLevelId ?: return
         val rStack = redoStacks[lvl] ?: return
         if (rStack.isEmpty()) return
@@ -256,12 +256,12 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         evaluateCurrent()
     }
 
-    fun onGateMoved(instanceId: String, x: Float, y: Float) {
+    override fun onGateMoved(instanceId: String, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newGates = s.gates.map { if(it.instanceId==instanceId) it.copy(x=x.coerceIn(-4000f,6000f), y=y.coerceIn(-4000f,6000f)) else it }
         _uiState.update { it.copy(circuit=it.circuit.copy(gates=newGates)) }
     }
-    fun onGateMoveFinished(instanceId: String, x: Float, y: Float) {
+    override fun onGateMoveFinished(instanceId: String, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         // push history only if wasn't already pushed for this drag session
@@ -275,13 +275,13 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         evaluateCurrent()
     }
 
-    fun onInputMoved(idx: Int, x: Float, y: Float) {
+    override fun onInputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.inputPositions.toMutableMap()
         newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
         _uiState.update { it.copy(circuit=s.copy(inputPositions=newMap)) }
     }
-    fun onInputMoveFinished(idx: Int, x: Float, y: Float) {
+    override fun onInputMoveFinished(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         pushHistory(prevCircuit)
@@ -293,13 +293,13 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(circuit=newCircuit) }
         schedulePersist()
     }
-    fun onOutputMoved(idx: Int, x: Float, y: Float) {
+    override fun onOutputMoved(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val newMap = s.outputPositions.toMutableMap()
         newMap[idx]=IoPos(x.coerceIn(-4000f,6000f), y.coerceIn(-4000f,6000f))
         _uiState.update { it.copy(circuit=s.copy(outputPositions=newMap)) }
     }
-    fun onOutputMoveFinished(idx: Int, x: Float, y: Float) {
+    override fun onOutputMoveFinished(idx: Int, x: Float, y: Float) {
         val s = _uiState.value.circuit
         val prevCircuit = allCircuits[_uiState.value.currentLevelId] ?: s
         pushHistory(prevCircuit)
@@ -312,9 +312,9 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         schedulePersist()
     }
 
-    fun startWiring(from: WireEnd) { _uiState.update { it.copy(wiringFrom=from) } }
-    fun cancelWiring() { _uiState.update { it.copy(wiringFrom=null, dragGhostLineEnd=null) } }
-    fun updateGhostLine(end: Offset?) { _uiState.update { it.copy(dragGhostLineEnd=end) } }
+    override fun startWiring(from: WireEnd) { _uiState.update { it.copy(wiringFrom=from) } }
+    override fun cancelWiring() { _uiState.update { it.copy(wiringFrom=null, dragGhostLineEnd=null) } }
+    override fun updateGhostLine(end: Offset?) { _uiState.update { it.copy(dragGhostLineEnd=end) } }
 
     private fun outputPinWidth(end: WireEnd, level: LevelDef?): Int {
         if (end.instanceId.startsWith("__IN_")) {
@@ -333,7 +333,7 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
         return ChipLibrary.get(gate.chipId).inputPinWidth(end.pinIndex)
     }
 
-    fun createWire(from: WireEnd, to: WireEnd) {
+    override fun createWire(from: WireEnd, to: WireEnd) {
         val s = _uiState.value.circuit
         val lvlId = _uiState.value.currentLevelId
         val level = lvlId?.let { try { Levels.get(it) } catch(_:Exception){null} }
@@ -397,12 +397,12 @@ class LogicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun completeWiring(to: WireEnd) { val from=_uiState.value.wiringFrom ?: return; createWire(from,to) }
 
-    fun removeWire(wireId: String) {
+    override fun removeWire(wireId: String) {
         val s=_uiState.value.circuit
         pushHistory(s)
         updateCircuit(s.copy(wires=s.wires.filterNot{it.id==wireId}))
     }
-    fun removeOutputMapping(outIdx: Int) {
+    override fun removeOutputMapping(outIdx: Int) {
         val s=_uiState.value.circuit
         pushHistory(s)
         updateCircuit(s.copy(outputMappings=s.outputMappings.filterNot{it.outputIndex==outIdx}))

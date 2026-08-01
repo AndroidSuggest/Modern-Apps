@@ -67,6 +67,9 @@ import com.vayunmathur.weather.network.WeatherApi
 import com.vayunmathur.weather.ui.components.LocationItem
 import com.vayunmathur.weather.ui.components.UseDeviceLocationCard
 import com.vayunmathur.weather.util.LocationProvider
+import com.vayunmathur.weather.util.LocationRow
+import com.vayunmathur.weather.util.LocationsUiState
+import com.vayunmathur.weather.util.WeatherActions
 import com.vayunmathur.weather.util.WeatherViewModel
 import com.vayunmathur.weather.util.formatTemperatureCompact
 import com.vayunmathur.weather.util.rememberTempUnit
@@ -83,7 +86,7 @@ import com.vayunmathur.library.ui.rememberReorderableLazyListState
 /**
  * Composable helper that provides a device-location request action with
  * permission handling. Returns the onClick lambda and a loading flag.
- * Used by both [LocationsScreen] and [EmptyHome][com.vayunmathur.weather.ui.EmptyHome].
+ * Used by both [LocationsPage] and the empty-home state in `HomePage.kt`.
  */
 @Composable
 internal fun rememberRequestDeviceLocation(
@@ -130,19 +133,13 @@ internal fun rememberRequestDeviceLocation(
 }
 
 /**
- * Locations drawer content. Renders inside [HomePage]'s
- * `DismissibleNavigationDrawer`. Scaffold with a back/close top bar,
- * a scrollable list of [LocationItem]s, and a full-width "Search location"
- * Button pinned to the bottom (in the Scaffold's `bottomBar` slot). The
- * search button opens a [SearchLocationDialog] for picking a city by name.
+ * Binds [WeatherViewModel] and the back stack to the stateless [LocationsScreen].
+ *
+ * The per-row "Last updated 4m ago" line is built here because it needs both a [Context]
+ * for the string and a clock; the screen only ever sees the finished text.
  */
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    kotlinx.coroutines.ExperimentalCoroutinesApi::class,
-    kotlinx.coroutines.FlowPreview::class,
-)
 @Composable
-fun LocationsScreen(
+fun LocationsPage(
     backStack: NavBackStack<Route>,
     viewModel: WeatherViewModel,
     activeLocation: SavedLocation?,
@@ -151,6 +148,7 @@ fun LocationsScreen(
 ) {
     val locations = viewModel.savedLocations.collectAsState().value.orEmpty()
     val forecasts by viewModel.forecasts.collectAsState()
+    val context = LocalContext.current
 
     // Ticks every 30s so the "Last updated Xm ago" labels advance over time
     // rather than being frozen at whatever they read when the drawer opened.
@@ -162,15 +160,58 @@ fun LocationsScreen(
         }
     }
 
+    val (onAddCurrentLocation, deviceLocationLoading) = rememberRequestDeviceLocation(viewModel)
+
+    val rows = locations.map { loc ->
+        val state = forecasts[loc.id]
+        LocationRow(
+            location = loc,
+            description = state?.fetchedAtEpochMs
+                ?.takeIf { it > 0L }
+                ?.let { context.getString(R.string.last_updated, formatAgo(context, it, nowMs)) }
+                ?: context.getString(R.string.no_data_yet),
+            weatherCode = state?.forecast?.current?.weatherCode,
+            isDay = (state?.forecast?.current?.isDay ?: 1) == 1,
+        )
+    }
+
+    LocationsScreen(
+        state = LocationsUiState(
+            rows = rows,
+            activeLocationId = activeLocation?.id,
+            deviceLocationLoading = deviceLocationLoading,
+        ),
+        actions = viewModel,
+        onLocationSelect = onLocationSelect,
+        onClose = onClose,
+        onSearchLocation = { backStack.add(Route.SearchLocation) },
+        onUseDeviceLocation = onAddCurrentLocation,
+    )
+}
+
+/**
+ * Locations drawer content, with no dependency on the ViewModel or the back stack so it can
+ * be rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from. Renders inside [HomeScreen]'s `ModalNavigationDrawer`: a Scaffold with a
+ * back/close top bar, a scrollable list of [LocationItem]s, and a full-width "Search
+ * location" Button pinned to the bottom (in the Scaffold's `bottomBar` slot).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LocationsScreen(
+    state: LocationsUiState,
+    actions: WeatherActions,
+    onLocationSelect: (SavedLocation) -> Unit = {},
+    onClose: () -> Unit = {},
+    onSearchLocation: () -> Unit = {},
+    onUseDeviceLocation: () -> Unit = {},
+) {
     var longPressedLocation: SavedLocation? by remember { mutableStateOf(null) }
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
 
-    val (onAddCurrentLocation, deviceLocationLoading) = rememberRequestDeviceLocation(viewModel)
-
     val haptics = LocalHapticFeedback.current
-    val context = LocalContext.current
     val listState = rememberLazyListState()
-    var localData by remember { mutableStateOf(locations) }
+    var localData by remember { mutableStateOf(state.rows) }
     var hasDragged by remember { mutableStateOf(false) }
 
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
@@ -179,12 +220,12 @@ fun LocationsScreen(
         haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
     }
 
-    LaunchedEffect(locations) {
-        if (!reorderState.isAnyItemDragging) localData = locations
+    LaunchedEffect(state.rows) {
+        if (!reorderState.isAnyItemDragging) localData = state.rows
     }
     LaunchedEffect(reorderState.isAnyItemDragging) {
         if (!reorderState.isAnyItemDragging && hasDragged) {
-            viewModel.reorderLocations(localData)
+            actions.reorderLocations(localData.map { it.location })
             hasDragged = false
         }
     }
@@ -212,7 +253,7 @@ fun LocationsScreen(
         },
         bottomBar = {
             Button(
-                onClick = { backStack.add(Route.SearchLocation) },
+                onClick = onSearchLocation,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -234,30 +275,26 @@ fun LocationsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
             ) {
-                val showDeviceLocationCard = localData.none { it.isCurrent }
+                val showDeviceLocationCard = localData.none { it.location.isCurrent }
                 if (showDeviceLocationCard) {
                     item {
                         UseDeviceLocationCard(
-                            onClick = { if (!deviceLocationLoading) onAddCurrentLocation() },
-                            isLoading = deviceLocationLoading,
+                            onClick = { if (!state.deviceLocationLoading) onUseDeviceLocation() },
+                            isLoading = state.deviceLocationLoading,
                         )
                         Spacer(Modifier.height(8.dp))
                     }
                 }
-                itemsIndexed(localData, key = { _, item -> item.id }) { idx, loc ->
+                itemsIndexed(localData, key = { _, item -> item.location.id }) { idx, row ->
+                    val loc = row.location
                     ReorderableItem(reorderState, key = loc.id) { isDragging ->
                         val elevation by animateDpAsState(if (isDragging) 6.dp else 0.dp)
-                        val state = forecasts[loc.id]
-                        val description = state?.fetchedAtEpochMs
-                            ?.takeIf { it > 0L }
-                            ?.let { context.getString(R.string.last_updated, formatAgo(context, it, nowMs)) }
-                            ?: context.getString(R.string.no_data_yet)
                         LocationItem(
                             location = loc,
-                            description = description,
-                            currentWeatherCode = state?.forecast?.current?.weatherCode,
-                            isDay = (state?.forecast?.current?.isDay ?: 1) == 1,
-                            isSelected = loc.id == activeLocation?.id,
+                            description = row.description,
+                            currentWeatherCode = row.weatherCode,
+                            isDay = row.isDay,
+                            isSelected = loc.id == state.activeLocationId,
                             onClick = { onLocationSelect(loc) },
                             onLongClick = { longPressedLocation = loc },
                             modifier = Modifier.shadow(elevation, MaterialTheme.shapes.extraLarge),
@@ -315,7 +352,7 @@ fun LocationsScreen(
                 Spacer(Modifier.height(4.dp))
                 com.vayunmathur.library.ui.TextButton(
                     onClick = {
-                        viewModel.deleteLocation(sheetLocation)
+                        actions.deleteLocation(sheetLocation)
                         longPressedLocation = null
                     },
                     modifier = Modifier.padding(start = 16.dp),

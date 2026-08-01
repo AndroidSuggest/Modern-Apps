@@ -315,104 +315,71 @@ fun BrowserPage(
                 }
             }
         } else {
-            Scaffold(
-                topBar = {
-                    Column {
-                        TopAppBar(
-                            navigationIcon = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = { if (canGoBack) activeTab?.let { webViewPool[it.id]?.goBack() } },
-                                        enabled = canGoBack
-                                    ) { IconBack() }
-                                    IconButton(
-                                        onClick = { if (canGoForward) activeTab?.let { webViewPool[it.id]?.goForward() } },
-                                        enabled = canGoForward
-                                    ) { IconArrowForward() }
-                                }
-                            },
-                            title = {
-                                DisplayOnlyAddressPill(
-                                    fullUrl = viewModel.omniboxText,
-                                    onClick = {
-                                        val full = activeTab?.url?.let { if (it.isBlank() || it == "about:blank") "" else it } ?: ""
-                                        viewModel.searchDraft = full
-                                        viewModel.omniboxFocused = true
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            },
-                            actions = {
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .clickable { viewModel.showTabSwitcher = true }
-                                ) {
-                                    Text(
-                                        text = viewModel.tabs.size.toString(),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                IconButton(onClick = { showMenu = true }) { IconMoreVert() }
-                                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                    if (activeTab != null && !isNewTabActive) {
-                                        val pwa = viewModel.getPwaInfo(activeTab.id)
-                                        val pinSupported = PwaHelper.isPinSupported(context)
-                                        val label = if (pwa?.hasManifest == true) "Install app" else "Add to Home screen"
-                                        DropdownMenuItem(
-                                            text = { Text(label) },
-                                            onClick = {
-                                                showMenu = false
-                                                showInstallDialog = true
-                                            },
-                                            enabled = activeTab.url.isNotBlank() && activeTab.url.startsWith("http") && pinSupported
-                                        )
-                                    }
-                                    DropdownMenuItem(
-                                        text = { Text(if (isCurrentBookmarked) "Remove bookmark" else "Add bookmark") },
-                                        onClick = {
-                                            showMenu = false
-                                            activeTab?.let { tab ->
-                                                if (tab.url.isBlank()) return@let
-                                                if (isCurrentBookmarked) {
-                                                    bookmarks.find { it.url == tab.url }?.let { viewModel.removeBookmark(it) }
-                                                } else viewModel.addBookmark(tab.url, tab.title.ifBlank { tab.url })
-                                            }
-                                        }
-                                    )
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = {
-                                        showMenu = false
-                                        activeTab?.let { tab ->
-                                            if (tab.url.isBlank()) return@let
-                                            val sendIntent = android.content.Intent().apply {
-                                                action = android.content.Intent.ACTION_SEND
-                                                putExtra(android.content.Intent.EXTRA_TEXT, tab.url)
-                                                type = "text/plain"
-                                            }
-                                            context.startActivity(android.content.Intent.createChooser(sendIntent, context.getString(R.string.share_link)))
-                                        }
-                                    })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.new_tab)) }, onClick = { showMenu = false; viewModel.newTab() })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.new_private_tab)) }, onClick = { showMenu = false; viewModel.newTab(isPrivate = true) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.history)) }, onClick = { showMenu = false; backStack.add(Route.History) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.bookmarks)) }, onClick = { showMenu = false; backStack.add(Route.Bookmarks) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.downloads)) }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.installed_apps)) }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.site_data)) }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, onClick = { showMenu = false; backStack.add(Route.Settings) })
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-                        )
-                        if (activeTab != null && !isNewTabActive && progress in 0.01f..0.99f) {
-                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp))
+            BrowserChrome(
+                omniboxText = viewModel.omniboxText,
+                tabCount = viewModel.tabs.size,
+                canGoBack = canGoBack,
+                canGoForward = canGoForward,
+                // A blank new tab is not loading anything, so never show the bar for one.
+                progress = if (activeTab != null && !isNewTabActive) progress else 0f,
+                onBack = { if (canGoBack) activeTab?.let { webViewPool[it.id]?.goBack() } },
+                onForward = { if (canGoForward) activeTab?.let { webViewPool[it.id]?.goForward() } },
+                onOmniboxClick = {
+                    val full = activeTab?.url?.let { if (it.isBlank() || it == "about:blank") "" else it } ?: ""
+                    viewModel.searchDraft = full
+                    viewModel.omniboxFocused = true
+                },
+                onTabSwitcherClick = { viewModel.showTabSwitcher = true },
+                onMenuClick = { showMenu = true },
+                menu = {
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        if (activeTab != null && !isNewTabActive) {
+                            val pwa = viewModel.getPwaInfo(activeTab.id)
+                            val pinSupported = PwaHelper.isPinSupported(context)
+                            val label = if (pwa?.hasManifest == true) "Install app" else "Add to Home screen"
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    showMenu = false
+                                    showInstallDialog = true
+                                },
+                                enabled = activeTab.url.isNotBlank() && activeTab.url.startsWith("http") && pinSupported
+                            )
                         }
+                        DropdownMenuItem(
+                            text = { Text(if (isCurrentBookmarked) "Remove bookmark" else "Add bookmark") },
+                            onClick = {
+                                showMenu = false
+                                activeTab?.let { tab ->
+                                    if (tab.url.isBlank()) return@let
+                                    if (isCurrentBookmarked) {
+                                        bookmarks.find { it.url == tab.url }?.let { viewModel.removeBookmark(it) }
+                                    } else viewModel.addBookmark(tab.url, tab.title.ifBlank { tab.url })
+                                }
+                            }
+                        )
+                        DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = {
+                            showMenu = false
+                            activeTab?.let { tab ->
+                                if (tab.url.isBlank()) return@let
+                                val sendIntent = android.content.Intent().apply {
+                                    action = android.content.Intent.ACTION_SEND
+                                    putExtra(android.content.Intent.EXTRA_TEXT, tab.url)
+                                    type = "text/plain"
+                                }
+                                context.startActivity(android.content.Intent.createChooser(sendIntent, context.getString(R.string.share_link)))
+                            }
+                        })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.new_tab)) }, onClick = { showMenu = false; viewModel.newTab() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.new_private_tab)) }, onClick = { showMenu = false; viewModel.newTab(isPrivate = true) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.history)) }, onClick = { showMenu = false; backStack.add(Route.History) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.bookmarks)) }, onClick = { showMenu = false; backStack.add(Route.Bookmarks) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.downloads)) }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.installed_apps)) }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.site_data)) }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, onClick = { showMenu = false; backStack.add(Route.Settings) })
                     }
-                }
+                },
             ) { paddingValues ->
                 Column(Modifier.fillMaxSize().padding(paddingValues)) {
                     if (isNewTabActive) {
@@ -564,6 +531,78 @@ fun BrowserPage(
     }
 }
 
+/**
+ * The browser chrome — back/forward, the address pill, the tab counter and the overflow
+ * button — around whatever [content] the active tab needs. Split out of [BrowserPage] with no
+ * ViewModel reference so the new-tab screen can be rendered from a `@Preview`; see
+ * `src/screenshotTest`, which is where the store listing images come from.
+ *
+ * [menu] is a slot rather than a list of callbacks because the overflow menu has to stay
+ * anchored inside the app bar's `actions` row to pop up in the right place.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BrowserChrome(
+    omniboxText: String,
+    tabCount: Int,
+    canGoBack: Boolean = false,
+    canGoForward: Boolean = false,
+    /** Load progress of the visible page; outside 0.01..0.99 the thin bar is hidden. */
+    progress: Float = 0f,
+    onBack: () -> Unit = {},
+    onForward: () -> Unit = {},
+    onOmniboxClick: () -> Unit = {},
+    onTabSwitcherClick: () -> Unit = {},
+    onMenuClick: () -> Unit = {},
+    menu: @Composable () -> Unit = {},
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(
+                    navigationIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onBack, enabled = canGoBack) { IconBack() }
+                            IconButton(onClick = onForward, enabled = canGoForward) { IconArrowForward() }
+                        }
+                    },
+                    title = {
+                        DisplayOnlyAddressPill(
+                            fullUrl = omniboxText,
+                            onClick = onOmniboxClick,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    actions = {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(onClick = onTabSwitcherClick)
+                        ) {
+                            Text(
+                                text = tabCount.toString(),
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(onClick = onMenuClick) { IconMoreVert() }
+                        menu()
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                )
+                if (progress in 0.01f..0.99f) {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp))
+                }
+            }
+        },
+        content = content,
+    )
+}
+
 @Composable
 private fun DisplayOnlyAddressPill(
     fullUrl: String,
@@ -588,8 +627,9 @@ private fun DisplayOnlyAddressPill(
     }
 }
 
+/** The blank-new-tab landing page. Public so the store-listing previews can render it. */
 @Composable
-private fun QuickAccess(
+fun QuickAccess(
     bookmarks: List<com.vayunmathur.web.data.Bookmark>,
     history: List<com.vayunmathur.web.data.HistoryEntry>,
     onOpenUrl: (String) -> Unit,
@@ -650,8 +690,9 @@ private fun QuickAccess(
     }
 }
 
+/** Already stateless — public only so the store-listing previews can render it. */
 @Composable
-private fun TabSwitcher(
+fun TabSwitcher(
     tabs: List<com.vayunmathur.web.util.BrowserTab>,
     activeTabId: String?,
     onSwitch: (String) -> Unit,

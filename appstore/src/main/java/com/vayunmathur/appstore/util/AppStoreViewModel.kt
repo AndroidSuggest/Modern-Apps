@@ -21,13 +21,22 @@ import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.CachedAppEntity
 import com.vayunmathur.appstore.data.DefaultRepos
 import com.vayunmathur.appstore.data.FDroidAppProvider
+import com.vayunmathur.appstore.data.FDroidRepository
 import com.vayunmathur.appstore.data.InstalledInfo
 import com.vayunmathur.appstore.data.PlayStoreAppProvider
 import com.vayunmathur.appstore.data.PlayStoreDataSource
+import com.vayunmathur.appstore.data.ModernAppsProvider
+import com.vayunmathur.appstore.data.ModernAppsRepo
 import com.vayunmathur.appstore.data.RepoEntity
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.installer.PlayDownloader
 import com.vayunmathur.appstore.data.installer.SessionInstaller
+import com.vayunmathur.appstore.data.security.ApkCertificates
+import com.vayunmathur.appstore.data.security.InstallRequirement
+import com.vayunmathur.appstore.data.security.SecurityTier
+import com.vayunmathur.appstore.data.security.VerificationResult
+import com.vayunmathur.appstore.data.toEntity
+import com.vayunmathur.appstore.data.toUnifiedApp
 import com.vayunmathur.appstore.data.play.AnonymousAuthRepository
 import com.vayunmathur.appstore.data.play.CertUtil
 import com.vayunmathur.appstore.data.play.DeviceInfoProvider
@@ -51,7 +60,7 @@ import java.net.URL
 private val Context.authDataStore by preferencesDataStore(name = "play_auth")
 private val PLAY_AUTH_JSON_KEY = stringPreferencesKey("play_auth_json")
 
-enum class InstalledFilter { ALL, FDROID, PLAYSTORE }
+enum class InstalledFilter { ALL, MODERN_APPS, FDROID, PLAYSTORE }
 
 sealed class PlayAuthState {
     object Idle : PlayAuthState()
@@ -63,11 +72,26 @@ sealed class PlayAuthState {
 class AppStoreViewModel(
     private val context: Context,
     private val db: AppDatabase
-) : ViewModel() {
+) : ViewModel(), BrowseActions, AppDetailActions {
 
+    private val modernProvider = ModernAppsProvider(context.applicationContext)
     private val fdroidProvider = FDroidAppProvider(db, context.applicationContext)
     private val playProvider = PlayStoreAppProvider()
-    val providers: List<AppProvider> get() = listOf(fdroidProvider, playProvider)
+
+    /**
+     * Resolution order, best-verified first. Modern Apps wins any package it offers,
+     * because it is the only source whose APKs are checked against this store's own
+     * signing certificate; F-Droid (reproduced builds only) beats Play, which cannot be
+     * verified against any publisher key at all.
+     */
+    val providers: List<AppProvider> get() = listOf(modernProvider, fdroidProvider, playProvider)
+
+    /** Per-package result of the last install attempt's certificate/hash checks. */
+    private val _verification = MutableStateFlow<Map<String, VerificationResult>>(emptyMap())
+    val verification: StateFlow<Map<String, VerificationResult>> = _verification
+
+    /** SHA-256 of this app's own signing certificate — the Modern Apps trust root. */
+    val ownSigningCertificates: Set<String> by lazy { ApkCertificates.selfSigners(context) }
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing
@@ -123,24 +147,38 @@ class AppStoreViewModel(
     val combinedBrowse: StateFlow<List<UnifiedApp>> = combine(
         cachedApps, _playSearchResults, _topCharts, _searchQuery, _activeRepo
     ) { cached, playSearch, topCharts, query, activeRepo ->
-        val fdroidAll = cached.map { it.toUnifiedApp() }
-        val fdroid = if (activeRepo != null) fdroidAll.filter { it.repoUrl == activeRepo } else fdroidAll
+        val local = cached.map { it.toUnifiedApp() }
+        val modernAll = local.filter { it.source == AppSource.MODERN_APPS }
+        val fdroidAll = local.filter { it.source == AppSource.FDROID }
+        val modernPkgs = modernAll.map { it.packageName }.toSet()
         val fdroidPkgs = fdroidAll.map { it.packageName }.toSet()
-        fun infer(pkg: String): AppSource = if (fdroidPkgs.contains(pkg)) AppSource.FDROID else AppSource.PLAYSTORE
+
+        // A package offered by more than one source is attributed to the best one.
+        fun infer(pkg: String): AppSource = when {
+            modernPkgs.contains(pkg) -> AppSource.MODERN_APPS
+            fdroidPkgs.contains(pkg) -> AppSource.FDROID
+            else -> AppSource.PLAYSTORE
+        }
+
+        val visible = if (activeRepo != null) local.filter { it.repoUrl == activeRepo } else local
+        val modern = visible.filter { it.source == AppSource.MODERN_APPS }
+        val fdroid = visible.filter { it.source == AppSource.FDROID }
 
         val infSearch = playSearch.map { it.copy(source = infer(it.packageName)) }
         val infCharts = topCharts.map { it.copy(source = infer(it.packageName)) }
 
         val list = if (query.isBlank()) {
-            fdroid + (if (infSearch.isEmpty()) infCharts else infSearch)
+            modern + fdroid + (if (infSearch.isEmpty()) infCharts else infSearch)
         } else {
             val q = query.lowercase()
-            val fd = fdroid.filter {
-                it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q) || it.summary.lowercase().contains(q)
-            }
-            (fd + infSearch).distinctBy { it.packageName }.map { it.copy(source = infer(it.packageName)) }
+            fun matches(app: UnifiedApp) = app.name.lowercase().contains(q) ||
+                app.packageName.lowercase().contains(q) ||
+                app.summary.lowercase().contains(q)
+            modern.filter(::matches) + fdroid.filter(::matches) + infSearch
         }
-        AppProvider.filterTargetSdk(list.distinctBy { it.packageName }).sortedBy { it.name.lowercase() }
+        // distinctBy keeps the first occurrence, so the ordering above *is* the priority.
+        AppProvider.filterTargetSdk(list.distinctBy { it.packageName })
+            .sortedWith(compareBy({ SecurityTier.of(it.source).ordinal }, { it.name.lowercase() }))
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val filteredInstalled: StateFlow<List<InstalledInfo>> = combine(
@@ -149,6 +187,7 @@ class AppStoreViewModel(
         val inStore = installed.filter { srcMap.containsKey(it.packageName) }
         when (filter) {
             InstalledFilter.ALL -> inStore
+            InstalledFilter.MODERN_APPS -> inStore.filter { srcMap[it.packageName] == AppSource.MODERN_APPS }
             InstalledFilter.FDROID -> inStore.filter { srcMap[it.packageName] == AppSource.FDROID }
             InstalledFilter.PLAYSTORE -> inStore.filter { srcMap[it.packageName] == AppSource.PLAYSTORE }
         }
@@ -184,7 +223,11 @@ class AppStoreViewModel(
         }
         viewModelScope.launch {
             cachedApps.collect { list ->
-                fdroidProvider.cachedPackageNames = list.map { it.packageName }.toSet()
+                fdroidProvider.cachedPackageNames = list
+                    .filter { it.source == AppSource.FDROID.name }
+                    .map { it.packageName }
+                    .toSet()
+                modernProvider.primeFrom(list)
             }
         }
     }
@@ -229,7 +272,7 @@ class AppStoreViewModel(
         }
 
         _playAuthState.value = PlayAuthState.Authenticating
-        _syncMessage.value = "Authenticating with Play (anonymous)..."
+        _syncMessage.value = "Connecting to the Play Store…"
 
         val deviceProps = DeviceInfoProvider.buildDeviceProperties(context)
         val result = anonAuthRepo.ensureAuthData(context, deviceProps)
@@ -238,7 +281,7 @@ class AppStoreViewModel(
             val authData = result.getOrNull()!!
             cachedAuthData = authData
             _playAuthState.value = PlayAuthState.Authenticated(authData)
-            _syncMessage.value = "Play authentication successful"
+            _syncMessage.value = "Connected to the Play Store"
             persistAuthData(authData)
             kotlinx.coroutines.delay(1000)
             _syncMessage.value = ""
@@ -247,24 +290,37 @@ class AppStoreViewModel(
             val err = result.exceptionOrNull() ?: Exception("Auth failed")
             val msg = anonAuthRepo.errorMessage(err)
             _playAuthState.value = PlayAuthState.Error(msg)
-            _syncMessage.value = "Play auth failed: $msg"
+            _syncMessage.value = "Couldn't connect to the Play Store"
             return Result.failure(err)
         }
     }
 
+    /**
+     * There is exactly one supported F-Droid repository and it cannot be changed, so this
+     * both seeds it and prunes anything else a previous version may have stored.
+     */
     private suspend fun ensureDefaultRepos() {
         val existing = db.repoDao().all()
-        if (existing.isEmpty()) {
-            db.repoDao().upsert(RepoEntity(DefaultRepos.FDROID_MAIN, "F-Droid", true))
-            db.repoDao().upsert(RepoEntity(DefaultRepos.FDROID_ARCHIVE, "F-Droid Archive", false))
-            db.repoDao().upsert(RepoEntity(DefaultRepos.IZVYZID, "IzzyOnDroid", true))
+        existing.filter { it.url != DefaultRepos.FDROID_MAIN }.forEach {
+            db.repoDao().deleteByUrl(it.url)
+            db.cachedAppDao().deleteByRepo(it.url)
+        }
+        if (existing.none { it.url == DefaultRepos.FDROID_MAIN }) {
+            db.repoDao().upsert(
+                RepoEntity(
+                    url = DefaultRepos.FDROID_MAIN,
+                    name = "F-Droid",
+                    enabled = true,
+                    fingerprint = FDroidRepository.FDROID_SIGNING_CERT_SHA256,
+                )
+            )
         }
     }
 
     fun loadTopCharts() {
         topJob?.cancel()
         topJob = viewModelScope.launch {
-            _syncMessage.value = "Loading top charts..."
+            _syncMessage.value = "Loading top charts…"
             // If we have Play auth, try gplayapi search? For topCharts we keep scraping as fallback (cheap)
             val charts = playProvider.fetchAll()
             // If auth ready, optionally enrich via gplayapi top charts later – keep scraping for V1
@@ -273,7 +329,7 @@ class AppStoreViewModel(
         }
     }
 
-    fun setSearch(q: String) {
+    override fun setSearch(q: String) {
         _searchQuery.value = q
         searchJob?.cancel()
         if (q.isBlank()) {
@@ -282,7 +338,7 @@ class AppStoreViewModel(
         }
         searchJob = viewModelScope.launch {
             kotlinx.coroutines.delay(400)
-            _syncMessage.value = "Searching..."
+            _syncMessage.value = "Searching…"
             // If Play auth cached, use gplayapi search; else fallback to scraping provider
             val results = if (cachedAuthData != null) {
                 try {
@@ -304,14 +360,33 @@ class AppStoreViewModel(
         if (_isSyncing.value) return
         viewModelScope.launch {
             _isSyncing.value = true
-            _syncMessage.value = "Syncing F-Droid repositories..."
+            val notes = mutableListOf<String>()
+
+            // Order matters: packageName is the cache table's primary key, so when a
+            // package is published by both sources the *later* upsert wins the row.
+            // Modern Apps must therefore go last — it outranks F-Droid, and every app in
+            // this repo is also on F-Droid.
+            // Downloads F-Droid's reproducibility feed (~24 MB) and the signed index
+            // (~54 MB); both must verify or the existing catalogue is left alone.
+            _syncMessage.value = "Checking F-Droid builds…"
             try {
-                val total = fdroidProvider.syncIntoDb(context.applicationContext)
-                _syncMessage.value = if (total > 0) "Synced $total F-Droid apps" else "Sync complete"
-            } catch (e: Exception) {
-                _syncMessage.value = "Sync failed: ${e.message}"
+                val total = fdroidProvider.syncIntoDb()
+                notes += "$total apps from F-Droid" +
+                    (", ${fdroidProvider.lastFilteredOut} skipped"
+                        .takeIf { fdroidProvider.lastFilteredOut > 0 } ?: "")
+            } catch (_: Exception) {
+                notes += "F-Droid didn't sync"
             }
-            kotlinx.coroutines.delay(1500)
+
+            _syncMessage.value = "Checking Modern Apps…"
+            try {
+                notes += "${modernProvider.syncIntoDb(db)} from Modern Apps"
+            } catch (_: Exception) {
+                notes += "Modern Apps didn't sync"
+            }
+
+            _syncMessage.value = notes.joinToString(" · ")
+            kotlinx.coroutines.delay(2500)
             _syncMessage.value = ""
             _isSyncing.value = false
             refreshInstalled()
@@ -347,12 +422,31 @@ class AppStoreViewModel(
         }
     }
 
+    /**
+     * Attribute each installed package to the best-verified source that offers it.
+     *
+     * Reads the cached rows directly rather than going through the providers'
+     * in-memory caches: those are primed asynchronously from the same table, so asking
+     * them right after a sync could race and report a Modern Apps package as absent.
+     */
     private fun resolveInstalledSources(packages: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
+            val rows = try { db.cachedAppDao().all() } catch (_: Exception) { emptyList() }
+            val bySource = rows.groupBy(
+                { runCatching { AppSource.valueOf(it.source) }.getOrNull() },
+                { it.packageName },
+            ).mapValues { (_, v) -> v.toSet() }
+            val modern = bySource[AppSource.MODERN_APPS].orEmpty()
+            val fdroid = bySource[AppSource.FDROID].orEmpty()
+
             val map = mutableMapOf<String, AppSource>()
             for (pkg in packages) {
-                if (fdroidProvider.isPresent(pkg)) map[pkg] = AppSource.FDROID
-                else if (playProvider.isPresent(pkg)) map[pkg] = AppSource.PLAYSTORE
+                map[pkg] = when {
+                    pkg in modern -> AppSource.MODERN_APPS
+                    pkg in fdroid -> AppSource.FDROID
+                    playProvider.isPresent(pkg) -> AppSource.PLAYSTORE
+                    else -> continue
+                }
             }
             _installedSourceMap.value = map
         }
@@ -361,9 +455,12 @@ class AppStoreViewModel(
     fun setInstalledFilter(filter: InstalledFilter) { _installedFilter.value = filter }
 
     fun selectApp(app: UnifiedApp) {
-        val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
-        val inferredSource = if (fdroidPkgs.contains(app.packageName)) AppSource.FDROID else AppSource.PLAYSTORE
-        _selectedApp.value = app.copy(source = inferredSource)
+        // Prefer the cached row: it carries the signer/hash the authenticated index gave
+        // us, which a UnifiedApp reconstructed from a Play listing would not have.
+        val cachedRow = cachedApps.value.firstOrNull { it.packageName == app.packageName }
+        val resolved = cachedRow?.toUnifiedApp() ?: app.copy(source = AppSource.PLAYSTORE)
+        val inferredSource = resolved.source
+        _selectedApp.value = resolved
 
         if (inferredSource == AppSource.PLAYSTORE && app.description.isBlank()) {
             // Try to fetch via gplayapi if auth available, else via scraping provider
@@ -379,15 +476,13 @@ class AppStoreViewModel(
                     playProvider.getDetails(app.packageName)
                 }
                 if (details != null) {
-                    _selectedApp.value = details.copy(
-                        source = if (fdroidPkgs.contains(details.packageName)) AppSource.FDROID else AppSource.PLAYSTORE
-                    )
+                    _selectedApp.value = details.copy(source = AppSource.PLAYSTORE)
                 }
             }
         }
     }
 
-    fun openApp(packageName: String) {
+    override fun openApp(packageName: String) {
         try {
             val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
             if (launchIntent != null) {
@@ -401,7 +496,7 @@ class AppStoreViewModel(
         }
     }
 
-    fun uninstallApp(packageName: String) {
+    override fun uninstallApp(packageName: String) {
         try {
             val intent = Intent(Intent.ACTION_DELETE).apply {
                 data = Uri.parse("package:$packageName")
@@ -409,12 +504,12 @@ class AppStoreViewModel(
                 putExtra(Intent.EXTRA_RETURN_RESULT, true)
             }
             context.startActivity(intent)
-        } catch (e: Exception) {
-            _syncMessage.value = "Uninstall failed: ${e.message}"
+        } catch (_: Exception) {
+            _syncMessage.value = "Couldn't open the uninstaller"
         }
     }
 
-    fun openInPlayStore(pkg: String) {
+    override fun openInPlayStore(pkg: String) {
         try {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
         } catch (_: Exception) {
@@ -424,29 +519,14 @@ class AppStoreViewModel(
         }
     }
 
-    fun openInBrowser(url: String) {
+    override fun openInBrowser(url: String) {
         if (url.isBlank()) return
         try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) } catch (_: Exception) {}
     }
 
-    fun addRepo(url: String, name: String) {
-        viewModelScope.launch {
-            db.repoDao().upsert(RepoEntity(url.trim().trimEnd('/'), name.ifBlank { url.trim() }, true))
-        }
-    }
-
-    fun toggleRepo(url: String) {
-        viewModelScope.launch {
-            db.repoDao().all().find { it.url == url }?.let { db.repoDao().upsert(it.copy(enabled = !it.enabled)) }
-        }
-    }
-
-    fun deleteRepo(url: String) {
-        viewModelScope.launch {
-            db.repoDao().deleteByUrl(url)
-            db.cachedAppDao().deleteByRepo(url)
-        }
-    }
+    // Repositories are fixed: exactly one F-Droid repo with a hard-pinned certificate,
+    // plus the built-in Modern Apps source. There is deliberately no add/remove/toggle —
+    // an arbitrary user-added repo could not be held to the guarantees the tiers claim.
 
     fun syncPlayUpdates() {
         viewModelScope.launch {
@@ -458,7 +538,7 @@ class AppStoreViewModel(
             if (authResult.isFailure) return@launch
 
             val authData = authResult.getOrNull() ?: return@launch
-            _syncMessage.value = "Checking Play updates..."
+            _syncMessage.value = "Checking the Play Store for updates…"
             try {
                 val api = PlayStoreApi(authData, playHttpClient)
                 val srcMap = _installedSourceMap.value
@@ -476,11 +556,13 @@ class AppStoreViewModel(
                     kotlinx.coroutines.delay(150)
                 }
                 _playUpdates.value = updates
-                _syncMessage.value = if (updates.isNotEmpty()) "${updates.size} Play updates" else "Play up to date"
+                _syncMessage.value =
+                    if (updates.isNotEmpty()) "${updates.size} update(s) on the Play Store"
+                    else "No Play Store updates"
                 kotlinx.coroutines.delay(1500)
                 _syncMessage.value = ""
-            } catch (e: Exception) {
-                _syncMessage.value = "Play update check failed: ${e.message}"
+            } catch (_: Exception) {
+                _syncMessage.value = "Couldn't check the Play Store for updates"
             }
         }
     }
@@ -501,26 +583,73 @@ class AppStoreViewModel(
         }
     }
 
-    fun downloadAndInstall(app: UnifiedApp) {
-        viewModelScope.launch {
-            val fdroidPkgs = cachedApps.value.map { it.packageName }.toSet()
-            val isFdroid = fdroidPkgs.contains(app.packageName) || app.source == AppSource.FDROID
+    /**
+     * Apply an install outcome: surface the verdict, and persist a newly observed source
+     * stamp so the next update for this package is pinned to it.
+     */
+    private suspend fun applyOutcome(app: UnifiedApp, outcome: SessionInstaller.Outcome) {
+        _verification.value = _verification.value + (app.packageName to outcome.verification)
+        outcome.verification.stamp?.let { stamp ->
+            runCatching {
+                db.pinnedStampDao().upsert(
+                    com.vayunmathur.appstore.data.PinnedStampEntity(
+                        packageName = app.packageName,
+                        stampSha256 = stamp,
+                        firstSeen = System.currentTimeMillis(),
+                    )
+                )
+            }
+        }
+        _syncMessage.value = when (val v = outcome.verification) {
+            is VerificationResult.Rejected -> "${app.name} was blocked: ${v.reason}"
+            is VerificationResult.Unverified ->
+                if (outcome.started) "Installing ${app.name}, unverified" else "Couldn't install ${app.name}"
+            is VerificationResult.Verified ->
+                if (outcome.started) "Installing ${app.name}" else "Couldn't install ${app.name}"
+        }
+    }
 
-            if (isFdroid) {
-                // F-Droid path upgraded to SessionInstaller
-                val apkUrl = app.apkUrl ?: cachedApps.value.find { it.packageName == app.packageName }?.apkUrl
+    override fun downloadAndInstall(app: UnifiedApp) {
+        viewModelScope.launch {
+            // Trust the cached row over the passed-in object: it carries the signer and
+            // hash the authenticated index gave us.
+            val cachedRow = cachedApps.value.find { it.packageName == app.packageName }
+            val known = cachedRow?.toUnifiedApp() ?: app
+            val source = known.source
+
+            if (source == AppSource.MODERN_APPS || source == AppSource.FDROID) {
+                val apkUrl = known.apkUrl
                 if (apkUrl == null) {
-                    _syncMessage.value = "No APK URL for ${app.packageName}"
+                    _syncMessage.value = "No download available for ${app.name}"
                     return@launch
+                }
+                val requirement = when (source) {
+                    // The trust root: whatever certificate this store is itself signed
+                    // with, read back from PackageManager rather than hardcoded.
+                    AppSource.MODERN_APPS -> InstallRequirement(
+                        expectedPackage = known.packageName,
+                        requiredSigners = ownSigningCertificates,
+                        expectedSha256 = known.apkSha256
+                            ?.let { mapOf("${known.packageName}.apk" to it) } ?: emptyMap(),
+                        signerOrigin = "this store",
+                    )
+                    else -> InstallRequirement(
+                        expectedPackage = known.packageName,
+                        requiredSigners = known.expectedSigners.toSet(),
+                        expectedSha256 = known.apkSha256
+                            ?.let { mapOf("${known.packageName}.apk" to it) } ?: emptyMap(),
+                        signerOrigin = "F-Droid's signed app list",
+                    )
                 }
                 withContext(Dispatchers.IO) {
                     try {
                         _downloadProgress.value = _downloadProgress.value + (app.packageName to 0.01f)
-                        val file = File(context.cacheDir, "${app.packageName}.apk")
+                        val file = File(context.cacheDir, "${known.packageName}.apk")
                         val conn = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
                             connectTimeout = 20000; readTimeout = 60000
+                            instanceFollowRedirects = true
                         }
-                        val total = conn.contentLengthLong.takeIf { it > 0 } ?: app.sizeBytes
+                        val total = conn.contentLengthLong.takeIf { it > 0 } ?: known.sizeBytes
                         conn.inputStream.use { input ->
                             file.outputStream().use { out ->
                                 val buf = ByteArray(8192)
@@ -534,18 +663,13 @@ class AppStoreViewModel(
                             }
                         }
                         _downloadProgress.value = _downloadProgress.value - app.packageName
-                        // Use SessionInstaller instead of FileProvider ACTION_VIEW
-                        val success = sessionInstaller.installSplits(app.packageName, listOf(file), file.length())
-                        withContext(Dispatchers.Main) {
-                            if (success) {
-                                _syncMessage.value = "Installing ${app.name}"
-                            } else {
-                                _syncMessage.value = "Install failed for ${app.name}"
-                            }
-                        }
-                    } catch (e: Exception) {
+                        val outcome = sessionInstaller.installSplits(
+                            known.packageName, listOf(file), requirement, file.length()
+                        )
+                        withContext(Dispatchers.Main) { applyOutcome(known, outcome) }
+                    } catch (_: Exception) {
                         _downloadProgress.value = _downloadProgress.value - app.packageName
-                        _syncMessage.value = "Download failed: ${e.message}"
+                        _syncMessage.value = "Couldn't download ${app.name}"
                     }
                 }
             } else {
@@ -553,7 +677,7 @@ class AppStoreViewModel(
                 withContext(Dispatchers.IO) {
                     try {
                         _downloadProgress.value = _downloadProgress.value + (app.packageName to 0.01f)
-                        _syncMessage.value = "Authenticating for ${app.name}..."
+                        _syncMessage.value = "Connecting to the Play Store…"
 
                         val authResult = ensurePlayAuth()
                         if (authResult.isFailure) {
@@ -568,7 +692,7 @@ class AppStoreViewModel(
                         val versionCode = details.versionCode.takeIf { it > 0 } ?: app.versionCode
                         val offerType = details.offerType
 
-                        _syncMessage.value = "Purchasing ${details.name}..."
+                        _syncMessage.value = "Getting ${details.name}…"
 
                         // Cert hash for already installed apps (key rotation)
                         var certHash: String? = null
@@ -595,7 +719,7 @@ class AppStoreViewModel(
                             throw Exception("Empty file list from purchase")
                         }
 
-                        _syncMessage.value = "Downloading ${details.name}..."
+                        _syncMessage.value = "Downloading ${details.name}…"
 
                         // Download with progress, retry once on expired URL
                         var downloadResult = playDownloader.downloadFiles(
@@ -607,7 +731,7 @@ class AppStoreViewModel(
                         if (downloadResult.isFailure) {
                             val ex = downloadResult.exceptionOrNull()
                             if (ex is PlayDownloader.ExpiredUrlException) {
-                                _syncMessage.value = "Retrying purchase..."
+                                _syncMessage.value = "Retrying…"
                                 gplayFiles = api.purchase(context, app.packageName, versionCode, offerType, certHash)
                                 downloadResult = playDownloader.downloadFiles(
                                     app.packageName, versionCode, gplayFiles
@@ -619,12 +743,35 @@ class AppStoreViewModel(
                         }
 
                         val localFiles = downloadResult.getOrNull()!!
-                        _syncMessage.value = "Installing ${details.name}..."
+                        _syncMessage.value = "Checking ${details.name}…"
+
+                        // Everything Play can actually give us, all enforced:
+                        //  - per-split SHA-256 from the delivery response (PlayFile.sha256)
+                        //  - the expected signing certificate from AppDetails.certificateSet
+                        //  - the source stamp, pinned TOFU (survives Play App Signing)
+                        //  - continuity with the installed copy (InstallVerifier, always)
+                        // None of this survives a compromise of Google itself, which
+                        // supplies both the bytes and the expectation — hence tier 3.
+                        val expectedHashes = gplayFiles.mapNotNull { f ->
+                            val name = f.name.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                            f.sha256?.takeIf { it.isNotBlank() }?.let { name to it }
+                        }.toMap()
+                        val requirement = InstallRequirement(
+                            expectedPackage = app.packageName,
+                            requiredSigners = details.expectedSigners.toSet(),
+                            expectedSha256 = expectedHashes,
+                            signerOrigin = "Google",
+                            pinnedStamp = db.pinnedStampDao()
+                                .byPackage(app.packageName)?.stampSha256,
+                        )
+
                         val totalSize = localFiles.sumOf { it.length() }
-                        val success = sessionInstaller.installSplits(app.packageName, localFiles, totalSize)
+                        val outcome = sessionInstaller.installSplits(
+                            app.packageName, localFiles, requirement, totalSize
+                        )
 
                         _downloadProgress.value = _downloadProgress.value - app.packageName
-                        _syncMessage.value = if (success) "Installing ${details.name}" else "Install failed for ${details.name}"
+                        applyOutcome(details, outcome)
                         // Refresh installed after a delay to catch install success
                         kotlinx.coroutines.delay(1500)
                         refreshInstalled()
@@ -633,7 +780,7 @@ class AppStoreViewModel(
 
                     } catch (e: Exception) {
                         _downloadProgress.value = _downloadProgress.value - app.packageName
-                        _syncMessage.value = "Play install failed: ${e.message}"
+                        _syncMessage.value = "Couldn't install ${app.name}"
                         android.util.Log.e("AppStoreVM", "Play install failed", e)
                     }
                 }
@@ -642,24 +789,6 @@ class AppStoreViewModel(
     }
 
     fun setActiveRepoFilter(repoUrl: String?) { _activeRepo.value = repoUrl }
-
-    private fun CachedAppEntity.toUnifiedApp(): UnifiedApp = UnifiedApp(
-        packageName = packageName,
-        source = try { AppSource.valueOf(source) } catch (_: Exception) { AppSource.FDROID },
-        name = name,
-        summary = summary,
-        description = description,
-        iconUrl = iconUrl,
-        author = author,
-        categories = categories.split(",").filter { it.isNotBlank() },
-        versionName = versionName,
-        versionCode = versionCode,
-        sizeBytes = sizeBytes,
-        apkUrl = apkUrl,
-        targetSdk = targetSdk,
-        repoUrl = repoUrl,
-        lastUpdated = lastUpdated
-    )
 }
 
 class AppStoreViewModelFactory(private val context: Context, private val db: AppDatabase) : ViewModelProvider.Factory {

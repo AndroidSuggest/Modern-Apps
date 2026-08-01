@@ -101,8 +101,12 @@ import com.vayunmathur.findfamily.data.Waypoint
 import com.vayunmathur.findfamily.data.toGeoPoint
 import com.vayunmathur.findfamily.ui.dialogs.encodeBase26
 import com.vayunmathur.findfamily.ui.dialogs.SecurityCodeDialog
+import com.vayunmathur.findfamily.util.FamilyListActions
+import com.vayunmathur.findfamily.util.FamilyListUiState
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
 import com.vayunmathur.findfamily.util.Networking
+import com.vayunmathur.findfamily.util.PersonActions
+import com.vayunmathur.findfamily.util.PersonUiState
 import com.vayunmathur.findfamily.util.Platform
 import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.map.GeoPoint
@@ -186,6 +190,23 @@ fun MainPage(
     val userPositions by ffViewModel.latestLocationByUser.collectAsState()
 
     val scaffoldState = rememberBottomSheetScaffoldState()
+
+    // The sheets are stateless so the store-listing previews can render them (the map
+    // behind them cannot be rendered off-device). The ViewModel supplies the actions it
+    // already implements; the two that need the nav stack or the clipboard go here.
+    val familyActions = remember(ffViewModel, backStack, platform) {
+        object : FamilyListActions by ffViewModel {
+            override fun acceptRequest(userId: Long) {
+                backStack.add(Route.AddPersonDialog(userId))
+            }
+
+            override fun copyLink(link: TemporaryLink) {
+                // Links are post-quantum only, so the fragment carries just the PQC
+                // private bundle — no classic `#key=`. The fragment never hits the server.
+                platform.copy("https://findfamily.cc/view/${link.id}#pqc_key=${link.pqcKey}")
+            }
+        }
+    }
 
     // In history mode drop the sheet entirely (peek 0); the name goes in the app bar.
     val peekHeight = if (historyMode) 0.dp else SheetPeekHeight
@@ -303,43 +324,17 @@ fun MainPage(
         },
         sheetContent = {
             if (selectedUserId == null && selectedWaypointId == null) {
-                LazyColumn(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
-                ) {
-                    items(
-                        connectedUsers,
-                        key = { it.id }
-                    ) {
-                        UserCard(it, userPositions[it.id], true) {
-                            ffViewModel.selectUser(it.id)
-                        }
-                    }
-                    if (awaitingRequestUsers.isNotEmpty()) {
-                        item { SectionHeader(stringResource(R.string.section_location_sharing_requests)) }
-                    }
-                    items(
-                        awaitingRequestUsers,
-                        key = { it.id }
-                    ) {
-                        AwaitingRequestCard(backStack, it.id)
-                    }
-                    if (temporaryLinks.isNotEmpty()) {
-                        item { SectionHeader(stringResource(R.string.section_temporary_links)) }
-                    }
-                    items(temporaryLinks, key = { it.id }) {
-                        TemporaryLinkCard(platform, ffViewModel, it)
-                    }
-                    if (waypoints.isNotEmpty()) {
-                        item { SectionHeader(stringResource(R.string.section_saved_places)) }
-                    }
-                    items(waypoints, key = { it.id }) {
-                        WaypointCard(it, usersByLocationName[it.name].orEmpty()) {
-                            ffViewModel.beginEditWaypoint(it)
-                        }
-                    }
-                }
+                FamilyListSheet(
+                    FamilyListUiState(
+                        connectedUsers = connectedUsers,
+                        awaitingRequestUsers = awaitingRequestUsers,
+                        temporaryLinks = temporaryLinks,
+                        waypoints = waypoints,
+                        locationByUser = userPositions,
+                        userNamesByLocationName = usersByLocationName
+                    ),
+                    familyActions
+                )
             } else if (historyMode) {
                 // History mode has no sheet; the name is shown in the app bar.
             } else if (selectedUserId != null) {
@@ -348,34 +343,10 @@ fun MainPage(
                     selectedUser?.let { ffViewModel.upsertUser(it.copy(name = name, photo = photo)) }
                 }
                 selectedUser?.let { user ->
-                    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        UserCard(user, userPositions[user.id], true) {}
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                stringResource(R.string.share_your_location),
-                                Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Switch(
-                                user.sendingEnabled,
-                                { send -> ffViewModel.setUserSharing(user, send) }
-                            )
-                        }
-                        // Auto-toggle: "Turn on/off after" + duration dropdown (Never default)
-                        Spacer(Modifier.height(4.dp))
-                        AutoToggleRow(user, ffViewModel)
-                        Spacer(Modifier.height(4.dp))
-                        OutlinedButton(
-                            { requestPickContact() },
-                            Modifier.fillMaxWidth()
-                        ) {
-                            Text(stringResource(R.string.change_connected_contact))
-                        }
+                    val personActions = object : PersonActions by ffViewModel {
+                        override fun changeConnectedContact() = requestPickContact()
                     }
+                    PersonDetailSheet(PersonUiState(user, userPositions[user.id]), personActions)
                 }
             } else if (selectedWaypointId != null) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -550,6 +521,88 @@ fun MainPage(
     }
 }
 
+/**
+ * The sheet shown when nobody is selected: everyone sharing with you, then inbound
+ * requests, temporary links and saved places.
+ */
+@Composable
+fun FamilyListSheet(state: FamilyListUiState, actions: FamilyListActions) {
+    LazyColumn(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        // Keys are namespaced per section. All four lists live in one LazyColumn but their
+        // ids come from independent tables, so a user and a waypoint that happen to share an
+        // id would collide and Compose would throw "Key N was already used".
+        items(
+            state.connectedUsers,
+            key = { "user-${it.id}" }
+        ) {
+            UserCard(it, state.locationByUser[it.id], true) {
+                actions.selectUser(it.id)
+            }
+        }
+        if (state.awaitingRequestUsers.isNotEmpty()) {
+            item { SectionHeader(stringResource(R.string.section_location_sharing_requests)) }
+        }
+        items(
+            state.awaitingRequestUsers,
+            key = { "request-${it.id}" }
+        ) {
+            AwaitingRequestCard(it.id) { actions.acceptRequest(it.id) }
+        }
+        if (state.temporaryLinks.isNotEmpty()) {
+            item { SectionHeader(stringResource(R.string.section_temporary_links)) }
+        }
+        items(state.temporaryLinks, key = { "link-${it.id}" }) {
+            TemporaryLinkCard(it, { actions.copyLink(it) }, { actions.deleteTemporaryLink(it) })
+        }
+        if (state.waypoints.isNotEmpty()) {
+            item { SectionHeader(stringResource(R.string.section_saved_places)) }
+        }
+        items(state.waypoints, key = { "waypoint-${it.id}" }) {
+            WaypointCard(it, state.userNamesByLocationName[it.name].orEmpty()) {
+                actions.beginEditWaypoint(it)
+            }
+        }
+    }
+}
+
+/** The sheet shown when one person is selected: their status plus the sharing controls. */
+@Composable
+fun PersonDetailSheet(state: PersonUiState, actions: PersonActions) {
+    val user = state.user
+    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        UserCard(user, state.location, true) {}
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                stringResource(R.string.share_your_location),
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Switch(
+                user.sendingEnabled,
+                { send -> actions.setUserSharing(user, send) }
+            )
+        }
+        // Auto-toggle: "Turn on/off after" + duration dropdown (Never default)
+        Spacer(Modifier.height(4.dp))
+        AutoToggleRow(user, actions)
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(
+            { actions.changeConnectedContact() },
+            Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.change_connected_contact))
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SectionHeader(title: String) {
@@ -605,15 +658,13 @@ fun BoxScope.HistoryScrubber(
 }
 
 @Composable
-fun AwaitingRequestCard(backStack: NavBackStack<Route>, id: Long) {
+fun AwaitingRequestCard(id: Long, onAccept: () -> Unit) {
     Card {
         ListItem(
             { Text(stringResource(R.string.request_from, id.encodeBase26())) },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             trailingContent = {
-                IconButton({
-                    backStack.add(Route.AddPersonDialog(id))
-                }) {
+                IconButton(onAccept) {
                     IconAdd()
                 }
             }
@@ -622,7 +673,7 @@ fun AwaitingRequestCard(backStack: NavBackStack<Route>, id: Long) {
 }
 
 @Composable
-fun TemporaryLinkCard(platform: Platform, ffViewModel: FindFamilyViewModel, temporaryLink: TemporaryLink) {
+fun TemporaryLinkCard(temporaryLink: TemporaryLink, onCopy: () -> Unit, onDelete: () -> Unit) {
     val context = LocalContext.current
     Card {
         ListItem(
@@ -633,17 +684,10 @@ fun TemporaryLinkCard(platform: Platform, ffViewModel: FindFamilyViewModel, temp
             },
             trailingContent = {
                 Row {
-                    IconButton({
-                        // Links are post-quantum only, so the fragment carries just the PQC
-                        // private bundle — no classic `#key=`. The fragment never hits the server.
-                        val url = "https://findfamily.cc/view/${temporaryLink.id}#pqc_key=${temporaryLink.pqcKey}"
-                        platform.copy(url)
-                    }) {
+                    IconButton(onCopy) {
                         IconCopy()
                     }
-                    IconButton({
-                        ffViewModel.deleteTemporaryLink(temporaryLink)
-                    }) {
+                    IconButton(onDelete) {
                         IconDelete()
                     }
                 }
@@ -783,7 +827,7 @@ private fun formatAutoToggleCountdown(remaining: Duration): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutoToggleRow(user: User, ffViewModel: FindFamilyViewModel) {
+fun AutoToggleRow(user: User, actions: PersonActions) {
     val neverLabel = stringResource(R.string.auto_toggle_never)
     val opts = remember {
         listOf(
@@ -861,12 +905,12 @@ fun AutoToggleRow(user: User, ffViewModel: FindFamilyViewModel) {
                 // Never option first — disables auto-toggle; others reschedule countdown
                 DropdownMenuItem({ Text(neverLabel) }, {
                     expanded = false
-                    ffViewModel.setUserAutoToggle(user, null)
+                    actions.setUserAutoToggle(user, null)
                 })
                 labelToDuration.forEach { (label, dur) ->
                     DropdownMenuItem({ Text(label) }, {
                         expanded = false
-                        ffViewModel.setUserAutoToggle(user, dur)
+                        actions.setUserAutoToggle(user, dur)
                     })
                 }
             }

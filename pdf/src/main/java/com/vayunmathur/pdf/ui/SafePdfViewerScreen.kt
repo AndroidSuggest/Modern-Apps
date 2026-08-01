@@ -20,6 +20,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -39,6 +40,7 @@ import androidx.compose.foundation.text.BasicTextField
 import com.vayunmathur.library.ui.BottomAppBar
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DrawerState
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
@@ -759,38 +761,13 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         }
     }
 
-    ModalNavigationDrawer(
+    PdfOutlineDrawer(
+        outline = outline,
         drawerState = drawerState,
-        gesturesEnabled = drawerState.isOpen,
-        drawerContent = {
-            ModalDrawerSheet(Modifier.fillMaxWidth(0.82f)) {
-                Text(stringResource(R.string.outline),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(16.dp),
-                )
-                HorizontalDivider()
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(outline) { entry ->
-                        Text(
-                            text = entry.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    scope.launch {
-                                        if (entry.page >= 0) listState.animateScrollToItem(entry.page)
-                                        drawerState.close()
-                                    }
-                                }
-                                .padding(
-                                    start = (16 + entry.level * 14).dp,
-                                    end = 16.dp,
-                                    top = 10.dp,
-                                    bottom = 10.dp,
-                                ),
-                        )
-                    }
-                }
+        onSelectPage = { page ->
+            scope.launch {
+                if (page >= 0) listState.animateScrollToItem(page)
+                drawerState.close()
             }
         },
     ) {
@@ -1138,6 +1115,94 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     }
 }
 
+/**
+ * The bookmarks drawer wrapped around the reader.
+ *
+ * Split out of [SafePdfViewerScreen] because it needs nothing from the native document —
+ * just the already-read [outline] — so a `@Preview` can render it. See
+ * `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PdfOutlineDrawer(
+    outline: List<SafeOutlineItem>,
+    drawerState: DrawerState,
+    onSelectPage: (Int) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = drawerState.isOpen,
+        drawerContent = {
+            ModalDrawerSheet(Modifier.fillMaxWidth(0.82f)) {
+                Text(stringResource(R.string.outline),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
+                HorizontalDivider()
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(outline) { entry ->
+                        Text(
+                            text = entry.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectPage(entry.page) }
+                                .padding(
+                                    start = (16 + entry.level * 14).dp,
+                                    end = 16.dp,
+                                    top = 10.dp,
+                                    bottom = 10.dp,
+                                ),
+                        )
+                    }
+                }
+            }
+        },
+        content = content,
+    )
+}
+
+/**
+ * One page drawn at fit-to-width scale on its white "paper", with [overlays] stacked on top
+ * once the page is known — they get the measured canvas width/height and the page-space to
+ * pixel [scale] they need to position themselves.
+ *
+ * Takes a decoded [SafePdfPage] rather than a document handle, so a `@Preview` can render a
+ * hand-built page (the primitives are plain data; only producing them needs the native
+ * renderer).
+ */
+@Composable
+fun SafePdfPageCanvas(
+    page: SafePdfPage?,
+    modifier: Modifier = Modifier,
+    overlays: @Composable BoxWithConstraintsScope.(cw: Float, ch: Float, scale: Float) -> Unit = { _, _, _ -> },
+) {
+    val ratio = if (page != null && page.height > 0f) page.width / page.height else 612f / 792f
+
+    BoxWithConstraints(
+        modifier
+            .fillMaxWidth()
+            .padding(4.dp)
+            .aspectRatio(ratio)
+            .background(Color.White)
+            .clipToBounds()
+    ) {
+        if (page == null || page.width <= 0f) {
+            CircularProgressIndicator(Modifier.align(Alignment.Center))
+            return@BoxWithConstraints
+        }
+        val decoded = page
+
+        // Render the (static) page into its own graphics layer so that overlay
+        // redraws while drawing/dragging don't replay every page primitive.
+        Canvas(Modifier.fillMaxSize().graphicsLayer { clip = true }) { drawSafePage(decoded) }
+
+        val cw = constraints.maxWidth.toFloat()
+        overlays(cw, constraints.maxHeight.toFloat(), cw / decoded.width)
+    }
+}
+
 @Composable
 private fun SafePdfPageItem(
     document: SafePdfDocument,
@@ -1184,31 +1249,13 @@ private fun SafePdfPageItem(
     }
 
     val current = page
-    val ratio = if (current != null && current.height > 0f) current.width / current.height
-    else 612f / 792f
 
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .padding(4.dp)
-            .aspectRatio(ratio)
-            .background(Color.White)
-            .clipToBounds()
-    ) {
-        if (current == null || current.width <= 0f) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center))
-            return@BoxWithConstraints
-        }
-
-        val cw = constraints.maxWidth.toFloat()
-        val ch = constraints.maxHeight.toFloat()
-        val scale = cw / current.width
+    SafePdfPageCanvas(current) { cw, ch, scale ->
+        // Non-null inside the overlay slot: SafePdfPageCanvas only invokes it once the page
+        // has been decoded.
+        val decoded = current!!
 
         fun toPage(o: Offset) = Offset(o.x / scale, (ch - o.y) / scale)
-
-        // Render the (static) page into its own graphics layer so that overlay
-        // redraws while drawing/dragging don't replay every page primitive.
-        Canvas(Modifier.fillMaxSize().graphicsLayer { clip = true }) { drawSafePage(current) }
 
         if (highlights.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize()) {
@@ -1225,7 +1272,7 @@ private fun SafePdfPageItem(
 
         if (!editMode) {
             NonEditOverlay(
-                page = current,
+                page = decoded,
                 links = links,
                 cw = cw,
                 ch = ch,
@@ -1237,7 +1284,7 @@ private fun SafePdfPageItem(
 
         if (editMode) {
             EditOverlay(
-                page = current,
+                page = decoded,
                 annotations = annotations,
                 selected = selected,
                 tool = tool,

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,8 @@ import com.vayunmathur.games.hub.ui.components.LevelBadge
 import com.vayunmathur.games.hub.ui.components.StatCard
 import com.vayunmathur.games.hub.ui.components.StreakCard
 import com.vayunmathur.games.hub.ui.components.XpProgressBar
+import com.vayunmathur.games.hub.util.DashboardActions
+import com.vayunmathur.games.hub.util.DashboardUiState
 import com.vayunmathur.games.hub.util.GameIconResolver
 import com.vayunmathur.games.hub.util.formatPlaytime
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
@@ -41,8 +44,9 @@ import com.vayunmathur.library.ui.TopAppBar
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.games.hub.R
 
+/** Binds [GameHubViewModel] to the stateless [DashboardScreen]. */
 @Composable
-fun DashboardScreen(
+fun DashboardPage(
     viewModel: GameHubViewModel,
     onGameClick: (String) -> Unit,
     onProfileClick: () -> Unit,
@@ -64,12 +68,11 @@ fun DashboardScreen(
     val context = LocalContext.current
 
     val iconCache = remember { mutableMapOf<String, Drawable?>() }
-    fun getIcon(pkg: String): Drawable? = iconCache.getOrPut(pkg) { GameIconResolver.resolveAppIcon(context, pkg) }
 
-    val installedMap = remember(games) {
-        games.associate { g ->
-            g.gameId to try { context.packageManager.getPackageInfo(g.packageName, 0); true } catch (_: Exception) { false }
-        }
+    val installedGameIds = remember(games) {
+        games.filter { g ->
+            try { context.packageManager.getPackageInfo(g.packageName, 0); true } catch (_: Exception) { false }
+        }.mapTo(mutableSetOf()) { it.gameId }
     }
 
     val recentlyPlayedGames = remember(sessions, games) {
@@ -84,11 +87,52 @@ fun DashboardScreen(
         allAchievements.groupBy { it.gameId }.mapValues { (_, list) -> list.count { it.isUnlocked } to list.size }
     }
 
+    DashboardScreen(
+        state = DashboardUiState(
+            playerName = profile?.displayName,
+            level = level,
+            title = title,
+            totalXp = xp,
+            stats = crossStats,
+            recentlyPlayed = recentlyPlayedGames,
+            recentActivity = recentActivity,
+            achievementProgressByGame = achievementProgressByGame,
+            installedGameIds = installedGameIds,
+        ),
+        actions = object : DashboardActions {
+            override fun openGame(gameId: String) = onGameClick(gameId)
+            override fun openProfile() = onProfileClick()
+            override fun openActivity() = onActivityClick()
+            override fun openGamesList() = onGamesClick()
+            override fun playGame(game: HubGameEntity) = launchGame(context, game)
+        },
+        iconFor = { game -> iconCache.getOrPut(game.packageName) { GameIconResolver.resolveAppIcon(context, game.packageName) } },
+        topBarActions = { BackupButtons(dbConfigs = dbConfigs, datastoreNames = datastoreNames) },
+        modifier = modifier,
+    )
+}
+
+/**
+ * The dashboard, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ *
+ * [iconFor] and [topBarActions] are the two things that genuinely need a device: installed
+ * app icons, and the backup menu's file pickers (which need an Activity). Both default to
+ * nothing so a preview can leave them out.
+ */
+@Composable
+fun DashboardScreen(
+    state: DashboardUiState,
+    actions: DashboardActions,
+    modifier: Modifier = Modifier,
+    iconFor: (HubGameEntity) -> Drawable? = { null },
+    topBarActions: @Composable RowScope.() -> Unit = {},
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
-                actions = { BackupButtons(dbConfigs = dbConfigs, datastoreNames = datastoreNames) }
+                actions = topBarActions
             )
         }
     ) { padding ->
@@ -98,46 +142,46 @@ fun DashboardScreen(
             contentPadding = PaddingValues(16.dp)
         ) {
             item {
-                Card(onClick = onProfileClick, modifier = Modifier.fillMaxWidth()) {
+                Card(onClick = actions::openProfile, modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        LevelBadge(level = level, large = true)
+                        LevelBadge(level = state.level, large = true)
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(text = profile?.displayName ?: stringResource(R.string.player), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(text = title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                            XpProgressBar(totalXp = xp, modifier = Modifier.fillMaxWidth())
+                            Text(text = state.playerName ?: stringResource(R.string.player), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(text = state.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            XpProgressBar(totalXp = state.totalXp, modifier = Modifier.fillMaxWidth())
                         }
                     }
                 }
             }
 
-            if (crossStats.currentStreak > 0 || crossStats.longestStreak > 0) {
-                item { StreakCard(currentStreak = crossStats.currentStreak, longestStreak = crossStats.longestStreak, modifier = Modifier.fillMaxWidth()) }
+            if (state.stats.currentStreak > 0 || state.stats.longestStreak > 0) {
+                item { StreakCard(currentStreak = state.stats.currentStreak, longestStreak = state.stats.longestStreak, modifier = Modifier.fillMaxWidth()) }
             }
 
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.tab_games), value = "${crossStats.totalGames}", modifier = Modifier.weight(1f))
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.achievements_for), value = "${crossStats.totalAchievementsUnlocked}/${crossStats.totalAchievements}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(state.stats.totalPlaytimeMs), modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.tab_games), value = "${state.stats.totalGames}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.achievements_for), value = "${state.stats.totalAchievementsUnlocked}/${state.stats.totalAchievements}", modifier = Modifier.weight(1f))
                 }
             }
 
-            if (recentlyPlayedGames.isNotEmpty()) {
+            if (state.recentlyPlayed.isNotEmpty()) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.continue_playing), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onGamesClick) { Text(stringResource(R.string.see_all)) }
+                        TextButton(onClick = actions::openGamesList) { Text(stringResource(R.string.see_all)) }
                     }
                 }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(recentlyPlayedGames, key = { it.gameId }) { game ->
+                        items(state.recentlyPlayed, key = { it.gameId }) { game ->
                             GameCard(
-                                game = game, isInstalled = installedMap[game.gameId] ?: true,
-                                achievementProgress = achievementProgressByGame[game.gameId],
-                                iconDrawable = getIcon(game.packageName),
-                                onClick = { onGameClick(game.gameId) },
-                                onPlay = { launchGame(context, game) },
+                                game = game, isInstalled = game.gameId in state.installedGameIds,
+                                achievementProgress = state.achievementProgressByGame[game.gameId],
+                                iconDrawable = iconFor(game),
+                                onClick = { actions.openGame(game.gameId) },
+                                onPlay = { actions.playGame(game) },
                                 modifier = Modifier.fillParentMaxWidth(0.85f)
                             )
                         }
@@ -145,14 +189,14 @@ fun DashboardScreen(
                 }
             }
 
-            if (recentActivity.isNotEmpty()) {
+            if (state.recentActivity.isNotEmpty()) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.recent_activity), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onActivityClick) { Text(stringResource(R.string.see_all)) }
+                        TextButton(onClick = actions::openActivity) { Text(stringResource(R.string.see_all)) }
                     }
                 }
-                items(recentActivity.take(5), key = { it.id }) { event -> ActivityItemCard(event = event, onGameClick = onGameClick) }
+                items(state.recentActivity.take(5), key = { it.id }) { event -> ActivityItemCard(event = event, onGameClick = actions::openGame) }
             } else {
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {

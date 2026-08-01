@@ -7,10 +7,18 @@ import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.Process
 import android.util.Log
+import com.vayunmathur.appstore.data.security.InstallRequirement
+import com.vayunmathur.appstore.data.security.InstallVerifier
+import com.vayunmathur.appstore.data.security.VerificationResult
 import java.io.File
 
 /**
- * Simplified installer supporting single + split APKs via PackageInstaller.
+ * Installer for single + split APKs via PackageInstaller.
+ *
+ * [requirement] is mandatory rather than defaulted: every install path has to state what
+ * it expects of the bytes, so a new caller cannot accidentally inherit "check nothing".
+ * Verification runs before the session is created, so rejected bytes are never written
+ * into a PackageInstaller session at all.
  */
 class SessionInstaller(private val context: Context) {
 
@@ -18,15 +26,32 @@ class SessionInstaller(private val context: Context) {
         private const val TAG = "SessionInstaller"
     }
 
+    /** Outcome of an install attempt, including why it was refused. */
+    data class Outcome(val started: Boolean, val verification: VerificationResult)
+
     suspend fun installSplits(
         packageName: String,
         files: List<File>,
+        requirement: InstallRequirement,
         totalSize: Long = -1L
-    ): Boolean {
+    ): Outcome {
         if (files.isEmpty()) {
             Log.w(TAG, "No files to install for $packageName")
-            return false
+            return Outcome(false, VerificationResult.Rejected("nothing was downloaded"))
         }
+
+        val verification = InstallVerifier.verify(context, files, requirement)
+        if (verification is VerificationResult.Rejected) {
+            Log.e(TAG, "Refusing to install $packageName: ${verification.reason}")
+            files.forEach { runCatching { it.delete() } }
+            return Outcome(false, verification)
+        }
+
+        val started = commit(packageName, files, totalSize)
+        return Outcome(started, verification)
+    }
+
+    private fun commit(packageName: String, files: List<File>, totalSize: Long): Boolean {
         val computedSize = if (totalSize > 0) totalSize else files.sumOf { it.length() }
         return try {
             val pm = context.packageManager
@@ -91,9 +116,4 @@ class SessionInstaller(private val context: Context) {
         }
     }
 
-    fun installSingleApkBlocking(packageName: String, file: File): Boolean {
-        return kotlinx.coroutines.runBlocking {
-            installSplits(packageName, listOf(file), file.length())
-        }
-    }
 }

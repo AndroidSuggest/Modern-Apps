@@ -12,23 +12,55 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.everysync.R
 import com.vayunmathur.everysync.Route
 import com.vayunmathur.everysync.provider.AuthType
 import com.vayunmathur.everysync.provider.ProviderRegistry
+import com.vayunmathur.everysync.util.AddAccountActions
 import com.vayunmathur.library.util.NavBackStack
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EverySyncViewModel] and the back stack to the stateless [AddAccountScreen]. */
 @Composable
 fun AddAccountScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel) {
+    val actions = remember(viewModel, backStack) {
+        object : AddAccountActions {
+            override fun startOAuth(providerId: String) {
+                viewModel.startOAuth(providerId)
+                // OAuth continues in a Custom Tab and returns via
+                // OAuthCallbackActivity → MainActivity, which retains
+                // this back stack. Reset to the accounts list now so
+                // the user lands on home (not here) when they return.
+                backStack.reset(Route.Accounts)
+            }
+
+            override fun openDavLogin(providerId: String) = backStack.add(Route.DavLogin(providerId))
+
+            override fun addHealthConnectAccount(providerId: String) =
+                viewModel.addHealthConnectAccount(providerId) { backStack.pop() }
+
+            override fun back() = backStack.pop()
+        }
+    }
+    AddAccountScreen(actions)
+}
+
+/**
+ * The provider chooser. The list is [ProviderRegistry], which is static, so this screen has
+ * no state of its own and can be rendered from a `@Preview` — see `src/screenshotTest`,
+ * which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddAccountScreen(actions: AddAccountActions) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.add_account_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { backStack.pop() }) {
+                    IconButton(onClick = { actions.back() }) {
                         IconBack()
                     }
                 },
@@ -40,16 +72,9 @@ fun AddAccountScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewMod
                 ListItem(
                     modifier = Modifier.clickable {
                         when (provider.authType) {
-                            AuthType.OAUTH -> {
-                                viewModel.startOAuth(provider.id)
-                                // OAuth continues in a Custom Tab and returns via
-                                // OAuthCallbackActivity → MainActivity, which retains
-                                // this back stack. Reset to the accounts list now so
-                                // the user lands on home (not here) when they return.
-                                backStack.reset(Route.Accounts)
-                            }
-                            AuthType.DAV -> backStack.add(Route.DavLogin(provider.id))
-                            AuthType.HEALTH_CONNECT -> viewModel.addHealthConnectAccount(provider.id) { backStack.pop() }
+                            AuthType.OAUTH -> actions.startOAuth(provider.id)
+                            AuthType.DAV -> actions.openDavLogin(provider.id)
+                            AuthType.HEALTH_CONNECT -> actions.addHealthConnectAccount(provider.id)
                         }
                     },
                     leadingContent = { provider.icon() },

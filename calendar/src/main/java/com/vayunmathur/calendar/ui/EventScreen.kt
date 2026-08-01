@@ -37,6 +37,8 @@ import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.Route
 import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.util.CalendarViewModel
+import com.vayunmathur.calendar.util.EventActions
+import com.vayunmathur.calendar.util.EventUiState
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDescription
 import com.vayunmathur.library.ui.IconEdit
@@ -47,7 +49,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.format
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [CalendarViewModel] to the stateless [EventScreen]. */
 @Composable
 fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: NavBackStack<Route>) {
     val events by viewModel.events.collectAsStateWithLifecycle()
@@ -62,6 +64,32 @@ fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: Nav
 
     val calendar = calendars.find { it.id == event.calendarID }!!
 
+    EventScreen(
+        state = EventUiState(event = event, calendar = calendar, instance = instance),
+        // Deleting is the ViewModel's; navigating is the binder's.
+        actions = object : EventActions by viewModel {
+            override fun closeEvent() {
+                backStack.pop()
+            }
+
+            override fun editEvent(eventId: Long) {
+                backStack.add(Route.EditEvent(eventId))
+            }
+        },
+    )
+}
+
+/**
+ * The event detail screen, with no dependency on the ViewModel so it can be rendered from
+ * a `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EventScreen(state: EventUiState, actions: EventActions) {
+    val event = state.event
+    val calendar = state.calendar
+    val instance = state.instance
+
     val context = LocalContext.current
 
     val isEditable = calendar.canModify
@@ -69,11 +97,11 @@ fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: Nav
 
     Scaffold(topBar = {
         TopAppBar({}, navigationIcon = {
-            IconNavigation(backStack)
+            IconNavigation(actions::closeEvent)
         }, actions = {
             if(isEditable) {
                 IconButton({
-                    backStack.add(Route.EditEvent(event.id))
+                    actions.editEvent(event.id!!)
                 }) {
                     IconEdit()
                 }
@@ -84,8 +112,8 @@ fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: Nav
                             showDeleteMenu = true
                         } else {
                             // Non-recurring event - delete directly
-                            viewModel.deleteEventSeries(event.id!!)
-                            backStack.pop()
+                            actions.deleteEventSeries(event.id!!)
+                            actions.closeEvent()
                         }
                     }) {
                         IconDelete()
@@ -98,16 +126,16 @@ fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: Nav
                             text = { Text(stringResource(R.string.delete_this_event)) },
                             onClick = {
                                 showDeleteMenu = false
-                                viewModel.deleteEventInstance(event.id!!, instance.begin)
-                                backStack.pop()
+                                actions.deleteEventInstance(event.id!!, instance.begin)
+                                actions.closeEvent()
                             }
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.delete_all_events)) },
                             onClick = {
                                 showDeleteMenu = false
-                                viewModel.deleteEventSeries(event.id!!)
-                                backStack.pop()
+                                actions.deleteEventSeries(event.id!!)
+                                actions.closeEvent()
                             }
                         )
                     }

@@ -51,8 +51,10 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.translate.util.AndroidSpeechRecognizer
 import com.vayunmathur.translate.util.Languages
-import com.vayunmathur.translate.util.NativeSpeech
+import com.vayunmathur.translate.util.MicState
 import com.vayunmathur.translate.util.SpeechRecognizerEngine
+import com.vayunmathur.translate.util.TextTranslateActions
+import com.vayunmathur.translate.util.TextTranslateUiState
 import com.vayunmathur.translate.util.TranslateViewModel
 import kotlinx.coroutines.delay
 
@@ -60,21 +62,18 @@ import kotlinx.coroutines.delay
 private const val TRANSLATE_DEBOUNCE_MS = 400L
 
 /**
- * Mic button phases. TRANSCRIBING exists because the offline recognizer keeps working for
- * a moment after the mic stops; showing it (and ignoring taps) avoids the "stuck on Stop"
- * / double-start / "recognizer busy" confusion.
- */
-private enum class MicState { IDLE, LISTENING, TRANSCRIBING }
-
-/**
- * Home screen. The SMaLL-100 model (~1.2 GB) is now auto-installed on open via
- * [com.vayunmathur.library.downloadservice.InitialModelDownloadChecker] in
- * MainActivity (like OpenAssistant), so this screen never needs to show a
- * manual Download button. By the time we get here the files are on disk and
- * [TranslateViewModel] has loaded the ncnn engine.
+ * Binds [TranslateViewModel] to the stateless [TextTranslateScreen].
+ *
+ * Everything a `@Preview` cannot supply lives here: the speech recognizer, the microphone
+ * permission launcher, the clipboard, and the debounced call into the translation engine.
+ *
+ * The SMaLL-100 model (~1.2 GB) is auto-installed on open via
+ * [com.vayunmathur.library.downloadservice.InitialModelDownloadChecker] in MainActivity
+ * (like OpenAssistant), so this screen never needs to show a manual Download button. By the
+ * time we get here the files are on disk and [TranslateViewModel] has loaded the ncnn engine.
  */
 @Composable
-fun TextTranslateScreen(
+fun TextTranslatePage(
     viewModel: TranslateViewModel,
     initialText: String,
     onOpenCamera: () -> Unit,
@@ -89,10 +88,12 @@ fun TextTranslateScreen(
     var outputText by remember { mutableStateOf("") }
     var isTranslating by remember { mutableStateOf(false) }
 
-    // --- Live speech-to-text engine (native offline preferred, else platform) ---
-    val speech: SpeechRecognizerEngine = remember(context) {
-        NativeSpeech().takeIf { it.isAvailable() } ?: AndroidSpeechRecognizer(context)
-    }
+    // --- Live speech-to-text engine ---
+    // The platform SpeechRecognizer, which routes to whichever RecognitionService the user
+    // has selected. Installing the Speech app makes that fully offline (Whisper) without
+    // this app needing its own model — see the <queries> entry in the manifest, which is
+    // what lets us see an installed recognizer at all on Android 11+.
+    val speech: SpeechRecognizerEngine = remember(context) { AndroidSpeechRecognizer(context) }
     var micState by remember { mutableStateOf(MicState.IDLE) }
     var speechError by remember { mutableStateOf<String?>(null) }
     DisposableEffect(speech) { onDispose { speech.destroy() } }
@@ -137,36 +138,75 @@ fun TextTranslateScreen(
         isTranslating = false
     }
 
+    TextTranslateScreen(
+        state = TextTranslateUiState(
+            sourceLang = sourceLang,
+            targetLang = targetLang,
+            translationAvailable = translationAvailable,
+            inputText = inputText,
+            outputText = outputText,
+            isTranslating = isTranslating,
+            micState = micState,
+            speechError = speechError,
+        ),
+        actions = object : TextTranslateActions {
+            override fun setSource(code: String) = viewModel.setSource(code)
+            override fun setTarget(code: String) = viewModel.setTarget(code)
+            override fun swap() = viewModel.swap()
+            override fun setInput(text: String) {
+                inputText = text
+            }
+
+            // Idle → start. Listening → end capture; the recognizer still delivers its last
+            // result via onFinal, it does not cancel. Transcribing → busy finishing.
+            override fun toggleMic() {
+                when (micState) {
+                    MicState.LISTENING -> speech.stop()
+                    MicState.TRANSCRIBING -> Unit
+                    MicState.IDLE -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+
+            override fun copyOutput() = copyToClipboard(context, outputText)
+            override fun speakOutput() {
+                viewModel.speak(outputText, targetLang)
+            }
+
+            override fun openCamera() = onOpenCamera()
+        },
+    )
+}
+
+/**
+ * The text translation screen, with no dependency on the ViewModel so it can be rendered
+ * from a `@Preview` — see `src/screenshotTest`, which is where the store listing images
+ * come from.
+ */
+@Composable
+fun TextTranslateScreen(state: TextTranslateUiState, actions: TextTranslateActions) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
                 actions = {
-                    IconButton(onClick = onOpenCamera) {
+                    IconButton(onClick = actions::openCamera) {
                         IconCamera()
                     }
                 },
             )
         },
         floatingActionButton = {
-            // Idle → Mic (starts). Listening → Stop (ends capture; the recognizer still
-            // delivers its last result via onFinal — it does not cancel). Transcribing →
-            // a spinner that ignores taps, so the user can't double-start or hit "busy".
+            // Idle → Mic (starts). Listening → Stop (ends capture). Transcribing → a spinner
+            // that ignores taps, so the user can't double-start or hit "busy".
             FloatingActionButton(
-                onClick = {
-                    when (micState) {
-                        MicState.LISTENING -> speech.stop()
-                        MicState.TRANSCRIBING -> {} // busy finishing; ignore taps
-                        MicState.IDLE -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                    }
-                },
-                containerColor = when (micState) {
+                onClick = actions::toggleMic,
+                containerColor = when (state.micState) {
                     MicState.LISTENING -> MaterialTheme.colorScheme.errorContainer
                     MicState.TRANSCRIBING -> MaterialTheme.colorScheme.surfaceVariant
                     MicState.IDLE -> MaterialTheme.colorScheme.primaryContainer
                 },
             ) {
-                when (micState) {
+                when (state.micState) {
                     MicState.LISTENING -> IconStop()
                     MicState.TRANSCRIBING -> CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
@@ -186,16 +226,16 @@ fun TextTranslateScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             LanguageBar(
-                sourceCode = sourceLang,
-                targetCode = targetLang,
-                onSource = viewModel::setSource,
-                onTarget = viewModel::setTarget,
-                onSwap = viewModel::swap,
+                sourceCode = state.sourceLang,
+                targetCode = state.targetLang,
+                onSource = actions::setSource,
+                onTarget = actions::setTarget,
+                onSwap = actions::swap,
             )
 
             OutlinedTextField(
-                value = inputText,
-                onValueChange = { inputText = it },
+                value = state.inputText,
+                onValueChange = actions::setInput,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 120.dp),
@@ -203,7 +243,7 @@ fun TextTranslateScreen(
                 minLines = 4,
             )
 
-            val micStatus = when (micState) {
+            val micStatus = when (state.micState) {
                 MicState.LISTENING -> "Listening…"
                 MicState.TRANSCRIBING -> "Transcribing…"
                 MicState.IDLE -> null
@@ -215,16 +255,16 @@ fun TextTranslateScreen(
                     fontWeight = FontWeight.Medium,
                 )
             }
-            speechError?.let {
+            state.speechError?.let {
                 Text(text = it, color = MaterialTheme.colorScheme.error)
             }
 
             OutputCard(
-                translationAvailable = translationAvailable,
-                isTranslating = isTranslating,
-                outputText = outputText,
-                onCopy = { copyToClipboard(context, outputText) },
-                onSpeak = { viewModel.speak(outputText, targetLang) },
+                translationAvailable = state.translationAvailable,
+                isTranslating = state.isTranslating,
+                outputText = state.outputText,
+                onCopy = actions::copyOutput,
+                onSpeak = actions::speakOutput,
             )
         }
     }

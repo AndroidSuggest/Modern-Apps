@@ -31,6 +31,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.code.util.CodeActions
+import com.vayunmathur.code.util.CodeUiState
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DrawerValue
@@ -55,15 +57,13 @@ import com.vayunmathur.library.ui.rememberDrawerState
 import kotlinx.coroutines.launch
 
 /**
- * Top-level editor scaffold: a navigation drawer holding the [FileTreePane], a top bar to
- * open it, then a tab strip, toolbar, optional find bar and the [CodeEditor] itself. The
- * folder/file pickers use the Storage Access Framework so no storage permissions are needed.
+ * Binds [EditorViewModel] to the stateless [EditorScreen].
+ *
+ * The two document pickers stay here: they need an activity result launcher, which is
+ * exactly what a `@Preview` cannot provide.
  */
 @Composable
-fun EditorScreen(viewModel: EditorViewModel) {
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-
+fun EditorPage(viewModel: EditorViewModel) {
     val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> uri?.let(viewModel::openFolder) }
@@ -72,14 +72,51 @@ fun EditorScreen(viewModel: EditorViewModel) {
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(viewModel::openExternal) }
 
+    EditorScreen(
+        state = viewModel.uiState,
+        actions = viewModel,
+        onOpenFolder = { folderLauncher.launch(null) },
+        onOpenFile = { fileLauncher.launch(arrayOf("*/*")) },
+    )
+}
+
+/**
+ * Top-level editor scaffold: a navigation drawer holding the [FileTreePane], a top bar to
+ * open it, then a tab strip, toolbar, optional find bar and the [CodeEditor] itself. The
+ * folder/file pickers use the Storage Access Framework so no storage permissions are needed.
+ *
+ * No dependency on the ViewModel, so it can be rendered from a `@Preview` — see
+ * `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun EditorScreen(
+    state: CodeUiState,
+    actions: CodeActions,
+    onOpenFolder: () -> Unit = {},
+    onOpenFile: () -> Unit = {},
+    /**
+     * Seeds for the screen's own UI-only state (is the drawer showing, is the find bar open
+     * and on what query). The app always takes the defaults; previews set them so a given
+     * screen can be captured without driving the UI to get there.
+     */
+    initialDrawerOpen: Boolean = false,
+    initialFind: String? = null,
+) {
+    val drawerState = rememberDrawerState(
+        if (initialDrawerOpen) DrawerValue.Open else DrawerValue.Closed
+    )
+    val scope = rememberCoroutineScope()
+    var showFind by remember { mutableStateOf(initialFind != null) }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
                 FileTreePane(
-                    viewModel = viewModel,
-                    onOpenFolder = { folderLauncher.launch(null) },
-                    onOpenFile = { fileLauncher.launch(arrayOf("*/*")) },
+                    state = state,
+                    actions = actions,
+                    onOpenFolder = onOpenFolder,
+                    onOpenFile = onOpenFile,
                     onFileOpened = { scope.launch { drawerState.close() } },
                 )
             }
@@ -88,7 +125,7 @@ fun EditorScreen(viewModel: EditorViewModel) {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(viewModel.currentTab?.name ?: "Code") },
+                    title = { Text(state.currentTab?.name ?: "Code") },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) { IconMenu() }
                     },
@@ -96,25 +133,22 @@ fun EditorScreen(viewModel: EditorViewModel) {
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                val tab = viewModel.currentTab
+                val tab = state.currentTab
                 if (tab == null) {
-                    EmptyEditorState(
-                        onOpenFolder = { folderLauncher.launch(null) },
-                        onOpenFile = { fileLauncher.launch(arrayOf("*/*")) },
-                    )
+                    EmptyEditorState(onOpenFolder = onOpenFolder, onOpenFile = onOpenFile)
                 } else {
-                    TabStrip(viewModel)
+                    TabStrip(state, actions)
                     HorizontalDivider()
-                    var showFind by remember { mutableStateOf(false) }
-                    EditorToolbar(viewModel = viewModel, onToggleFind = { showFind = !showFind })
+                    EditorToolbar(state = state, actions = actions, onToggleFind = { showFind = !showFind })
                     HorizontalDivider()
                     CodeEditor(
-                        viewModel = viewModel,
                         tab = tab,
-                        softWrap = viewModel.softWrap,
+                        actions = actions,
+                        softWrap = state.softWrap,
                         showFind = showFind,
                         onCloseFind = { showFind = false },
                         modifier = Modifier.weight(1f),
+                        initialQuery = initialFind.orEmpty(),
                     )
                 }
             }
@@ -148,16 +182,16 @@ private fun EmptyEditorState(onOpenFolder: () -> Unit, onOpenFile: () -> Unit) {
 
 /** Horizontally scrollable strip of open tabs, each with a dirty indicator and close button. */
 @Composable
-private fun TabStrip(viewModel: EditorViewModel) {
+private fun TabStrip(state: CodeUiState, actions: CodeActions) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-        viewModel.tabs.forEachIndexed { index, tab ->
-            val selected = index == viewModel.currentIndex
+        state.tabs.forEachIndexed { index, tab ->
+            val selected = index == state.currentIndex
             val background =
                 if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
             Row(
                 modifier = Modifier
                     .background(background)
-                    .clickable { viewModel.selectTab(index) }
+                    .clickable { actions.selectTab(index) }
                     .padding(start = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -177,7 +211,7 @@ private fun TabStrip(viewModel: EditorViewModel) {
                             .background(MaterialTheme.colorScheme.primary)
                     )
                 }
-                IconButton(onClick = { viewModel.closeTab(tab) }, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = { actions.closeTab(index) }, modifier = Modifier.size(32.dp)) {
                     IconClose(Modifier.size(16.dp))
                 }
             }
@@ -187,23 +221,23 @@ private fun TabStrip(viewModel: EditorViewModel) {
 
 /** Undo/redo, save, find, soft-wrap, tab-insert and a language indicator. */
 @Composable
-private fun EditorToolbar(viewModel: EditorViewModel, onToggleFind: () -> Unit) {
-    val tab = viewModel.currentTab ?: return
+private fun EditorToolbar(state: CodeUiState, actions: CodeActions, onToggleFind: () -> Unit) {
+    val tab = state.currentTab ?: return
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { viewModel.undo() }, enabled = tab.canUndo) { IconUndo() }
-        IconButton(onClick = { viewModel.redo() }, enabled = tab.canRedo) { IconRedo() }
-        IconButton(onClick = { viewModel.save() }, enabled = tab.isDirty) { IconSave() }
+        IconButton(onClick = { actions.undo() }, enabled = tab.canUndo) { IconUndo() }
+        IconButton(onClick = { actions.redo() }, enabled = tab.canRedo) { IconRedo() }
+        IconButton(onClick = { actions.save() }, enabled = tab.isDirty) { IconSave() }
         IconButton(onClick = onToggleFind) { IconFindReplace() }
-        IconButton(onClick = { viewModel.toggleSoftWrap() }) {
+        IconButton(onClick = { actions.toggleSoftWrap() }) {
             IconWrapText(
-                tint = if (viewModel.softWrap) MaterialTheme.colorScheme.primary
+                tint = if (state.softWrap) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = { viewModel.insertText("    ") }) { IconFormatIndentIncrease() }
+        IconButton(onClick = { actions.insertText("    ") }) { IconFormatIndentIncrease() }
         Spacer(Modifier.width(8.dp))
         Text(
             text = tab.language.label,

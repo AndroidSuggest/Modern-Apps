@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:appstore:metadata` task name either way.
+    id("common-conventions-preview-metadata")
     alias(libs.plugins.ksp)
 }
 
@@ -22,6 +24,10 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(project(":library:image"))
     implementation(libs.jsoup)
+    // APK source-stamp verification. The stamp is a second signing identity that
+    // survives Play App Signing re-signing, so it can be pinned per package where the
+    // APK signing key (held by Google) cannot be.
+    implementation(libs.apksig)
     // HttpURLConnection-based PlayHttpClient/AnonymousAuthRepository/PlayDownloader – no okhttp
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.auroraoss.gplayapi)

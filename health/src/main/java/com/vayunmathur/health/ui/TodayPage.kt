@@ -42,6 +42,8 @@ import com.vayunmathur.health.ui.components.GroupedSectionDivider
 import com.vayunmathur.health.ui.components.MetricRow
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.MainPageMetrics
+import com.vayunmathur.health.util.TodayActions
+import com.vayunmathur.health.util.TodayUiState
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.round
 import kotlinx.coroutines.flow.map
@@ -51,7 +53,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [HealthViewModel] and the back stack to the stateless [TodayScreen]. */
 @Composable
 fun TodayPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
     val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
@@ -95,6 +97,38 @@ fun TodayPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
         viewModel.loadMainPageMetrics()
     }
 
+    TodayScreen(
+        state = TodayUiState(
+            steps = stepsToday,
+            activeCalories = activeCaloriesToday,
+            mindfulnessMinutes = mindfulnessToday,
+            distanceKm = distanceToday,
+            floors = floorsToday,
+            hydrationMl = hydrationToday,
+            heartRateMin = hrMin,
+            heartRateMax = hrMax,
+            metrics = metrics,
+        ),
+        actions = object : TodayActions {
+            override fun openSleepDetails() {
+                backStack.add(Route.SleepDetails)
+            }
+
+            override fun openMetric(config: HealthMetricConfig) {
+                backStack.add(Route.BarChartDetails(config))
+            }
+        },
+    )
+}
+
+/**
+ * The Today screen, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TodayScreen(state: TodayUiState, actions: TodayActions) {
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(stringResource(R.string.app_name)) })
@@ -110,9 +144,9 @@ fun TodayPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
         ) {
             item {
                 ActivityRingsHero(
-                    stepsToday = stepsToday,
-                    activeCaloriesToday = activeCaloriesToday,
-                    mindfulnessToday = mindfulnessToday,
+                    stepsToday = state.steps,
+                    activeCaloriesToday = state.activeCalories,
+                    mindfulnessToday = state.mindfulnessMinutes,
                 )
             }
 
@@ -122,14 +156,14 @@ fun TodayPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                     title = stringResource(R.string.section_last_night),
                     accentColor = HealthColors.Sleep,
                 ) {
-                    val sleepValue = metrics.sleepMinutes?.let { formatSleep(it) } ?: "--"
+                    val sleepValue = state.metrics.sleepMinutes?.let { formatSleep(it) } ?: "--"
                     MetricRow(
                         label = stringResource(R.string.label_sleep),
                         value = sleepValue,
                         unit = "",
                         leadingIcon = { m, c -> IconBedtime(m, c) },
                         leadingTint = HealthColors.Sleep,
-                        onClick = { backStack.add(Route.SleepDetails) },
+                        onClick = { actions.openSleepDetails() },
                     )
                 }
             }
@@ -142,38 +176,38 @@ fun TodayPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                 ) {
                     MetricRow(
                         label = stringResource(R.string.label_heart_rate),
-                        value = if (hrMax > 0L) "$hrMin-$hrMax" else "--",
+                        value = if (state.heartRateMax > 0L) "${state.heartRateMin}-${state.heartRateMax}" else "--",
                         unit = stringResource(R.string.unit_bpm),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
                         leadingTint = colorFor(RecordType.HeartRate),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.HEART_RATE)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.HEART_RATE) },
                     )
                     GroupedSectionDivider()
                     MetricRow(
                         label = stringResource(R.string.label_blood_pressure),
-                        value = metrics.bloodPressure?.let { "${it.first.toInt()}/${it.second.toInt()}" } ?: "--",
+                        value = state.metrics.bloodPressure?.let { "${it.first.toInt()}/${it.second.toInt()}" } ?: "--",
                         unit = stringResource(R.string.label_blood_pressure_unit),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
                         leadingTint = colorFor(RecordType.BloodPressure),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.BLOOD_PRESSURE)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.BLOOD_PRESSURE) },
                     )
                     GroupedSectionDivider()
                     MetricRow(
                         label = stringResource(R.string.label_oxygen_saturation),
-                        value = metrics.spo2?.round(1)?.toString() ?: "--",
+                        value = state.metrics.spo2?.round(1)?.toString() ?: "--",
                         unit = stringResource(R.string.unit_percent),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
                         leadingTint = colorFor(RecordType.OxygenSaturation),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.OXYGEN_SATURATION)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.OXYGEN_SATURATION) },
                     )
                     GroupedSectionDivider()
                     MetricRow(
                         label = stringResource(R.string.label_resting_heart_rate),
-                        value = metrics.rhr?.toString() ?: "--",
+                        value = state.metrics.rhr?.toString() ?: "--",
                         unit = stringResource(R.string.unit_bpm),
                         leadingIcon = { m, c -> IconFavorite(m, c) },
                         leadingTint = colorFor(RecordType.RestingHeartRate),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.RESTING_HEART_RATE)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.RESTING_HEART_RATE) },
                     )
                 }
             }
@@ -186,38 +220,38 @@ fun TodayPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
                 ) {
                     MetricRow(
                         label = stringResource(R.string.label_steps),
-                        value = stepsToday.toString(),
+                        value = state.steps.toString(),
                         unit = stringResource(R.string.unit_steps),
                         leadingIcon = { m, c -> IconDirectionsWalk(m, c) },
                         leadingTint = colorFor(RecordType.Steps),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.STEPS)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.STEPS) },
                     )
                     GroupedSectionDivider()
                     MetricRow(
                         label = stringResource(R.string.label_distance),
-                        value = distanceToday.round(2).toString(),
+                        value = state.distanceKm.round(2).toString(),
                         unit = stringResource(R.string.unit_km),
                         leadingIcon = { m, c -> IconLocationOn(m, c) },
                         leadingTint = colorFor(RecordType.Distance),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.DISTANCE)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.DISTANCE) },
                     )
                     GroupedSectionDivider()
                     MetricRow(
                         label = stringResource(R.string.label_floors),
-                        value = floorsToday.round(1).toString(),
+                        value = state.floors.round(1).toString(),
                         unit = stringResource(R.string.unit_fl),
                         leadingIcon = { m, c -> IconLocationOn(m, c) },
                         leadingTint = colorFor(RecordType.Floors),
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.FLOORS)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.FLOORS) },
                     )
                     GroupedSectionDivider()
                     MetricRow(
                         label = stringResource(R.string.label_hydration),
-                        value = hydrationToday.toInt().toString(),
+                        value = state.hydrationMl.toInt().toString(),
                         unit = stringResource(R.string.unit_ml),
                         leadingIcon = { m, c -> IconBedtime(m, c) }, // TODO: replace with a water-drop icon
                         leadingTint = hydrationColor,
-                        onClick = { backStack.add(Route.BarChartDetails(HealthMetricConfig.HYDRATION)) },
+                        onClick = { actions.openMetric(HealthMetricConfig.HYDRATION) },
                     )
                 }
             }

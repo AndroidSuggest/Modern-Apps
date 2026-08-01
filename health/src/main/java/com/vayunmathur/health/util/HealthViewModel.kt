@@ -26,6 +26,7 @@ import com.vayunmathur.health.ui.HistoryItem
 import com.vayunmathur.health.ui.MetricDashboardData
 import com.vayunmathur.library.util.Tuple4
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -531,6 +532,26 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
             val local = if (includeLocal) db.healthDao().searchIngredients(query) else emptyList()
             IngredientSearchResults(remote, local)
         }
+
+    // --- Food database -----------------------------------------------------
+
+    /** Whether the bundled nutrition database has been unpacked yet. */
+    val foodDatabaseStatus: StateFlow<FoodDatabase.Status> = FoodDatabase.status
+
+    /**
+     * Expand the food database shipped in the APK, if that hasn't happened
+     * yet. Safe to call whenever a screen needing ingredient search appears -
+     * it returns immediately once unpacked.
+     *
+     * The job is held here rather than in a composable so leaving the screen
+     * mid-expansion doesn't cancel it and force the work to start over.
+     */
+    private var foodDatabaseJob: Job? = null
+
+    fun prepareFoodDatabase() {
+        if (foodDatabaseJob?.isActive == true) return
+        foodDatabaseJob = viewModelScope.launch { FoodDatabase.prepare() }
+    }
 
     companion object {
         private const val TAG = "HealthViewModel"

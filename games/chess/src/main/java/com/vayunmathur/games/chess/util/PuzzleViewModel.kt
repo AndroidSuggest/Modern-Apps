@@ -60,7 +60,7 @@ data class PuzzleUiState(
  * `solution[2]`, and so on. Correctness is validated purely against the stored
  * move list — no engine is needed.
  */
-class PuzzleViewModel(application: Application) : AndroidViewModel(application) {
+class PuzzleViewModel(application: Application) : AndroidViewModel(application), PuzzleActions {
 
     private val _uiState = MutableStateFlow(PuzzleUiState())
     val uiState: StateFlow<PuzzleUiState> = _uiState.asStateFlow()
@@ -70,7 +70,7 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application) 
     private val replyDelayMs = 400L
 
     /** Loads a fresh random puzzle from the given [difficulty] band. */
-    fun loadRandom(difficulty: PuzzleDifficulty = _uiState.value.difficulty) {
+    override fun loadRandom(difficulty: PuzzleDifficulty) {
         _uiState.value = PuzzleUiState(status = PuzzleStatus.Loading, difficulty = difficulty)
         viewModelScope.launch {
             val puzzle = withContext(Dispatchers.IO) {
@@ -82,7 +82,7 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Restarts the current puzzle from the beginning. */
-    fun retry() {
+    override fun retry() {
         val puzzle = _uiState.value.puzzle ?: return
         val difficulty = _uiState.value.difficulty
         viewModelScope.launch { startPuzzle(puzzle, difficulty) }
@@ -119,7 +119,7 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun onSquareClick(position: Position) {
+    override fun onSquareClick(position: Position) {
         val state = _uiState.value
         state.puzzle ?: return
         if (state.status != PuzzleStatus.Solving) return
@@ -182,7 +182,7 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application) 
         advanceAfterPlayerMove(newBoard)
     }
 
-    fun onPromote(pieceType: PieceType) {
+    override fun onPromote(pieceType: PieceType) {
         val state = _uiState.value
         val puzzle = state.puzzle ?: return
         val promoPos = state.board.promotionPosition ?: return
@@ -240,7 +240,7 @@ class PuzzleViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Replays the full solution from the start for the player to watch. */
-    fun showSolution() {
+    override fun showSolution() {
         val puzzle = _uiState.value.puzzle ?: return
         viewModelScope.launch {
             _uiState.update {

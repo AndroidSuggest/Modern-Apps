@@ -14,16 +14,20 @@ import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.translate.ui.CameraTranslateScreen
-import com.vayunmathur.translate.ui.TextTranslateScreen
+import com.vayunmathur.translate.ui.TextTranslatePage
 import com.vayunmathur.translate.util.Small100Model
 import com.vayunmathur.translate.util.TranslateViewModel
 import kotlinx.serialization.Serializable
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TranslateViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Reduced CA hardening: FIRST_PARTY covers api.vayunmathur.com / data.vayunmathur.com (ISRG+GTS)
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
         // "Translate" from another app's text-selection menu prefills the input.
         val initialText = processTextFromIntent(intent)
@@ -61,7 +65,7 @@ fun Navigation(viewModel: TranslateViewModel, initialText: String) {
     val backStack = rememberNavBackStack<Route>(Route.Text)
     MainNavigation(backStack) {
         entry<Route.Text> {
-            TextTranslateScreen(
+            TextTranslatePage(
                 viewModel = viewModel,
                 initialText = initialText,
                 onOpenCamera = { backStack.add(Route.Camera) },

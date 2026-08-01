@@ -114,9 +114,7 @@
     <string name="log_body_metric">Zapsat <xliff:g id="metric" example="váha">%1$s</xliff:g></string>
     <string name="view_full_breakdown">Zobrazit celý rozpis</string>
     <string name="no_results_found">Nenalezeny žádné výsledky</string>
-    <string name="online">Online</string>
     <string name="original_1">Originál: <xliff:g id="original_name" example="Rajče">%1$s</xliff:g></string>
-    <string name="downloaded">Stažené</string>
     <string name="saved_locally">Uložené lokálně</string>
     <string name="segments">Segmenty</string>
     <string name="laps">Kola</string>

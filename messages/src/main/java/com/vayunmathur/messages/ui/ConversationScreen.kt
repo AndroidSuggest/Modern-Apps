@@ -95,6 +95,9 @@ import com.vayunmathur.messages.data.MessageState
 import com.vayunmathur.messages.data.MessagesDatabase
 import com.vayunmathur.messages.data.Reaction
 import com.vayunmathur.messages.util.CameraCapture
+import com.vayunmathur.messages.util.ChatItem
+import com.vayunmathur.messages.util.ConversationActions
+import com.vayunmathur.messages.util.ConversationUiState
 import com.vayunmathur.messages.util.FindFamilyLocation
 import com.vayunmathur.messages.util.MessagesViewModel
 import com.vayunmathur.messages.util.ReactionAction
@@ -109,7 +112,11 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.util.Date
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/**
+ * Binder for a chat thread. Owns everything that needs an Activity — the photo/file/camera
+ * launchers, the attachment sheet, the poll and location dialogs — and hands the thread
+ * itself to the stateless [ConversationScreen] below as plain values.
+ */
 @Composable
 fun ConversationScreen(
     backStack: NavBackStack<Route>,
@@ -128,7 +135,7 @@ fun ConversationScreen(
 
     var draft by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
-    var reactingTo by remember { mutableStateOf<Message?>(null) }
+    var reactingTo by remember { mutableStateOf<String?>(null) }
 
     // Compose's PickVisualMedia uses the Android system photo picker
     // (Photos / Files on the user's device) — no READ_EXTERNAL_STORAGE
@@ -226,214 +233,122 @@ fun ConversationScreen(
         }
     }
 
-    val listState = rememberLazyListState()
+    // Walk the message list once, emitting (day-divider, message) pairs so
+    // the UI can render them inline. Cheaper than a groupBy on every
+    // recomposition.
+    //
+    // The LazyColumn in the screen uses reverseLayout = true so item 0 sits
+    // at the visual bottom — the standard messenger pattern (sparse threads
+    // pack to the bottom, new messages slot in without a jumpy
+    // scroll-to-end). To get that visual order we feed it the chronological
+    // list REVERSED: newest first.
+    val items = remember(messages, context) { buildItems(context, messages).asReversed() }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ConvAvatar(conversation)
-                        Spacer(Modifier.size(12.dp))
-                        Column {
-                            Text(
-                                conversation?.displayTitle() ?: stringResource(R.string.conversation),
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            conversation?.let {
-                                val subtitle = if (it.isGroup) {
-                                    val names = it.participantNames()
-                                    when {
-                                        names.isNotEmpty() -> names.joinToString(", ")
-                                        it.participantCount > 0 -> "${it.participantCount} participants"
-                                        else -> "Group"
-                                    }
-                                } else {
-                                    it.conversationType ?: ""
-                                }
-                                if (subtitle.isNotEmpty()) {
-                                    Text(
-                                        subtitle,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                navigationIcon = { IconNavigation(backStack) },
-                actions = {
-                    val conv = conversation
-                    if (conv != null && !conv.isGroup && conv.peerPhoneE164 != null) {
-                        val ctx = LocalContext.current
-                        IconButton(onClick = {
-                            val phone = conv.peerPhoneE164
-                            val lookupUri = Uri.withAppendedPath(
-                                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
-                                Uri.encode(phone)
-                            )
-                            val contactId: Long? = ctx.contentResolver.query(
-                                lookupUri,
-                                arrayOf(ContactsContract.PhoneLookup._ID),
-                                null, null, null
-                            )?.use { cursor: Cursor ->
-                                if (cursor.moveToFirst()) cursor.getLong(0) else null
-                            }
-                            val editIntent = if (contactId != null) {
-                                Intent(Intent.ACTION_EDIT).apply {
-                                    data = ContentUris.withAppendedId(
-                                        ContactsContract.Contacts.CONTENT_URI, contactId
-                                    )
-                                }
-                            } else {
-                                Intent(Intent.ACTION_INSERT).apply {
-                                    type = ContactsContract.Contacts.CONTENT_TYPE
-                                    putExtra(ContactsContract.Intents.Insert.PHONE, phone)
-                                    conv.peerName?.let {
-                                        putExtra(ContactsContract.Intents.Insert.NAME, it)
-                                    }
-                                }
-                            }
-                            ctx.startActivity(editIntent)
-                        }) {
-                            IconEdit()
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-        bottomBar = {
-            Column {
-                if (conversation?.isMessageRequest() == true) {
-                    MessageRequestBar(
-                        onAccept = { vm.acceptMessageRequest(conversationId) },
-                        onBlock = {
-                            vm.blockConversation(conversationId) { ok ->
-                                if (ok) backStack.pop()
-                            }
-                        },
-                        onDelete = {
-                            vm.deleteConversation(conversationId) { ok ->
-                                if (ok) backStack.pop()
-                            }
-                        },
-                    )
-                }
-                ComposeRow(
-                draft = draft,
-                onDraftChange = { newDraft ->
-                    draft = newDraft
-                    // Fire a typing notification on each edit (gmessages
-                    // only — voice has no typing endpoint). Cheap: it's
-                    // a fire-and-forget on a coroutine.
-                    if (conversation?.source in setOf(
-                            MessageSource.MESSAGES_WEB,
-                            MessageSource.TELEGRAM,
-                            MessageSource.SIGNAL,
-                        )
-                    ) {
-                        vm.sendTyping(conversationId)
-                    }
-                },
-                sending = sending,
-                onSend = {
-                    val toSend = draft.trim()
-                    if (toSend.isEmpty()) return@ComposeRow
-                    sending = true
-                    vm.send(conversationId, toSend) { _ -> sending = false }
-                    draft = ""
-                },
-                onAttach = {
-                    showAttachSheet = true
-                },
-                )
-            }
-        },
-    ) { padding ->
-        if (messages.isEmpty()) {
-            Box(
-                Modifier.padding(padding).fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.size(12.dp))
-                    Text(
-                        stringResource(R.string.loading_messages),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        } else {
-            // Walk the message list once, emitting (day-divider, message)
-            // pairs so the UI can render them inline. Cheaper than a
-            // groupBy on every recomposition.
-            //
-            // The LazyColumn below uses reverseLayout = true so item 0
-            // sits at the visual bottom — the standard messenger pattern
-            // (sparse threads pack to the bottom, new messages slot in
-            // without a jumpy scroll-to-end). To get that visual order
-            // we feed it the chronological list REVERSED: newest first.
-            val items = remember(messages, context) { buildItems(context, messages).asReversed() }
-            val isGroup = conversation?.isGroup == true
-            val canReact = conversation?.source in setOf(
+    ConversationScreen(
+        state = ConversationUiState(
+            conversation = conversation,
+            items = items,
+            draft = draft,
+            sending = sending,
+            canReact = conversation?.source in setOf(
                 MessageSource.MESSAGES_WEB,
                 MessageSource.TELEGRAM,
                 MessageSource.SIGNAL,
                 MessageSource.WHATSAPP,
                 MessageSource.MESSENGER,
                 MessageSource.INSTAGRAM,
-            )
-            LazyColumn(
-                state = listState,
-                reverseLayout = true,
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items.forEach { item ->
-                    when (item) {
-                        is ChatItem.DayDivider -> item(key = "day-${item.dayKey}") {
-                            DayDivider(item.label)
-                        }
-                        is ChatItem.Msg -> item(key = item.message.id) {
-                            MessageBubble(
-                                msg = item.message,
-                                showSender = isGroup && item.showSender,
-                                isFirstInRun = item.isFirstInRun,
-                                isLastInRun = item.isLastInRun,
-                                onLongPress = if (canReact) {
-                                    { reactingTo = item.message }
-                                } else null,
-                                onPollVote = { options ->
-                                    vm.sendPollVote(item.message.id, options)
-                                },
-                            )
+            ),
+        ),
+        actions = object : ConversationActions {
+            override fun navigateBack() = backStack.pop()
+
+            override fun setDraft(text: String) {
+                draft = text
+                // Fire a typing notification on each edit (gmessages
+                // only — voice has no typing endpoint). Cheap: it's
+                // a fire-and-forget on a coroutine.
+                if (conversation?.source in setOf(
+                        MessageSource.MESSAGES_WEB,
+                        MessageSource.TELEGRAM,
+                        MessageSource.SIGNAL,
+                    )
+                ) {
+                    vm.sendTyping(conversationId)
+                }
+            }
+
+            override fun send() {
+                val toSend = draft.trim()
+                if (toSend.isEmpty()) return
+                sending = true
+                vm.send(conversationId, toSend) { _ -> sending = false }
+                draft = ""
+            }
+
+            override fun attach() {
+                showAttachSheet = true
+            }
+
+            override fun editContact() {
+                val conv = conversation ?: return
+                val phone = conv.peerPhoneE164 ?: return
+                val lookupUri = Uri.withAppendedPath(
+                    ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                    Uri.encode(phone)
+                )
+                val contactId: Long? = context.contentResolver.query(
+                    lookupUri,
+                    arrayOf(ContactsContract.PhoneLookup._ID),
+                    null, null, null
+                )?.use { cursor: Cursor ->
+                    if (cursor.moveToFirst()) cursor.getLong(0) else null
+                }
+                val editIntent = if (contactId != null) {
+                    Intent(Intent.ACTION_EDIT).apply {
+                        data = ContentUris.withAppendedId(
+                            ContactsContract.Contacts.CONTENT_URI, contactId
+                        )
+                    }
+                } else {
+                    Intent(Intent.ACTION_INSERT).apply {
+                        type = ContactsContract.Contacts.CONTENT_TYPE
+                        putExtra(ContactsContract.Intents.Insert.PHONE, phone)
+                        conv.peerName?.let {
+                            putExtra(ContactsContract.Intents.Insert.NAME, it)
                         }
                     }
                 }
+                context.startActivity(editIntent)
             }
-        }
-    }
+
+            override fun react(messageId: String) {
+                reactingTo = messageId
+            }
+
+            override fun votePoll(messageId: String, options: List<String>) {
+                vm.sendPollVote(messageId, options)
+            }
+
+            override fun acceptMessageRequest() = vm.acceptMessageRequest(conversationId)
+
+            override fun blockConversation() {
+                vm.blockConversation(conversationId) { ok -> if (ok) backStack.pop() }
+            }
+
+            override fun deleteConversation() {
+                vm.deleteConversation(conversationId) { ok -> if (ok) backStack.pop() }
+            }
+        },
+    )
 
     // Long-press picker for reactions (gmessages only). Tapping an
     // emoji fires SEND_REACTION (ADD). The relay echoes the result
     // through MESSAGE_UPDATES which arrives via the long-poll and
     // re-renders the message bubble with the new reactionsJson.
-    reactingTo?.let { target ->
+    reactingTo?.let { targetId ->
         ReactionPickerDialog(
             onPick = { emoji ->
-                vm.sendReaction(target.id, emoji, ReactionAction.ADD)
+                vm.sendReaction(targetId, emoji, ReactionAction.ADD)
                 reactingTo = null
             },
             onDismiss = { reactingTo = null },
@@ -510,23 +425,139 @@ fun ConversationScreen(
     }
 }
 
-/** Render units we feed to LazyColumn. */
-private sealed interface ChatItem {
-    data class DayDivider(
-        val label: String,
-        /** Unique per calendar day so the LazyColumn key won't collide
-         *  on a thread that spans multiple Fridays. */
-        val dayKey: Long,
-    ) : ChatItem
-    data class Msg(
-        val message: Message,
-        /** Show the sender name above this bubble (groups only). */
-        val showSender: Boolean,
-        /** First message in a contiguous run from the same sender —
-         *  used to give the bubble a square corner at the join point. */
-        val isFirstInRun: Boolean,
-        val isLastInRun: Boolean,
-    ) : ChatItem
+/**
+ * Stateless chat thread — top bar, bubbles, compose row. This is what the store listing
+ * preview renders, from a hand-built [ConversationUiState].
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun ConversationScreen(
+    state: ConversationUiState,
+    actions: ConversationActions,
+) {
+    val conversation = state.conversation
+    val listState = rememberLazyListState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ConvAvatar(conversation)
+                        Spacer(Modifier.size(12.dp))
+                        Column {
+                            Text(
+                                conversation?.displayTitle() ?: stringResource(R.string.conversation),
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            conversation?.let {
+                                val subtitle = if (it.isGroup) {
+                                    val names = it.participantNames()
+                                    when {
+                                        names.isNotEmpty() -> names.joinToString(", ")
+                                        it.participantCount > 0 -> "${it.participantCount} participants"
+                                        else -> "Group"
+                                    }
+                                } else {
+                                    it.conversationType ?: ""
+                                }
+                                if (subtitle.isNotEmpty()) {
+                                    Text(
+                                        subtitle,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                navigationIcon = { IconNavigation(actions::navigateBack) },
+                actions = {
+                    if (conversation != null && !conversation.isGroup && conversation.peerPhoneE164 != null) {
+                        IconButton(onClick = { actions.editContact() }) {
+                            IconEdit()
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+        bottomBar = {
+            Column {
+                if (conversation?.isMessageRequest() == true) {
+                    MessageRequestBar(
+                        onAccept = { actions.acceptMessageRequest() },
+                        onBlock = { actions.blockConversation() },
+                        onDelete = { actions.deleteConversation() },
+                    )
+                }
+                ComposeRow(
+                    draft = state.draft,
+                    onDraftChange = { actions.setDraft(it) },
+                    sending = state.sending,
+                    onSend = { actions.send() },
+                    onAttach = { actions.attach() },
+                )
+            }
+        },
+    ) { padding ->
+        if (state.items.isEmpty()) {
+            Box(
+                Modifier.padding(padding).fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.size(12.dp))
+                    Text(
+                        stringResource(R.string.loading_messages),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            val isGroup = conversation?.isGroup == true
+            LazyColumn(
+                state = listState,
+                reverseLayout = true,
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                state.items.forEach { item ->
+                    when (item) {
+                        is ChatItem.DayDivider -> item(key = "day-${item.dayKey}") {
+                            DayDivider(item.label)
+                        }
+                        is ChatItem.Msg -> item(key = item.message.id) {
+                            MessageBubble(
+                                msg = item.message,
+                                timeLabel = item.timeLabel,
+                                showSender = isGroup && item.showSender,
+                                isFirstInRun = item.isFirstInRun,
+                                isLastInRun = item.isLastInRun,
+                                onLongPress = if (state.canReact) {
+                                    { actions.react(item.message.id) }
+                                } else null,
+                                onPollVote = { options ->
+                                    actions.votePoll(item.message.id, options)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun buildItems(context: Context, messages: List<Message>): List<ChatItem> {
@@ -554,6 +585,7 @@ private fun buildItems(context: Context, messages: List<Message>): List<ChatItem
             startOfDayEpoch(nextMessage.timestamp) == dayKey
         out += ChatItem.Msg(
             message = m,
+            timeLabel = formatTime(context, m.timestamp),
             showSender = !sameRunAsPrev && m.direction == MessageDirection.INCOMING,
             isFirstInRun = !sameRunAsPrev,
             isLastInRun = !sameRunAsNext,
@@ -710,6 +742,7 @@ private fun Modifier.combinedClickableSafe(onClick: () -> Unit): Modifier =
 @Composable
 private fun MessageBubble(
     msg: Message,
+    timeLabel: String,
     showSender: Boolean,
     isFirstInRun: Boolean,
     isLastInRun: Boolean,
@@ -790,7 +823,7 @@ private fun MessageBubble(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
             ) {
                 Text(
-                    formatTime(LocalContext.current, msg.timestamp),
+                    timeLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

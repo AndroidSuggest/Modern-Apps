@@ -49,7 +49,7 @@ class GalleryViewModel(
     application: Application,
     val photoDao: PhotoDao,
     val faceDao: FaceDao,
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), GalleryActions {
 
     val photos: StateFlow<List<Photo>> = photoDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -227,15 +227,15 @@ class GalleryViewModel(
         }.sortedByDescending { it.date }
     }
 
-    fun setSearchQuery(query: String) {
+    override fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
 
-    fun toggleSelection(id: Long) {
+    override fun toggleSelection(id: Long) {
         _selectedIds.update { if (id in it) it - id else it + id }
     }
 
-    fun clearSelection() {
+    override fun clearSelection() {
         _selectedIds.value = emptySet()
     }
 
@@ -256,7 +256,7 @@ class GalleryViewModel(
         }
     }
 
-    fun runSync() {
+    override fun runSync() {
         SyncWorker.runOnce(getApplication())
     }
 

@@ -101,7 +101,13 @@ object ImageLoader {
         isSelected: Boolean,
         isSelectionMode: Boolean,
         onToggleSelection: () -> Unit,
-        onClick: () -> Unit
+        onClick: () -> Unit,
+        /**
+         * How the tile paints its photo. A preview seam: the default decodes a MediaStore
+         * URI through [imageLoader], which only exists once MainActivity has initialised it,
+         * so the store-listing previews substitute a placeholder here.
+         */
+        thumbnail: @Composable (Photo, Modifier) -> Unit = { p, m -> PhotoItem(p, m) },
     ) {
         Box(
             modifier = Modifier
@@ -112,7 +118,7 @@ object ImageLoader {
                     onLongClick = onToggleSelection
                 )
         ) {
-            PhotoItem(photo, Modifier.fillMaxSize(), onClick = null)
+            thumbnail(photo, Modifier.fillMaxSize())
 
             if (isSelectionMode) {
                 Box(

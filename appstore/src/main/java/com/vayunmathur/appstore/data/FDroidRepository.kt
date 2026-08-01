@@ -3,62 +3,128 @@ package com.vayunmathur.appstore.data
 import android.content.Context
 import android.util.JsonReader
 import android.util.JsonToken
+import com.vayunmathur.appstore.data.security.ApkCertificates
+import com.vayunmathur.appstore.data.security.SignedJarIndex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Fixed F-Droid repo client — avoids OOM on 99MB index-v2.json.
- * Downloads to file first (buffered), then streaming-parses with android.util.JsonReader
- * so we never hold the full String + JsonObject tree in memory.
+ * F-Droid repo client. Avoids OOM on the ~100MB index by downloading to a file and
+ * streaming-parsing with android.util.JsonReader rather than holding a whole object tree.
  * Filters targetSdk < AppProvider.MIN_TARGET_SDK.
+ *
+ * **The index is always taken from the repo's signed JAR** (`entry.jar` for index-v2,
+ * `index-v1.jar` for the legacy format) and the signing certificate is pinned per repo.
+ * The plain `index-v2.json` endpoint is deliberately *not* used as a fallback: without a
+ * signature the per-APK `sha256` and `signer` values this parser extracts would be
+ * attacker-controlled, and pinning them would be security theatre.
  */
 object FDroidRepository {
 
-    suspend fun fetchRepoIndex(context: Context, repoUrl: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
-        val base = repoUrl.trimEnd('/')
-        val cacheFile = File(context.cacheDir, "fdroid_${base.hashCode()}_index.json")
-        val candidates = listOf("$base/index-v2.json", "$base/index-v1.json")
-        var lastErr: Exception? = null
-        for (url in candidates) {
-            try {
-                downloadToFile(url, cacheFile)
-                val apps = if (url.endsWith("v2.json")) parseV2Streaming(cacheFile, base) else parseV1Streaming(cacheFile, base)
-                val filtered = AppProvider.filterTargetSdk(apps)
-                cacheFile.delete()
-                return@withContext filtered
-            } catch (e: Exception) {
-                lastErr = e
-            }
-        }
-        cacheFile.delete()
-        throw lastErr ?: RuntimeException("Failed to fetch $repoUrl")
-    }
+    /**
+     * SHA-256 of the certificate f-droid.org signs its index with (CN=Ciaran Gultnieks).
+     * Hard-pinned rather than trust-on-first-use because there is exactly one supported
+     * repository, so there is no reason to ever accept an unknown key for it.
+     */
+    const val FDROID_SIGNING_CERT_SHA256 =
+        "43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab"
 
-    suspend fun fetchRepoIndex(repoUrl: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
+    /** Parsed index plus the repo signing certificate it was authenticated with. */
+    data class IndexResult(val apps: List<UnifiedApp>, val signerSha256: String)
+
+    /**
+     * Fetch and verify [repoUrl]'s index.
+     *
+     * [pinnedFingerprint] null means trust-on-first-use, and the caller must persist
+     * [IndexResult.signerSha256]. [acceptVersion] decides which versions of a package may
+     * be offered at all — the newest *accepted* version wins, so a package whose latest
+     * build has not yet been reproduced falls back to its newest reproduced one rather
+     * than disappearing.
+     */
+    suspend fun fetchRepoIndex(
+        context: Context,
+        repoUrl: String,
+        pinnedFingerprint: String?,
+        acceptVersion: (packageName: String, versionCode: Long) -> Boolean,
+    ): IndexResult = withContext(Dispatchers.IO) {
         val base = repoUrl.trimEnd('/')
-        val temp = File.createTempFile("fdroid_index_", ".json")
+        val work = File(context.cacheDir, "fdroid-index/${base.hashCode()}").apply { mkdirs() }
         try {
-            val candidates = listOf("$base/index-v2.json", "$base/index-v1.json")
-            var lastErr: Exception? = null
-            for (url in candidates) {
-                try {
-                    downloadToFile(url, temp)
-                    val apps = if (url.endsWith("v2.json")) parseV2Streaming(temp, base) else parseV1Streaming(temp, base)
-                    return@withContext AppProvider.filterTargetSdk(apps)
-                } catch (e: Exception) {
-                    lastErr = e
-                }
+            val errors = mutableListOf<String>()
+            try {
+                return@withContext fetchV2(base, pinnedFingerprint, work, acceptVersion)
+            } catch (e: Exception) {
+                errors += "index-v2: ${e.message}"
             }
-            throw lastErr ?: RuntimeException("Failed to fetch $repoUrl")
+            try {
+                return@withContext fetchV1(base, pinnedFingerprint, work, acceptVersion)
+            } catch (e: Exception) {
+                errors += "index-v1: ${e.message}"
+            }
+            throw java.io.IOException("Could not load a signed index from $base (${errors.joinToString("; ")})")
         } finally {
-            temp.delete()
+            work.deleteRecursively()
         }
     }
 
-    private fun downloadToFile(url: String, outFile: File) {
+    /**
+     * index-v2: `entry.jar` is the signed root. It names the real index file and pins its
+     * SHA-256, so the large index itself needs no separate signature — the hash chains
+     * back to the certificate we just verified.
+     */
+    private fun fetchV2(
+        base: String,
+        pinnedFingerprint: String?,
+        work: File,
+        acceptVersion: (String, Long) -> Boolean,
+    ): IndexResult {
+        val entryJar = File(work, "entry.jar")
+        downloadToFile("$base/entry.jar", entryJar)
+        val verified = SignedJarIndex.readVerified(entryJar, "entry.json", pinnedFingerprint)
+
+        val entry = JSONObject(String(verified.content, Charsets.UTF_8))
+        val index = entry.optJSONObject("index")
+            ?: throw java.io.IOException("entry.json has no index section")
+        val name = index.optString("name").takeIf { it.isNotBlank() }
+            ?: throw java.io.IOException("entry.json index has no name")
+        val expectedSha = index.optString("sha256").takeIf { it.isNotBlank() }
+            ?: throw java.io.IOException("entry.json index has no sha256")
+
+        val indexFile = File(work, "index-v2.json")
+        downloadToFile(base + "/" + name.trimStart('/'), indexFile)
+        val actualSha = ApkCertificates.sha256(indexFile)
+        if (!actualSha.equals(expectedSha, ignoreCase = true)) {
+            throw java.io.IOException("index-v2.json hash does not match the signed entry.json")
+        }
+
+        return IndexResult(
+            apps = AppProvider.filterTargetSdk(parseV2Streaming(indexFile, base, acceptVersion)),
+            signerSha256 = verified.signerSha256,
+        )
+    }
+
+    /** Legacy format: the whole index is inside the signed JAR. */
+    private fun fetchV1(
+        base: String,
+        pinnedFingerprint: String?,
+        work: File,
+        acceptVersion: (String, Long) -> Boolean,
+    ): IndexResult {
+        val jar = File(work, "index-v1.jar")
+        downloadToFile("$base/index-v1.jar", jar)
+        val indexFile = File(work, "index-v1.json")
+        val signer = SignedJarIndex.extractVerified(jar, "index-v1.json", pinnedFingerprint, indexFile)
+        return IndexResult(
+            apps = AppProvider.filterTargetSdk(parseV1Streaming(indexFile, base, acceptVersion)),
+            signerSha256 = signer,
+        )
+    }
+
+    internal fun downloadToFile(url: String, outFile: File) {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 30000
             readTimeout = 120000
@@ -78,7 +144,11 @@ object FDroidRepository {
 
     // ---- Streaming V2 parser ----
 
-    private fun parseV2Streaming(file: File, repoBase: String): List<UnifiedApp> {
+    private fun parseV2Streaming(
+        file: File,
+        repoBase: String,
+        acceptVersion: (String, Long) -> Boolean,
+    ): List<UnifiedApp> {
         val result = mutableListOf<UnifiedApp>()
         JsonReader(file.reader()).use { r ->
             r.isLenient = true
@@ -90,7 +160,7 @@ object FDroidRepository {
                         while (r.hasNext()) {
                             val pkg = r.nextName()
                             try {
-                                val app = parsePackageV2(r, pkg, repoBase)
+                                val app = parsePackageV2(r, pkg, repoBase, acceptVersion)
                                 if (app != null) result.add(app)
                             } catch (_: Exception) {
                                 try { r.skipValue() } catch (_: Exception) {}
@@ -106,7 +176,12 @@ object FDroidRepository {
         return result
     }
 
-    private fun parsePackageV2(reader: JsonReader, packageName: String, repoBase: String): UnifiedApp? {
+    private fun parsePackageV2(
+        reader: JsonReader,
+        packageName: String,
+        repoBase: String,
+        acceptVersion: (String, Long) -> Boolean,
+    ): UnifiedApp? {
         // reader at BEGIN_OBJECT of package
         var metaName: String? = null
         var metaSummary: String? = null
@@ -122,6 +197,8 @@ object FDroidRepository {
         var latestAdded: Long = -1L
         var latestFileName: String? = null
         var latestSize: Long = 0L
+        var latestSha256: String? = null
+        var latestSigners: List<String> = emptyList()
         var latestVersionName: String? = null
         var latestVersionCode: Long = 0L
         var latestTargetSdk: Int? = null
@@ -145,8 +222,10 @@ object FDroidRepository {
                             "added" -> added = nextLongOrNull(reader) ?: 0L
                             "lastUpdated" -> lastUpdated = nextLongOrNull(reader) ?: 0L
                             "icon" -> {
+                                // index-v2 icon names are repo-absolute ("/icons/foo.png");
+                                // don't prepend /icons/ again as the v1 branch has to.
                                 val iconName = readIconName(reader)
-                                if (iconName != null) iconUrl = "$repoBase/icons/$iconName"
+                                if (iconName != null) iconUrl = repoBase + "/" + iconName.trimStart('/')
                             }
                             else -> reader.skipValue()
                         }
@@ -162,6 +241,8 @@ object FDroidRepository {
                             var vAdded: Long = 0L
                             var vFileName: String? = null
                             var vFileSize: Long = 0L
+                            var vFileSha256: String? = null
+                            var vSigners: List<String> = emptyList()
                             var vVersionName: String? = null
                             var vVersionCode: Long = 0L
                             var vTargetSdk: Int? = null
@@ -175,6 +256,7 @@ object FDroidRepository {
                                             when (reader.nextName()) {
                                                 "name" -> vFileName = nextStringOrNull(reader)
                                                 "size" -> vFileSize = nextLongOrNull(reader) ?: 0L
+                                                "sha256" -> vFileSha256 = nextStringOrNull(reader)
                                                 else -> reader.skipValue()
                                             }
                                         }
@@ -196,6 +278,18 @@ object FDroidRepository {
                                                     }
                                                     reader.endObject()
                                                 }
+                                                // signer.sha256 is the list of signing-certificate
+                                                // fingerprints this APK is expected to carry.
+                                                "signer" -> {
+                                                    reader.beginObject()
+                                                    while (reader.hasNext()) {
+                                                        when (reader.nextName()) {
+                                                            "sha256" -> vSigners = readStringArray(reader)
+                                                            else -> reader.skipValue()
+                                                        }
+                                                    }
+                                                    reader.endObject()
+                                                }
                                                 else -> reader.skipValue()
                                             }
                                         }
@@ -206,10 +300,15 @@ object FDroidRepository {
                                 }
                             }
                             reader.endObject()
-                            if (vAdded >= latestAdded) {
+                            // Newest *acceptable* version wins: a package whose latest build
+                            // hasn't been reproduced yet falls back to its newest reproduced
+                            // one instead of vanishing from the catalogue.
+                            if (vAdded >= latestAdded && acceptVersion(packageName, vVersionCode)) {
                                 latestAdded = vAdded
                                 latestFileName = vFileName
                                 latestSize = vFileSize
+                                latestSha256 = vFileSha256
+                                latestSigners = vSigners
                                 latestVersionName = vVersionName
                                 latestVersionCode = vVersionCode
                                 latestTargetSdk = vTargetSdk
@@ -226,10 +325,17 @@ object FDroidRepository {
         }
         reader.endObject()
 
-        val apkUrl = latestFileName?.let { "$repoBase/$it" }
+        // No version passed acceptVersion — drop the package entirely rather than
+        // advertising an entry that has no installable APK behind it.
+        if (latestAdded < 0L || latestFileName == null) return null
+
+        // index-v2 file names are repo-absolute ("/com.example_12.apk").
+        val apkUrl = latestFileName.let { repoBase + "/" + it.trimStart('/') }
         return UnifiedApp(
             packageName = packageName,
             source = AppSource.FDROID,
+            expectedSigners = latestSigners,
+            apkSha256 = latestSha256,
             name = metaName ?: packageName.substringAfterLast('.'),
             summary = metaSummary ?: "",
             description = metaDesc ?: "",
@@ -253,7 +359,11 @@ object FDroidRepository {
 
     // ---- Streaming V1 parser (apps[] + packages{ pkg:[...] }) ----
 
-    private fun parseV1Streaming(file: File, repoBase: String): List<UnifiedApp> {
+    private fun parseV1Streaming(
+        file: File,
+        repoBase: String,
+        acceptVersion: (String, Long) -> Boolean,
+    ): List<UnifiedApp> {
         val appsMeta = mutableMapOf<String, V1AppMeta>()
         val packagesMap = mutableMapOf<String, V1PackageLatest>()
         JsonReader(file.reader()).use { r ->
@@ -278,7 +388,7 @@ object FDroidRepository {
                         while (r.hasNext()) {
                             val pkgName = r.nextName()
                             try {
-                                val latest = parseV1PackagesArray(r)
+                                val latest = parseV1PackagesArray(r, pkgName, acceptVersion)
                                 if (latest != null) packagesMap[pkgName] = latest
                             } catch (_: Exception) {
                                 try { r.skipValue() } catch (_: Exception) {}
@@ -294,7 +404,8 @@ object FDroidRepository {
 
         val result = mutableListOf<UnifiedApp>()
         for ((pkg, meta) in appsMeta) {
-            val latest = packagesMap[pkg]
+            // Same rule as v2: no acceptable version means no catalogue entry.
+            val latest = packagesMap[pkg] ?: continue
             result.add(
                 UnifiedApp(
                     packageName = pkg,
@@ -308,8 +419,11 @@ object FDroidRepository {
                     versionName = latest?.versionName,
                     versionCode = latest?.versionCode ?: 0L,
                     sizeBytes = latest?.size ?: 0L,
-                    apkUrl = latest?.apkName?.let { "$repoBase/$it" },
+                    apkUrl = latest?.apkName?.let { repoBase + "/" + it.trimStart('/') },
                     targetSdk = latest?.targetSdk,
+                    expectedSigners = listOfNotNull(latest?.signer),
+                    // v1 states the hash algorithm; only pin it when it really is SHA-256.
+                    apkSha256 = latest?.hash?.takeIf { latest?.hashType.equals("sha256", true) },
                     website = meta.webSite,
                     sourceCode = meta.sourceCode,
                     license = meta.license,
@@ -342,7 +456,10 @@ object FDroidRepository {
         val versionName: String?,
         val versionCode: Long,
         val size: Long,
-        val targetSdk: Int?
+        val targetSdk: Int?,
+        val hash: String?,
+        val hashType: String?,
+        val signer: String?
     )
 
     private fun parseV1AppMeta(reader: JsonReader): V1AppMeta? {
@@ -382,8 +499,12 @@ object FDroidRepository {
         return V1AppMeta(pkg, name, summary, description, icon, authorName, categories, webSite, sourceCode, license, added, lastUpdated)
     }
 
-    private fun parseV1PackagesArray(reader: JsonReader): V1PackageLatest? {
-        // array of package versions, take last
+    private fun parseV1PackagesArray(
+        reader: JsonReader,
+        packageName: String,
+        acceptVersion: (String, Long) -> Boolean,
+    ): V1PackageLatest? {
+        // array of package versions, take the last acceptable one
         var last: V1PackageLatest? = null
         reader.beginArray()
         while (reader.hasNext()) {
@@ -394,6 +515,9 @@ object FDroidRepository {
                 var versionCode: Long = 0L
                 var size: Long = 0L
                 var targetSdk: Int? = null
+                var hash: String? = null
+                var hashType: String? = null
+                var signer: String? = null
                 while (reader.hasNext()) {
                     when (reader.nextName()) {
                         "apkName" -> apkName = nextStringOrNull(reader)
@@ -401,11 +525,18 @@ object FDroidRepository {
                         "versionCode" -> versionCode = nextLongOrNull(reader) ?: 0L
                         "size" -> size = nextLongOrNull(reader) ?: 0L
                         "targetSdkVersion" -> targetSdk = nextIntOrNull(reader)
+                        "hash" -> hash = nextStringOrNull(reader)
+                        "hashType" -> hashType = nextStringOrNull(reader)
+                        "signer" -> signer = nextStringOrNull(reader)
                         else -> reader.skipValue()
                     }
                 }
                 reader.endObject()
-                last = V1PackageLatest(apkName, versionName, versionCode, size, targetSdk)
+                if (acceptVersion(packageName, versionCode)) {
+                    last = V1PackageLatest(
+                        apkName, versionName, versionCode, size, targetSdk, hash, hashType, signer
+                    )
+                }
             } catch (_: Exception) {
                 try { reader.endObject() } catch (_: Exception) {}
                 try { reader.skipValue() } catch (_: Exception) {}

@@ -74,7 +74,9 @@ import com.vayunmathur.notes.data.NoteBody
 import com.vayunmathur.notes.data.body
 import com.vayunmathur.notes.data.randomBlockId
 import com.vayunmathur.notes.data.withBody
+import com.vayunmathur.notes.util.NoteActions
 import com.vayunmathur.notes.util.NoteImageStore
+import com.vayunmathur.notes.util.NoteUiState
 import com.vayunmathur.notes.util.NotesViewModel
 import com.vayunmathur.notes.util.exportNoteMarkdown
 import com.vayunmathur.notes.util.markdownCacheUri
@@ -84,7 +86,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Binds the note with [noteID] to the stateless [NoteScreen]: owns the editable row, the
+ * block list, and everything that needs a real device (image picker, clipboard, share).
+ */
 @Composable
 fun NotePage(
     backStack: NavBackStack<Route>,
@@ -105,39 +110,19 @@ fun NotePage(
     val blocks = remember(noteID) { mutableStateListOf<NoteBlock>().apply { addAll(note.body().blocks) } }
     fun commit() { note = note.withBody(NoteBody(blocks.toList())) }
 
-    // Which text block currently has focus, so new media is inserted next to it
-    // and the formatting toolbar targets the right editor.
-    var focusedBlockId by remember { mutableStateOf<String?>(null) }
-    var activeController by remember { mutableStateOf<OdfMarkdownEditorController?>(null) }
     var editingInk by remember { mutableStateOf<NoteBlock.Ink?>(null) }
-
-    fun focusedIndex(): Int? = blocks.indexOfFirst { it.id == focusedBlockId }.takeIf { it >= 0 }
+    // Where inserted media lands: the text block that had focus when the picker or the
+    // drawing editor was opened. Kept here because the insert completes after a trip out
+    // of the app, by which time focus is gone.
+    var insertAfterId by remember { mutableStateOf<String?>(null) }
 
     fun insertBlock(block: NoteBlock) {
-        val at = focusedIndex()?.plus(1) ?: blocks.size
+        val at = blocks.indexOfFirst { it.id == insertAfterId }.takeIf { it >= 0 }?.plus(1) ?: blocks.size
         blocks.add(at, block)
         // Keep a text block after inserted media so the user can keep typing below it.
         if (block !is NoteBlock.Text && (at + 1 > blocks.lastIndex || blocks[at + 1] !is NoteBlock.Text)) {
             blocks.add(at + 1, NoteBlock.Text("", randomBlockId()))
         }
-        commit()
-    }
-
-    fun deleteBlock(block: NoteBlock) {
-        val i = blocks.indexOfFirst { it.id == block.id }
-        if (i < 0) return
-        if (block is NoteBlock.Image) NoteImageStore.delete(context, block.fileName)
-        blocks.removeAt(i)
-        if (blocks.isEmpty()) blocks.add(NoteBlock.Text("", randomBlockId()))
-        commit()
-    }
-
-    fun moveBlock(block: NoteBlock, delta: Int) {
-        val i = blocks.indexOfFirst { it.id == block.id }
-        val j = i + delta
-        if (i < 0 || j < 0 || j > blocks.lastIndex) return
-        val moved = blocks.removeAt(i)
-        blocks.add(j, moved)
         commit()
     }
 
@@ -191,34 +176,111 @@ fun NotePage(
         return
     }
 
+    NoteScreen(
+        state = NoteUiState(title = note.title, blocks = blocks.toList()),
+        actions = object : NoteActions {
+            override fun back() = backStack.pop()
+
+            override fun setTitle(title: String) { note = note.copy(title = title) }
+
+            override fun setBlockMarkdown(id: String, markdown: String) {
+                val i = blocks.indexOfFirst { it.id == id }
+                if (i >= 0) {
+                    blocks[i] = NoteBlock.Text(markdown, id)
+                    commit()
+                }
+            }
+
+            override fun addImage(afterBlockId: String?) {
+                insertAfterId = afterBlockId
+                pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+
+            override fun addDrawing(afterBlockId: String?) {
+                insertAfterId = afterBlockId
+                editingInk = NoteBlock.Ink(emptyList(), id = randomBlockId())
+            }
+
+            override fun editDrawing(block: NoteBlock.Ink) { editingInk = block }
+
+            override fun resizeImage(id: String, widthFraction: Float) {
+                val i = blocks.indexOfFirst { it.id == id }
+                val block = blocks.getOrNull(i) as? NoteBlock.Image ?: return
+                blocks[i] = block.copy(widthFraction = widthFraction)
+                commit()
+            }
+
+            override fun moveBlock(id: String, delta: Int) {
+                val i = blocks.indexOfFirst { it.id == id }
+                val j = i + delta
+                if (i < 0 || j < 0 || j > blocks.lastIndex) return
+                val moved = blocks.removeAt(i)
+                blocks.add(j, moved)
+                commit()
+            }
+
+            override fun deleteBlock(id: String) {
+                val i = blocks.indexOfFirst { it.id == id }
+                if (i < 0) return
+                val block = blocks[i]
+                if (block is NoteBlock.Image) NoteImageStore.delete(context, block.fileName)
+                blocks.removeAt(i)
+                if (blocks.isEmpty()) blocks.add(NoteBlock.Text("", randomBlockId()))
+                commit()
+            }
+
+            override fun copyNote() {
+                scope.launch {
+                    val clip = withContext(Dispatchers.IO) {
+                        val markdown = exportNoteMarkdown(context, note)
+                        // Big base64 images blow past Binder's ~1MB clip limit
+                        // (TransactionTooLargeException), so for large notes copy a
+                        // URI to the exported .md instead of the raw text.
+                        if (markdown.length < 100_000) {
+                            ClipData.newPlainText(context.getString(R.string.note), markdown)
+                        } else {
+                            val uri = markdownCacheUri(context, note, markdown)
+                            ClipData.newUri(context.contentResolver, "note", uri)
+                        }
+                    }
+                    clipboard.setClipEntry(ClipEntry(clip))
+                }
+            }
+
+            override fun shareNote() = notesViewModel.requestShare(note)
+
+            override fun deleteNote() {
+                notesViewModel.delete(note)
+                backStack.pop()
+            }
+        },
+    )
+}
+
+/**
+ * The note editor, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NoteScreen(state: NoteUiState, actions: NoteActions) {
+    val context = LocalContext.current
+
+    // Which text block currently has focus, so new media is inserted next to it
+    // and the formatting toolbar targets the right editor.
+    var focusedBlockId by remember { mutableStateOf<String?>(null) }
+    var activeController by remember { mutableStateOf<OdfMarkdownEditorController?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {},
-                navigationIcon = { IconNavigation { backStack.pop() } },
+                navigationIcon = { IconNavigation { actions.back() } },
                 actions = {
-                    IconButton({
-                        scope.launch {
-                            val clip = withContext(Dispatchers.IO) {
-                                val markdown = exportNoteMarkdown(context, note)
-                                // Big base64 images blow past Binder's ~1MB clip limit
-                                // (TransactionTooLargeException), so for large notes copy a
-                                // URI to the exported .md instead of the raw text.
-                                if (markdown.length < 100_000) {
-                                    ClipData.newPlainText(context.getString(R.string.note), markdown)
-                                } else {
-                                    val uri = markdownCacheUri(context, note, markdown)
-                                    ClipData.newUri(context.contentResolver, "note", uri)
-                                }
-                            }
-                            clipboard.setClipEntry(ClipEntry(clip))
-                        }
-                    }) { IconCopy() }
-                    IconButton({ notesViewModel.requestShare(note) }) { IconShare() }
-                    IconButton(onClick = {
-                        notesViewModel.delete(note)
-                        backStack.pop()
-                    }) { IconDelete() }
+                    IconButton({ actions.copyNote() }) { IconCopy() }
+                    IconButton({ actions.shareNote() }) { IconShare() }
+                    IconButton({ actions.deleteNote() }) { IconDelete() }
                 },
             )
         },
@@ -228,10 +290,10 @@ fun NotePage(
             // it shows just the insert buttons. Everything lives in a single row.
             val insertButtons: @Composable RowScope.() -> Unit = {
                 FormatIconButton(stringResource(R.string.add_image), onClick = {
-                    pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    actions.addImage(focusedBlockId)
                 }) { IconImage() }
                 FormatIconButton(stringResource(R.string.add_drawing), onClick = {
-                    editingInk = NoteBlock.Ink(emptyList(), id = randomBlockId())
+                    actions.addDrawing(focusedBlockId)
                 }) { IconDraw() }
             }
             val controller = activeController
@@ -250,15 +312,15 @@ fun NotePage(
                 .padding(horizontal = 16.dp),
         ) {
             BasicTextField(
-                note.title,
-                { note = note.copy(title = it) },
+                state.title,
+                { actions.setTitle(it) },
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 singleLine = true,
                 textStyle = MaterialTheme.typography.headlineMedium.copy(color = LocalContentColor.current),
                 cursorBrush = SolidColor(LocalContentColor.current),
                 decorationBox = { innerTextField ->
                     Box {
-                        if (note.title.isEmpty()) Text(
+                        if (state.title.isEmpty()) Text(
                             text = stringResource(R.string.title),
                             style = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
                         )
@@ -267,16 +329,12 @@ fun NotePage(
                 },
             )
 
-            blocks.toList().forEach { block ->
+            state.blocks.forEach { block ->
                 key(block.id) {
                     when (block) {
                         is NoteBlock.Text -> {
                             val controller = rememberOdfMarkdownEditorController(initialMarkdown = block.markdown) { newMd ->
-                                val i = blocks.indexOfFirst { it.id == block.id }
-                                if (i >= 0) {
-                                    blocks[i] = NoteBlock.Text(newMd, block.id)
-                                    commit()
-                                }
+                                actions.setBlockMarkdown(block.id, newMd)
                             }
                             LaunchedEffect(controller.focused) {
                                 if (controller.focused) {
@@ -290,21 +348,18 @@ fun NotePage(
                         is NoteBlock.Image -> ImageBlock(
                             block = block,
                             file = NoteImageStore.fileFor(context, block.fileName),
-                            onResize = { fraction ->
-                                val i = blocks.indexOfFirst { it.id == block.id }
-                                if (i >= 0) { blocks[i] = block.copy(widthFraction = fraction); commit() }
-                            },
-                            onMoveUp = { moveBlock(block, -1) },
-                            onMoveDown = { moveBlock(block, 1) },
-                            onDelete = { deleteBlock(block) },
+                            onResize = { fraction -> actions.resizeImage(block.id, fraction) },
+                            onMoveUp = { actions.moveBlock(block.id, -1) },
+                            onMoveDown = { actions.moveBlock(block.id, 1) },
+                            onDelete = { actions.deleteBlock(block.id) },
                         )
 
                         is NoteBlock.Ink -> InkBlock(
                             block = block,
-                            onEdit = { editingInk = block },
-                            onMoveUp = { moveBlock(block, -1) },
-                            onMoveDown = { moveBlock(block, 1) },
-                            onDelete = { deleteBlock(block) },
+                            onEdit = { actions.editDrawing(block) },
+                            onMoveUp = { actions.moveBlock(block.id, -1) },
+                            onMoveDown = { actions.moveBlock(block.id, 1) },
+                            onDelete = { actions.deleteBlock(block.id) },
                         )
                     }
                 }

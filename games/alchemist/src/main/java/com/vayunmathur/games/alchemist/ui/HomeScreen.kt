@@ -63,14 +63,16 @@ import androidx.compose.ui.zIndex
 import com.vayunmathur.games.alchemist.R
 import com.vayunmathur.games.alchemist.Route
 import com.vayunmathur.games.alchemist.util.AlchemistViewModel
+import com.vayunmathur.games.alchemist.util.HomeActions
+import com.vayunmathur.games.alchemist.util.HomeUiState
 import com.vayunmathur.games.alchemist.util.PlacedItem
 import com.vayunmathur.library.util.NavBackStack
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [AlchemistViewModel] to the stateless [HomeScreen]. */
 @Composable
-fun HomeScreen(
+fun HomePage(
     backStack: NavBackStack<Route>,
     viewModel: AlchemistViewModel,
     onOpenCollection: () -> Unit,
@@ -81,6 +83,37 @@ fun HomeScreen(
     val hideExhausted by viewModel.hideExhausted.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
     val activeItems by viewModel.placedElements.collectAsState()
+
+    HomeScreen(
+        state = HomeUiState(
+            placedItems = activeItems,
+            paletteItems = paletteItems,
+            discoveredCount = availableItems.size,
+            totalCount = allItems.size,
+            hideExhausted = hideExhausted
+        ),
+        actions = viewModel,
+        onOpenCollection = onOpenCollection,
+        onOpenGameCenter = onOpenGameCenter,
+        onOpenItemDetails = { backStack.add(Route.ItemDetails(it.toInt())) }
+    )
+}
+
+/**
+ * The crafting board, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    state: HomeUiState,
+    actions: HomeActions,
+    onOpenCollection: () -> Unit,
+    onOpenGameCenter: () -> Unit,
+    onOpenItemDetails: (Long) -> Unit
+) {
+    val activeItems = state.placedItems
+    val paletteItems = state.paletteItems
 
     val scope = rememberCoroutineScope()
 
@@ -102,7 +135,7 @@ fun HomeScreen(
         topBar = {
             TopAppBar(title = { Text(stringResource(R.string.app_name)) }, actions = {
                 if (activeItems.isNotEmpty()) {
-                    IconButton(onClick = { viewModel.clearElements() }) {
+                    IconButton(onClick = { actions.clearElements() }) {
                         Icon(
                             painterResource(id = android.R.drawable.ic_menu_close_clear_cancel), "Clear"
                         )
@@ -127,9 +160,9 @@ fun HomeScreen(
                 ) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.hide_maxed_elements)) },
-                        trailingIcon = { if (hideExhausted) IconCheck() },
+                        trailingIcon = { if (state.hideExhausted) IconCheck() },
                         onClick = {
-                            viewModel.setHideExhausted(!hideExhausted)
+                            actions.setHideExhausted(!state.hideExhausted)
                             overflowExpanded = false
                         }
                     )
@@ -158,16 +191,16 @@ fun HomeScreen(
                             val limitY = bottomBarTopInWindow - playAreaOffsetInWindow.y - 48f
                             // DELETION: Triggered if any part of the item touches the bottom bar
                             if (finalOffset.y > limitY) {
-                                viewModel.removeElement(item.key)
+                                actions.removeElement(item.key)
                             } else {
-                                viewModel.updateElementPosition(item.key, finalOffset)
-                                viewModel.tryCombine(item.key, finalOffset)
+                                actions.updateElementPosition(item.key, finalOffset)
+                                actions.tryCombine(item.key, finalOffset)
                             }
                         }, onLongClick = {
                             contextMenuElementId = item.id
                             contextMenuExpanded = true
                         }, onDoubleTap = {
-                            viewModel.duplicateElement(item.key)
+                            actions.duplicateElement(item.key)
                         })
                     }
                 }
@@ -186,7 +219,7 @@ fun HomeScreen(
                 // 2.1 INVENTORY COUNT (discovered / total)
                 Text(
                     stringResource(
-                        R.string.counter, availableItems.size, allItems.size
+                        R.string.counter, state.discoveredCount, state.totalCount
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.fillMaxWidth(),
@@ -290,7 +323,7 @@ fun HomeScreen(
                                                                 if (pullOut) {
                                                                     val limitY = bottomBarTopInWindow - playAreaOffsetInWindow.y - 48f
                                                                     if (draggingInventoryOffset.y < limitY) {
-                                                                        viewModel.placeElement(item.id, draggingInventoryOffset)
+                                                                        actions.placeElement(item.id, draggingInventoryOffset)
                                                                     }
                                                                 }
                                                                 draggingInventoryId = null
@@ -356,9 +389,7 @@ fun HomeScreen(
                 onDismissRequest = { contextMenuExpanded = false }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.see_details)) }, onClick = {
                     contextMenuExpanded = false
-                    contextMenuElementId?.let {
-                        backStack.add(Route.ItemDetails(it.toInt()))
-                    }
+                    contextMenuElementId?.let(onOpenItemDetails)
                 })
             }
         }

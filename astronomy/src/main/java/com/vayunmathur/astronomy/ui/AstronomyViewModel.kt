@@ -63,7 +63,7 @@ data class TrajectoryPoint(val jd: Double, val altAz: AltAz, val raDec: RaDec)
 data class SearchResult(val id: String, val title: String, val subtitle: String, val raDec: Pair<Double, Double>?)
 
 @OptIn(ExperimentalTime::class)
-class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
+class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapActions, SearchActions, SettingsActions {
     private val context = getApplication<Application>()
     private val catalog = CatalogRepository(context)
     private var starIndex: Map<Int, com.vayunmathur.astronomy.data.model.Star> = emptyMap()
@@ -239,7 +239,7 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun selectObject(id: String) {
+    override fun selectObject(id: String) {
         _selectedObjectId.value = id
         updateTrajectoryForSelected()
         updateRiseSetForSelected()
@@ -291,20 +291,20 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
     private fun saveDouble(key: String, v: Double) { viewModelScope.launch { ds.setDouble(key, v) } }
     private fun saveString(key: String, v: String) { viewModelScope.launch { ds.setString(key, v) } }
 
-    fun setShowConstellations(mode: ConstellationMode) { _constellationMode.value = mode; saveString("astro_const_mode", mode.name) }
-    fun setShowGrid(v: Boolean) { _showGrid.value = v; saveBool("astro_show_grid", v) }
-    fun setShowDeepSky(v: Boolean) { _showDeepSky.value = v; saveBool("astro_show_deep", v) }
-    fun setShowPlanets(v: Boolean) { _showPlanets.value = v; saveBool("astro_show_planets", v) }
-    fun setNightMode(v: Boolean) { _nightMode.value = v; saveBool("astro_night_mode", v) }
+    override fun setShowConstellations(mode: ConstellationMode) { _constellationMode.value = mode; saveString("astro_const_mode", mode.name) }
+    override fun setShowGrid(v: Boolean) { _showGrid.value = v; saveBool("astro_show_grid", v) }
+    override fun setShowDeepSky(v: Boolean) { _showDeepSky.value = v; saveBool("astro_show_deep", v) }
+    override fun setShowPlanets(v: Boolean) { _showPlanets.value = v; saveBool("astro_show_planets", v) }
+    override fun setNightMode(v: Boolean) { _nightMode.value = v; saveBool("astro_night_mode", v) }
     fun setDevicePointing(v: Boolean) {
         _devicePointingEnabled.value = v; saveBool("astro_device_pointing", v)
         if (v) { orientationMgr.start(); _viewCenter.value = CenterOption.DevicePointing } else { orientationMgr.stop(); _viewCenter.value = CenterOption.Manual(0.0, 45.0.toRad()) }
     }
-    fun setShowBelowHorizon(v: Boolean) { _showBelowHorizon.value = v; saveBool("astro_show_below", v) }
+    override fun setShowBelowHorizon(v: Boolean) { _showBelowHorizon.value = v; saveBool("astro_show_below", v) }
 
-    fun setMagLimit(v: Float) { _magLimit.value = v; saveDouble("astro_mag_limit", v.toDouble()) }
-    fun setFov(v: Float) { _fovDeg.value = v.coerceIn(10f, 120f); saveDouble("astro_fov", v.toDouble()) }
-    fun setManualLocation(latDeg: Double, lonDeg: Double) {
+    override fun setMagLimit(v: Float) { _magLimit.value = v; saveDouble("astro_mag_limit", v.toDouble()) }
+    override fun setFov(v: Float) { _fovDeg.value = v.coerceIn(10f, 120f); saveDouble("astro_fov", v.toDouble()) }
+    override fun setManualLocation(latDeg: Double, lonDeg: Double) {
         _observer.value = ObserverLocation(latDeg.toRad(), lonDeg.toRad(), latDeg, lonDeg)
         saveDouble("astro_lat", latDeg); saveDouble("astro_lon", lonDeg)
     }
@@ -314,7 +314,7 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
         tickerJob = viewModelScope.launch { while (true) { if (_isLive.value) _simTime.value = Clock.System.now(); delay(1000) } }
     }
 
-    fun refreshLocation() {
+    override fun refreshLocation() {
         locationJob?.cancel()
         locationJob = viewModelScope.launch {
             if (!LocationProvider.hasPermission(context)) return@launch
@@ -328,7 +328,8 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setTime(instant: Instant, live: Boolean = false) { _simTime.value = instant; _isLive.value = live; updateTrajectoryForSelected(); updateRiseSetForSelected() }
+    // The `live` default lives on SkyMapActions; an override may not restate it.
+    override fun setTime(instant: Instant, live: Boolean) { _simTime.value = instant; _isLive.value = live; updateTrajectoryForSelected(); updateRiseSetForSelected() }
     fun setLiveNow() { _simTime.value = Clock.System.now(); _isLive.value = true }
 
     // No still mode per request: always tracks phone. Pan disabled in device mode (only zoom allowed)
@@ -364,7 +365,7 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getCatalog() = catalog
 
-    fun search(query: String): List<SearchResult> {
+    override fun search(query: String): List<SearchResult> {
         if (query.isBlank()) return emptyList()
         val q = query.lowercase()
         val results = mutableListOf<SearchResult>()

@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -31,11 +32,13 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.OrderDetailDto
 import com.vayunmathur.travel.network.SliceDto
+import com.vayunmathur.travel.util.OrderDetailActions
+import com.vayunmathur.travel.util.OrderDetailUiState
 import com.vayunmathur.travel.util.PaymentActionState
 import com.vayunmathur.travel.util.TravelViewModel
 import androidx.compose.ui.res.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [TravelViewModel] and the back stack to the stateless [OrderDetailScreen]. */
 @Composable
 fun OrderDetailPage(
     backStack: NavBackStack<Route>,
@@ -58,11 +61,40 @@ fun OrderDetailPage(
         }
     }
 
+    val actions = remember(viewModel, backStack) {
+        object : OrderDetailActions {
+            override fun payOrder(orderId: String) = viewModel.payOrder(orderId)
+            override fun openChange(orderId: String) = backStack.add(Route.Change(orderId))
+            override fun openCancel(orderId: String) = backStack.add(Route.Cancel(orderId))
+            override fun back() = backStack.pop()
+        }
+    }
+
+    OrderDetailScreen(
+        state = OrderDetailUiState(
+            loading = state.loading,
+            error = state.error,
+            order = state.order,
+            events = events,
+            payment = paymentAction,
+        ),
+        actions = actions,
+    )
+}
+
+/**
+ * A booked order, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OrderDetailScreen(state: OrderDetailUiState, actions: OrderDetailActions) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.order)) },
-                navigationIcon = { IconNavigation(backStack) },
+                navigationIcon = { IconNavigation { actions.back() } },
             )
         },
     ) { padding ->
@@ -85,7 +117,7 @@ fun OrderDetailPage(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            events.forEach { event -> OrderEventBanner(event.message) }
+            state.events.forEach { event -> OrderEventBanner(event.message) }
 
             ElevatedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -111,12 +143,12 @@ fun OrderDetailPage(
             }
 
             if (order.paymentStatus == "awaiting_payment" && order.status != "cancelled") {
-                val paying = paymentAction is PaymentActionState.Loading
-                (paymentAction as? PaymentActionState.Error)?.let {
+                val paying = state.payment is PaymentActionState.Loading
+                (state.payment as? PaymentActionState.Error)?.let {
                     Text(it.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 Button(
-                    onClick = { viewModel.payOrder(order.orderId) },
+                    onClick = { actions.payOrder(order.orderId) },
                     enabled = !paying,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (paying) stringResource(R.string.paying) else stringResource(R.string.pay_now_with_test_balance)) }
@@ -124,11 +156,11 @@ fun OrderDetailPage(
 
             if (order.status != "cancelled") {
                 OutlinedButton(
-                    onClick = { backStack.add(Route.Change(order.orderId)) },
+                    onClick = { actions.openChange(order.orderId) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.change_flights)) }
                 OutlinedButton(
-                    onClick = { backStack.add(Route.Cancel(order.orderId)) },
+                    onClick = { actions.openCancel(order.orderId) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.cancel_order)) }
             }

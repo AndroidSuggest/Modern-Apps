@@ -49,11 +49,13 @@ import com.vayunmathur.games.logicgate.ui.gatePlacedSizePx
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.vayunmathur.games.logicgate.ui.LogicGateTheme
 import com.vayunmathur.games.logicgate.ui.MobileDimens
-import com.vayunmathur.games.logicgate.ui.ProgressionScreen
+import com.vayunmathur.games.logicgate.ui.ProgressionPage
 import com.vayunmathur.games.logicgate.ui.Turing
 import com.vayunmathur.games.logicgate.util.AppBackupAgent
 import com.vayunmathur.games.logicgate.util.EvalStatus
+import com.vayunmathur.games.logicgate.util.LogicActions
 import com.vayunmathur.games.logicgate.util.LogicViewModel
+import com.vayunmathur.games.logicgate.util.UiState
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
@@ -99,8 +101,8 @@ fun Navigation(viewModel: LogicViewModel) {
     val newAchievement by viewModel.achievementsManager.newAchievement.collectAsState()
     Box(modifier = Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
-            entry<Route.Progression> { ProgressionScreen(backStack, viewModel) }
-            entry<Route.Game> { GameScreen(backStack, viewModel, it.levelId) }
+            entry<Route.Progression> { ProgressionPage(backStack, viewModel) }
+            entry<Route.Game> { GamePage(backStack, viewModel, it.levelId) }
             entry<Route.GameCenter> {
                 GameCenterScreen(backupAgent = AppBackupAgent(), manager = viewModel.achievementsManager, onBack = { backStack.pop() })
             }
@@ -215,12 +217,43 @@ private fun cellWidthForOutput(level: LevelDef, idx: Int): Dp {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [LogicViewModel] to the stateless [GameScreen]. */
 @Composable
-fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelId: String) {
-    val level = Levels.get(levelId)
+fun GamePage(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelId: String) {
     val uiState by viewModel.uiState.collectAsState()
     val unlocked by viewModel.unlockedChips.collectAsState()
+    GameScreen(
+        levelId = levelId,
+        state = uiState,
+        unlockedChips = unlocked,
+        actions = viewModel,
+        onBack = { backStack.pop() },
+        onOpenLevel = { nextId -> backStack.add(Route.Game(nextId)) },
+    )
+}
+
+/**
+ * The circuit editor, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from. Everything it derives (truth table, evaluation, terminal layout) is a
+ * pure function of [state] and the static level table.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GameScreen(
+    levelId: String,
+    state: UiState,
+    unlockedChips: Set<String>,
+    actions: LogicActions,
+    onBack: () -> Unit = {},
+    onOpenLevel: (String) -> Unit = {},
+    /**
+     * Seeds the win dialog, which the app only ever opens from the evaluation result. A
+     * preview sets it so the "level complete" moment can be captured directly.
+     */
+    initialShowWinDialog: Boolean = false,
+) {
+    val level = Levels.get(levelId)
 
     var canvasPosInWindow by remember { mutableStateOf(Offset.Zero) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
@@ -253,13 +286,13 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
     var liveFlatInputs by remember(levelId) { mutableStateOf<List<Boolean>?>(null) }
 
     LaunchedEffect(levelId) {
-        viewModel.selectLevel(levelId)
+        actions.selectLevel(levelId)
         liveFlatInputs = null
         selectedIdxMutable = 0
     }
-    LaunchedEffect(uiState.evalStatus) {
+    LaunchedEffect(state.evalStatus) {
         if (liveFlatInputs == null) {
-            val failing = (uiState.evalStatus as? EvalStatus.Ok)?.failingRows
+            val failing = (state.evalStatus as? EvalStatus.Ok)?.failingRows
             selectedIdxMutable = if (failing != null && failing.isNotEmpty()) failing.first() % inputVectors.size else 0
         }
     }
@@ -304,8 +337,8 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
             ChipLibrary.bitsToInt(slice)
         }
     }
-    val actualEvalRows: List<List<Boolean>>? = remember(uiState.circuit, level) {
-        val res = CircuitEvaluator.evaluate(level, uiState.circuit)
+    val actualEvalRows: List<List<Boolean>>? = remember(state.circuit, level) {
+        val res = CircuitEvaluator.evaluate(level, state.circuit)
         if (res is EvalResult.Success) res.rows else null
     }
     val actualFlatOut: List<Boolean> = remember(actualEvalRows, selectedIdxMutable, liveFlatInputs) {
@@ -328,12 +361,12 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
         }
     }
 
-    if (uiState.currentLevelId != levelId) {
+    if (state.currentLevelId != levelId) {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F1E2D)), contentAlignment = Alignment.Center) { Text(stringResource(R.string.loading)) }
         return
     }
 
-    val gateCost = uiState.circuit.totalNandCost()
+    val gateCost = state.circuit.totalNandCost()
 
     fun toggleInput(idx: Int) {
         val off = level.inputBitOffset(idx)
@@ -375,19 +408,19 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
             TableRowUi(inSlices, desSlices, actSlices)
         }
     }
-    val failingSet = (uiState.evalStatus as? EvalStatus.Ok)?.failingRows?.toSet() ?: emptySet()
+    val failingSet = (state.evalStatus as? EvalStatus.Ok)?.failingRows?.toSet() ?: emptySet()
 
     // Win popup: surface as soon as the level is fully correct.
-    val isWon = (uiState.evalStatus as? EvalStatus.Ok)?.isFullyCorrect == true
-    var showWinDialog by remember(levelId) { mutableStateOf(false) }
+    val isWon = (state.evalStatus as? EvalStatus.Ok)?.isFullyCorrect == true
+    var showWinDialog by remember(levelId) { mutableStateOf(initialShowWinDialog) }
     var winDismissed by remember(levelId) { mutableStateOf(false) }
     LaunchedEffect(isWon) { if (isWon && !winDismissed) showWinDialog = true }
     val nextLevelId = remember(levelId) {
         val idx = Levels.all.indexOfFirst { it.id == levelId }
         if (idx >= 0) Levels.all.getOrNull(idx + 1)?.id else null
     }
-    val availableGroups = remember(level.allowedChipIds, unlocked) {
-        level.allowedChipIds.filter { it in unlocked }
+    val availableGroups = remember(level.allowedChipIds, unlockedChips) {
+        level.allowedChipIds.filter { it in unlockedChips }
             .mapNotNull { try { groupForCategory(ChipLibrary.get(it).category) } catch (_: Exception) { null } }
             .toSet()
     }
@@ -405,14 +438,14 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                     title = {
                         Text(text = level.displayName, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Turing.headerPink, maxLines = 1)
                     },
-                    navigationIcon = { IconNavigation(backStack) },
+                    navigationIcon = { IconNavigation(onBack) },
                     actions = {
                         Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Turing.rightTabOn).padding(horizontal = 8.dp, vertical = 4.dp)) {
                             Text(stringResource(R.string.gate, gateCost), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                        AppBarActionBtn(glyph = "↩", enabled = uiState.canUndo) { viewModel.undo() }
-                        AppBarActionBtn(glyph = "↪", enabled = uiState.canRedo) { viewModel.redo() }
+                        AppBarActionBtn(glyph = "↩", enabled = state.canUndo) { actions.undo() }
+                        AppBarActionBtn(glyph = "↪", enabled = state.canRedo) { actions.redo() }
                         Spacer(modifier = Modifier.width(4.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Turing.headerBg, titleContentColor = Color.White, navigationIconContentColor = Color.White, actionIconContentColor = Color.White)
@@ -428,23 +461,23 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                         canvasSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
                     }) {
                         CircuitCanvas(
-                            level = level, gates = uiState.circuit.gates, wires = uiState.circuit.wires, outputMaps = uiState.circuit.outputMappings,
-                            inputPositions = uiState.circuit.inputPositions, outputPositions = uiState.circuit.outputPositions,
-                            wiringFrom = uiState.wiringFrom,
-                            onCreateWire = { f: com.vayunmathur.games.logicgate.data.WireEnd, t: com.vayunmathur.games.logicgate.data.WireEnd -> viewModel.createWire(f, t) },
-                            onStartWiring = { end: com.vayunmathur.games.logicgate.data.WireEnd -> viewModel.startWiring(end) },
-                            onCancelWiring = { viewModel.cancelWiring() },
-                            onGateMoveFinished = { id: String, x: Float, y: Float -> viewModel.onGateMoveFinished(id, x, y) },
-                            onInputTermMoveFinished = { idx: Int, x: Float, y: Float -> viewModel.onInputMoveFinished(idx, x, y) },
-                            onOutputTermMoveFinished = { idx: Int, x: Float, y: Float -> viewModel.onOutputMoveFinished(idx, x, y) },
-                            onGateMove = { id: String, x: Float, y: Float -> viewModel.onGateMoved(id, x, y) },
-                            onInputTermMove = { idx: Int, x: Float, y: Float -> viewModel.onInputMoved(idx, x, y) },
-                            onOutputTermMove = { idx: Int, x: Float, y: Float -> viewModel.onOutputMoved(idx, x, y) },
-                            onGateDelete = { id: String -> viewModel.removeGate(id) },
-                            onWireDelete = { id: String -> viewModel.removeWire(id) },
-                            onOutputMapDelete = { idx: Int -> viewModel.removeOutputMapping(idx) },
-                            dragGhostLineEnd = uiState.dragGhostLineEnd,
-                            onGhostLine = { off: Offset? -> viewModel.updateGhostLine(off) },
+                            level = level, gates = state.circuit.gates, wires = state.circuit.wires, outputMaps = state.circuit.outputMappings,
+                            inputPositions = state.circuit.inputPositions, outputPositions = state.circuit.outputPositions,
+                            wiringFrom = state.wiringFrom,
+                            onCreateWire = { f: com.vayunmathur.games.logicgate.data.WireEnd, t: com.vayunmathur.games.logicgate.data.WireEnd -> actions.createWire(f, t) },
+                            onStartWiring = { end: com.vayunmathur.games.logicgate.data.WireEnd -> actions.startWiring(end) },
+                            onCancelWiring = { actions.cancelWiring() },
+                            onGateMoveFinished = { id: String, x: Float, y: Float -> actions.onGateMoveFinished(id, x, y) },
+                            onInputTermMoveFinished = { idx: Int, x: Float, y: Float -> actions.onInputMoveFinished(idx, x, y) },
+                            onOutputTermMoveFinished = { idx: Int, x: Float, y: Float -> actions.onOutputMoveFinished(idx, x, y) },
+                            onGateMove = { id: String, x: Float, y: Float -> actions.onGateMoved(id, x, y) },
+                            onInputTermMove = { idx: Int, x: Float, y: Float -> actions.onInputMoved(idx, x, y) },
+                            onOutputTermMove = { idx: Int, x: Float, y: Float -> actions.onOutputMoved(idx, x, y) },
+                            onGateDelete = { id: String -> actions.removeGate(id) },
+                            onWireDelete = { id: String -> actions.removeWire(id) },
+                            onOutputMapDelete = { idx: Int -> actions.removeOutputMapping(idx) },
+                            dragGhostLineEnd = state.dragGhostLineEnd,
+                            onGhostLine = { off: Offset? -> actions.updateGhostLine(off) },
                             inputValues = inputDecimals, desiredOutputValues = desiredDecimals, outputValues = actualDecimals,
                             modifier = Modifier.fillMaxSize(), isCompact = true,
                             onToggleInput = { idx: Int -> toggleInput(idx) },
@@ -452,8 +485,8 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                             inputBitSlices = inputBitSlices,
                             outputBitSlicesActual = actualBitSlices,
                             onViewportChange = { s: Float, o: Offset -> canvasScale = s; canvasOffset = o },
-                            selectedGateId = uiState.selectedGateInstanceId,
-                            onSelectGate = { id: String? -> viewModel.selectGate(id) }
+                            selectedGateId = state.selectedGateInstanceId,
+                            onSelectGate = { id: String? -> actions.selectGate(id) }
                         )
                         draggingChipId?.let { chipId ->
                             val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
@@ -473,7 +506,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                     }
                     MobileFilterRow(selected = selectedGroup, onSelect = { selectedGroup = it }, availableGroups = availableGroups, modifier = Modifier.fillMaxWidth())
                     MobileInventoryBar(
-                        allowed = level.allowedChipIds, unlockedChips = unlocked, selectedGroup = selectedGroup,
+                        allowed = level.allowedChipIds, unlockedChips = unlockedChips, selectedGroup = selectedGroup,
                         onChipDragStart = { chipId: String, windowOffset: Offset -> draggingChipId = chipId; draggingChipWindowPos = windowOffset },
                         onChipDrag = { chipId: String, windowOffset: Offset -> draggingChipId = chipId; draggingChipWindowPos = windowOffset },
                         onChipDrop = { chipId: String, windowOffset: Offset ->
@@ -484,7 +517,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                                 val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
                                 val (gwPx, ghPx) = if (def != null) gatePlacedSizePx(def, density, textMeasurer) else 0f to 0f
                                 val content = Offset((local.x - canvasOffset.x) / canvasScale - gwPx / 2f, (local.y - canvasOffset.y) / canvasScale - ghPx / 2f)
-                                viewModel.addGateAt(chipId, content.x, content.y)
+                                actions.addGateAt(chipId, content.x, content.y)
                             }
                             draggingChipId = null; draggingChipWindowPos = Offset.Zero
                         }, modifier = Modifier.fillMaxWidth()
@@ -497,7 +530,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                             selectedIdxMutable = rowIdx
                             liveFlatInputs = inputVectors.getOrNull(rowIdx)
                         },
-                        outputsConnected = uiState.circuit.outputMappings.isNotEmpty(),
+                        outputsConnected = state.circuit.outputMappings.isNotEmpty(),
                         failingSet = failingSet,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -506,28 +539,28 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                     Column(modifier = Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
                         Row(modifier = Modifier.weight(1f).fillMaxWidth().background(Turing.bg)) {
                             MobileLeftPanel(tick = selectedIdxMutable, simSpeed = if (selectedIdxMutable == 0) 0 else 20, level = level, inputDecimals = inputDecimals, inputBitSlices = inputBitSlices, desiredDecimals = desiredDecimals, desiredBitSlices = desiredBitSlices, actualDecimals = actualDecimals, modifier = Modifier.width(MobileDimens.leftPanelW).fillMaxHeight())
-                            MobileMiddleToolbar(onClear = { viewModel.clearCircuit() }, onUndo = { viewModel.undo() }, onRedo = { viewModel.redo() }, canUndo = uiState.canUndo, canRedo = uiState.canRedo, modifier = Modifier.width(MobileDimens.toolbarWidth).fillMaxHeight())
+                            MobileMiddleToolbar(onClear = { actions.clearCircuit() }, onUndo = { actions.undo() }, onRedo = { actions.redo() }, canUndo = state.canUndo, canRedo = state.canRedo, modifier = Modifier.width(MobileDimens.toolbarWidth).fillMaxHeight())
                             Box(modifier = Modifier.weight(1f).fillMaxHeight().onGloballyPositioned { coords ->
                                 canvasPosInWindow = coords.positionInWindow(); canvasSize = Size(coords.size.width.toFloat(), coords.size.height.toFloat())
                             }) {
                                 CircuitCanvas(
-                                    level = level, gates = uiState.circuit.gates, wires = uiState.circuit.wires, outputMaps = uiState.circuit.outputMappings,
-                                    inputPositions = uiState.circuit.inputPositions, outputPositions = uiState.circuit.outputPositions,
-                                    wiringFrom = uiState.wiringFrom,
-                                    onCreateWire = { f: com.vayunmathur.games.logicgate.data.WireEnd, t: com.vayunmathur.games.logicgate.data.WireEnd -> viewModel.createWire(f, t) },
-                                    onStartWiring = { end: com.vayunmathur.games.logicgate.data.WireEnd -> viewModel.startWiring(end) },
-                                    onCancelWiring = { viewModel.cancelWiring() },
-                                    onGateMoveFinished = { id: String, x: Float, y: Float -> viewModel.onGateMoveFinished(id, x, y) },
-                                    onInputTermMoveFinished = { idx: Int, x: Float, y: Float -> viewModel.onInputMoveFinished(idx, x, y) },
-                                    onOutputTermMoveFinished = { idx: Int, x: Float, y: Float -> viewModel.onOutputMoveFinished(idx, x, y) },
-                                    onGateMove = { id: String, x: Float, y: Float -> viewModel.onGateMoved(id, x, y) },
-                                    onInputTermMove = { idx: Int, x: Float, y: Float -> viewModel.onInputMoved(idx, x, y) },
-                                    onOutputTermMove = { idx: Int, x: Float, y: Float -> viewModel.onOutputMoved(idx, x, y) },
-                                    onGateDelete = { id: String -> viewModel.removeGate(id) },
-                                    onWireDelete = { id: String -> viewModel.removeWire(id) },
-                                    onOutputMapDelete = { idx: Int -> viewModel.removeOutputMapping(idx) },
-                                    dragGhostLineEnd = uiState.dragGhostLineEnd,
-                                    onGhostLine = { off: Offset? -> viewModel.updateGhostLine(off) },
+                                    level = level, gates = state.circuit.gates, wires = state.circuit.wires, outputMaps = state.circuit.outputMappings,
+                                    inputPositions = state.circuit.inputPositions, outputPositions = state.circuit.outputPositions,
+                                    wiringFrom = state.wiringFrom,
+                                    onCreateWire = { f: com.vayunmathur.games.logicgate.data.WireEnd, t: com.vayunmathur.games.logicgate.data.WireEnd -> actions.createWire(f, t) },
+                                    onStartWiring = { end: com.vayunmathur.games.logicgate.data.WireEnd -> actions.startWiring(end) },
+                                    onCancelWiring = { actions.cancelWiring() },
+                                    onGateMoveFinished = { id: String, x: Float, y: Float -> actions.onGateMoveFinished(id, x, y) },
+                                    onInputTermMoveFinished = { idx: Int, x: Float, y: Float -> actions.onInputMoveFinished(idx, x, y) },
+                                    onOutputTermMoveFinished = { idx: Int, x: Float, y: Float -> actions.onOutputMoveFinished(idx, x, y) },
+                                    onGateMove = { id: String, x: Float, y: Float -> actions.onGateMoved(id, x, y) },
+                                    onInputTermMove = { idx: Int, x: Float, y: Float -> actions.onInputMoved(idx, x, y) },
+                                    onOutputTermMove = { idx: Int, x: Float, y: Float -> actions.onOutputMoved(idx, x, y) },
+                                    onGateDelete = { id: String -> actions.removeGate(id) },
+                                    onWireDelete = { id: String -> actions.removeWire(id) },
+                                    onOutputMapDelete = { idx: Int -> actions.removeOutputMapping(idx) },
+                                    dragGhostLineEnd = state.dragGhostLineEnd,
+                                    onGhostLine = { off: Offset? -> actions.updateGhostLine(off) },
                                     inputValues = inputDecimals, desiredOutputValues = desiredDecimals, outputValues = actualDecimals,
                                     modifier = Modifier.fillMaxSize(), isCompact = isCompact,
                                     onToggleInput = { idx: Int -> toggleInput(idx) },
@@ -535,8 +568,8 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                                     inputBitSlices = inputBitSlices,
                                     outputBitSlicesActual = actualBitSlices,
                                     onViewportChange = { s: Float, o: Offset -> canvasScale = s; canvasOffset = o },
-                                    selectedGateId = uiState.selectedGateInstanceId,
-                                    onSelectGate = { id: String? -> viewModel.selectGate(id) }
+                                    selectedGateId = state.selectedGateInstanceId,
+                                    onSelectGate = { id: String? -> actions.selectGate(id) }
                                 )
                                 draggingChipId?.let { chipId ->
                                     val localOffset = Offset(draggingChipWindowPos.x - canvasPosInWindow.x, draggingChipWindowPos.y - canvasPosInWindow.y)
@@ -556,7 +589,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                         }
                         MobileFilterRow(selected = selectedGroup, onSelect = { selectedGroup = it }, availableGroups = availableGroups, modifier = Modifier.fillMaxWidth())
                         MobileInventoryBar(
-                            allowed = level.allowedChipIds, unlockedChips = unlocked, selectedGroup = selectedGroup,
+                            allowed = level.allowedChipIds, unlockedChips = unlockedChips, selectedGroup = selectedGroup,
                             onChipDragStart = { chipId: String, windowOffset: Offset -> draggingChipId = chipId; draggingChipWindowPos = windowOffset },
                             onChipDrag = { chipId: String, windowOffset: Offset -> draggingChipId = chipId; draggingChipWindowPos = windowOffset },
                             onChipDrop = { chipId: String, windowOffset: Offset ->
@@ -566,7 +599,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                                     val def = try { ChipLibrary.get(chipId) } catch (_: Exception) { null }
                                     val (gwPx, ghPx) = if (def != null) gatePlacedSizePx(def, density, textMeasurer) else 0f to 0f
                                     val content = Offset((local.x - canvasOffset.x) / canvasScale - gwPx / 2f, (local.y - canvasOffset.y) / canvasScale - ghPx / 2f)
-                                    viewModel.addGateAt(chipId, content.x, content.y)
+                                    actions.addGateAt(chipId, content.x, content.y)
                                 }
                                 draggingChipId = null; draggingChipWindowPos = Offset.Zero
                             }, modifier = Modifier.fillMaxWidth()
@@ -579,7 +612,7 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                                 selectedIdxMutable = rowIdx
                                 liveFlatInputs = inputVectors.getOrNull(rowIdx)
                             },
-                            outputsConnected = uiState.circuit.outputMappings.isNotEmpty(),
+                            outputsConnected = state.circuit.outputMappings.isNotEmpty(),
                             failingSet = failingSet,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -597,11 +630,11 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: LogicViewModel, levelI
                 text = { Text(stringResource(R.string.level_complete_body, level.displayName), fontSize = 15.sp, color = Color(0xFFB8C6D8)) },
                 confirmButton = {
                     if (nextLevelId != null) {
-                        Button(onClick = { showWinDialog = false; backStack.add(Route.Game(nextLevelId)) }) {
+                        Button(onClick = { showWinDialog = false; onOpenLevel(nextLevelId) }) {
                             Text(stringResource(R.string.next_level), fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        Button(onClick = { showWinDialog = false; backStack.pop() }) {
+                        Button(onClick = { showWinDialog = false; onBack() }) {
                             Text(stringResource(R.string.back_to_map), fontWeight = FontWeight.Bold)
                         }
                     }

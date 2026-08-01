@@ -29,22 +29,44 @@ import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.alchemist.R
 import com.vayunmathur.games.alchemist.Route
 import com.vayunmathur.games.alchemist.util.AlchemistViewModel
+import com.vayunmathur.games.alchemist.util.CollectionUiState
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [AlchemistViewModel] to the stateless [CollectionScreen]. */
 @Composable
-fun CollectionScreen(
+fun CollectionPage(
     backStack: NavBackStack<Route>,
     viewModel: AlchemistViewModel
 ) {
     val availableItems by viewModel.availableItems.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
 
+    CollectionScreen(
+        state = CollectionUiState(
+            discoveredItems = availableItems,
+            totalCount = allItems.size
+        ),
+        onBack = { backStack.pop() },
+        onOpenItemDetails = { backStack.add(Route.ItemDetails(it.toInt())) }
+    )
+}
+
+/**
+ * The discovered-elements grid, with no dependency on the ViewModel so it can be rendered
+ * from a `@Preview` — see `src/screenshotTest`.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CollectionScreen(
+    state: CollectionUiState,
+    onBack: () -> Unit,
+    onOpenItemDetails: (Long) -> Unit
+) {
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(stringResource(R.string.collection)) },
-            navigationIcon = { IconNavigation(backStack) }
+            navigationIcon = { IconNavigation(onBack) }
         )
     }) { paddingValues ->
         Column(
@@ -53,7 +75,7 @@ fun CollectionScreen(
                 .padding(paddingValues)
         ) {
             Text(
-                text = stringResource(R.string.discovered_counter, availableItems.size, allItems.size),
+                text = stringResource(R.string.discovered_counter, state.discoveredItems.size, state.totalCount),
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -68,12 +90,10 @@ fun CollectionScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(availableItems, key = { it.id }) { item ->
+                items(state.discoveredItems, key = { it.id }) { item ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable {
-                            backStack.add(Route.ItemDetails(item.id.toInt()))
-                        }
+                        modifier = Modifier.clickable { onOpenItemDetails(item.id) }
                     ) {
                         DynamicAlchemyIcon(
                             iconId = item.id,

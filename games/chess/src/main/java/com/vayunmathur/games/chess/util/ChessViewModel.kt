@@ -39,7 +39,7 @@ data class ChessUiState(
     val isBoardFlipped: Boolean = false
 )
 
-class ChessViewModel(application: Application) : AndroidViewModel(application) {
+class ChessViewModel(application: Application) : AndroidViewModel(application), ChessActions {
 
     private val _uiState = MutableStateFlow(ChessUiState())
     val uiState: StateFlow<ChessUiState> = _uiState.asStateFlow()
@@ -54,7 +54,7 @@ class ChessViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onSquareClick(position: Position) {
+    override fun onSquareClick(position: Position) {
         val state = _uiState.value
         val board = state.board
         val pieceAtPosition = board.pieces[position.row][position.col]
@@ -95,7 +95,7 @@ class ChessViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onPromote(pieceType: PieceType) {
+    override fun onPromote(pieceType: PieceType) {
         val board = _uiState.value.board
         val promotionPosition = board.promotionPosition ?: return
         val newBoard = board.promotePawn(promotionPosition, pieceType)

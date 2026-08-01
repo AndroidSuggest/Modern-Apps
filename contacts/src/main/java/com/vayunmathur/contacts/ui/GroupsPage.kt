@@ -23,19 +23,56 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.ContactsActions
+import com.vayunmathur.contacts.util.ContactsTab
+import com.vayunmathur.contacts.util.GroupWithContacts
+import com.vayunmathur.contacts.util.GroupsUiState
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.util.NavBackStack
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ContactViewModel] to the stateless [GroupsScreen]. */
 @Composable
 fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expandGroupId: Long? = null) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
+    val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+
+    // Membership is already part of every contact, so the rows are derived here rather
+    // than collected per group — a stateless screen cannot subscribe to one flow per row.
+    val groupsWithContacts = remember(groups, contacts) {
+        groups.map { group ->
+            GroupWithContacts(group, contacts.filter { c -> c.details.groups.any { it.groupId == group.id } })
+        }
+    }
+
+    GroupsScreen(
+        state = GroupsUiState(groups = groupsWithContacts),
+        actions = object : ContactsActions by viewModel {
+            override fun openContact(contact: com.vayunmathur.contacts.data.Contact) {
+                backStack.add(Route.ContactDetail(contact.id))
+            }
+
+            override fun selectTab(tab: ContactsTab) = navigateToTab(backStack, tab)
+        },
+        expandGroupId = expandGroupId,
+    )
+}
+
+/**
+ * The groups page, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ *
+ * [expandGroupId] starts one group expanded; the app passes the group it navigated to, and
+ * previews use it to capture the expanded state without driving the UI.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupsScreen(state: GroupsUiState, actions: ContactsActions, expandGroupId: Long? = null) {
     var showAddDialog by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
     var groupToDelete by remember { mutableStateOf<com.vayunmathur.contacts.data.ContactGroup?>(null) }
-    val expandedGroups = remember { 
+    val expandedGroups = remember {
         val list = mutableStateListOf<Long>()
         expandGroupId?.let { list.add(it) }
         list
@@ -53,7 +90,7 @@ fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expa
             }
         },
         bottomBar = {
-            ContactsBottomNavBar(backStack)
+            ContactsBottomNavBar(ContactsTab.Groups, actions::selectTab)
         }
     ) { padding ->
         LazyColumn(
@@ -61,17 +98,13 @@ fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expa
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            groups.forEach { group ->
+            state.groups.forEach { (group, contactsInGroup) ->
                 val isExpanded = group.id in expandedGroups
                 // Combine each group's header + (optional) expanded contacts
-                // into ONE item so we can:
-                //   - share the same `getContactsForGroup` collect between
-                //     "show count" and "render rows",
-                //   - animate the header color + bottom-corner radius alongside
-                //     the contacts list's expand/collapse without the LazyColumn
-                //     swapping items underneath us mid-animation.
+                // into ONE item so we can animate the header color + bottom-corner
+                // radius alongside the contacts list's expand/collapse without the
+                // LazyColumn swapping items underneath us mid-animation.
                 item(key = "group-${group.id}") {
-                    val contactsInGroup by viewModel.getContactsForGroup(group.id).collectAsStateWithLifecycle(initialValue = emptyList())
                     val attachContacts = isExpanded && contactsInGroup.isNotEmpty()
 
                     val collapsedColor = MaterialTheme.colorScheme.surfaceVariant
@@ -155,11 +188,9 @@ fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expa
                                         contact = contact,
                                         isSelected = false,
                                         showAccountLabels = false,
-                                        viewModel = viewModel,
+                                        decodePhoto = actions::decodePhoto,
                                         embeddedInCard = true,
-                                        onClick = {
-                                            backStack.add(Route.ContactDetail(contact.id))
-                                        }
+                                        onClick = { actions.openContact(contact) }
                                     )
                                 }
                             }
@@ -184,7 +215,7 @@ fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expa
             confirmButton = {
                 TextButton(onClick = {
                     if (newGroupName.isNotBlank()) {
-                        viewModel.addGroup(newGroupName)
+                        actions.addGroup(newGroupName)
                         newGroupName = ""
                         showAddDialog = false
                     }
@@ -207,7 +238,7 @@ fun GroupsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>, expa
             text = { Text(stringResource(R.string.delete_group_confirm)) },
             confirmButton = {
                 TextButton(onClick = {
-                    groupToDelete?.let { viewModel.deleteGroup(it.id) }
+                    groupToDelete?.let { actions.deleteGroup(it.id) }
                     groupToDelete = null
                 }) {
                     Text(stringResource(R.string.delete))

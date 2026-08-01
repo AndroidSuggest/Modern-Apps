@@ -71,7 +71,7 @@ class FindFamilyViewModel(
     private val waypointDao: WaypointDao,
     private val locationValueDao: LocationValueDao,
     private val temporaryLinkDao: TemporaryLinkDao,
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), FamilyListActions, PersonActions {
 
     private val ctx: Context get() = getApplication()
 
@@ -163,7 +163,7 @@ class FindFamilyViewModel(
         viewModelScope.launch(Dispatchers.IO) { waypointDao.delete(waypoint) }
     }
 
-    fun deleteTemporaryLink(link: TemporaryLink) {
+    override fun deleteTemporaryLink(link: TemporaryLink) {
         viewModelScope.launch(Dispatchers.IO) { temporaryLinkDao.delete(link) }
     }
 
@@ -188,7 +188,7 @@ class FindFamilyViewModel(
     fun setShowingPresent(value: Boolean) { _isShowingPresent.value = value }
     fun setHistoricalPosition(position: GeoPoint?) { _historicalPosition.value = position }
 
-    fun selectUser(userId: Long) {
+    override fun selectUser(userId: Long) {
         _selectedUserId.value = userId
         _selectedWaypointId.value = null
         _isShowingPresent.value = true
@@ -235,7 +235,7 @@ class FindFamilyViewModel(
     }
 
     /** Begin editing an existing waypoint, prefilling the form. */
-    fun beginEditWaypoint(waypoint: Waypoint) {
+    override fun beginEditWaypoint(waypoint: Waypoint) {
         _selectedWaypointId.value = waypoint.id
         _waypointName.value = waypoint.name
         _waypointRange.value = waypoint.range.toString()
@@ -333,7 +333,7 @@ class FindFamilyViewModel(
     /** Toggle per-person location sharing and reconcile the service so it stops
      * when nobody is being shared with and starts when sharing is (re)enabled.
      * Manual toggle always resets auto-toggle to Never. */
-    fun setUserSharing(user: User, enabled: Boolean) {
+    override fun setUserSharing(user: User, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             userDao.upsert(user.copy(sendingEnabled = enabled, sharingAutoToggleAt = null))
             LocationServiceController.syncServiceState(ctx)
@@ -341,7 +341,7 @@ class FindFamilyViewModel(
     }
 
     /** Set auto-toggle for sharing — same durations as one-time links, Never = null. Single field. */
-    fun setUserAutoToggle(user: User, duration: kotlin.time.Duration?) {
+    override fun setUserAutoToggle(user: User, duration: kotlin.time.Duration?) {
         viewModelScope.launch(Dispatchers.IO) {
             if (duration == null) {
                 userDao.upsert(user.copy(sharingAutoToggleAt = null))

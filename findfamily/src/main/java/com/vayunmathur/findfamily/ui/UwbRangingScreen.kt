@@ -111,11 +111,29 @@ fun UwbRangingScreen(
         }
     }
 
+    UwbRangingContent(
+        peerName = peer?.name ?: stringResource(R.string.unknown),
+        session = session,
+        onBack = { backStack.pop() }
+    )
+}
+
+/**
+ * The rendered half of [UwbRangingScreen] — no ViewModel, no session lifecycle — so the
+ * store-listing preview can draw it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UwbRangingContent(
+    peerName: String,
+    session: UwbSessionManager.UwbSessionState,
+    onBack: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(peer?.name ?: stringResource(R.string.unknown)) },
-                navigationIcon = { IconNavigation { backStack.pop() } }
+                title = { Text(peerName) },
+                navigationIcon = { IconNavigation(onBack) }
             )
         }
     ) { padding ->

@@ -30,6 +30,8 @@ import com.vayunmathur.fooddelivery.ui.HomeScreen
 import com.vayunmathur.fooddelivery.ui.OrdersScreen
 import com.vayunmathur.fooddelivery.ui.RestaurantScreen
 import kotlinx.serialization.Serializable
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 
 sealed interface Route : NavKey {
     @Serializable data object Home : Route
@@ -43,6 +45,8 @@ sealed interface Route : NavKey {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Reduced CA hardening: FIRST_PARTY covers api.vayunmathur.com / data.vayunmathur.com (ISRG+GTS)
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
 
         val prefs = getSharedPreferences("fooddelivery_prefs", Context.MODE_PRIVATE)

@@ -18,8 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.games.hub.data.entities.HubGameEntity
 import com.vayunmathur.games.hub.ui.components.GameCard
 import com.vayunmathur.games.hub.util.GameIconResolver
+import com.vayunmathur.games.hub.util.GamesListActions
+import com.vayunmathur.games.hub.util.GamesListUiState
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.library.ui.CommonSearchBar
 import com.vayunmathur.library.ui.IconButton
@@ -33,8 +36,9 @@ import com.vayunmathur.games.hub.R
 
 enum class GameSort { LAST_PLAYED, MOST_PLAYED, NAME, COMPLETION }
 
+/** Binds [GameHubViewModel] to the stateless [GamesListScreen]. */
 @Composable
-fun GamesListScreen(
+fun GamesListPage(
     viewModel: GameHubViewModel,
     onGameClick: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -43,31 +47,57 @@ fun GamesListScreen(
     val allAchievements by viewModel.allAchievementsFlow.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var search by remember { mutableStateOf("") }
-    var sort by remember { mutableStateOf(GameSort.LAST_PLAYED) }
-    var showSortMenu by remember { mutableStateOf(false) }
-
     val iconCache = remember { mutableMapOf<String, Drawable?>() }
-    fun getIcon(pkg: String): Drawable? = iconCache.getOrPut(pkg) { GameIconResolver.resolveAppIcon(context, pkg) }
 
-    val installedMap = remember(games) {
-        games.associate { g ->
-            g.gameId to try { context.packageManager.getPackageInfo(g.packageName, 0); true } catch (_: Exception) { false }
-        }
+    val installedGameIds = remember(games) {
+        games.filter { g ->
+            try { context.packageManager.getPackageInfo(g.packageName, 0); true } catch (_: Exception) { false }
+        }.mapTo(mutableSetOf()) { it.gameId }
     }
 
     val achievementProgressByGame = remember(allAchievements) {
         allAchievements.groupBy { it.gameId }.mapValues { (_, list) -> list.count { it.isUnlocked } to list.size }
     }
 
-    val filteredSorted = remember(games, search, sort, achievementProgressByGame) {
-        var list = if (search.isBlank()) games else games.filter { it.displayName.contains(search, true) || it.gameId.contains(search, true) }
+    GamesListScreen(
+        state = GamesListUiState(
+            games = games,
+            achievementProgressByGame = achievementProgressByGame,
+            installedGameIds = installedGameIds,
+        ),
+        actions = object : GamesListActions {
+            override fun openGame(gameId: String) = onGameClick(gameId)
+            override fun playGame(game: HubGameEntity) = launchGame(context, game)
+        },
+        iconFor = { game -> iconCache.getOrPut(game.packageName) { GameIconResolver.resolveAppIcon(context, game.packageName) } },
+        modifier = modifier,
+    )
+}
+
+/**
+ * The games list, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview`. Search and sort stay here: they are the screen's own state, and filtering the
+ * list is pure. [iconFor] is the one thing that needs a device — see [DashboardScreen].
+ */
+@Composable
+fun GamesListScreen(
+    state: GamesListUiState,
+    actions: GamesListActions,
+    modifier: Modifier = Modifier,
+    iconFor: (HubGameEntity) -> Drawable? = { null },
+) {
+    var search by remember { mutableStateOf("") }
+    var sort by remember { mutableStateOf(GameSort.LAST_PLAYED) }
+    var showSortMenu by remember { mutableStateOf(false) }
+
+    val filteredSorted = remember(state.games, search, sort, state.achievementProgressByGame) {
+        var list = if (search.isBlank()) state.games else state.games.filter { it.displayName.contains(search, true) || it.gameId.contains(search, true) }
         when (sort) {
             GameSort.LAST_PLAYED -> list.sortedByDescending { it.lastPlayedAt ?: 0L }
             GameSort.MOST_PLAYED -> list.sortedByDescending { it.totalPlaytimeMs }
             GameSort.NAME -> list.sortedBy { it.displayName }
             GameSort.COMPLETION -> list.sortedByDescending { game ->
-                val (unlocked, total) = achievementProgressByGame[game.gameId] ?: (0 to 1)
+                val (unlocked, total) = state.achievementProgressByGame[game.gameId] ?: (0 to 1)
                 if (total == 0) 0f else unlocked.toFloat() / total.toFloat().coerceAtLeast(1f)
             }
         }
@@ -96,11 +126,11 @@ fun GamesListScreen(
             }
             items(filteredSorted, key = { it.gameId }) { game ->
                 GameCard(
-                    game = game, isInstalled = installedMap[game.gameId] ?: false,
-                    achievementProgress = achievementProgressByGame[game.gameId],
-                    iconDrawable = getIcon(game.packageName),
-                    onClick = { onGameClick(game.gameId) },
-                    onPlay = { launchGame(context, game) }
+                    game = game, isInstalled = game.gameId in state.installedGameIds,
+                    achievementProgress = state.achievementProgressByGame[game.gameId],
+                    iconDrawable = iconFor(game),
+                    onClick = { actions.openGame(game.gameId) },
+                    onPlay = { actions.playGame(game) }
                 )
             }
         }

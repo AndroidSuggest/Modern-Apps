@@ -21,28 +21,56 @@ import com.vayunmathur.openassistant.R
 import com.vayunmathur.openassistant.Route
 import com.vayunmathur.openassistant.data.Memory
 import com.vayunmathur.openassistant.util.AssistantViewModel
+import com.vayunmathur.openassistant.util.SettingsActions
+import com.vayunmathur.openassistant.util.SettingsUiState
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [AssistantViewModel] and the nav back stack to the stateless [SettingsScreen]. */
 @Composable
 fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) {
     val memories by viewModel.memories.collectAsState()
     val context = LocalContext.current
+
+    SettingsScreen(
+        state = SettingsUiState(memories = memories),
+        actions = object : SettingsActions {
+            override fun back() = backStack.pop()
+            override fun deleteMemory(memory: Memory) = viewModel.deleteMemory(memory)
+        },
+        // Passed in rather than built inside the screen: the backup buttons need the
+        // database passphrase, which only exists on a real device.
+        backupButtons = {
+            val pass = remember { DatabaseHelper(context).getPassphrase() }
+            BackupButtons(
+                dbConfigs = listOf("passwords-db" to pass),
+                dbCodec = SqlCipherDbCodec,
+                extraFiles = emptyList()
+            )
+        },
+    )
+}
+
+/**
+ * The memories screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    state: SettingsUiState,
+    actions: SettingsActions,
+    /** Top-bar backup/restore buttons; empty in a preview, which has no database. */
+    backupButtons: @Composable RowScope.() -> Unit = {},
+) {
+    val memories = state.memories
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconNavigation(backStack)
+                    IconNavigation { actions.back() }
                 },
-                actions = {
-                    val pass = remember { DatabaseHelper(context).getPassphrase() }
-                    BackupButtons(
-                        dbConfigs = listOf("passwords-db" to pass),
-                        dbCodec = SqlCipherDbCodec,
-                        extraFiles = emptyList()
-                    )
-                }
+                actions = backupButtons
             )
         }
     ) { padding ->
@@ -67,7 +95,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) 
                 }
             } else {
                 items(memories, key = { it.id }) { memory ->
-                    MemoryItem(memory, onDelete = { viewModel.deleteMemory(memory) })
+                    MemoryItem(memory, onDelete = { actions.deleteMemory(memory) })
                 }
             }
         }

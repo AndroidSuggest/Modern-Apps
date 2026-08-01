@@ -10,10 +10,13 @@ import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.astronomy.ui.ConstellationMode
+import com.vayunmathur.astronomy.ui.SettingsActions
+import com.vayunmathur.astronomy.ui.SettingsUiState
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.ui.res.stringResource
 
+/** Binds [AstronomyViewModel] to the stateless [SettingsScreen]. */
 @Composable
 fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
     val showConst by viewModel.constellationMode.collectAsState()
@@ -25,9 +28,37 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) 
     val nightMode by viewModel.nightMode.collectAsState()
     val fov by viewModel.fovDeg.collectAsState()
     val observer by viewModel.observer.collectAsState()
+    val catalog = viewModel.getCatalog()
 
-    var latText by remember(observer) { mutableStateOf(observer?.latDeg?.toString() ?: "") }
-    var lonText by remember(observer) { mutableStateOf(observer?.lonDeg?.toString() ?: "") }
+    SettingsScreen(
+        backStack = backStack,
+        state = SettingsUiState(
+            constellationMode = showConst,
+            showGrid = showGrid,
+            showDeepSky = showDeep,
+            showPlanets = showPlanets,
+            showBelowHorizon = showBelow,
+            nightMode = nightMode,
+            magLimit = magLimit,
+            fovDeg = fov,
+            latDeg = observer?.latDeg,
+            lonDeg = observer?.lonDeg,
+            starCount = catalog.stars.size,
+            constellationCount = catalog.constellations.size,
+            deepSkyCount = catalog.deepSky.size,
+        ),
+        actions = viewModel,
+    )
+}
+
+/**
+ * The settings screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun SettingsScreen(backStack: NavBackStack<Route>, state: SettingsUiState, actions: SettingsActions) {
+    var latText by remember(state.latDeg) { mutableStateOf(state.latDeg?.toString() ?: "") }
+    var lonText by remember(state.lonDeg) { mutableStateOf(state.lonDeg?.toString() ?: "") }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.settings)) }, navigationIcon = { IconNavigation(backStack) })
@@ -40,7 +71,7 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) 
                 Box {
                     TextButton(onClick = { expanded = true }) {
                         Text(
-                            when (showConst) {
+                            when (state.constellationMode) {
                                 ConstellationMode.OFF -> stringResource(R.string.off)
                                 ConstellationMode.LINES -> stringResource(R.string.lines_only)
                                 ConstellationMode.LINES_AND_ART -> stringResource(R.string.lines_art)
@@ -48,25 +79,25 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) 
                         )
                     }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.off)) }, onClick = { viewModel.setShowConstellations(ConstellationMode.OFF); expanded = false })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.lines_only)) }, onClick = { viewModel.setShowConstellations(ConstellationMode.LINES); expanded = false })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.lines_art)) }, onClick = { viewModel.setShowConstellations(ConstellationMode.LINES_AND_ART); expanded = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.off)) }, onClick = { actions.setShowConstellations(ConstellationMode.OFF); expanded = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.lines_only)) }, onClick = { actions.setShowConstellations(ConstellationMode.LINES); expanded = false })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.lines_art)) }, onClick = { actions.setShowConstellations(ConstellationMode.LINES_AND_ART); expanded = false })
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.coordinate_grid_whole_sphere)); Switch(checked = showGrid, onCheckedChange = { viewModel.setShowGrid(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.show_deep_sky)); Switch(checked = showDeep, onCheckedChange = { viewModel.setShowDeepSky(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.planets_sun_moon)); Switch(checked = showPlanets, onCheckedChange = { viewModel.setShowPlanets(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.show_below_horizon_all_sky)); Switch(checked = showBelow, onCheckedChange = { viewModel.setShowBelowHorizon(it) }) }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.night_mode)); Switch(checked = nightMode, onCheckedChange = { viewModel.setNightMode(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.coordinate_grid_whole_sphere)); Switch(checked = state.showGrid, onCheckedChange = { actions.setShowGrid(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.show_deep_sky)); Switch(checked = state.showDeepSky, onCheckedChange = { actions.setShowDeepSky(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.planets_sun_moon)); Switch(checked = state.showPlanets, onCheckedChange = { actions.setShowPlanets(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.show_below_horizon_all_sky)); Switch(checked = state.showBelowHorizon, onCheckedChange = { actions.setShowBelowHorizon(it) }) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.night_mode)); Switch(checked = state.nightMode, onCheckedChange = { actions.setNightMode(it) }) }
 
             HorizontalDivider()
 
-            Text(stringResource(R.string.magnitude_limit, magLimit.format(1)), style = MaterialTheme.typography.bodyMedium)
-            Slider(value = magLimit, onValueChange = { viewModel.setMagLimit(it) }, valueRange = 1f..7f)
+            Text(stringResource(R.string.magnitude_limit, state.magLimit.format(1)), style = MaterialTheme.typography.bodyMedium)
+            Slider(value = state.magLimit, onValueChange = { actions.setMagLimit(it) }, valueRange = 1f..7f)
 
-            Text(stringResource(R.string.fov, fov.toInt()), style = MaterialTheme.typography.bodyMedium)
-            Slider(value = fov, onValueChange = { viewModel.setFov(it) }, valueRange = 10f..120f)
+            Text(stringResource(R.string.fov, state.fovDeg.toInt()), style = MaterialTheme.typography.bodyMedium)
+            Slider(value = state.fovDeg, onValueChange = { actions.setFov(it) }, valueRange = 10f..120f)
 
             HorizontalDivider()
             Text(stringResource(R.string.location), style = MaterialTheme.typography.titleMedium)
@@ -74,13 +105,13 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) 
             OutlinedTextField(value = lonText, onValueChange = { lonText = it }, label = { Text(stringResource(R.string.longitude_deg)) }, modifier = Modifier.fillMaxWidth())
             Button(onClick = {
                 val lat = latText.toDoubleOrNull(); val lon = lonText.toDoubleOrNull()
-                if (lat != null && lon != null) viewModel.setManualLocation(lat, lon)
+                if (lat != null && lon != null) actions.setManualLocation(lat, lon)
             }) { Text(stringResource(R.string.save_location)) }
-            Button(onClick = { viewModel.refreshLocation() }) { Text(stringResource(R.string.use_current_location)) }
+            Button(onClick = { actions.refreshLocation() }) { Text(stringResource(R.string.use_current_location)) }
 
             HorizontalDivider()
             Text(stringResource(R.string.notes_true_north_correction_via_geomagne), style = MaterialTheme.typography.labelSmall)
-            Text(stringResource(R.string.catalog_stars_constellations_dso, viewModel.getCatalog().stars.size, viewModel.getCatalog().constellations.size, viewModel.getCatalog().deepSky.size), style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.catalog_stars_constellations_dso, state.starCount, state.constellationCount, state.deepSkyCount), style = MaterialTheme.typography.labelSmall)
         }
     }
 }

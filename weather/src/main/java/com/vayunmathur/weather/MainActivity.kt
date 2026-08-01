@@ -19,6 +19,8 @@ import com.vayunmathur.weather.glance.WeatherGlanceWidgetReceiver
 import com.vayunmathur.weather.ui.HomePage
 import com.vayunmathur.weather.ui.SearchLocationPage
 import com.vayunmathur.weather.ui.WeatherMapPage
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.weather.util.WeatherViewModel
 import com.vayunmathur.weather.util.WeatherViewModelFactory
 import kotlinx.serialization.Serializable
@@ -31,6 +33,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // FIRST_PARTY covers api.vayunmathur.com + api.open-meteo.com (ISRG) + data.vayunmathur.com
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         updateWidgetPreviews(WeatherGlanceWidgetReceiver::class)
         enableEdgeToEdge()
         setContent {

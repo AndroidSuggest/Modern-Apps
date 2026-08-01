@@ -1,6 +1,9 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // No metadata convention. The viewfinder is the screen, and Layoutlib cannot open a
+    // camera, so there is nothing a Compose preview could capture — with no SurfaceRequest
+    // the preview falls back to a black Box. The listing images are hand-captured and
+    // committed under metadata_data/photos/, which release.sh picks up directly.
 }
 
 launcherIcon {

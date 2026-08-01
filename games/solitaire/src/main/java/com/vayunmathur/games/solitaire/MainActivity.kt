@@ -50,6 +50,7 @@ import com.vayunmathur.games.solitaire.data.DrawMode
 import com.vayunmathur.games.solitaire.data.GameConfig
 import com.vayunmathur.games.solitaire.data.GameMode
 import com.vayunmathur.games.solitaire.data.KlondikeDifficulty
+import com.vayunmathur.games.solitaire.data.SolitaireUiState
 import com.vayunmathur.games.solitaire.ui.FreeCellBoard
 import com.vayunmathur.games.solitaire.ui.GameActionBar
 import com.vayunmathur.games.solitaire.ui.KlondikeBoard
@@ -57,6 +58,7 @@ import com.vayunmathur.games.solitaire.ui.PyramidBoard
 import com.vayunmathur.games.solitaire.ui.SpiderBoard
 import com.vayunmathur.games.solitaire.ui.WinOverlay
 import com.vayunmathur.games.solitaire.util.AppBackupAgent
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 import com.vayunmathur.games.solitaire.util.SolitaireViewModel
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.DynamicTheme
@@ -369,7 +371,7 @@ private fun DifficultyRow(relaxed: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [SolitaireViewModel] to the stateless [GameBoardScreen] and runs the game clock. */
 @Composable
 fun GameScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel, mode: GameMode) {
     val uiState by viewModel.uiState.collectAsState()
@@ -387,11 +389,27 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel, mo
         }
     }
 
+    GameBoardScreen(state = uiState, mode = mode, actions = viewModel, onExit = { backStack.pop() })
+}
+
+/**
+ * A dealt board, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ * The clock lives in the binder above, since a preview must not start one.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GameBoardScreen(
+    state: SolitaireUiState,
+    mode: GameMode,
+    actions: SolitaireActions,
+    onExit: () -> Unit,
+) {
     val activeGame = when (mode) {
-        GameMode.KLONDIKE -> uiState.klondike?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
-        GameMode.SPIDER -> uiState.spider?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
-        GameMode.FREECELL -> uiState.freeCell?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
-        GameMode.PYRAMID -> uiState.pyramid?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
+        GameMode.KLONDIKE -> state.klondike?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
+        GameMode.SPIDER -> state.spider?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
+        GameMode.FREECELL -> state.freeCell?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
+        GameMode.PYRAMID -> state.pyramid?.let { Triple(it.isWon, it.moveCount, it.elapsedSeconds) }
     }
     val isWon = activeGame?.first == true
     val moveCount = activeGame?.second ?: 0
@@ -426,19 +444,19 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel, mo
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 GameActionBar(
-                    onUndo = { viewModel.undo() },
+                    onUndo = { actions.undo() },
                     onGiveUp = {
-                        viewModel.giveUp()
-                        backStack.pop()
+                        actions.giveUp()
+                        onExit()
                     },
-                    undoEnabled = uiState.history.isNotEmpty() && !isWon
+                    undoEnabled = state.history.isNotEmpty() && !isWon
                 )
 
                 when (mode) {
-                    GameMode.KLONDIKE -> uiState.klondike?.let {
+                    GameMode.KLONDIKE -> state.klondike?.let {
                         KlondikeBoard(
                             it,
-                            viewModel,
+                            actions,
                             Modifier
                                 .align(Alignment.CenterHorizontally)
                                 .widthIn(max = SolitaireBoardMaxWidth)
@@ -446,37 +464,37 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel, mo
                         )
                         if (!it.isWon && it.tableauPiles.none { p -> p.faceDown.isNotEmpty() }) {
                             Button(
-                                onClick = { viewModel.klondikeAutoComplete() },
+                                onClick = { actions.klondikeAutoComplete() },
                                 Modifier.align(Alignment.CenterHorizontally)
                             ) {
                                 Text(stringResource(R.string.auto_complete))
                             }
                         }
                     }
-                    GameMode.SPIDER -> uiState.spider?.let {
+                    GameMode.SPIDER -> state.spider?.let {
                         SpiderBoard(
                             it,
-                            viewModel,
+                            actions,
                             Modifier
                                 .align(Alignment.CenterHorizontally)
                                 .widthIn(max = SolitaireBoardMaxWidth)
                                 .fillMaxWidth()
                         )
                     }
-                    GameMode.FREECELL -> uiState.freeCell?.let {
+                    GameMode.FREECELL -> state.freeCell?.let {
                         FreeCellBoard(
                             it,
-                            viewModel,
+                            actions,
                             Modifier
                                 .align(Alignment.CenterHorizontally)
                                 .widthIn(max = SolitaireBoardMaxWidth)
                                 .fillMaxWidth()
                         )
                     }
-                    GameMode.PYRAMID -> uiState.pyramid?.let {
+                    GameMode.PYRAMID -> state.pyramid?.let {
                         PyramidBoard(
                             it,
-                            viewModel,
+                            actions,
                             Modifier
                                 .align(Alignment.CenterHorizontally)
                                 .widthIn(max = SolitaireBoardMaxWidth)
@@ -490,10 +508,9 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: SolitaireViewModel, mo
                 WinOverlay(
                     elapsedSeconds = elapsed,
                     moveCount = moveCount,
-                    onNewGame = {
-                        viewModel.selectMode(mode, viewModel.currentConfig())
-                    },
-                    onBack = { backStack.pop() }
+                    // Same thing selectMode(mode, currentConfig()) did: redeal this variant.
+                    onNewGame = { actions.restart() },
+                    onBack = onExit
                 )
             }
         }

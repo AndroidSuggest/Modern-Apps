@@ -251,14 +251,20 @@
     <string name="view_full_breakdown">View full breakdown</string>
     <!-- RecipeManagementPage: Placeholder when ingredient search yields no results. Sentence -->
     <string name="no_results_found">No results found</string>
-    <!-- RecipeManagementPage: Section header for online ingredient results from remote source. Adjective label -->
-    <string name="online">Online</string>
     <!-- Label showing original ingredient name. %1$s = original name e.g. Tomato. Keep same translation as original label -->
     <string name="original_1">Original: <xliff:g id="original_name" example="Tomato">%1$s</xliff:g></string>
-    <!-- RecipeManagementPage: Section header for downloaded ingredient data. Adjective -->
-    <string name="downloaded">Downloaded</string>
     <!-- RecipeManagementPage: Sub-header for locally saved ingredients. Noun phrase -->
     <string name="saved_locally">Saved Locally</string>
+    <!-- RecipeManagementPage: Title of the offline nutrition database card, and section header for its search results. Noun phrase -->
+    <string name="food_database">Food Database</string>
+    <!-- RecipeManagementPage: Shown while the bundled food database is still being built on first launch. Sentence -->
+    <string name="food_database_absent">Getting the food database ready. Until it is, only ingredients you have already saved can be found.</string>
+    <!-- RecipeManagementPage: First-run build progress. %1$s = products written e.g. 120,000, %2$s = total e.g. 465,000 -->
+    <string name="food_database_preparing">Preparing <xliff:g id="products_done" example="120,000">%1$s</xliff:g> of <xliff:g id="products_total" example="465,000">%2$s</xliff:g> products</string>
+    <!-- RecipeManagementPage: Button shown after the food database failed to build. Verb -->
+    <string name="food_database_retry">Retry</string>
+    <!-- RecipeManagementPage: Required licence attribution for the nutrition data. Keep the project name and licence untranslated -->
+    <string name="food_database_attribution">Nutrition data from Open Food Facts, ODbL v1.0</string>
 
     <!-- ExerciseDetailsPage: Section header for exercise segments. Noun -->
     <string name="segments">Segments</string>

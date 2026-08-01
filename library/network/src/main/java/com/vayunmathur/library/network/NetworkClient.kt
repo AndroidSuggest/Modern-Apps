@@ -1,5 +1,7 @@
 package com.vayunmathur.library.network
 
+import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -11,6 +13,10 @@ import javax.net.ssl.SSLSocketFactory
 
 /**
  * Android-only HTTP client – HttpURLConnection only, no Ktor/OkHttp.
+ *
+ * Hardened with reduced CA bundles via [TrustBundle] + [BundledTrust].
+ * Call [init] early (Application.onCreate or MainActivity.onCreate) to pin to a minimal root set.
+ * Email/web/vpn use SYSTEM (platform default) because they contact arbitrary user hosts / browser URLs.
  *
  * Public API binary-compatible:
  *  SimpleResponse(status,statusMessage,body,headers,url){ isSuccess, contentLength }
@@ -88,12 +94,72 @@ fun ByteArray.asNetworkDataStream(): NetworkDataStream {
 
 object NetworkClient {
 
+    private const val TAG = "NetworkClient"
+
     // Published API – accessible from public inline functions.
     @PublishedApi
     internal val jsonConfig = Json {
         ignoreUnknownKeys = true
         isLenient = true
         prettyPrint = true
+    }
+
+    @Volatile
+    var defaultSslSocketFactory: SSLSocketFactory? = null
+        private set
+
+    @Volatile
+    var currentBundle: TrustBundle = TrustBundle.SYSTEM
+        private set
+
+    @Volatile
+    private var initialized = false
+
+    @Synchronized
+    fun init(context: Context, bundle: TrustBundle) {
+        val appCtx = context.applicationContext
+        // Allow re-init with different bundle (useful for tests) but avoid redundant work.
+        if (initialized && bundle == currentBundle && (bundle == TrustBundle.SYSTEM || defaultSslSocketFactory != null)) {
+            return
+        }
+        try {
+            currentBundle = bundle
+            if (bundle == TrustBundle.SYSTEM) {
+                defaultSslSocketFactory = null
+                Log.i(TAG, "Initialized with SYSTEM bundle (platform default trust)")
+            } else {
+                val result = BundledTrust.createFactory(appCtx, bundle)
+                defaultSslSocketFactory = result?.first
+                if (defaultSslSocketFactory == null) {
+                    Log.w(TAG, "Bundle $bundle produced no factory (missing DERs?), falling back to system trust")
+                } else {
+                    Log.i(TAG, "Initialized with bundle $bundle")
+                }
+            }
+            initialized = true
+        } catch (e: Exception) {
+            Log.e(TAG, "init failed for bundle $bundle, falling back to system", e)
+            if (bundle == TrustBundle.SYSTEM) {
+                defaultSslSocketFactory = null
+            }
+            // Even on failure we mark initialized to avoid repeat crashes, but keep bundle.
+            initialized = true
+        }
+    }
+
+    @Synchronized
+    fun initWithFactory(factory: SSLSocketFactory?, bundle: TrustBundle = TrustBundle.SYSTEM) {
+        defaultSslSocketFactory = factory
+        currentBundle = bundle
+        initialized = true
+    }
+
+    private fun resolveFactory(
+        explicit: SSLSocketFactory?,
+        useSystemTrust: Boolean,
+    ): SSLSocketFactory? {
+        if (useSystemTrust) return null
+        return explicit ?: defaultSslSocketFactory
     }
 
     // ------------------------------------------------------------------
@@ -105,10 +171,13 @@ object NetworkClient {
         method: String = "GET",
         headers: Map<String, *> = emptyMap<String, Any>(),
         body: Any? = null,
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
     ): Pair<Int, ByteArray> {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
             followRedirects = true, connectTimeoutMs = null,
+            sslSocketFactory = resolveFactory(sslSocketFactory, useSystemTrust),
         )
         return r.status to r.bodyBytes
     }
@@ -118,10 +187,13 @@ object NetworkClient {
         method: String = "GET",
         headers: Map<String, *> = emptyMap<String, Any>(),
         body: Any? = null,
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
     ): Triple<Int, Map<String, List<String>>, ByteArray> {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
             followRedirects = true, connectTimeoutMs = null,
+            sslSocketFactory = resolveFactory(sslSocketFactory, useSystemTrust),
         )
         return Triple(r.status, r.headers, r.bodyBytes)
     }
@@ -131,10 +203,13 @@ object NetworkClient {
         method: String = "GET",
         headers: Map<String, *> = emptyMap<String, Any>(),
         body: Any? = null,
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
     ): SimpleResponse {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
             followRedirects = true, connectTimeoutMs = null,
+            sslSocketFactory = resolveFactory(sslSocketFactory, useSystemTrust),
         )
         return SimpleResponse(r.status, r.statusMessage, r.bodyBytes.toString(Charsets.UTF_8), r.headers, r.finalUrl)
     }
@@ -145,7 +220,9 @@ object NetworkClient {
      * [RawResponse.status].
      *
      * [sslSocketFactory] pins the TLS trust anchors for this call (Signal uses
-     * a factory built over its bundled root); null keeps the platform default.
+     * a factory built over its bundled root); null keeps the platform default or
+     * the bundle default set via [init]. Use [useSystemTrust]=true to force system
+     * trust for dynamic hosts (email custom IMAP hostnames, vpn user endpoint).
      */
     suspend fun execute(
         url: String,
@@ -156,10 +233,12 @@ object NetworkClient {
         connectTimeoutMs: Long? = null,
         readTimeoutMs: Long? = connectTimeoutMs,
         sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
     ): RawResponse {
         val r = HttpUrlEngine.internalExecute(
             url, method, headers, HttpUrlEngine.toBodyBytes(body),
-            followRedirects, connectTimeoutMs, readTimeoutMs, sslSocketFactory,
+            followRedirects, connectTimeoutMs, readTimeoutMs,
+            sslSocketFactory = resolveFactory(sslSocketFactory, useSystemTrust),
         )
         return RawResponse(r.status, r.statusMessage, r.bodyBytes, r.headers, r.finalUrl)
     }
@@ -181,6 +260,8 @@ object NetworkClient {
         body: Any? = null,
         connectTimeoutMs: Long? = null,
         readTimeoutMs: Long? = connectTimeoutMs,
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
         block: suspend (stream: NetworkDataStream?, response: SimpleResponse) -> Unit,
     ): SimpleResponse {
         var currentUrl = url
@@ -193,10 +274,13 @@ object NetworkClient {
         var finalHeaders: Map<String, List<String>> = emptyMap()
         var finalUrl = url
 
+        val effectiveFactory = resolveFactory(sslSocketFactory, useSystemTrust)
+
         withContext(Dispatchers.IO) {
             while (true) {
                 val conn = HttpUrlEngine.openConnection(
                     currentUrl, currentMethod, headers, currentBody, connectTimeoutMs, readTimeoutMs,
+                    sslSocketFactory = effectiveFactory,
                 )
                 lastConn = conn
                 finalStatus = conn.responseCode
@@ -261,8 +345,6 @@ object NetworkClient {
                 block(null, simple)
             }
         } else {
-            // Not streamable – buffer whatever the server said so the caller can
-            // read the error body (it is never large on an error response).
             val errorBody = withContext(Dispatchers.IO) {
                 val s = try {
                     if (finalStatus >= 400) conn.errorStream else conn.inputStream
@@ -289,6 +371,8 @@ object NetworkClient {
         headers: Map<String, *> = emptyMap<String, Any>(),
         body: Any? = null,
         timeoutMs: Long? = null,
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
     ): Triple<Int, Map<String, List<String>>, InputStream> {
         return withContext(Dispatchers.IO) {
             var currentUrl = url
@@ -296,9 +380,13 @@ object NetworkClient {
             var currentBody = HttpUrlEngine.toBodyBytes(body)
             var redirects = 0
             var out: Triple<Int, Map<String, List<String>>, InputStream>? = null
+            val effectiveFactory = resolveFactory(sslSocketFactory, useSystemTrust)
 
             while (out == null) {
-                val conn = HttpUrlEngine.openConnection(currentUrl, currentMethod, headers, currentBody, timeoutMs)
+                val conn = HttpUrlEngine.openConnection(
+                    currentUrl, currentMethod, headers, currentBody, timeoutMs,
+                    sslSocketFactory = effectiveFactory,
+                )
                 val status = try {
                     conn.responseCode
                 } catch (e: java.io.IOException) {
@@ -346,15 +434,24 @@ object NetworkClient {
         }
     }
 
-    suspend fun getContentLength(url: String, headers: Map<String, *> = emptyMap<String, Any>()): Long? {
+    suspend fun getContentLength(
+        url: String,
+        headers: Map<String, *> = emptyMap<String, Any>(),
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
+    ): Long? {
         return withContext(Dispatchers.IO) {
             var currentUrl = url
             var redirects = 0
             var lenResult: Long? = null
             var done = false
+            val effectiveFactory = resolveFactory(sslSocketFactory, useSystemTrust)
 
             while (!done) {
-                val conn = HttpUrlEngine.openConnection(currentUrl, "HEAD", headers, null, null)
+                val conn = HttpUrlEngine.openConnection(
+                    currentUrl, "HEAD", headers, null, null,
+                    sslSocketFactory = effectiveFactory,
+                )
                 try {
                     val status = conn.responseCode
                     val len = conn.getHeaderField("Content-Length")?.toLongOrNull()
@@ -395,8 +492,10 @@ object NetworkClient {
         method: String = "GET",
         headers: Map<String, *> = emptyMap<String, Any>(),
         body: Any? = null,
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
     ): T {
-        val simple = performRequest(url, method, headers, body)
+        val simple = performRequest(url, method, headers, body, sslSocketFactory, useSystemTrust)
 
         if (simple.status == 204 || simple.body.isEmpty() || simple.contentLength == 0L) {
             @Suppress("UNCHECKED_CAST")
@@ -425,5 +524,7 @@ object NetworkClient {
     suspend inline fun <reified T> getJson(
         url: String,
         headers: Map<String, *> = emptyMap<String, Any>(),
-    ): T = callJson(url, "GET", headers)
+        sslSocketFactory: SSLSocketFactory? = null,
+        useSystemTrust: Boolean = false,
+    ): T = callJson(url, "GET", headers, null, sslSocketFactory, useSystemTrust)
 }

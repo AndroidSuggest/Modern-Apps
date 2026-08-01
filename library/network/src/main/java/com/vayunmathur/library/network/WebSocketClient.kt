@@ -40,6 +40,7 @@ class WebSocketHandshakeException(
  * - Frame codec: TEXT(0x1), BINARY(0x2), CLOSE(0x8), PING(0x9), PONG(0xA), masking on send
  * - Exposes WsSession { send(String/ByteArray), incoming Flow<WsFrame>, close() }
  * - Top-level webSocket(url, headers, block) for OfficeSync WS & CableTunnel WS
+ * - TLS: uses explicit factory, else NetworkClient.defaultSslSocketFactory, else system default.
  */
 class WebSocketClient private constructor(
     private val socket: Socket,
@@ -138,7 +139,6 @@ class WebSocketClient private constructor(
         } else null
 
         val out = ByteArrayOutputStream()
-        // FIN = 1, opcode
         out.write((0x80 or opcode) and 0xFF)
 
         val len = payload.size
@@ -243,13 +243,8 @@ class WebSocketClient private constructor(
             }
             0x9 -> WsFrame.Ping
             0xA -> WsFrame.Pong
-            0x0 -> {
-                // Continuation – spec would require fragment reassembly; our consumers
-                // (OfficeSync, CableTunnel) never rely on fragmented frames, so treat as text
-                // if decodable, otherwise binary. Keep connection alive.
-                WsFrame.Text(payload.toString(Charsets.UTF_8))
-            }
-            else -> WsFrame.Ping // ignore unknown; preserve connection
+            0x0 -> WsFrame.Text(payload.toString(Charsets.UTF_8))
+            else -> WsFrame.Ping
         }
     }
 
@@ -260,6 +255,7 @@ class WebSocketClient private constructor(
         /**
          * Opens a WebSocket to [urlStr] with optional [headers] (e.g. Sec-WebSocket-Protocol).
          * Validates Sec-WebSocket-Accept leniently (logs mismatch) per spec.
+         * TLS trust: explicit factory wins, else app-wide default from NetworkClient, else system.
          */
         suspend fun connect(
             urlStr: String,
@@ -283,9 +279,8 @@ class WebSocketClient private constructor(
             }
 
             val sock: Socket = if (scheme == "wss" || scheme == "https") {
-                val factory = sslSocketFactory ?: SSLSocketFactory.getDefault()
+                val factory = sslSocketFactory ?: NetworkClient.defaultSslSocketFactory ?: SSLSocketFactory.getDefault()
                 val s = factory.createSocket(host, port) as Socket
-                // Ensure TLS handshake completes before HTTP upgrade request
                 if (s is SSLSocket) {
                     try { s.startHandshake() } catch (_: Exception) { }
                 }
@@ -306,7 +301,6 @@ class WebSocketClient private constructor(
             val out = sock.getOutputStream()
             val writer = out.bufferedWriter(Charsets.US_ASCII)
 
-            // Host header must include port when non-default
             val hostHeader = when {
                 (scheme == "wss" && port != 443) || (scheme == "ws" && port != 80) -> "$host:$port"
                 else -> host
@@ -322,7 +316,6 @@ class WebSocketClient private constructor(
             writer.write("\r\n")
             writer.flush()
 
-            // Read handshake response up to \r\n\r\n using raw InputStream (don't use BufferedReader to avoid swallowing frame bytes)
             val rawIn = sock.getInputStream()
             val responseLines = mutableListOf<String>()
             val lineBuf = ByteArrayOutputStream()

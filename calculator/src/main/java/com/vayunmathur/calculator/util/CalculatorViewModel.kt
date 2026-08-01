@@ -32,13 +32,13 @@ data class GraphMarker(
  * Holds all calculator state at the Activity scope so it survives switching between the
  * Calculator and Graph tabs (which reset the nav back stack).
  */
-class CalculatorViewModel : ViewModel() {
+class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
 
     // ---- Shared ----
     var angleMode by mutableStateOf(AngleMode.RADIANS)
         private set
 
-    fun toggleAngleMode() {
+    override fun toggleAngleMode() {
         angleMode = if (angleMode == AngleMode.RADIANS) AngleMode.DEGREES else AngleMode.RADIANS
     }
 
@@ -60,23 +60,43 @@ class CalculatorViewModel : ViewModel() {
 
     val history = mutableStateListOf<HistoryEntry>()
 
-    data class HistoryEntry(val expression: String, val result: String)
+    /**
+     * Snapshot of everything [com.vayunmathur.calculator.ui.CalculatorScreen] draws. Read
+     * during composition, so the underlying `mutableStateOf` reads are tracked normally.
+     */
+    val calculatorUiState: CalculatorUiState
+        get() = CalculatorUiState(
+            input = input,
+            preview = preview,
+            memory = memory,
+            angleMode = angleMode,
+            history = history,
+        )
+
+    /** Snapshot of everything [com.vayunmathur.calculator.ui.GraphScreen] draws. */
+    val graphUiState: GraphUiState
+        get() = GraphUiState(
+            functions = functions,
+            markers = markers,
+            angleMode = angleMode,
+            viewport = GraphViewport(centerX, centerY, scale),
+        )
 
     fun updateInput(value: String) {
         input = value
         preview = computePreview(value)
     }
 
-    fun append(text: String) = updateInput(input + text)
+    override fun append(text: String) = updateInput(input + text)
 
-    fun backspace() {
+    override fun backspace() {
         if (input.isNotEmpty()) updateInput(input.dropLast(1))
     }
 
-    fun clear() = updateInput("")
+    override fun clear() = updateInput("")
 
     /** Evaluate the current input, push it to history, store `ans`, show the result. */
-    fun evaluate() {
+    override fun evaluate() {
         if (input.isBlank()) return
         val value = try {
             Expression.parse(input).eval(angle = angleMode, ans = lastAnswer)
@@ -90,15 +110,15 @@ class CalculatorViewModel : ViewModel() {
         updateInput(result)
     }
 
-    fun useHistory(entry: HistoryEntry) = updateInput(entry.result)
+    override fun useHistory(entry: HistoryEntry) = updateInput(entry.result)
 
-    fun clearHistory() = history.clear()
+    override fun clearHistory() = history.clear()
 
     // Memory register operations. M+/M- fold the current preview (or input) into memory.
-    fun memoryClear() { memory = 0.0 }
-    fun memoryRecall() = append(formatResult(memory))
-    fun memoryAdd() { currentValue()?.let { memory += it } }
-    fun memorySubtract() { currentValue()?.let { memory -= it } }
+    override fun memoryClear() { memory = 0.0 }
+    override fun memoryRecall() = append(formatResult(memory))
+    override fun memoryAdd() { currentValue()?.let { memory += it } }
+    override fun memorySubtract() { currentValue()?.let { memory -= it } }
 
     private fun currentValue(): Double? = try {
         Expression.parse(input.ifBlank { "0" }).eval(angle = angleMode, ans = lastAnswer)
@@ -121,27 +141,27 @@ class CalculatorViewModel : ViewModel() {
     )
     private var nextId = 1L
 
-    fun addFunction() {
+    override fun addFunction() {
         val color = FunctionColors[functions.size % FunctionColors.size]
         functions.add(GraphFunction(id = nextId++, text = "", color = color))
     }
 
-    fun updateFunction(id: Long, text: String) {
+    override fun updateFunction(id: Long, text: String) {
         dropMarkersFor(id)
         mutate(id) { it.copy(text = text) }
     }
 
-    fun toggleFunction(id: Long) {
+    override fun toggleFunction(id: Long) {
         dropMarkersFor(id)
         mutate(id) { it.copy(enabled = !it.enabled) }
     }
 
-    fun togglePolar(id: Long) {
+    override fun togglePolar(id: Long) {
         dropMarkersFor(id)
         mutate(id) { it.copy(polar = !it.polar) }
     }
 
-    fun removeFunction(id: Long) {
+    override fun removeFunction(id: Long) {
         functions.removeAll { it.id == id }
         if (functions.isEmpty()) addFunction()
         dropMarkersFor(id)
@@ -161,6 +181,17 @@ class CalculatorViewModel : ViewModel() {
 
     /** Notable points the user has revealed by touching near them. */
     val markers = mutableStateListOf<GraphMarker>()
+
+    override fun setViewSize(widthPx: Float, heightPx: Float) {
+        viewWidthPx = widthPx
+        viewHeightPx = heightPx
+    }
+
+    override fun setViewport(centerX: Double, centerY: Double, scale: Double) {
+        this.centerX = centerX
+        this.centerY = centerY
+        this.scale = scale
+    }
 
     private fun dropMarkersFor(id: Long) = markers.removeAll { id in it.curveIds }
 
@@ -185,7 +216,7 @@ class CalculatorViewModel : ViewModel() {
      * marker removes it; touching anywhere else reveals the nearest notable point in range,
      * across every curve on screen — Cartesian, polar, and crossings between the two.
      */
-    fun tapGraph(at: GraphPoint, radius: Double) {
+    override fun tapGraph(at: GraphPoint, radius: Double) {
         val hit = markers.minByOrNull { hypot(it.point.x - at.x, it.point.y - at.y) }
         if (hit != null && hypot(hit.point.x - at.x, hit.point.y - at.y) <= radius) {
             markers.remove(hit)

@@ -1,6 +1,8 @@
 package com.vayunmathur.youpipe
 
 import android.app.Application
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.youpipe.util.MyDownloader
 import com.vayunmathur.youpipe.util.sabr.LocalDomPoTokenProvider
@@ -16,6 +18,8 @@ class YouPipeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Reduced CA set: FIRST_PARTY = ISRG X1/X2 + GTS R1-R4 covers api.vayunmathur.com + YouTube (GTS)
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         appContext = applicationContext
         val language = DataStoreUtils.getInstance(this).getString("youtube_language").orEmpty()
         NewPipe.init(MyDownloader(), youtubeLocalization(language))

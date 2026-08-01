@@ -63,6 +63,9 @@ import com.vayunmathur.messages.Route
 import com.vayunmathur.messages.data.Conversation
 import com.vayunmathur.messages.data.MessageSource
 import com.vayunmathur.messages.data.MessagesDatabase
+import com.vayunmathur.messages.util.InboxActions
+import com.vayunmathur.messages.util.InboxRow
+import com.vayunmathur.messages.util.InboxUiState
 import com.vayunmathur.messages.util.MessagesSessionManager
 import com.vayunmathur.messages.util.MessagesViewModel
 import com.vayunmathur.messages.util.SourceConnectionState
@@ -81,7 +84,6 @@ import java.util.Date
  * When a source isn't connected (no pairing / no login), a "setup" card
  * shows above the list inviting the user to complete the flow.
  */
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun InboxScreen(
     backStack: NavBackStack<Route>,
@@ -90,6 +92,51 @@ fun InboxScreen(
 ) {
     val conversations by db.conversationDao().observeAll().collectAsState(initial = emptyList())
     val connectionStates by vm.connectionStates.collectAsState()
+    val context = LocalContext.current
+
+    InboxScreen(
+        state = InboxUiState(
+            rows = conversations.map { conv ->
+                InboxRow(
+                    conversation = conv.conversation,
+                    timeLabel = if (conv.lastMessageTimestamp > 0L) {
+                        formatTimestamp(context, conv.lastMessageTimestamp)
+                    } else {
+                        ""
+                    },
+                )
+            },
+            // Only offer services that are actually connected.
+            connectedSources = connectionStates
+                .filterValues { it == SourceConnectionState.Connected }
+                .keys
+                .toList(),
+        ),
+        actions = object : InboxActions {
+            override fun openConversation(id: String) {
+                backStack.add(Route.Conversation(id))
+            }
+
+            override fun openSettings() {
+                backStack.add(Route.Settings)
+            }
+
+            override fun composeOn(source: MessageSource) {
+                backStack.add(Route.Compose(initialSource = source.name))
+            }
+
+            override fun deleteConversation(id: String) = vm.deleteConversation(id)
+        },
+    )
+}
+
+/** Stateless inbox. This is what the store listing preview renders. */
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun InboxScreen(
+    state: InboxUiState,
+    actions: InboxActions,
+) {
     var pendingDelete by remember { mutableStateOf<Conversation?>(null) }
     var showSourcePicker by remember { mutableStateOf(false) }
 
@@ -98,7 +145,7 @@ fun InboxScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.inbox_title)) },
                 actions = {
-                    IconButton(onClick = { backStack.add(Route.Settings) }) {
+                    IconButton(onClick = { actions.openSettings() }) {
                         IconSettings()
                     }
                 },
@@ -115,7 +162,7 @@ fun InboxScreen(
                 .padding(padding)
                 .fillMaxSize(),
         ) {
-            if (conversations.isEmpty()) {
+            if (state.rows.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         stringResource(R.string.inbox_empty),
@@ -127,12 +174,12 @@ fun InboxScreen(
                     // Room for the FAB so it doesn't cover the last row.
                     contentPadding = PaddingValues(bottom = 88.dp),
                 ) {
-                    items(conversations, key = { it.conversation.id }) { conv ->
+                    items(state.rows, key = { it.conversation.id }) { row ->
                         ConversationRow(
-                            conversation = conv.conversation,
-                            lastMessageTimestamp = conv.lastMessageTimestamp,
-                            onClick = { backStack.add(Route.Conversation(conv.conversation.id)) },
-                            onLongPress = { pendingDelete = conv.conversation },
+                            conversation = row.conversation,
+                            timeLabel = row.timeLabel,
+                            onClick = { actions.openConversation(row.conversation.id) },
+                            onLongPress = { pendingDelete = row.conversation },
                         )
                         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                     }
@@ -147,19 +194,14 @@ fun InboxScreen(
             title = { Text(stringResource(R.string.new_conversation)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Only offer services that are actually connected.
-                    val connected = connectionStates
-                        .filterValues { it == SourceConnectionState.Connected }
-                        .keys
-                        .toList()
-                    if (connected.isEmpty()) {
+                    if (state.connectedSources.isEmpty()) {
                         Text(stringResource(R.string.no_connected_services_set_one_up_in_sett))
                     } else {
                         Text(stringResource(R.string.choose_which_service_to_send_from))
-                        connected.forEach { source ->
+                        state.connectedSources.forEach { source ->
                             com.vayunmathur.library.ui.TextButton(onClick = {
                                 showSourcePicker = false
-                                backStack.add(Route.Compose(initialSource = source.name))
+                                actions.composeOn(source)
                             }, modifier = Modifier.fillMaxWidth()) { Text(sourceLabel(source)) }
                         }
                     }
@@ -186,7 +228,7 @@ fun InboxScreen(
             },
             confirmButton = {
                 com.vayunmathur.library.ui.TextButton(onClick = {
-                    vm.deleteConversation(conv.id)
+                    actions.deleteConversation(conv.id)
                     pendingDelete = null
                 }) { Text(stringResource(R.string.delete)) }
             },
@@ -326,7 +368,7 @@ private fun sourceLabel(source: MessageSource): String = when (source) {
 @Composable
 private fun ConversationRow(
     conversation: Conversation,
-    lastMessageTimestamp: Long,
+    timeLabel: String,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
 ) {
@@ -357,9 +399,9 @@ private fun ConversationRow(
         },
         trailingContent = {
             Column(horizontalAlignment = Alignment.End) {
-                if (lastMessageTimestamp > 0L) {
+                if (timeLabel.isNotEmpty()) {
                     Text(
-                        formatTimestamp(LocalContext.current, lastMessageTimestamp),
+                        timeLabel,
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }

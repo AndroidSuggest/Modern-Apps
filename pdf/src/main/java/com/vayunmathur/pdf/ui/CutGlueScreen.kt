@@ -71,7 +71,6 @@ import androidx.compose.ui.res.stringResource
  * "Cut and glue": compose a new PDF by appending whole PDFs or images, then
  * drag pages into the desired order. Starts empty.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CutGlueScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -83,12 +82,6 @@ fun CutGlueScreen(onBack: () -> Unit) {
     // Stable per-page keys so drag-reorder animates; order mirrors native pages.
     val pageKeys = remember { mutableStateListOf<Long>() }
     var nextKey by remember { mutableIntStateOf(0) }
-    var menuOpen by remember { mutableStateOf(false) }
-
-    // Rendered pages cached by stable page key. Appends/reorders/removes then
-    // reuse already-rendered pages instead of re-rendering every visible
-    // thumbnail, which is what made the grid slow to load.
-    val pageCache = remember { mutableStateMapOf<Long, SafePdfPage>() }
 
     val pdfPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -123,13 +116,61 @@ fun CutGlueScreen(onBack: () -> Unit) {
         }
     }
 
+    CutGlueContent(
+        pageKeys = pageKeys,
+        renderPage = { index -> doc.renderPage(index) },
+        onAppendImage = {
+            imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        },
+        onAppendPdf = { pdfPicker.launch(arrayOf("application/pdf")) },
+        onSave = { saveLauncher.launch("composed.pdf") },
+        onMove = { from, to ->
+            val k = pageKeys.removeAt(from)
+            pageKeys.add(to, k)
+            scope.launch { doc.movePage(from, to) }
+        },
+        onDelete = { index ->
+            pageKeys.removeAt(index)
+            scope.launch { doc.removePage(index) }
+        },
+        onBack = onBack,
+    )
+}
+
+/**
+ * The page grid, with no handle on the native document: pages arrive as decoded
+ * [SafePdfPage]s through [renderPage], and every mutation is reported back. That is what
+ * lets a `@Preview` render it from hand-built pages — see `src/screenshotTest`, which is
+ * where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CutGlueContent(
+    pageKeys: List<Long>,
+    renderPage: suspend (index: Int) -> SafePdfPage?,
+    onAppendImage: () -> Unit = {},
+    onAppendPdf: () -> Unit = {},
+    onSave: () -> Unit = {},
+    onMove: (from: Int, to: Int) -> Unit = { _, _ -> },
+    onDelete: (index: Int) -> Unit = {},
+    onBack: () -> Unit = {},
+    /**
+     * Pages already decoded, keyed as in [pageKeys]. The app starts empty and fills the
+     * cache through [renderPage]; a preview seeds it instead, because [renderPage] would
+     * have to run as an effect and a still preview never gets that far.
+     */
+    initialPages: Map<Long, SafePdfPage> = emptyMap(),
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+
+    // Rendered pages cached by stable page key. Appends/reorders/removes then
+    // reuse already-rendered pages instead of re-rendering every visible
+    // thumbnail, which is what made the grid slow to load.
+    val pageCache = remember { mutableStateMapOf<Long, SafePdfPage>().apply { putAll(initialPages) } }
+
     val gridState = rememberLazyGridState()
     val reorderState = rememberReorderableLazyGridState(gridState) { from, to ->
-        if (from.index < pageKeys.size && to.index < pageKeys.size) {
-            val k = pageKeys.removeAt(from.index)
-            pageKeys.add(to.index, k)
-            scope.launch { doc.movePage(from.index, to.index) }
-        }
+        if (from.index < pageKeys.size && to.index < pageKeys.size) onMove(from.index, to.index)
     }
 
     Scaffold(
@@ -139,7 +180,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
                 navigationIcon = { IconNavigation { onBack() } },
                 actions = {
                     if (pageKeys.isNotEmpty()) {
-                        IconButton({ saveLauncher.launch("composed.pdf") }) { IconSave() }
+                        IconButton(onSave) { IconSave() }
                     }
                 },
             )
@@ -151,17 +192,12 @@ fun CutGlueScreen(onBack: () -> Unit) {
                     DropdownMenuItem(
                         leadingIcon = { com.vayunmathur.library.ui.IconImage() },
                         text = { Text(stringResource(R.string.append_image)) },
-                        onClick = {
-                            menuOpen = false
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
+                        onClick = { menuOpen = false; onAppendImage() },
                     )
                     DropdownMenuItem(
                         leadingIcon = { com.vayunmathur.library.ui.IconShapeRectOutline() },
                         text = { Text(stringResource(R.string.append_pdf)) },
-                        onClick = { menuOpen = false; pdfPicker.launch(arrayOf("application/pdf")) },
+                        onClick = { menuOpen = false; onAppendPdf() },
                     )
                 }
             }
@@ -185,15 +221,14 @@ fun CutGlueScreen(onBack: () -> Unit) {
                         val index = pageKeys.indexOf(key)
                         ReorderableItem(reorderState, key = key) { _ ->
                             ComposePageThumb(
-                                doc = doc,
+                                renderPage = renderPage,
                                 pageKey = key,
                                 index = index,
                                 cache = pageCache,
                                 onDelete = {
                                     if (index in pageKeys.indices) {
-                                        pageKeys.removeAt(index)
                                         pageCache.remove(key)
-                                        scope.launch { doc.removePage(index) }
+                                        onDelete(index)
                                     }
                                 },
                                 dragHandle = Modifier.longPressDraggableHandle(reorderState, key = key, index = index),
@@ -208,7 +243,7 @@ fun CutGlueScreen(onBack: () -> Unit) {
 
 @Composable
 private fun ComposePageThumb(
-    doc: ComposePdfDocument,
+    renderPage: suspend (index: Int) -> SafePdfPage?,
     pageKey: Long,
     index: Int,
     cache: androidx.compose.runtime.snapshots.SnapshotStateMap<Long, SafePdfPage>,
@@ -220,7 +255,7 @@ private fun ComposePageThumb(
     val page by produceState<SafePdfPage?>(cache[pageKey], pageKey) {
         cache[pageKey]?.let { value = it; return@produceState }
         if (index >= 0) {
-            val rendered = doc.renderPage(index)
+            val rendered = renderPage(index)
             if (rendered != null) cache[pageKey] = rendered
             value = rendered
         }

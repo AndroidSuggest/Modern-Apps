@@ -41,9 +41,10 @@ import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.util.FaceCropTransformation
 import com.vayunmathur.photos.util.FaceRecognizer
 import com.vayunmathur.photos.util.GalleryViewModel
+import com.vayunmathur.photos.util.PeopleUiState
 import com.vayunmathur.photos.util.PersonCluster
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [GalleryViewModel] to the stateless [PeopleScreen]. */
 @Composable
 fun PeoplePage(
     backStack: NavBackStack<Route>,
@@ -56,15 +57,44 @@ fun PeoplePage(
     val target by galleryViewModel.faceTargetCount.collectAsState()
     val modelsAvailable = remember { FaceRecognizer.modelsAvailable(context) }
 
+    PeopleScreen(
+        backStack = backStack,
+        state = PeopleUiState(
+            people = people,
+            modelsAvailable = modelsAvailable,
+            indexing = indexing,
+            faceScannedCount = scanned,
+            faceTargetCount = target,
+        ),
+    )
+}
+
+/**
+ * The people grid, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ * Navigation is the screen's only callback, so there is no actions interface.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PeopleScreen(
+    backStack: NavBackStack<Route>,
+    state: PeopleUiState,
+    /**
+     * How a cluster paints its representative face. Previews pass a placeholder: the real
+     * one crops a MediaStore image, which Layoutlib cannot decode.
+     */
+    faceThumbnail: @Composable (PersonCluster, Modifier) -> Unit = { person, modifier -> FaceThumbnail(person, modifier) },
+) {
     // Show progress while there are still photos left to scan (or the worker is
     // actively running); it disappears on its own once everything is scanned.
-    val showProgress = target > 0 && (indexing || scanned < target)
+    val showProgress = state.faceTargetCount > 0 &&
+        (state.indexing || state.faceScannedCount < state.faceTargetCount)
 
     Scaffold(
         bottomBar = { NavigationBar(Route.People, backStack) },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
-            if (!modelsAvailable) {
+            if (!state.modelsAvailable) {
                 Text(
                     text = stringResource(R.string.people_model_missing),
                     textAlign = TextAlign.Center,
@@ -74,12 +104,13 @@ fun PeoplePage(
             } else {
                 Column(Modifier.fillMaxSize()) {
                     if (showProgress) {
-                        FaceIndexingProgress(done = scanned, total = target)
+                        FaceIndexingProgress(done = state.faceScannedCount, total = state.faceTargetCount)
                     }
-                    if (people.isNotEmpty()) {
+                    if (state.people.isNotEmpty()) {
                         PeopleGrid(
-                            people = people,
+                            people = state.people,
                             modifier = Modifier.weight(1f),
+                            faceThumbnail = faceThumbnail,
                         ) { person ->
                             backStack.add(Route.PhotoPage(person.coverPhoto.id, person.photos))
                         }
@@ -120,6 +151,7 @@ private fun FaceIndexingProgress(done: Int, total: Int) {
 private fun PeopleGrid(
     people: List<PersonCluster>,
     modifier: Modifier = Modifier,
+    faceThumbnail: @Composable (PersonCluster, Modifier) -> Unit,
     onClick: (PersonCluster) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -132,13 +164,13 @@ private fun PeopleGrid(
         // instead of recreating (and re-loading) them during indexing.
         items(people, key = { it.id }) { person ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                FaceThumbnail(
-                    person = person,
-                    modifier = Modifier
+                faceThumbnail(
+                    person,
+                    Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(CircleShape),
-                    onClick = { onClick(person) },
+                        .clip(CircleShape)
+                        .invisibleClickable { onClick(person) },
                 )
                 Text(
                     text = pluralStringResource(R.plurals.people_photo_count, person.photos.size, person.photos.size),
@@ -153,7 +185,7 @@ private fun PeopleGrid(
 
 /** The representative face of a cluster, cropped from its cover photo. Unnamed. */
 @Composable
-private fun FaceThumbnail(person: PersonCluster, modifier: Modifier, onClick: () -> Unit) {
+private fun FaceThumbnail(person: PersonCluster, modifier: Modifier) {
     val context = LocalContext.current
     // Remember the Coil request keyed only on the STABLE face identity (cluster
     // id + source file + face box). This keeps the model identity and cache keys
@@ -181,6 +213,6 @@ private fun FaceThumbnail(person: PersonCluster, modifier: Modifier, onClick: ()
         model = request,
         contentDescription = null,
         contentScale = ContentScale.Crop,
-        modifier = modifier.invisibleClickable(onClick),
+        modifier = modifier,
     )
 }

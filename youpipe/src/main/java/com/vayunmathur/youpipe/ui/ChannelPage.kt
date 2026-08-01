@@ -1,5 +1,6 @@
 package com.vayunmathur.youpipe.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.data.Subscription
+import com.vayunmathur.youpipe.util.VideoRowState
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 import com.vayunmathur.youpipe.util.decodeHtml
 import kotlinx.serialization.Serializable
@@ -110,6 +112,41 @@ fun ChannelPage(
     }
 }
 
+/**
+ * Resolve [videoInfo] into the display state [VideoRow] draws.
+ *
+ * Deliberately not a `@Composable`: the two counts it formats need a Context, not a
+ * composition, and a screen that maps a whole list at once should not have to do it inside
+ * a composable loop.
+ */
+fun videoRowState(
+    context: android.content.Context,
+    videoInfo: VideoInfo,
+    showAuthor: Boolean,
+    reason: String? = null,
+    percentWatched: Float = 0f,
+    deArrowTitle: String? = null,
+    deArrowThumbnailURL: String? = null,
+): VideoRowState = VideoRowState(
+    videoID = videoInfo.videoID,
+    title = (deArrowTitle ?: videoInfo.name).decodeHtml(),
+    thumbnailURL = deArrowThumbnailURL ?: videoInfo.thumbnailURL,
+    author = videoInfo.author.decodeHtml().takeIf { showAuthor },
+    stats = context.getString(
+        R.string.video_stat_format,
+        countString(context, videoInfo.views),
+        uploadTimeAgo(context, videoInfo.uploadDate),
+    ),
+    reason = reason,
+    channelKey = videoInfo.author.lowercase(),
+    percentWatched = percentWatched,
+    deArrowThumbnail = deArrowThumbnailURL != null,
+)
+
+/**
+ * ViewModel-backed binder in front of [VideoRow], for the screens that still hand a whole
+ * ViewModel down to their list rows.
+ */
 @Composable
 fun VideoItem(
     backStack: NavBackStack<Route>,
@@ -132,9 +169,7 @@ fun VideoItem(
     val deArrowEnabled by youPipeViewModel.deArrowEnabled.collectAsState()
     val deArrowCache by youPipeViewModel.deArrowCache.collectAsState()
     val deArrowData = if (deArrowEnabled) deArrowCache[videoInfo.videoID] else null
-    val displayTitle = deArrowData?.title ?: videoInfo.name
-    val displayThumbnail = deArrowData?.thumbnailUrl ?: videoInfo.thumbnailURL
-    
+
     val itemModifier = if (onClick != null) {
         modifier.clickable(onClick = onClick)
     } else if(backupOnClick) {
@@ -145,6 +180,36 @@ fun VideoItem(
         modifier
     }
 
+    VideoRow(
+        row = videoRowState(
+            context = context,
+            videoInfo = videoInfo,
+            showAuthor = showAuthor,
+            reason = reason,
+            percentWatched = percentWatched.toFloat(),
+            deArrowTitle = deArrowData?.title,
+            deArrowThumbnailURL = deArrowData?.thumbnailUrl,
+        ),
+        modifier = itemModifier,
+        trailingContent = trailingContent,
+        overflowActions = overflowActions,
+    )
+}
+
+/**
+ * One video row: thumbnail with a resume bar on the left, title and stats on the right.
+ *
+ * Stateless — every value it draws is already a string, which is what lets the store listing
+ * previews render it. The click target arrives through [modifier] so the caller keeps the
+ * choice between a rippled and a rippleless tap.
+ */
+@Composable
+fun VideoRow(
+    row: VideoRowState,
+    modifier: Modifier = Modifier,
+    trailingContent: @Composable (() -> Unit)? = null,
+    overflowActions: List<Pair<String, () -> Unit>> = emptyList(),
+) {
     val effectiveTrailing: (@Composable () -> Unit)? = when {
         overflowActions.isNotEmpty() -> {
             { VideoOverflowMenu(overflowActions) }
@@ -152,22 +217,31 @@ fun VideoItem(
         else -> trailingContent
     }
 
-    Row(itemModifier) {
+    Row(modifier) {
         Box(Modifier.weight(1f)) {
             Box(Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp).clip(RoundedCornerShape(12.dp))) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(displayThumbnail)
-                        .memoryCacheKey("video-thumb-${videoInfo.videoID}-${if (deArrowData?.thumbnailUrl != null) "da" else "yt"}")
-                        .build(),
-                    contentDescription = null,
-                    Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                // Block behind the thumbnail: what the row shows while the image is still in
+                // flight, and all a preview can show at all — Layoutlib has no network.
+                Box(
+                    Modifier.fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                 )
+                if (row.thumbnailURL.isNotEmpty()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(row.thumbnailURL)
+                            .memoryCacheKey("video-thumb-${row.videoID}-${if (row.deArrowThumbnail) "da" else "yt"}")
+                            .build(),
+                        contentDescription = null,
+                        Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    )
+                }
                 Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))) {
-                    if(percentWatched > 0)
-                        Surface(Modifier.weight(percentWatched.toFloat()).height(6.dp), color = Color.Red.copy(alpha = 0.6f)) {}
-                    if(percentWatched < 1f)
-                        Surface(Modifier.weight(1f-percentWatched.toFloat()).height(6.dp), color = Color.Black.copy(alpha = 0.8f)) {}
+                    if(row.percentWatched > 0f)
+                        Surface(Modifier.weight(row.percentWatched).height(6.dp), color = Color.Red.copy(alpha = 0.6f)) {}
+                    if(row.percentWatched < 1f)
+                        Surface(Modifier.weight(1f - row.percentWatched).height(6.dp), color = Color.Black.copy(alpha = 0.8f)) {}
                 }
             }
         }
@@ -176,13 +250,12 @@ fun VideoItem(
 
             }, supportingContent = {
                 Column {
-                    if(showAuthor) {
-                        Text(videoInfo.author.decodeHtml(), style = MaterialTheme.typography.bodySmall)
+                    val author = row.author
+                    if(author != null) {
+                        Text(author, style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(
-                        stringResource(R.string.video_stat_format, countString(context, videoInfo.views), uploadTimeAgo(context, videoInfo.uploadDate)),
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text(row.stats, style = MaterialTheme.typography.bodySmall)
+                    val reason = row.reason
                     if (reason != null) {
                         Text(
                             stringResource(R.string.recommendation_reason, reason),
@@ -192,7 +265,7 @@ fun VideoItem(
                     }
                 }
             }, trailingContent = effectiveTrailing?.let { { it() } }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) {
-                Text(displayTitle.decodeHtml(), style = MaterialTheme.typography.titleMedium)
+                Text(row.title, style = MaterialTheme.typography.titleMedium)
             }
         }
     }

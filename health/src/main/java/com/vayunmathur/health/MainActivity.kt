@@ -67,6 +67,7 @@ import com.vayunmathur.health.ui.NutritionPage
 import com.vayunmathur.health.ui.RecipeEditorPage
 import com.vayunmathur.health.ui.RecipeManagementPage
 import com.vayunmathur.health.ui.TodayPage
+import com.vayunmathur.health.util.FoodDatabase
 import com.vayunmathur.health.util.HealthAPI
 import com.vayunmathur.health.util.HealthSyncWorker
 import com.vayunmathur.health.util.HealthViewModel
@@ -118,6 +119,7 @@ class MainActivity : ComponentActivity() {
         val healthConnectClient = HealthConnectClient.getOrCreate(this)
         val db = buildDatabase<HealthDatabase>()
         HealthAPI.init(healthConnectClient, this, db)
+        FoodDatabase.init(this)
         setContent {
             DynamicTheme {
                 var hasPermissions by remember { mutableStateOf(false) }

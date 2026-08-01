@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:everysync:metadata` task name either way.
+    id("common-conventions-preview-metadata")
     alias(libs.plugins.ksp)
 }
 
@@ -28,16 +30,6 @@ android {
     buildFeatures {
         buildConfig = true
     }
-}
-
-metadataScreenshots {
-    permissions.addAll(
-        "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS",
-        "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR",
-        "android.permission.GET_ACCOUNTS",
-    )
 }
 
 dependencies {

@@ -11,16 +11,23 @@ import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
 import androidx.collection.LruCache
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import com.vayunmathur.library.ui.IconAlbum
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.core.graphics.createBitmap
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.image.ImageRequest
@@ -144,8 +151,33 @@ suspend fun getArtists(context: Context): List<Artist> = withContext(Dispatchers
     return@withContext artistList
 }
 
+/**
+ * Stand-in for artwork that isn't there — either still decoding, or genuinely absent
+ * (plenty of files carry no embedded cover). A blank gap reads as a layout bug; a tinted
+ * tile with a record glyph reads as "no cover".
+ */
 @Composable
-fun AlbumArt(artUri: Uri, modifier: Modifier) {
+private fun AlbumArtPlaceholder(modifier: Modifier) {
+    Box(
+        modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        IconAlbum(
+            modifier = Modifier.fillMaxSize(0.55f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun AlbumArt(artUri: Uri?, modifier: Modifier) {
+    // Previews — including the ones the store listing images are rendered from — have no
+    // MediaStore behind them, so skip the load entirely rather than churning through a
+    // guaranteed-failing thumbnail read.
+    if (artUri == null || LocalInspectionMode.current) {
+        AlbumArtPlaceholder(modifier)
+        return
+    }
     val context = LocalContext.current
     // contentResolver.loadThumbnail handles MediaStore.Audio.Albums URIs (which
     // resolve to the underlying album art) where Coil's default fetcher
@@ -159,14 +191,23 @@ fun AlbumArt(artUri: Uri, modifier: Modifier) {
             bitmap = loaded
         }
     }
+    val loaded = bitmap
+    if (loaded == null) {
+        AlbumArtPlaceholder(modifier)
+        return
+    }
     AsyncImage(
-        model = bitmap,
+        model = loaded,
         contentDescription = stringResource(R.string.content_desc_album_art),
         modifier = modifier
     )
 }
 @Composable
 fun AlbumArt(artUris: List<Uri>, modifier: Modifier) {
+    if (artUris.isEmpty() || LocalInspectionMode.current) {
+        AlbumArtPlaceholder(modifier)
+        return
+    }
     val context = LocalContext.current
     var bitmap: Bitmap? by remember { mutableStateOf(null) }
 
@@ -182,8 +223,13 @@ fun AlbumArt(artUris: List<Uri>, modifier: Modifier) {
         }
     }
 
+    val loaded = bitmap
+    if (loaded == null) {
+        AlbumArtPlaceholder(modifier)
+        return
+    }
     AsyncImage(
-        model = bitmap,
+        model = loaded,
         contentDescription = stringResource(R.string.content_desc_album_art_grid),
         modifier = modifier
     )

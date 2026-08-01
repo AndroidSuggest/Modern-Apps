@@ -1,0 +1,53 @@
+package com.vayunmathur.library.network
+
+/**
+ * Reduced CA trust bundles. Each bundle maps to a set of DER roots shipped in
+ * `assets/ca/`.  SYSTEM means "use platform default" (null factory) — needed for
+ * user-supplied hosts (vpn, custom email servers, browser).
+ *
+ * - FIRST_PARTY: ~6 roots for api.vayunmathur.com, data.vayunmathur.com, findfamily.cc
+ *   Cloudflare Universal SSL: ISRG X1/X2 + GTS R1-R4 (SSL.com optional, add if observed).
+ * - STANDARD: FIRST_PARTY + DigiCert G2/G3, Baltimore CyberTrust, Amazon Root CA 1-4,
+ *   Sectigo AAA, USERTrust RSA — covers F-Droid (ISRG), GitHub (DigiCert), Play/Aurora
+ *   (Google GTS), DuckDuckGo (DigiCert), open-meteo (ISRG).
+ * - EXTENDED: STANDARD + Microsoft RSA 2017, Apple Root G2/G3, Apple IST CA 2 G1 — for
+ *   everysync (Google + Apple CalDAV) and messages non-Signal (Googleapis GTS + FB/DigiCert).
+ * - SYSTEM: platform default; email/web/vpn dynamic hosts.
+ */
+enum class TrustBundle {
+    FIRST_PARTY,
+    STANDARD,
+    EXTENDED,
+    SYSTEM,
+    ;
+
+    fun assetPaths(): List<String> = when (this) {
+        FIRST_PARTY -> listOf(
+            "ca/isrgrootx1.der",
+            "ca/isrgrootx2.der",
+            "ca/gts-root-r1.der",
+            "ca/gts-root-r2.der",
+            "ca/gts-root-r3.der",
+            "ca/gts-root-r4.der",
+        )
+        STANDARD -> FIRST_PARTY.assetPaths() + listOf(
+            "ca/digicert-global-g2.der",
+            "ca/digicert-global-g3.der",
+            "ca/baltimore-cybertrust.der",
+            "ca/amazon-root-ca1.der",
+            "ca/amazon-root-ca2.der",
+            "ca/amazon-root-ca3.der",
+            "ca/amazon-root-ca4.der",
+            // aaa-cert (AAA Certificate Services) is retired from Mozilla bundle;
+            // sectigo chain covered by usertrust-rsa. Kept optional via BundledTrust w/ warning if present.
+            "ca/usertrust-rsa.der",
+        )
+        EXTENDED -> STANDARD.assetPaths() + listOf(
+            "ca/microsoft-rsa-2017.der",
+            "ca/apple-root-g2.der",
+            "ca/apple-root-g3.der",
+            "ca/apple-ist-ca2-g1.der",
+        )
+        SYSTEM -> emptyList()
+    }
+}

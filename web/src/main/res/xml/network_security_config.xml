@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Web is a browser: must trust any cert host + user-installed CAs (MITM debug, corp proxies).
+         No cleartext restriction here beyond WebView defaults — browser needs to load any site. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

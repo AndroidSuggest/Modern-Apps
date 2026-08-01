@@ -43,43 +43,6 @@ interface SpeechRecognizerEngine {
 }
 
 /**
- * Offline speech recognition backed by [TranslateNative]. Stubbed: no whisper
- * weights are bundled so [isAvailable] is false and [start] immediately errors,
- * causing callers to fall back to [AndroidSpeechRecognizer]. Kept as a clean
- * seam for a real on-device model. Never crashes if the native lib is absent.
- */
-class NativeSpeech : SpeechRecognizerEngine {
-
-    override fun isAvailable(): Boolean {
-        if (!TranslateNative.isAvailable) return false
-        return try {
-            TranslateNative.nativeSpeechAvailable()
-        } catch (t: Throwable) {
-            Log.e(TAG, "nativeSpeechAvailable failed", t)
-            false
-        }
-    }
-
-    override fun start(
-        languageCode: String,
-        onPartial: (String) -> Unit,
-        onFinal: (String) -> Unit,
-        onError: (String) -> Unit,
-        onEndOfSpeech: () -> Unit,
-    ) {
-        // No offline model shipped; report unavailable so the caller falls back.
-        onError("Offline speech model not installed")
-    }
-
-    override fun stop() {}
-    override fun destroy() {}
-
-    companion object {
-        private const val TAG = "NativeSpeech"
-    }
-}
-
-/**
  * Speech recognition using the platform [SpeechRecognizer] with partial results
  * (`EXTRA_PARTIAL_RESULTS`). Works on devices that ship a recognizer (most, via
  * Google/Samsung). Must be created and used on the main thread.

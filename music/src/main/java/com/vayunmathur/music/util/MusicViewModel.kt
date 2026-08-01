@@ -7,6 +7,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -14,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import com.vayunmathur.library.util.ManyManyMatching
 import com.vayunmathur.library.util.MatchingDao
+import com.vayunmathur.music.R
 import com.vayunmathur.music.data.Album
 import com.vayunmathur.music.data.AlbumDao
 import com.vayunmathur.music.data.Artist
@@ -56,7 +58,7 @@ class MusicViewModel(
     private val playlistDao: PlaylistDao,
     private val matchingDao: MatchingDao,
     private val playbackManager: PlaybackManager,
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), MusicActions {
 
     // --- Entity StateFlows (replaces viewModel.data<X>()) ---
     val music: StateFlow<List<Music>> = musicDao.getAllFlow()
@@ -83,19 +85,64 @@ class MusicViewModel(
     val currentSource: StateFlow<String?> = playbackManager.currentSource
     val currentSourceName: StateFlow<String?> = playbackManager.currentSourceName
 
-    // --- PlaybackManager action delegates ---
-    fun playSong(songs: List<Music>, startWithIndex: Int, sourceId: String? = null, sourceName: String? = null) =
+    // --- PlaybackManager action delegates ([MusicActions]) ---
+    // The defaults for sourceId/sourceName are inherited from MusicActions; an override
+    // may not restate them.
+    override fun playSong(songs: List<Music>, startWithIndex: Int, sourceId: String?, sourceName: String?) =
         playbackManager.playSong(songs, startWithIndex, sourceId, sourceName)
 
-    fun playShuffled(songs: List<Music>, sourceId: String? = null, sourceName: String? = null) =
+    override fun playShuffled(songs: List<Music>, sourceId: String?, sourceName: String?) =
         playbackManager.playShuffled(songs, sourceId, sourceName)
 
-    fun togglePlayPause() = playbackManager.togglePlayPause()
-    fun seekTo(pos: Long) = playbackManager.seekTo(pos)
-    fun skipNext() = playbackManager.skipNext()
-    fun skipPrevious() = playbackManager.skipPrevious()
-    fun toggleShuffle() = playbackManager.toggleShuffle()
-    fun toggleRepeat() = playbackManager.toggleRepeat()
+    // Block bodies: the PlaybackManager equivalents are `controller?.…` and so return
+    // Unit?, which can't override a Unit-returning interface method.
+    override fun togglePlayPause() { playbackManager.togglePlayPause() }
+    override fun seekTo(pos: Long) = playbackManager.seekTo(pos)
+    override fun skipNext() { playbackManager.skipNext() }
+    override fun skipPrevious() { playbackManager.skipPrevious() }
+    override fun toggleShuffle() = playbackManager.toggleShuffle()
+    override fun toggleRepeat() = playbackManager.toggleRepeat()
+
+    /**
+     * The loaded track as a [NowPlayingUiState], or null when the queue is empty. Read as
+     * Compose state rather than exposed as a plain `val` because every field behind it is
+     * a StateFlow owned by [PlaybackManager].
+     */
+    @Composable
+    fun nowPlayingState(): NowPlayingUiState? {
+        val item by currentMediaItem.collectAsState()
+        val playing by isPlaying.collectAsState()
+        val position by currentPosition.collectAsState()
+        val total by duration.collectAsState()
+        val shuffle by shuffleMode.collectAsState()
+        val repeat by repeatMode.collectAsState()
+        val sourceId by currentSource.collectAsState()
+        val sourceName by currentSourceName.collectAsState()
+        val unknownTitle = stringResource(R.string.unknown_title)
+        val unknownArtist = stringResource(R.string.unknown_artist)
+
+        val metadata = item?.mediaMetadata ?: return null
+        return NowPlayingUiState(
+            title = metadata.title?.toString() ?: unknownTitle,
+            artist = metadata.artist?.toString() ?: unknownArtist,
+            artworkUri = metadata.artworkUri,
+            isPlaying = playing,
+            positionMs = position,
+            durationMs = total,
+            shuffle = shuffle,
+            repeatMode = repeat,
+            sourceId = sourceId,
+            sourceName = sourceName,
+        )
+    }
+
+    /** Id of the loaded track when it is playing from [sourceId], else null. */
+    @Composable
+    fun playingSongIdFrom(sourceId: String): Long? {
+        val item by currentMediaItem.collectAsState()
+        val source by currentSource.collectAsState()
+        return item?.mediaId?.toLongOrNull()?.takeIf { source == sourceId }
+    }
 
     // --- Per-entity "by id" State (replaces viewModel.getState<X>(id)) ---
     @Composable

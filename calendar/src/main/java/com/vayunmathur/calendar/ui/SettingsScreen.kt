@@ -46,6 +46,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.calendar.util.CalendarViewModel
+import com.vayunmathur.calendar.util.SettingsActions
+import com.vayunmathur.calendar.util.SettingsUiState
 import com.vayunmathur.calendar.Route
 import com.vayunmathur.calendar.R
 import com.vayunmathur.library.ui.IconAdd
@@ -54,38 +56,99 @@ import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconEdit
 import com.vayunmathur.library.ui.IconNavigation
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [CalendarViewModel] to the stateless [SettingsScreen]. */
 @Composable
 fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>) {
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
     val visibility by viewModel.calendarVisibility.collectAsStateWithLifecycle()
+    val currentLayout by viewModel.currentLayout.collectAsStateWithLifecycle()
+    val currentTheme by viewModel.themeMode.collectAsStateWithLifecycle()
 
-    // state for selection
-    var selectedCalendarId by remember { mutableStateOf<Long?>(null) }
-
-    val grouped = calendars.groupBy { it.accountName }
-
+    // Kept in the binder rather than the screen: rememberLauncherForActivityResult needs an
+    // ActivityResultRegistryOwner, which a @Preview has no way to supply.
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
             backStack.add(Route.Settings.ImportIcs(uris.map { it.toString() }))
         }
     }
 
+    SettingsScreen(
+        state = SettingsUiState(
+            calendars = calendars,
+            calendarVisibility = visibility,
+            layout = currentLayout,
+            themeMode = currentTheme,
+        ),
+        actions = object : SettingsActions by viewModel {
+            override fun closeSettings() {
+                backStack.pop()
+            }
+
+            override fun openAddCalendar() {
+                backStack.add(Route.Settings.AddCalendar())
+            }
+
+            override fun openRenameCalendar(calendarId: Long) {
+                backStack.add(Route.Settings.RenameCalendar(calendarId))
+            }
+
+            override fun openDeleteCalendar(calendarId: Long) {
+                backStack.add(Route.Settings.DeleteCalendar(calendarId))
+            }
+
+            override fun openChangeColor(calendarId: Long) {
+                backStack.add(Route.Settings.ChangeColor(calendarId))
+            }
+
+            override fun openHolidayCalendars() {
+                backStack.add(Route.Settings.HolidayCalendars)
+            }
+
+            override fun importIcs() {
+                importLauncher.launch(arrayOf(
+                    "text/calendar",
+                    "application/calendar",
+                    "application/ics",
+                    "text/x-vcalendar",
+                    "application/x-icalendar",
+                    "text/x-icalendar",
+                    "text/icalendar",
+                    "*/*"
+                ))
+            }
+        },
+    )
+}
+
+/**
+ * The settings screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
+    val calendars = state.calendars
+
+    // state for selection
+    var selectedCalendarId by remember { mutableStateOf<Long?>(null) }
+
+    val grouped = calendars.groupBy { it.accountName }
+
     Scaffold(
         topBar = {
             TopAppBar({Text(stringResource(R.string.settings))}, navigationIcon = {
-                IconNavigation(backStack)
+                IconNavigation(actions::closeSettings)
             }, actions = {
                 if(selectedCalendarId != null) {
                     val selectedCalendar = calendars.find { it.id == selectedCalendarId }
                     if (selectedCalendar?.canModify == true) {
                         IconButton(onClick = {
                             // open rename dialog via navigation
-                            backStack.add(Route.Settings.RenameCalendar(selectedCalendarId!!))
+                            actions.openRenameCalendar(selectedCalendarId!!)
                         }) {
                             IconEdit()
                         }
-                        IconButton(onClick = { backStack.add(Route.Settings.DeleteCalendar(selectedCalendarId!!)) }) {
+                        IconButton(onClick = { actions.openDeleteCalendar(selectedCalendarId!!) }) {
                             IconDelete()
                         }
                     }
@@ -94,7 +157,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
         },
         floatingActionButton = {
             if (calendars.isNotEmpty()) {
-                FloatingActionButton(onClick = { backStack.add(Route.Settings.AddCalendar()) }) {
+                FloatingActionButton(onClick = { actions.openAddCalendar() }) {
                     IconAdd()
                 }
             }
@@ -107,14 +170,13 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                Button(onClick = { backStack.add(Route.Settings.AddCalendar()) }) {
+                Button(onClick = { actions.openAddCalendar() }) {
                     Text(text = stringResource(R.string.create_a_calendar))
                 }
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = paddingValues + PaddingValues(8.dp)) {
                 item {
-                    val currentLayout by viewModel.currentLayout.collectAsStateWithLifecycle()
                     var showDefaultLayoutMenu by remember { mutableStateOf(false) }
 
                     ListItem(
@@ -123,7 +185,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                             Box {
                                 TextButton(onClick = { showDefaultLayoutMenu = true }) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(stringResource(currentLayout.prettyNameRes))
+                                        Text(stringResource(state.layout.prettyNameRes))
                                         IconArrowDropDown()
                                     }
                                 }
@@ -132,7 +194,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                                         DropdownMenuItem(
                                             text = { Text(stringResource(layout.prettyNameRes)) },
                                             onClick = {
-                                                viewModel.setLayout(layout)
+                                                actions.setLayout(layout)
                                                 showDefaultLayoutMenu = false
                                             }
                                         )
@@ -145,7 +207,6 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                 }
 
                 item {
-                    val currentTheme by viewModel.themeMode.collectAsStateWithLifecycle()
                     var showThemeMenu by remember { mutableStateOf(false) }
 
                     ListItem(
@@ -154,7 +215,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                             Box {
                                 TextButton(onClick = { showThemeMenu = true }) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(stringResource(currentTheme.prettyNameRes))
+                                        Text(stringResource(state.themeMode.prettyNameRes))
                                         IconArrowDropDown()
                                     }
                                 }
@@ -163,7 +224,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                                         DropdownMenuItem(
                                             text = { Text(stringResource(mode.prettyNameRes)) },
                                             onClick = {
-                                                viewModel.setThemeMode(mode)
+                                                actions.setThemeMode(mode)
                                                 showThemeMenu = false
                                             }
                                         )
@@ -179,7 +240,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     ListItem(
                         content = { Text(stringResource(R.string.holiday_calendars)) },
                         supportingContent = { Text(stringResource(R.string.add_public_holidays_for_countries)) },
-                        modifier = Modifier.clickable { backStack.add(Route.Settings.HolidayCalendars) },
+                        modifier = Modifier.clickable { actions.openHolidayCalendars() },
                         trailingContent = {
                             IconArrowDropDown()
                         },
@@ -191,18 +252,7 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     ListItem(
                         content = { Text(stringResource(R.string.import_ics_file)) },
                         supportingContent = { Text(stringResource(R.string.import_events_from_ics_files)) },
-                        modifier = Modifier.clickable {
-                            importLauncher.launch(arrayOf(
-                                "text/calendar",
-                                "application/calendar",
-                                "application/ics",
-                                "text/x-vcalendar",
-                                "application/x-icalendar",
-                                "text/x-icalendar",
-                                "text/icalendar",
-                                "*/*"
-                            ))
-                        },
+                        modifier = Modifier.clickable { actions.importIcs() },
                         trailingContent = {
                             IconArrowDropDown()
                         },
@@ -240,13 +290,13 @@ fun SettingsScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                                         )
                                         .then(if (cal.canModify) Modifier.clickable {
                                             // navigate to color change dialog
-                                            backStack.add(Route.Settings.ChangeColor(cal.id))
+                                            actions.openChangeColor(cal.id)
                                         } else Modifier)
                                 )
                             },
                             trailingContent = {
-                                val isChecked = visibility[cal.id] ?: true
-                                com.vayunmathur.library.ui.Checkbox(checked = isChecked, onCheckedChange = { checked -> viewModel.setCalendarVisibility(cal.id, checked) })
+                                val isChecked = state.calendarVisibility[cal.id] ?: true
+                                com.vayunmathur.library.ui.Checkbox(checked = isChecked, onCheckedChange = { checked -> actions.setCalendarVisibility(cal.id, checked) })
                             },
                             colors = ListItemDefaults.colors(
                                 containerColor = if(selectedCalendarId == cal.id) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface

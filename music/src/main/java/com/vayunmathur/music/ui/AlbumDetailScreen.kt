@@ -27,12 +27,14 @@ import androidx.core.net.toUri
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.music.util.AlbumArt
+import com.vayunmathur.music.util.AlbumDetailUiState
+import com.vayunmathur.music.util.MusicActions
 import com.vayunmathur.music.util.MusicViewModel
 import com.vayunmathur.music.util.AddToPlaylistButton
 import com.vayunmathur.music.R
 import com.vayunmathur.music.util.formatDuration
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [AlbumDetailContent] to the ViewModel. */
 @Composable
 fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel, albumId: Long) {
     val albumValue by musicViewModel.albumState(albumId)
@@ -50,8 +52,36 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
         if (extractedYear > 0) extractedYear.toString() else "Unknown Year"
     }
 
-    val currentMediaItem by musicViewModel.currentMediaItem.collectAsState()
-    val currentSource by musicViewModel.currentSource.collectAsState()
+    AlbumDetailContent(
+        state = AlbumDetailUiState(
+            albumId = albumId,
+            name = album.name,
+            artUri = album.uri.toUri(),
+            info = stringResource(
+                R.string.album_info_format,
+                album.artistString(musicViewModel),
+                albumYear,
+                musicInAlbum.size,
+                formatDuration(totalDurationMs),
+            ),
+            tracks = musicInAlbum,
+            playingSongId = musicViewModel.playingSongIdFrom("album_$albumId"),
+        ),
+        actions = musicViewModel,
+        backStack = backStack,
+        bottomBar = { PlayingBottomBar(musicViewModel, backStack) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AlbumDetailContent(
+    state: AlbumDetailUiState,
+    actions: MusicActions,
+    backStack: NavBackStack<Route>,
+    bottomBar: @Composable () -> Unit = {},
+) {
+    val sourceId = "album_${state.albumId}"
 
     Scaffold(
         topBar = {
@@ -60,7 +90,7 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
                 navigationIcon = { IconNavigation(backStack) }
             )
         },
-        bottomBar = { PlayingBottomBar(musicViewModel, backStack) },
+        bottomBar = bottomBar,
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -74,7 +104,7 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AlbumArt(album.uri.toUri(), Modifier
+                    AlbumArt(state.artUri, Modifier
                         .size(260.dp)
                         .clip(RoundedCornerShape(24.dp))
                         .background(Color.DarkGray))
@@ -82,9 +112,9 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
                     Spacer(modifier = Modifier.height(24.dp))
 
                     ListItem({
-                        Text(album.name, style = MaterialTheme.typography.titleLarge)
+                        Text(state.name, style = MaterialTheme.typography.titleLarge)
                     }, Modifier, {Text(stringResource(R.string.label_album))}, {
-                        Text(stringResource(R.string.album_info_format, album.artistString(musicViewModel), albumYear, musicInAlbum.size, formatDuration(totalDurationMs)))
+                        Text(state.info)
                     })
                 }
             }
@@ -93,10 +123,10 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
             item {
                 PlayShuffleRow(
                     onPlay = {
-                        musicViewModel.playSong(musicInAlbum, 0, sourceId = "album_$albumId", sourceName = album.name)
+                        actions.playSong(state.tracks, 0, sourceId = sourceId, sourceName = state.name)
                     },
                     onShuffle = {
-                        musicViewModel.playShuffled(musicInAlbum, sourceId = "album_$albumId", sourceName = album.name)
+                        actions.playShuffled(state.tracks, sourceId = sourceId, sourceName = state.name)
                     },
                 )
             }
@@ -120,14 +150,14 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
             }
 
             // Track Items
-            itemsIndexed(musicInAlbum) { idx, music ->
-                val isPlaying = currentMediaItem?.mediaId == music.id.toString() && currentSource == "album_$albumId"
+            itemsIndexed(state.tracks) { idx, music ->
+                val isPlaying = music.id == state.playingSongId
                 TrackListItem(
                     title = music.title,
                     isPlaying = isPlaying,
                     artUri = music.uri.toUri(),
                     onClick = {
-                        musicViewModel.playSong(musicInAlbum, idx, sourceId = "album_$albumId", sourceName = album.name)
+                        actions.playSong(state.tracks, idx, sourceId = sourceId, sourceName = state.name)
                     },
                     leading = {
                         Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {

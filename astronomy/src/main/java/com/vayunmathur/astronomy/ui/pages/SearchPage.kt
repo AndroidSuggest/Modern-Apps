@@ -10,20 +10,40 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.ui.AstronomyViewModel
+import com.vayunmathur.astronomy.ui.SearchActions
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.ui.res.stringResource
 
+/** Binds [AstronomyViewModel] to the stateless [SearchScreen]. */
 @Composable
 fun SearchPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf(viewModel.search("")) }
+    SearchScreen(backStack = backStack, actions = viewModel)
+}
+
+/**
+ * The catalog search screen, with no dependency on the ViewModel so it can be rendered
+ * from a `@Preview` — see `src/screenshotTest`, which is where the store listing images
+ * come from.
+ */
+@Composable
+fun SearchScreen(
+    backStack: NavBackStack<Route>,
+    actions: SearchActions,
+    /**
+     * Seed for the screen's own UI-only state (what is typed in the box). The app always
+     * takes the default; a preview sets it to capture a screen with results on it.
+     */
+    initialQuery: String = "",
+) {
+    var query by remember { mutableStateOf(initialQuery) }
+    var results by remember { mutableStateOf(actions.search(initialQuery)) }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.search_1)) }, navigationIcon = { IconNavigation(backStack) })
     }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().padding(12.dp)) {
-            OutlinedTextField(value = query, onValueChange = { query = it; results = viewModel.search(it) }, label = { Text(stringResource(R.string.search_stars_planets_messier)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = query, onValueChange = { query = it; results = actions.search(it) }, label = { Text(stringResource(R.string.search_stars_planets_messier)) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(results) { r ->
@@ -33,7 +53,7 @@ fun SearchPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
                         trailingContent = { IconChevronRight() },
                         modifier = Modifier.clickable {
                             if (!r.id.startsWith("CONST_")) {
-                                viewModel.selectObject(r.id)
+                                actions.selectObject(r.id)
                                 // Drop the search page from the stack so back from the
                                 // detail page returns straight to the sky map.
                                 backStack.pop()

@@ -30,6 +30,8 @@ import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.MapsZonesViewModel
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import kotlinx.serialization.Serializable
 import org.maplibre.android.log.Logger
 import java.io.File
@@ -38,6 +40,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // FIRST_PARTY: data.vayunmathur.com tiles + amenities + api.vayunmathur.com -> ISRG+GTS
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
         // Route MapLibre's HTTP (incl. the streamed pmtiles range requests)
         // through our disk-caching client. Must happen before the map loads.

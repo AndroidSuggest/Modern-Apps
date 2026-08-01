@@ -1,9 +1,15 @@
 package com.vayunmathur.weather.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -12,12 +18,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DrawerState
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.ModalDrawerSheet
 import com.vayunmathur.library.ui.ModalNavigationDrawer
 import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.PullToRefreshBox
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
@@ -41,7 +49,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.Route
-import com.vayunmathur.weather.data.SavedLocation
 import com.vayunmathur.weather.ui.components.CurrentWeatherCard
 import com.vayunmathur.weather.ui.components.DailyCard
 import com.vayunmathur.weather.ui.components.HourlyCard
@@ -50,16 +57,23 @@ import com.vayunmathur.weather.ui.components.MetricGraphSheet
 import com.vayunmathur.weather.ui.components.SelectedDateTimeHeader
 import com.vayunmathur.weather.ui.components.SummaryCard
 import com.vayunmathur.weather.ui.components.WeatherBlocks
-import com.vayunmathur.weather.util.PressureUnit
-import com.vayunmathur.weather.util.TemperatureUnit
+import com.vayunmathur.weather.util.DisplayUnits
+import com.vayunmathur.weather.util.LocationUiState
+import com.vayunmathur.weather.util.SelectedDateOrTime
+import com.vayunmathur.weather.util.WeatherActions
 import com.vayunmathur.weather.util.WeatherMetric
 import com.vayunmathur.weather.util.WeatherViewModel
 import com.vayunmathur.weather.util.formatHourAxisLabel
+import com.vayunmathur.weather.util.metricSeries
 import com.vayunmathur.weather.util.metricValueFormatter
 import com.vayunmathur.weather.util.parseLocalIsoToEpochSec
+import com.vayunmathur.weather.util.precipitationNowcast
+import com.vayunmathur.weather.util.rememberDisplayUnits
 import com.vayunmathur.weather.util.resolveConditions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** Binds [WeatherViewModel] and the back stack to the stateless [HomeScreen]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomePage(backStack: NavBackStack<Route>, viewModel: WeatherViewModel) {
@@ -84,65 +98,13 @@ fun HomePage(backStack: NavBackStack<Route>, viewModel: WeatherViewModel) {
     var activeLocationId by remember { mutableStateOf(locations.first().id) }
     val activeLocation = locations.firstOrNull { it.id == activeLocationId } ?: locations.first()
 
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-    val closeDrawer = { scope.launch { drawerState.close() } }
-
-    BackHandler(enabled = drawerState.isOpen) { closeDrawer() }
-
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                LocationsScreen(
-                    backStack = backStack,
-                    viewModel = viewModel,
-                    activeLocation = activeLocation,
-                    onLocationSelect = { picked ->
-                        activeLocationId = picked.id
-                        viewModel.clearSelection()
-                        closeDrawer()
-                    },
-                    onClose = { closeDrawer() },
-                )
-            }
-        },
-    ) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) { paddingValues ->
-            LocationPage(
-                backStack = backStack,
-                viewModel = viewModel,
-                location = activeLocation,
-                drawerState = drawerState,
-                paddingValues = paddingValues,
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LocationPage(
-    backStack: NavBackStack<Route>,
-    viewModel: WeatherViewModel,
-    location: SavedLocation,
-    drawerState: com.vayunmathur.library.ui.DrawerState,
-    paddingValues: androidx.compose.foundation.layout.PaddingValues,
-) {
     val forecasts by viewModel.forecasts.collectAsState()
     val selected by viewModel.selectedDateOrTime.collectAsState()
-    val tempUnit = com.vayunmathur.weather.util.rememberTempUnit()
-    val windUnit = com.vayunmathur.weather.util.rememberWindUnit()
-    val pressureUnit = com.vayunmathur.weather.util.rememberPressureUnit()
-    val use24Hour = com.vayunmathur.weather.util.rememberUse24Hour()
-    var graphMetric by remember { mutableStateOf<com.vayunmathur.weather.util.WeatherMetric?>(null) }
+    val forecastState = forecasts[activeLocation.id]
+    val forecast = forecastState?.forecast
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(location.id, lifecycleOwner) {
+    LaunchedEffect(activeLocation.id, lifecycleOwner) {
         // Only poll while the app is actually in the foreground; repeatOnLifecycle
         // cancels the loop when the app is backgrounded and restarts it on resume,
         // so we don't hit the network every 60s behind the user's back (the hourly
@@ -150,31 +112,152 @@ private fun LocationPage(
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
                 viewModel.refreshAll()
-                kotlinx.coroutines.delay(60_000)
+                delay(60_000)
             }
         }
     }
 
-    val state = forecasts[location.id]
-    val forecast = state?.forecast
+    // "Rain in ~30 min" needs both the wall clock and the string table, so it is
+    // resolved here rather than inside the screen — see WeatherUiContract.
+    val context = LocalContext.current
+    val nowcast = if (selected == null && forecast != null) {
+        precipitationNowcast(context, forecast.minutely15, forecast.utcOffsetSeconds)
+    } else {
+        null
+    }
+
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val closeDrawer = { scope.launch { drawerState.close() } }
+
+    HomeScreen(
+        state = LocationUiState(
+            location = activeLocation,
+            forecast = forecast,
+            airQuality = forecastState?.airQuality?.current,
+            refreshing = forecastState?.refreshing == true,
+            error = forecastState?.error,
+            selected = selected,
+        ),
+        units = rememberDisplayUnits(),
+        actions = viewModel,
+        drawerState = drawerState,
+        precipitationNowcast = nowcast,
+        onOpenMap = { metric, isoTime ->
+            backStack.add(
+                Route.WeatherMap(
+                    latitude = activeLocation.latitude,
+                    longitude = activeLocation.longitude,
+                    name = activeLocation.name,
+                    isoTime = isoTime,
+                    metric = metric.name,
+                )
+            )
+        },
+        drawerContent = {
+            LocationsPage(
+                backStack = backStack,
+                viewModel = viewModel,
+                activeLocation = activeLocation,
+                onLocationSelect = { picked ->
+                    activeLocationId = picked.id
+                    viewModel.clearSelection()
+                    closeDrawer()
+                },
+                onClose = { closeDrawer() },
+            )
+        },
+    )
+}
+
+/**
+ * The forecast page, with no dependency on the ViewModel, the back stack or the clock so it
+ * can be rendered from a `@Preview` — see `src/screenshotTest`, which is where the store
+ * listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    state: LocationUiState,
+    units: DisplayUnits,
+    actions: WeatherActions,
+    drawerState: DrawerState = rememberDrawerState(DrawerValue.Closed),
+    /** Short-range rain outlook; reads a clock, so the binder resolves it. */
+    precipitationNowcast: String? = null,
+    /**
+     * "Now" for the hourly strip and the sun arc. A parameter rather than a clock read so a
+     * preview's fixed sample data can't age out from under it.
+     */
+    nowEpochSec: Long = System.currentTimeMillis() / 1000,
+    onOpenMap: (WeatherMetric, String?) -> Unit = { _, _ -> },
+    /** The locations drawer. Empty in a preview, which has no saved-location list. */
+    drawerContent: @Composable () -> Unit = {},
+) {
+    val scope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                drawerContent()
+            }
+        },
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) { paddingValues ->
+            ForecastColumn(
+                state = state,
+                units = units,
+                actions = actions,
+                drawerState = drawerState,
+                paddingValues = paddingValues,
+                precipitationNowcast = precipitationNowcast,
+                nowEpochSec = nowEpochSec,
+                onOpenMap = onOpenMap,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ForecastColumn(
+    state: LocationUiState,
+    units: DisplayUnits,
+    actions: WeatherActions,
+    drawerState: DrawerState,
+    paddingValues: PaddingValues,
+    precipitationNowcast: String?,
+    nowEpochSec: Long,
+    onOpenMap: (WeatherMetric, String?) -> Unit,
+) {
+    var graphMetric by remember { mutableStateOf<WeatherMetric?>(null) }
+
+    val forecast = state.forecast
+    val selected = state.selected
     val scrollState = rememberScrollState()
 
-    com.vayunmathur.library.ui.PullToRefreshBox(
-        isRefreshing = state?.refreshing == true,
-        onRefresh = { viewModel.refreshAll(force = true) },
+    PullToRefreshBox(
+        isRefreshing = state.refreshing,
+        onRefresh = { actions.refreshAll(force = true) },
         modifier = Modifier.fillMaxSize(),
     ) {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState)) {
             MainSearchBar(
                 paddingValues = paddingValues,
                 drawerState = drawerState,
-                activeLocation = location,
+                activeLocation = state.location,
             )
 
             if (forecast == null) {
                 Box(modifier = Modifier.fillMaxSize().padding(top = 64.dp), contentAlignment = Alignment.TopCenter) {
-                    if (state?.error != null) {
-                        Text(state.error, color = MaterialTheme.colorScheme.error)
+                    val error = state.error
+                    if (error != null) {
+                        Text(error, color = MaterialTheme.colorScheme.error)
                     } else {
                         CircularProgressIndicator()
                     }
@@ -188,17 +271,17 @@ private fun LocationPage(
 
             var lastSelection by remember { mutableStateOf(selected) }
             LaunchedEffect(selected) { if (selected != null) lastSelection = selected }
-            androidx.compose.animation.AnimatedVisibility(
+            AnimatedVisibility(
                 visible = selected != null,
-                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
             ) {
                 (selected ?: lastSelection)?.let { sel ->
                     SelectedDateTimeHeader(
                         selection = sel,
                         forecast = forecast,
-                        use24Hour = use24Hour,
-                        onClear = { viewModel.clearSelection() },
+                        use24Hour = units.use24Hour,
+                        onClear = { actions.clearSelection() },
                     )
                 }
             }
@@ -211,7 +294,7 @@ private fun LocationPage(
                     apparentTemperature = resolved.apparentTemperature,
                     high = resolved.high,
                     low = resolved.low,
-                    tempUnit = tempUnit,
+                    tempUnit = units.temperature,
                 )
             }
             Column(
@@ -226,52 +309,48 @@ private fun LocationPage(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (selected == null) {
-                    SummaryCard(forecast = forecast, tempUnit = tempUnit)
+                    SummaryCard(forecast = forecast, tempUnit = units.temperature)
                 }
                 if (forecast.hourly != null) {
                     HourlyCard(
                         hourly = forecast.hourly,
-                        tempUnit = tempUnit,
+                        tempUnit = units.temperature,
                         utcOffsetSeconds = forecast.utcOffsetSeconds,
-                        use24Hour = use24Hour,
-                        selectedIsoTime = (selected as? com.vayunmathur.weather.util.SelectedDateOrTime.Time)?.isoTime,
-                        onHourSelected = { viewModel.toggleTime(it) },
-                        scrollToIsoDate = (selected as? com.vayunmathur.weather.util.SelectedDateOrTime.Day)?.isoDate,
+                        use24Hour = units.use24Hour,
+                        selectedIsoTime = (selected as? SelectedDateOrTime.Time)?.isoTime,
+                        onHourSelected = { actions.toggleTime(it) },
+                        scrollToIsoDate = (selected as? SelectedDateOrTime.Day)?.isoDate,
+                        nowEpochSec = nowEpochSec,
                     )
                 }
                 if (daily != null) {
                     DailyCard(
                         daily = daily,
-                        tempUnit = tempUnit,
-                        selectedIsoDate = (selected as? com.vayunmathur.weather.util.SelectedDateOrTime.Day)?.isoDate,
-                        onDaySelected = { viewModel.toggleDay(it) },
+                        tempUnit = units.temperature,
+                        selectedIsoDate = (selected as? SelectedDateOrTime.Day)?.isoDate,
+                        onDaySelected = { actions.toggleDay(it) },
                     )
                 }
-            if (current != null && resolved != null) {
+                if (current != null && resolved != null) {
                     val sunriseEpoch = resolved.sunriseIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
                     val sunsetEpoch = resolved.sunsetIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
-                    val nowcast = if (selected == null) {
-                        com.vayunmathur.weather.util.precipitationNowcast(LocalContext.current, forecast.minutely15, forecast.utcOffsetSeconds)
-                    } else {
-                        null
-                    }
                     WeatherBlocks(
                         current = resolved.blockCurrent,
                         uvIndex = resolved.uvIndexMax,
-                        air = state.airQuality?.current,
+                        air = state.airQuality,
                         sunriseEpochSec = sunriseEpoch,
                         sunsetEpochSec = sunsetEpoch,
                         precipitationMm = resolved.precipitationSum,
-                        precipitationNowcast = nowcast,
+                        precipitationNowcast = precipitationNowcast,
                         daylightDurationSec = resolved.daylightDurationSec,
                         onMetricSelected = { graphMetric = it },
-                        tempUnit = tempUnit,
-                        windUnit = windUnit,
-                        pressureUnit = pressureUnit,
-                        use24Hour = use24Hour,
+                        tempUnit = units.temperature,
+                        windUnit = units.wind,
+                        pressureUnit = units.pressure,
+                        use24Hour = units.use24Hour,
+                        nowEpochSec = nowEpochSec,
                     )
                 }
-
             }
         }
 
@@ -279,24 +358,16 @@ private fun LocationPage(
         if (gm != null && forecast != null) {
             MetricGraphSheet(
                 title = stringResource(gm.title),
-                points = com.vayunmathur.weather.util.metricSeries(forecast, gm, selected),
-                valueLabel = metricValueFormatter(gm, tempUnit, windUnit, pressureUnit),
-                timeLabel = { epoch -> formatHourAxisLabel(epoch, use24Hour) },
+                points = metricSeries(forecast, gm, selected),
+                valueLabel = metricValueFormatter(gm, units.temperature, units.wind, units.pressure),
+                timeLabel = { epoch -> formatHourAxisLabel(epoch, units.use24Hour) },
                 onOpenMap = {
                     val iso = when (val s = selected) {
-                        is com.vayunmathur.weather.util.SelectedDateOrTime.Time -> s.isoTime
-                        is com.vayunmathur.weather.util.SelectedDateOrTime.Day -> "${s.isoDate}T00:00"
+                        is SelectedDateOrTime.Time -> s.isoTime
+                        is SelectedDateOrTime.Day -> "${s.isoDate}T00:00"
                         null -> null
                     }
-                    backStack.add(
-                        Route.WeatherMap(
-                            latitude = location.latitude,
-                            longitude = location.longitude,
-                            name = location.name,
-                            isoTime = iso,
-                            metric = gm.name,
-                        )
-                    )
+                    onOpenMap(gm, iso)
                     graphMetric = null
                 },
                 onDismiss = { graphMetric = null },
@@ -306,7 +377,8 @@ private fun LocationPage(
 }
 
 /**
- * Per-metric display formatter for graph value labels.
+ * Shown in place of the forecast when nothing is pinned yet. Stays on the ViewModel: it is
+ * an empty state, not a listing shot.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

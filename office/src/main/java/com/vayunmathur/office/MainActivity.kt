@@ -9,7 +9,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.BottomBarItem
+import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
@@ -119,8 +122,10 @@ import com.vayunmathur.office.ui.*
 import com.vayunmathur.office.util.OfficeViewModel
 import kotlinx.coroutines.launch
 
+// Public so `src/screenshotTest` can wrap a document exactly the way DocumentScreen does;
+// without it the listing images would show the paper in the wrong scheme.
 @Composable
-private fun OfficeLightTheme(content: @Composable () -> Unit) {
+fun OfficeLightTheme(content: @Composable () -> Unit) {
     // Light scheme — used only for the rendered document (the "paper"), which stays light in dark mode.
     val colorScheme = dynamicLightColorScheme(LocalContext.current)
     MaterialTheme(colorScheme = colorScheme, typography = Typography(), content = content)
@@ -149,6 +154,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // FIRST_PARTY: api.vayunmathur.com + data.vayunmathur.com -> ISRG+GTS
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
         viewModel.loadSettings(this)
 
@@ -277,9 +284,28 @@ private fun resolveDisplayName(context: android.content.Context, uri: Uri): Stri
     return uri.lastPathSegment?.substringAfterLast('/') ?: "document"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InitialScreen(viewModel: OfficeViewModel, onOpenDocument: () -> Unit, onNavigateEditor: () -> Unit) {
+    HomeScreen(
+        onOpenDocument = onOpenDocument,
+        onNewTextDocument = { viewModel.createNewTextDocument(); onNavigateEditor() },
+        onNewSpreadsheet = { viewModel.createNewSpreadsheet(); onNavigateEditor() },
+        onNewPresentation = { viewModel.createNewPresentation(); onNavigateEditor() },
+    )
+}
+
+/**
+ * The home screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    onOpenDocument: () -> Unit = {},
+    onNewTextDocument: () -> Unit = {},
+    onNewSpreadsheet: () -> Unit = {},
+    onNewPresentation: () -> Unit = {},
+) {
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).background(MaterialTheme.colorScheme.background).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(24.dp))
@@ -293,9 +319,9 @@ fun InitialScreen(viewModel: OfficeViewModel, onOpenDocument: () -> Unit, onNavi
             Spacer(Modifier.height(16.dp))
 
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { viewModel.createNewTextDocument(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_doc)) }
-                OutlinedButton(onClick = { viewModel.createNewSpreadsheet(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_sheet)) }
-                OutlinedButton(onClick = { viewModel.createNewPresentation(); onNavigateEditor() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_slides)) }
+                OutlinedButton(onClick = onNewTextDocument, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_doc)) }
+                OutlinedButton(onClick = onNewSpreadsheet, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_sheet)) }
+                OutlinedButton(onClick = onNewPresentation, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_slides)) }
             }
         }
     }

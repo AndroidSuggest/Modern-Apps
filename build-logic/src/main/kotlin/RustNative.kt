@@ -12,7 +12,6 @@ import java.util.Properties
  * implicitly by cargo when rust-toolchain.toml pins 1.97.0, which is not
  * concurrency-safe and produces "Directory not empty (os error 39)",
  * "cargo not applicable", "failed to install component bin/rust-gdb" errors.
- * Pattern mirrors MetadataScreenshotLock in common-conventions-metadata.gradle.kts.
  */
 abstract class RustToolchainLock : BuildService<BuildServiceParameters.None>
 

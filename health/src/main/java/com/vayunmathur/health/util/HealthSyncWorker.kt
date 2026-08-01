@@ -40,7 +40,6 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -128,9 +127,9 @@ class HealthSyncWorker(
         private const val TAG = "HealthSyncWorker"
 
         fun enqueue(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
-                .build()
+            // No constraints: this worker reads Health Connect into Room and
+            // never touches the network.
+            val constraints = Constraints.Builder().build()
 
             val syncRequest = PeriodicWorkRequestBuilder<HealthSyncWorker>(1, TimeUnit.HOURS)
                 .setConstraints(constraints)

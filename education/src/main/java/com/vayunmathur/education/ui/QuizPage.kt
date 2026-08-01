@@ -66,6 +66,8 @@ import com.vayunmathur.education.content.TraceAnswer
 import com.vayunmathur.education.content.TracingQuestion
 import com.vayunmathur.education.content.isCorrect
 import com.vayunmathur.education.util.EducationViewModel
+import com.vayunmathur.education.util.QuizActions
+import com.vayunmathur.education.util.QuizUiState
 import com.vayunmathur.library.ui.IconKeyboardArrowDown
 import com.vayunmathur.library.ui.IconKeyboardArrowUp
 import com.vayunmathur.library.ui.IconNavigation
@@ -73,7 +75,7 @@ import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.education.R
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EducationViewModel] and the back stack to the stateless [QuizScreen]. */
 @Composable
 fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exerciseId: String) {
     val content = viewModel.content
@@ -82,20 +84,61 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
         exercise?.let { content.questionsFor(it) } ?: emptyList()
     }
 
-    val answers = remember(exerciseId) { mutableStateMapOfAnswers() }
-    var index by remember(exerciseId) { mutableIntStateOf(0) }
-    var checked by remember(exerciseId) { mutableStateOf(false) }
-    var hintsShown by remember(exerciseId) { mutableIntStateOf(0) }
+    QuizScreen(
+        state = QuizUiState(
+            title = exercise?.title?.ifBlank { stringResource(R.string.practice) }
+                ?: stringResource(R.string.practice),
+            questions = questions,
+        ),
+        actions = object : QuizActions {
+            override fun navigateUp() {
+                backStack.pop()
+            }
+
+            override fun finish(questions: List<Question>, answers: Map<String, Answer?>) {
+                val result = viewModel.grade(questions, answers)
+                viewModel.commitResult(result)
+                backStack.setLast(Route.Results(result.total, result.correct, result.stars))
+            }
+        },
+    )
+}
+
+/**
+ * The Scholar quiz, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QuizScreen(
+    state: QuizUiState,
+    actions: QuizActions,
+    /**
+     * Seeds for the screen's own UI-only state (which question is showing, whether it has
+     * been checked, what has been answered so far). The app always takes the defaults;
+     * previews set them so a mid-quiz moment can be captured without driving the UI there.
+     */
+    initialIndex: Int = 0,
+    initialChecked: Boolean = false,
+    initialAnswers: Map<String, Answer?> = emptyMap(),
+) {
+    val questions = state.questions
+
+    val answers = remember(questions) { mutableStateMapOfAnswers().apply { putAll(initialAnswers) } }
+    var index by remember(questions) { mutableIntStateOf(initialIndex) }
+    var checked by remember(questions) { mutableStateOf(initialChecked) }
+    var hintsShown by remember(questions) { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(exercise?.title?.ifBlank { stringResource(R.string.practice) } ?: stringResource(R.string.practice)) },
-                navigationIcon = { IconNavigation(backStack) },
+                title = { Text(state.title) },
+                navigationIcon = { IconNavigation({ actions.navigateUp() }) },
             )
         },
     ) { padding ->
-        if (exercise == null || questions.isEmpty()) {
+        if (questions.isEmpty()) {
             MissingContent(padding, stringResource(R.string.this_exercise_has_no_questions_yet))
             return@Scaffold
         }
@@ -125,6 +168,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
             key(question.id) {
                 QuestionInput(
                     question = question,
+                    answer = currentAnswer,
                     enabled = !checked,
                     onAnswer = { answers[question.id] = it },
                 )
@@ -164,11 +208,7 @@ fun QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exer
                 ) { Text(stringResource(R.string.next)) }
             } else {
                 Button(
-                    onClick = {
-                        val result = viewModel.grade(questions, answers)
-                        viewModel.commitResult(result)
-                        backStack.setLast(Route.Results(result.total, result.correct, result.stars))
-                    },
+                    onClick = { actions.finish(questions, answers) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.finish)) }
             }
@@ -198,11 +238,17 @@ private fun FeedbackCard(correct: Boolean, explanation: String?) {
     }
 }
 
-/** Renders the appropriate input for [question], reporting answers via [onAnswer]. */
+/**
+ * Renders the appropriate input for [question], reporting answers via [onAnswer].
+ *
+ * [answer] is what has already been recorded for this question; an input uses it to seed
+ * its own selection state so a question that is being re-shown — or a preview of a quiz
+ * mid-attempt — comes up with the learner's choice still highlighted.
+ */
 @Composable
-private fun QuestionInput(question: Question, enabled: Boolean, onAnswer: (Answer?) -> Unit) {
+private fun QuestionInput(question: Question, answer: Answer?, enabled: Boolean, onAnswer: (Answer?) -> Unit) {
     when (question) {
-        is MultipleChoiceQuestion -> MultipleChoiceInput(question, enabled, onAnswer)
+        is MultipleChoiceQuestion -> MultipleChoiceInput(question, answer, enabled, onAnswer)
         is MultipleSelectQuestion -> MultipleSelectInput(question, enabled, onAnswer)
         is NumericQuestion -> NumericInput(question, enabled, onAnswer)
         is ShortTextQuestion -> ShortTextInput(enabled, onAnswer)
@@ -220,10 +266,11 @@ private fun QuestionInput(question: Question, enabled: Boolean, onAnswer: (Answe
 @Composable
 private fun MultipleChoiceInput(
     question: MultipleChoiceQuestion,
+    answer: Answer?,
     enabled: Boolean,
     onAnswer: (Answer?) -> Unit,
 ) {
-    var selected by remember { mutableIntStateOf(-1) }
+    var selected by remember { mutableIntStateOf((answer as? ChoiceAnswer)?.index ?: -1) }
     Column {
         question.choices.forEachIndexed { i, choice ->
             Row(

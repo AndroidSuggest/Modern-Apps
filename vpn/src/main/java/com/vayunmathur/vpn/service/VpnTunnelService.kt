@@ -14,9 +14,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.vpn.R
-import com.vayunmathur.vpn.data.DB_NAME
 import com.vayunmathur.vpn.data.VpnConfig
 import com.vayunmathur.vpn.data.VpnDatabase
 import com.vayunmathur.vpn.data.endpointHost
@@ -26,7 +24,6 @@ import com.vayunmathur.vpn.util.BypassList
 import com.vayunmathur.vpn.util.VpnNative
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.DatagramSocket
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
 import kotlinx.coroutines.CoroutineScope
@@ -88,8 +85,7 @@ class VpnTunnelService : VpnService() {
                 goForeground(notification("VPN (WireGuard/gotatun)", "Connecting…"))
                 scope.launch {
                     try {
-                        val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
-                        val all = db.vpnConfigDao().getAll()
+                        val all = VpnDatabase.get(this@VpnTunnelService).vpnConfigDao().getAll()
                         val lastUsed = all.maxByOrNull { it.lastUsed }
                         if (lastUsed != null) {
                             Log.i(TAG, "Always-On restoring ${lastUsed.name}")
@@ -130,7 +126,7 @@ class VpnTunnelService : VpnService() {
     private fun goForeground(notif: Notification) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(NOTIFICATION_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                startForeground(NOTIFICATION_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
             } else startForeground(NOTIFICATION_ID, notif)
         } catch (e: Exception) { Log.e(TAG, "foreground", e) }
     }
@@ -180,7 +176,26 @@ class VpnTunnelService : VpnService() {
             .setMtu(config.mtu.coerceIn(1280, 1500)).setBlocking(false)
 
         for ((ip, mask) in localAddrs) { try { b.addAddress(ip, mask) } catch (e: Exception) { Log.w(TAG, "addr $ip/$mask", e) } }
-        for ((ip, mask) in allowed) { try { b.addRoute(ip, mask) } catch (e: Exception) { Log.w(TAG, "route $ip/$mask", e) } }
+
+        // IPv6 leak guard. Our own default AllowedIPs is "0.0.0.0/0, ::/0", but plenty of
+        // real .conf files from IPv4-only providers say just "0.0.0.0/0". Android only
+        // diverts the families it has a route for, so on a dual-stack network every IPv6
+        // connection would keep using the physical interface while the user believes they
+        // are tunnelled — a silent deanonymisation, not a degraded experience.
+        //
+        // Claiming ::/0 without an IPv6 address on the tun means IPv6 source-address
+        // selection fails and connections fail immediately, so Happy Eyeballs falls back to
+        // IPv4 through the tunnel. Traffic is blocked rather than leaked. Only applied when
+        // the config routes a v4 default and names no v6 route at all: a config that
+        // deliberately splits (say 10.0.0.0/8 only) is left exactly as written.
+        val routes = allowed.toMutableList()
+        val hasV6Route = allowed.any { (ip, _) -> ip.contains(':') }
+        val hasV4Default = allowed.any { (ip, mask) -> mask == 0 && !ip.contains(':') }
+        if (hasV4Default && !hasV6Route) {
+            Log.i(TAG, "AllowedIPs has no IPv6 route; adding ::/0 to stop IPv6 leaking around the tunnel")
+            routes.add("::" to 0)
+        }
+        for ((ip, mask) in routes) { try { b.addRoute(ip, mask) } catch (e: Exception) { Log.w(TAG, "route $ip/$mask", e) } }
         if (config.dns.isNotBlank()) {
             for (d in config.dns.split(',').map { it.trim() }.filter { it.isNotEmpty() }) {
                 try { b.addDnsServer(d) } catch (_: Exception) {}
@@ -215,7 +230,6 @@ class VpnTunnelService : VpnService() {
             val ch = DatagramChannel.open()
             ch.configureBlocking(false)
             try { protect(ch.socket()) } catch (_: Exception) {}
-            try { protect(DatagramSocket()) } catch (_: Exception) {}
             ch.connect(java.net.InetSocketAddress(host, port))
             ch
         } catch (e: Exception) {
@@ -231,20 +245,19 @@ class VpnTunnelService : VpnService() {
 
         // Batched Room upsert job (1.5s) — tracker keeps cumulative TX/RX in memory,
         // so each drain returns full accumulated totals for dirty flows.
+        val logDao = VpnDatabase.get(this).connectionLogDao()
         flushJob = scope.launch(Dispatchers.IO) {
             while (isActive && !stopFlag.load()) {
                 delay(1500)
                 try {
                     val batch = tracker.drainDirty()
                     if (batch.isNotEmpty()) {
-                        val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
-                        val dao = db.connectionLogDao()
                         val toUpsert = mutableListOf<com.vayunmathur.vpn.data.ConnectionLogEntity>()
                         for (entity in batch) {
                             if (entity.id != 0L) {
                                 toUpsert.add(entity)
                             } else {
-                                val existing = dao.findIdentical(
+                                val existing = logDao.findIdentical(
                                     remoteIp = entity.remoteIp,
                                     remotePort = entity.remotePort,
                                     protocol = entity.protocol,
@@ -270,7 +283,7 @@ class VpnTunnelService : VpnService() {
                             }
                         }
                         if (toUpsert.isNotEmpty()) {
-                            dao.upsertAll(toUpsert)
+                            logDao.upsertAll(toUpsert)
                             tracker.updateIds(toUpsert)
                         }
                     }
@@ -389,10 +402,7 @@ class VpnTunnelService : VpnService() {
         } finally {
             try {
                 val finalBatch = tracker.drainDirty()
-                if (finalBatch.isNotEmpty()) {
-                    val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
-                    db.connectionLogDao().upsertAll(finalBatch)
-                }
+                if (finalBatch.isNotEmpty()) logDao.upsertAll(finalBatch)
             } catch (_: Exception) {}
             flushJob?.cancel(); flushJob = null
             try { tunIn.close() } catch (_: Exception) {}

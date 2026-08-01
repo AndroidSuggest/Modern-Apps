@@ -19,12 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.solitaire.data.PyramidState
-import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 
 private val SelectionColor = Color(0xFFFFC107)
 
 @Composable
-fun PyramidBoard(state: PyramidState, viewModel: SolitaireViewModel, modifier: Modifier = Modifier) {
+fun PyramidBoard(state: PyramidState, actions: SolitaireActions, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier) {
         val cardWidth = (maxWidth - 8.dp) / 7
         val cardHeight = cardWidth * 1.4f
@@ -49,7 +49,7 @@ fun PyramidBoard(state: PyramidState, viewModel: SolitaireViewModel, modifier: M
                             ) {
                                 SelectableCard(
                                     selected = state.selectedId == id,
-                                    onClick = { viewModel.pyramidTapCard(id) },
+                                    onClick = { actions.pyramidTapCard(id) },
                                     cardWidth = cardWidth,
                                     cardHeight = cardHeight
                                 ) {
@@ -73,13 +73,13 @@ fun PyramidBoard(state: PyramidState, viewModel: SolitaireViewModel, modifier: M
                 val canRecycle = state.relaxed && state.waste.isNotEmpty()
                 if (state.stock.isNotEmpty()) {
                     CardBack(
-                        modifier = Modifier.clickable { viewModel.pyramidDealStock() },
+                        modifier = Modifier.clickable { actions.pyramidDealStock() },
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
                     )
                 } else {
                     EmptySlot(
-                        modifier = Modifier.clickable(enabled = canRecycle) { viewModel.pyramidDealStock() },
+                        modifier = Modifier.clickable(enabled = canRecycle) { actions.pyramidDealStock() },
                         label = if (canRecycle) "↻" else "",
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
@@ -91,7 +91,7 @@ fun PyramidBoard(state: PyramidState, viewModel: SolitaireViewModel, modifier: M
                 if (wasteTop != null) {
                     SelectableCard(
                         selected = state.selectedId == "waste",
-                        onClick = { viewModel.pyramidTapCard("waste") },
+                        onClick = { actions.pyramidTapCard("waste") },
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
                     ) {

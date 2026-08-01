@@ -45,6 +45,9 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.vpn.Route
+import com.vayunmathur.vpn.data.AppUsageSummary
+import com.vayunmathur.vpn.data.DomainBytesSummary
+import com.vayunmathur.vpn.data.DomainCountSummary
 import com.vayunmathur.vpn.util.VpnViewModel
 
 private val TABS = listOf("Top apps", "Most visited", "Top domains by data")
@@ -55,8 +58,32 @@ fun LoggingPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     val domainsByCount by vm.domainsByCountFlow.collectAsState()
     val domainsByBytes by vm.domainsByBytesFlow.collectAsState()
 
+    LoggingContent(
+        topApps = topApps,
+        domainsByCount = domainsByCount,
+        domainsByBytes = domainsByBytes,
+        onDeleteAllLogs = { vm.deleteAllLogs() },
+    )
+}
+
+/**
+ * The traffic leaderboards, with no ViewModel reference so they can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun LoggingContent(
+    topApps: List<AppUsageSummary>,
+    domainsByCount: List<DomainCountSummary>,
+    domainsByBytes: List<DomainBytesSummary>,
+    onDeleteAllLogs: () -> Unit = {},
+    /**
+     * Which leaderboard to open on. The app always starts on the first; previews set it so a
+     * given tab can be captured without driving the UI to get there.
+     */
+    initialTab: Int = 0,
+) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var tabIndex by remember { mutableIntStateOf(0) }
+    var tabIndex by remember { mutableIntStateOf(initialTab) }
 
     Scaffold(
         topBar = {
@@ -130,7 +157,7 @@ fun LoggingPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
             title = { Text(stringResource(R.string.delete_all_logs)) },
             text = { Text(stringResource(R.string.this_will_permanently_remove_all_connect)) },
             confirmButton = {
-                Button(onClick = { vm.deleteAllLogs(); showDeleteDialog = false }) { Text(stringResource(R.string.delete)) }
+                Button(onClick = { onDeleteAllLogs(); showDeleteDialog = false }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
                 OutlinedButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.cancel)) }

@@ -25,6 +25,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -34,11 +35,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.everysync.R
 import com.vayunmathur.everysync.Route
 import com.vayunmathur.everysync.provider.ProviderRegistry
+import com.vayunmathur.everysync.util.AccountRow
+import com.vayunmathur.everysync.util.AccountsActions
+import com.vayunmathur.everysync.util.AccountsUiState
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.NavBackStack
 import java.util.Date
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EverySyncViewModel] and the back stack to the stateless [AccountsScreen]. */
 @Composable
 fun AccountsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel) {
     val permissions = arrayOf(
@@ -50,67 +54,101 @@ fun AccountsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel
     PermissionsChecker(permissions, stringResource(R.string.need_permissions)) {
         val accounts by viewModel.accounts.collectAsStateWithLifecycle()
         val syncing by viewModel.syncing.collectAsStateWithLifecycle()
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.accounts_title)) },
-                    actions = {
-                        IconButton(onClick = { backStack.add(Route.Settings) }) {
-                            IconSettings()
-                        }
-                    },
-                )
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { backStack.add(Route.AddAccount) }) {
-                    IconAdd()
-                }
-            },
-        ) { padding ->
-            if (accounts.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text(
-                        stringResource(R.string.no_accounts),
-                        Modifier.padding(32.dp),
-                        textAlign = TextAlign.Center,
+        val context = LocalContext.current
+        val actions = remember(viewModel, backStack) {
+            object : AccountsActions {
+                override fun syncNow(accountName: String) = viewModel.syncNow(accountName)
+                override fun openAccount(accountName: String) = backStack.add(Route.AccountDetail(accountName))
+                override fun openAddAccount() = backStack.add(Route.AddAccount)
+                override fun openSettings() = backStack.add(Route.Settings)
+            }
+        }
+        AccountsScreen(
+            state = AccountsUiState(
+                accounts.map { account ->
+                    AccountRow(
+                        accountName = account.accountName,
+                        providerId = account.providerId,
+                        syncing = account.accountName in syncing,
+                        lastSyncError = account.lastSyncError,
+                        lastSyncedAt = account.lastSyncEpochMs
+                            .takeIf { it > 0 }
+                            ?.let { formatTime(context, it) },
                     )
-                }
-            } else {
-                LazyColumn(Modifier.padding(padding)) {
-                    items(accounts, key = { it.accountName }) { account ->
-                        val provider = ProviderRegistry.get(account.providerId)
-                        val isSyncing = account.accountName in syncing
-                        ListItem(
-                            modifier = Modifier.clickable { backStack.add(Route.AccountDetail(account.accountName)) },
-                            content = { Text(account.accountName) },
-                            supportingContent = {
-                                Column {
-                                    Text(provider?.displayName ?: account.providerId)
-                                    Text(
-                                        when {
-                                            isSyncing -> stringResource(R.string.syncing)
-                                            account.lastSyncError != null -> account.lastSyncError
-                                            account.lastSyncEpochMs > 0 ->
-                                                stringResource(R.string.last_synced, formatTime(LocalContext.current, account.lastSyncEpochMs))
-                                            else -> stringResource(R.string.never_synced)
-                                        },
-                                    )
-                                }
-                            },
-                            leadingContent = {
-                                (provider?.icon ?: { IconProvider() })()
-                            },
-                            trailingContent = {
-                                if (isSyncing) {
-                                    CircularProgressIndicator(Modifier.size(24.dp))
-                                } else {
-                                    IconButton(onClick = { viewModel.syncNow(account.accountName) }) {
-                                        IconRefresh()
-                                    }
-                                }
-                            },
-                        )
+                },
+            ),
+            actions = actions,
+        )
+    }
+}
+
+/**
+ * The accounts list, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AccountsScreen(state: AccountsUiState, actions: AccountsActions) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.accounts_title)) },
+                actions = {
+                    IconButton(onClick = { actions.openSettings() }) {
+                        IconSettings()
                     }
+                },
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { actions.openAddAccount() }) {
+                IconAdd()
+            }
+        },
+    ) { padding ->
+        if (state.accounts.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text(
+                    stringResource(R.string.no_accounts),
+                    Modifier.padding(32.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            LazyColumn(Modifier.padding(padding)) {
+                items(state.accounts, key = { it.accountName }) { account ->
+                    val provider = ProviderRegistry.get(account.providerId)
+                    ListItem(
+                        modifier = Modifier.clickable { actions.openAccount(account.accountName) },
+                        content = { Text(account.accountName) },
+                        supportingContent = {
+                            Column {
+                                Text(provider?.displayName ?: account.providerId)
+                                Text(
+                                    when {
+                                        account.syncing -> stringResource(R.string.syncing)
+                                        account.lastSyncError != null -> account.lastSyncError
+                                        account.lastSyncedAt != null ->
+                                            stringResource(R.string.last_synced, account.lastSyncedAt)
+                                        else -> stringResource(R.string.never_synced)
+                                    },
+                                )
+                            }
+                        },
+                        leadingContent = {
+                            (provider?.icon ?: { IconProvider() })()
+                        },
+                        trailingContent = {
+                            if (account.syncing) {
+                                CircularProgressIndicator(Modifier.size(24.dp))
+                            } else {
+                                IconButton(onClick = { actions.syncNow(account.accountName) }) {
+                                    IconRefresh()
+                                }
+                            }
+                        },
+                    )
                 }
             }
         }

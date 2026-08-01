@@ -31,7 +31,9 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.clock.R
 import com.vayunmathur.clock.Route
 import com.vayunmathur.clock.mainPages
+import com.vayunmathur.clock.util.ClockUiState
 import com.vayunmathur.clock.util.ClockViewModel
+import com.vayunmathur.clock.util.WorldClock
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.DataStoreUtils
@@ -46,14 +48,36 @@ import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ClockViewModel] to the stateless [ClockScreen]. */
 @Composable
 fun ClockPage(backStack: NavBackStack<Route>, ds: DataStoreUtils, clockViewModel: ClockViewModel) {
     val context = LocalContext.current
     val now by clockViewModel.now.collectAsState()
     val cities by clockViewModel.cities.collectAsState()
-    val time = now.toLocalDateTime(TimeZone.currentSystemDefault())
     val timeZones by ds.stringSetFlow("time_zones").collectAsState(setOf())
+
+    ClockScreen(
+        backStack = backStack,
+        state = ClockUiState(
+            now = now,
+            zone = TimeZone.currentSystemDefault(),
+            is24Hour = DateFormat.is24HourFormat(context),
+            // A saved city with no entry in the city -> zone map is dropped, as before.
+            worldClocks = timeZones.toList().mapNotNull { city ->
+                cities?.get(city)?.let { WorldClock(city, TimeZone.of(it)) }
+            },
+        ),
+    )
+}
+
+/**
+ * The clock tab, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ClockScreen(backStack: NavBackStack<Route>, state: ClockUiState) {
+    val time = state.now.toLocalDateTime(state.zone)
     Scaffold(topBar = {
         TopAppBar({Text(stringResource(R.string.label_clock))})
     }, bottomBar = {
@@ -65,7 +89,7 @@ fun ClockPage(backStack: NavBackStack<Route>, ds: DataStoreUtils, clockViewModel
     }) { paddingValues ->
         LazyColumn(Modifier.fillMaxWidth(), contentPadding = paddingValues, verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             item {
-                val is24h = DateFormat.is24HourFormat(context)
+                val is24h = state.is24Hour
                 val timeFormat = LocalTime.Format {
                     if (is24h) hour(Padding.ZERO) else amPmHour(Padding.NONE)
                     chars(":")
@@ -93,12 +117,11 @@ fun ClockPage(backStack: NavBackStack<Route>, ds: DataStoreUtils, clockViewModel
                     day(Padding.NONE)
                 }))
             }
-            items(timeZones.toList()) {city ->
-                val it = cities?.get(city) ?: return@items
-                val timeHere = now.toLocalDateTime(TimeZone.of(it))
+            items(state.worldClocks) { worldClock ->
+                val timeHere = state.now.toLocalDateTime(worldClock.zone)
                 val amPm = if(timeHere.time.hour >= 12) stringResource(R.string.time_pm) else stringResource(R.string.time_am)
                 Card {
-                    ListItem({Text(city)}, trailingContent = {
+                    ListItem({Text(worldClock.city)}, trailingContent = {
                         Text(timeHere.time.format(LocalTime.Format {
                             amPmHour(Padding.NONE)
                             chars(":")

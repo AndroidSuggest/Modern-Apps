@@ -37,6 +37,8 @@ import com.vayunmathur.openassistant.Route
 import com.vayunmathur.openassistant.data.Conversation
 import com.vayunmathur.openassistant.data.Message
 import com.vayunmathur.openassistant.util.AssistantViewModel
+import com.vayunmathur.openassistant.util.ChatActions
+import com.vayunmathur.openassistant.util.ChatUiState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +60,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/**
+ * Binds [AssistantViewModel] and the nav back stack to the stateless [ChatScreen]. The
+ * conversation drawer stays here: it is chrome around the chat rather than part of it, and
+ * it needs the adaptive window info.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiteRTChatUi(
@@ -74,15 +81,10 @@ fun LiteRTChatUi(
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val listState = rememberLazyListState()
 
     var inputText by remember { mutableStateOf("") }
     val selectedImageUris = remember { mutableStateListOf<Uri>() }
     val selectedImageFiles = remember { mutableStateListOf<File>() }
-
-    LaunchedEffect(filteredMessages.size) {
-        if (filteredMessages.isNotEmpty()) listState.animateScrollToItem(filteredMessages.size - 1)
-    }
 
     val recordAudioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) {
@@ -121,6 +123,56 @@ fun LiteRTChatUi(
         }
     }
 
+    val actions = object : ChatActions {
+        override fun setInputText(text: String) { inputText = text }
+
+        override fun openConversations() { scope.launch { drawerState.open() } }
+
+        override fun openSettings() { backStack.add(Route.SettingsPage) }
+
+        override fun newConversation() { backStack.reset(Route.ConversationPage(0)) }
+
+        override fun addImage() { imagePicker.launch("image/*") }
+
+        override fun removeImage(uri: Uri) {
+            val idx = selectedImageUris.indexOf(uri)
+            if (idx != -1) {
+                selectedImageUris.removeAt(idx)
+                if (idx < selectedImageFiles.size) selectedImageFiles.removeAt(idx)
+            }
+        }
+
+        override fun record() {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                assistantViewModel.startRecording()
+            } else recordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+
+        override fun cancelMedia() {
+            selectedImageUris.clear(); selectedImageFiles.clear()
+            assistantViewModel.cancelRecording()
+        }
+
+        override fun send() {
+            if (isRecording) assistantViewModel.stopRecording()
+            val newConv = resources.getString(R.string.new_conversation)
+            val imagePaths = selectedImageFiles.map { it.absolutePath }
+            val audioPath = recordedAudioPath
+            val textToSend = inputText
+            scope.launch {
+                var currentId = conversationId
+                if (currentId == 0L) {
+                    currentId = assistantViewModel.upsertConversation(Conversation(newConv))
+                    backStack.reset(Route.ConversationPage(currentId))
+                }
+                assistantViewModel.upsertMessage(Message(currentId, textToSend, "user", imagePaths, audioPath != null))
+                assistantViewModel.requestInference(currentId, textToSend, imagePaths, audioPath)
+                inputText = ""; selectedImageFiles.clear(); selectedImageUris.clear()
+                assistantViewModel.consumeRecordedAudio()
+            }
+        }
+    }
+
     NavigationSuiteScaffold(layoutType = navType, navigationSuiteItems = {
         allConversations.forEach { item(it.id == conversationId, { backStack.reset(Route.ConversationPage(it.id)) }, {}, label = { Text(it.title, Modifier.fillMaxWidth()) }, badge = {
             IconButton({ assistantViewModel.deleteConversation(it) }) {
@@ -137,69 +189,71 @@ fun LiteRTChatUi(
                 }) }
             }
         }, drawerState = drawerState) {
-            Scaffold(
-                snackbarHost = { SnackbarHost(snackbarHostState) },
-                topBar = {
-                    val newConv = stringResource(R.string.new_conversation)
-                    CenterAlignedTopAppBar(
-                        title = { Text(activeConversation?.title ?: newConv, fontWeight = FontWeight.Bold) },
-                        actions = {
-                            IconButton({ backStack.add(Route.SettingsPage) }) { IconSettings() }
-                            if (conversationId != 0L) IconButton({ backStack.reset(Route.ConversationPage(0)) }) { IconAdd() }
-                        },
-                        navigationIcon = { if (navType == NavigationSuiteType.None && allConversations.isNotEmpty()) IconButton({ scope.launch { drawerState.open() } }) { IconMenu() } }
-                    )
+            ChatScreen(
+                state = ChatUiState(
+                    title = activeConversation?.title,
+                    messages = filteredMessages,
+                    inputText = inputText,
+                    attachments = selectedImageUris,
+                    isRecording = isRecording,
+                    showConversationsButton = navType == NavigationSuiteType.None && allConversations.isNotEmpty(),
+                    showNewChatButton = conversationId != 0L,
+                ),
+                actions = actions,
+                snackbarHostState = snackbarHostState,
+            )
+        }
+    }
+}
+
+/**
+ * The chat itself, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatScreen(
+    state: ChatUiState,
+    actions: ChatActions,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.size - 1)
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            val newConv = stringResource(R.string.new_conversation)
+            CenterAlignedTopAppBar(
+                title = { Text(state.title ?: newConv, fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton({ actions.openSettings() }) { IconSettings() }
+                    if (state.showNewChatButton) IconButton({ actions.newConversation() }) { IconAdd() }
                 },
-                bottomBar = {
-                    ChatInput(
-                        Modifier.padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
-                        inputText = inputText,
-                        onTextChange = { inputText = it },
-                        selectedImageUris = selectedImageUris,
-                        isRecording = isRecording,
-                        onAddImage = { imagePicker.launch("image/*") },
-                        onRecord = {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                assistantViewModel.startRecording()
-                            } else recordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
-                        },
-                        onSend = {
-                            if (isRecording) assistantViewModel.stopRecording()
-                            val newConv = resources.getString(R.string.new_conversation)
-                            val imagePaths = selectedImageFiles.map { it.absolutePath }
-                            val audioPath = recordedAudioPath
-                            val textToSend = inputText
-                            scope.launch {
-                                var currentId = conversationId
-                                if (currentId == 0L) {
-                                    currentId = assistantViewModel.upsertConversation(Conversation(newConv))
-                                    backStack.reset(Route.ConversationPage(currentId))
-                                }
-                                assistantViewModel.upsertMessage(Message(currentId, textToSend, "user", imagePaths, audioPath != null))
-                                assistantViewModel.requestInference(currentId, textToSend, imagePaths, audioPath)
-                                inputText = ""; selectedImageFiles.clear(); selectedImageUris.clear()
-                                assistantViewModel.consumeRecordedAudio()
-                            }
-                        },
-                        onCancelMedia = {
-                            selectedImageUris.clear(); selectedImageFiles.clear()
-                            assistantViewModel.cancelRecording()
-                        },
-                        onRemoveImage = { uri ->
-                            val idx = selectedImageUris.indexOf(uri)
-                            if (idx != -1) {
-                                selectedImageUris.removeAt(idx)
-                                if (idx < selectedImageFiles.size) selectedImageFiles.removeAt(idx)
-                            }
-                        }
-                    )
-                }
-            ) { padding ->
-                SelectionContainer {
-                    LazyColumn(state = listState, modifier = Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        items(filteredMessages, key = { it.id }) { ChatBubble(it) }
-                    }
-                }
+                navigationIcon = { if (state.showConversationsButton) IconButton({ actions.openConversations() }) { IconMenu() } }
+            )
+        },
+        bottomBar = {
+            ChatInput(
+                Modifier.padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
+                inputText = state.inputText,
+                onTextChange = { actions.setInputText(it) },
+                selectedImageUris = state.attachments,
+                isRecording = state.isRecording,
+                onAddImage = { actions.addImage() },
+                onRecord = { actions.record() },
+                onSend = { actions.send() },
+                onCancelMedia = { actions.cancelMedia() },
+                onRemoveImage = { actions.removeImage(it) }
+            )
+        }
+    ) { padding ->
+        SelectionContainer {
+            LazyColumn(state = listState, modifier = Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(state.messages, key = { it.id }) { ChatBubble(it) }
             }
         }
     }

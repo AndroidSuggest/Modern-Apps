@@ -4,8 +4,10 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.text.format.Formatter
 import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -63,6 +65,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.image.ImageRequest
@@ -72,6 +75,9 @@ import com.vayunmathur.youpipe.util.DownloadManager
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.findActivity
+import com.vayunmathur.youpipe.util.VideoDetailActions
+import com.vayunmathur.youpipe.util.VideoDetailUiState
+import com.vayunmathur.youpipe.util.VideoRowState
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 import com.vayunmathur.youpipe.util.decodeHtml
 import kotlinx.coroutines.launch
@@ -120,12 +126,17 @@ fun LockScreenOrientation(orientation: Int) {
     }
 }
 
+/**
+ * Binder for the video screen: loads the video, owns the fullscreen/PiP window plumbing and
+ * the player itself, and hands everything else to [VideoDetailScreen] as plain values.
+ */
 @Composable
 fun VideoPage(
     backStack: NavBackStack<Route>,
     ypvm: YouPipeViewModel,
     videoID: Long,
 ) {
+    val context = LocalContext.current
     val downloadedFlow = remember(videoID) { ypvm.downloadedById(videoID) }
     val downloadedVideo by downloadedFlow.collectAsState(initial = null)
     val videoState by ypvm.videoState.collectAsState()
@@ -196,19 +207,107 @@ fun VideoPage(
         LockScreenOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE)
     }
 
-    Scaffold { paddingValues ->
-        val modifier = if(isFullscreen) Modifier.padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding()) else Modifier.padding(paddingValues)
-        Column(modifier) {
-            videoData?.let { videoData ->
-                if (videoStreams.isNotEmpty()) {
-                    VideoPlayer(ypvm, VideoInfo(videoData.title, videoID, videoData.duration, videoData.views, videoData.uploadDate, videoData.thumbnailURL, videoData.author), videoStreams, audioStreams, subtitles, segments, isFullscreen) {
-                        isFullscreen = it
-                    }
-                }
-                VideoDetails(backStack, ypvm, videoData, videoID, videoStreams, audioStreams)
+    val activeDownloads by DownloadManager.activeDownloads.collectAsState()
+    val history by ypvm.historyVideos.collectAsState()
+    val progressById = remember(history) { history.associate { it.id to it.progress } }
 
-                if(!isFullscreen) {
-                    val pagerState = rememberPagerState(pageCount = { 3 })
+    VideoDetailScreen(
+        state = VideoDetailUiState(
+            loaded = videoData != null,
+            title = videoData?.title.orEmpty(),
+            byline = videoData?.let {
+                context.getString(
+                    R.string.video_info_format,
+                    it.author,
+                    countString(context, it.views),
+                    uploadTimeAgo(context, it.uploadDate),
+                )
+            }.orEmpty(),
+            authorThumbnailURL = videoData?.authorThumbnail.orEmpty(),
+            authorURL = videoData?.authorURL.orEmpty(),
+            description = videoData?.description.orEmpty(),
+            comments = comments,
+            relatedVideos = relatedVideos.map { related ->
+                val relatedDeArrow = if (deArrowEnabled) deArrowCache[related.videoID] else null
+                val watched = progressById[related.videoID] ?: 0L
+                videoRowState(
+                    context = context,
+                    videoInfo = related,
+                    showAuthor = true,
+                    percentWatched = if (related.duration > 0) (watched.toDouble() / related.duration).toFloat() else 0f,
+                    deArrowTitle = relatedDeArrow?.title,
+                    deArrowThumbnailURL = relatedDeArrow?.thumbnailUrl,
+                )
+            },
+            videoStreams = videoStreams,
+            audioStreams = audioStreams,
+            downloaded = downloadedVideo != null,
+            downloadProgress = activeDownloads[videoID]?.progress?.toFloat(),
+        ),
+        actions = object : VideoDetailActions {
+            override fun openChannel() {
+                videoData?.let { backStack.add(Route.ChannelPage(it.authorURL)) }
+            }
+
+            override fun openVideo(videoID: Long) {
+                backStack.add(Route.VideoPage(videoID))
+            }
+
+            override fun download(videoUrl: String, audioUrl: String?) {
+                val data = videoData ?: return
+                DownloadManager.enqueueDownload(
+                    context,
+                    VideoInfo(data.title, videoID, data.duration, data.views, data.uploadDate, data.thumbnailURL, data.author),
+                    videoUrl,
+                    audioUrl,
+                )
+            }
+
+            override fun cancelDownload() {
+                DownloadManager.cancelDownload(context, videoID)
+            }
+
+            override fun deleteDownload() {
+                downloadedVideo?.let { ypvm.deleteDownloadedVideo(it) }
+            }
+        },
+        fullscreen = isFullscreen,
+    ) {
+        videoData?.let { data ->
+            if (videoStreams.isNotEmpty()) {
+                VideoPlayer(ypvm, VideoInfo(data.title, videoID, data.duration, data.views, data.uploadDate, data.thumbnailURL, data.author), videoStreams, audioStreams, subtitles, segments, isFullscreen) {
+                    isFullscreen = it
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The video screen with the player supplied as a slot.
+ *
+ * Stateless, so the store listing preview can render it — which is also why the player is a
+ * slot rather than a call: Layoutlib cannot draw an ExoPlayer surface, so a preview simply
+ * leaves it out.
+ */
+@Composable
+fun VideoDetailScreen(
+    state: VideoDetailUiState,
+    actions: VideoDetailActions,
+    fullscreen: Boolean = false,
+    /** Which of comments / related / description opens first. A seam for the previews. */
+    initialTab: Int = 0,
+    player: @Composable () -> Unit = {},
+) {
+    Scaffold { paddingValues ->
+        val modifier = if(fullscreen) Modifier.padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding()) else Modifier.padding(paddingValues)
+        Column(modifier) {
+            if (state.loaded) {
+                player()
+                VideoDetails(state, actions)
+
+                if(!fullscreen) {
+                    val pagerState = rememberPagerState(initialPage = initialTab, pageCount = { 3 })
                     val coroutineScope = rememberCoroutineScope()
 
                     val tabLabels = listOf(R.string.label_comments, R.string.label_related_videos, R.string.label_description)
@@ -231,9 +330,9 @@ fun VideoPage(
                             verticalAlignment = Alignment.Top // Ensures content starts at top
                         ) { page ->
                             when (page) {
-                                0 -> CommentsSection(comments)
-                                1 -> RelatedVideosSection(backStack, ypvm, relatedVideos)
-                                2 -> DescriptionSection(videoData.description)
+                                0 -> CommentsSection(state.comments)
+                                1 -> RelatedVideosSection(state.relatedVideos, actions::openVideo)
+                                2 -> DescriptionSection(state.description)
                             }
                         }
                     }
@@ -246,22 +345,15 @@ fun VideoPage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VideoDetails(
-    backStack: NavBackStack<Route>,
-    ypvm: YouPipeViewModel,
-    videoData: VideoData,
-    videoID: Long,
-    videoStreams: List<VideoStream>,
-    audioStreams: List<AudioStream>
+    state: VideoDetailUiState,
+    actions: VideoDetailActions,
 ) {
-    val context = LocalContext.current
-    val downloadedFlow = remember(videoID) { ypvm.downloadedById(videoID) }
-    val downloadedVideo by downloadedFlow.collectAsState(initial = null)
-    val activeDownloads by DownloadManager.activeDownloads.collectAsState()
-    val downloadProgress = activeDownloads[videoID]?.progress
-
     var isDownloadDialogVisible by remember { mutableStateOf(false) }
 
     if (isDownloadDialogVisible) {
+        val context = LocalContext.current
+        val videoStreams = state.videoStreams
+        val audioStreams = state.audioStreams
         var selectedVideoStream by remember { mutableStateOf(videoStreams.maxByOrNull { it.height } ?: videoStreams.first()) }
         // Always highest quality opus for selected language in download as well
         var selectedAudioStream by remember { mutableStateOf(audioStreams.maxByOrNull { it.bitrate }) }
@@ -352,8 +444,7 @@ fun VideoDetails(
                         TextButton(onClick = { isDownloadDialogVisible = false }) { Text(stringResource(R.string.cancel)) }
                         TextButton(onClick = {
                             isDownloadDialogVisible = false
-                            val videoInfo = VideoInfo(videoData.title, videoID, videoData.duration, videoData.views, videoData.uploadDate, videoData.thumbnailURL, videoData.author)
-                            DownloadManager.enqueueDownload(context, videoInfo, selectedVideoStream.url, selectedAudioStream?.url)
+                            actions.download(selectedVideoStream.url, selectedAudioStream?.url)
                         }) { Text(stringResource(R.string.download)) }
                     }
                 }
@@ -363,47 +454,53 @@ fun VideoDetails(
 
     Column {
         ListItem(modifier = Modifier, overlineContent = {}, supportingContent = {
-            Text(stringResource(R.string.video_info_format, videoData.author, countString(context, videoData.views), uploadTimeAgo(context, videoData.uploadDate)))
+            Text(state.byline)
         }, leadingContent = {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(videoData.authorThumbnail)
-                    .memoryCacheKey("author-thumb-${videoData.authorURL}")
-                    .build(),
-                contentDescription = null,
-                Modifier.size(32.dp).clip(CircleShape).clickable{
-                    backStack.add(Route.ChannelPage(videoData.authorURL))
+            // Block behind the avatar: the placeholder while it loads, and the whole of it
+            // in a preview, where there is no network to load it from.
+            Box(
+                Modifier.size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { actions.openChannel() }
+            ) {
+                if (state.authorThumbnailURL.isNotEmpty()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(state.authorThumbnailURL)
+                            .memoryCacheKey("author-thumb-${state.authorURL}")
+                            .build(),
+                        contentDescription = null,
+                        Modifier.fillMaxSize()
+                    )
                 }
-            )
+            }
         }, trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val downloadProgress = state.downloadProgress
                 if (downloadProgress != null) {
                     CircularProgressIndicator(
-                        progress = { downloadProgress.toFloat() },
+                        progress = { downloadProgress },
                         modifier = Modifier.size(24.dp),
                         strokeWidth = 2.dp
                     )
-                    IconButton(onClick = {
-                        DownloadManager.cancelDownload(context, videoID)
-                    }) {
+                    IconButton(onClick = { actions.cancelDownload() }) {
                         IconClose()
                     }
-                } else if (downloadedVideo == null) {
+                } else if (!state.downloaded) {
                     IconButton(onClick = {
                         isDownloadDialogVisible = true
                     }) {
                         IconDownload()
                     }
                 } else {
-                    IconButton(onClick = {
-                        ypvm.deleteDownloadedVideo(downloadedVideo!!)
-                    }) {
+                    IconButton(onClick = { actions.deleteDownload() }) {
                         IconDelete(tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }) {
-            Text(videoData.title, style = MaterialTheme.typography.titleMedium)
+            Text(state.title, style = MaterialTheme.typography.titleMedium)
         }
     }
 }
@@ -418,10 +515,10 @@ fun DescriptionSection(description: String) {
 }
 
 @Composable
-fun RelatedVideosSection(backStack: NavBackStack<Route>, ypvm: YouPipeViewModel, relatedVideos: List<VideoInfo>) {
+fun RelatedVideosSection(relatedVideos: List<VideoRowState>, onOpenVideo: (Long) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(relatedVideos, { it.videoID }) {
-            VideoItem(backStack, ypvm, it, true)
+        items(relatedVideos, { it.videoID }) { row ->
+            VideoRow(row, Modifier.invisibleClickable { onOpenVideo(row.videoID) })
         }
     }
 }

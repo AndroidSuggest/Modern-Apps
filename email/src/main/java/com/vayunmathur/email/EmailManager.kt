@@ -56,6 +56,10 @@ class EmailManager {
             is AuthType.OAuth -> token
         }
 
+    // Email must allow any cert because users can configure arbitrary self-hosted
+    // IMAP/SMTP servers (often with self-signed or private CA). We therefore
+    // trust all hosts via ssl.trust=* and skip cert verification both for
+    // implicit SSL and STARTTLS paths.
     private fun getImapSession(server: ServerConfig, oauth: Boolean = false): Session {
         val proto = server.imapProtocol
         val properties = Properties().apply {
@@ -69,11 +73,16 @@ class EmailManager {
                 this["mail.$proto.auth.login.disable"] = "true"
                 this["mail.$proto.auth.plain.disable"] = "true"
             }
-            if (server.useSsl) this["mail.$proto.ssl.enable"] = "true"
-            else {
+            if (server.useSsl) {
+                this["mail.$proto.ssl.enable"] = "true"
+                this["mail.$proto.ssl.trust"] = "*"
+            } else {
                 this["mail.$proto.starttls.enable"] = "true"
                 this["mail.$proto.starttls.required"] = "true"
+                this["mail.$proto.ssl.trust"] = "*"
             }
+            // Permissive trust for custom user-supplied servers
+            this["mail.$proto.ssl.checkserveridentity"] = "false"
         }
         return Session.getInstance(properties)
     }
@@ -90,11 +99,15 @@ class EmailManager {
                 this["mail.$proto.auth.login.disable"] = "true"
                 this["mail.$proto.auth.plain.disable"] = "true"
             }
-            if (server.useSsl) this["mail.$proto.ssl.enable"] = "true"
-            else {
+            if (server.useSsl) {
+                this["mail.$proto.ssl.enable"] = "true"
+                this["mail.$proto.ssl.trust"] = "*"
+            } else {
                 this["mail.$proto.starttls.enable"] = "true"
                 this["mail.$proto.starttls.required"] = "true"
+                this["mail.$proto.ssl.trust"] = "*"
             }
+            this["mail.$proto.ssl.checkserveridentity"] = "false"
         }
         return Session.getInstance(properties)
     }

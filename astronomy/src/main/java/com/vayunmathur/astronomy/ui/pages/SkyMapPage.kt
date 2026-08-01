@@ -10,11 +10,14 @@ import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.domain.projection.ViewState
 import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.astronomy.ui.ConstellationMode
+import com.vayunmathur.astronomy.ui.SkyMapActions
+import com.vayunmathur.astronomy.ui.SkyMapUiState
 import com.vayunmathur.astronomy.ui.components.CameraBackground
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.ResultEffect
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import kotlin.time.ExperimentalTime
 import androidx.compose.ui.res.stringResource
 
@@ -29,6 +32,8 @@ private val AstronomyHistorySteps = listOf(
     HistoryStep("+1d", 86_400L),
 )
 
+/** Binds [AstronomyViewModel] to the stateless [SkyMapScreen]. */
+@OptIn(ExperimentalTime::class)
 @Composable
 fun SkyMapPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
     val visibleSky by viewModel.visibleSky.collectAsState()
@@ -42,23 +47,59 @@ fun SkyMapPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
     val deviceOrient by viewModel.deviceOrientation.collectAsState()
     val trajectory by viewModel.trajectory.collectAsState()
     val selectedId by viewModel.selectedObjectId.collectAsState()
+    val viewCenter by viewModel.viewCenter.collectAsState()
+    val simTime by viewModel.simTime.collectAsState()
+    val isLive by viewModel.isLive.collectAsState()
 
+    val (centerAz, centerAlt) = remember(viewCenter, deviceOrient) { viewModel.resolveCenter() }
+    val rotation = remember(viewCenter, deviceOrient) { viewModel.resolveRotation() }
+
+    SkyMapScreen(
+        backStack = backStack,
+        state = SkyMapUiState(
+            visibleSky = visibleSky,
+            simTime = simTime,
+            timeZone = TimeZone.currentSystemDefault(),
+            isLive = isLive,
+            fovDeg = fov,
+            centerAzRad = centerAz,
+            centerAltRad = centerAlt,
+            rotationRad = rotation,
+            constellationMode = constMode,
+            showGrid = showGrid,
+            showDeepSky = showDeep,
+            showPlanets = showPlanets,
+            nightMode = nightMode,
+            trajectory = trajectory,
+            selectedObjectId = selectedId,
+        ),
+        actions = viewModel,
+    )
+}
+
+/**
+ * The sky map, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun SkyMapScreen(
+    backStack: NavBackStack<Route>,
+    state: SkyMapUiState,
+    actions: SkyMapActions,
+    /**
+     * Seed for the screen's own UI-only state (whether the camera AR overlay is up). The
+     * app always takes the default; a preview can set it to capture that mode directly.
+     */
+    initialCameraOn: Boolean = false,
+) {
     var screenW by remember { mutableFloatStateOf(1080f) }
     var screenH by remember { mutableFloatStateOf(1920f) }
     // Camera feed replaces the sky background in place (AR overlay) instead of a
     // separate page.
-    var cameraOn by remember { mutableStateOf(false) }
+    var cameraOn by remember { mutableStateOf(initialCameraOn) }
 
-    val centerPair = remember(viewModel.viewCenter.collectAsState().value, deviceOrient) {
-        viewModel.resolveCenter()
-    }
-    val (centerAz, centerAlt) = centerPair
-    val rotation = remember(viewModel.viewCenter.collectAsState().value, deviceOrient) {
-        viewModel.resolveRotation()
-    }
-
-    val viewState = remember(centerAz, centerAlt, rotation, fov, screenW, screenH) {
-        ViewState(centerAz, centerAlt, fov, screenW, screenH, rotation)
+    val viewState = remember(state.centerAzRad, state.centerAltRad, state.rotationRad, state.fovDeg, screenW, screenH) {
+        ViewState(state.centerAzRad, state.centerAltRad, state.fovDeg, screenW, screenH, state.rotationRad)
     }
 
     Scaffold(
@@ -84,27 +125,27 @@ fun SkyMapPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
             }
 
             SkyCanvas(
-                visibleSky = visibleSky,
+                visibleSky = state.visibleSky,
                 viewState = viewState,
-                showConstellationLines = constMode != ConstellationMode.OFF,
-                showConstellationArt = constMode == ConstellationMode.LINES_AND_ART,
-                showGrid = showGrid,
-                showDeepSky = showDeep,
-                showPlanets = showPlanets,
+                showConstellationLines = state.constellationMode != ConstellationMode.OFF,
+                showConstellationArt = state.constellationMode == ConstellationMode.LINES_AND_ART,
+                showGrid = state.showGrid,
+                showDeepSky = state.showDeepSky,
+                showPlanets = state.showPlanets,
                 transparentBackground = cameraOn,
-                trajectory = trajectory,
-                selectedId = selectedId,
+                trajectory = state.trajectory,
+                selectedId = state.selectedObjectId,
                 onPan = { _, _ -> /* disabled – always tracks phone */ },
-                onZoom = { viewModel.setFov(it) },
+                onZoom = { actions.setFov(it) },
                 onTap = { _ -> },
-                onObjectTap = { id -> viewModel.selectObject(id) },
-                onObjectOpen = { id -> viewModel.selectObject(id); backStack.add(Route.ObjectDetail(id)) },
+                onObjectTap = { id -> actions.selectObject(id) },
+                onObjectOpen = { id -> actions.selectObject(id); backStack.add(Route.ObjectDetail(id)) },
                 modifier = Modifier.fillMaxSize()
             )
 
-            HistoryScrubber(backStack, viewModel)
+            HistoryScrubber(backStack, state, actions)
 
-            if (nightMode) {
+            if (state.nightMode) {
                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x44FF0000)))
             }
         }
@@ -119,21 +160,26 @@ fun SkyMapPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
  */
 @OptIn(ExperimentalTime::class)
 @Composable
-private fun BoxScope.HistoryScrubber(backStack: NavBackStack<Route>, viewModel: AstronomyViewModel) {
-    val state = rememberHistoryScrubberState(
-        initialInstant = viewModel.simTime.value,
-        initialNowMode = viewModel.isLive.value
+private fun BoxScope.HistoryScrubber(
+    backStack: NavBackStack<Route>,
+    state: SkyMapUiState,
+    actions: SkyMapActions,
+) {
+    val scrubber = rememberHistoryScrubberState(
+        initialInstant = state.simTime,
+        initialNowMode = state.isLive,
+        timeZone = state.timeZone
     )
 
-    LaunchedEffect(state.instant, state.nowMode) {
-        viewModel.setTime(state.instant, live = state.nowMode)
+    LaunchedEffect(scrubber.instant, scrubber.nowMode) {
+        actions.setTime(scrubber.instant, live = scrubber.nowMode)
     }
 
     HistoryScrubberCard(
-        state = state,
+        state = scrubber,
         steps = AstronomyHistorySteps,
-        onDateChipClick = { backStack.add(Route.HistoryDatePicker(state.date)) }
+        onDateChipClick = { backStack.add(Route.HistoryDatePicker(scrubber.date)) }
     )
 
-    ResultEffect<LocalDate>("AstroHistoryDatePicker") { state.setDate(it) }
+    ResultEffect<LocalDate>("AstroHistoryDatePicker") { scrubber.setDate(it) }
 }

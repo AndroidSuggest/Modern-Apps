@@ -43,7 +43,7 @@ data class UnblockJamUiState(
  * dialog visibility, and the slide-out animation for the main block when
  * a level is won.
  */
-class UnblockJamViewModel(application: Application) : AndroidViewModel(application) {
+class UnblockJamViewModel(application: Application) : AndroidViewModel(application), GameActions {
 
     val repository: CompletedLevelsRepository = CompletedLevelsRepository(application)
 
@@ -93,7 +93,7 @@ class UnblockJamViewModel(application: Application) : AndroidViewModel(applicati
         return s.history.size + winningMoveIncrement
     }
 
-    fun onBlockMoved(newLevelData: LevelData) {
+    override fun onBlockMoved(newLevelData: LevelData) {
         val s = _uiState.value
         val current = s.currentLevelData ?: return
         // Block moved back to its previous position — collapse with last history entry.
@@ -126,7 +126,7 @@ class UnblockJamViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun onLevelWon() {
+    override fun onLevelWon() {
         val s = _uiState.value
         if (s.isLevelWon || s.packIndex < 0) return
         _uiState.update { it.copy(isLevelWon = true) }
@@ -153,7 +153,7 @@ class UnblockJamViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun onUndo() {
+    override fun onUndo() {
         val s = _uiState.value
         if (s.history.isEmpty() || s.isLevelWon) return
         _uiState.update {
@@ -170,7 +170,7 @@ class UnblockJamViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun onRestart() {
+    override fun onRestart() {
         val s = _uiState.value
         if (s.history.isEmpty() || s.isLevelWon || s.packIndex < 0) return
         val pack = LevelPack.PACKS[s.packIndex]

@@ -84,6 +84,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import com.vayunmathur.files.util.FileBrowserItem
+import com.vayunmathur.files.util.FilesActions
+import com.vayunmathur.files.util.FilesUiState
 import com.vayunmathur.files.util.FilesViewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconArchive
@@ -245,7 +247,7 @@ fun dropTarget(
     override fun onEnded(event: DragAndDropEvent) { onDragStateChange(false) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [FilesViewModel] to the stateless [DirectoryScreen]. */
 @Composable
 fun DirectoryPage(viewModel: FilesViewModel) {
     val context = LocalContext.current
@@ -258,12 +260,6 @@ fun DirectoryPage(viewModel: FilesViewModel) {
     val selectedPaths by viewModel.selectedPaths.collectAsState()
     val entries by viewModel.entries.collectAsState()
     val incomingUris by viewModel.incomingUris.collectAsState()
-
-    val isReadOnly = zipPath != null
-
-    var pathBeingRenamed by remember { mutableStateOf<FileBrowserItem?>(null) }
-    var showArchiveDialog by remember { mutableStateOf(false) }
-    var archiveName by remember { mutableStateOf("archive.zip") }
 
     LaunchedEffect(snackbarHostState) {
         viewModel.snackbarMessages.collect { message ->
@@ -281,8 +277,67 @@ fun DirectoryPage(viewModel: FilesViewModel) {
         }
     }
 
-    LaunchedEffect(selectedPaths) {
-        if (selectedPaths.isEmpty()) pathBeingRenamed = null
+    val zipToUnzip = remember(selectedPaths) {
+        selectedPaths.singleOrNull()?.takeIf {
+            !it.isDirectory && it.realFile != null && it.name.endsWith(".zip", ignoreCase = true)
+        }
+    }
+
+    // The "unzip here" folder picker needs an Activity, so it is launched from here rather
+    // than from the screen.
+    val treeLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null && zipToUnzip != null) {
+                val path = uri.path?.split(":")?.lastOrNull()?.let {
+                    File(Environment.getExternalStorageDirectory(), it)
+                } ?: currentDirectory
+                viewModel.unzip(zipToUnzip, path)
+            }
+        }
+
+    val (directories, files) = entries
+
+    DirectoryScreen(
+        state = FilesUiState(
+            rootDirectory = viewModel.rootDirectory,
+            rootDisplayName = Build.MODEL,
+            currentDirectory = currentDirectory,
+            zipPath = zipPath,
+            zipInternalPath = zipInternalPath,
+            directories = directories,
+            files = files,
+            selectedPaths = selectedPaths,
+            hasIncomingUris = incomingUris != null,
+        ),
+        actions = viewModel,
+        snackbarHostState = snackbarHostState,
+        onPickUnzipDestination = { treeLauncher.launch(null) },
+    )
+}
+
+/**
+ * The directory browser, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DirectoryScreen(
+    state: FilesUiState,
+    actions: FilesActions,
+    /** Owned by the binder, which is where the ViewModel's messages arrive. */
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    /** Opens the system folder picker for "unzip here"; needs an Activity. */
+    onPickUnzipDestination: () -> Unit = {},
+) {
+    val isReadOnly = state.zipPath != null
+    val root = state.rootDirectory
+
+    var pathBeingRenamed by remember { mutableStateOf<FileBrowserItem?>(null) }
+    var showArchiveDialog by remember { mutableStateOf(false) }
+    var archiveName by remember { mutableStateOf("archive.zip") }
+
+    LaunchedEffect(state.selectedPaths) {
+        if (state.selectedPaths.isEmpty()) pathBeingRenamed = null
     }
 
     if (showArchiveDialog) {
@@ -300,7 +355,7 @@ fun DirectoryPage(viewModel: FilesViewModel) {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.archive(archiveName)
+                        actions.archive(archiveName)
                         showArchiveDialog = false
                     }) { Text(stringResource(R.string.archive)) }
             },
@@ -311,43 +366,29 @@ fun DirectoryPage(viewModel: FilesViewModel) {
             })
     }
 
-    val zipToUnzip = remember(selectedPaths) {
-        selectedPaths.singleOrNull()?.takeIf {
+    val zipToUnzip = remember(state.selectedPaths) {
+        state.selectedPaths.singleOrNull()?.takeIf {
             !it.isDirectory && it.realFile != null && it.name.endsWith(".zip", ignoreCase = true)
         }
     }
 
-    val treeLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null && zipToUnzip != null) {
-                val path = uri.path?.split(":")?.lastOrNull()?.let {
-                    File(Environment.getExternalStorageDirectory(), it)
-                } ?: currentDirectory
-                viewModel.unzip(zipToUnzip, path)
-            }
-        }
-
-    val (directories, files) = entries
-
     val focusManager = LocalFocusManager.current
 
-    val root = viewModel.rootDirectory
-
-    val breadcrumbs = remember(currentDirectory, zipPath, zipInternalPath) {
+    val breadcrumbs = remember(state.currentDirectory, state.zipPath, state.zipInternalPath, state.rootDisplayName) {
         val crumbs = mutableListOf<Crumb>()
-        if (zipPath == null) {
-            fileAncestors(currentDirectory, root).forEach { f ->
-                crumbs.add(Crumb(displayName = if (f.absolutePath == root.absolutePath) Build.MODEL else f.name, realFile = f, zipInternalPath = null))
+        val zp = state.zipPath
+        if (zp == null) {
+            fileAncestors(state.currentDirectory, root).forEach { f ->
+                crumbs.add(Crumb(displayName = if (f.absolutePath == root.absolutePath) state.rootDisplayName else f.name, realFile = f, zipInternalPath = null))
             }
         } else {
-            val zp = zipPath!!
             val parent = zp.parentFile ?: root
             fileAncestors(parent, root).forEach { f ->
-                crumbs.add(Crumb(displayName = if (f.absolutePath == root.absolutePath) Build.MODEL else f.name, realFile = f, zipInternalPath = null))
+                crumbs.add(Crumb(displayName = if (f.absolutePath == root.absolutePath) state.rootDisplayName else f.name, realFile = f, zipInternalPath = null))
             }
             crumbs.add(Crumb(displayName = zp.name, realFile = null, zipInternalPath = ""))
             var accum = ""
-            for (seg in zipInternalPath.split("/").filter { it.isNotEmpty() }) {
+            for (seg in state.zipInternalPath.split("/").filter { it.isNotEmpty() }) {
                 accum = if (accum.isEmpty()) seg else "$accum/$seg"
                 crumbs.add(Crumb(displayName = seg, realFile = null, zipInternalPath = accum))
             }
@@ -355,9 +396,9 @@ fun DirectoryPage(viewModel: FilesViewModel) {
         crumbs
     }
 
-    BackHandler(currentDirectory.absolutePath != root.absolutePath || selectedPaths.isNotEmpty() || zipPath != null) {
+    BackHandler(state.currentDirectory.absolutePath != root.absolutePath || state.selectedPaths.isNotEmpty() || state.zipPath != null) {
         pathBeingRenamed = null
-        viewModel.handleBack()
+        actions.handleBack()
     }
 
     Scaffold(
@@ -368,7 +409,7 @@ fun DirectoryPage(viewModel: FilesViewModel) {
             ) {
                 focusManager.clearFocus()
                 pathBeingRenamed = null
-                viewModel.clearSelection()
+                actions.clearSelection()
             }, snackbarHost = { SnackbarHost(snackbarHostState) }, topBar = {
             TopAppBar(title = {
                 Row(
@@ -401,7 +442,7 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                                             target = remember(crumb.realFile!!.absolutePath) {
                                                 dropTarget(
                                                     onDragStateChange = { isBreadcrumbDraggingOver = it },
-                                                    onDrop = { sources -> viewModel.moveToBreadcrumb(sources, crumb.realFile) }
+                                                    onDrop = { sources -> actions.moveToBreadcrumb(sources, crumb.realFile) }
                                                 )
                                             })
                                     } else Modifier
@@ -409,10 +450,10 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                                 .clickable {
                                     val rf = crumb.realFile
                                     if (rf != null) {
-                                        if (zipPath != null) viewModel.navigateToZipParentRealFolder(rf)
-                                        else viewModel.navigateTo(rf)
+                                        if (state.zipPath != null) actions.navigateToZipParentRealFolder(rf)
+                                        else actions.navigateTo(rf)
                                     } else {
-                                        viewModel.navigateToZipInternalPath(crumb.zipInternalPath ?: "")
+                                        actions.navigateToZipInternalPath(crumb.zipInternalPath ?: "")
                                     }
                                 }
                                 .padding(4.dp)) {
@@ -426,46 +467,46 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                     }
                 }
             }, actions = {
-                if (selectedPaths.isNotEmpty()) {
+                if (state.selectedPaths.isNotEmpty()) {
                     IconButton(
-                        onClick = { viewModel.clearSelection() }) { IconClose() }
+                        onClick = { actions.clearSelection() }) { IconClose() }
                 }
-                if (incomingUris != null && !isReadOnly) {
+                if (state.hasIncomingUris && !isReadOnly) {
                     IconButton(
-                        onClick = { viewModel.saveIncomingUris() }) { IconSave() }
+                        onClick = { actions.saveIncomingUris() }) { IconSave() }
                 }
                 if (!isReadOnly) {
-                    if (selectedPaths.isNotEmpty()) {
+                    if (state.selectedPaths.isNotEmpty()) {
                         IconButton(
                             onClick = {
                                 archiveName =
-                                    if (selectedPaths.size == 1) "${selectedPaths.first().name}.zip"
+                                    if (state.selectedPaths.size == 1) "${state.selectedPaths.first().name}.zip"
                                     else "archive.zip"
                                 showArchiveDialog = true
                             }) { IconArchive() }
                     }
                     if (zipToUnzip != null) {
-                        IconButton(onClick = { treeLauncher.launch(null) }) {
+                        IconButton(onClick = onPickUnzipDestination) {
                             IconUnarchive()
                         }
                     }
-                    if (selectedPaths.size == 1) {
+                    if (state.selectedPaths.size == 1) {
                         IconButton(
-                            onClick = { pathBeingRenamed = selectedPaths.first() }) { IconEdit() }
+                            onClick = { pathBeingRenamed = state.selectedPaths.first() }) { IconEdit() }
                     }
-                    if (selectedPaths.isNotEmpty()) {
+                    if (state.selectedPaths.isNotEmpty()) {
                         IconButton(
-                            onClick = { viewModel.deleteSelection() }) { IconDelete() }
+                            onClick = { actions.deleteSelection() }) { IconDelete() }
                     }
                 }
             })
         }) { padding ->
         LazyColumn(Modifier.padding(padding)) {
             val allItems =
-                directories.sortedBy { it.name.lowercase() } + files.sortedBy { it.name.lowercase() }
+                state.directories.sortedBy { it.name.lowercase() } + state.files.sortedBy { it.name.lowercase() }
 
             items(allItems, key = { it.key }) { child ->
-                val isSelected = selectedPaths.any { it.key == child.key }
+                val isSelected = state.selectedPaths.any { it.key == child.key }
                 val isEditing = pathBeingRenamed?.key == child.key
 
                 DirectoryItem(
@@ -475,38 +516,38 @@ fun DirectoryPage(viewModel: FilesViewModel) {
                     isReadOnly = isReadOnly,
                     onRename = { newName ->
                         pathBeingRenamed = null
-                        viewModel.rename(child, newName)
+                        actions.rename(child, newName)
                     },
                     onToggleSelection = {
                         if (isReadOnly) return@DirectoryItem
                         if (pathBeingRenamed != null) pathBeingRenamed = null
                         if (!isSelected) {
-                            viewModel.addToSelection(child)
+                            actions.addToSelection(child)
                         }
                     },
                     onClick = {
-                        if (selectedPaths.isNotEmpty()) {
+                        if (state.selectedPaths.isNotEmpty()) {
                             if (isSelected && pathBeingRenamed?.key == child.key) {
                                 pathBeingRenamed = null
                             }
-                            viewModel.toggleSelection(child)
+                            actions.toggleSelection(child)
                         } else if (child.isDirectory) {
-                            if (child.realFile != null) viewModel.navigateTo(child.realFile)
-                            else viewModel.navigateIntoZipDir(child.name)
+                            if (child.realFile != null) actions.navigateTo(child.realFile)
+                            else actions.navigateIntoZipDir(child.name)
                         } else if (child.name.endsWith(".zip", ignoreCase = true) && child.realFile != null) {
-                            viewModel.openZipFile(child)
+                            actions.openZipFile(child)
                         } else {
-                            viewModel.openFile(child)
+                            actions.openFile(child)
                         }
                     },
                     onMove = { sources ->
                         if (!isReadOnly && child.isDirectory && child.realFile != null) {
-                            viewModel.moveInto(sources, child.realFile)
+                            actions.moveInto(sources, child.realFile)
                         }
                     },
                     onStartDrag = {
                         if (isReadOnly) emptyList()
-                        else if (selectedPaths.any { it.key == child.key }) selectedPaths.mapNotNull { it.realFile }.toList()
+                        else if (state.selectedPaths.any { it.key == child.key }) state.selectedPaths.mapNotNull { it.realFile }.toList()
                         else listOfNotNull(child.realFile)
                     })
                 HorizontalDivider(

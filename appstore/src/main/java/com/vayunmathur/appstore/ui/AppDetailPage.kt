@@ -31,9 +31,14 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.appstore.data.AppSource
+import com.vayunmathur.appstore.data.security.SecurityTier
+import com.vayunmathur.appstore.data.security.VerificationResult
+import com.vayunmathur.appstore.util.AppDetailActions
+import com.vayunmathur.appstore.util.AppDetailUiState
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CenterAlignedTopAppBar
 import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.HorizontalDivider
@@ -52,23 +57,59 @@ import com.vayunmathur.library.ui.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
+/** Binds [AppStoreViewModel] to the stateless [AppDetailScreen]. */
 @Composable
 fun AppDetailPage(
     viewModel: AppStoreViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenTiers: () -> Unit = {},
 ) {
     val app by viewModel.selectedApp.collectAsState()
-    val current = app ?: return
+    val verificationMap by viewModel.verification.collectAsState()
     val installed by viewModel.installedApps.collectAsState()
-    val isInstalled = installed.any { it.packageName == current.packageName }
-    val installedInfo = installed.find { it.packageName == current.packageName }
     val progressMap by viewModel.downloadProgress.collectAsState()
-    val progress = progressMap[current.packageName]
     val icons by viewModel.installedIcons.collectAsState()
-    val installedIcon = icons[current.packageName]
     val syncMessage by viewModel.syncMessage.collectAsState()
+    // "" can never be a real package name, so the lookups below miss harmlessly while
+    // nothing is selected and the screen bails out.
+    val pkg = app?.packageName.orEmpty()
 
-    var showUninstallConfirm by remember { androidx.compose.runtime.mutableStateOf(false) }
+    AppDetailScreen(
+        state = AppDetailUiState(
+            app = app,
+            installedInfo = installed.find { it.packageName == pkg },
+            verification = verificationMap[pkg],
+            progress = progressMap[pkg],
+            installedIcon = icons[pkg],
+            syncMessage = syncMessage,
+        ),
+        actions = viewModel,
+        onBack = onBack,
+        onOpenTiers = onOpenTiers,
+    )
+}
+
+/**
+ * The app detail screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun AppDetailScreen(
+    state: AppDetailUiState,
+    actions: AppDetailActions,
+    onBack: () -> Unit = {},
+    onOpenTiers: () -> Unit = {},
+) {
+    val current = state.app ?: return
+    val tier = SecurityTier.of(current.source)
+    val lastVerification = state.verification
+    val installedInfo = state.installedInfo
+    val isInstalled = installedInfo != null
+    val progress = state.progress
+    val installedIcon = state.installedIcon
+    val syncMessage = state.syncMessage
+
+    var showUninstallConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -115,6 +156,8 @@ fun AppDetailPage(
                     Text(current.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     current.author?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        SecurityTierBadge(tier, onClick = onOpenTiers)
+                        Spacer(Modifier.width(6.dp))
                         SourceBadge(current.source)
                         Spacer(Modifier.width(8.dp))
                         if (isInstalled) {
@@ -132,22 +175,63 @@ fun AppDetailPage(
                 Text(stringResource(R.string.downloading, (progress * 100).toInt()), style = MaterialTheme.typography.labelSmall)
             }
 
+            // What this tier claims, and what the last install attempt actually proved.
+            Card(
+                onClick = onOpenTiers,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SecurityTierBadge(tier, onClick = onOpenTiers)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(tier.title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(stringResource(tier.summary), style = MaterialTheme.typography.bodySmall)
+                    when (val v = lastVerification) {
+                        is VerificationResult.Rejected -> Text(
+                            stringResource(R.string.detail_install_blocked, v.reason),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        is VerificationResult.Verified -> Text(
+                            stringResource(R.string.detail_checked_on_install, v.detail),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        is VerificationResult.Unverified -> Text(
+                            stringResource(R.string.detail_installed_unverified, v.reason),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        null -> Text(
+                            stringResource(R.string.detail_tap_for_tier),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
             // Action row redesigned per plan: Open + Uninstall for installed, Install/Update for others
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
                     isInstalled && current.versionCode > (installedInfo?.versionCode ?: 0L) -> {
-                        Button(onClick = { viewModel.downloadAndInstall(current) }, modifier = Modifier.weight(1f), enabled = progress == null) {
+                        Button(onClick = { actions.downloadAndInstall(current) }, modifier = Modifier.weight(1f), enabled = progress == null) {
                             IconDownload()
                             Spacer(Modifier.width(6.dp))
                             Text(if (progress != null) "Downloading ${(progress * 100).toInt()}%" else "Update")
                         }
-                        FilledTonalButton(onClick = { viewModel.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
+                        FilledTonalButton(onClick = { actions.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
                             Text(stringResource(R.string.open))
                         }
                         OutlinedButton(onClick = { showUninstallConfirm = true }) { IconDelete() }
                     }
                     isInstalled -> {
-                        FilledTonalButton(onClick = { viewModel.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
+                        FilledTonalButton(onClick = { actions.openApp(current.packageName) }, modifier = Modifier.weight(1f)) {
                             Text(stringResource(R.string.open))
                         }
                         OutlinedButton(onClick = { showUninstallConfirm = true }, modifier = Modifier.weight(1f)) {
@@ -158,7 +242,7 @@ fun AppDetailPage(
                     }
                     current.source == AppSource.PLAYSTORE -> {
                         Button(
-                            onClick = { viewModel.downloadAndInstall(current) },
+                            onClick = { actions.downloadAndInstall(current) },
                             modifier = Modifier.weight(1f),
                             enabled = progress == null
                         ) {
@@ -166,13 +250,13 @@ fun AppDetailPage(
                             Spacer(Modifier.width(6.dp))
                             Text(if (progress != null) "Downloading ${(progress * 100).toInt()}%" else "Install")
                         }
-                        OutlinedButton(onClick = { viewModel.openInPlayStore(current.packageName) }) {
+                        OutlinedButton(onClick = { actions.openInPlayStore(current.packageName) }) {
                             IconShoppingCart()
                         }
                     }
                     else -> {
                         Button(
-                            onClick = { viewModel.downloadAndInstall(current) },
+                            onClick = { actions.downloadAndInstall(current) },
                             modifier = Modifier.weight(1f),
                             enabled = progress == null
                         ) {
@@ -185,7 +269,7 @@ fun AppDetailPage(
                 // Globe button remains for website/source when not already handling installed actions
                 if (!isInstalled && (current.source == AppSource.FDROID || current.website != null)) {
                     OutlinedButton(onClick = {
-                        viewModel.openInBrowser(current.website ?: current.sourceCode ?: "")
+                        actions.openInBrowser(current.website ?: current.sourceCode ?: "")
                     }) { IconGlobe() }
                 }
             }
@@ -193,14 +277,14 @@ fun AppDetailPage(
             // For Play installed, also show View in Play Store as secondary
             if (isInstalled && current.source == AppSource.PLAYSTORE) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { viewModel.openInPlayStore(current.packageName) }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = { actions.openInPlayStore(current.packageName) }, modifier = Modifier.weight(1f)) {
                         IconShoppingCart()
                         Spacer(Modifier.width(6.dp))
                         Text(stringResource(R.string.view_in_play_store))
                     }
                     if (current.website != null || current.sourceCode != null) {
                         OutlinedButton(onClick = {
-                            viewModel.openInBrowser(current.website ?: current.sourceCode ?: "")
+                            actions.openInBrowser(current.website ?: current.sourceCode ?: "")
                         }) { IconGlobe() }
                     }
                 }
@@ -224,8 +308,8 @@ fun AppDetailPage(
                 if (current.categories.isNotEmpty()) DetailRow("Categories", current.categories.joinToString(", "))
                 current.sourceCode?.let { DetailRow("Source", it) }
                 current.website?.let { DetailRow("Website", it) }
-                if (current.antiFeatures.isNotEmpty()) DetailRow("Anti-Features", current.antiFeatures.joinToString(", "))
-                current.whatsNew?.let { if (it.isNotBlank()) DetailRow("What's New", it) }
+                if (current.antiFeatures.isNotEmpty()) DetailRow("Anti-features", current.antiFeatures.joinToString(", "))
+                current.whatsNew?.let { if (it.isNotBlank()) DetailRow("What's new", it) }
             }
         }
     }
@@ -238,7 +322,7 @@ fun AppDetailPage(
             confirmButton = {
                 Button(onClick = {
                     showUninstallConfirm = false
-                    viewModel.uninstallApp(current.packageName)
+                    actions.uninstallApp(current.packageName)
                 }) { Text(stringResource(R.string.uninstall)) }
             },
             dismissButton = {

@@ -1,5 +1,6 @@
 package com.vayunmathur.youpipe.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -34,14 +36,24 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.image.ImageRequest
+import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.MAIN_BOTTOM_BAR_ITEMS
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
+import com.vayunmathur.youpipe.util.SearchActions
+import com.vayunmathur.youpipe.util.SearchResultRow
+import com.vayunmathur.youpipe.util.SearchUiState
+import com.vayunmathur.youpipe.util.VideoRowState
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Home: the recommendation feed, with search living in the top app bar.
+ *
+ * Binder only — it turns the ViewModel's flows into a [SearchUiState] and hands that to
+ * [SearchScreen], which is what the store listing preview renders.
+ */
 @Composable
 fun SearchPage(
     backStack: NavBackStack<Route>,
@@ -53,30 +65,114 @@ fun SearchPage(
     val recommendations by youPipeViewModel.recommendations.collectAsState()
     val recommendationsLoading by youPipeViewModel.recommendationsLoading.collectAsState()
 
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    // Resume bars used to come from a per-row flow. One flow over the whole history table
+    // gets the same numbers while letting a row stay a plain value.
+    val history by youPipeViewModel.historyVideos.collectAsState()
+    val deArrowEnabled by youPipeViewModel.deArrowEnabled.collectAsState()
+    val deArrowCache by youPipeViewModel.deArrowCache.collectAsState()
+    val progressById = remember(history) { history.associate { it.id to it.progress } }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         youPipeViewModel.loadRecommendations()
     }
 
-    fun submit() {
-        val watchID = youPipeViewModel.resolveWatchUrl()
-        if (watchID != null) {
-            expanded = false
-            backStack.add(Route.VideoPage(watchID))
-        } else {
-            youPipeViewModel.performSearch()
-        }
+    fun rowFor(video: VideoInfo, reason: String? = null): VideoRowState {
+        val deArrow = if (deArrowEnabled) deArrowCache[video.videoID] else null
+        val watched = progressById[video.videoID] ?: 0L
+        return videoRowState(
+            context = context,
+            videoInfo = video,
+            showAuthor = true,
+            reason = reason,
+            percentWatched = if (video.duration > 0) (watched.toDouble() / video.duration).toFloat() else 0f,
+            deArrowTitle = deArrow?.title,
+            deArrowThumbnailURL = deArrow?.thumbnailUrl,
+        )
     }
+
+    SearchScreen(
+        backStack = backStack,
+        state = SearchUiState(
+            query = searchQuery,
+            suggestions = suggestions,
+            results = searchResults.mapNotNull { item ->
+                when (item) {
+                    is VideoInfo -> SearchResultRow.Video(rowFor(item))
+                    is ChannelInfo -> SearchResultRow.Channel(
+                        channelID = item.channelID,
+                        name = item.name,
+                        avatarURL = item.avatar,
+                        subscribers = context.getString(
+                            R.string.subscribers_count,
+                            countString(context, item.subscribers),
+                        ),
+                    )
+                    else -> null
+                }
+            },
+            recommendations = recommendations.map { rowFor(it.video, it.reason) },
+            recommendationsLoading = recommendationsLoading,
+        ),
+        actions = object : SearchActions {
+            override fun setSearchQuery(query: String) = youPipeViewModel.setSearchQuery(query)
+
+            override fun submitSearch(): Boolean {
+                val watchID = youPipeViewModel.resolveWatchUrl()
+                if (watchID == null) {
+                    youPipeViewModel.performSearch()
+                    return false
+                }
+                backStack.add(Route.VideoPage(watchID))
+                return true
+            }
+
+            override fun openVideo(videoID: Long) {
+                backStack.add(Route.VideoPage(videoID))
+            }
+
+            override fun openChannel(channelID: String) {
+                backStack.add(Route.ChannelPage(channelID))
+            }
+
+            override fun notInterested(channelKey: String) =
+                youPipeViewModel.removeInterest(channelKey = channelKey)
+
+            override fun moreLikeThis(channelKey: String) = youPipeViewModel.boostChannel(channelKey)
+
+            override fun pinChannel(channelKey: String) = youPipeViewModel.pinChannel(channelKey)
+
+            override fun blockChannel(channelKey: String) = youPipeViewModel.blockChannel(channelKey)
+        },
+    )
+}
+
+/**
+ * Stateless home screen.
+ *
+ * [backStack] survives here only because [BottomNavBar] is driven by the back stack itself;
+ * everything the user taps inside the screen goes through [actions]. A preview can hand it a
+ * freshly-remembered stack.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchScreen(
+    backStack: NavBackStack<Route>,
+    state: SearchUiState,
+    actions: SearchActions,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             SearchBar(
                 inputField = {
                     SearchBarDefaults.InputField(
-                        query = searchQuery,
-                        onQueryChange = { youPipeViewModel.setSearchQuery(it) },
-                        onSearch = { submit() },
+                        query = state.query,
+                        onQueryChange = { actions.setSearchQuery(it) },
+                        // Only collapse when the submit actually navigated somewhere — a
+                        // plain search has to leave the overlay up to show its results.
+                        onSearch = { if (actions.submitSearch()) expanded = false },
                         expanded = expanded,
                         onExpandedChange = { expanded = it },
                         placeholder = { Text(stringResource(R.string.label_search)) },
@@ -87,28 +183,35 @@ fun SearchPage(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 LazyColumn {
-                    if (searchResults.isNotEmpty()) {
-                        items(searchResults, key = {
+                    if (state.results.isNotEmpty()) {
+                        items(state.results, key = {
                             when (it) {
-                                is VideoInfo -> "v-${it.videoID}"
-                                is ChannelInfo -> "c-${it.channelID}"
-                                else -> it.hashCode().toString()
+                                is SearchResultRow.Video -> "v-${it.video.videoID}"
+                                is SearchResultRow.Channel -> "c-${it.channelID}"
                             }
                         }) { item ->
-                            if (item is VideoInfo)
-                                VideoItem(backStack, youPipeViewModel, item, true, onClick = { expanded = false; backStack.add(Route.VideoPage(item.videoID)) })
-                            else if (item is ChannelInfo)
-                                ChannelItem(backStack, item)
+                            when (item) {
+                                is SearchResultRow.Video -> VideoRow(
+                                    row = item.video,
+                                    modifier = Modifier.clickable {
+                                        expanded = false
+                                        actions.openVideo(item.video.videoID)
+                                    },
+                                )
+                                is SearchResultRow.Channel -> ChannelRow(item) {
+                                    actions.openChannel(item.channelID)
+                                }
+                            }
                         }
                     } else {
-                        items(suggestions, key = { it }) { suggestion ->
+                        items(state.suggestions, key = { it }) { suggestion ->
                             Text(
                                 text = suggestion,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        youPipeViewModel.setSearchQuery(suggestion)
-                                        submit()
+                                        actions.setSearchQuery(suggestion)
+                                        if (actions.submitSearch()) expanded = false
                                     }
                                     .padding(12.dp)
                             )
@@ -119,11 +222,11 @@ fun SearchPage(
         },
         bottomBar = { BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.SearchPage) }
     ) { paddingValues ->
-        if (recommendationsLoading) {
+        if (state.recommendationsLoading) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-        } else if (recommendations.isEmpty()) {
+        } else if (state.recommendations.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                 Text(
                     stringResource(R.string.empty_recommendations),
@@ -133,20 +236,15 @@ fun SearchPage(
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                items(recommendations, key = { it.video.videoID }) { ranked ->
-                    val video = ranked.video
-                    val channelKey = video.author.lowercase()
-                    VideoItem(
-                        backStack,
-                        youPipeViewModel,
-                        video,
-                        true,
-                        reason = ranked.reason,
+                items(state.recommendations, key = { it.videoID }) { row ->
+                    VideoRow(
+                        row = row,
+                        modifier = Modifier.invisibleClickable { actions.openVideo(row.videoID) },
                         overflowActions = listOf(
-                            stringResource(R.string.action_not_interested) to { youPipeViewModel.removeInterest(channelKey = channelKey) },
-                            stringResource(R.string.action_more_like_this) to { youPipeViewModel.boostChannel(channelKey) },
-                            stringResource(R.string.action_pin_channel) to { youPipeViewModel.pinChannel(channelKey) },
-                            stringResource(R.string.action_block_channel) to { youPipeViewModel.blockChannel(channelKey) },
+                            stringResource(R.string.action_not_interested) to { actions.notInterested(row.channelKey) },
+                            stringResource(R.string.action_more_like_this) to { actions.moreLikeThis(row.channelKey) },
+                            stringResource(R.string.action_pin_channel) to { actions.pinChannel(row.channelKey) },
+                            stringResource(R.string.action_block_channel) to { actions.blockChannel(row.channelKey) },
                         ),
                     )
                 }
@@ -156,24 +254,29 @@ fun SearchPage(
 }
 
 @Composable
-fun ChannelItem(backStack: NavBackStack<Route>, channelInfo: ChannelInfo) {
-    val context = LocalContext.current
-    ListItem(modifier = Modifier.clickable {
-        backStack.add(Route.ChannelPage(channelInfo.channelID))
-    }, overlineContent = {
+fun ChannelRow(channel: SearchResultRow.Channel, onClick: () -> Unit) {
+    ListItem(modifier = Modifier.clickable(onClick = onClick), overlineContent = {
 
     }, supportingContent = {
-        Text(stringResource(R.string.subscribers_count, countString(context, channelInfo.subscribers)))
+        Text(channel.subscribers)
     }, leadingContent = {
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(channelInfo.avatar)
-                .memoryCacheKey("channel-avatar-${channelInfo.channelID}")
-                .build(),
-            contentDescription = null,
-            Modifier.size(50.dp).clip(CircleShape)
-        )
+        Box(
+            Modifier.size(50.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (channel.avatarURL.isNotEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(channel.avatarURL)
+                        .memoryCacheKey("channel-avatar-${channel.channelID}")
+                        .build(),
+                    contentDescription = null,
+                    Modifier.fillMaxSize()
+                )
+            }
+        }
     }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) {
-        Text(channelInfo.name, style = MaterialTheme.typography.titleMedium)
+        Text(channel.name, style = MaterialTheme.typography.titleMedium)
     }
 }

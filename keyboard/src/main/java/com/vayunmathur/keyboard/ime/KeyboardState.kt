@@ -75,4 +75,24 @@ interface ImeActions {
     fun setPage(page: KeyboardPage)
     fun commitSuggestion(word: String)
     fun switchToNextIme()
+
+    companion object {
+        /**
+         * Does nothing. Lets `src/screenshotTest` render [
+         * com.vayunmathur.keyboard.ui.KeyboardScreen] without an IME service behind it,
+         * which is where the store listing images come from.
+         */
+        val Noop: ImeActions = object : ImeActions {
+            override fun onChar(text: String) {}
+            override fun onCharLongPress(base: Char) {}
+            override fun onBackspace() {}
+            override fun onEnter() {}
+            override fun onSpace() {}
+            override fun onShift() {}
+            override fun onCapsLock() {}
+            override fun setPage(page: KeyboardPage) {}
+            override fun commitSuggestion(word: String) {}
+            override fun switchToNextIme() {}
+        }
+    }
 }

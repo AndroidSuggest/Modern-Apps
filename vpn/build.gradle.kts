@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:vpn:metadata` task name either way.
+    id("common-conventions-preview-metadata")
     alias(libs.plugins.ksp)
 }
 
@@ -34,4 +36,6 @@ dependencies {
     implementRoom(libs)
     implementation(project(":library:room"))
     implementation(libs.androidx.datastore.preferences)
+    // User-supplied VPN endpoint: cannot pin, must use platform SYSTEM trust; document escape hatch.
+    implementation(project(":library:network"))
 }

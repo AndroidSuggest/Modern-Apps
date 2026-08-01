@@ -4,6 +4,19 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * F-Droid, restricted twice over:
+ *
+ * 1. **One repository only** — [DefaultRepos.FDROID_MAIN], with its index signing
+ *    certificate hard-pinned. Third-party F-Droid-format repos are not supported and
+ *    cannot be added, because they ship binaries the upstream developer built.
+ * 2. **Reproduced builds only** — a version is offered only if F-Droid's verification
+ *    server independently rebuilt it and got identical bytes (see [ReproducibleBuilds]).
+ *
+ * Both gates fail closed: if the signed index or the verification feed can't be
+ * fetched and checked, the sync throws and the previous catalogue is left untouched
+ * rather than being replaced with unverified entries.
+ */
 class FDroidAppProvider(
     private val db: AppDatabase,
     private val appContext: Context
@@ -14,36 +27,32 @@ class FDroidAppProvider(
 
     @Volatile var cachedPackageNames: Set<String> = emptySet()
 
+    /** Number of packages dropped by the reproducibility gate on the last sync. */
+    @Volatile var lastFilteredOut: Int = 0
+        private set
+
     override suspend fun fetchAll(): List<UnifiedApp> = withContext(Dispatchers.IO) {
-        val repos = db.repoDao().all().filter { it.enabled }
-        val all = mutableListOf<UnifiedApp>()
-        for (repo in repos) {
-            try { all += FDroidRepository.fetchRepoIndex(appContext, repo.url) } catch (_: Exception) { }
-        }
-        val filtered = AppProvider.filterTargetSdk(all).distinctBy { it.packageName }
-        cachedPackageNames = filtered.map { it.packageName }.toSet()
-        filtered
+        val result = fetchVerifiedIndex()
+        cachedPackageNames = result.apps.map { it.packageName }.toSet()
+        result.apps
     }
 
     override suspend fun search(query: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
-        val q = query.lowercase()
-        val live = mutableListOf<UnifiedApp>()
-        for (url in listOf(DefaultRepos.FDROID_MAIN, DefaultRepos.IZVYZID)) {
-            try {
-                live += FDroidRepository.fetchRepoIndex(appContext, url).filter {
-                    it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q) || it.summary.lowercase().contains(q)
-                }
-            } catch (_: Exception) {}
-        }
-        AppProvider.filterTargetSdk(live).take(40)
+        // Search the synced cache; re-downloading a 54 MB index per keystroke is not an option.
+        try {
+            db.cachedAppDao().search(AppSource.FDROID.name, query).map { it.toUnifiedApp() }
+        } catch (_: Exception) { emptyList() }
     }
 
     override suspend fun isPresent(packageName: String): Boolean = withContext(Dispatchers.IO) {
         if (cachedPackageNames.contains(packageName)) return@withContext true
         try {
             val entity = db.cachedAppDao().byPackage(packageName) ?: return@withContext false
-            if (entity.targetSdk != null && entity.targetSdk < AppProvider.MIN_TARGET_SDK) return@withContext false
+            if (entity.source != AppSource.FDROID.name) return@withContext false
+            if (entity.targetSdk != null && entity.targetSdk < AppProvider.MIN_TARGET_SDK) {
+                return@withContext false
+            }
             true
         } catch (_: Exception) { false }
     }
@@ -51,62 +60,52 @@ class FDroidAppProvider(
     override suspend fun getDetails(packageName: String): UnifiedApp? = withContext(Dispatchers.IO) {
         try {
             val entity = db.cachedAppDao().byPackage(packageName) ?: return@withContext null
-            if (entity.targetSdk != null && entity.targetSdk < AppProvider.MIN_TARGET_SDK) return@withContext null
+            if (entity.source != AppSource.FDROID.name) return@withContext null
+            if (entity.targetSdk != null && entity.targetSdk < AppProvider.MIN_TARGET_SDK) {
+                return@withContext null
+            }
             entity.toUnifiedApp()
         } catch (_: Exception) { null }
     }
 
-    suspend fun syncIntoDb(context: Context? = null): Int = withContext(Dispatchers.IO) {
-        val ctx = context ?: appContext
-        val repos = db.repoDao().all().filter { it.enabled }
-        var total = 0
-        for (repo in repos) {
-            try {
-                val apps = FDroidRepository.fetchRepoIndex(ctx, repo.url)
-                val filtered = AppProvider.filterTargetSdk(apps)
-                val entities = filtered.map { it.toEntity() }
-                db.cachedAppDao().deleteByRepo(repo.url.trimEnd('/'))
-                db.cachedAppDao().upsertAll(entities)
-                db.repoDao().upsert(repo.copy(lastSync = System.currentTimeMillis()))
-                total += entities.size
-            } catch (_: Exception) { }
-        }
-        total
+    /**
+     * Refresh from f-droid.org and replace this source's rows. Throws if either the index
+     * signature or the reproducibility feed can't be obtained — the caller surfaces that
+     * instead of silently serving a stale or unverified catalogue.
+     */
+    suspend fun syncIntoDb(): Int = withContext(Dispatchers.IO) {
+        val result = fetchVerifiedIndex()
+        val repo = db.repoDao().all().find { it.url == DefaultRepos.FDROID_MAIN }
+        db.cachedAppDao().deleteByRepo(DefaultRepos.FDROID_MAIN)
+        db.cachedAppDao().upsertAll(result.apps.map { it.toEntity() })
+        db.repoDao().upsert(
+            (repo ?: RepoEntity(DefaultRepos.FDROID_MAIN, "F-Droid", true)).copy(
+                fingerprint = result.signerSha256,
+                lastSync = System.currentTimeMillis(),
+            )
+        )
+        cachedPackageNames = result.apps.map { it.packageName }.toSet()
+        result.apps.size
     }
 
-    private fun UnifiedApp.toEntity(): CachedAppEntity = CachedAppEntity(
-        packageName = packageName,
-        source = source.name,
-        name = name,
-        summary = summary,
-        description = description,
-        iconUrl = iconUrl,
-        author = author,
-        categories = categories.joinToString(","),
-        versionName = versionName,
-        versionCode = versionCode,
-        sizeBytes = sizeBytes,
-        apkUrl = apkUrl,
-        targetSdk = targetSdk,
-        repoUrl = repoUrl?.removeSuffix("/") ?: DefaultRepos.FDROID_MAIN,
-        lastUpdated = lastUpdated
-    )
-
-    private fun CachedAppEntity.toUnifiedApp(): UnifiedApp = UnifiedApp(
-        packageName = packageName,
-        source = try { AppSource.valueOf(source) } catch (_: Exception) { AppSource.FDROID },
-        name = name,
-        summary = summary,
-        description = description,
-        iconUrl = iconUrl,
-        author = author,
-        categories = categories.split(",").filter { it.isNotBlank() },
-        versionName = versionName,
-        versionCode = versionCode,
-        sizeBytes = sizeBytes,
-        apkUrl = apkUrl,
-        targetSdk = targetSdk,
-        repoUrl = repoUrl,
-        lastUpdated = lastUpdated
-    )
+    private suspend fun fetchVerifiedIndex(): FDroidRepository.IndexResult {
+        // Fetch the reproducibility verdicts first: no verdicts means no catalogue, and
+        // there is no point pulling 54 MB of index we would then throw away.
+        val verified = ReproducibleBuilds.fetch(appContext)
+        if (verified.size == 0) {
+            throw java.io.IOException("F-Droid verification feed listed no reproduced builds")
+        }
+        var rejected = 0
+        val result = FDroidRepository.fetchRepoIndex(
+            context = appContext,
+            repoUrl = DefaultRepos.FDROID_MAIN,
+            pinnedFingerprint = FDroidRepository.FDROID_SIGNING_CERT_SHA256,
+        ) { pkg, versionCode ->
+            val ok = verified.contains(pkg, versionCode)
+            if (!ok) rejected++
+            ok
+        }
+        lastFilteredOut = rejected
+        return result
+    }
 }

@@ -30,6 +30,8 @@ import com.vayunmathur.library.util.tryOrDefault
 import com.vayunmathur.passwords.data.Passkey
 import com.vayunmathur.passwords.data.Password
 import com.vayunmathur.passwords.Route
+import com.vayunmathur.passwords.util.MenuUiState
+import com.vayunmathur.passwords.util.PasswordsActions
 import com.vayunmathur.passwords.util.PasswordsViewModel
 import com.vayunmathur.passwords.util.TOTP
 
@@ -38,7 +40,6 @@ sealed class CredentialItem(override val id: Long) : DatabaseItem {
     class PasskeyItem(val passkey: Passkey) : CredentialItem(Long.MAX_VALUE - passkey.id)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuPage(
     backStack: NavBackStack<Route>,
@@ -47,10 +48,25 @@ fun MenuPage(
     val now by viewModel.tickerFlow.collectAsState()
     val passwords by viewModel.passwords.collectAsState()
     val passkeys by viewModel.passkeys.collectAsState()
+    MenuScreen(backStack, MenuUiState(passwords, passkeys, now), viewModel)
+}
 
-    val items: List<CredentialItem> = remember(passwords, passkeys) {
-        passwords.map { CredentialItem.PasswordItem(it) } +
-            passkeys.map { CredentialItem.PasskeyItem(it) }
+/**
+ * The credential list, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MenuScreen(
+    backStack: NavBackStack<Route>,
+    state: MenuUiState,
+    actions: PasswordsActions,
+) {
+    val now = state.now
+
+    val items: List<CredentialItem> = remember(state.passwords, state.passkeys) {
+        state.passwords.map { CredentialItem.PasswordItem(it) } +
+            state.passkeys.map { CredentialItem.PasskeyItem(it) }
     }
 
     ListPage<CredentialItem, Route, Route.PasswordEditPage>(backStack, items, "Passwords", {
@@ -84,7 +100,7 @@ fun MenuPage(
             }
             val progress = (30000L - now % 30000L) / 30000f
             Row(Modifier.clickable {
-                viewModel.copyToClipboard("totp", currentCode)
+                actions.copyToClipboard("totp", currentCode)
             }.wrapContentHeight(), verticalAlignment = Alignment.CenterVertically) {
                 Text(currentCode, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.width(8.dp))

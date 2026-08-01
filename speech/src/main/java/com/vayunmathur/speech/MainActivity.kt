@@ -49,6 +49,8 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.speech.service.WhisperRecognitionService
 import com.vayunmathur.speech.util.PiperModel
+import com.vayunmathur.speech.util.SpeechSetupActions
+import com.vayunmathur.speech.util.SpeechSetupUiState
 import com.vayunmathur.speech.util.WhisperModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -67,6 +69,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Reads the device state and binds it to the stateless [SpeechSetupScreen]. */
 @Composable
 private fun SetupScreen() {
     val context = LocalContext.current
@@ -94,6 +97,54 @@ private fun SetupScreen() {
         ActivityResultContracts.RequestPermission()
     ) { refresh++ }
 
+    SpeechSetupScreen(
+        state = SpeechSetupUiState(
+            modelReady = modelReady,
+            hasMic = hasMic,
+            isRecognizerDefault = isDefault,
+            ttsModelReady = ttsModelReady,
+            isTtsDefault = isTtsDefault,
+        ),
+        actions = object : SpeechSetupActions {
+            override fun requestMicPermission() =
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+
+            override fun openVoiceInputSettings() {
+                runCatching { context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
+                    .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
+                refresh++
+            }
+
+            override fun openTtsSettings() {
+                runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
+                    .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
+                refresh++
+            }
+
+            override fun refresh() { refresh++ }
+
+            override fun recognitionProgress() = WhisperModel.progress(ds)
+            override suspend fun downloadRecognitionModel() = WhisperModel.download(context, ds)
+
+            override fun voiceProgress() = PiperModel.progress(ds)
+            override suspend fun downloadVoice() {
+                PiperModel.download(context, ds)
+                // Unzip the voice off the main thread before marking done.
+                withContext(Dispatchers.IO) { PiperModel.installIfNeeded(context) }
+            }
+        },
+    )
+}
+
+/**
+ * The setup screen, with no dependency on the device so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ *
+ * The two test cards below build a SpeechRecognizer / TextToSpeech only when their button is
+ * pressed, never during composition, so they render unchanged under Layoutlib.
+ */
+@Composable
+fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.recognition_service_label)) }) }) { padding ->
         Column(
             modifier = Modifier
@@ -114,19 +165,19 @@ private fun SetupScreen() {
             StepCard(
                 index = 1,
                 title = "Speech recognition model",
-                done = modelReady,
-                body = if (modelReady) {
+                done = state.modelReady,
+                body = if (state.modelReady) {
                     "The Whisper model is installed — recognition runs fully offline."
                 } else {
                     "Download the multilingual Whisper model (~113 MB) once. Runs offline afterward."
                 },
             ) {
-                if (!modelReady) {
+                if (!state.modelReady) {
                     ModelDownloadButton(
                         label = stringResource(R.string.download_model_113_mb),
-                        progressOf = { WhisperModel.progress(ds) },
-                        download = { WhisperModel.download(context, ds) },
-                        onDone = { refresh++ },
+                        progressOf = actions::recognitionProgress,
+                        download = actions::downloadRecognitionModel,
+                        onDone = actions::refresh,
                     )
                 }
             }
@@ -135,11 +186,11 @@ private fun SetupScreen() {
             StepCard(
                 index = 2,
                 title = "Microphone access",
-                done = hasMic,
+                done = state.hasMic,
                 body = "Needed to record your voice for transcription.",
             ) {
-                if (!hasMic) {
-                    Button(onClick = { micPermission.launch(Manifest.permission.RECORD_AUDIO) }) {
+                if (!state.hasMic) {
+                    Button(onClick = actions::requestMicPermission) {
                         Text(stringResource(R.string.grant_microphone))
                     }
                 }
@@ -149,47 +200,39 @@ private fun SetupScreen() {
             StepCard(
                 index = 3,
                 title = "Set as speech recognizer",
-                done = isDefault,
-                body = if (isDefault) {
+                done = state.isRecognizerDefault,
+                body = if (state.isRecognizerDefault) {
                     "This app is your device's speech recognizer. Other apps' voice input now runs offline."
                 } else {
                     "Open voice-input settings and choose \"MA Speech\" as the on-device / " +
                         "voice-input service so other apps (like Translate) use it."
                 },
             ) {
-                OutlinedButton(onClick = {
-                    runCatching { context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
-                        .onFailure {
-                            runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
-                        }
-                    refresh++
-                }) { Text(stringResource(R.string.open_voice_input_settings)) }
+                OutlinedButton(onClick = actions::openVoiceInputSettings) {
+                    Text(stringResource(R.string.open_voice_input_settings))
+                }
             }
 
             // 3) Try it
-            TestSection(enabled = hasMic)
+            TestSection(enabled = state.hasMic)
 
             // 4) Download the offline TTS voice
             StepCard(
                 index = 4,
                 title = "Text-to-speech voice",
-                done = ttsModelReady,
-                body = if (ttsModelReady) {
+                done = state.ttsModelReady,
+                body = if (state.ttsModelReady) {
                     "The offline Piper voice is installed — apps can speak fully offline."
                 } else {
                     "Download the Piper voice (~64 MB) once. Runs offline afterward."
                 },
             ) {
-                if (!ttsModelReady) {
+                if (!state.ttsModelReady) {
                     ModelDownloadButton(
                         label = stringResource(R.string.download_voice_64_mb),
-                        progressOf = { PiperModel.progress(ds) },
-                        download = {
-                            PiperModel.download(context, ds)
-                            // Unzip the voice off the main thread before marking done.
-                            withContext(Dispatchers.IO) { PiperModel.installIfNeeded(context) }
-                        },
-                        onDone = { refresh++ },
+                        progressOf = actions::voiceProgress,
+                        download = actions::downloadVoice,
+                        onDone = actions::refresh,
                     )
                 }
             }
@@ -198,23 +241,19 @@ private fun SetupScreen() {
             StepCard(
                 index = 5,
                 title = "Set as text-to-speech engine",
-                done = isTtsDefault,
-                body = if (isTtsDefault) {
+                done = state.isTtsDefault,
+                body = if (state.isTtsDefault) {
                     "This app is your device's text-to-speech engine. Other apps' read-aloud now runs offline."
                 } else {
                     "Open text-to-speech settings and choose \"MA Speech\" as the preferred engine."
                 },
             ) {
-                OutlinedButton(onClick = {
-                    runCatching { context.startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
-                        .onFailure {
-                            runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
-                        }
-                    refresh++
-                }) { Text(stringResource(R.string.open_text_to_speech_settings)) }
+                OutlinedButton(onClick = actions::openTtsSettings) {
+                    Text(stringResource(R.string.open_text_to_speech_settings))
+                }
             }
 
-            TtsTestSection(enabled = ttsModelReady)
+            TtsTestSection(enabled = state.ttsModelReady)
         }
     }
 }

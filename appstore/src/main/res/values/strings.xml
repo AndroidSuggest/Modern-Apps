@@ -5,17 +5,17 @@
     <string name="uninstall">Uninstall</string>
     <string name="view_in_play_store">View in Play Store</string>
     <string name="cancel">Cancel</string>
-    <string name="search_f_droid_play_store">Search F-Droid &amp; Play Store</string>
-    <string name="welcome_to_app_store">Welcome to App Store</string>
-    <string name="combines_f_droid_repos_with_play_store_l">Combines F-Droid repos with Play Store listings</string>
-    <string name="tap_sync_in_repos_to_fetch_f_droid_apps">Tap Sync in Repos to fetch F-Droid apps, or search for Play apps</string>
+    <string name="search_f_droid_play_store">Search for an app</string>
+    <string name="welcome_to_app_store">Nothing here yet</string>
+    <string name="combines_f_droid_repos_with_play_store_l">Apps from Modern Apps, F-Droid and the Play Store, in one place.</string>
+    <string name="tap_sync_in_repos_to_fetch_f_droid_apps">Search above, or sync your sources to fill this up.</string>
     <string name="uninstall_2">Uninstall?</string>
     <string name="updates">Updates</string>
-    <string name="sync_f_droid">Sync F-Droid</string>
+    <string name="sync_f_droid">Sync sources</string>
     <string name="check_play">Check Play</string>
-    <string name="all_apps_up_to_date">All apps up to date</string>
-    <string name="tap_check_play_to_look_for_play_store_up">Tap Check Play to look for Play Store updates (requires anonymous auth)</string>
-    <string name="repositories">Repositories</string>
+    <string name="all_apps_up_to_date">Everything is up to date</string>
+    <string name="tap_check_play_to_look_for_play_store_up">Play Store apps are checked separately. Tap Check Play to look.</string>
+    <string name="repositories">Sources</string>
     <string name="f_droid_repositories">F-Droid Repositories</string>
     <string name="refresh_play">Refresh Play</string>
     <string name="add_repository">Add Repository</string>
@@ -26,13 +26,13 @@
     <string name="installed_2">Installed %1$s</string>
     <string name="downloading">Downloading %1$s%%</string>
     <string name="uninstall_3">Uninstall %1$s?</string>
-    <string name="this_will_uninstall_you_can_reinstall_la">This will uninstall %1$s. You can reinstall later from the store.</string>
+    <string name="this_will_uninstall_you_can_reinstall_la">%1$s will be removed. You can install it again any time.</string>
     <string name="no_results_for">No results for \"%1$s\"</string>
     <string name="installed_3">Installed (%1$s)</string>
     <string name="all">All (%1$s)</string>
     <string name="f_droid">F-Droid (%1$s)</string>
     <string name="play_store">Play Store (%1$s)</string>
-    <string name="uninstall_you_can_reinstall_from_the_sto">Uninstall %1$s? You can reinstall from the store.</string>
+    <string name="uninstall_you_can_reinstall_from_the_sto">Uninstall %1$s? You can install it again any time.</string>
     <string name="update_all">Update All (%1$s)</string>
     <plurals name="updates_count">
         <item quantity="one">%1$s update</item>
@@ -40,5 +40,86 @@
     </plurals>
     <string name="add_f_droid_compatible_repos_apps_availa">Add F-Droid compatible repos. Apps available on F-Droid are marked F-Droid, others Play Store.</string>
     <string name="last_sync">Last sync: %1$s</string>
+    <string name="security_tiers">Security tiers</string>
+    <string name="sources_are_fixed">These three sources are built in and cannot be changed. Other F-Droid repos just hand out binaries someone else built, so there is nothing to check them against.</string>
+    <string name="modern_apps">Modern Apps (%1$s)</string>
     <string name="examples">Examples:\n%1$s\n%2$s</string>
+
+    <!-- Bottom navigation. -->
+    <string name="nav_browse">Browse</string>
+    <string name="nav_installed">Installed</string>
+    <string name="nav_updates">Updates</string>
+    <string name="nav_sources">Sources</string>
+
+    <!-- Store guarantees: true of every install, from every source. -->
+    <string name="store_rule_modern_android_title">Modern Android only</string>
+    <string name="store_rule_modern_android_detail">Apps built for anything older than API %1$d are not listed, and are turned away at install even if the listing said otherwise. Old apps skip the sandbox and permission rules newer Android enforces.</string>
+    <string name="store_rule_signed_title">Signed apps only</string>
+    <string name="store_rule_signed_detail">Every download has its signature checked. A file with no valid signature never gets installed.</string>
+    <string name="store_rule_identity_title">The app has to be the one you asked for</string>
+    <string name="store_rule_identity_detail">The name inside the downloaded file must match the app you tapped install on.</string>
+    <string name="store_rule_same_key_title">Updates keep the same key</string>
+    <string name="store_rule_same_key_detail">An update has to be signed by the same key as the copy you already have, or a key that one was rotated to. Anything else is refused.</string>
+    <string name="store_rule_split_key_title">Multi-part apps share one key</string>
+    <string name="store_rule_split_key_detail">Some apps arrive as several files. All of them must be signed by the same key, so a swapped part cannot slip in with the real ones.</string>
+    <string name="store_rule_precheck_title">Checked before Android sees it</string>
+    <string name="store_rule_precheck_detail">Everything is checked before the download reaches the system installer. Rejected files are deleted.</string>
+    <string name="store_rule_fail_blocks_title">A failed check blocks, a missing one warns</string>
+    <string name="store_rule_fail_blocks_detail">If a check fails, the install stops. If a source publishes nothing to check against, the app installs but is marked unverified.</string>
+    <string name="store_rule_updates_stay_title">Updates stay with this store</string>
+    <string name="store_rule_updates_stay_detail">Nothing else on your phone can quietly replace an app you installed here.</string>
+    <string name="store_rule_fixed_sources_title">Sources are fixed</string>
+    <string name="store_rule_fixed_sources_detail">The three sources below are built in and you cannot add more. Nothing above could be promised for a repo you added yourself.</string>
+
+    <!-- Security tiers. -->
+    <string name="tier_badge_label">Tier %1$d</string>
+    <string name="tier_first_party_title">First-party</string>
+    <string name="tier_first_party_summary">Made by the same developer as this store, and signed with the same key this app is signed with.</string>
+    <string name="tier_first_party_threat">Someone would need the developer\'s signing key and their GitHub account, both at once.</string>
+    <string name="tier_first_party_check_key">Signed by this app\'s own key, read straight from your phone at install time</string>
+    <string name="tier_first_party_check_hash">The file matches the hash published with the release on GitHub</string>
+    <string name="tier_first_party_caveat">One key, one person holding it, and nobody else rebuilding the source to confirm the app matches it.</string>
+    <string name="tier_reproducible_title">Reproducible build</string>
+    <string name="tier_reproducible_summary">F-Droid built it from public source code, and a second machine rebuilt it and got an identical file.</string>
+    <string name="tier_reproducible_threat">Someone would need F-Droid\'s index signing key and their servers, both at once.</string>
+    <string name="tier_reproducible_check_index_signed">F-Droid\'s app list is signed, and checked against a key built into this store</string>
+    <string name="tier_reproducible_check_chained">Every entry in that list is chained back to the signature</string>
+    <string name="tier_reproducible_check_rebuilt">F-Droid\'s second build server rebuilt this exact version and got the same file</string>
+    <string name="tier_reproducible_check_hash_and_key">The hash and the signing key both come from the signed list</string>
+    <string name="tier_reproducible_caveat">F-Droid holds the key here, not the developer. A version only shows up once it has been rebuilt, which can take days or weeks, security fixes included.</string>
+    <string name="tier_play_title">Google Play</string>
+    <string name="tier_play_summary">Comes from Google, who also signs it. Nothing in it shows who actually wrote the app.</string>
+    <string name="tier_play_threat">Someone would need Google\'s app servers.</string>
+    <string name="tier_play_check_hash">Each downloaded file matches the hash Google sent with it</string>
+    <string name="tier_play_check_key">Signed by the key Google lists for this app</string>
+    <string name="tier_play_check_stamp">The app\'s publisher stamp is saved the first time you install it, and has to stay the same afterwards</string>
+    <string name="tier_play_caveat">No source code, no second build, no publisher key. These checks catch a tampered download or a swapped publisher, but not a bad update that Google signs itself.</string>
+
+    <!-- Security tiers page. -->
+    <string name="security_tiers_intro">Every app here gets a tier, based on how much of its download this phone can check for itself. It says who is able to send you code, not how good the app is.</string>
+    <string name="security_tiers_all_tiers">All tiers</string>
+    <string name="security_tiers_all_tiers_detail">True for every app here, wherever it came from. Each tier adds its own checks on top.</string>
+    <string name="security_tiers_threat_heading">Who could send you bad code</string>
+    <string name="security_tiers_checks_heading">Extra checks for this tier</string>
+    <string name="security_tiers_tradeoff_heading">Trade-off</string>
+    <string name="security_tiers_bullet">•  %1$s</string>
+    <string name="security_tiers_own_key_title">This store\'s signing key</string>
+    <string name="security_tiers_own_key_detail">Tier 1 apps have to be signed by this key. It is read off your phone at install time, so it is always the key this copy of the store was really signed with.</string>
+    <string name="security_tiers_own_key_unreadable">Couldn\'t read this app\'s signing key.</string>
+
+    <!-- App detail: install verification outcome. -->
+    <string name="detail_install_blocked">Install blocked: %1$s</string>
+    <string name="detail_checked_on_install">Checked on install: %1$s</string>
+    <string name="detail_installed_unverified">Installed unverified: %1$s</string>
+    <string name="detail_tap_for_tier">Tap to see what this means</string>
+
+    <!-- Sources page. -->
+    <string name="repos_syncing">Syncing…</string>
+    <string name="repos_sync_sources">Sync sources</string>
+    <string name="source_modern_apps">Modern Apps</string>
+    <string name="source_modern_apps_pin">Pinned to this app\'s own signing key</string>
+    <string name="source_fdroid">F-Droid (reproducible builds only)</string>
+    <string name="source_fdroid_pin">Pinned to F-Droid\'s app list signing key</string>
+    <string name="source_play">Play Store (anonymous)</string>
+    <string name="source_play_pin">Nothing to pin: Google holds the signing key</string>
 </resources>

@@ -55,7 +55,12 @@ data class ContactAccount(val name: String, val type: String)
 
 data class ContactGroupMembership(val contactId: Long, val groupId: Long)
 
-class ContactViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * Implements [ContactsActions] so a binder can hand itself straight to a stateless screen;
+ * the navigating members keep their no-op defaults and are overridden per screen, since the
+ * ViewModel has no back stack.
+ */
+class ContactViewModel(application: Application) : AndroidViewModel(application), ContactsActions {
 
     private val dataStore = DataStoreUtils.getInstance(application)
 
@@ -153,7 +158,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         loadLastSelectedAccount()
     }
 
-    fun setSearchQuery(query: String) {
+    override fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
 
@@ -354,7 +359,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         return contacts.value.find { it.id == contactId }
     }
 
-    fun deleteContact(contact: com.vayunmathur.contacts.data.Contact) {
+    override fun deleteContact(contact: com.vayunmathur.contacts.data.Contact) {
         viewModelScope.launch(Dispatchers.IO) {
             com.vayunmathur.contacts.data.Contact.delete(getApplication(), contact)
             if (isCalendarSyncEnabled.value) {
@@ -365,7 +370,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Groups Management
-    fun addGroup(name: String) {
+    override fun addGroup(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val resolver = getApplication<Application>().contentResolver
             val values = android.content.ContentValues().apply {
@@ -377,7 +382,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteGroup(groupId: Long) {
+    override fun deleteGroup(groupId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val resolver = getApplication<Application>().contentResolver
             resolver.delete(ContentUris.withAppendedId(ContactsContract.Groups.CONTENT_URI, groupId), null, null)
@@ -424,7 +429,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         return contacts.map { contacts -> contacts.find { it.id == contactId } }
     }
 
-    fun saveContact(contact: com.vayunmathur.contacts.data.Contact) {
+    override fun saveContact(contact: com.vayunmathur.contacts.data.Contact) {
         viewModelScope.launch(Dispatchers.IO) {
             val contactId = contact.id
             val details = contact.details
@@ -451,7 +456,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
      * across the entire app lifetime (subject to LRU eviction).
      */
     @Synchronized
-    fun decodePhoto(base64: String): Bitmap? {
+    override fun decodePhoto(base64: String): Bitmap? {
         photoCache.get(base64)?.let { return it }
         return try {
             val bytes = Base64.decode(base64)

@@ -65,6 +65,26 @@ fun HomeScreen(onMerchantClick: (Int) -> Unit) {
         loading = false
     }
 
+    HomeContent(
+        merchants = merchants,
+        loading = loading,
+        noAddress = noAddress,
+        onMerchantClick = onMerchantClick,
+    )
+}
+
+/**
+ * The nearby-restaurant list, with no API call or address lookup of its own so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@Composable
+fun HomeContent(
+    merchants: List<Merchant>,
+    loading: Boolean = false,
+    noAddress: Boolean = false,
+    onMerchantClick: (Int) -> Unit = {},
+) {
     Scaffold { padding ->
         if (loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {

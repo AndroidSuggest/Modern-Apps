@@ -36,7 +36,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.core.net.toUri
 import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.util.EmlUtils
+import com.vayunmathur.email.util.MessageListActions
+import com.vayunmathur.email.util.MessageListUiState
+import com.vayunmathur.email.util.MessageThreadActions
 import com.vayunmathur.email.widget.EmailWidgetReceiver
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.*
 import com.vayunmathur.library.widgets.updateWidgetPreviews
 import kotlinx.coroutines.flow.debounce
@@ -47,7 +52,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        // SYSTEM permissive: users can configure arbitrary self-hosted IMAP/SMTP with self-signed certs
+        // Actual permissiveness enforced by Jakarta mail ssl.trust=* + NSC system+user
+        NetworkClient.init(this, TrustBundle.SYSTEM)
         updateWidgetPreviews(EmailWidgetReceiver::class)
         handleIntent(intent)
         // IDLE push for INBOX + hourly non-INBOX poll + on-demand pull-to-refresh.
@@ -342,7 +349,7 @@ fun EmailApp(viewModel: EmailViewModel) {
     ) {
         MainNavigation(backStack) {
             entry<Route.MessageList>(metadata = ListPage()) {
-                MessageListScreen(
+                MessageListPage(
                     viewModel = viewModel,
                     onMessageClick = { msg ->
                         backStack.add(Route.MessageThread(msg.accountEmail, msg.threadId ?: msg.id.toString()))
@@ -352,7 +359,7 @@ fun EmailApp(viewModel: EmailViewModel) {
                 )
             }
             entry<Route.MessageThread>(metadata = ListDetailPage()) { route ->
-                MessageThreadScreen(
+                MessageThreadPage(
                     viewModel = viewModel,
                     accountEmail = route.accountEmail,
                     threadId = route.threadId,
@@ -471,9 +478,9 @@ fun renderFolderTree(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EmailViewModel] to the stateless [MessageListScreen]. */
 @Composable
-fun MessageListScreen(
+fun MessageListPage(
     viewModel: EmailViewModel,
     onMessageClick: (EmailMessage) -> Unit,
     onComposeClick: () -> Unit,
@@ -488,7 +495,46 @@ fun MessageListScreen(
     val syncProgress by viewModel.syncProgress.collectAsStateWithLifecycle()
     val aiSummary by viewModel.aiSummary.collectAsStateWithLifecycle()
     val aiSummaryLoading by viewModel.aiSummaryLoading.collectAsStateWithLifecycle()
-    var isSearching by remember { mutableStateOf(false) }
+
+    MessageListScreen(
+        state = MessageListUiState(
+            messages = messages,
+            selectedAccountEmail = selectedAccountEmail,
+            selectedFolderName = selectedFolderName,
+            searchQuery = searchQuery,
+            selectedUids = selectedUids,
+            isSyncing = isSyncing,
+            syncProgress = syncProgress,
+            aiSummary = aiSummary,
+            aiSummaryLoading = aiSummaryLoading,
+        ),
+        actions = viewModel,
+        onMessageClick = onMessageClick,
+        onComposeClick = onComposeClick,
+        onOpenDrawer = onOpenDrawer,
+    )
+}
+
+/**
+ * The message list, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageListScreen(
+    state: MessageListUiState,
+    actions: MessageListActions,
+    onMessageClick: (EmailMessage) -> Unit = {},
+    onComposeClick: () -> Unit = {},
+    onOpenDrawer: () -> Unit = {},
+    /**
+     * Seed for the screen's own UI-only state: whether the search field has taken over the
+     * app bar. The app always takes the default; a preview sets it so search results can be
+     * captured without typing into the field.
+     */
+    initialSearching: Boolean = false,
+) {
+    var isSearching by remember { mutableStateOf(initialSearching) }
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var pendingDelete by remember { mutableStateOf<EmailMessage?>(null) }
@@ -502,26 +548,26 @@ fun MessageListScreen(
             duration = com.vayunmathur.library.ui.SnackbarDuration.Short,
         )
         if (result != com.vayunmathur.library.ui.SnackbarResult.ActionPerformed) {
-            viewModel.deleteMessage(msg.accountEmail, msg.folderName, msg.id)
+            actions.deleteMessage(msg.accountEmail, msg.folderName, msg.id)
         }
         pendingDelete = null
     }
 
-    androidx.activity.compose.BackHandler(enabled = isSearching || selectedUids.isNotEmpty()) {
-        if (selectedUids.isNotEmpty()) {
-            viewModel.clearSelection()
-        } else if (searchQuery.isNotEmpty()) {
-            viewModel.setSearchQuery("")
+    androidx.activity.compose.BackHandler(enabled = isSearching || state.selectedUids.isNotEmpty()) {
+        if (state.selectedUids.isNotEmpty()) {
+            actions.clearSelection()
+        } else if (state.searchQuery.isNotEmpty()) {
+            actions.setSearchQuery("")
         } else {
             isSearching = false
         }
     }
 
-    LaunchedEffect(searchQuery) {
-        if (searchQuery.isNotEmpty()) {
+    LaunchedEffect(state.searchQuery) {
+        if (state.searchQuery.isNotEmpty()) {
             kotlinx.coroutines.delay(1500)
-            if (messages.isNotEmpty()) {
-                viewModel.requestAiSummary(messages)
+            if (state.messages.isNotEmpty()) {
+                actions.requestAiSummary(state.messages)
             }
         }
     }
@@ -529,24 +575,24 @@ fun MessageListScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            if (selectedUids.isNotEmpty()) {
+            if (state.selectedUids.isNotEmpty()) {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.selected_count, selectedUids.size)) },
+                    title = { Text(stringResource(R.string.selected_count, state.selectedUids.size)) },
                     navigationIcon = {
-                        IconButton(onClick = { viewModel.clearSelection() }) {
+                        IconButton(onClick = { actions.clearSelection() }) {
                             IconClose()
                         }
                     },
                     actions = {
                         IconButton(onClick = {
-                            val account = selectedAccountEmail ?: messages.firstOrNull { it.id in selectedUids }?.accountEmail ?: return@IconButton
-                            viewModel.bulkMarkAsRead(account, selectedUids.toList(), true)
+                            val account = state.selectedAccountEmail ?: state.messages.firstOrNull { it.id in state.selectedUids }?.accountEmail ?: return@IconButton
+                            actions.bulkMarkAsRead(account, state.selectedUids.toList(), true)
                         }) {
                             IconMarkRead()
                         }
                         IconButton(onClick = {
-                            val account = selectedAccountEmail ?: messages.firstOrNull { it.id in selectedUids }?.accountEmail ?: return@IconButton
-                            viewModel.bulkMarkAsRead(account, selectedUids.toList(), false)
+                            val account = state.selectedAccountEmail ?: state.messages.firstOrNull { it.id in state.selectedUids }?.accountEmail ?: return@IconButton
+                            actions.bulkMarkAsRead(account, state.selectedUids.toList(), false)
                         }) {
                             IconMarkUnread()
                         }
@@ -556,21 +602,21 @@ fun MessageListScreen(
                 TopAppBar(
                     title = {
                         CommonSearchBar(
-                            value = searchQuery,
-                            onValueChange = { viewModel.setSearchQuery(it) },
+                            value = state.searchQuery,
+                            onValueChange = { actions.setSearchQuery(it) },
                             padding = PaddingValues(0.dp)
                         )
                     },
                     navigationIcon = {
                         IconNavigation {
                             isSearching = false
-                            viewModel.setSearchQuery("")
+                            actions.setSearchQuery("")
                         }
                     }
                 )
             } else {
                 TopAppBar(
-                    title = { Text(if (selectedAccountEmail == null) stringResource(R.string.unified_inbox) else selectedFolderName) },
+                    title = { Text(if (state.selectedAccountEmail == null) stringResource(R.string.unified_inbox) else state.selectedFolderName) },
                     navigationIcon = {
                         IconButton(onClick = onOpenDrawer) {
                             IconMenu()
@@ -585,7 +631,7 @@ fun MessageListScreen(
             }
         },
         floatingActionButton = {
-            if (selectedUids.isEmpty()) {
+            if (state.selectedUids.isEmpty()) {
                 FloatingActionButton(onClick = onComposeClick) {
                     IconAdd()
                 }
@@ -597,9 +643,9 @@ fun MessageListScreen(
             // fixed 2.dp height so the bar's presence never shifts the LazyColumn
             // (the bar is rendered on top of an invisible track).
             Box(modifier = Modifier.fillMaxWidth().height(2.dp)) {
-                if (isSyncing) {
+                if (state.isSyncing) {
                     LinearProgressIndicator(
-                        progress = { syncProgress },
+                        progress = { state.syncProgress },
                         modifier = Modifier.fillMaxWidth().height(2.dp),
                     )
                 }
@@ -614,21 +660,21 @@ fun MessageListScreen(
                 com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 1, onClick = { msgFilter = 1 }, label = { Text(stringResource(R.string.unread)) })
                 com.vayunmathur.library.ui.FilterChip(selected = msgFilter == 2, onClick = { msgFilter = 2 }, label = { Text(stringResource(R.string.attachments)) })
             }
-            val filteredMessages by remember {
-                derivedStateOf {
-                    when (msgFilter) {
-                        1 -> messages.filter { !it.isRead }
-                        2 -> messages.filter { it.hasAttachments }
-                        else -> messages
-                    }
+            // Keyed on the list rather than derivedStateOf: `state` is a plain parameter,
+            // so a keyless remember would pin whichever snapshot arrived first.
+            val filteredMessages = remember(state.messages, msgFilter) {
+                when (msgFilter) {
+                    1 -> state.messages.filter { !it.isRead }
+                    2 -> state.messages.filter { it.hasAttachments }
+                    else -> state.messages
                 }
             }
             com.vayunmathur.library.ui.PullToRefreshBox(
-                isRefreshing = isSyncing,
-                onRefresh = { viewModel.refresh(context) },
+                isRefreshing = state.isSyncing,
+                onRefresh = { actions.refresh(context) },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (messages.isEmpty() && searchQuery.isEmpty()) {
+                if (state.messages.isEmpty() && state.searchQuery.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Text(
                             text = stringResource(R.string.no_messages_found_pull_down_to_refresh),
@@ -639,7 +685,7 @@ fun MessageListScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                    if (searchQuery.isNotEmpty() && (aiSummaryLoading || aiSummary != null)) {
+                    if (state.searchQuery.isNotEmpty() && (state.aiSummaryLoading || state.aiSummary != null)) {
                         item(key = "ai_summary") {
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -648,14 +694,14 @@ fun MessageListScreen(
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(stringResource(R.string.ai_summary), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                     Spacer(Modifier.height(8.dp))
-                                    if (aiSummaryLoading) {
+                                    if (state.aiSummaryLoading) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                             Spacer(Modifier.width(8.dp))
                                             Text(stringResource(R.string.generating_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                         }
                                     } else {
-                                        Text(aiSummary ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                        Text(state.aiSummary ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                     }
                                 }
                             }
@@ -670,7 +716,7 @@ fun MessageListScreen(
                         } == true
                         if (!isPending) {
                         val accountBandColor = Color(accountColor(message.accountEmail))
-                        val isSelected = message.id in selectedUids
+                        val isSelected = message.id in state.selectedUids
                         // Read the latest message snapshot inside the swipe handler so
                         // repeated read/unread swipes toggle the CURRENT persisted state
                         // (the confirmValueChange lambda is captured once by the state).
@@ -680,7 +726,7 @@ fun MessageListScreen(
                                 when (value) {
                                     com.vayunmathur.library.ui.SwipeToDismissBoxValue.EndToStart -> { pendingDelete = currentMessage; true }
                                     com.vayunmathur.library.ui.SwipeToDismissBoxValue.StartToEnd -> {
-                                        viewModel.markAsRead(currentMessage.accountEmail, currentMessage.folderName, currentMessage.id, !currentMessage.isRead)
+                                        actions.markAsRead(currentMessage.accountEmail, currentMessage.folderName, currentMessage.id, !currentMessage.isRead)
                                         false
                                     }
                                     else -> false
@@ -711,20 +757,20 @@ fun MessageListScreen(
                             modifier = Modifier
                                 .combinedClickable(
                                     onClick = {
-                                        if (selectedUids.isNotEmpty()) {
-                                            viewModel.toggleMessageSelection(message.id)
+                                        if (state.selectedUids.isNotEmpty()) {
+                                            actions.toggleMessageSelection(message.id)
                                         } else {
                                             onMessageClick(message)
                                         }
                                     },
                                     onLongClick = {
-                                        viewModel.toggleMessageSelection(message.id)
+                                        actions.toggleMessageSelection(message.id)
                                     }
                                 )
                                 .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent)
                                 .height(IntrinsicSize.Min)
                         ) {
-                            if (selectedAccountEmail == null) {
+                            if (state.selectedAccountEmail == null) {
                                 Surface(
                                     modifier = Modifier.width(4.dp).fillMaxHeight(),
                                     color = accountBandColor
@@ -782,9 +828,9 @@ fun MessageListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EmailViewModel] to the stateless [MessageThreadScreen]. */
 @Composable
-fun MessageThreadScreen(
+fun MessageThreadPage(
     viewModel: EmailViewModel,
     accountEmail: String,
     threadId: String,
@@ -794,6 +840,35 @@ fun MessageThreadScreen(
     onCompose: (String, String) -> Unit
 ) {
     val messages by viewModel.getThread(accountEmail, threadId).collectAsStateWithLifecycle(emptyList())
+    MessageThreadScreen(
+        messages = messages,
+        actions = viewModel,
+        threadId = threadId,
+        onBack = onBack,
+        onReply = onReply,
+        onForward = onForward,
+        onCompose = onCompose,
+    )
+}
+
+/**
+ * A conversation, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ *
+ * [threadId] is not read for display; it only keys the "mark the thread read once" latch
+ * so navigating to a different thread arms it again.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageThreadScreen(
+    messages: List<EmailMessage>,
+    actions: MessageThreadActions,
+    threadId: String = "",
+    onBack: () -> Unit = {},
+    onReply: (String, String, String?) -> Unit = { _, _, _ -> },
+    onForward: (String, String?) -> Unit = { _, _ -> },
+    onCompose: (String, String) -> Unit = { _, _ -> },
+) {
     var hasMarkedAsRead by remember(threadId) { mutableStateOf(false) }
     val context = LocalContext.current
     var pendingExport by remember { mutableStateOf<EmailMessage?>(null) }
@@ -805,7 +880,7 @@ fun MessageThreadScreen(
         val msg = pendingExport
         pendingExport = null
         if (targetUri != null && msg != null) {
-            viewModel.exportEml(
+            actions.exportEml(
                 accountEmail = msg.accountEmail,
                 folderName = msg.folderName,
                 uid = msg.id,
@@ -822,7 +897,7 @@ fun MessageThreadScreen(
     LaunchedEffect(messages) {
         if (!hasMarkedAsRead && messages.isNotEmpty()) {
             messages.filter { !it.isRead }.forEach { msg ->
-                viewModel.markAsRead(msg.accountEmail, msg.folderName, msg.id, true)
+                actions.markAsRead(msg.accountEmail, msg.folderName, msg.id, true)
             }
             hasMarkedAsRead = true
         }
@@ -844,7 +919,7 @@ fun MessageThreadScreen(
             items(messages, key = { "${it.accountEmail}|${it.folderName}|${it.id}" }) { msg ->
                 MessageItem(
                     msg = msg,
-                    viewModel = viewModel,
+                    actions = actions,
                     onBack = onBack,
                     onReply = onReply,
                     onForward = onForward,
@@ -866,7 +941,7 @@ fun MessageThreadScreen(
 @Composable
 fun MessageItem(
     msg: EmailMessage,
-    viewModel: EmailViewModel,
+    actions: MessageThreadActions,
     onBack: () -> Unit,
     onReply: (String, String, String?) -> Unit,
     onForward: (String, String?) -> Unit,
@@ -880,9 +955,9 @@ fun MessageItem(
     var showOverflow by remember { mutableStateOf(false) }
 
     LaunchedEffect(msg.id) {
-        attachments = viewModel.getAttachments(msg.accountEmail, msg.id)
+        attachments = actions.getAttachments(msg.accountEmail, msg.id)
         if (msg.body == null) {
-            viewModel.fetchBodyIfNeeded(msg)
+            actions.fetchBodyIfNeeded(msg)
         }
     }
 
@@ -940,7 +1015,7 @@ fun MessageItem(
                     DropdownMenu(expanded = showSnooze, onDismissRequest = { showSnooze = false }) {
                         val snooze = { at: Long ->
                             showSnooze = false
-                            viewModel.snoozeMessage(msg.accountEmail, msg.folderName, msg.id, at)
+                            actions.snoozeMessage(msg.accountEmail, msg.folderName, msg.id, at)
                             android.widget.Toast.makeText(context, context.getString(R.string.snoozed), android.widget.Toast.LENGTH_SHORT).show()
                             onBack()
                         }
@@ -953,7 +1028,7 @@ fun MessageItem(
                     IconUndo()
                 }
                 IconButton(onClick = {
-                    viewModel.markAsRead(msg.accountEmail, msg.folderName, msg.id, !msg.isRead)
+                    actions.markAsRead(msg.accountEmail, msg.folderName, msg.id, !msg.isRead)
                     if (msg.isRead) {
                         onBack()
                     }
@@ -980,7 +1055,7 @@ fun MessageItem(
             val bodyHasCid = remember(msg.body) { msg.body.contains("cid:", ignoreCase = true) }
             LaunchedEffect(msg.id, msg.body) {
                 if (bodyHasCid) {
-                    val map = viewModel.loadCidMap(context, msg)
+                    val map = actions.loadCidMap(context, msg)
                     if (map.isNotEmpty()) cidMap = map
                 }
             }
@@ -1028,7 +1103,7 @@ fun MessageItem(
         if (attachments.isNotEmpty()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text(stringResource(R.string.attachments_2), style = MaterialTheme.typography.labelLarge)
-                attachments.forEach { att -> AttachmentItem(att, viewModel) }
+                attachments.forEach { att -> AttachmentItem(att, actions) }
             }
         }
 
@@ -1048,12 +1123,12 @@ fun MessageItem(
                 TextButton(onClick = { showConfirm = true }) { Text(stringResource(R.string.unsubscribe)) }
                 if (showConfirm) {
                     UnsubscribeDialog(method = unsubscribe, onDismiss = { showConfirm = false }, onConfirm = {
-                        showConfirm = false; performUnsubscribe(unsubscribe, context, viewModel, onCompose)
+                        showConfirm = false; performUnsubscribe(unsubscribe, context, actions, onCompose)
                     })
                 }
             }
             TextButton(onClick = {
-                viewModel.blockSender(msg.from)
+                actions.blockSender(msg.from)
                 android.widget.Toast.makeText(context, context.getString(R.string.sender_blocked), android.widget.Toast.LENGTH_SHORT).show()
                 onBack()
             }) { Text(stringResource(R.string.block_sender)) }
@@ -1107,7 +1182,7 @@ fun DetailItem(label: String, name: String, email: String, avatarColor: Color) {
 }
 
 @Composable
-fun AttachmentItem(attachment: Attachment, viewModel: EmailViewModel) {
+fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
     val context = LocalContext.current
     var downloading by remember { mutableStateOf(false) }
     var localPath by remember { mutableStateOf(attachment.localUri) }
@@ -1140,7 +1215,7 @@ fun AttachmentItem(attachment: Attachment, viewModel: EmailViewModel) {
         } else {
             IconButton(onClick = {
                 downloading = true
-                viewModel.downloadAttachment(attachment, { path ->
+                actions.downloadAttachment(attachment, { path ->
                     downloading = false
                     localPath = path
                     Toast.makeText(context, context.getString(R.string.saved_to_downloads), Toast.LENGTH_SHORT).show()
@@ -2127,13 +2202,13 @@ private fun UnsubscribeDialog(
 private fun performUnsubscribe(
     method: UnsubscribeMethod,
     context: android.content.Context,
-    viewModel: EmailViewModel,
+    actions: MessageThreadActions,
     onCompose: (String, String) -> Unit,
 ) {
     when (method) {
         is UnsubscribeMethod.OneClickPost -> {
             android.widget.Toast.makeText(context, context.getString(R.string.unsubscribing), android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.oneClickUnsubscribe(method.url) { ok ->
+            actions.oneClickUnsubscribe(method.url) { ok ->
                 val text = if (ok) "Unsubscribed" else "Unsubscribe failed"
                 android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
             }

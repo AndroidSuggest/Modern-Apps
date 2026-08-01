@@ -43,10 +43,11 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconSave
 import com.vayunmathur.passwords.data.Password
 import com.vayunmathur.passwords.Route
+import com.vayunmathur.passwords.util.PasswordEditUiState
+import com.vayunmathur.passwords.util.PasswordsActions
 import com.vayunmathur.passwords.util.PasswordsViewModel
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordEditPage(
     backStack: NavBackStack<Route>,
@@ -58,7 +59,29 @@ fun PasswordEditPage(
         viewModel.initDraft(pass)
     }
     val draft by viewModel.draft.collectAsState()
-    val current = draft ?: pass
+    PasswordEditScreen(
+        state = PasswordEditUiState(saved = pass, draft = draft),
+        actions = viewModel,
+        onBack = { backStack.pop() },
+        onCreated = { newId -> backStack.setLast(Route.PasswordPage(newId)) },
+    )
+}
+
+/**
+ * The add/edit form, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PasswordEditScreen(
+    state: PasswordEditUiState,
+    actions: PasswordsActions,
+    onBack: () -> Unit = {},
+    /** Called with the assigned id after a brand-new entry is saved. */
+    onCreated: (Long) -> Unit = {},
+) {
+    val draft = state.draft
+    val current = draft ?: state.saved
 
     var websiteInput by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
@@ -71,7 +94,7 @@ fun PasswordEditPage(
     fun addWebsiteFromInput() {
         val candidate = websiteInput.trim()
         if (candidate.isNotEmpty()) {
-            viewModel.updateDraft { d ->
+            actions.updateDraft { d ->
                 if (d.websites.contains(candidate)) d
                 else d.copy(websites = d.websites + candidate)
             }
@@ -84,7 +107,7 @@ fun PasswordEditPage(
             TopAppBar(
                 title = { Text(if (current.id == 0L) stringResource(R.string.add_password) else stringResource(R.string.edit_password)) },
                 navigationIcon = {
-                    IconNavigation(backStack)
+                    IconNavigation(onBack)
                 }
             )
         },
@@ -96,14 +119,12 @@ fun PasswordEditPage(
                     return@FloatingActionButton
                 }
                 // Normalize empty TOTP to null before saving.
-                viewModel.updateDraft { it.copy(totpSecret = it.totpSecret?.ifBlank { null }) }
+                actions.updateDraft { it.copy(totpSecret = it.totpSecret?.ifBlank { null }) }
                 if (d.id == 0L) {
-                    viewModel.saveDraft { newId ->
-                        backStack.setLast(Route.PasswordPage(newId))
-                    }
+                    actions.saveDraft { newId -> onCreated(newId) }
                 } else {
-                    viewModel.saveDraft()
-                    backStack.pop()
+                    actions.saveDraft()
+                    onBack()
                 }
             }) {
                 IconSave()
@@ -116,13 +137,13 @@ fun PasswordEditPage(
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = current.name,
-                        onValueChange = { v -> viewModel.updateDraft { it.copy(name = v) } },
+                        onValueChange = { v -> actions.updateDraft { it.copy(name = v) } },
                         label = { Text(stringResource(R.string.label_name)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = current.userId,
-                        onValueChange = { v -> viewModel.updateDraft { it.copy(userId = v) } },
+                        onValueChange = { v -> actions.updateDraft { it.copy(userId = v) } },
                         label = { Text(stringResource(R.string.label_user_id_email)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -133,7 +154,7 @@ fun PasswordEditPage(
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = current.password,
-                        onValueChange = { v -> viewModel.updateDraft { it.copy(password = v) } },
+                        onValueChange = { v -> actions.updateDraft { it.copy(password = v) } },
                         label = { Text(stringResource(R.string.label_password)) },
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (showPassword) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
@@ -144,7 +165,7 @@ fun PasswordEditPage(
 
                     OutlinedTextField(
                         value = current.totpSecret ?: "",
-                        onValueChange = { v -> viewModel.updateDraft { it.copy(totpSecret = v) } },
+                        onValueChange = { v -> actions.updateDraft { it.copy(totpSecret = v) } },
                         label = { Text(stringResource(R.string.label_totp_secret)) },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions.Default,
@@ -177,7 +198,7 @@ fun PasswordEditPage(
                                 InputChip(true, {}, label = { Text(w)}, modifier = Modifier.padding(vertical = 4.dp),
                                     trailingIcon = {
                                         Box(Modifier.clickable {
-                                        viewModel.updateDraft { d ->
+                                        actions.updateDraft { d ->
                                                 d.copy(websites = d.websites.filterIndexed { i, _ -> i != index })
                                             }
                                         }) {

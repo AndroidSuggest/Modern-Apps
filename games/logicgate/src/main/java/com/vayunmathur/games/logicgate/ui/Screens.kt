@@ -58,13 +58,33 @@ private fun buildTimelineItems(): List<TimelineItem> {
     return items
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [LogicViewModel] to the stateless [ProgressionScreen]. */
 @Composable
-fun ProgressionScreen(
+fun ProgressionPage(
     backStack: NavBackStack<com.vayunmathur.games.logicgate.Route>,
     viewModel: LogicViewModel
 ) {
     val completed by viewModel.completedIds.collectAsState()
+    ProgressionScreen(
+        completed = completed,
+        onOpenLevel = { lvlId -> backStack.add(com.vayunmathur.games.logicgate.Route.Game(lvlId)) },
+        onOpenGameCenter = { backStack.add(com.vayunmathur.games.logicgate.Route.GameCenter) },
+    )
+}
+
+/**
+ * The level map. Takes the completed set and two callbacks rather than the ViewModel and
+ * back stack, so it can be rendered from a `@Preview` — see `src/screenshotTest`, which is
+ * where the store listing images come from. Everything else it draws is derived from the
+ * static [Levels] table.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProgressionScreen(
+    completed: Set<String>,
+    onOpenLevel: (String) -> Unit = {},
+    onOpenGameCenter: () -> Unit = {},
+) {
     val available = Levels.availableLevels(completed)
     val timelineItems = buildTimelineItems()
     Scaffold(
@@ -72,7 +92,7 @@ fun ProgressionScreen(
             TopAppBar(
                 title = { LibText(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { backStack.add(com.vayunmathur.games.logicgate.Route.GameCenter) }) {
+                    IconButton(onClick = onOpenGameCenter) {
                         Icon(painterResource(id = android.R.drawable.btn_star_big_on), contentDescription = stringResource(R.string.cd_achievements))
                     }
                 }
@@ -130,7 +150,7 @@ fun ProgressionScreen(
                         }
                         is TimelineItem.LevelRow -> {
                             LevelRowContent(item, completed, available, nodeSize, rowHeight) { lvlId ->
-                                if (lvlId in completed || lvlId in available) backStack.add(com.vayunmathur.games.logicgate.Route.Game(lvlId))
+                                if (lvlId in completed || lvlId in available) onOpenLevel(lvlId)
                             }
                             if (idx + 1 < timelineItems.size) {
                                 val next = timelineItems[idx + 1]

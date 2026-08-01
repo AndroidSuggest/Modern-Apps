@@ -47,6 +47,8 @@ import com.vayunmathur.travel.network.StayRateDto
 import com.vayunmathur.travel.network.StaySearchResultDto
 import com.vayunmathur.travel.network.StayGuestInputDto
 import com.vayunmathur.travel.util.StayBookingState
+import com.vayunmathur.travel.util.StayResultsActions
+import com.vayunmathur.travel.util.StaySearchState
 import com.vayunmathur.travel.util.TravelViewModel
 import androidx.compose.ui.res.stringResource
 
@@ -149,7 +151,7 @@ private fun StaySuggestField(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [TravelViewModel] and the back stack to the stateless [StayResultsScreen]. */
 @Composable
 fun StayResultsPage(
     backStack: NavBackStack<Route>,
@@ -162,11 +164,34 @@ fun StayResultsPage(
         val lng = route.longitude.takeIf { !it.isNaN() }
         viewModel.searchStays(route.place, route.checkIn, route.checkOut, route.rooms, route.adults, lat, lng)
     }
+    val actions = remember(backStack) {
+        object : StayResultsActions {
+            override fun openStay(result: StaySearchResultDto) =
+                backStack.add(Route.StayDetail(result.id, result.name))
+
+            override fun back() = backStack.pop()
+        }
+    }
+    StayResultsScreen(place = route.place, state = state, actions = actions)
+}
+
+/**
+ * The hotel list, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StayResultsScreen(
+    place: String,
+    state: StaySearchState,
+    actions: StayResultsActions,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.hotels_in, route.place)) },
-                navigationIcon = { IconNavigation(backStack) },
+                title = { Text(stringResource(R.string.hotels_in, place)) },
+                navigationIcon = { IconNavigation { actions.back() } },
             )
         },
     ) { padding ->
@@ -175,9 +200,7 @@ fun StayResultsPage(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
         ) {
             items(state.results) { result ->
-                StayResultCard(result) {
-                    backStack.add(Route.StayDetail(result.id, result.name))
-                }
+                StayResultCard(result) { actions.openStay(result) }
             }
             if (state.loading || state.error != null || (state.hasSearched && state.results.isEmpty())) {
                 item {

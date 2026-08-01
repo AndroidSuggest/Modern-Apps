@@ -53,10 +53,11 @@ import com.vayunmathur.library.ui.IconVisible
 import com.vayunmathur.passwords.data.Password
 import com.vayunmathur.passwords.R
 import com.vayunmathur.passwords.Route
+import com.vayunmathur.passwords.util.PasswordUiState
+import com.vayunmathur.passwords.util.PasswordsActions
 import com.vayunmathur.passwords.util.PasswordsViewModel
 import com.vayunmathur.passwords.util.TOTP
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordPage(
     backStack: NavBackStack<Route>,
@@ -64,13 +65,41 @@ fun PasswordPage(
     viewModel: PasswordsViewModel,
 ) {
     val password by viewModel.passwordState(id)
-    val context = LocalContext.current
-    var showPassword by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
     val now by viewModel.tickerFlow.collectAsState()
+    PasswordScreen(
+        state = PasswordUiState(password, now),
+        actions = viewModel,
+        onBack = { backStack.pop() },
+        onEdit = { backStack.add(Route.PasswordEditPage(id)) },
+    )
+}
+
+/**
+ * The credential detail screen, with no dependency on the ViewModel so it can be rendered
+ * from a `@Preview` — see `src/screenshotTest`, which is where the store listing images
+ * come from. That also keeps the screenshot generator away from a real vault.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PasswordScreen(
+    state: PasswordUiState,
+    actions: PasswordsActions,
+    onBack: () -> Unit = {},
+    onEdit: () -> Unit = {},
+    /**
+     * Seed for the screen's own UI-only state. The app always takes the default; a preview
+     * can set it to capture the revealed form without driving the reveal button.
+     */
+    initialShowPassword: Boolean = false,
+) {
+    val password = state.password
+    val now = state.now
+    val context = LocalContext.current
+    var showPassword by remember { mutableStateOf(initialShowPassword) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
-        viewModel.copyEvents.collect { msg ->
+        actions.copyEvents.collect { msg ->
             snackbarHostState.showSnackbar(msg)
         }
     }
@@ -80,17 +109,17 @@ fun PasswordPage(
             TopAppBar(
                 title = { Text(password.name.ifBlank { stringResource(R.string.section_password) }) },
                 actions = {
-                    IconButton(onClick = { viewModel.delete(password); backStack.pop() }) {
+                    IconButton(onClick = { actions.delete(password); onBack() }) {
                         IconDelete()
                     }
                 },
                 navigationIcon = {
-                    IconNavigation(backStack)
+                    IconNavigation(onBack)
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton({ backStack.add(Route.PasswordEditPage(id)) }) {
+            FloatingActionButton(onEdit) {
                 IconEdit()
             }
         },
@@ -152,7 +181,7 @@ fun PasswordPage(
                         }
 
                         IconButton(onClick = {
-                            viewModel.copyToClipboard("password", password.password)
+                            actions.copyToClipboard("password", password.password)
                         }) {
                             IconCopy()
                         }
@@ -190,7 +219,7 @@ fun PasswordPage(
                             Box(contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator({ progress }, Modifier.size(56.dp))
                                 IconButton({
-                                    viewModel.copyToClipboard("totp", currentCode, "TOTP copied")
+                                    actions.copyToClipboard("totp", currentCode, "TOTP copied")
                                 }) {
                                     IconCopy()
                                 }

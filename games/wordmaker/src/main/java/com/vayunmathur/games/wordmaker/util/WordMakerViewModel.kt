@@ -24,7 +24,8 @@ import kotlin.random.Random
 /** Outcome of a finished competitive level, shown on the between-levels lobby. */
 data class CompetitiveResult(val won: Boolean, val delta: Int)
 
-class WordMakerViewModel(application: Application) : AndroidViewModel(application) {
+class WordMakerViewModel(application: Application) : AndroidViewModel(application),
+    WordGameActions, CompetitiveLobbyActions {
 
     val levelDataStore: LevelDataStore = LevelDataStore(application)
 
@@ -154,7 +155,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /** Generates a fresh competitive layout on the fly, resets its found words and restarts the timer. */
-    fun loadNextCompetitiveLevel() {
+    override fun loadNextCompetitiveLevel() {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             _competitiveActive.value = true
@@ -177,7 +178,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun setGameMode(mode: GameMode) {
+    override fun setGameMode(mode: GameMode) {
         viewModelScope.launch {
             levelDataStore.setGameMode(mode)
             // Both modes return to a neutral state: competitive opens its lobby, casual resumes play.
@@ -187,7 +188,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun setDifficulty(difficulty: Difficulty) {
+    override fun setDifficulty(difficulty: Difficulty) {
         // Difficulty is chosen on the lobby between levels, so it only needs to be persisted.
         viewModelScope.launch { levelDataStore.setDifficulty(difficulty) }
     }
@@ -203,7 +204,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /** Timer ran out: deduct points and return to the lobby. */
-    fun onCompetitiveTimeout() {
+    override fun onCompetitiveTimeout() {
         viewModelScope.launch {
             levelDataStore.addToCompetitiveScore(-difficulty.value.lossDelta)
             _competitiveResult.value = CompetitiveResult(won = false, delta = -difficulty.value.lossDelta)
@@ -212,15 +213,15 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun isInDictionary(word: String): Boolean = word.lowercase() in dictionary
+    override fun isInDictionary(word: String): Boolean = word.lowercase() in dictionary
 
-    fun getDefinition(word: String): List<String> = dictionary.getDefinition(word)
+    override fun getDefinition(word: String): List<String> = dictionary.getDefinition(word)
 
-    fun saveLevel(level: Int) {
+    override fun saveLevel(level: Int) {
         viewModelScope.launch { levelDataStore.saveLevel(level) }
     }
 
-    fun addFoundWord(word: String) {
+    override fun addFoundWord(word: String) {
         if (gameMode.value == GameMode.COMPETITIVE) {
             _competitiveFoundWords.value = _competitiveFoundWords.value + word
         } else {
@@ -228,13 +229,13 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    suspend fun addBonusWord(word: String): Int = levelDataStore.addBonusWord(word)
+    override suspend fun addBonusWord(word: String): Int = levelDataStore.addBonusWord(word)
 
     fun setTapToSpell(enabled: Boolean) {
         viewModelScope.launch { levelDataStore.setTapToSpell(enabled) }
     }
 
-    fun revealHint(crosswordData: CrosswordData, foundWords: Set<String>, revealedHints: Set<Pair<Int, Int>>) {
+    override fun revealHint(crosswordData: CrosswordData, foundWords: Set<String>, revealedHints: Set<Pair<Int, Int>>) {
         val revealed = foundWords.flatMapTo(mutableSetOf()) { word ->
             crosswordData.letterPositions[word]?.flatten().orEmpty()
         } + revealedHints

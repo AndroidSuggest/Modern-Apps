@@ -24,6 +24,7 @@ import javax.net.ssl.SSLSocketFactory
  * - manual redirect 301/302/303/307/308 up to 5 hops
  * - Content-Encoding br via org.brotli.dec.BrotliInputStream, gzip via GZIPInputStream,
  *   deflate via InflaterInputStream
+ * - TLS: respects per-call sslSocketFactory, else falls back to NetworkClient.defaultSslSocketFactory.
  */
 internal object HttpUrlEngine {
 
@@ -57,10 +58,10 @@ internal object HttpUrlEngine {
             doOutput = bodyBytes != null
         }
 
-        // Certificate pinning (Signal): callers supply a factory built over a
-        // KeyStore holding only their pinned root. Plain-HTTP URLs ignore it.
-        if (sslSocketFactory != null && conn is HttpsURLConnection) {
-            conn.sslSocketFactory = sslSocketFactory
+        // Certificate pinning / reduced trust: explicit factory wins, else app-wide default, else system.
+        val effectiveFactory = sslSocketFactory ?: NetworkClient.defaultSslSocketFactory
+        if (effectiveFactory != null && conn is HttpsURLConnection) {
+            conn.sslSocketFactory = effectiveFactory
         }
 
         try {
@@ -126,8 +127,6 @@ internal object HttpUrlEngine {
         return when {
             lower.contains("br") -> try { org.brotli.dec.BrotliInputStream(raw) } catch (_: Throwable) { raw }
             lower.contains("gzip") -> try { GZIPInputStream(raw) } catch (_: Exception) { raw }
-            // nowrap=true first: servers advertising "deflate" usually send raw
-            // DEFLATE rather than the zlib wrapper the RFC asks for.
             lower.contains("deflate") -> try {
                 InflaterInputStream(raw, Inflater(true))
             } catch (_: Exception) { raw }

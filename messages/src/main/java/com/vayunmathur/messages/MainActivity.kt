@@ -22,6 +22,8 @@ import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.messages.data.buildMessagesDatabase
 import com.vayunmathur.messages.data.MessageSource
@@ -47,6 +49,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // EXTENDED: googleapis GTS + Facebook DigiCert, Signal pinned separately via CertPinning
+        NetworkClient.init(this, TrustBundle.EXTENDED)
         enableEdgeToEdge()
         pendingIntent.value = intent
         setContent {

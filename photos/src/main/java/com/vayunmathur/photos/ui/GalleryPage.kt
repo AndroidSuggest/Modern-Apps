@@ -55,12 +55,15 @@ import androidx.fragment.app.FragmentActivity
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconSearch
+import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.LocalColumnCount
 import com.vayunmathur.photos.NavigationBar
 import com.vayunmathur.photos.R
 import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.data.Photo
+import com.vayunmathur.photos.util.GalleryActions
+import com.vayunmathur.photos.util.GalleryUiState
 import com.vayunmathur.photos.util.GalleryViewModel
 import com.vayunmathur.photos.util.ImageLoader
 import com.vayunmathur.photos.util.SearchAiState
@@ -86,7 +89,7 @@ internal fun groupPhotosByMonth(
     }.mapValues { pair -> pair.value.sortedByDescending { it.date } }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [GalleryViewModel] to the stateless [GalleryScreen]. */
 @Composable
 fun GalleryPage(
     backStack: NavBackStack<Route>,
@@ -96,11 +99,9 @@ fun GalleryPage(
     val allPhotos by galleryViewModel.photos.collectAsState()
     val photos by remember { derivedStateOf { allPhotos.filter { !it.isTrashed } } }
     val context = LocalContext.current
-    var columnCount by LocalColumnCount.current
 
     val selectedIds by galleryViewModel.selectedIds.collectAsState()
     val isRefreshing by galleryViewModel.isRefreshing.collectAsState()
-    val isSelectionMode = selectedIds.isNotEmpty()
 
     val searchQuery by galleryViewModel.searchQuery.collectAsState()
     val searchResults by galleryViewModel.searchResults.collectAsState()
@@ -109,7 +110,6 @@ fun GalleryPage(
     val ocrTargetCount by galleryViewModel.ocrTargetCount.collectAsState()
     val clipCount by galleryViewModel.clipCount.collectAsState()
     val clipTargetCount by galleryViewModel.clipTargetCount.collectAsState()
-    var searchActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         galleryViewModel.runSync()
@@ -180,14 +180,62 @@ fun GalleryPage(
         mediaResultLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
     }
 
-    val resources = LocalResources.current
-    val photosGroupedByMonth by remember {
-        derivedStateOf { groupPhotosByMonth(photos, resources) }
-    }
+    GalleryScreen(
+        backStack = backStack,
+        state = GalleryUiState(
+            photos = photos,
+            selectedIds = selectedIds,
+            isRefreshing = isRefreshing,
+            searchQuery = searchQuery,
+            searchResults = searchResults,
+            searchAiState = searchAiState,
+            ocrCount = ocrCount,
+            ocrTargetCount = ocrTargetCount,
+            clipCount = clipCount,
+            clipTargetCount = clipTargetCount,
+        ),
+        // The ViewModel is the actions implementation; the two MediaStore operations are
+        // the exception, because they need the launchers created above.
+        actions = object : GalleryActions by galleryViewModel {
+            override fun moveSelectionToSecureFolder() = onMoveToSecureClick()
+            override fun trashSelection() = onDeleteClick()
+        },
+    )
+}
 
-    val displayPhotos = if (searchActive && searchQuery.isNotEmpty()) searchResults else photos
-    val displayPhotosGroupedByMonth by remember(displayPhotos) {
-        derivedStateOf { groupPhotosByMonth(displayPhotos, resources) }
+/**
+ * The gallery grid, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GalleryScreen(
+    backStack: NavBackStack<Route>,
+    state: GalleryUiState,
+    actions: GalleryActions,
+    /**
+     * Seed for the screen's own UI-only state (whether the search bar is expanded). The app
+     * always takes the default; a preview sets it to capture that view without driving the UI.
+     */
+    initialSearchActive: Boolean = false,
+    /**
+     * How a grid tile paints its photo. Previews pass a placeholder, because Layoutlib has
+     * neither MediaStore nor the [ImageLoader] singleton MainActivity initialises.
+     */
+    thumbnail: @Composable (Photo, Modifier) -> Unit = { photo, modifier -> ImageLoader.PhotoItem(photo, modifier) },
+) {
+    var columnCount by LocalColumnCount.current
+    var searchActive by remember { mutableStateOf(initialSearchActive) }
+    val isSelectionMode = state.selectedIds.isNotEmpty()
+
+    // Keyed on the incoming lists rather than derivedStateOf: `state` is a plain value, so
+    // there is nothing for a derived state to observe.
+    val resources = LocalResources.current
+    val photosGroupedByMonth = remember(state.photos, resources) {
+        groupPhotosByMonth(state.photos, resources)
+    }
+    val searchResultsGroupedByMonth = remember(state.searchResults, resources) {
+        groupPhotosByMonth(state.searchResults, resources)
     }
 
     Scaffold(
@@ -195,17 +243,17 @@ fun GalleryPage(
             Column {
                 if (isSelectionMode) {
                     TopAppBar(
-                        title = { Text(stringResource(R.string.items_selected, selectedIds.size)) },
+                        title = { Text(stringResource(R.string.items_selected, state.selectedIds.size)) },
                         navigationIcon = {
-                            IconButton(onClick = { galleryViewModel.clearSelection() }) {
+                            IconButton(onClick = { actions.clearSelection() }) {
                                 IconClose()
                             }
                         },
                         actions = {
-                            IconButton(onClick = onMoveToSecureClick) {
+                            IconButton(onClick = { actions.moveSelectionToSecureFolder() }) {
                                 IconLock()
                             }
-                            IconButton(onClick = onDeleteClick) {
+                            IconButton(onClick = { actions.trashSelection() }) {
                                 IconDelete()
                             }
                         }
@@ -214,8 +262,8 @@ fun GalleryPage(
                     SearchBar(
                         inputField = {
                             SearchBarDefaults.InputField(
-                                query = searchQuery,
-                                onQueryChange = { galleryViewModel.setSearchQuery(it) },
+                                query = state.searchQuery,
+                                onQueryChange = { actions.setSearchQuery(it) },
                                 onSearch = { searchActive = false },
                                 expanded = searchActive,
                                 onExpandedChange = { searchActive = it },
@@ -226,8 +274,8 @@ fun GalleryPage(
                                 trailingIcon = {
                                     if (searchActive) {
                                         IconButton(onClick = {
-                                            if (searchQuery.isNotEmpty()) {
-                                                galleryViewModel.setSearchQuery("")
+                                            if (state.searchQuery.isNotEmpty()) {
+                                                actions.setSearchQuery("")
                                             } else {
                                                 searchActive = false
                                             }
@@ -243,11 +291,11 @@ fun GalleryPage(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         // Search bar expanded content
-                        if (searchQuery.isNotEmpty()) {
+                        if (state.searchQuery.isNotEmpty()) {
                             // Semantic search is served by OpenAssistant; if it's
                             // unavailable, tell the user (OCR/filename results, if
                             // any, still show below).
-                            val aiMessage = when (searchAiState) {
+                            val aiMessage = when (state.searchAiState) {
                                 SearchAiState.NOT_INSTALLED -> stringResource(R.string.openassistant_not_found)
                                 SearchAiState.NEEDS_UPDATE -> stringResource(R.string.openassistant_needs_update)
                                 SearchAiState.DOWNLOADING -> stringResource(R.string.model_downloading_description)
@@ -266,41 +314,44 @@ fun GalleryPage(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.fillMaxSize().padding(4.dp)
                             ) {
-                                items(searchResults, key = { it.id }, contentType = { "photo_thumbnail" }) { photo ->
-                                    ImageLoader.PhotoItem(
-                                        photo = photo,
-                                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                                        onClick = {
-                                            searchActive = false
-                                            backStack.add(Route.PhotoPage(photo.id, searchResults))
-                                        }
-                                    )
+                                items(state.searchResults, key = { it.id }, contentType = { "photo_thumbnail" }) { photo ->
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(1f)
+                                            .invisibleClickable {
+                                                searchActive = false
+                                                backStack.add(Route.PhotoPage(photo.id, state.searchResults))
+                                            }
+                                    ) {
+                                        thumbnail(photo, Modifier.fillMaxSize())
+                                    }
                                 }
                             }
                         } else {
                             // Show on-device indexing progress (text + visual).
-                            if (ocrTargetCount > 0) {
-                                val pct = if (ocrTargetCount > 0) (ocrCount * 100 / ocrTargetCount) else 0
+                            if (state.ocrTargetCount > 0) {
+                                val pct = state.ocrCount * 100 / state.ocrTargetCount
                                 ListItem(
                                     content = { Text(stringResource(R.string.of_photos_processed, pct)) },
-                                    supportingContent = { Text(stringResource(R.string.photos_indexed_for_text_search, ocrCount, ocrTargetCount)) },
+                                    supportingContent = { Text(stringResource(R.string.photos_indexed_for_text_search, state.ocrCount, state.ocrTargetCount)) },
                                     leadingContent = {
                                         CircularProgressIndicator(
-                                            progress = { ocrCount.toFloat() / ocrTargetCount },
+                                            progress = { state.ocrCount.toFloat() / state.ocrTargetCount },
                                             modifier = Modifier.size(40.dp),
                                             strokeWidth = 4.dp
                                         )
                                     }
                                 )
                             }
-                            if (clipTargetCount > 0) {
-                                val pct = if (clipTargetCount > 0) (clipCount * 100 / clipTargetCount) else 0
+                            if (state.clipTargetCount > 0) {
+                                val pct = state.clipCount * 100 / state.clipTargetCount
                                 ListItem(
                                     content = { Text(stringResource(R.string.of_photos_processed, pct)) },
-                                    supportingContent = { Text(stringResource(R.string.photos_indexed_for_visual_search, clipCount, clipTargetCount)) },
+                                    supportingContent = { Text(stringResource(R.string.photos_indexed_for_visual_search, state.clipCount, state.clipTargetCount)) },
                                     leadingContent = {
                                         CircularProgressIndicator(
-                                            progress = { clipCount.toFloat() / clipTargetCount },
+                                            progress = { state.clipCount.toFloat() / state.clipTargetCount },
                                             modifier = Modifier.size(40.dp),
                                             strokeWidth = 4.dp
                                         )
@@ -315,8 +366,8 @@ fun GalleryPage(
         bottomBar = { if (!isSelectionMode) NavigationBar(Route.Gallery, backStack) }
     ) { paddingValues ->
         com.vayunmathur.library.ui.PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { galleryViewModel.runSync() },
+            isRefreshing = state.isRefreshing,
+            onRefresh = { actions.runSync() },
             modifier = Modifier.fillMaxSize().padding(paddingValues),
         ) {
             Box(
@@ -330,7 +381,7 @@ fun GalleryPage(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val currentGroupedPhotos = if (searchActive && searchQuery.isNotEmpty()) displayPhotosGroupedByMonth else photosGroupedByMonth
+                    val currentGroupedPhotos = if (searchActive && state.searchQuery.isNotEmpty()) searchResultsGroupedByMonth else photosGroupedByMonth
                     currentGroupedPhotos.forEach { (month, photosInMonth) ->
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Text(
@@ -340,19 +391,20 @@ fun GalleryPage(
                             )
                         }
                         items(photosInMonth, { it.id }, contentType = { "photo_thumbnail" }) { photo ->
-                            val isSelected = photo.id in selectedIds
+                            val isSelected = photo.id in state.selectedIds
                             ImageLoader.SelectablePhotoItem(
                                 photo = photo,
                                 isSelected = isSelected,
                                 isSelectionMode = isSelectionMode,
-                                onToggleSelection = { galleryViewModel.toggleSelection(photo.id) },
+                                onToggleSelection = { actions.toggleSelection(photo.id) },
                                 onClick = {
                                     if (isSelectionMode) {
-                                        galleryViewModel.toggleSelection(photo.id)
+                                        actions.toggleSelection(photo.id)
                                     } else {
                                         backStack.add(Route.PhotoPage(photo.id, null))
                                     }
-                                }
+                                },
+                                thumbnail = thumbnail,
                             )
                         }
                     }

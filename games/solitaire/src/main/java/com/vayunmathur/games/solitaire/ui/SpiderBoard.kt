@@ -16,12 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.solitaire.data.SpiderState
-import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.games.solitaire.R
 
 @Composable
-fun SpiderBoard(state: SpiderState, viewModel: SolitaireViewModel, modifier: Modifier = Modifier) {
+fun SpiderBoard(state: SpiderState, actions: SolitaireActions, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier) {
         val cardWidth = (maxWidth - 54.dp) / 10
         val cardHeight = cardWidth * 1.4f
@@ -42,7 +42,7 @@ fun SpiderBoard(state: SpiderState, viewModel: SolitaireViewModel, modifier: Mod
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     repeat(state.stockGroups.size) {
                             CardBack(
-                                modifier = Modifier.clickable { viewModel.dealSpiderStock() },
+                                modifier = Modifier.clickable { actions.dealSpiderStock() },
                                 cardWidth = cardWidth,
                                 cardHeight = cardHeight
                             )
@@ -61,7 +61,7 @@ fun SpiderBoard(state: SpiderState, viewModel: SolitaireViewModel, modifier: Mod
                     TableauColumn(
                         pile = state.tableauPiles[i],
                         columnIndex = i,
-                        viewModel = viewModel,
+                        actions = actions,
                         modifier = Modifier.weight(1f),
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
@@ -70,7 +70,7 @@ fun SpiderBoard(state: SpiderState, viewModel: SolitaireViewModel, modifier: Mod
             }
         }
 
-        DragOverlay(viewModel, cardWidth, cardHeight)
+        DragOverlay(actions, cardWidth, cardHeight)
         }
     }
 }

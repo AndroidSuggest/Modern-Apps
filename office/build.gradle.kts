@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:<module>:metadata` task name either way.
+    id("common-conventions-preview-metadata")
 }
 
 launcherIcon {
@@ -11,9 +13,6 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.office"
     }
-    // Ship the real sample documents (metadata_data/assets) inside the instrumented
-    // test APK so the screenshot generator can open them via ACTION_VIEW on device.
-    sourceSets.getByName("androidTest").assets.directories.add(rootProject.file("metadata_data/assets").absolutePath)
 }
 
 androidComponents {

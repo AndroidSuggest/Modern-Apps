@@ -28,7 +28,9 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconPause
 import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.music.util.AlbumArt
+import com.vayunmathur.music.util.MusicActions
 import com.vayunmathur.music.util.MusicViewModel
+import com.vayunmathur.music.util.NowPlayingUiState
 import com.vayunmathur.music.util.PlaybackSource
 import com.vayunmathur.music.util.formatDuration
 import com.vayunmathur.music.R
@@ -37,31 +39,29 @@ import com.vayunmathur.music.Route
 // Data class to hold parsed lyric lines
 data class LyricLine(val timestamp: Long, val text: String)
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [NowPlayingScreen] to the ViewModel; renders nothing while the queue is empty. */
 @Composable
 fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
-    val currentlyPlaying by musicViewModel.currentMediaItem.collectAsState()
-    val song = currentlyPlaying ?: return
+    val state = musicViewModel.nowPlayingState() ?: return
+    NowPlayingScreen(state, musicViewModel, backStack)
+}
 
-    // Playback States
-    val isPlaying by musicViewModel.isPlaying.collectAsState()
-    val currentPos by musicViewModel.currentPosition.collectAsState()
-    val duration by musicViewModel.duration.collectAsState()
-    val shuffleMode by musicViewModel.shuffleMode.collectAsState()
-    val repeatMode by musicViewModel.repeatMode.collectAsState()
-
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NowPlayingScreen(
+    state: NowPlayingUiState,
+    actions: MusicActions,
+    backStack: NavBackStack<Route>,
+) {
     // UI States
     var showLyrics by remember { mutableStateOf(false) }
     // Embedded lyrics removed: jaudiotagger dep eliminated (supply-chain mitigation).
     // Lyrics overlay now shows "no lyrics" gracefully.
     val rawLyrics by remember { mutableStateOf("") }
 
-    val currentSource by musicViewModel.currentSource.collectAsState()
-    val currentSourceName by musicViewModel.currentSourceName.collectAsState()
-
     val parsedLyrics = remember(rawLyrics) { parseLyrics(rawLyrics) }
-    val currentLyricIndex = remember(parsedLyrics, currentPos) {
-        parsedLyrics.indexOfLast { it.timestamp <= currentPos }
+    val currentLyricIndex = remember(parsedLyrics, state.positionMs) {
+        parsedLyrics.indexOfLast { it.timestamp <= state.positionMs }
     }
 
     Scaffold(
@@ -71,9 +71,10 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                 title = { },
                 navigationIcon = { IconNavigation(backStack) },
                 actions = {
-                    if (currentSource != null && currentSourceName != null) {
+                    val sourceName = state.sourceName
+                    if (state.sourceId != null && sourceName != null) {
                         TextButton(onClick = {
-                            when (val src = PlaybackSource.parse(currentSource)) {
+                            when (val src = PlaybackSource.parse(state.sourceId)) {
                                 PlaybackSource.AllSongs -> backStack.reset(Route.Home)
                                 is PlaybackSource.Album -> backStack.reset(Route.Home, Route.AlbumDetail(src.albumId))
                                 is PlaybackSource.Playlist -> backStack.reset(Route.Home, Route.PlaylistDetail(src.playlistId))
@@ -82,7 +83,7 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                             }
                         }) {
                             Text(
-                                stringResource(R.string.go_to_source, currentSourceName!!),
+                                stringResource(R.string.go_to_source, sourceName),
                                 color = MaterialTheme.colorScheme.primary,
                                 style = MaterialTheme.typography.labelLarge
                             )
@@ -121,7 +122,7 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                             shape = RoundedCornerShape(24.dp),
                             elevation = CardDefaults.cardElevation(12.dp)
                         ) {
-                            AlbumArt(song.mediaMetadata.artworkUri!!, Modifier.fillMaxSize())
+                            AlbumArt(state.artworkUri, Modifier.fillMaxSize())
                         }
                     }
                 }
@@ -135,7 +136,7 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        song.mediaMetadata.title.toString(),
+                        state.title,
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
@@ -143,7 +144,7 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        song.mediaMetadata.artist.toString(),
+                        state.artist,
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.Gray
                     )
@@ -156,8 +157,8 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
             // Progress Slider
             Column {
                 Slider(
-                    value = if (duration > 0) currentPos.toFloat() / duration.toFloat() else 0f,
-                    onValueChange = { musicViewModel.seekTo((it * duration).toLong()) },
+                    value = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs.toFloat() else 0f,
+                    onValueChange = { actions.seekTo((it * state.durationMs).toLong()) },
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
                         activeTrackColor = Color.White,
@@ -165,8 +166,8 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                     )
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatDuration(currentPos), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                    Text(formatDuration(duration), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text(formatDuration(state.positionMs), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text(formatDuration(state.durationMs), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -176,16 +177,16 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { musicViewModel.toggleRepeat() }) {
-                    val repeatTint = if (repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                    when (repeatMode) {
+                IconButton(onClick = { actions.toggleRepeat() }) {
+                    val repeatTint = if (state.repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    when (state.repeatMode) {
                         Player.REPEAT_MODE_ONE -> IconRepeatOne(tint = repeatTint)
                         else -> IconRepeat(tint = repeatTint)
                     }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { musicViewModel.skipPrevious() }) {
+                    IconButton(onClick = { actions.skipPrevious() }) {
                         IconSkipPrevious(Modifier.size(40.dp), tint = Color.White)
                     }
                     Spacer(Modifier.width(16.dp))
@@ -194,19 +195,19 @@ fun SongScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewModel) {
                             .size(72.dp)
                             .clip(CircleShape)
                             .background(Color.White.copy(0.1f))
-                            .clickable { musicViewModel.togglePlayPause() },
+                            .clickable { actions.togglePlayPause() },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (isPlaying) IconPause() else IconPlay()
+                        if (state.isPlaying) IconPause() else IconPlay()
                     }
                     Spacer(Modifier.width(16.dp))
-                    IconButton(onClick = { musicViewModel.skipNext() }) {
+                    IconButton(onClick = { actions.skipNext() }) {
                         IconSkipNext(Modifier.size(40.dp), tint = Color.White)
                     }
                 }
 
-                IconButton(onClick = { musicViewModel.toggleShuffle() }) {
-                    IconShuffle(tint = if (shuffleMode) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = { actions.toggleShuffle() }) {
+                    IconShuffle(tint = if (state.shuffle) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

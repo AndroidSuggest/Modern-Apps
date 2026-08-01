@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.ContactsContract
 import android.os.Bundle
@@ -71,8 +72,10 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.vayunmathur.contacts.data.CDKEvent
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.formatDisplay
+import com.vayunmathur.contacts.util.ContactDetailsUiState
 import com.vayunmathur.contacts.util.ContactPlatforms
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.ContactsActions
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.util.PackageUtils
 import com.vayunmathur.contacts.util.VcfUtils
@@ -100,7 +103,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.format
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ContactViewModel] to the stateless [ContactDetailsScreen]. */
 @Composable
 fun ContactDetailsPage(
     viewModel: ContactViewModel,
@@ -120,7 +123,6 @@ fun ContactDetailsPage(
         }
     }
     val contact = contactFromFlow ?: contactFromProvider
-    val details = contact?.details
 
     if (contact == null) {
         // Show loading while contacts list is still populating, only show "not found" once list is loaded
@@ -135,38 +137,78 @@ fun ContactDetailsPage(
         }
         return
     }
-    val platforms by produceState(ContactPlatforms(), contactId, details) {
+
+    // Which messaging apps know this contact is a package-manager question, so it is
+    // resolved here rather than inside the screen.
+    val platforms by produceState(ContactPlatforms(), contactId, contact.details) {
         value = withContext(Dispatchers.IO) { PackageUtils.getContactPlatforms(context, contactId) }
     }
     val isGoogleMeetInstalled by produceState(false) {
         value = withContext(Dispatchers.IO) { PackageUtils.isGoogleMeetInstalled(context) }
     }
+    val groups by viewModel.groups.collectAsStateWithLifecycle()
 
     val scope = rememberCoroutineScope()
     val shareContactLabel = stringResource(R.string.share_contact)
 
+    ContactDetailsScreen(
+        state = ContactDetailsUiState(
+            contact = contact,
+            groups = groups,
+            platforms = platforms,
+            isGoogleMeetInstalled = isGoogleMeetInstalled,
+        ),
+        actions = object : ContactsActions by viewModel {
+            override fun closeContact() = onBack()
+
+            override fun editContact(contactId: Long) = onEdit(contactId)
+
+            override fun confirmDeleteContact(contact: Contact) = onDelete()
+
+            override fun shareContacts(contacts: List<Contact>, filename: String) {
+                shareContactsAsVcf(scope, context, contacts, filename, shareContactLabel)
+            }
+        },
+        showBackButton = showBackButton,
+    )
+}
+
+/**
+ * The contact details page, with no dependency on the ViewModel so it can be rendered from
+ * a `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ContactDetailsScreen(
+    state: ContactDetailsUiState,
+    actions: ContactsActions,
+    showBackButton: Boolean = true
+) {
+    val context = LocalContext.current
+    val contact = state.contact
+    val details = contact.details
+    val platforms = state.platforms
+
+    val scope = rememberCoroutineScope()
+
     Scaffold(Modifier, {
-            TopAppBar({}, Modifier, {if (showBackButton) IconNavigation(onBack) },
+            TopAppBar({}, Modifier, {if (showBackButton) IconNavigation(actions::closeContact) },
                 actions = {
                     IconButton({
-                        val newFavoriteState = !contact!!.isFavorite
-                        scope.launch(Dispatchers.IO) {
-                            val newContact = contact!!.copy(isFavorite = newFavoriteState)
-                            viewModel.saveContact(newContact)
-                        }
+                        actions.saveContact(contact.copy(isFavorite = !contact.isFavorite))
                     }) {
-                        if (!contact!!.isFavorite) IconStarBorder(tint = MaterialTheme.colorScheme.onSurface)
+                        if (!contact.isFavorite) IconStarBorder(tint = MaterialTheme.colorScheme.onSurface)
                         else IconStar(tint = MaterialTheme.colorScheme.primary)
                     }
-                    IconButton(onClick = { onEdit(contact!!.id) }) {
+                    IconButton(onClick = { actions.editContact(contact.id) }) {
                         IconEdit()
                     }
                     IconButton(onClick = {
-                        shareContactsAsVcf(scope, context, listOf(contact!!), "${contact!!.name.value.replace(' ', '_')}.vcf", shareContactLabel)
+                        actions.shareContacts(listOf(contact), "${contact.name.value.replace(' ', '_')}.vcf")
                     }) {
                         IconShare()
                     }
-                    IconButton(onClick = onDelete) {
+                    IconButton(onClick = { actions.confirmDeleteContact(contact) }) {
                         IconDelete()
                     }
                 },
@@ -176,13 +218,6 @@ fun ContactDetailsPage(
             )
         }, containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        if (details == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            return@Scaffold
-        }
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize(),
@@ -192,7 +227,7 @@ fun ContactDetailsPage(
         ) {
 
             item {
-                ProfileHeader(contact!!, viewModel)
+                ProfileHeader(contact, actions::decodePhoto)
             }
 
             item {
@@ -200,7 +235,7 @@ fun ContactDetailsPage(
                     details.phoneNumbers.firstOrNull()?.number,
                     details.emails.firstOrNull()?.address,
                     platforms,
-                    isGoogleMeetInstalled
+                    state.isGoogleMeetInstalled
                 )
             }
 
@@ -299,8 +334,8 @@ fun ContactDetailsPage(
             if(details.dates.isNotEmpty()) {
                 item {
                     val clipboard = LocalClipboard.current
-                    GroupedSection(title = stringResource(R.string.about_name, contact!!.name.firstName)) {
-                        contact!!.birthday?.let { birthday ->
+                    GroupedSection(title = stringResource(R.string.about_name, contact.name.firstName)) {
+                        contact.birthday?.let { birthday ->
                             val birthdayText = birthday.startDate.formatDisplay()
                             SafeListItem(
                                 content = { Text(birthdayText) },
@@ -334,7 +369,7 @@ fun ContactDetailsPage(
                 }
             }
             
-            if (contact?.note?.content?.isNotEmpty() == true) {
+            if (contact.note.content.isNotEmpty()) {
                 item {
                     val clipboard = LocalClipboard.current
                     GroupedSection(title = stringResource(R.string.note)) {
@@ -344,14 +379,14 @@ fun ContactDetailsPage(
                                 .combinedClickable(
                                     onClick = { },
                                     onLongClick = {
-                                        scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("note", contact!!.note.content))) }
+                                        scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("note", contact.note.content))) }
                                     }
                                 )
                                 .padding(16.dp)
                         ) {
                             Text(
                                 text = com.vayunmathur.library.util.parseMarkdown(
-                                    contact!!.note.content,
+                                    contact.note.content,
                                     showMarkers = false,
                                 ),
                                 style = MaterialTheme.typography.bodyLarge
@@ -363,8 +398,7 @@ fun ContactDetailsPage(
 
             if (details.groups.isNotEmpty()) {
                 item {
-                    val allGroups by viewModel.groups.collectAsStateWithLifecycle()
-                    val contactGroups = contactGroupsOf(contact!!, allGroups)
+                    val contactGroups = contactGroupsOf(contact, state.groups)
                     if (contactGroups.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             contactGroups.forEachIndexed { index, group ->
@@ -384,14 +418,14 @@ fun ContactDetailsPage(
 }
 
 @Composable
-fun ProfileHeader(contact: Contact, viewModel: ContactViewModel) {
+fun ProfileHeader(contact: Contact, decodePhoto: ((String) -> Bitmap?)? = null) {
     Column(
         horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         modifier = Modifier.padding(vertical = 16.dp)
     ) {
         ContactAvatar(
             contact = contact,
-            viewModel = viewModel,
+            decodePhoto = decodePhoto,
             modifier = Modifier.size(100.dp),
             initialsStyle = MaterialTheme.typography.headlineLarge,
         )

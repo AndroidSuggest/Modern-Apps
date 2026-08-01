@@ -28,6 +28,7 @@ import androidx.core.graphics.drawable.toBitmap
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
+import com.vayunmathur.appstore.data.security.SecurityTier
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.LinearProgressIndicator
@@ -89,6 +90,8 @@ fun AppRow(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         Spacer(Modifier.width(6.dp))
+                        SecurityTierBadge(SecurityTier.of(app.source))
+                        Spacer(Modifier.width(4.dp))
                         SourceBadge(app.source)
                     }
                     if (app.summary.isNotBlank()) {
@@ -121,14 +124,52 @@ fun AppRow(
 @Composable
 fun SourceBadge(source: AppSource) {
     val label = when (source) {
+        AppSource.MODERN_APPS -> "Modern Apps"
         AppSource.FDROID -> "F-Droid"
         AppSource.PLAYSTORE -> "Play Store"
     }
     val color = when (source) {
+        AppSource.MODERN_APPS -> MaterialTheme.colorScheme.tertiaryContainer
         AppSource.FDROID -> MaterialTheme.colorScheme.primaryContainer
         AppSource.PLAYSTORE -> MaterialTheme.colorScheme.secondaryContainer
     }
     Card(colors = CardDefaults.cardColors(containerColor = color)) {
         Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
     }
+}
+
+/**
+ * "Tier 1" / "Tier 2" / "Tier 3" next to the source badge. Tapping opens
+ * [SecurityTiersPage], which explains what each tier is actually claiming.
+ */
+@Composable
+fun SecurityTierBadge(tier: SecurityTier, onClick: (() -> Unit)? = null) {
+    // Tier 3 is neutral, not red: a Play install still passes every check the platform
+    // makes possible, so an alarm colour would overstate the difference.
+    val container = when (tier) {
+        SecurityTier.FIRST_PARTY -> MaterialTheme.colorScheme.tertiary
+        SecurityTier.REPRODUCIBLE -> MaterialTheme.colorScheme.primary
+        SecurityTier.GOOGLE_PLAY -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = when (tier) {
+        SecurityTier.FIRST_PARTY -> MaterialTheme.colorScheme.onTertiary
+        SecurityTier.REPRODUCIBLE -> MaterialTheme.colorScheme.onPrimary
+        SecurityTier.GOOGLE_PLAY -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val colors = CardDefaults.cardColors(containerColor = container, contentColor = content)
+    if (onClick != null) {
+        Card(onClick = onClick, colors = colors) { TierLabel(tier) }
+    } else {
+        Card(colors = colors) { TierLabel(tier) }
+    }
+}
+
+@Composable
+private fun TierLabel(tier: SecurityTier) {
+    Text(
+        stringResource(R.string.tier_badge_label, tier.rank),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }

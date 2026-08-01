@@ -28,6 +28,8 @@ datastorePreferences = "1.3.0-alpha09"
 
 # AndroidX – Compose & UI
 composeBom = "2026.06.01"
+# Compose Preview Screenshot Testing (renders @Preview to PNG on the JVM, no device).
+composeScreenshot = "0.0.1-alpha16"
 activityCompose = "1.13.0"
 material3 = "1.5.0-alpha23"
 material3AdaptiveNavigationSuite = "1.5.0-alpha23"
@@ -72,6 +74,9 @@ zxing = "3.5.4"
 libphonenumber = "9.0.34"
 litertlmAndroid = "0.14.0"
 brotli = "0.1.2"
+# Standalone library from the AGP toolchain (com.android.tools.build), not the plugin —
+# :appstore uses it at runtime to verify APK source stamps.
+apksig = "8.7.3"
 
 # =============================================================================
 # THIRD PARTY
@@ -118,6 +123,8 @@ gplayapi = "3.6.4"
 
 # Gradle plugin artifacts (build-logic classpath)
 gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+# Needed on build-logic's classpath so common-conventions-preview-metadata can apply it by id.
+compose-screenshot-gradle = { module = "com.android.compose.screenshot:screenshot-test-gradle-plugin", version.ref = "composeScreenshot" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlinGradlePlugin" }
 kotlin-compose-gradle = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlin-serialization-gradle = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
@@ -148,6 +155,10 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+# Supplies @PreviewTest, which is what actually marks a @Preview as a screenshot test.
+screenshot-validation-api = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "composeScreenshot" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
@@ -218,6 +229,7 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
 brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
+apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 # =============================================================================
 # THIRD PARTY
@@ -266,6 +278,7 @@ junit = { module = "junit:junit", version.ref = "junit" }
 
 # Android & Kotlin
 android-application = { id = "com.android.application", version.ref = "agp" }
+compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "composeScreenshot" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

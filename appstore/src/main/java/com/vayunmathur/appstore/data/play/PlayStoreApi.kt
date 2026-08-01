@@ -8,6 +8,7 @@ import com.aurora.gplayapi.helpers.PurchaseHelper
 import com.aurora.gplayapi.helpers.SearchHelper
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
+import com.vayunmathur.appstore.data.security.ApkCertificates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -41,7 +42,15 @@ class PlayStoreApi(
                 offerType = app.offerType,
                 isFree = app.isFree,
                 whatsNew = app.changes.takeIf { it.isNotBlank() },
-                targetSdk = app.targetSdk
+                targetSdk = app.targetSdk,
+                // AppDetails.certificateSet[].sha256 is the signing certificate Google
+                // says this package should carry — the same expectation the Play client
+                // stores on its library entry and compares against PackageManager. It
+                // pins the bytes against a swapped CDN response, but note that Google
+                // supplies both this value and the APK, so it is not a publisher key.
+                expectedSigners = app.certificateSetList
+                    .mapNotNull { it.sha256?.let(ApkCertificates::normalizeFingerprint) }
+                    .distinct(),
             )
         } catch (e: Exception) {
             null

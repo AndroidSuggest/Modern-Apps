@@ -27,6 +27,8 @@ import com.vayunmathur.passwords.ui.SettingsPage
 import com.vayunmathur.passwords.util.PasswordsViewModel
 import com.vayunmathur.passwords.util.PasswordsViewModelFactory
 import kotlinx.serialization.Serializable
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 
 class MainActivity : FragmentActivity() {
     private lateinit var passwordDao: PasswordDao
@@ -37,6 +39,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Reduced CA hardening: FIRST_PARTY covers api.vayunmathur.com / data.vayunmathur.com (ISRG+GTS)
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
 
         unlockDatabaseWithBiometrics(

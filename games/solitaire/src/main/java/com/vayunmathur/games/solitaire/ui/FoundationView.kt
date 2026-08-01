@@ -5,18 +5,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import com.vayunmathur.games.solitaire.data.Card
 import com.vayunmathur.games.solitaire.data.Suit
-import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 
 @Composable
 fun FoundationSlot(
     cards: List<Card>,
     index: Int,
-    viewModel: SolitaireViewModel,
+    actions: SolitaireActions,
     modifier: Modifier = Modifier,
     cardWidth: Dp = CARD_WIDTH,
     cardHeight: Dp = CARD_HEIGHT
 ) {
-    DropTarget("foundation_$index", viewModel, modifier) {
+    DropTarget("foundation_$index", actions, modifier) {
         if (cards.isNotEmpty()) {
             CardFace(cards.last(), cardWidth = cardWidth, cardHeight = cardHeight)
         } else {
@@ -30,17 +30,17 @@ fun FoundationSlot(
 fun FreeCellSlot(
     card: Card?,
     index: Int,
-    viewModel: SolitaireViewModel,
+    actions: SolitaireActions,
     modifier: Modifier = Modifier,
     cardWidth: Dp = CARD_WIDTH,
     cardHeight: Dp = CARD_HEIGHT
 ) {
-    DropTarget("freecell_$index", viewModel, modifier) {
+    DropTarget("freecell_$index", actions, modifier) {
         if (card != null) {
             DraggableCard(
                 card = card,
                 sourceId = "freecell_$index",
-                viewModel = viewModel,
+                actions = actions,
                 cardWidth = cardWidth,
                 cardHeight = cardHeight
             ) {

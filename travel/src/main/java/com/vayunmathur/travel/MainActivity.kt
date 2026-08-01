@@ -48,6 +48,8 @@ import com.vayunmathur.travel.util.TravelViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import kotlinx.serialization.Serializable
 
 class MainActivity : ComponentActivity() {
@@ -62,6 +64,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Hardened trust: api.vayunmathur.com + data.vayunmathur.com + findfamily.cc are Cloudflare
+        // fronted, covered by ISRG X1/X2 + GTS R1-R4 in FIRST_PARTY bundle.
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
 
         val ready = mutableStateOf(false)

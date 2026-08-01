@@ -170,6 +170,9 @@ class Expression private constructor(private val root: Node) {
         private val src = input
         private var pos = 0
 
+        /** How many `|…|` pairs enclose the position being parsed. See [parseTerm]. */
+        private var barDepth = 0
+
         fun parse(): Node {
             val node = parseExpr()
             skipSpaces()
@@ -205,7 +208,12 @@ class Expression private constructor(private val root: Node) {
                 when (c) {
                     '*', '/', '%' -> { pos++; left = Binary(c, left, parseFactor()) }
                     // Implicit multiplication: value directly followed by a group/name.
-                    '(', '|' -> left = Binary('*', left, parseFactor())
+                    '(' -> left = Binary('*', left, parseFactor())
+                    // '|' is ambiguous: it both opens and closes. Inside a pair of bars the
+                    // next '|' is the closing one, so stop and let parsePrimary consume it.
+                    // Treating it as the start of another factor made every |x| expression
+                    // recurse into an unterminated bar and throw.
+                    '|' -> if (barDepth > 0) break else left = Binary('*', left, parseFactor())
                     else -> if (c.isLetter() || c == '√' || c == 'π' || c == 'θ') {
                         left = Binary('*', left, parseFactor())
                     } else break
@@ -248,9 +256,11 @@ class Expression private constructor(private val root: Node) {
                 }
                 c == '|' -> {
                     pos++
+                    barDepth++
                     val inner = parseExpr()
                     if (peek() != '|') throw ExpressionError("Missing '|'")
                     pos++
+                    barDepth--
                     return Call("abs", listOf(inner))
                 }
                 c.isDigit() || c == '.' -> return parseNumber()

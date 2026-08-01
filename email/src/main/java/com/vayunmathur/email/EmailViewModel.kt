@@ -14,6 +14,8 @@ import com.vayunmathur.email.data.EmailSyncState
 import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.data.OutboxManager
 import com.vayunmathur.email.data.OutboxSendWorker
+import com.vayunmathur.email.util.MessageListActions
+import com.vayunmathur.email.util.MessageThreadActions
 import com.vayunmathur.library.util.SecureResultReceiver
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +27,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class EmailViewModel(application: Application) : AndroidViewModel(application) {
+class EmailViewModel(application: Application) :
+    AndroidViewModel(application), MessageListActions, MessageThreadActions {
     private val dao = EmailDatabase.getInstance(application).emailDao()
     private val emailManager = EmailManager()
     private val appContext = application.applicationContext
@@ -72,7 +75,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Block a sender (matched by email address) so their mail is hidden from the inbox. */
-    fun blockSender(from: String) {
+    override fun blockSender(from: String) {
         val address = extractEmailAddress(from)
         if (address.isBlank()) return
         viewModelScope.launch { dao.insertBlockedSender(com.vayunmathur.email.BlockedSender(address.lowercase())) }
@@ -197,7 +200,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
         _searchQuery.value = ""
     }
 
-    fun setSearchQuery(query: String) {
+    override fun setSearchQuery(query: String) {
         _searchQuery.value = query
         if (query.isEmpty()) {
             _aiSummary.value = null
@@ -205,7 +208,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun requestAiSummary(messages: List<EmailMessage>) {
+    override fun requestAiSummary(messages: List<EmailMessage>) {
         if (_aiSummaryLoading.value) return
 
         val pm = appContext.packageManager
@@ -252,16 +255,16 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleMessageSelection(uid: Long) {
+    override fun toggleMessageSelection(uid: Long) {
         _selectedMessageUids.update { if (uid in it) it - uid else it + uid }
     }
 
-    fun clearSelection() {
+    override fun clearSelection() {
         _selectedMessageUids.value = emptySet()
     }
 
     /** Delete a message: remove locally (with a tombstone so sync won't re-add it) and expunge it on the IMAP server. */
-    fun deleteMessage(accountEmail: String, folderName: String, uid: Long) {
+    override fun deleteMessage(accountEmail: String, folderName: String, uid: Long) {
         viewModelScope.launch {
             dao.deleteMessageRow(accountEmail, folderName, uid, tombstone = true)
             val account = dao.getAccountByEmail(accountEmail) ?: return@launch
@@ -280,14 +283,14 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Snooze a message: hide from the inbox until [until] (epoch millis), then resurface. */
-    fun snoozeMessage(accountEmail: String, folderName: String, uid: Long, until: Long) {
+    override fun snoozeMessage(accountEmail: String, folderName: String, uid: Long, until: Long) {
         viewModelScope.launch {
             dao.setSnooze(accountEmail, folderName, uid, until)
             com.vayunmathur.email.data.SnoozeWorker.scheduleNext(getApplication(), until)
         }
     }
 
-    fun markAsRead(accountEmail: String, folderName: String, uid: Long, isRead: Boolean) {
+    override fun markAsRead(accountEmail: String, folderName: String, uid: Long, isRead: Boolean) {
         viewModelScope.launch {
             dao.updateReadStatus(accountEmail, folderName, uid, isRead)
             // Sync read status to IMAP server
@@ -307,14 +310,14 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun bulkMarkAsRead(accountEmail: String, uids: List<Long>, isRead: Boolean) {
+    override fun bulkMarkAsRead(accountEmail: String, uids: List<Long>, isRead: Boolean) {
         viewModelScope.launch {
             dao.updateBulkReadStatus(accountEmail, uids, isRead)
             clearSelection()
         }
     }
 
-    fun refresh(context: android.content.Context) {
+    override fun refresh(context: android.content.Context) {
         EmailSyncWorker.runOneOffSync(context)
     }
 
@@ -326,7 +329,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
         return dao.getThreadFlow(accountEmail, threadId)
     }
 
-    suspend fun getAttachments(accountEmail: String, messageId: Long): List<Attachment> {
+    override suspend fun getAttachments(accountEmail: String, messageId: Long): List<Attachment> {
         return dao.getAttachments(accountEmail, messageId)
     }
 
@@ -416,7 +419,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
      * DB; the Flow-based UI will recompose automatically.
      * Also extracts inline CID images to cache/cid/<uid>/ for viewer rendering.
      */
-    fun fetchBodyIfNeeded(message: EmailMessage) {
+    override fun fetchBodyIfNeeded(message: EmailMessage) {
         if (message.body != null) return
         viewModelScope.launch {
             val account = dao.getAccountByEmail(message.accountEmail) ?: return@launch
@@ -443,7 +446,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** CID map loader for already-fetched message – extracts inline files to cache and returns map */
-    suspend fun loadCidMap(context: android.content.Context, message: EmailMessage): Map<String, java.io.File> {
+    override suspend fun loadCidMap(context: android.content.Context, message: EmailMessage): Map<String, java.io.File> {
         return try {
             val account = dao.getAccountByEmail(message.accountEmail) ?: return emptyMap()
             val auth = account.resolveAuth(appContext)
@@ -466,7 +469,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
      * body `List-Unsubscribe=One-Click`. Runs off the main thread and reports
      * success (a 2xx response) via [onResult] on the main thread.
      */
-    fun oneClickUnsubscribe(url: String, onResult: (Boolean) -> Unit) {
+    override fun oneClickUnsubscribe(url: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 try {
@@ -502,7 +505,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
         OutboxSendWorker.runNow(context)
     }
 
-    fun downloadAttachment(
+    override fun downloadAttachment(
         attachment: Attachment,
         onSuccess: (String) -> Unit,
         onError: (String) -> Unit
@@ -533,7 +536,7 @@ class EmailViewModel(application: Application) : AndroidViewModel(application) {
      * Export a single email as a .eml file to a SAF [targetUri] (from CreateDocument).
      * Streams the raw RFC822 bytes directly to avoid OOM on large messages.
      */
-    fun exportEml(
+    override fun exportEml(
         accountEmail: String,
         folderName: String,
         uid: Long,

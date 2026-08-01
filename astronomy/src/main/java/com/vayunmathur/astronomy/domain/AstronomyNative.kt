@@ -9,9 +9,13 @@ package com.vayunmathur.astronomy.domain
  * (`Java_com_vayunmathur_astronomy_domain_AstronomyNative_*`) matches.
  */
 object AstronomyNative {
-    init {
-        System.loadLibrary("astronomy_engine")
-    }
+    /**
+     * Whether the `.so` loaded. It always does on a device; Compose previews render on
+     * the host JVM through Layoutlib, where there is no native library to load, so the
+     * callers that have a Kotlin equivalent (see `projectAll`) check this and fall back
+     * rather than dying with an [UnsatisfiedLinkError].
+     */
+    val available: Boolean = runCatching { System.loadLibrary("astronomy_engine") }.isSuccess
 
     /**
      * Batch RaDec -> AltAz. [radec] is interleaved `[ra0,dec0,ra1,dec1,...]` in

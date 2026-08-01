@@ -18,15 +18,15 @@ data class DragInfo(
     val startPos: Offset = Offset.Zero
 )
 
-class SolitaireViewModel(application: Application) : AndroidViewModel(application) {
+class SolitaireViewModel(application: Application) : AndroidViewModel(application), SolitaireActions {
     private val _uiState = MutableStateFlow(SolitaireUiState())
     val uiState: StateFlow<SolitaireUiState> = _uiState.asStateFlow()
 
     private val _dragInfo = MutableStateFlow<DragInfo?>(null)
-    val dragInfo: StateFlow<DragInfo?> = _dragInfo.asStateFlow()
+    override val dragInfo: StateFlow<DragInfo?> = _dragInfo.asStateFlow()
 
     private val statsRepository = SolitaireStatsRepository(application)
-    val dropTargets = mutableMapOf<String, Rect>()
+    override val dropTargets: MutableMap<String, Rect> = mutableMapOf()
 
     val achievementsManager: AchievementsManager = run {
         val json = application.assets.open("achievements.json")
@@ -79,7 +79,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         } ?: ""
     }
 
-    fun giveUp() {
+    override fun giveUp() {
         val mode = _uiState.value.gameMode ?: return
         statsRepository.recordGameLost(mode, currentVariant())
         _uiState.value = SolitaireUiState()
@@ -117,7 +117,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         statsRepository.recordGamePlayed(GameMode.KLONDIKE, variant)
     }
 
-    fun drawFromStock() {
+    override fun drawFromStock() {
         val state = _uiState.value.klondike ?: return
         if (state.isWon) return
         if (state.stock.isEmpty() && state.waste.isEmpty()) return
@@ -229,7 +229,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun klondikeAutoComplete() {
+    override fun klondikeAutoComplete() {
         val state = _uiState.value.klondike ?: return
         if (state.isWon) return
         if (state.tableauPiles.any { it.faceDown.isNotEmpty() }) return
@@ -351,7 +351,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         statsRepository.recordGamePlayed(GameMode.SPIDER, variant)
     }
 
-    fun dealSpiderStock() {
+    override fun dealSpiderStock() {
         val state = _uiState.value.spider ?: return
         if (state.isWon || state.stockGroups.isEmpty()) return
         if (state.tableauPiles.any { it.faceUp.isEmpty() && it.faceDown.isEmpty() }) return
@@ -686,7 +686,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
      * the sole cover of), both are removed. Kings (value 13) are removed on their
      * own. Otherwise an exposed tap becomes the new selection.
      */
-    fun pyramidTapCard(id: String) {
+    override fun pyramidTapCard(id: String) {
         val state = _uiState.value.pyramid ?: return
         if (state.isWon) return
         pyramidCardAt(state, id) ?: return
@@ -725,7 +725,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun pyramidDealStock() {
+    override fun pyramidDealStock() {
         val state = _uiState.value.pyramid ?: return
         if (state.isWon) return
         if (state.stock.isEmpty()) {
@@ -891,7 +891,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
      * Starts a drag from [sourceId], deriving the carried cards from current state.
      * Returns false (and starts nothing) when that source holds no card.
      */
-    fun startDrag(sourceId: String, startPos: Offset = Offset.Zero): Boolean {
+    override fun startDrag(sourceId: String, startPos: Offset): Boolean {
         val cards = draggedCards(sourceId)
         if (cards.isEmpty()) {
             _dragInfo.value = null
@@ -901,21 +901,21 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         return true
     }
 
-    fun updateDrag(offset: Offset) {
+    override fun updateDrag(offset: Offset) {
         _dragInfo.update { it?.copy(offset = offset) }
     }
 
-    fun endDrag(dropOffset: Offset) {
+    override fun endDrag(dropOffset: Offset) {
         val info = _dragInfo.value ?: return
         tryMoveByDrag(info.sourceId, dropOffset)
         _dragInfo.value = null
     }
 
-    fun cancelDrag() {
+    override fun cancelDrag() {
         _dragInfo.value = null
     }
 
-    fun undo() {
+    override fun undo() {
         val history = _uiState.value.history
         if (history.isEmpty()) return
         val prev = history.last()
@@ -936,7 +936,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun restart() {
+    override fun restart() {
         val mode = _uiState.value.gameMode ?: return
         selectMode(mode, currentConfig())
     }

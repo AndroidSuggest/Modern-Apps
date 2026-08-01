@@ -54,6 +54,11 @@ fun WeatherBlocks(
     windUnit: WindUnit,
     pressureUnit: PressureUnit,
     use24Hour: Boolean,
+    /**
+     * "Now" for the sun-track marker. A parameter rather than a direct clock read so a
+     * preview can pin it — otherwise the marker lands somewhere different every render.
+     */
+    nowEpochSec: Long = System.currentTimeMillis() / 1000,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
@@ -78,7 +83,7 @@ fun WeatherBlocks(
         item { Graphable({ onMetricSelected(WeatherMetric.CloudCover) }) { CloudCoverBlock(current = current) } }
         item { Graphable({ onMetricSelected(WeatherMetric.Pressure) }) { PressureBlock(current = current, pressureUnit = pressureUnit) } }
         item { Graphable({ onMetricSelected(WeatherMetric.Visibility) }) { VisibilityBlock(current = current, useMiles = windUnit == WindUnit.Mph) } }
-        item { SunBlock(sunriseEpochSec = sunriseEpochSec, sunsetEpochSec = sunsetEpochSec, use24Hour = use24Hour, daylightDurationSec = daylightDurationSec) }
+        item { SunBlock(sunriseEpochSec = sunriseEpochSec, sunsetEpochSec = sunsetEpochSec, use24Hour = use24Hour, daylightDurationSec = daylightDurationSec, nowEpochSec = nowEpochSec) }
         item { AirQualityBlock(air = air) }
         item { PollenBlock(air = air) }
     }

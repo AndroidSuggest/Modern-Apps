@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.util.AppStoreViewModel
+import com.vayunmathur.appstore.util.BrowseActions
+import com.vayunmathur.appstore.util.BrowseUiState
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconSearch
@@ -35,6 +37,7 @@ import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.appstore.Route
 
+/** Binds [AppStoreViewModel] to the stateless [SearchAndBrowseScreen]. */
 @Composable
 fun SearchAndBrowsePage(
     viewModel: AppStoreViewModel,
@@ -48,6 +51,32 @@ fun SearchAndBrowsePage(
     val progressMap by viewModel.downloadProgress.collectAsState()
     val icons by viewModel.installedIcons.collectAsState()
 
+    SearchAndBrowseScreen(
+        state = BrowseUiState(
+            query = query,
+            apps = apps,
+            installedPackages = installed.map { it.packageName }.toSet(),
+            downloadProgress = progressMap,
+            installedIcons = icons,
+            syncMessage = syncMsg,
+            isSyncing = isSyncing,
+        ),
+        actions = viewModel,
+        onAppClick = onAppClick,
+    )
+}
+
+/**
+ * The browse/search screen, with no dependency on the ViewModel so it can be rendered from
+ * a `@Preview` — see `src/screenshotTest`, which is where the store listing images come
+ * from.
+ */
+@Composable
+fun SearchAndBrowseScreen(
+    state: BrowseUiState,
+    actions: BrowseActions,
+    onAppClick: (UnifiedApp) -> Unit = {},
+) {
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(stringResource(R.string.app_name)) })
@@ -55,29 +84,29 @@ fun SearchAndBrowsePage(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(
-                value = query,
-                onValueChange = { viewModel.setSearch(it) },
+                value = state.query,
+                onValueChange = { actions.setSearch(it) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 placeholder = { Text(stringResource(R.string.search_f_droid_play_store)) },
                 leadingIcon = { IconSearch() },
                 trailingIcon = {
-                    if (query.isNotBlank()) {
-                        IconButton(onClick = { viewModel.setSearch("") }) { IconClose() }
+                    if (state.query.isNotBlank()) {
+                        IconButton(onClick = { actions.setSearch("") }) { IconClose() }
                     }
                 },
                 singleLine = true
             )
 
-            if (syncMsg.isNotBlank()) {
+            if (state.syncMessage.isNotBlank()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isSyncing) {
+                    if (state.isSyncing) {
                         CircularProgressIndicator(Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text(syncMsg, style = MaterialTheme.typography.labelSmall)
+                    Text(state.syncMessage, style = MaterialTheme.typography.labelSmall)
                 }
             }
 
@@ -86,13 +115,13 @@ fun SearchAndBrowsePage(
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (apps.isEmpty() && query.isNotBlank()) {
+                if (state.apps.isEmpty() && state.query.isNotBlank()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text(stringResource(R.string.no_results_for, query), style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.no_results_for, state.query), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                } else if (apps.isEmpty()) {
+                } else if (state.apps.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -103,14 +132,17 @@ fun SearchAndBrowsePage(
                         }
                     }
                 } else {
-                    items(apps, key = { it.packageName + it.source.name }) { app ->
-                        val isInstalled = installed.any { it.packageName == app.packageName }
-                        val progress = progressMap[app.packageName]
+                    items(state.apps, key = { it.packageName + it.source.name }) { app ->
                         AppRow(
                             app = app,
-                            isInstalled = isInstalled,
-                            progress = progress,
-                            installedIcon = if (isInstalled) icons[app.packageName] else null,
+                            isInstalled = app.packageName in state.installedPackages,
+                            progress = state.downloadProgress[app.packageName],
+                            // No `isInstalled` guard: the icon map is built from the same
+                            // PackageManager scan as the installed list, so it can only
+                            // ever hold installed packages anyway — and without the guard
+                            // a preview can hand every row an icon without also having to
+                            // claim it is installed.
+                            installedIcon = state.installedIcons[app.packageName],
                             onClick = { onAppClick(app) }
                         )
                     }

@@ -61,6 +61,8 @@ import com.vayunmathur.games.unblockjam.data.LevelData
 import com.vayunmathur.games.unblockjam.data.LevelPack
 import com.vayunmathur.games.unblockjam.ui.UnblockJamTheme
 import com.vayunmathur.games.unblockjam.util.AppBackupAgent
+import com.vayunmathur.games.unblockjam.util.GameActions
+import com.vayunmathur.games.unblockjam.util.GameUiState
 import com.vayunmathur.games.unblockjam.util.UnblockJamViewModel
 import com.vayunmathur.games.unblockjam.util.blockDragGestures
 import com.vayunmathur.library.ui.AchievementNotification
@@ -69,6 +71,7 @@ import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.util.GameHubComposeHook
+import com.vayunmathur.library.util.LevelStats
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
@@ -117,13 +120,13 @@ fun Navigation(viewModel: UnblockJamViewModel) {
             entry<Route.LevelSelector> {
                 val pack = LevelPack.PACKS[it.packIndex]
                 UnblockJamTheme(pack = pack) {
-                    LevelScreen(backStack, viewModel, it.packIndex)
+                    LevelPage(backStack, viewModel, it.packIndex)
                 }
             }
             entry<Route.Game> {
                 val pack = LevelPack.PACKS[it.packIndex]
                 UnblockJamTheme(pack = pack) {
-                    GameScreen(backStack, viewModel, it.packIndex, it.levelIndex)
+                    GamePage(backStack, viewModel, it.packIndex, it.levelIndex)
                 }
             }
             entry<Route.GameCenter> {
@@ -174,11 +177,29 @@ fun PackScreen(backStack: NavBackStack<Route>, onOpenGameCenter: () -> Unit) {
     }
 }
 
+/** Binds [UnblockJamViewModel] to the stateless [LevelScreen]. */
+@Composable
+fun LevelPage(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, packIndex: Int) {
+    val levelStats by viewModel.levelStats.collectAsState()
+    LevelScreen(
+        pack = LevelPack.PACKS[packIndex],
+        levelStats = levelStats,
+        onOpenLevel = { backStack.add(Route.Game(packIndex, it)) }
+    )
+}
+
+/**
+ * The puzzle grid for one pack, with no dependency on the ViewModel so it can be rendered
+ * from a `@Preview` — see `src/screenshotTest`, which is where the store listing images
+ * come from.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LevelScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, packIndex: Int) {
-    val pack = LevelPack.PACKS[packIndex]
-    val levelStats by viewModel.levelStats.collectAsState()
+fun LevelScreen(
+    pack: LevelPack,
+    levelStats: Map<String, LevelStats>,
+    onOpenLevel: (Int) -> Unit
+) {
     Scaffold(topBar = {
         TopAppBar({Text(stringResource(R.string.level_selector))})
     }) { paddingValues ->
@@ -191,7 +212,7 @@ fun LevelScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, 
         ) {
             itemsIndexed(pack.levels) { index, levelData ->
                 Card(
-                    Modifier.fillMaxWidth().clickable { backStack.add(Route.Game(packIndex, index)) },
+                    Modifier.fillMaxWidth().clickable { onOpenLevel(index) },
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
                 ) {
                     Box(Modifier.fillMaxSize().padding(8.dp)) {
@@ -214,9 +235,9 @@ fun LevelScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, 
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [UnblockJamViewModel] to the stateless [GameScreen]. */
 @Composable
-fun GameScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, packIndex: Int, levelIndex: Int) {
+fun GamePage(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, packIndex: Int, levelIndex: Int) {
     val pack = LevelPack.PACKS[packIndex]
     val uiState by viewModel.uiState.collectAsState()
     val levelStats by viewModel.levelStats.collectAsState()
@@ -229,41 +250,71 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, p
             uiState.levelIndex == levelIndex &&
             uiState.currentLevelData != null
     val currentLevelData = if (isReady) uiState.currentLevelData!! else pack.levels[levelIndex]
-    val isLevelWon = isReady && uiState.isLevelWon
+    val currentLevelStats = pack.levels.getOrNull(levelIndex)?.id?.let { levelStats[it] }
 
-    Scaffold(topBar = {TopAppBar({}, navigationIcon = {IconNavigation(backStack)})}) { innerPadding ->
+    // Everything except level navigation is the ViewModel's; that one is the back stack's.
+    val actions = remember(viewModel, backStack, pack, packIndex) {
+        object : GameActions by viewModel {
+            override fun onLevelChange(newIndex: Int) {
+                backStack.setLast(Route.Game(packIndex, newIndex.coerceIn(0, pack.levels.lastIndex)))
+            }
+        }
+    }
+
+    GameScreen(
+        state = GameUiState(
+            levelData = currentLevelData,
+            levelIndex = levelIndex,
+            maxLevelIndex = pack.levels.lastIndex,
+            moves = if (isReady) viewModel.getCurrentMoves() else 0,
+            bestScore = currentLevelStats?.bestScore,
+            isCompleted = currentLevelStats != null,
+            isLevelWon = isReady && uiState.isLevelWon,
+            canUndo = isReady && uiState.history.isNotEmpty()
+        ),
+        actions = actions,
+        onBack = { backStack.pop() }
+    )
+}
+
+/**
+ * The playable board, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
+    val currentLevelData = state.levelData
+    val isLevelWon = state.isLevelWon
+
+    Scaffold(topBar = {TopAppBar({}, navigationIcon = {IconNavigation(onBack)})}) { innerPadding ->
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
             val infoBoxes = @Composable {
-                val currentLevelStats = pack.levels.getOrNull(levelIndex)?.id?.let { levelStats[it] }
                 PuzzleInfoBox(
-                    levelIndex = levelIndex,
-                    onLevelChange = { newIndex ->
-                        val bounded = newIndex.coerceIn(0, pack.levels.lastIndex)
-                        backStack.setLast(Route.Game(packIndex, bounded))
-                    },
-                    isCompleted = currentLevelStats != null,
-                    maxLevelIndex = pack.levels.lastIndex
+                    levelIndex = state.levelIndex,
+                    onLevelChange = actions::onLevelChange,
+                    isCompleted = state.isCompleted,
+                    maxLevelIndex = state.maxLevelIndex
                 )
                 MovesInfoBox(
-                    moves = if (isReady) viewModel.getCurrentMoves() else 0,
-                    bestScore = currentLevelStats?.bestScore,
+                    moves = state.moves,
+                    bestScore = state.bestScore,
                     optimalMoves = currentLevelData.optimalMoves
                 )
             }
             val actionButtons = @Composable {
-                val hasHistory = isReady && uiState.history.isNotEmpty()
                 Button(
-                    onClick = { viewModel.onUndo() },
-                    enabled = hasHistory && !isLevelWon
+                    onClick = { actions.onUndo() },
+                    enabled = state.canUndo && !isLevelWon
                 ) {
                     Text(stringResource(R.string.undo))
                 }
                 Button(
-                    onClick = { viewModel.onRestart() },
-                    enabled = hasHistory && !isLevelWon
+                    onClick = { actions.onRestart() },
+                    enabled = state.canUndo && !isLevelWon
                 ) {
                     Text(stringResource(R.string.restart))
                 }
@@ -271,8 +322,8 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: UnblockJamViewModel, p
             val board = @Composable { boardModifier: Modifier ->
                 GameBoard(
                     levelData = currentLevelData,
-                    onLevelChanged = viewModel::onBlockMoved,
-                    onLevelWon = viewModel::onLevelWon,
+                    onLevelChanged = actions::onBlockMoved,
+                    onLevelWon = actions::onLevelWon,
                     isLevelWon = isLevelWon,
                     modifier = boardModifier
                 )

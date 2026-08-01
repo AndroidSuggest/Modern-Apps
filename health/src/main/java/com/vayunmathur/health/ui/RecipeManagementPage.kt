@@ -20,12 +20,14 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.*
+import com.vayunmathur.health.util.FoodDatabase
 import com.vayunmathur.health.util.FoodSearchAPI
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.ui.BackupButtons
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +80,12 @@ fun RecipeManagementPage(backStack: NavBackStack<Route>, viewModel: HealthViewMo
             ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, selectedContentColor = HealthColors.Nutrition, text = { Text(stringResource(R.string.recipes)) })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, selectedContentColor = HealthColors.Nutrition, text = { Text(stringResource(R.string.ingredients)) })
+            }
+
+            // Ingredient search depends on the bundled food database, so its
+            // first-run state belongs on the Ingredients tab.
+            if (selectedTab == 1) {
+                FoodDatabaseCard(viewModel, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
 
             if (isListEmpty) {
@@ -420,6 +428,7 @@ fun IngredientSearchDialog(
     var localResults by remember { mutableStateOf(listOf<Ingredient>()) }
     var isSearching by remember { mutableStateOf(false) }
     var isFetchingData by remember { mutableStateOf(false) }
+    val foodDbStatus by viewModel.foodDatabaseStatus.collectAsState()
     val scope = rememberCoroutineScope()
 
     AlertDialog(
@@ -453,16 +462,23 @@ fun IngredientSearchDialog(
                 if (isSearching || isFetchingData) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        // Until the database is unpacked there is nothing to
+                        // search but the user's own ingredients; say so here.
+                        if (foodDbStatus.installed == null) {
+                            item {
+                                FoodDatabaseCard(viewModel, modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                        }
+
                         // Show Local results first if included
                         if (includeLocal && localResults.isNotEmpty()) {
                             item {
-                                Text(stringResource(R.string.downloaded), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
+                                Text(stringResource(R.string.saved_locally), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
                             }
                             items(localResults, key = { "local-${it.id}" }) { ingredient ->
                                 ListItem(
                                     content = { Text(ingredient.displayName) },
-                                    supportingContent = { Text(stringResource(R.string.saved_locally), style = MaterialTheme.typography.bodySmall) },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                     modifier = Modifier.clickable { onIngredientSelected(ingredient) }
                                 )
@@ -470,10 +486,10 @@ fun IngredientSearchDialog(
                             }
                         }
 
-                        // Show Remote results
+                        // Show matches from the downloaded food database
                         if (remoteResults.isNotEmpty()) {
                             item {
-                                Text(stringResource(R.string.online), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
+                                Text(stringResource(R.string.food_database), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp))
                             }
                             items(remoteResults, key = { "remote-${it.id}" }) { result ->
                                 // Skip if already in local results to avoid duplicates
@@ -497,7 +513,11 @@ fun IngredientSearchDialog(
                             }
                         }
                         
-                        if (!isSearching && !isFetchingData && remoteResults.isEmpty() && localResults.isEmpty() && query.isNotBlank()) {
+                        // The card above already explains an empty result set
+                        // when the database isn't installed.
+                        if (!isSearching && !isFetchingData && remoteResults.isEmpty() && localResults.isEmpty() &&
+                            query.isNotBlank() && foodDbStatus.installed != null
+                        ) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                                     Text(stringResource(R.string.no_results_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
@@ -506,10 +526,92 @@ fun IngredientSearchDialog(
                         }
                     }
                 }
+
+                // ODbL requires attribution wherever this data is shown.
+                Text(
+                    stringResource(R.string.food_database_attribution),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
+}
+
+/**
+ * First-run expansion of the food database shipped inside the APK.
+ *
+ * There is nothing to download and nothing to choose, so this only ever
+ * reports progress or an error. SQLite can't read a file inside an APK, so the
+ * asset has to be unpacked into app storage once before ingredient search can
+ * use it; until then the recipe builder can only find ingredients already
+ * saved on the device.
+ */
+@Composable
+fun FoodDatabaseCard(viewModel: HealthViewModel, modifier: Modifier = Modifier) {
+    val status by viewModel.foodDatabaseStatus.collectAsState()
+
+    // Unpacking is what makes search work, so start it as soon as a screen
+    // that needs it appears. A no-op once it has been done.
+    LaunchedEffect(Unit) { viewModel.prepareFoodDatabase() }
+
+    // Nothing worth saying once it's ready and searchable.
+    if (status is FoodDatabase.Status.Ready) return
+
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(R.string.food_database),
+                style = MaterialTheme.typography.titleMedium,
+                color = HealthColors.Nutrition,
+            )
+
+            when (val state = status) {
+                is FoodDatabase.Status.Absent -> {
+                    Text(stringResource(R.string.food_database_absent), style = MaterialTheme.typography.bodySmall)
+                }
+
+                is FoodDatabase.Status.Preparing -> {
+                    // totalProducts is 0 only in the instant before the asset
+                    // header is read; show an indeterminate bar, not 0%.
+                    if (state.totalProducts > 0) {
+                        LinearProgressIndicator(
+                            progress = {
+                                (state.productsWritten.toFloat() / state.totalProducts).coerceIn(0f, 1f)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text(
+                        stringResource(
+                            R.string.food_database_preparing,
+                            NumberFormat.getIntegerInstance().format(state.productsWritten),
+                            NumberFormat.getIntegerInstance().format(state.totalProducts),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                is FoodDatabase.Status.Failed -> {
+                    Text(
+                        state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Button(onClick = { viewModel.prepareFoodDatabase() }) {
+                        Text(stringResource(R.string.food_database_retry))
+                    }
+                }
+
+                // Filtered out above; the compiler still wants the branch.
+                is FoodDatabase.Status.Ready -> Unit
+            }
+        }
+    }
 }

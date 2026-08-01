@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -37,11 +38,13 @@ import com.vayunmathur.travel.R
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.network.SliceDto
 import com.vayunmathur.travel.util.FlightQuery
+import com.vayunmathur.travel.util.FlightResultsActions
+import com.vayunmathur.travel.util.FlightResultsState
 import com.vayunmathur.travel.util.OfferSort
 import com.vayunmathur.travel.util.TravelViewModel
 import androidx.compose.ui.res.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [TravelViewModel] and the back stack to the stateless [FlightResultsScreen]. */
 @Composable
 fun FlightResultsPage(
     backStack: NavBackStack<Route>,
@@ -63,11 +66,43 @@ fun FlightResultsPage(
     val firstLeg = route.slices.substringBefore(',').split(':')
     val title = "${firstLeg.getOrNull(0).orEmpty()} → ${firstLeg.getOrNull(1).orEmpty()}"
 
+    val actions = remember(viewModel, backStack, query) {
+        object : FlightResultsActions {
+            override fun setSort(sort: OfferSort) = viewModel.setSort(sort)
+            override fun setMaxStopsFilter(maxStops: Int?) = viewModel.setMaxStopsFilter(maxStops)
+            override fun toggleAirlineFilter(iata: String) = viewModel.toggleAirlineFilter(iata)
+            override fun setFareBrandFilter(fareBrand: String?) = viewModel.setFareBrandFilter(fareBrand)
+            override fun refreshOffers() = viewModel.searchFlights(query)
+
+            override fun openOffer(offer: OfferDto) {
+                viewModel.selectOffer(offer)
+                backStack.add(Route.OfferReview(offer.offerId))
+            }
+
+            override fun back() = backStack.pop()
+        }
+    }
+
+    FlightResultsScreen(title = title, state = state, actions = actions)
+}
+
+/**
+ * The offer list, with no dependency on the ViewModel or the back stack so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FlightResultsScreen(
+    title: String,
+    state: FlightResultsState,
+    actions: FlightResultsActions,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
-                navigationIcon = { IconNavigation(backStack) },
+                navigationIcon = { IconNavigation { actions.back() } },
             )
         },
     ) { padding ->
@@ -78,7 +113,7 @@ fun FlightResultsPage(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
         ) {
             if (state.allOffers.isNotEmpty()) {
-                item { SortRow(state.sort) { viewModel.setSort(it) } }
+                item { SortRow(state.sort) { actions.setSort(it) } }
                 item {
                     FilterRow(
                         maxStops = state.filters.maxStops,
@@ -86,14 +121,14 @@ fun FlightResultsPage(
                         selectedAirlines = state.filters.airlines,
                         fareBrands = state.availableFareBrands,
                         selectedFareBrand = state.filters.fareBrand,
-                        onMaxStops = { viewModel.setMaxStopsFilter(it) },
-                        onToggleAirline = { viewModel.toggleAirlineFilter(it) },
-                        onSelectFareBrand = { viewModel.setFareBrandFilter(it) },
+                        onMaxStops = { actions.setMaxStopsFilter(it) },
+                        onToggleAirline = { actions.toggleAirlineFilter(it) },
+                        onSelectFareBrand = { actions.setFareBrandFilter(it) },
                     )
                 }
             }
             if (expiry != null && visible.isNotEmpty()) {
-                item { OfferExpiryBanner(expiry) { viewModel.searchFlights(query) } }
+                item { OfferExpiryBanner(expiry) { actions.refreshOffers() } }
             }
             if (state.polling && visible.isNotEmpty()) {
                 item {
@@ -112,10 +147,7 @@ fun FlightResultsPage(
                 }
             }
             items(visible) { offer ->
-                OfferCard(offer) {
-                    viewModel.selectOffer(offer)
-                    backStack.add(Route.OfferReview(offer.offerId))
-                }
+                OfferCard(offer) { actions.openOffer(offer) }
             }
             if (state.loading || state.error != null || (state.hasSearched && visible.isEmpty())) {
                 item {

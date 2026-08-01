@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:astronomy:metadata` task name either way.
+    id("common-conventions-preview-metadata")
 }
 
 launcherIcon {
@@ -23,15 +25,6 @@ androidComponents {
 
 // Native celestial transforms + sky projection (Rust). See astronomy/src/main/rust/.
 rustNativeLib("astronomy_engine", "astronomy")
-
-metadataScreenshots {
-    // SkyMapPage gates behind location via PermissionsChecker — grant so first-run
-    // system prompt doesn't hijack the screenshots. Camera is optional AR overlay.
-    permissions.addAll(
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
-    )
-}
 
 dependencies {
     implementation(libs.androidx.camera.core)

@@ -9,7 +9,6 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.lifecycleScope
-import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconDashboard
 import com.vayunmathur.library.ui.IconHistory
@@ -17,10 +16,11 @@ import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.vpn.data.ConnectionLogDao
-import com.vayunmathur.vpn.data.DB_NAME
 import com.vayunmathur.vpn.data.VpnConfigDao
 import com.vayunmathur.vpn.data.VpnDatabase
 import com.vayunmathur.vpn.ui.BypassListPage
@@ -45,12 +45,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // SYSTEM: user-supplied VPN endpoint dynamic host, cannot pin
+        NetworkClient.init(this, TrustBundle.SYSTEM)
         enableEdgeToEdge()
 
         val ready = mutableStateOf(false)
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { VpnNative.init() }
-            val db = buildDatabase<VpnDatabase>(dbName = DB_NAME)
+            val db = VpnDatabase.get(this@MainActivity)
             configDao = db.vpnConfigDao()
             logDao = db.connectionLogDao()
             withContext(Dispatchers.Main) {

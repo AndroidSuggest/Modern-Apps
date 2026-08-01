@@ -178,7 +178,13 @@ class PlayHttpClient : IHttpClient {
         bodyBytes: ByteArray?,
         contentType: String?,
     ): HttpURLConnection {
-        val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+        val rawConn = URL(urlString).openConnection()
+        // Play Store auth uses Google GTS — pin via app-wide STANDARD bundle (contains GTS R1-R4).
+        val factory = com.vayunmathur.library.network.NetworkClient.defaultSslSocketFactory
+        if (factory != null && rawConn is javax.net.ssl.HttpsURLConnection) {
+            rawConn.sslSocketFactory = factory
+        }
+        val conn = (rawConn as HttpURLConnection).apply {
             connectTimeout = CONNECT_TIMEOUT
             readTimeout = READ_TIMEOUT
             instanceFollowRedirects = false

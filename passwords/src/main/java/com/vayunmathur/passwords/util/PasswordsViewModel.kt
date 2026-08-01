@@ -53,7 +53,7 @@ class PasswordsViewModel(
     application: Application,
     val passwordDao: PasswordDao,
     val passkeyDao: PasskeyDao,
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), PasswordsActions {
 
     // -- Data -------------------------------------------------------------
 
@@ -82,7 +82,7 @@ class PasswordsViewModel(
         }
     }
 
-    fun delete(password: Password) {
+    override fun delete(password: Password) {
         viewModelScope.launch(Dispatchers.IO) {
             passwordDao.delete(password)
         }
@@ -125,9 +125,11 @@ class PasswordsViewModel(
 
     private val _copyEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
     /** Emits a short label (e.g. "Password copied") for snackbar feedback. */
-    val copyEvents: SharedFlow<String> = _copyEvents.asSharedFlow()
+    override val copyEvents: SharedFlow<String> = _copyEvents.asSharedFlow()
 
-    fun copyToClipboard(label: String, text: String, feedback: String? = null) {
+    // Default arguments live on the PasswordsActions declaration; an override may not
+    // repeat them.
+    override fun copyToClipboard(label: String, text: String, feedback: String?) {
         val ctx = getApplication<Application>()
         val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
@@ -154,7 +156,7 @@ class PasswordsViewModel(
         }
     }
 
-    fun updateDraft(transform: (Password) -> Password) {
+    override fun updateDraft(transform: (Password) -> Password) {
         _draft.value = _draft.value?.let(transform)
     }
 
@@ -166,7 +168,7 @@ class PasswordsViewModel(
      * Persists the current draft. For new rows, the assigned id is reported
      * via [onSaved]. Clears the draft once enqueued.
      */
-    fun saveDraft(onSaved: ((Long) -> Unit)? = null) {
+    override fun saveDraft(onSaved: ((Long) -> Unit)?) {
         val current = _draft.value ?: return
         upsert(current, onSaved)
         _draft.value = null

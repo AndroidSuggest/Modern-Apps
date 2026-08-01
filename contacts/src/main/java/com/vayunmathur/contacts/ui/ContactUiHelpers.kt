@@ -25,7 +25,6 @@ import androidx.core.content.FileProvider
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.ContactGroup
-import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.VcfUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,18 +45,24 @@ fun contactGroupsOf(contact: Contact, allGroups: List<ContactGroup>): List<Conta
         contact.details.groups.any { it.groupId == group.id } && group.name.trim().isNotEmpty()
     }
 
-/** Circular avatar: decoded photo (off the main thread) or colored initials fallback. */
+/**
+ * Circular avatar: decoded photo (off the main thread) or colored initials fallback.
+ *
+ * [decodePhoto] is the ViewModel's cached decoder, passed as a function so this stays
+ * usable from a stateless screen. Only the photo keys the decode — the decoder itself is
+ * effectively constant, and keying on it would restart the decode on every recomposition.
+ */
 @Composable
 fun ContactAvatar(
     contact: Contact,
-    viewModel: ContactViewModel?,
+    decodePhoto: ((String) -> Bitmap?)?,
     modifier: Modifier = Modifier,
     initialsStyle: TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
     val photoBase64 = contact.photo?.photo
-    val avatarBitmap by produceState<Bitmap?>(initialValue = null, key1 = photoBase64, key2 = viewModel) {
+    val avatarBitmap by produceState<Bitmap?>(initialValue = null, key1 = photoBase64) {
         value = if (photoBase64 != null) {
-            withContext(Dispatchers.IO) { viewModel?.decodePhoto(photoBase64) }
+            withContext(Dispatchers.IO) { decodePhoto?.invoke(photoBase64) }
         } else null
     }
     Box(modifier.clip(CircleShape), contentAlignment = Alignment.Center) {

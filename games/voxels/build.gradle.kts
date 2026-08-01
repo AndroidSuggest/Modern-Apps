@@ -1,6 +1,9 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // No metadata convention. The game screen is a Vulkan SurfaceView driven by the Rust
+    // engine below, with Compose only as a HUD on top, so Layoutlib can render the joystick
+    // and hotbar but never the world behind them. The listing images are hand-captured and
+    // committed under metadata_data/photos/, which release.sh picks up directly.
 }
 
 launcherIcon {

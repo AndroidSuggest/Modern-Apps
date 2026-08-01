@@ -27,7 +27,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.calculator.util.AngleMode
+import com.vayunmathur.calculator.util.CalculatorActions
+import com.vayunmathur.calculator.util.CalculatorUiState
 import com.vayunmathur.calculator.util.CalculatorViewModel
+import com.vayunmathur.calculator.util.HistoryEntry
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ButtonDefaults
@@ -55,14 +58,14 @@ private class Key(
     val emphasis: KeyEmphasis = KeyEmphasis.Digit,
     val weight: Float = 1f,
     val second: String? = null,
-    val secondPress: ((CalculatorViewModel) -> Unit)? = null,
-    val onPress: (CalculatorViewModel) -> Unit,
+    val secondPress: ((CalculatorActions) -> Unit)? = null,
+    val onPress: (CalculatorActions) -> Unit,
 )
 
 @Composable
-private fun RowScope.KeyButton(key: Key, viewModel: CalculatorViewModel, second: Boolean, onToggleSecond: () -> Unit) {
+private fun RowScope.KeyButton(key: Key, actions: CalculatorActions, second: Boolean, onToggleSecond: () -> Unit) {
     val showSecond = second && key.second != null
-    val label = if (showSecond) key.second!! else key.label
+    val label = if (showSecond) key.second else key.label
     val secondActive = key.emphasis == KeyEmphasis.Toggle && second
     val colors = when (key.emphasis) {
         KeyEmphasis.Digit -> ButtonDefaults.filledTonalButtonColors()
@@ -78,8 +81,8 @@ private fun RowScope.KeyButton(key: Key, viewModel: CalculatorViewModel, second:
         onClick = {
             when {
                 key.emphasis == KeyEmphasis.Toggle -> onToggleSecond()
-                showSecond -> key.secondPress?.invoke(viewModel)
-                else -> key.onPress(viewModel)
+                showSecond -> key.secondPress?.invoke(actions)
+                else -> key.onPress(actions)
             }
         },
         modifier = Modifier.weight(key.weight).height(50.dp).padding(2.dp),
@@ -91,12 +94,32 @@ private fun RowScope.KeyButton(key: Key, viewModel: CalculatorViewModel, second:
     }
 }
 
+/** Binds [CalculatorViewModel] to the stateless [CalculatorScreen]. */
 @Composable
 fun CalculatorPage(viewModel: CalculatorViewModel) {
-    var showHistory by remember { mutableStateOf(false) }
-    var second by remember { mutableStateOf(false) }
+    CalculatorScreen(state = viewModel.calculatorUiState, actions = viewModel)
+}
 
-    fun ins(text: String): (CalculatorViewModel) -> Unit = { it.append(text) }
+/**
+ * The keypad screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun CalculatorScreen(
+    state: CalculatorUiState,
+    actions: CalculatorActions,
+    /**
+     * Seeds for the screen's own UI-only state (which dialog is open, whether the "2nd"
+     * modifier is latched). The app always takes the defaults; previews set them so a
+     * given screen can be captured without driving the UI to get there.
+     */
+    initialShowHistory: Boolean = false,
+    initialSecond: Boolean = false,
+) {
+    var showHistory by remember { mutableStateOf(initialShowHistory) }
+    var second by remember { mutableStateOf(initialSecond) }
+
+    fun ins(text: String): (CalculatorActions) -> Unit = { it.append(text) }
 
     val rows: List<List<Key>> = listOf(
         listOf(
@@ -125,7 +148,7 @@ fun CalculatorPage(viewModel: CalculatorViewModel) {
             Key("MR", KeyEmphasis.Function) { it.memoryRecall() },
             Key("M+", KeyEmphasis.Function) { it.memoryAdd() },
             Key("M-", KeyEmphasis.Function) { it.memorySubtract() },
-            Key(if (viewModel.angleMode == AngleMode.DEGREES) "DEG" else "RAD", KeyEmphasis.Function) { it.toggleAngleMode() },
+            Key(if (state.angleMode == AngleMode.DEGREES) "DEG" else "RAD", KeyEmphasis.Function) { it.toggleAngleMode() },
         ),
         listOf(
             Key("7") { it.append("7") },
@@ -172,11 +195,11 @@ fun CalculatorPage(viewModel: CalculatorViewModel) {
                 verticalArrangement = Arrangement.Bottom,
                 horizontalAlignment = Alignment.End,
             ) {
-                if (viewModel.memory != 0.0) {
+                if (state.memory != 0.0) {
                     Text("M", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
                 }
                 Text(
-                    viewModel.input.ifEmpty { "0" }
+                    state.input.ifEmpty { "0" }
                         .replace("*", "×").replace("/", "÷").replace("-", "−"),
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     textAlign = TextAlign.End,
@@ -185,7 +208,7 @@ fun CalculatorPage(viewModel: CalculatorViewModel) {
                     softWrap = false,
                 )
                 Text(
-                    viewModel.preview,
+                    state.preview,
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                     textAlign = TextAlign.End,
                     fontSize = 24.sp,
@@ -201,29 +224,33 @@ fun CalculatorPage(viewModel: CalculatorViewModel) {
             Column(Modifier.fillMaxWidth().padding(4.dp)) {
                 rows.forEach { row ->
                     Row(Modifier.fillMaxWidth()) {
-                        row.forEach { key -> KeyButton(key, viewModel, second) { second = !second } }
+                        row.forEach { key -> KeyButton(key, actions, second) { second = !second } }
                     }
                 }
             }
         }
     }
 
-    if (showHistory) HistoryDialog(viewModel) { showHistory = false }
+    if (showHistory) HistoryDialog(state.history, actions) { showHistory = false }
 }
 
 @Composable
-private fun HistoryDialog(viewModel: CalculatorViewModel, onDismiss: () -> Unit) {
+private fun HistoryDialog(
+    history: List<HistoryEntry>,
+    actions: CalculatorActions,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.history)) },
         text = {
-            if (viewModel.history.isEmpty()) {
+            if (history.isEmpty()) {
                 Text(stringResource(R.string.no_calculations_yet))
             } else {
                 LazyColumn(Modifier.height(320.dp)) {
-                    items(viewModel.history) { entry ->
+                    items(history) { entry ->
                         Card(
-                            onClick = { viewModel.useHistory(entry); onDismiss() },
+                            onClick = { actions.useHistory(entry); onDismiss() },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         ) {
                             Column(Modifier.padding(12.dp)) {
@@ -241,8 +268,8 @@ private fun HistoryDialog(viewModel: CalculatorViewModel, onDismiss: () -> Unit)
         },
         confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
         dismissButton = {
-            if (viewModel.history.isNotEmpty()) {
-                TextButton({ viewModel.clearHistory(); onDismiss() }) { Text(stringResource(R.string.clear)) }
+            if (history.isNotEmpty()) {
+                TextButton({ actions.clearHistory(); onDismiss() }) { Text(stringResource(R.string.clear)) }
             }
         },
     )

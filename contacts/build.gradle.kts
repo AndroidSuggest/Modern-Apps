@@ -1,6 +1,8 @@
 plugins {
     id("common-conventions-app")
-    id("common-conventions-metadata")
+    // Listing screenshots come from Compose previews (src/screenshotTest), not from an
+    // instrumented test on a device. Same `:contacts:metadata` task name either way.
+    id("common-conventions-preview-metadata")
 }
 
 launcherIcon {
@@ -11,15 +13,6 @@ android {
     defaultConfig {
         applicationId = "com.vayunmathur.contacts"
     }
-}
-
-metadataScreenshots {
-    permissions.addAll(
-        "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS",
-        "android.permission.CALL_PHONE",
-        "android.permission.READ_PHONE_STATE",
-    )
 }
 
 dependencies {

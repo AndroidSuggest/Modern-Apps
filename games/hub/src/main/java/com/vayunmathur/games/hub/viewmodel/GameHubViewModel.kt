@@ -11,6 +11,7 @@ import com.vayunmathur.games.hub.data.entities.ActivityEventEntity
 import com.vayunmathur.games.hub.data.entities.HubGameEntity
 import com.vayunmathur.games.hub.data.entities.PlayerProfileEntity
 import com.vayunmathur.games.hub.data.entities.PlaySessionEntity
+import com.vayunmathur.games.hub.util.ProfileActions
 import com.vayunmathur.games.hub.util.StreakCalculator
 import com.vayunmathur.games.hub.util.XpLevelCalculator
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +38,7 @@ data class CrossGameStats(
 class GameHubViewModel(
     application: Application,
     private val db: GamesHubDatabase
-) : AndroidViewModel(application) {
+) : AndroidViewModel(application), ProfileActions {
 
     val gamesFlow: StateFlow<List<HubGameEntity>> =
         db.gameDao().flowAll()
@@ -92,14 +93,14 @@ class GameHubViewModel(
         }
     }
 
-    fun updateDisplayName(name: String) {
+    override fun updateDisplayName(name: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val current = db.profileDao().getProfile() ?: PlayerProfileEntity()
             db.profileDao().upsert(current.copy(displayName = name))
         }
     }
 
-    fun updateAvatarSymbol(symbol: String?) {
+    override fun updateAvatarSymbol(symbol: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             val current = db.profileDao().getProfile() ?: PlayerProfileEntity()
             db.profileDao().upsert(current.copy(avatarSymbol = symbol))

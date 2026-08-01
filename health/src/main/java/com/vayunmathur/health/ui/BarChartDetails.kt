@@ -66,6 +66,8 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.health.ui.components.GroupedSection
 import com.vayunmathur.health.ui.components.GroupedSectionDivider
 import com.vayunmathur.health.util.HealthViewModel
+import com.vayunmathur.health.util.MetricDetailsActions
+import com.vayunmathur.health.util.MetricDetailsUiState
 import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.RecordType
@@ -305,12 +307,56 @@ data class HistoryItem(
     val useDecimals: Boolean
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [HealthViewModel] and the back stack to the stateless [BarChartDetailsScreen]. */
 @Composable
 fun BarChartDetails(
     backStack: NavBackStack<Route>, viewModel: HealthViewModel, config: HealthMetricConfig
 ) {
-    var selectedTab by remember { mutableIntStateOf(if (config == HealthMetricConfig.HEART_RATE) 0 else 1) }
+    val dataState by viewModel.barChartData.collectAsState()
+    // Read once: the screen compares the anchor date against it on every recomposition, and
+    // a value that changes mid-composition would make the "next period" button flicker.
+    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
+
+    BarChartDetailsScreen(
+        state = MetricDetailsUiState(config = config, today = today, data = dataState),
+        actions = object : MetricDetailsActions {
+            override fun loadBarChartData(
+                config: HealthMetricConfig,
+                anchorDate: LocalDate,
+                selectedTab: Int,
+            ) {
+                viewModel.loadBarChartData(config, anchorDate, selectedTab)
+            }
+
+            override fun navigateUp() {
+                backStack.pop()
+            }
+        },
+    )
+}
+
+/**
+ * The per-metric chart screen, with no dependency on the ViewModel or the back stack so it
+ * can be rendered from a `@Preview` — see `src/screenshotTest`, which is where the store
+ * listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BarChartDetailsScreen(
+    state: MetricDetailsUiState,
+    actions: MetricDetailsActions,
+    /**
+     * Seeds for the screen's own UI-only state (which period tab is selected, which period
+     * is being looked at). The app always takes the defaults; previews set them so a given
+     * view can be captured without driving the UI to get there.
+     */
+    initialTab: Int = if (state.config == HealthMetricConfig.HEART_RATE) 0 else 1,
+    initialAnchorDate: LocalDate = state.today,
+) {
+    val config = state.config
+    val dataState = state.data
+
+    var selectedTab by remember { mutableIntStateOf(initialTab) }
     val tabs = listOf(
         stringResource(R.string.tab_day),
         stringResource(R.string.tab_week),
@@ -318,8 +364,7 @@ fun BarChartDetails(
         stringResource(R.string.tab_year)
     )
 
-    var anchorDate by remember { mutableStateOf(Clock.System.todayIn(TimeZone.currentSystemDefault())) }
-    val dataState by viewModel.barChartData.collectAsState()
+    var anchorDate by remember { mutableStateOf(initialAnchorDate) }
 
     val dateUnit = when (selectedTab) {
         0 -> DateTimeUnit.DAY
@@ -329,14 +374,14 @@ fun BarChartDetails(
     }
 
     LaunchedEffect(selectedTab, anchorDate, config) {
-        viewModel.loadBarChartData(config, anchorDate, selectedTab)
+        actions.loadBarChartData(config, anchorDate, selectedTab)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(config.titleRes)) },
-                navigationIcon = { IconNavigation(backStack) })
+                navigationIcon = { IconNavigation({ actions.navigateUp() }) })
         }) { padding ->
         Column(
             modifier = Modifier
@@ -418,7 +463,7 @@ fun BarChartDetails(
 
                     IconButton(
                         onClick = { anchorDate = nextDate },
-                        enabled = nextDate <= Clock.System.todayIn(TimeZone.currentSystemDefault())
+                        enabled = nextDate <= state.today
                     ) {
                         IconArrowForward()
                     }

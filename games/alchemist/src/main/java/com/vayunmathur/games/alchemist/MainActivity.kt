@@ -18,9 +18,9 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.games.alchemist.data.AlchemyItem
-import com.vayunmathur.games.alchemist.ui.CollectionScreen
-import com.vayunmathur.games.alchemist.ui.HomeScreen
-import com.vayunmathur.games.alchemist.ui.ItemDetailsScreen
+import com.vayunmathur.games.alchemist.ui.CollectionPage
+import com.vayunmathur.games.alchemist.ui.HomePage
+import com.vayunmathur.games.alchemist.ui.ItemDetailsPage
 import com.vayunmathur.games.alchemist.ui.UnlockNotification
 import com.vayunmathur.games.alchemist.util.AlchemistAchievementsManager
 import com.vayunmathur.games.alchemist.util.AlchemistViewModel
@@ -94,7 +94,7 @@ fun Navigation(viewModel: AlchemistViewModel) {
     Box(Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
             entry<Route.Home> {
-                HomeScreen(
+                HomePage(
                     backStack,
                     viewModel,
                     onOpenCollection = { backStack.add(Route.Collection) },
@@ -102,10 +102,10 @@ fun Navigation(viewModel: AlchemistViewModel) {
                 )
             }
             entry<Route.Collection> {
-                CollectionScreen(backStack, viewModel)
+                CollectionPage(backStack, viewModel)
             }
             entry<Route.ItemDetails> {
-                ItemDetailsScreen(backStack, viewModel, it.item)
+                ItemDetailsPage(backStack, viewModel, it.item)
             }
             entry<Route.GameCenter> {
                 achievementsManager?.let {

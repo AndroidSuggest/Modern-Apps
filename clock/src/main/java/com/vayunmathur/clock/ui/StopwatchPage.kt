@@ -44,18 +44,38 @@ import com.vayunmathur.clock.R
 import com.vayunmathur.clock.Route
 import com.vayunmathur.clock.mainPages
 import com.vayunmathur.clock.util.ClockViewModel
+import com.vayunmathur.clock.util.StopwatchActions
+import com.vayunmathur.clock.util.StopwatchUiState
 import com.vayunmathur.library.ui.IconPause
 import com.vayunmathur.library.ui.IconPlay
 import com.vayunmathur.library.util.BottomNavBar
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [ClockViewModel] to the stateless [StopwatchScreen]. */
 @Composable
 fun StopwatchPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel) {
     val isRunning by clockViewModel.stopwatchRunning.collectAsState()
     val countingTime by clockViewModel.stopwatchCountingTime.collectAsState()
     val lapTimes by clockViewModel.lapTimes.collectAsState()
+
+    StopwatchScreen(
+        backStack = backStack,
+        state = StopwatchUiState(isRunning = isRunning, countingTime = countingTime, lapTimes = lapTimes),
+        actions = clockViewModel,
+    )
+}
+
+/**
+ * The stopwatch, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, actions: StopwatchActions) {
+    val isRunning = state.isRunning
+    val countingTime = state.countingTime
+    val lapTimes = state.lapTimes
     val lapSplits by remember(lapTimes) {
         derivedStateOf {
             lapTimes.mapIndexed { index, totalTimeAtLap ->
@@ -76,20 +96,20 @@ fun StopwatchPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if(isRunning) {
                 FloatingActionButton({
-                    clockViewModel.addLap()
+                    actions.addLap()
                 }) {
                     IconTimer()
                 }
             }
             if(countingTime > 0.seconds) {
                 FloatingActionButton(onClick = {
-                    clockViewModel.resetStopwatch()
+                    actions.resetStopwatch()
                 }) {
                     IconRestartAlt()
                 }
             }
             FloatingActionButton({
-                clockViewModel.toggleStopwatch()
+                actions.toggleStopwatch()
             }) {
                 if(isRunning) {
                     IconPause()

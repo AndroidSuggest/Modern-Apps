@@ -57,6 +57,7 @@ fun InsertOrEditContactScreen(
 ) {
     val phone = insertOrEditRoute.phone
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val groups by viewModel.groups.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     var isSaving by remember { mutableStateOf(false) }
 
@@ -153,7 +154,8 @@ fun InsertOrEditContactScreen(
                                         contact = contact,
                                         isSelected = false,
                                         showAccountLabels = true,
-                                        viewModel = viewModel,
+                                        allGroups = groups,
+                                        decodePhoto = viewModel::decodePhoto,
                                         embeddedInCard = true,
                                         onClick = {
                                             if (isSaving) return@ContactItem

@@ -46,7 +46,9 @@ import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.calculator.util.Expression
 import com.vayunmathur.calculator.util.FeatureKind
 import com.vayunmathur.calculator.util.GraphAnalysis
+import com.vayunmathur.calculator.util.GraphActions
 import com.vayunmathur.calculator.util.GraphFunction
+import com.vayunmathur.calculator.util.GraphUiState
 import com.vayunmathur.calculator.util.GraphPoint
 import com.vayunmathur.calculator.util.formatResult
 import com.vayunmathur.library.ui.AssistChip
@@ -68,16 +70,26 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
 
+/** Binds [CalculatorViewModel] to the stateless [GraphScreen]. */
 @Composable
 fun GraphPage(viewModel: CalculatorViewModel) {
+    GraphScreen(state = viewModel.graphUiState, actions = viewModel)
+}
+
+/**
+ * The graph screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@Composable
+fun GraphScreen(state: GraphUiState, actions: GraphActions) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.graph)) },
                 actions = {
                     AssistChip(
-                        onClick = { viewModel.toggleAngleMode() },
-                        label = { Text(if (viewModel.angleMode == AngleMode.DEGREES) "DEG" else "RAD") },
+                        onClick = { actions.toggleAngleMode() },
+                        label = { Text(if (state.angleMode == AngleMode.DEGREES) "DEG" else "RAD") },
                         modifier = Modifier.padding(end = 12.dp),
                     )
                 },
@@ -85,9 +97,9 @@ fun GraphPage(viewModel: CalculatorViewModel) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            GraphCanvas(viewModel, Modifier.fillMaxWidth().weight(1f))
+            GraphCanvas(state, actions, Modifier.fillMaxWidth().weight(1f))
             HorizontalDivider()
-            FunctionEditors(viewModel)
+            FunctionEditors(state, actions)
         }
     }
 }
@@ -96,7 +108,7 @@ fun GraphPage(viewModel: CalculatorViewModel) {
 private val TouchSlop = 28.dp
 
 @Composable
-private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
+private fun GraphCanvas(state: GraphUiState, actions: GraphActions, modifier: Modifier) {
     val axisColor = MaterialTheme.colorScheme.onSurface
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -107,7 +119,7 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
     val textMeasurer = rememberTextMeasurer()
 
     // Colour lookup for markers, and the localised kind names, resolved outside the draw scope.
-    val colorOf = viewModel.functions.associate { it.id to it.color }
+    val colorOf = state.functions.associate { it.id to it.color }
     val kindLabels = mapOf(
         FeatureKind.ROOT to stringResource(R.string.feature_root),
         FeatureKind.Y_INTERCEPT to stringResource(R.string.feature_y_intercept),
@@ -117,43 +129,41 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
     )
 
     // Compile each function once per edit, not once per frame; null means it doesn't parse yet.
-    val compiled = viewModel.functions.map { fn ->
+    val compiled = state.functions.map { fn ->
         fn to if (fn.enabled && fn.text.isNotBlank()) runCatching { Expression.parse(fn.text) }.getOrNull() else null
     }
 
     Canvas(
         modifier
             .background(surface)
-            .onSizeChanged {
-                viewModel.viewWidthPx = it.width.toFloat()
-                viewModel.viewHeightPx = it.height.toFloat()
-            }
+            .onSizeChanged { actions.setViewSize(it.width.toFloat(), it.height.toFloat()) }
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val gx = viewModel.centerX + (offset.x - size.width / 2) / viewModel.scale
-                    val gy = viewModel.centerY + (size.height / 2 - offset.y) / viewModel.scale
-                    viewModel.tapGraph(GraphPoint(gx, gy), TouchSlop.toPx() / viewModel.scale)
+                    val vp = state.viewport
+                    val gx = vp.centerX + (offset.x - size.width / 2) / vp.scale
+                    val gy = vp.centerY + (size.height / 2 - offset.y) / vp.scale
+                    actions.tapGraph(GraphPoint(gx, gy), TouchSlop.toPx() / vp.scale)
                 }
             }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
-                    val oldScale = viewModel.scale
-                    val newScale = (viewModel.scale * zoom).coerceIn(2.0, 400000.0)
-                    val gx = viewModel.centerX + (centroid.x - size.width / 2) / oldScale
-                    val gy = viewModel.centerY + (size.height / 2 - centroid.y) / oldScale
-                    viewModel.scale = newScale
-                    viewModel.centerX = gx - (centroid.x - size.width / 2) / newScale
-                    viewModel.centerY = gy - (size.height / 2 - centroid.y) / newScale
-                    viewModel.centerX -= pan.x / newScale
-                    viewModel.centerY += pan.y / newScale
+                    val vp = state.viewport
+                    val newScale = (vp.scale * zoom).coerceIn(2.0, 400000.0)
+                    val gx = vp.centerX + (centroid.x - size.width / 2) / vp.scale
+                    val gy = vp.centerY + (size.height / 2 - centroid.y) / vp.scale
+                    actions.setViewport(
+                        centerX = gx - (centroid.x - size.width / 2) / newScale - pan.x / newScale,
+                        centerY = gy - (size.height / 2 - centroid.y) / newScale + pan.y / newScale,
+                        scale = newScale,
+                    )
                 }
             },
     ) {
         val w = size.width
         val h = size.height
-        val scale = viewModel.scale
-        val cx = viewModel.centerX
-        val cy = viewModel.centerY
+        val scale = state.viewport.scale
+        val cx = state.viewport.centerX
+        val cy = state.viewport.centerY
         fun px(gx: Double) = ((gx - cx) * scale + w / 2).toFloat()
         fun py(gy: Double) = (h / 2 - (gy - cy) * scale).toFloat()
 
@@ -194,7 +204,7 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
         for ((fn, expr) in compiled) {
             if (expr == null) continue
             val curve = GraphAnalysis.sample(
-                fn.id, expr, fn.polar, viewModel.angleMode, minX, maxX, minY, maxY, w.toInt(),
+                fn.id, expr, fn.polar, state.angleMode, minX, maxX, minY, maxY, w.toInt(),
             )
             val path = Path()
             for (run in curve.runs) {
@@ -208,7 +218,7 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
         }
 
         // ---- Markers the user has revealed ----
-        for (m in viewModel.markers) {
+        for (m in state.markers) {
             val mx = px(m.point.x)
             val my = py(m.point.y)
             if (mx < -20 || mx > w + 20 || my < -20 || my > h + 20) continue
@@ -236,7 +246,7 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
 private val EditorListMaxHeight = 240.dp
 
 @Composable
-private fun FunctionEditors(viewModel: CalculatorViewModel) {
+private fun FunctionEditors(state: GraphUiState, actions: GraphActions) {
     var expanded by rememberSaveable { mutableStateOf(true) }
     Column(Modifier.fillMaxWidth()) {
         // Slim control strip: add a curve, or fold the list away and hand the whole screen
@@ -246,7 +256,7 @@ private fun FunctionEditors(viewModel: CalculatorViewModel) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AssistChip(
-                onClick = { viewModel.addFunction(); expanded = true },
+                onClick = { actions.addFunction(); expanded = true },
                 label = { Text(stringResource(R.string.add_function)) },
                 leadingIcon = { IconAdd() },
             )
@@ -261,7 +271,7 @@ private fun FunctionEditors(viewModel: CalculatorViewModel) {
                 contentPadding = PaddingValues(start = 4.dp, end = 4.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(viewModel.functions, key = { it.id }) { fn -> FunctionRow(viewModel, fn) }
+                items(state.functions, key = { it.id }) { fn -> FunctionRow(actions, fn) }
             }
         }
     }
@@ -269,7 +279,7 @@ private fun FunctionEditors(viewModel: CalculatorViewModel) {
 
 /** One curve on a single line: swatch, coordinate-system toggle, expression, delete. */
 @Composable
-private fun FunctionRow(viewModel: CalculatorViewModel, fn: GraphFunction) {
+private fun FunctionRow(actions: GraphActions, fn: GraphFunction) {
     val error = fn.text.isNotBlank() && runCatching { Expression.parse(fn.text) }.isFailure
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         // The swatch doubles as the show/hide control — filled when the curve is drawn,
@@ -281,7 +291,7 @@ private fun FunctionRow(viewModel: CalculatorViewModel, fn: GraphFunction) {
                 .size(40.dp)
                 .clip(CircleShape)
                 .clickable(onClickLabel = stringResource(R.string.toggle_curve_visibility)) {
-                    viewModel.toggleFunction(fn.id)
+                    actions.toggleFunction(fn.id)
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -294,19 +304,19 @@ private fun FunctionRow(viewModel: CalculatorViewModel, fn: GraphFunction) {
         }
         FilterChip(
             selected = fn.polar,
-            onClick = { viewModel.togglePolar(fn.id) },
+            onClick = { actions.togglePolar(fn.id) },
             label = { Text(if (fn.polar) "r=" else "y=") },
             modifier = Modifier.padding(end = 6.dp),
         )
         OutlinedTextField(
             value = fn.text,
-            onValueChange = { viewModel.updateFunction(fn.id, it) },
+            onValueChange = { actions.updateFunction(fn.id, it) },
             modifier = Modifier.weight(1f),
             singleLine = true,
             isError = error,
             placeholder = { Text(if (fn.polar) "f(θ)" else "f(x)") },
         )
-        IconButton({ viewModel.removeFunction(fn.id) }) { IconClose() }
+        IconButton({ actions.removeFunction(fn.id) }) { IconClose() }
     }
 }
 

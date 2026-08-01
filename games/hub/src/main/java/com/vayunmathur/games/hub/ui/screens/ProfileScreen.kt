@@ -25,6 +25,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.games.hub.ui.components.LevelBadge
 import com.vayunmathur.games.hub.ui.components.StatCard
 import com.vayunmathur.games.hub.ui.components.XpProgressBar
+import com.vayunmathur.games.hub.util.ProfileActions
+import com.vayunmathur.games.hub.util.ProfileUiState
 import com.vayunmathur.games.hub.util.XpLevelCalculator
 import com.vayunmathur.games.hub.util.formatPlaytime
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
@@ -46,21 +48,46 @@ private val avatarOptions = listOf(
     "psychology", "lightbulb", "school", "workspace_premium", "king_bed"
 )
 
+/** Binds [GameHubViewModel] to the stateless [ProfileScreen]. */
 @Composable
-fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
+fun ProfilePage(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
     val profile by viewModel.profileFlow.collectAsStateWithLifecycle()
     val xp by viewModel.totalXpFlow.collectAsStateWithLifecycle()
     val level by viewModel.levelFlow.collectAsStateWithLifecycle()
     val title by viewModel.titleFlow.collectAsStateWithLifecycle()
     val crossStats by viewModel.statsFlow.collectAsStateWithLifecycle()
 
+    ProfileScreen(
+        state = ProfileUiState(
+            playerName = profile?.displayName,
+            avatarSymbol = profile?.avatarSymbol,
+            level = level,
+            title = title,
+            totalXp = xp,
+            stats = crossStats,
+        ),
+        actions = viewModel,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The profile screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview`.
+ */
+@Composable
+fun ProfileScreen(
+    state: ProfileUiState,
+    actions: ProfileActions,
+    modifier: Modifier = Modifier,
+) {
     var showEditDialog by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf("") }
     var selectedAvatar by remember { mutableStateOf<String?>(null) }
 
-    if (showEditDialog && editName.isEmpty() && profile != null) {
-        editName = profile?.displayName ?: ""
-        selectedAvatar = profile?.avatarSymbol
+    if (showEditDialog && editName.isEmpty() && state.playerName != null) {
+        editName = state.playerName ?: ""
+        selectedAvatar = state.avatarSymbol
     }
 
     Scaffold(topBar = {
@@ -68,8 +95,8 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
             title = { Text(stringResource(R.string.profile_title)) },
             actions = {
                 androidx.compose.material3.IconButton(onClick = {
-                    editName = profile?.displayName ?: ""
-                    selectedAvatar = profile?.avatarSymbol
+                    editName = state.playerName ?: ""
+                    selectedAvatar = state.avatarSymbol
                     showEditDialog = true
                 }) { IconPerson() }
             }
@@ -79,37 +106,37 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        LevelBadge(level = level, large = true)
-                        Text(text = profile?.displayName ?: stringResource(R.string.player), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(stringResource(R.string.level_1, level), style = MaterialTheme.typography.labelLarge)
-                        XpProgressBar(totalXp = xp, modifier = Modifier.fillMaxWidth())
+                        LevelBadge(level = state.level, large = true)
+                        Text(text = state.playerName ?: stringResource(R.string.player), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(text = state.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.level_1, state.level), style = MaterialTheme.typography.labelLarge)
+                        XpProgressBar(totalXp = state.totalXp, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
             item { Text(stringResource(R.string.stats), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(crossStats.totalPlaytimeMs), modifier = Modifier.weight(1f))
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.sessions), value = "${crossStats.totalSessions}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.playtime), value = formatPlaytime(state.stats.totalPlaytimeMs), modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.sessions), value = "${state.stats.totalSessions}", modifier = Modifier.weight(1f))
                 }
             }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.achievements_for), value = "${crossStats.totalAchievementsUnlocked}/${crossStats.totalAchievements}", modifier = Modifier.weight(1f))
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.tab_games), value = "${crossStats.totalGames}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.achievements_for), value = "${state.stats.totalAchievementsUnlocked}/${state.stats.totalAchievements}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.tab_games), value = "${state.stats.totalGames}", modifier = Modifier.weight(1f))
                 }
             }
             item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.xp_2), value = "$xp", modifier = Modifier.weight(1f))
-                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.best_streak), value = "${crossStats.longestStreak}d", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.xp_2), value = "${state.totalXp}", modifier = Modifier.weight(1f))
+                    StatCard(label = stringResource(com.vayunmathur.games.hub.R.string.best_streak), value = "${state.stats.longestStreak}d", modifier = Modifier.weight(1f))
                 }
             }
             item { Text(stringResource(R.string.level_table), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
-            items((1..maxOf(level + 2, 10)).toList(), key = { it }) { lvl ->
+            items((1..maxOf(state.level + 2, 10)).toList(), key = { it }) { lvl ->
                 val lvlXp = XpLevelCalculator.xpForLevel(lvl)
-                val isCurrent = lvl == level
+                val isCurrent = lvl == state.level
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = if (isCurrent) androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -140,8 +167,8 @@ fun ProfileScreen(viewModel: GameHubViewModel, modifier: Modifier = Modifier) {
                 },
                 confirmButton = {
                     Button(onClick = {
-                        if (editName.isNotBlank()) viewModel.updateDisplayName(editName.trim())
-                        viewModel.updateAvatarSymbol(selectedAvatar)
+                        if (editName.isNotBlank()) actions.updateDisplayName(editName.trim())
+                        actions.updateAvatarSymbol(selectedAvatar)
                         showEditDialog = false; editName = ""
                     }) { Text(stringResource(R.string.save)) }
                 },

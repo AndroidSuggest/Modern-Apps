@@ -79,10 +79,13 @@ class OpenTab(
 /**
  * Activity-scoped state for the editor: the open folder tree, the set of open tabs and the
  * editor preferences. An [AndroidViewModel] (obtained via `by viewModels()`) so it can reach
- * the ContentResolver and DataStore through the application context. Compose reads the
- * `mutableStateOf`/`mutableStateListOf` members directly.
+ * the ContentResolver and DataStore through the application context.
+ *
+ * It implements [CodeActions] and projects itself into a [CodeUiState] so the screens can be
+ * rendered without it; reading [uiState] inside a composable subscribes to the same
+ * `mutableStateOf`/`mutableStateListOf` members the screens used to read directly.
  */
-class EditorViewModel(application: Application) : AndroidViewModel(application) {
+class EditorViewModel(application: Application) : AndroidViewModel(application), CodeActions {
 
     private val context get() = getApplication<Application>()
     private val prefs = EditorPrefs(context)
@@ -103,6 +106,33 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     // ---- Preferences ----
     var softWrap by mutableStateOf(false)
         private set
+
+    /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
+    val uiState: CodeUiState
+        get() = CodeUiState(
+            tabs = tabs.map {
+                TabUiState(
+                    name = it.name,
+                    value = it.value,
+                    language = it.language,
+                    isDirty = it.isDirty,
+                    canUndo = it.canUndo,
+                    canRedo = it.canRedo,
+                )
+            },
+            currentIndex = currentIndex,
+            softWrap = softWrap,
+            rootName = rootName,
+            folderOpen = treeUri != null,
+            nodes = nodes.map {
+                TreeRowUiState(
+                    name = it.entry.name,
+                    depth = it.depth,
+                    isDirectory = it.entry.isDirectory,
+                    expanded = it.expanded,
+                )
+            },
+        )
 
     init {
         viewModelScope.launch { softWrap = prefs.softWrap.first() }
@@ -143,14 +173,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Expands/collapses a directory row, or opens a file row in a tab. */
-    fun toggle(node: TreeNode) {
+    override fun toggleNode(index: Int) {
+        val node = nodes.getOrNull(index) ?: return
         if (!node.entry.isDirectory) {
             openFile(node.entry.uri, node.entry.name)
             return
         }
         val tree = treeUri ?: return
-        val index = nodes.indexOf(node)
-        if (index < 0) return
 
         if (node.expanded) {
             node.expanded = false
@@ -203,13 +232,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         openFile(uri)
     }
 
-    fun selectTab(index: Int) {
+    override fun selectTab(index: Int) {
         if (index in tabs.indices) currentIndex = index
     }
 
-    fun closeTab(tab: OpenTab) {
-        val index = tabs.indexOf(tab)
-        if (index < 0) return
+    override fun closeTab(index: Int) {
+        if (index !in tabs.indices) return
         val removingCurrent = index == currentIndex
         tabs.removeAt(index)
         currentIndex = when {
@@ -222,23 +250,27 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---- Editing ----
 
-    fun onEditorChange(new: TextFieldValue) {
+    override fun onEditorChange(new: TextFieldValue) {
         val tab = currentTab ?: return
         if (new.text != tab.value.text) tab.pushUndo(tab.value)
         tab.value = new
     }
 
     /** Moves the selection without recording an undo step (used by find navigation). */
-    fun setSelection(range: TextRange) {
+    override fun setSelection(range: TextRange) {
         val tab = currentTab ?: return
         tab.value = tab.value.copy(selection = range)
     }
 
-    fun undo() = currentTab?.undo()
+    override fun undo() {
+        currentTab?.undo()
+    }
 
-    fun redo() = currentTab?.redo()
+    override fun redo() {
+        currentTab?.redo()
+    }
 
-    fun save() {
+    override fun save() {
         val tab = currentTab ?: return
         val textToSave = tab.value.text
         viewModelScope.launch {
@@ -250,7 +282,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Inserts [insert] at the caret, replacing any current selection (used by the Tab button). */
-    fun insertText(insert: String) {
+    override fun insertText(insert: String) {
         val tab = currentTab ?: return
         val v = tab.value
         val start = v.selection.min
@@ -259,14 +291,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         onEditorChange(TextFieldValue(newText, TextRange(start + insert.length)))
     }
 
-    fun toggleSoftWrap() {
+    override fun toggleSoftWrap() {
         softWrap = !softWrap
         viewModelScope.launch { prefs.setSoftWrap(softWrap) }
     }
 
     // ---- Find & replace ----
 
-    fun replaceRange(range: IntRange, replacement: String) {
+    override fun replaceRange(range: IntRange, replacement: String) {
         val tab = currentTab ?: return
         val text = tab.value.text
         if (range.first < 0 || range.last + 1 > text.length) return
@@ -274,7 +306,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         onEditorChange(TextFieldValue(newText, TextRange(range.first + replacement.length)))
     }
 
-    fun replaceAll(matches: List<IntRange>, replacement: String) {
+    override fun replaceAll(matches: List<IntRange>, replacement: String) {
         val tab = currentTab ?: return
         if (matches.isEmpty()) return
         val text = tab.value.text

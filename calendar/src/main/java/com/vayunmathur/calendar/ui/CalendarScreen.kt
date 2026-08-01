@@ -69,6 +69,8 @@ import com.vayunmathur.calendar.Route
 import com.vayunmathur.calendar.data.Calendar
 import com.vayunmathur.calendar.data.Event
 import com.vayunmathur.calendar.data.Instance
+import com.vayunmathur.calendar.util.CalendarActions
+import com.vayunmathur.calendar.util.CalendarUiState
 import com.vayunmathur.calendar.util.CalendarViewModel
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconArrowDropDown
@@ -112,11 +114,9 @@ private fun firstDayOfWeekOffset(date: LocalDate, locale: Locale): Int {
     return (date.dayOfWeek.isoDayNumber - firstDayOfWeek + 7) % 7
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [CalendarViewModel] to the stateless [CalendarScreen]. */
 @Composable
 fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>) {
-    val context = LocalContext.current
-
     val events by viewModel.events.collectAsStateWithLifecycle()
     val calendarsList by viewModel.calendars.collectAsStateWithLifecycle()
     val calendars = remember(calendarsList) { calendarsList.associateBy { it.id } }
@@ -129,14 +129,57 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
 
     // Stable anchor for pagers/scrollers — always use today so the initial
     // page offset is correct regardless of any stale persisted date.
-    val anchorDate = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
-
-    // shared vertical scroll so hour labels and grid scroll together
-    val verticalState = rememberScrollState()
+    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
 
     ResultEffect<LocalDate>("GotoDate") { result ->
         viewModel.setSelectedDate(result)
     }
+
+    CalendarScreen(
+        state = CalendarUiState(
+            layout = currentLayout,
+            dateViewing = dateViewing,
+            today = today,
+            events = events,
+            calendars = calendars,
+            calendarVisibility = calendarVisibility,
+        ),
+        // Navigation is the binder's job; everything else comes from the ViewModel. Not
+        // remembered, so `dateViewing` captured below is always the current one.
+        actions = object : CalendarActions by viewModel {
+            override fun openDatePicker(date: LocalDate) {
+                backStack.add(Route.Calendar.GotoDialog(date))
+            }
+
+            override fun openSettings() {
+                backStack.add(Route.Settings)
+            }
+
+            override fun openEvent(instance: Instance) {
+                viewModel.setLastViewedDate(dateViewing)
+                backStack.add(Route.Event(instance))
+            }
+
+            override fun createEvent() {
+                // persist currently viewed date before navigating to the new event page
+                viewModel.setLastViewedDate(dateViewing)
+                backStack.add(Route.EditEvent(null))
+            }
+        },
+    )
+}
+
+/**
+ * The calendar screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CalendarScreen(state: CalendarUiState, actions: CalendarActions) {
+    val context = LocalContext.current
+
+    // shared vertical scroll so hour labels and grid scroll together
+    val verticalState = rememberScrollState()
 
     Scaffold(
         Modifier,
@@ -144,12 +187,12 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
             TopAppBar(
                 {
                     // show month/year of the currently visible date
-                    val mon = localizedMonthNames(DateNameStyle.SHORT)[dateViewing.month.number - 1]
+                    val mon = localizedMonthNames(DateNameStyle.SHORT)[state.dateViewing.month.number - 1]
                     Row(
-                        Modifier.clickable { backStack.add(Route.Calendar.GotoDialog(dateViewing)) },
+                        Modifier.clickable { actions.openDatePicker(state.dateViewing) },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(stringResource(R.string.month_year_format, mon, dateViewing.year), fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.month_year_format, mon, state.dateViewing.year), fontWeight = FontWeight.Bold)
                         IconArrowDropDown()
                     }
                 }, actions = {
@@ -157,7 +200,7 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                     Box {
                         TextButton(onClick = { showLayoutMenu = true }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(currentLayout.shortNameRes), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(state.layout.shortNameRes), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 IconArrowDropDown(tint = MaterialTheme.colorScheme.primary)
                             }
                         }
@@ -166,7 +209,7 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                                 DropdownMenuItem(
                                     text = { Text(stringResource(layout.prettyNameRes)) },
                                     onClick = {
-                                        viewModel.setLayout(layout)
+                                        actions.setLayout(layout)
                                         showLayoutMenu = false
                                     }
                                 )
@@ -174,50 +217,47 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
                         }
                     }
 
-                    IconButton({ backStack.add(Route.Settings) }) {
+                    IconButton({ actions.openSettings() }) {
                         IconSettings()
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton({
-                // persist currently viewed date before navigating to the new event page
-                viewModel.setLastViewedDate(dateViewing)
-                backStack.add(Route.EditEvent(null))
-            }) {
+            FloatingActionButton({ actions.createEvent() }) {
                 IconAdd()
             }
         }
     ) { innerPadding ->
         Column(Modifier.padding(innerPadding).fillMaxSize()) {
-            when (currentLayout) {
-                CalendarViewModel.CalendarLayout.Agenda -> AgendaView(context, events, calendars, calendarVisibility, anchorDate, dateViewing, viewModel::visibleInstances, onEventClick = {
-                    viewModel.setLastViewedDate(dateViewing)
-                    backStack.add(Route.Event(it))
-                }, onDateViewingChanged = { viewModel.setSelectedDate(it) })
-                CalendarViewModel.CalendarLayout.Month -> MonthView(context, events, calendars, calendarVisibility, anchorDate, dateViewing, viewModel::visibleInstances, onEventClick = {
-                    viewModel.setLastViewedDate(dateViewing)
-                    backStack.add(Route.Event(it))
-                }, onDayClick = {
-                    viewModel.setSelectedDate(it)
-                }, onDateViewingChanged = { viewModel.setSelectedDate(it) })
+            when (state.layout) {
+                CalendarViewModel.CalendarLayout.Agenda -> AgendaView(
+                    context, state.events, state.calendars, state.calendarVisibility, state.today, state.dateViewing,
+                    actions::visibleInstances,
+                    onEventClick = { actions.openEvent(it) },
+                    onDateViewingChanged = { actions.setSelectedDate(it) }
+                )
+                CalendarViewModel.CalendarLayout.Month -> MonthView(
+                    context, state.events, state.calendars, state.calendarVisibility, state.today, state.dateViewing,
+                    actions::visibleInstances,
+                    onEventClick = { actions.openEvent(it) },
+                    onDayClick = { actions.setSelectedDate(it) },
+                    onDateViewingChanged = { actions.setSelectedDate(it) },
+                    previewInstances = state.previewInstances,
+                )
                 else -> {
                     CalendarPagerView(
                         context,
-                        currentLayout,
-                        anchorDate,
-                        dateViewing,
-                        events,
-                        calendars,
-                        calendarVisibility,
+                        state.layout,
+                        state.today,
+                        state.dateViewing,
+                        state.events,
+                        state.calendars,
+                        state.calendarVisibility,
                         verticalState,
-                        viewModel::visibleInstances,
-                        onEventClick = {
-                            viewModel.setLastViewedDate(dateViewing)
-                            backStack.add(Route.Event(it))
-                        },
-                        onDateViewingChanged = { viewModel.setSelectedDate(it) }
+                        actions::visibleInstances,
+                        onEventClick = { actions.openEvent(it) },
+                        onDateViewingChanged = { actions.setSelectedDate(it) }
                     )
                 }
             }
@@ -453,19 +493,29 @@ fun SummaryEventItem(
     }
 }
 
+/**
+ * Month grid. [today] doubles as the pager anchor: page 5000 is the month containing it,
+ * and it is the day drawn with the "today" highlight.
+ */
 @Composable
 fun MonthView(
     context: android.content.Context,
     events: List<Event>,
     calendars: Map<Long, Calendar>,
     calendarVisibility: Map<Long, Boolean>,
-    anchorDate: LocalDate,
+    today: LocalDate,
     dateViewing: LocalDate,
     loadInstances: suspend (Instant, Instant) -> List<Instance>,
     onEventClick: (Instance) -> Unit,
     onDayClick: (LocalDate) -> Unit,
-    onDateViewingChanged: (LocalDate) -> Unit
+    onDateViewingChanged: (LocalDate) -> Unit,
+    /**
+     * Pre-resolved instances, used instead of querying through [loadInstances]. Only a
+     * preview passes this — see [com.vayunmathur.calendar.util.CalendarUiState].
+     */
+    previewInstances: List<Instance>? = null,
 ) {
+    val anchorDate = today
     val pagerState = rememberPagerState(initialPage = 5000) { 10000 }
     var programmaticScroll by remember { mutableStateOf(false) }
 
@@ -510,12 +560,13 @@ fun MonthView(
         }
 
         val vEventsByID = remember(events) { events.associateBy { it.id!! } }
-        val monthInstances by produceState(emptyList<Instance>(), events, calendarVisibility, startDay, endDay) {
+        val loadedInstances by produceState(emptyList<Instance>(), events, calendarVisibility, startDay, endDay) {
             value = loadInstances(
                 startDay.atStartOfDayIn(TimeZone.currentSystemDefault()),
                 endDay.atEndOfDayIn(TimeZone.currentSystemDefault())
             )
         }
+        val monthInstances = previewInstances ?: loadedInstances
 
         Column(Modifier.fillMaxSize().padding(4.dp), Arrangement.spacedBy(4.dp)) {
             weeks.forEach { weekSunday ->
@@ -528,7 +579,8 @@ fun MonthView(
                     onDayClick,
                     context,
                     monthDate.month.number,
-                    monthInstances
+                    monthInstances,
+                    today
                 )
             }
         }
@@ -545,7 +597,8 @@ fun MonthWeekRow(
     onDayClick: (LocalDate) -> Unit,
     context: android.content.Context,
     viewingMonth: Int,
-    allInstances: List<Instance>
+    allInstances: List<Instance>,
+    today: LocalDate
 ) {
     val weekDays = (0..6).map { weekSunday.plus(DatePeriod(days = it)) }
 
@@ -553,7 +606,7 @@ fun MonthWeekRow(
         weekDays.forEach { date ->
             val dayInstances = allInstances.filter { date in it.spanDays }
                 .sortedBy { it.startDateTime }
-            val isToday = date == Clock.System.todayIn(TimeZone.currentSystemDefault())
+            val isToday = date == today
             val isPartOfViewingMonth = date.month.number == viewingMonth
 
             Column(

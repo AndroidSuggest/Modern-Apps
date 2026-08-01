@@ -53,6 +53,10 @@ import com.vayunmathur.games.pipes.data.LevelPack
 import com.vayunmathur.games.pipes.ui.GameBoard
 import com.vayunmathur.games.pipes.ui.PipesTheme
 import com.vayunmathur.games.pipes.util.AppBackupAgent
+import com.vayunmathur.games.pipes.util.GameBoardUiState
+import com.vayunmathur.games.pipes.util.PackProgress
+import com.vayunmathur.games.pipes.util.PipesActions
+import com.vayunmathur.games.pipes.util.PipesGameState
 import com.vayunmathur.games.pipes.util.PipesViewModel
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.GameCenterScreen
@@ -138,15 +142,43 @@ fun Navigation(viewModel: PipesViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [PipesViewModel] to the stateless [PackListScreen]. */
 @Composable
 fun PackScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, onOpenGameCenter: () -> Unit) {
     val levelStats by viewModel.levelStats.collectAsState()
+    PackListScreen(
+        packs = LevelPack.PACKS.map { pack ->
+            PackProgress(
+                name = pack.name,
+                shape = pack.shape,
+                completed = pack.levels.count { levelStats.containsKey(it.id) },
+                total = pack.levels.size,
+            )
+        },
+        onOpenPack = { backStack.add(Route.LevelSelector(it)) },
+        onOpenSettings = { backStack.add(Route.Settings) },
+        onOpenGameCenter = onOpenGameCenter,
+    )
+}
+
+/**
+ * The pack selector, with no dependency on the ViewModel or on the asset-loaded packs so it
+ * can be rendered from a `@Preview` — see `src/screenshotTest`, which is where the store
+ * listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PackListScreen(
+    packs: List<PackProgress>,
+    onOpenPack: (Int) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenGameCenter: () -> Unit,
+) {
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(stringResource(R.string.pack_selector)) },
             actions = {
-                IconButton(onClick = { backStack.add(Route.Settings) }) {
+                IconButton(onClick = onOpenSettings) {
                     IconSettings()
                 }
                 IconButton(onClick = onOpenGameCenter) {
@@ -160,10 +192,9 @@ fun PackScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, onOpen
             contentPadding = paddingValues + PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 0.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            itemsIndexed(LevelPack.PACKS) { index, pack ->
-                val completed = pack.levels.count { levelStats.containsKey(it.id) }
+            itemsIndexed(packs) { index, pack ->
                 Card(
-                    Modifier.clickable { backStack.add(Route.LevelSelector(index)) },
+                    Modifier.clickable { onOpenPack(index) },
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
                 ) {
                     Row(
@@ -185,7 +216,7 @@ fun PackScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, onOpen
                             )
                         }
                         Text(
-                            "$completed/${pack.levels.size}",
+                            "${pack.completed}/${pack.total}",
                             style = MaterialTheme.typography.titleMedium
                         )
                     }
@@ -250,7 +281,7 @@ fun LevelScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packI
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [PipesViewModel] to the stateless [GameBoardScreen] and loads the level. */
 @Composable
 fun GameScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packIndex: Int, levelIndex: Int) {
     val pack = LevelPack.PACKS[packIndex]
@@ -265,57 +296,87 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packIn
     val isReady = uiState.packIndex == packIndex &&
             uiState.levelIndex == levelIndex &&
             uiState.levelData != null
-    val currentLevelData = if (isReady) uiState.levelData!! else pack.levels[levelIndex]
-    val isLevelWon = isReady && uiState.isLevelWon
+    val currentLevelStats = pack.levels.getOrNull(levelIndex)?.id?.let { levelStats[it] }
 
-    Scaffold(topBar = { TopAppBar({}, navigationIcon = { IconNavigation(backStack) }) }) { innerPadding ->
+    GameBoardScreen(
+        state = GameBoardUiState(
+            levelData = if (isReady) uiState.levelData!! else pack.levels[levelIndex],
+            levelIndex = levelIndex,
+            maxLevelIndex = pack.levels.lastIndex,
+            gameState = if (isReady) uiState.gameState else PipesGameState(),
+            activeColor = if (isReady) uiState.activeColor else null,
+            activePath = if (isReady) uiState.activePath else emptyList(),
+            isLevelWon = isReady && uiState.isLevelWon,
+            isCompleted = currentLevelStats != null,
+            colorblind = colorblind,
+            moves = if (isReady) viewModel.getCurrentMoves() else 0,
+            bestScore = currentLevelStats?.bestScore,
+            canUndo = isReady && uiState.history.isNotEmpty(),
+        ),
+        actions = viewModel,
+        onBack = { backStack.pop() },
+        onLevelChange = { newIndex ->
+            backStack.setLast(Route.Game(packIndex, newIndex.coerceIn(0, pack.levels.lastIndex)))
+        },
+    )
+}
+
+/**
+ * The board screen, with no dependency on the ViewModel so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GameBoardScreen(
+    state: GameBoardUiState,
+    actions: PipesActions,
+    onBack: () -> Unit,
+    onLevelChange: (Int) -> Unit,
+) {
+    Scaffold(topBar = { TopAppBar({}, navigationIcon = { IconNavigation(onBack) }) }) { innerPadding ->
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
             val infoBoxes = @Composable {
-                val currentLevelStats = pack.levels.getOrNull(levelIndex)?.id?.let { levelStats[it] }
                 PuzzleInfoBox(
-                    levelIndex = levelIndex,
-                    onLevelChange = { newIndex ->
-                        val bounded = newIndex.coerceIn(0, pack.levels.lastIndex)
-                        backStack.setLast(Route.Game(packIndex, bounded))
-                    },
-                    isCompleted = currentLevelStats != null,
-                    maxLevelIndex = pack.levels.lastIndex
+                    levelIndex = state.levelIndex,
+                    onLevelChange = onLevelChange,
+                    isCompleted = state.isCompleted,
+                    maxLevelIndex = state.maxLevelIndex
                 )
                 MovesInfoBox(
-                    moves = if (isReady) viewModel.getCurrentMoves() else 0,
-                    bestScore = currentLevelStats?.bestScore,
-                    optimalMoves = currentLevelData.optimalMoves
+                    moves = state.moves,
+                    bestScore = state.bestScore,
+                    optimalMoves = state.levelData.optimalMoves
                 )
             }
             val actionButtons = @Composable {
-                val hasHistory = isReady && uiState.history.isNotEmpty()
+                val enabled = state.canUndo && !state.isLevelWon
                 Button(
-                    onClick = { viewModel.onUndo() },
-                    enabled = hasHistory && !isLevelWon
+                    onClick = { actions.onUndo() },
+                    enabled = enabled
                 ) {
                     Text(stringResource(R.string.undo))
                 }
                 Button(
-                    onClick = { viewModel.onRestart() },
-                    enabled = hasHistory && !isLevelWon
+                    onClick = { actions.onRestart() },
+                    enabled = enabled
                 ) {
                     Text(stringResource(R.string.restart))
                 }
             }
             val board = @Composable { boardModifier: Modifier ->
                 GameBoard(
-                    levelData = currentLevelData,
-                    gameState = if (isReady) uiState.gameState else com.vayunmathur.games.pipes.util.PipesGameState(),
-                    activeColor = if (isReady) uiState.activeColor else null,
-                    activePath = if (isReady) uiState.activePath else emptyList(),
-                    onStartDraw = viewModel::startDraw,
-                    onExtendPath = viewModel::extendPath,
-                    onCommitDraw = viewModel::commitDraw,
-                    isLevelWon = isLevelWon,
-                    colorblind = colorblind,
+                    levelData = state.levelData,
+                    gameState = state.gameState,
+                    activeColor = state.activeColor,
+                    activePath = state.activePath,
+                    onStartDraw = actions::startDraw,
+                    onExtendPath = actions::extendPath,
+                    onCommitDraw = actions::commitDraw,
+                    isLevelWon = state.isLevelWon,
+                    colorblind = state.colorblind,
                     modifier = boardModifier
                 )
             }

@@ -28,7 +28,13 @@ import com.vayunmathur.calendar.data.Instance
 
 import com.vayunmathur.library.util.DataStoreUtils
 
-class CalendarViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * Implements the screens' actions interfaces (see `CalendarUiContract`) so a binder can
+ * hand itself straight to a stateless screen; the navigating members keep their no-op
+ * defaults and are overridden per screen, since the ViewModel has no back stack.
+ */
+class CalendarViewModel(application: Application) :
+    AndroidViewModel(application), CalendarActions, EventActions, SettingsActions {
     val dataStore = DataStoreUtils.getInstance(application)
 
     private val _events = MutableStateFlow<List<Event>>(emptyList())
@@ -61,7 +67,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     )
     val currentLayout: StateFlow<CalendarLayout> = _currentLayout.asStateFlow()
 
-    fun setLayout(layout: CalendarLayout) {
+    override fun setLayout(layout: CalendarLayout) {
         _currentLayout.value = layout
         viewModelScope.launch {
             dataStore.setString("default_calendar_layout", layout.name)
@@ -81,7 +87,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
-    fun setThemeMode(mode: ThemeMode) {
+    override fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
         viewModelScope.launch {
             dataStore.setString("theme_mode", mode.name)
@@ -111,8 +117,8 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     )
     val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()
 
-    fun setSelectedDate(d: LocalDate) {
-        _selectedDate.value = d
+    override fun setSelectedDate(date: LocalDate) {
+        _selectedDate.value = date
     }
 
     // Parsed-ICS state for the import dialog. null = not yet parsed (or cleared);
@@ -211,7 +217,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
      * the currently-loaded events whose calendar is visible. The UI consumes this via
      * produceState so no ContentResolver query happens during composition.
      */
-    suspend fun visibleInstances(start: Instant, end: Instant): List<Instance> =
+    override suspend fun visibleInstances(start: Instant, end: Instant): List<Instance> =
         withContext(Dispatchers.IO) {
             val app = getApplication<Application>()
             val eventsById = _events.value.associateBy { it.id }
@@ -241,7 +247,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setCalendarVisibility(calendarId: Long, visible: Boolean) {
+    override fun setCalendarVisibility(calendarId: Long, visible: Boolean) {
         val app = getApplication<Application>()
         // write to the provider's Calendars.VISIBLE field for that calendar
         val values = ContentValues().apply { put(CalendarContract.Calendars.VISIBLE, if (visible) 1 else 0) }
@@ -256,13 +262,13 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun deleteEventSeries(eventId: Long) {
+    override fun deleteEventSeries(eventId: Long) {
         upsertEvent(eventId, ContentValues().apply {
             put(CalendarContract.Events.DELETED, 1)
         })
     }
 
-    fun deleteEventInstance(eventId: Long, instanceBeginTime: Long) {
+    override fun deleteEventInstance(eventId: Long, instanceBeginTime: Long) {
         val event = _events.value.find { it.id == eventId } ?: return
         val instanceDate = Instant.fromEpochMilliseconds(instanceBeginTime)
             .toLocalDateTime(TimeZone.of(event.timezone)).date

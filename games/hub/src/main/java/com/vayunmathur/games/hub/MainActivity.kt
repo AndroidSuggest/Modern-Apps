@@ -20,10 +20,10 @@ import com.vayunmathur.games.hub.data.DB_NAME
 import com.vayunmathur.games.hub.data.GamesHubDatabase
 import com.vayunmathur.games.hub.ui.screens.AchievementsScreen
 import com.vayunmathur.games.hub.ui.screens.ActivityFeedScreen
-import com.vayunmathur.games.hub.ui.screens.DashboardScreen
+import com.vayunmathur.games.hub.ui.screens.DashboardPage
 import com.vayunmathur.games.hub.ui.screens.GameDetailScreen
-import com.vayunmathur.games.hub.ui.screens.GamesListScreen
-import com.vayunmathur.games.hub.ui.screens.ProfileScreen
+import com.vayunmathur.games.hub.ui.screens.GamesListPage
+import com.vayunmathur.games.hub.ui.screens.ProfilePage
 import com.vayunmathur.games.hub.ui.screens.SettingsScreen
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModelFactory
@@ -117,7 +117,7 @@ fun HubNavigation(
         }
     ) {
         entry<MainRoute.Dashboard> {
-            DashboardScreen(
+            DashboardPage(
                 viewModel = viewModel,
                 onGameClick = { gameId -> backStack.add(MainRoute.GameDetail(gameId)) },
                 onProfileClick = { backStack.add(MainRoute.Profile) },
@@ -128,7 +128,7 @@ fun HubNavigation(
             )
         }
         entry<MainRoute.GamesList> {
-            GamesListScreen(
+            GamesListPage(
                 viewModel = viewModel,
                 onGameClick = { gameId -> backStack.add(MainRoute.GameDetail(gameId)) }
             )
@@ -147,7 +147,7 @@ fun HubNavigation(
             AchievementsScreen(viewModel = viewModel, initialGameFilter = route.gameId)
         }
         entry<MainRoute.Profile> {
-            ProfileScreen(viewModel = viewModel)
+            ProfilePage(viewModel = viewModel)
         }
         entry<MainRoute.Activity> {
             ActivityFeedScreen(

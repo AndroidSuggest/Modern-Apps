@@ -113,8 +113,6 @@
     <string name="no_workouts">Brak zarejestrowanych treningów</string>
     <string name="view_full_breakdown">Zobacz pełne zestawienie</string>
     <string name="no_results_found">Nie znaleziono wyników</string>
-    <string name="online">Online</string>
-    <string name="downloaded">Pobrano</string>
     <string name="saved_locally">Zapisane lokalnie</string>
     <string name="segments">Segmenty</string>
     <string name="laps">Okrążenia</string>

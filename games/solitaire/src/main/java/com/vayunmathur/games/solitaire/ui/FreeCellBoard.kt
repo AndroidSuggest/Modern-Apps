@@ -12,10 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.solitaire.data.FreeCellState
-import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 
 @Composable
-fun FreeCellBoard(state: FreeCellState, viewModel: SolitaireViewModel, modifier: Modifier = Modifier) {
+fun FreeCellBoard(state: FreeCellState, actions: SolitaireActions, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier) {
         val cardWidth = (maxWidth - 48.dp) / 8
         val cardHeight = cardWidth * 1.4f
@@ -27,10 +27,10 @@ fun FreeCellBoard(state: FreeCellState, viewModel: SolitaireViewModel, modifier:
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 for (i in 0 until 4) {
-                    FreeCellSlot(state.freeCells[i], i, viewModel, cardWidth = cardWidth, cardHeight = cardHeight)
+                    FreeCellSlot(state.freeCells[i], i, actions, cardWidth = cardWidth, cardHeight = cardHeight)
                 }
                 for (i in 0 until 4) {
-                    FoundationSlot(state.foundations[i], i, viewModel, cardWidth = cardWidth, cardHeight = cardHeight)
+                    FoundationSlot(state.foundations[i], i, actions, cardWidth = cardWidth, cardHeight = cardHeight)
                 }
             }
 
@@ -44,7 +44,7 @@ fun FreeCellBoard(state: FreeCellState, viewModel: SolitaireViewModel, modifier:
                     FreeCellTableauColumn(
                         pile = state.tableauPiles[i],
                         columnIndex = i,
-                        viewModel = viewModel,
+                        actions = actions,
                         modifier = Modifier.weight(1f),
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
@@ -53,7 +53,7 @@ fun FreeCellBoard(state: FreeCellState, viewModel: SolitaireViewModel, modifier:
             }
         }
 
-        DragOverlay(viewModel, cardWidth, cardHeight)
+        DragOverlay(actions, cardWidth, cardHeight)
         }
     }
 }

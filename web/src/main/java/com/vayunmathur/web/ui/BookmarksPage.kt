@@ -58,6 +58,36 @@ fun BookmarksPage(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
 
+    BookmarksScreen(
+        bookmarks = bookmarks,
+        folders = folders,
+        navigationIcon = { IconNavigation(backStack) },
+        onOpen = { bm ->
+            viewModel.externalIntentUrl(bm.url)
+            backStack.pop()
+        },
+        onDelete = { viewModel.removeBookmark(it) },
+        onCreateFolder = { viewModel.createFolder(it) },
+        onDeleteFolder = { viewModel.deleteFolder(it) },
+    )
+}
+
+/**
+ * The bookmark list, with no ViewModel and no back stack so it can be rendered from a
+ * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ * [navigationIcon] is a slot because "up" is navigation, not state.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun BookmarksScreen(
+    bookmarks: List<Bookmark>,
+    folders: List<BookmarkFolder>,
+    navigationIcon: @Composable () -> Unit = {},
+    onOpen: (Bookmark) -> Unit = {},
+    onDelete: (Bookmark) -> Unit = {},
+    onCreateFolder: (String) -> Unit = {},
+    onDeleteFolder: (BookmarkFolder) -> Unit = {},
+) {
     var selectedFolder by remember { mutableStateOf<Long?>(null) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
@@ -73,7 +103,7 @@ fun BookmarksPage(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.bookmarks)) },
-                navigationIcon = { IconNavigation(backStack) },
+                navigationIcon = navigationIcon,
                 actions = {
                     IconButton(onClick = { showNewFolderDialog = true }) {
                         IconFolder()
@@ -160,10 +190,7 @@ fun BookmarksPage(
                     items(filtered, key = { it.id }) { bm ->
                         BookmarkRow(
                             bookmark = bm,
-                            onClick = {
-                                viewModel.externalIntentUrl(bm.url)
-                                backStack.pop()
-                            },
+                            onClick = { onOpen(bm) },
                             onLongClick = { showDeleteDialog = bm }
                         )
                     }
@@ -189,7 +216,7 @@ fun BookmarksPage(
                 TextButton(
                     onClick = {
                         if (newFolderName.isNotBlank()) {
-                            viewModel.createFolder(newFolderName.trim())
+                            onCreateFolder(newFolderName.trim())
                         }
                         newFolderName = ""
                         showNewFolderDialog = false
@@ -213,7 +240,7 @@ fun BookmarksPage(
             text = { Text(bm.title.ifBlank { bm.url }) },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.removeBookmark(bm)
+                    onDelete(bm)
                     showDeleteDialog = null
                 }) { Text(stringResource(R.string.delete)) }
             },
@@ -230,7 +257,7 @@ fun BookmarksPage(
             text = { Text(stringResource(R.string.bookmarks_inside_will_also_be_deleted, folder.name)) },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteFolder(folder)
+                    onDeleteFolder(folder)
                     if (selectedFolder == folder.id) selectedFolder = null
                     showFolderDeleteDialog = null
                 }) { Text(stringResource(R.string.delete)) }

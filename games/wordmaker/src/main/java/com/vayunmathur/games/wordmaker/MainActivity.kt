@@ -87,6 +87,10 @@ import com.vayunmathur.games.wordmaker.data.GameMode
 import com.vayunmathur.games.wordmaker.data.LevelDataStore
 import com.vayunmathur.games.wordmaker.ui.SettingsPage
 import com.vayunmathur.games.wordmaker.util.AppBackupAgent
+import com.vayunmathur.games.wordmaker.util.CompetitiveLobbyActions
+import com.vayunmathur.games.wordmaker.util.CompetitiveLobbyUiState
+import com.vayunmathur.games.wordmaker.util.WordGameActions
+import com.vayunmathur.games.wordmaker.util.WordGameUiState
 import com.vayunmathur.games.wordmaker.util.WordMakerViewModel
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.IconSettings
@@ -189,7 +193,7 @@ fun WordMakerGameLoader(backStack: NavBackStack<Route>, viewModel: WordMakerView
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when {
             gameMode == GameMode.COMPETITIVE && !competitiveActive -> {
-                CompetitiveLobbyScreen(
+                CompetitiveLobbyPage(
                     viewModel = viewModel,
                     onOpenGameCenter = { backStack.add(Route.GameCenter) },
                     onOpenSettings = { backStack.add(Route.Settings) }
@@ -201,7 +205,7 @@ fun WordMakerGameLoader(backStack: NavBackStack<Route>, viewModel: WordMakerView
             }
 
             crosswordData != null -> {
-                WordGameScreen(
+                WordGamePage(
                     crosswordData = crosswordData!!,
                     currentLevel = currentLevel,
                     viewModel = viewModel,
@@ -233,9 +237,9 @@ data class AnimatedLetter(
 
 data class WordToAnimate(val word: String, val letterIds: List<Int>)
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [WordMakerViewModel] to the stateless [WordGameScreen]. */
 @Composable
-fun WordGameScreen(
+fun WordGamePage(
     crosswordData: CrosswordData,
     currentLevel: Int,
     viewModel: WordMakerViewModel,
@@ -252,6 +256,85 @@ fun WordGameScreen(
     val competitiveScore by viewModel.competitiveScore.collectAsState()
     val competitiveLevelNumber by viewModel.competitiveLevelNumber.collectAsState()
     val competitiveDeadline by viewModel.competitiveDeadline.collectAsState()
+
+    val isCompetitive = gameMode == GameMode.COMPETITIVE
+    val isWon = crosswordData.winsWith(foundWords)
+
+    LaunchedEffect(isWon) {
+        if (!isWon) return@LaunchedEffect
+        if (isCompetitive) {
+            viewModel.onCompetitiveWin()
+            return@LaunchedEffect
+        }
+        if (currentLevel == 1) achievementsManager.onAchievementUnlocked("level_1_done")
+        if (currentLevel == 861) achievementsManager.onAchievementUnlocked("manual_levels_done")
+
+        achievementsManager.onProgressUpdated("manual_levels_done", currentLevel)
+        achievementsManager.onProgressUpdated("level_50", currentLevel)
+        achievementsManager.onProgressUpdated("level_100", currentLevel)
+        achievementsManager.onProgressUpdated("level_500", currentLevel)
+    }
+
+    // The achievements manager belongs to the activity, not the ViewModel, so the two
+    // achievement-reporting callbacks are stitched on here rather than pushed into the screen.
+    val actions = remember(viewModel, achievementsManager) {
+        object : WordGameActions by viewModel {
+            override fun onSolutionWordFound(word: String) {
+                if (word.length >= 7) achievementsManager.onAchievementUnlocked("long_word")
+            }
+
+            override suspend fun addBonusWord(word: String): Int {
+                val newTotal = viewModel.addBonusWord(word)
+                achievementsManager.onProgressUpdated("bonus_hunter", newTotal)
+                return newTotal
+            }
+        }
+    }
+
+    WordGameScreen(
+        state = WordGameUiState(
+            crosswordData = crosswordData,
+            currentLevel = currentLevel,
+            foundWords = foundWords,
+            bonusWords = bonusWords,
+            tapToSpell = tapToSpell,
+            revealedHints = revealedHints,
+            hintCooldownEnd = hintCooldownEnd,
+            gameMode = gameMode,
+            competitiveScore = competitiveScore,
+            competitiveLevelNumber = competitiveLevelNumber,
+            competitiveDeadline = competitiveDeadline
+        ),
+        actions = actions,
+        onOpenGameCenter = onOpenGameCenter,
+        onOpenSettings = onOpenSettings
+    )
+}
+
+/**
+ * The crossword board plus letter wheel, with no dependency on the ViewModel so it can be
+ * rendered from a `@Preview` — see `src/screenshotTest`, which is where the store listing
+ * images come from.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WordGameScreen(
+    state: WordGameUiState,
+    actions: WordGameActions,
+    onOpenGameCenter: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val crosswordData = state.crosswordData
+    val currentLevel = state.currentLevel
+    val foundWords = state.foundWords
+    val bonusWords = state.bonusWords
+    val tapToSpell = state.tapToSpell
+    val revealedHints = state.revealedHints
+    val hintCooldownEnd = state.hintCooldownEnd
+    val gameMode = state.gameMode
+    val competitiveScore = state.competitiveScore
+    val competitiveLevelNumber = state.competitiveLevelNumber
+    val competitiveDeadline = state.competitiveDeadline
     val isCompetitive = gameMode == GameMode.COMPETITIVE
     val levelKey = if (isCompetitive) "c$competitiveLevelNumber" else "n$currentLevel"
     var showBonusWordsDialog by remember(levelKey) { mutableStateOf(false) }
@@ -321,7 +404,7 @@ fun WordGameScreen(
                 jobs.joinAll()
 
                 // After animation
-                viewModel.addFoundWord(word)
+                actions.addFoundWord(word)
                 wordToAnimate = null
                 animatedLetters = emptyList()
             }
@@ -329,21 +412,6 @@ fun WordGameScreen(
     }
 
     val isWon = crosswordData.winsWith(foundWords)
-
-    LaunchedEffect(isWon) {
-        if (!isWon) return@LaunchedEffect
-        if (isCompetitive) {
-            viewModel.onCompetitiveWin()
-            return@LaunchedEffect
-        }
-        if (currentLevel == 1) achievementsManager.onAchievementUnlocked("level_1_done")
-        if (currentLevel == 861) achievementsManager.onAchievementUnlocked("manual_levels_done")
-
-        achievementsManager.onProgressUpdated("manual_levels_done", currentLevel)
-        achievementsManager.onProgressUpdated("level_50", currentLevel)
-        achievementsManager.onProgressUpdated("level_100", currentLevel)
-        achievementsManager.onProgressUpdated("level_500", currentLevel)
-    }
 
     LaunchedEffect(competitiveDeadline, isCompetitive, isWon, levelKey) {
         if (!isCompetitive || isWon || competitiveDeadline <= 0L) {
@@ -357,7 +425,7 @@ fun WordGameScreen(
         }
         if (!isWon) {
             timedOut = true
-            viewModel.onCompetitiveTimeout()
+            actions.onCompetitiveTimeout()
         }
     }
 
@@ -374,7 +442,7 @@ fun WordGameScreen(
         topBar = {
             WordMakerTopBar(
                 gameMode = gameMode,
-                onModeSelected = { viewModel.setGameMode(it) },
+                onModeSelected = { actions.setGameMode(it) },
                 onOpenGameCenter = onOpenGameCenter,
                 onOpenSettings = onOpenSettings,
                 levelNumber = currentLevel
@@ -409,7 +477,7 @@ fun WordGameScreen(
                     onCellClicked = { row, col ->
                         val word = crosswordData.getWordAt(row, col, foundWords)
                         if (word != null && word in foundWords) {
-                            val definition = viewModel.getDefinition(word)
+                            val definition = actions.getDefinition(word)
                             if (definition.isNotEmpty()) {
                                 wordWithDefinition = Pair(word, definition)
                             }
@@ -435,7 +503,7 @@ fun WordGameScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isWon && !isCompetitive) {
-                        Button(onClick = { viewModel.saveLevel(currentLevel + 1) }) {
+                        Button(onClick = { actions.saveLevel(currentLevel + 1) }) {
                             Text(stringResource(R.string.next_level))
                         }
                     } else if (isCompetitive && (isWon || timedOut)) {
@@ -459,20 +527,19 @@ fun WordGameScreen(
                                 }
 
                                 val isSolution = word in crosswordData.solutionWords
-                                val isBonus = !isSolution && word.length >= 3 && viewModel.isInDictionary(word)
+                                val isBonus = !isSolution && word.length >= 3 && actions.isInDictionary(word)
 
                                 when {
                                     isSolution && word !in foundWords -> {
                                         wordToAnimate = WordToAnimate(word, ids)
-                                        if (word.length >= 7) achievementsManager.onAchievementUnlocked("long_word")
+                                        actions.onSolutionWordFound(word)
                                     }
                                     isBonus && word !in bonusWords -> {
                                         coroutineScope.launch {
                                             animatedWord = word
                                             animationProgress.snapTo(0f)
                                             animationProgress.animateTo(1f, tween(800))
-                                            val newTotal = viewModel.addBonusWord(word)
-                                            achievementsManager.onProgressUpdated("bonus_hunter", newTotal)
+                                            actions.addBonusWord(word)
                                             animatedWord = null
                                         }
                                     }
@@ -546,7 +613,7 @@ fun WordGameScreen(
                     title = { Text(stringResource(R.string.hint_confirmation)) },
                     confirmButton = {
                         Button(onClick = {
-                            viewModel.revealHint(crosswordData, foundWords, revealedHints)
+                            actions.revealHint(crosswordData, foundWords, revealedHints)
                             showHintDialog = false
                         }) {
                             Text(stringResource(R.string.yes))
@@ -561,7 +628,7 @@ fun WordGameScreen(
             }
 
             if (showBonusWordsDialog) {
-                BonusWordsDialog(bonusWords = bonusWords, getDefinition = viewModel::getDefinition) {
+                BonusWordsDialog(bonusWords = bonusWords, getDefinition = actions::getDefinition) {
                     showBonusWordsDialog = false
                 }
             }
@@ -697,13 +764,9 @@ fun WordMakerTopBar(
         )
 }
 
-/**
- * The between-levels screen for competitive mode: shows the score and last result, lets the player
- * pick the difficulty (which only applies from the next level), and starts the next level on demand.
- */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [WordMakerViewModel] to the stateless [CompetitiveLobbyScreen]. */
 @Composable
-fun CompetitiveLobbyScreen(
+fun CompetitiveLobbyPage(
     viewModel: WordMakerViewModel,
     onOpenGameCenter: () -> Unit,
     onOpenSettings: () -> Unit
@@ -713,11 +776,42 @@ fun CompetitiveLobbyScreen(
     val score by viewModel.competitiveScore.collectAsState()
     val result by viewModel.competitiveResult.collectAsState()
 
+    CompetitiveLobbyScreen(
+        state = CompetitiveLobbyUiState(
+            gameMode = gameMode,
+            difficulty = difficulty,
+            score = score,
+            result = result
+        ),
+        actions = viewModel,
+        onOpenGameCenter = onOpenGameCenter,
+        onOpenSettings = onOpenSettings
+    )
+}
+
+/**
+ * The between-levels screen for competitive mode: shows the score and last result, lets the player
+ * pick the difficulty (which only applies from the next level), and starts the next level on demand.
+ *
+ * No dependency on the ViewModel, so it can be rendered from a `@Preview` — see
+ * `src/screenshotTest`.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CompetitiveLobbyScreen(
+    state: CompetitiveLobbyUiState,
+    actions: CompetitiveLobbyActions,
+    onOpenGameCenter: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val difficulty = state.difficulty
+    val result = state.result
+
     Scaffold(
         topBar = {
             WordMakerTopBar(
-                gameMode = gameMode,
-                onModeSelected = { viewModel.setGameMode(it) },
+                gameMode = state.gameMode,
+                onModeSelected = { actions.setGameMode(it) },
                 onOpenGameCenter = onOpenGameCenter,
                 onOpenSettings = onOpenSettings
             )
@@ -732,7 +826,7 @@ fun CompetitiveLobbyScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                stringResource(R.string.competitive_score, score),
+                stringResource(R.string.competitive_score, state.score),
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp
             )
@@ -753,11 +847,11 @@ fun CompetitiveLobbyScreen(
 
             Spacer(Modifier.height(32.dp))
             Text(stringResource(R.string.competitive_difficulty), fontWeight = FontWeight.Bold)
-            DifficultyDropdown(selected = difficulty, onSelected = { viewModel.setDifficulty(it) })
+            DifficultyDropdown(selected = difficulty, onSelected = { actions.setDifficulty(it) })
             Text(stringResource(R.string.competitive_time_limit, difficulty.timeLimitSeconds))
 
             Spacer(Modifier.height(32.dp))
-            Button(onClick = { viewModel.loadNextCompetitiveLevel() }) {
+            Button(onClick = { actions.loadNextCompetitiveLevel() }) {
                 Text(
                     stringResource(
                         if (result == null) R.string.competitive_start else R.string.next_level

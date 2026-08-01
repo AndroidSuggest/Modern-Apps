@@ -33,7 +33,7 @@ data class PlacedItem(val id: Long, val offset: Offset, val key: Long = System.n
 @Serializable
 private data class PersistedPlacedItem(val id: Long, val x: Float, val y: Float)
 
-class AlchemistViewModel(application: Application) : AndroidViewModel(application) {
+class AlchemistViewModel(application: Application) : AndroidViewModel(application), HomeActions {
 
     private val ds = DataStoreUtils.getInstance(application)
 
@@ -81,7 +81,7 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
             if (hide) items.filterNot { it.id in exhausted } else items
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun setHideExhausted(value: Boolean) {
+    override fun setHideExhausted(value: Boolean) {
         viewModelScope.launch { ds.setBoolean(HIDE_EXHAUSTED_KEY, value) }
     }
 
@@ -136,24 +136,23 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun placeElement(id: Long, offset: Offset): PlacedItem {
+    override fun placeElement(id: Long, offset: Offset) {
         val newItem = PlacedItem(id, offset)
         _placedElements.update { it + newItem }
         tryCombine(newItem.key, newItem.offset)
-        return newItem
     }
 
-    fun updateElementPosition(key: Long, offset: Offset) {
+    override fun updateElementPosition(key: Long, offset: Offset) {
         _placedElements.update { list ->
             list.map { if (it.key == key) it.copy(offset = offset) else it }
         }
     }
 
-    fun removeElement(key: Long) {
+    override fun removeElement(key: Long) {
         _placedElements.update { list -> list.filterNot { it.key == key } }
     }
 
-    fun duplicateElement(key: Long) {
+    override fun duplicateElement(key: Long) {
         val current = _placedElements.value
         val elementToDuplicate = current.find { it.key == key } ?: return
         val duplicatedItem = PlacedItem(
@@ -163,11 +162,11 @@ class AlchemistViewModel(application: Application) : AndroidViewModel(applicatio
         _placedElements.update { it + duplicatedItem }
     }
 
-    fun clearElements() {
+    override fun clearElements() {
         _placedElements.update { emptyList() }
     }
 
-    fun tryCombine(movedKey: Long, movedOffset: Offset) {
+    override fun tryCombine(movedKey: Long, movedOffset: Offset) {
         val current = _placedElements.value
         val movedItem = current.find { it.key == movedKey } ?: return
         val target = current

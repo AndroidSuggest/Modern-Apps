@@ -46,21 +46,17 @@ import com.vayunmathur.education.content.TraceAnswer
 import com.vayunmathur.education.content.TracingQuestion
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.education.util.LocalNarrator
+import com.vayunmathur.education.util.QuizActions
+import com.vayunmathur.education.util.QuizUiState
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 
-/**
- * K-2 quiz: audio-first, no-typing. Supports tap-the-tile multiple choice,
- * finger-tracing, and drag-and-drop matching. Correct actions celebrate and
- * advance; mistakes get a gentle "try again" with no penalty and no score.
- */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Binds [EducationViewModel] and the back stack to the stateless [K2QuizScreen]. */
 @Composable
 fun K2QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, exerciseId: String) {
     val content = viewModel.content
-    val narrator = LocalNarrator.current
     val questions = remember(exerciseId) {
         content.exercise(exerciseId)
             ?.let { content.questionsFor(it) }
@@ -68,16 +64,48 @@ fun K2QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, ex
             ?: emptyList()
     }
 
-    val answers = remember(exerciseId) { mutableStateMapOf<String, Answer?>() }
-    var index by remember(exerciseId) { mutableIntStateOf(0) }
-    var celebrating by remember(exerciseId) { mutableStateOf(false) }
-    var wrongIndex by remember(exerciseId) { mutableIntStateOf(-1) }
+    K2QuizScreen(
+        state = QuizUiState(questions = questions),
+        actions = object : QuizActions {
+            override fun navigateUp() {
+                backStack.pop()
+            }
+
+            override fun finish(questions: List<Question>, answers: Map<String, Answer?>) {
+                val result = viewModel.grade(questions, answers)
+                viewModel.commitResult(result)
+                backStack.setLast(Route.K2Reward(result.stars))
+            }
+        },
+    )
+}
+
+/**
+ * K-2 quiz: audio-first, no-typing. Supports tap-the-tile multiple choice,
+ * finger-tracing, and drag-and-drop matching. Correct actions celebrate and
+ * advance; mistakes get a gentle "try again" with no penalty and no score.
+ *
+ * No dependency on the ViewModel or the back stack so it can be rendered from a `@Preview`
+ * — see `src/screenshotTest`, which is where the store listing images come from. The
+ * narrator is a composition local and is simply absent there, which makes every narrate
+ * call a no-op.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun K2QuizScreen(state: QuizUiState, actions: QuizActions) {
+    val narrator = LocalNarrator.current
+    val questions = state.questions
+
+    val answers = remember(questions) { mutableStateMapOf<String, Answer?>() }
+    var index by remember(questions) { mutableIntStateOf(0) }
+    var celebrating by remember(questions) { mutableStateOf(false) }
+    var wrongIndex by remember(questions) { mutableIntStateOf(-1) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("") },
-                navigationIcon = { IconNavigation(backStack) },
+                navigationIcon = { IconNavigation({ actions.navigateUp() }) },
             )
         },
     ) { padding ->
@@ -100,9 +128,7 @@ fun K2QuizPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, ex
                 if (index < questions.lastIndex) {
                     index++
                 } else {
-                    val result = viewModel.grade(questions, answers)
-                    viewModel.commitResult(result)
-                    backStack.setLast(Route.K2Reward(result.stars))
+                    actions.finish(questions, answers)
                 }
             }
         }

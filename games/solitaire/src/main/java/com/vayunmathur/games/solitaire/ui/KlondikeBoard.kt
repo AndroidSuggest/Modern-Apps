@@ -17,10 +17,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.solitaire.data.DrawMode
 import com.vayunmathur.games.solitaire.data.KlondikeState
-import com.vayunmathur.games.solitaire.util.SolitaireViewModel
+import com.vayunmathur.games.solitaire.util.SolitaireActions
 
 @Composable
-fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier: Modifier = Modifier) {
+fun KlondikeBoard(state: KlondikeState, actions: SolitaireActions, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier) {
         val cardWidth = (maxWidth - 48.dp) / 7
         val cardHeight = cardWidth * 1.4f
@@ -34,13 +34,13 @@ fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier:
                 // Stock
                 if (state.stock.isNotEmpty()) {
                     CardBack(
-                        modifier = Modifier.clickable { viewModel.drawFromStock() },
+                        modifier = Modifier.clickable { actions.drawFromStock() },
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
                     )
                 } else {
                     EmptySlot(
-                        modifier = Modifier.clickable { viewModel.drawFromStock() },
+                        modifier = Modifier.clickable { actions.drawFromStock() },
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
                     )
@@ -58,7 +58,7 @@ fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier:
                                 DraggableCard(
                                     card = card,
                                     sourceId = "waste",
-                                    viewModel = viewModel,
+                                    actions = actions,
                                     modifier = Modifier.offset(x = fanOffset * index),
                                     cardWidth = cardWidth,
                                     cardHeight = cardHeight
@@ -83,7 +83,7 @@ fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier:
 
                 // Foundations
                 for (i in 0 until 4) {
-                    FoundationSlot(state.foundations[i], i, viewModel, cardWidth = cardWidth, cardHeight = cardHeight)
+                    FoundationSlot(state.foundations[i], i, actions, cardWidth = cardWidth, cardHeight = cardHeight)
                 }
             }
 
@@ -97,7 +97,7 @@ fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier:
                     TableauColumn(
                         pile = state.tableauPiles[i],
                         columnIndex = i,
-                        viewModel = viewModel,
+                        actions = actions,
                         modifier = Modifier.weight(1f),
                         cardWidth = cardWidth,
                         cardHeight = cardHeight
@@ -106,7 +106,7 @@ fun KlondikeBoard(state: KlondikeState, viewModel: SolitaireViewModel, modifier:
             }
         }
 
-        DragOverlay(viewModel, cardWidth, cardHeight)
+        DragOverlay(actions, cardWidth, cardHeight)
         }
     }
 }
