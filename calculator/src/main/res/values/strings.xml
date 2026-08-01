@@ -7,6 +7,8 @@
     <string name="clear">Clear</string>
     <string name="graph">Graph</string>
     <string name="add_function">Add function</string>
+    <!-- Graph: accessibility label for the coloured dot that shows or hides one curve. -->
+    <string name="toggle_curve_visibility">Show or hide this curve</string>
     <!-- Graph: label on a marker where a curve crosses the x-axis. Lowercase noun, shown as "root (2, 0)". -->
     <string name="feature_root">root</string>
     <!-- Graph: label on a marker where a curve crosses the y-axis. Lowercase noun, shown as "y-intercept (0, 3)". -->

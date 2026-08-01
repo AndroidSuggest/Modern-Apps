@@ -51,8 +51,33 @@ class SampledCurve(
  */
 object GraphAnalysis {
 
-    /** θ samples for a polar curve over [0, 2π]. */
-    private const val POLAR_SAMPLES = 2000
+    /** Turns of θ a polar curve is swept for when it never starts retracing itself. */
+    private const val POLAR_TURNS = 12
+
+    /** θ values probed when testing whether a polar curve repeats after a whole number of turns. */
+    private const val PERIOD_PROBES = 64
+
+    /** Relative agreement required of every probe before a curve counts as repeating. */
+    private const val PERIOD_TOLERANCE = 1e-9
+
+    /** Probe spacing, in turns — irrational, so a curve can't resonate with the probe grid. */
+    private const val GOLDEN_RATIO = 0.6180339887498949
+
+    /** Target on-screen gap between consecutive polar samples, in pixels. */
+    private const val POLAR_CHORD_PX = 1.0
+
+    /** Coarsest θ step, however little the curve is doing. */
+    private const val POLAR_MAX_STEP = 2 * PI / 180
+
+    /** How much each polar step reaches beyond the one before, before being halved back. */
+    private const val POLAR_STEP_GROWTH = 1.6
+
+    /** Ceiling on polar samples per curve, so a long sweep can't stall a frame. */
+    private const val POLAR_SAMPLE_BUDGET = 20000
+
+    /** How far past the visible radius `r` must swing for a sign flip to count as a pole. */
+    private const val POLE_FACTOR = 8.0
+
     private const val REFINE_ITERS = 80
 
     private fun evalOrNaN(e: Expression, v: Double, angle: AngleMode): Double =
@@ -62,8 +87,9 @@ object GraphAnalysis {
 
     /**
      * Samples one curve across the visible window. [columns] is normally the canvas width in
-     * pixels, giving one Cartesian sample per pixel column; polar curves ignore it and sweep
-     * θ over a full turn (polar angles are always radians, matching how they are drawn).
+     * pixels, giving one Cartesian sample per pixel column; polar curves use it to work out
+     * the pixels-per-unit of the viewport, and sweep θ over as many turns as they need
+     * (polar angles are always radians, matching how they are drawn).
      */
     fun sample(
         id: Long,
@@ -87,16 +113,60 @@ object GraphAnalysis {
         }
 
         if (polar) {
-            var k = 0
-            while (k <= POLAR_SAMPLES) {
-                val theta = 2 * PI * k / POLAR_SAMPLES
-                val r = evalOrNaN(expr, theta, AngleMode.RADIANS)
-                if (r.isFinite()) {
-                    current.add(GraphPoint(r * cos(theta), r * sin(theta)))
-                } else {
-                    breakRun()
+            // Polar sampling is driven by the viewport rather than by a fixed count: each
+            // step reaches a little further than the last, then halves until the segment it
+            // actually produced is short enough on screen. Measuring the segment rather than
+            // predicting it from a derivative is what keeps a curve smooth where it sweeps
+            // through the origin — a rose's radius is tiny there but its direction is
+            // turning fastest — and it lets the sweep stride across the empty stretches
+            // where the curve has swung out of view. Twelve turns then cost little enough
+            // that spirals and other curves that never close no longer stop after one loop.
+            val pxPerUnit = if (xMax > xMin) columns.coerceAtLeast(2) / (xMax - xMin) else 1.0
+            // Nothing further from the origin than the farthest corner can be on screen.
+            val visibleRadius = maxOf(
+                hypot(xMin, yMin), hypot(xMin, yMax), hypot(xMax, yMin), hypot(xMax, yMax),
+            )
+            val visibleRadiusPx = (visibleRadius * pxPerUnit).coerceAtLeast(1.0)
+            val thetaMax = 2 * PI * polarTurns(expr)
+            // Detail has to stop somewhere, or a tight spiral would sample without end.
+            val budgetStep = thetaMax / POLAR_SAMPLE_BUDGET
+
+            /** How far apart two samples may land: a pixel on screen, looser further out. */
+            fun tolerancePx(radiusPx: Double) =
+                POLAR_CHORD_PX + (radiusPx - visibleRadiusPx).coerceAtLeast(0.0) / 2
+
+            var theta = 0.0
+            var r = evalOrNaN(expr, 0.0, AngleMode.RADIANS)
+            var here = if (r.isFinite()) GraphPoint(r, 0.0) else null
+            here?.let { current.add(it) }
+            var step = POLAR_MAX_STEP
+            while (theta < thetaMax) {
+                step = (step * POLAR_STEP_GROWTH).coerceAtMost(POLAR_MAX_STEP)
+                var nextTheta: Double
+                var nextR: Double
+                var next: GraphPoint?
+                while (true) {
+                    nextTheta = (theta + step).coerceAtMost(thetaMax)
+                    nextR = evalOrNaN(expr, nextTheta, AngleMode.RADIANS)
+                    next = if (nextR.isFinite()) GraphPoint(nextR * cos(nextTheta), nextR * sin(nextTheta)) else null
+                    val from = here
+                    val to = next
+                    if (from == null || to == null || step <= 2 * budgetStep) break
+                    val tolerance = tolerancePx(minOf(abs(r), abs(nextR)) * pxPerUnit)
+                    if (hypot(to.x - from.x, to.y - from.y) * pxPerUnit <= tolerance) break
+                    step /= 2
                 }
-                k++
+                val to = next
+                if (to == null) {
+                    breakRun()
+                } else {
+                    // A pole must not be bridged, exactly as for a Cartesian asymptote.
+                    if (crossesPole(r, nextR, visibleRadius)) breakRun()
+                    current.add(to)
+                }
+                theta = nextTheta
+                r = nextR
+                here = next
             }
         } else {
             val steps = columns.coerceAtLeast(2)
@@ -117,6 +187,47 @@ object GraphAnalysis {
         }
         breakRun()
         return SampledCurve(id, expr, polar, runs)
+    }
+
+    /**
+     * Whether `r` flipped sign between two samples by running out towards infinity rather
+     * than by passing through zero — a polar asymptote, as in `r = tan(θ)`, which would
+     * otherwise be drawn as a line sweeping right across the screen. Both magnitudes have to
+     * dwarf anything that could be on screen, so the zero crossing at the base of every rose
+     * petal is never mistaken for one.
+     */
+    private fun crossesPole(prev: Double, current: Double, visibleRadius: Double): Boolean {
+        if (!prev.isFinite() || !current.isFinite()) return false
+        if ((prev < 0.0) == (current < 0.0)) return false
+        return minOf(abs(prev), abs(current)) > POLE_FACTOR * visibleRadius
+    }
+
+    /**
+     * How many turns of θ a polar curve covers before it starts retracing itself, capped at
+     * [POLAR_TURNS]. A rose, circle or cardioid closes after one turn and is swept once —
+     * sweeping it twelve times would only lay the same ink down twelve times over. Curves
+     * that never close (`r = θ`, `r = cos(√2·θ)`, `r = θ·sin(θ)`) fail every test and get
+     * the full run, which is the whole point of sweeping more than one turn.
+     */
+    private fun polarTurns(expr: Expression): Int {
+        val probes = DoubleArray(PERIOD_PROBES) { 2 * PI * ((it * GOLDEN_RATIO) % 1.0) }
+        val base = DoubleArray(PERIOD_PROBES) { evalOrNaN(expr, probes[it], AngleMode.RADIANS) }
+        for (turns in 1 until POLAR_TURNS) {
+            val offset = 2 * PI * turns
+            var repeats = true
+            for (i in probes.indices) {
+                val a = base[i]
+                val b = evalOrNaN(expr, probes[i] + offset, AngleMode.RADIANS)
+                if (a.isNaN() && b.isNaN()) continue
+                // Negated rather than `>`, so a NaN difference counts as a mismatch.
+                if (!(abs(b - a) <= PERIOD_TOLERANCE * (1 + abs(a)))) {
+                    repeats = false
+                    break
+                }
+            }
+            if (repeats) return turns
+        }
+        return POLAR_TURNS
     }
 
     // ---- Feature discovery ----
