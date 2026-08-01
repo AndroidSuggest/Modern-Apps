@@ -88,9 +88,6 @@
     <string name="import_to_existing_calendar">Importuj do istniejącego kalendarza</string>
     <string name="create_new_calendar_option">Utwórz nowy kalendarz</string>
     <string name="no_events_found">Nie znaleziono wydarzeń</string>
-    <plurals name="import_summary">
-        <item quantity="other">Liczba zdarzeń gotowych do zaimportowania: <xliff:g id="count" example="5">%1$d</xliff:g></item>
-    </plurals>
     <string name="search_countries">Wyszukaj kraje</string>
     <string name="choose_language">Wybierz język</string>
     <string name="holiday_calendars">Kalendarz świąt</string>
