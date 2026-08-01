@@ -9,6 +9,8 @@ launcherIcon {
 
 android {
     defaultConfig {
+        versionCode = 20260731
+        versionName = "v2.6.4"
         applicationId = "com.vayunmathur.files"
     }
 }
