@@ -114,4 +114,5 @@
     <string name="enable_after">在此之后启用</string>
     <string name="auto_toggle_never">从不</string>
     <string name="ok">确定</string>
+    <string name="link_pqc_unavailable">无法在此设备上创建链接。</string>
 </resources>
