@@ -51,4 +51,9 @@
     <string name="defaults_for_new_alarms">新闹钟的默认设置</string>
     <string name="gradual_off">已关闭</string>
     <string name="alarm_settings">闹钟设置</string>
+    <string name="timer_name_optional">定时器名称（可选）</string>
+    <string name="sound">声音</string>
+    <string name="vibrate">振动</string>
+    <string name="snooze_length">暂停时长</string>
+    <string name="gradually_increase_volume">音量逐渐增大</string>
 </resources>
