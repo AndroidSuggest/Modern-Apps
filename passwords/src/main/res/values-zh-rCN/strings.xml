@@ -1,3 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="cancel">取消</string>
+    <string name="app_name">密码</string>
+    <string name="label_name">名称</string>
+    <string name="label_user_id_email">用户 ID / 邮箱</string>
+    <string name="label_password">密码</string>
+    <string name="label_totp_secret">TOTP 密钥</string>
+    <string name="label_add_website">添加网站</string>
+    <string name="add_password">添加密码</string>
+    <string name="edit_password">编辑密码</string>
+    <string name="hide">隐藏</string>
+    <string name="show">显示</string>
+    <string name="section_password">密码</string>
+    <string name="section_totp">TOTP</string>
+    <string name="totp_not_configured">（未配置）</string>
+    <string name="totp_refreshes_in">将在 <xliff:g id="seconds" example="15">%1$d</xliff:g> 秒后刷新</string>
+    <string name="section_websites">网站</string>
+    <string name="websites_none">（无）</string>
+    <string name="no_name">（无名称）</string>
+    <string name="no_user">（无用户）</string>
+    <string name="passkey_detail_title">通行密钥</string>
+    <string name="passkey_rp_id">依赖方 ID</string>
+    <string name="passkey_rp_name">依赖方</string>
+    <string name="passkey_user_name">用户名称</string>
+    <string name="passkey_user_display_name">显示名称</string>
+    <string name="passkey_credential_id">凭据 ID</string>
+    <string name="passkey_created">创建时间</string>
+    <string name="passkey_last_used">最后使用时间</string>
+    <string name="unlock_database">解锁密码</string>
+    <string name="title_settings">设置</string>
+    <string name="import_csv_warning">导入 CSV 会将明文凭据引入本应用。导入后请删除导出文件。</string>
+    <string name="import_passwords">导入密码</string>
+    <string name="import_source_bitwarden">Bitwarden</string>
+    <string name="import_source_chrome">Google Chrome</string>
+    <string name="import_source_firefox">Firefox</string>
+    <string name="import_source_lastpass">LastPass</string>
+    <string name="import_source_one_password">1Password</string>
+    <string name="import_source_dashlane">Dashlane</string>
+    <string name="import_source_apple">Apple 密码</string>
+    <string name="cable_channel_name">跨设备登录</string>
+    <string name="cable_starting">正在启动跨设备登录</string>
+    <string name="cable_prompt_title">在您的其他设备上登录？</string>
+    <string name="cable_prompt_subtitle">验证以批准此通行密钥登录</string>
+    <string name="name_and_user_id_required">名称和用户 ID 不能为空</string>
 </resources>
