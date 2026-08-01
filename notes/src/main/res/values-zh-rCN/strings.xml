@@ -9,4 +9,5 @@
     <string name="external_save_failed">无法保存（文件可能是只读的）</string>
     <string name="external_read_failed">无法打开文件</string>
     <string name="note">笔记</string>
+    <string name="share_note">分享笔记</string>
 </resources>
