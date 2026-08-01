@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="cancel">Annulla</string>
+    <string name="add">Aggiungi</string>
+    <string name="settings">Impostazioni</string>
+    <string name="delete">Elimina</string>
 </resources>
