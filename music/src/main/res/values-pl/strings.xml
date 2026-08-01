@@ -15,9 +15,6 @@
     <string name="label_artist">Wykonawcy</string>
     <string name="artist_info_format">%1$d utworów • %2$s</string>
     <string name="label_playlist">Lista odtwarzania</string>
-    <plurals name="num_songs_format">
-        <item quantity="other">%1$d utworów</item>
-    </plurals>
     <string name="label_play">Odtwórz</string>
     <string name="label_shuffle">Losowo</string>
     <string name="label_songs">Utwory</string>
