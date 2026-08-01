@@ -88,4 +88,5 @@
     <string name="label_no_channels">Nessun canale correlato rilevato</string>
     <string name="label_no_topics">Nessun argomento correlato rilevato</string>
     <string name="action_unmute">Attiva audio</string>
+    <string name="cancel">Annulla</string>
 </resources>
