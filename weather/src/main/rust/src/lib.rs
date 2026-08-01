@@ -25,27 +25,13 @@ mod om;
 
 use crate::om::{OmBackend, OmReader};
 
-use jni::JavaVM;
-
 // ---------------------------------------------------------------------------
-// Global VM + block caching helpers
+// Block caching helpers
 // ---------------------------------------------------------------------------
-
-static GLOBAL_VM: OnceLock<JavaVM> = OnceLock::new();
 
 /// Size of the HTTP Range block cache, aligned so nearby chunk reads reuse bytes.
 /// Mirrors old `BLOCK = 64 * 1024`.
 const BLOCK: u64 = 64 * 1024;
-
-/// Ensure GLOBAL_VM is populated from the current JNIEnv (called on first
-/// entry from Java). Subsequent `get_bytes` calls attach via this VM.
-fn ensure_global_vm(env: &mut jni::JNIEnv) {
-    if GLOBAL_VM.get().is_none() {
-        if let Ok(vm) = env.get_java_vm() {
-            let _ = GLOBAL_VM.set(vm);
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Backends
@@ -119,10 +105,7 @@ impl OmBackend for RangeBackend {
 // Process-wide cache of open RangeBackends keyed by .om URL, so panning /
 // measure / time scrubbing reuse file size + already-fetched blocks. Matches
 // old `cached_backend` cap of 12.
-fn cached_backend(
-    url: &str,
-    env: &mut jni::JNIEnv,
-) -> Result<Arc<RangeBackend>, String> {
+fn cached_backend(url: &str) -> Result<Arc<RangeBackend>, String> {
     static CACHE: OnceLock<Mutex<HashMap<String, Arc<RangeBackend>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     {
@@ -287,7 +270,6 @@ fn decode_region_url_inner(
     north: f64,
     out_w: usize,
     out_h: usize,
-    env: &mut jni::JNIEnv,
 ) -> Result<Vec<f32>, String> {
     if out_w == 0 || out_h == 0 {
         return Err("empty output size".to_string());
@@ -298,7 +280,7 @@ fn decode_region_url_inner(
     let sub_nx = win.x1 - win.x0;
     let sub_ny = win.y1 - win.y0;
 
-    let backend = cached_backend(url, env)?;
+    let backend = cached_backend(url)?;
     let root = OmReader::new(backend).map_err(|e| format!("open failed: {e}"))?;
 
     let data = read_subgrid_generic(&root, variable, &win)?;
@@ -382,6 +364,10 @@ mod jni_bindings {
     ) -> jfloatArray {
         let null = std::ptr::null_mut();
 
+        // Resolves the bridge class while we still hold a JNIEnv; the range fetches below run
+        // through it. Harmless to repeat.
+        jni_http::init(&mut env);
+
         let url: String = match env.get_string(&om_url) {
             Ok(s) => s.into(),
             Err(_) => return null,
@@ -411,7 +397,6 @@ mod jni_bindings {
                 north,
                 out_w.max(0) as usize,
                 out_h.max(0) as usize,
-                &mut env,
             )
         }))
         .unwrap_or_else(|_| Err("panic in decode_region".to_string()));

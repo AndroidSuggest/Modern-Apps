@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
+import kotlin.math.hypot
 
 /** One plotted curve on the graph screen — Cartesian `y = f(x)` or polar `r = f(θ)`. */
 data class GraphFunction(
@@ -16,22 +17,16 @@ data class GraphFunction(
     val polar: Boolean = false,
 )
 
-/** A point found by graph analysis (root, extremum, intersection…), drawn + listed. */
-data class AnalysisPoint(
-    val x: Double,
-    val y: Double,
-    val label: String,
-    val color: Color,
+/**
+ * A notable point the user revealed by touching near it. Held as the feature itself rather
+ * than as pre-rendered text so the UI can colour and localise the label.
+ */
+data class GraphMarker(
+    val point: GraphPoint,
+    val kind: FeatureKind,
+    /** The curve it belongs to, or the two curves that cross there. */
+    val curveIds: List<Long>,
 )
-
-/** The kinds of numeric analysis the graph screen can run over the visible window. */
-enum class AnalysisKind(val title: String) {
-    ROOTS("Roots (x-intercepts)"),
-    MINIMA("Minima"),
-    MAXIMA("Maxima"),
-    INTERSECTIONS("Intersections"),
-    Y_INTERCEPT("y-intercepts"),
-}
 
 /**
  * Holds all calculator state at the Activity scope so it survives switching between the
@@ -131,14 +126,25 @@ class CalculatorViewModel : ViewModel() {
         functions.add(GraphFunction(id = nextId++, text = "", color = color))
     }
 
-    fun updateFunction(id: Long, text: String) = mutate(id) { it.copy(text = text) }
-    fun toggleFunction(id: Long) = mutate(id) { it.copy(enabled = !it.enabled) }
-    fun togglePolar(id: Long) = mutate(id) { it.copy(polar = !it.polar) }
+    fun updateFunction(id: Long, text: String) {
+        dropMarkersFor(id)
+        mutate(id) { it.copy(text = text) }
+    }
+
+    fun toggleFunction(id: Long) {
+        dropMarkersFor(id)
+        mutate(id) { it.copy(enabled = !it.enabled) }
+    }
+
+    fun togglePolar(id: Long) {
+        dropMarkersFor(id)
+        mutate(id) { it.copy(polar = !it.polar) }
+    }
 
     fun removeFunction(id: Long) {
         functions.removeAll { it.id == id }
         if (functions.isEmpty()) addFunction()
-        clearAnalysis()
+        dropMarkersFor(id)
     }
 
     private inline fun mutate(id: Long, transform: (GraphFunction) -> GraphFunction) {
@@ -153,62 +159,43 @@ class CalculatorViewModel : ViewModel() {
     var viewWidthPx by mutableStateOf(0f)
     var viewHeightPx by mutableStateOf(0f)
 
-    val analysisPoints = mutableStateListOf<AnalysisPoint>()
-    var analysisSummary by mutableStateOf<List<String>>(emptyList())
-        private set
+    /** Notable points the user has revealed by touching near them. */
+    val markers = mutableStateListOf<GraphMarker>()
 
-    fun clearAnalysis() {
-        analysisPoints.clear()
-        analysisSummary = emptyList()
+    private fun dropMarkersFor(id: Long) = markers.removeAll { id in it.curveIds }
+
+    /**
+     * Samples every visible curve over the current viewport. Drawing and analysis share this
+     * so a marker always lands exactly on the line that was drawn.
+     */
+    fun sampleCurves(widthPx: Float, heightPx: Float): List<SampledCurve> {
+        if (widthPx <= 0f || heightPx <= 0f) return emptyList()
+        val xMin = centerX - (widthPx / 2) / scale
+        val xMax = centerX + (widthPx / 2) / scale
+        val yMin = centerY - (heightPx / 2) / scale
+        val yMax = centerY + (heightPx / 2) / scale
+        return functions.filter { it.enabled && it.text.isNotBlank() }.mapNotNull { fn ->
+            val expr = runCatching { Expression.parse(fn.text) }.getOrNull() ?: return@mapNotNull null
+            GraphAnalysis.sample(fn.id, expr, fn.polar, angleMode, xMin, xMax, yMin, yMax, widthPx.toInt())
+        }
     }
 
     /**
-     * Run [kind] over the currently visible x-range for the enabled Cartesian functions
-     * (polar curves are skipped — the analyses are Cartesian). Populates [analysisPoints]
-     * (drawn on the graph) and [analysisSummary] (shown in a dialog).
+     * Handles a tap on the graph, [radius] being the touch slop in graph units. Touching a
+     * marker removes it; touching anywhere else reveals the nearest notable point in range,
+     * across every curve on screen — Cartesian, polar, and crossings between the two.
      */
-    fun runAnalysis(kind: AnalysisKind) {
-        analysisPoints.clear()
-        if (viewWidthPx <= 0f) { analysisSummary = listOf("Open the graph first."); return }
-        val xMin = centerX - (viewWidthPx / 2) / scale
-        val xMax = centerX + (viewWidthPx / 2) / scale
-
-        val cartesian = functions.filter { it.enabled && !it.polar && it.text.isNotBlank() }
-            .mapNotNull { fn -> runCatching { fn to Expression.parse(fn.text) }.getOrNull() }
-
-        val summary = mutableListOf<String>()
-        when (kind) {
-            AnalysisKind.INTERSECTIONS -> {
-                for (i in cartesian.indices) for (j in i + 1 until cartesian.size) {
-                    val (fa, ea) = cartesian[i]
-                    val (_, eb) = cartesian[j]
-                    for (x in GraphAnalysis.intersections(ea, eb, angleMode, xMin, xMax)) {
-                        val y = ea.eval(x, angleMode)
-                        analysisPoints.add(AnalysisPoint(x, y, "(${fmt(x)}, ${fmt(y)})", fa.color))
-                        summary.add("Intersection: (${fmt(x)}, ${fmt(y)})")
-                    }
-                }
-            }
-            else -> for ((fn, expr) in cartesian) {
-                val xs = when (kind) {
-                    AnalysisKind.ROOTS -> GraphAnalysis.roots(expr, angleMode, xMin, xMax)
-                    AnalysisKind.MINIMA -> GraphAnalysis.extrema(expr, angleMode, xMin, xMax, wantMax = false)
-                    AnalysisKind.MAXIMA -> GraphAnalysis.extrema(expr, angleMode, xMin, xMax, wantMax = true)
-                    AnalysisKind.Y_INTERCEPT -> if (0.0 in xMin..xMax) listOf(0.0) else emptyList()
-                    AnalysisKind.INTERSECTIONS -> emptyList()
-                }
-                for (x in xs) {
-                    val y = expr.eval(x, angleMode)
-                    if (y.isNaN() || y.isInfinite()) continue
-                    analysisPoints.add(AnalysisPoint(x, y, "(${fmt(x)}, ${fmt(y)})", fn.color))
-                    summary.add("${kind.title.removeSuffix("s")}: (${fmt(x)}, ${fmt(y)})")
-                }
-            }
+    fun tapGraph(at: GraphPoint, radius: Double) {
+        val hit = markers.minByOrNull { hypot(it.point.x - at.x, it.point.y - at.y) }
+        if (hit != null && hypot(hit.point.x - at.x, hit.point.y - at.y) <= radius) {
+            markers.remove(hit)
+            return
         }
-        analysisSummary = if (summary.isEmpty()) listOf("None found in the visible window.") else summary
+        val feature = GraphAnalysis
+            .featuresNear(sampleCurves(viewWidthPx, viewHeightPx), at, radius, angleMode)
+            .firstOrNull() ?: return
+        markers.add(GraphMarker(feature.point, feature.kind, feature.curveIds))
     }
-
-    private fun fmt(v: Double) = formatResult(v)
 
     companion object {
         /** Distinct, colour-blind-friendly curve colours, reused cyclically. */

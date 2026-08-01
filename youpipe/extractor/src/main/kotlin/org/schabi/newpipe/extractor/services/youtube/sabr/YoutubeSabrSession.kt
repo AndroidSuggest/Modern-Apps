@@ -1098,8 +1098,24 @@ class YoutubeSabrSession {
         val initializationUrl = format.initializationUrl
         val start = format.initRangeStart
         val end = format.initRangeEnd
-        if (initializationUrl.isNullOrEmpty() || start < 0 || end < start || end - start >= MAX_INITIALIZATION_BYTES) {
+        // Reported per clause: the range is almost always fine and the URL is what is missing,
+        // so a combined message sends you looking in the wrong place. The two ways the URL ends
+        // up null need different fixes, so name which one it was — a format with no template at
+        // all is SABR-only (no per-format URL exists, nothing to fix here), whereas a template
+        // that survived resolution unresolved means the signature decode came back empty.
+        if (initializationUrl.isNullOrEmpty()) {
+            val reason = if (format.initializationUrlTemplate.isNullOrEmpty()) {
+                "no per-format URL in adaptiveFormats (SABR-only format)"
+            } else {
+                "template present but unresolved, sig=${format.obfuscatedSignature != null} n=${format.obfuscatedNParameter != null}"
+            }
+            throw IOException("Missing SABR initialization URL: itag=${format.itag}, $reason")
+        }
+        if (start < 0 || end < start) {
             throw IOException("Invalid SABR initialization range: itag=${format.itag}, start=$start, end=$end")
+        }
+        if (end - start >= MAX_INITIALIZATION_BYTES) {
+            throw IOException("SABR initialization range too large: itag=${format.itag}, bytes=${end - start + 1}, max=$MAX_INITIALIZATION_BYTES")
         }
         if (poToken.isEmpty()) throw IOException("Missing PO token for SABR initialization range: itag=${format.itag}")
         val url = appendQueryParameterIfMissing(initializationUrl, "pot", Base64.getUrlEncoder().withoutPadding().encodeToString(poToken))

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">VPN</string>
     <string name="vpn_wireguard_gotatun">VPN — WireGuard (gotatun)</string>
     <string name="no_tunnels_yet">No tunnels yet</string>
@@ -10,7 +10,16 @@
     <string name="settings_about">Settings / About</string>
     <string name="always_on_vpn">Always-On VPN</string>
     <string name="open_system_vpn_settings">Open system VPN settings</string>
-    <string name="vpn_wireguard_gotatun_boringtun_fork">VPN (WireGuard) — gotatun / BoringTun fork</string>
+    <!-- SettingsPage: Row opening the per-app split-tunnel picker. Noun phrase -->
+    <string name="bypass_list">Bypass list</string>
+    <!-- BypassListPage: Screen title. Noun phrase -->
+    <string name="bypass_list_title">Apps that bypass the VPN</string>
+    <!-- BypassListPage: Warning about the interaction with system lockdown mode. Sentence -->
+    <string name="bypass_lockdown_warning">If “Block connections without VPN” is turned on in Android\'s VPN settings, these apps get no internet at all instead of using your normal connection. Turn it off for bypass to work.</string>
+    <!-- BypassListPage: Shown while the installed-app list is being loaded. Sentence fragment -->
+    <string name="bypass_loading_apps">Loading apps…</string>
+    <!-- BypassListPage: Count of currently bypassed apps. %1$d = number of apps, e.g. 3 -->
+    <string name="bypass_selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> bypassing the VPN</string>
     <string name="logging">Logging</string>
     <string name="delete_all_logs">Delete all logs?</string>
     <string name="this_will_permanently_remove_all_connect">This will permanently remove all connection logs and cannot be undone.</string>
@@ -29,8 +38,5 @@
     <string name="privatekey">PrivateKey: %1$s…</string>
     <string name="publickey">PublicKey: %1$s</string>
     <string name="peer_publickey">Peer PublicKey: %1$s</string>
-    <string name="enable_always_on_in_android_system_vpn_s">Enable Always-On in Android system VPN settings to keep the VPN connected even after reboot. </string>
-    <string name="this_app_ships_a_pure_rust_implementatio">This app ships a pure Rust implementation of the WireGuard protocol from </string>
-    <string name="emulator_without_ndk_rust_built_so_will">Emulator without NDK Rust built .so will not have keygen available until </string>
     <string name="vpn_channel_name">VPN Tunnel</string>
 </resources>

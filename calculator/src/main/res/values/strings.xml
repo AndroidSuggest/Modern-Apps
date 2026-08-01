@@ -6,8 +6,15 @@
     <string name="close">Close</string>
     <string name="clear">Clear</string>
     <string name="graph">Graph</string>
-    <string name="analysis">Analysis</string>
-    <string name="done">Done</string>
-    <string name="clear_markers">Clear markers</string>
     <string name="add_function">Add function</string>
+    <!-- Graph: label on a marker where a curve crosses the x-axis. Lowercase noun, shown as "root (2, 0)". -->
+    <string name="feature_root">root</string>
+    <!-- Graph: label on a marker where a curve crosses the y-axis. Lowercase noun, shown as "y-intercept (0, 3)". -->
+    <string name="feature_y_intercept">y-intercept</string>
+    <!-- Graph: label on a marker at a curve's local low point. Lowercase noun, shown as "minimum (0, -2)". -->
+    <string name="feature_minimum">minimum</string>
+    <!-- Graph: label on a marker at a curve's local high point. Lowercase noun, shown as "maximum (1.57, 1)". -->
+    <string name="feature_maximum">maximum</string>
+    <!-- Graph: label on a marker where two curves cross. Lowercase noun, shown as "intersection (1, 1)". -->
+    <string name="feature_intersection">intersection</string>
 </resources>

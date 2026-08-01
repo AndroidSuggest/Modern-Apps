@@ -15,13 +15,17 @@ class QrAnalyzer(private val onQrDetected: (String) -> Unit) : ImageAnalysis.Ana
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
-        val buffer = imageProxy.planes[0].buffer
+        val plane = imageProxy.planes[0]
+        val buffer = plane.buffer
         val bytes = ByteArray(buffer.remaining())
         buffer.get(bytes)
 
+        // dataWidth (arg 2) is the backing array's row stride, not the image width; HALs pad
+        // Y rows to an alignment boundary, and using width there shears the frame so no code
+        // ever decodes. See the same fix in [PhotoAnalyzer].
         val source = PlanarYUVLuminanceSource(
             bytes,
-            imageProxy.width,
+            plane.rowStride,
             imageProxy.height,
             0, 0,
             imageProxy.width,

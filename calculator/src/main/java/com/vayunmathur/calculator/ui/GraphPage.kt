@@ -4,8 +4,8 @@ import androidx.compose.ui.res.stringResource
 import com.vayunmathur.calculator.R
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,18 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -38,12 +33,13 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vayunmathur.calculator.util.AnalysisKind
 import com.vayunmathur.calculator.util.AngleMode
 import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.calculator.util.Expression
+import com.vayunmathur.calculator.util.FeatureKind
+import com.vayunmathur.calculator.util.GraphAnalysis
+import com.vayunmathur.calculator.util.GraphPoint
 import com.vayunmathur.calculator.util.formatResult
-import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AssistChip
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.HorizontalDivider
@@ -56,20 +52,15 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
-import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
-import kotlin.math.sin
 
 @Composable
 fun GraphPage(viewModel: CalculatorViewModel) {
-    var showResults by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -85,48 +76,15 @@ fun GraphPage(viewModel: CalculatorViewModel) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            AnalysisBar(viewModel) { showResults = true }
             GraphCanvas(viewModel, Modifier.fillMaxWidth().weight(1f))
             HorizontalDivider()
             FunctionEditors(viewModel)
         }
     }
-    if (showResults) {
-        AlertDialog(
-            onDismissRequest = { showResults = false },
-            title = { Text(stringResource(R.string.analysis)) },
-            text = {
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    items(viewModel.analysisSummary) { line -> Text(line, modifier = Modifier.padding(vertical = 3.dp)) }
-                }
-            },
-            confirmButton = { TextButton({ showResults = false }) { Text(stringResource(R.string.done)) } },
-            dismissButton = { TextButton({ viewModel.clearAnalysis(); showResults = false }) { Text(stringResource(R.string.clear_markers)) } },
-        )
-    }
 }
 
-/** Horizontally-scrolling row of numeric-analysis actions over the visible window. */
-@Composable
-private fun AnalysisBar(viewModel: CalculatorViewModel, onResults: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AnalysisKind.entries.forEach { kind ->
-            val short = when (kind) {
-                AnalysisKind.ROOTS -> "Roots"
-                AnalysisKind.MINIMA -> "Min"
-                AnalysisKind.MAXIMA -> "Max"
-                AnalysisKind.INTERSECTIONS -> "Intersect"
-                AnalysisKind.Y_INTERCEPT -> "y-int"
-            }
-            AssistChip(onClick = { viewModel.runAnalysis(kind); onResults() }, label = { Text(short) })
-        }
-        AssistChip(onClick = { viewModel.clearAnalysis() }, label = { Text(stringResource(R.string.clear)) })
-    }
-}
+/** How close a touch has to land, in dp, for a notable point to be revealed. */
+private val TouchSlop = 28.dp
 
 @Composable
 private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
@@ -134,9 +92,22 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val surface = MaterialTheme.colorScheme.surface
+    // Marker text uses the theme's foreground colour, not the curve's, so it stays legible
+    // against the background whatever colour the curve happens to be.
+    val markerTextColor = MaterialTheme.colorScheme.onSurface
     val textMeasurer = rememberTextMeasurer()
 
-    // Compile each function once per edit; null means it doesn't parse yet.
+    // Colour lookup for markers, and the localised kind names, resolved outside the draw scope.
+    val colorOf = viewModel.functions.associate { it.id to it.color }
+    val kindLabels = mapOf(
+        FeatureKind.ROOT to stringResource(R.string.feature_root),
+        FeatureKind.Y_INTERCEPT to stringResource(R.string.feature_y_intercept),
+        FeatureKind.MINIMUM to stringResource(R.string.feature_minimum),
+        FeatureKind.MAXIMUM to stringResource(R.string.feature_maximum),
+        FeatureKind.INTERSECTION to stringResource(R.string.feature_intersection),
+    )
+
+    // Compile each function once per edit, not once per frame; null means it doesn't parse yet.
     val compiled = viewModel.functions.map { fn ->
         fn to if (fn.enabled && fn.text.isNotBlank()) runCatching { Expression.parse(fn.text) }.getOrNull() else null
     }
@@ -147,6 +118,13 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
             .onSizeChanged {
                 viewModel.viewWidthPx = it.width.toFloat()
                 viewModel.viewHeightPx = it.height.toFloat()
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val gx = viewModel.centerX + (offset.x - size.width / 2) / viewModel.scale
+                    val gy = viewModel.centerY + (size.height / 2 - offset.y) / viewModel.scale
+                    viewModel.tapGraph(GraphPoint(gx, gy), TouchSlop.toPx() / viewModel.scale)
+                }
             }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
@@ -203,52 +181,44 @@ private fun GraphCanvas(viewModel: CalculatorViewModel, modifier: Modifier) {
         drawLine(axisColor, Offset(0f, py(0.0)), Offset(w, py(0.0)), strokeWidth = 2.5f)
 
         // ---- Curves ----
-        val jumpLimit = h * 4
+        // Drawn from the same sampler the analysis uses, so markers land on the drawn line.
         for ((fn, expr) in compiled) {
             if (expr == null) continue
+            val curve = GraphAnalysis.sample(
+                fn.id, expr, fn.polar, viewModel.angleMode, minX, maxX, minY, maxY, w.toInt(),
+            )
             val path = Path()
-            var penDown = false
-            var prevSy = 0f
-            if (fn.polar) {
-                // r = f(θ): sample θ over [0, 2π] in radians (polar is inherently radian).
-                val samples = 2000
-                var k = 0
-                while (k <= samples) {
-                    val theta = 2 * PI * k / samples
-                    val r = runCatching { expr.eval(theta, AngleMode.RADIANS) }.getOrNull()
-                    if (r == null || r.isNaN() || r.isInfinite()) { penDown = false } else {
-                        val sx = px(r * cos(theta)); val sy = py(r * sin(theta))
-                        if (!penDown) { path.moveTo(sx, sy); penDown = true } else path.lineTo(sx, sy)
-                    }
-                    k++
-                }
-            } else {
-                // y = f(x): one sample per horizontal pixel; break at undefined points / asymptotes.
-                var pxCol = 0
-                while (pxCol <= w.toInt()) {
-                    val graphX = cx + (pxCol - w / 2) / scale
-                    val yVal = runCatching { expr.eval(graphX, viewModel.angleMode) }.getOrNull()
-                    if (yVal == null || yVal.isNaN() || yVal.isInfinite()) { penDown = false } else {
-                        val sy = py(yVal)
-                        if (!penDown) { path.moveTo(pxCol.toFloat(), sy); penDown = true }
-                        else if (abs(sy - prevSy) > jumpLimit) path.moveTo(pxCol.toFloat(), sy)
-                        else path.lineTo(pxCol.toFloat(), sy)
-                        prevSy = sy
-                    }
-                    pxCol++
+            for (run in curve.runs) {
+                run.forEachIndexed { i, p ->
+                    val sx = px(p.x)
+                    val sy = py(p.y)
+                    if (i == 0) path.moveTo(sx, sy) else path.lineTo(sx, sy)
                 }
             }
             drawPath(path, fn.color, style = Stroke(width = 3f))
         }
 
-        // ---- Analysis markers ----
-        for (p in viewModel.analysisPoints) {
-            val cxp = px(p.x); val cyp = py(p.y)
-            if (cxp < -20 || cxp > w + 20 || cyp < -20 || cyp > h + 20) continue
-            drawCircle(surface, radius = 7f, center = Offset(cxp, cyp))
-            drawCircle(p.color, radius = 7f, center = Offset(cxp, cyp), style = Stroke(width = 3f))
-            val layout = textMeasurer.measure(p.label, TextStyle(color = p.color, fontSize = 11.sp))
-            drawText(layout, topLeft = Offset((cxp + 8f).coerceAtMost(w - layout.size.width), cyp - layout.size.height - 4f))
+        // ---- Markers the user has revealed ----
+        for (m in viewModel.markers) {
+            val mx = px(m.point.x)
+            val my = py(m.point.y)
+            if (mx < -20 || mx > w + 20 || my < -20 || my > h + 20) continue
+            // An intersection belongs to two curves, so it takes the neutral theme colour.
+            val ringColor = m.curveIds.singleOrNull()?.let { colorOf[it] } ?: markerTextColor
+            drawCircle(surface, radius = 7f, center = Offset(mx, my))
+            drawCircle(ringColor, radius = 7f, center = Offset(mx, my), style = Stroke(width = 3f))
+
+            val text = "${kindLabels[m.kind]} (${formatResult(m.point.x)}, ${formatResult(m.point.y)})"
+            val layout = textMeasurer.measure(text, TextStyle(color = markerTextColor, fontSize = 11.sp))
+            val tx = (mx + 10f).coerceIn(0f, (w - layout.size.width).coerceAtLeast(0f))
+            val ty = (my - layout.size.height - 6f).coerceIn(0f, (h - layout.size.height).coerceAtLeast(0f))
+            // A surface-coloured plate keeps the label readable where it overlaps a curve.
+            drawRect(
+                surface.copy(alpha = 0.85f),
+                topLeft = Offset(tx - 3f, ty - 2f),
+                size = Size(layout.size.width + 6f, layout.size.height + 4f),
+            )
+            drawText(layout, topLeft = Offset(tx, ty))
         }
     }
 }

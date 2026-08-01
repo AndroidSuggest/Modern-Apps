@@ -1199,7 +1199,8 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * Binds a manual Preview + ImageCapture + ImageAnalysis session for the photo modes
      * (PHOTO / PORTRAIT / PANORAMA / PHOTOSPHERE / QR). ImageCapture requests the sensor's
      * maximum resolution; if the 3-stream max-res combination exceeds a device's stream-config
-     * limits, it falls back to a default ImageCapture resolution.
+     * limits, it falls back to a default ImageCapture resolution. ImageAnalysis is always
+     * capped (~1.2 MP) — see the note in [bind].
      */
     suspend fun setupPhotoSession(): Boolean {
         Log.d("NightPreview", "setupPhotoSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
@@ -1265,13 +1266,28 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                     // Crop stills to the selected aspect ratio (1:1 / 16:9 / 4:3). CameraX crops
                     // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
                     capture.setCropAspectRatio(currentCropAspectRatio())
+                    // Cap the analysis stream at ~1.2 MP, independently of [maxRes] (which stays
+                    // about ImageCapture — stills are unaffected and still come off the sensor at
+                    // full resolution). Nothing reading this stream benefits from sensor
+                    // resolution: PhotoAnalyzer samples average luminance, runs a ZXing decode
+                    // over the whole Y plane, and copies each frame via toBitmap() for the
+                    // Motion-Photo ring buffer, whose frames MotionPhotoEncoder then converts to
+                    // I420 in a per-pixel loop. All of that is paid per frame and scales with
+                    // area, so an uncapped stream made QR scanning and motion capture far more
+                    // expensive on high-end sensors for no quality gain. Night mode is unaffected:
+                    // captureNightBurst() shoots full-resolution frames through ImageCapture.
                     val analysisBuilder = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    if (maxRes) {
-                        analysisBuilder.setResolutionSelector(
-                            ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build()
+                        .setResolutionSelector(
+                            ResolutionSelector.Builder()
+                                .setResolutionStrategy(
+                                    ResolutionStrategy(
+                                        Size(1280, 960), // ~1.2 MP
+                                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
+                                    )
+                                )
+                                .build()
                         )
-                    }
                     val analysis = analysisBuilder.build()
                     imageAnalysis = analysis
                     bindSession(provider, owner, selector, preview, capture, analysis).also {
@@ -1557,7 +1573,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * Portrait session: full-resolution ImageCapture (final image stays max-res) but capped
      * ImageAnalysis (~0.8 MP, 1024x768) for smooth preview segmentation. This fixes the
      * "No supported surface combination" bind failures that happened when portrait reused
-     * the max-res 3-stream photo path (Preview + max ImageCapture + max ImageAnalysis) for a
+     * the then-uncapped 3-stream photo path (Preview + max ImageCapture + max ImageAnalysis) for a
      * model that only needs 256x256.
      *
      * Fallback ladder prioritizes keeping max-res capture:

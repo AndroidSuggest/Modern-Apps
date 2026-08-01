@@ -7,6 +7,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
@@ -21,6 +22,7 @@ import com.vayunmathur.vpn.data.VpnDatabase
 import com.vayunmathur.vpn.data.endpointHost
 import com.vayunmathur.vpn.data.endpointPort
 import com.vayunmathur.vpn.data.toModel
+import com.vayunmathur.vpn.util.BypassList
 import com.vayunmathur.vpn.util.VpnNative
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -185,6 +187,19 @@ class VpnTunnelService : VpnService() {
             }
         }
         try { b.setUnderlyingNetworks(null) } catch (_: Exception) {}
+
+        // Split tunnelling. addDisallowedApplication throws if the package is gone (user
+        // uninstalled it after adding it to the list), so each one is guarded individually
+        // rather than losing the whole tunnel to one stale entry.
+        for (pkg in BypassList.load(applicationContext)) {
+            try {
+                b.addDisallowedApplication(pkg)
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w(TAG, "bypass: $pkg not installed, skipping")
+            } catch (e: Exception) {
+                Log.w(TAG, "bypass: $pkg", e)
+            }
+        }
 
         val pfd = try { b.establish() } catch (e: Exception) {
             Log.e(TAG, "establish", e); VpnNative.freeTunnel(handle); stopVpn(); return

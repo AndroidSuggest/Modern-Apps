@@ -138,6 +138,14 @@ class DataStoreUtils private constructor(context: Context) {
         return dataStore.data.map { it[stringSetPreferencesKey(key)] ?: emptySet() }
     }
 
+    /**
+     * Suspend variant that awaits DataStore hydration. Use this rather than a snapshot read
+     * when the caller may run before the store has loaded — e.g. a service started at boot.
+     */
+    suspend fun getStringSetAwait(name: String): Set<String> {
+        return dataStore.data.first()[stringSetPreferencesKey(name)] ?: emptySet()
+    }
+
     fun addStringToSet(string: String, id: String) {
         scope.launch {
             dataStore.edit {

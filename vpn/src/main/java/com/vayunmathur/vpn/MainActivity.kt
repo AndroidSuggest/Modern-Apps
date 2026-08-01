@@ -23,6 +23,7 @@ import com.vayunmathur.vpn.data.ConnectionLogDao
 import com.vayunmathur.vpn.data.DB_NAME
 import com.vayunmathur.vpn.data.VpnConfigDao
 import com.vayunmathur.vpn.data.VpnDatabase
+import com.vayunmathur.vpn.ui.BypassListPage
 import com.vayunmathur.vpn.ui.ConfigDetailPage
 import com.vayunmathur.vpn.ui.ConfigListPage
 import com.vayunmathur.vpn.ui.LoggingPage
@@ -90,6 +91,8 @@ sealed interface Route : NavKey {
     data object Logging : Route
     @Serializable
     data object Settings : Route
+    @Serializable
+    data object BypassList : Route
 }
 
 @Composable
@@ -117,5 +120,6 @@ fun Navigation(vm: VpnViewModel) {
         entry<Route.Detail> { ConfigDetailPage(backStack, vm, it.id) }
         entry<Route.Logging> { LoggingPage(backStack, vm) }
         entry<Route.Settings> { SettingsPage(backStack, vm) }
+        entry<Route.BypassList> { BypassListPage(backStack) }
     }
 }

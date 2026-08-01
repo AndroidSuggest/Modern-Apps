@@ -43,7 +43,9 @@ class PhotoAnalyzer(
     override fun analyze(imageProxy: ImageProxy) {
         val startMs = System.currentTimeMillis()
         try {
-            val buffer = imageProxy.planes[0].buffer
+            val plane = imageProxy.planes[0]
+            val rowStride = plane.rowStride
+            val buffer = plane.buffer
             val bytes = ByteArray(buffer.remaining())
             try {
                 buffer.get(bytes)
@@ -67,7 +69,7 @@ class PhotoAnalyzer(
             }
             if (count > 0) {
                 val avg = sum.toFloat() / count
-                Log.d("NightPreview", "PhotoAnalyzer luma avg=$avg sum=$sum count=$count bytesSize=${bytes.size} width=${imageProxy.width} height=${imageProxy.height} timestamp=${imageProxy.imageInfo.timestamp} rot=${imageProxy.imageInfo.rotationDegrees} took=${System.currentTimeMillis() - startMs}ms")
+                Log.d("NightPreview", "PhotoAnalyzer luma avg=$avg sum=$sum count=$count bytesSize=${bytes.size} width=${imageProxy.width} height=${imageProxy.height} rowStride=$rowStride timestamp=${imageProxy.imageInfo.timestamp} rot=${imageProxy.imageInfo.rotationDegrees} took=${System.currentTimeMillis() - startMs}ms")
                 try {
                     onLuminance(avg)
                 } catch (e: Exception) {
@@ -98,9 +100,17 @@ class PhotoAnalyzer(
                 }
             }
 
+            // dataWidth (arg 2) is the stride of the backing array, NOT the image width — the
+            // two only coincide when the HAL packs Y rows tightly. Most camera HALs pad each
+            // row out to a 32/64-byte boundary, so for a 1440-wide analysis frame rowStride
+            // comes back as 1472 or 1536. Passing width there makes ZXing start each row
+            // (rowStride - width) bytes early, shearing the frame progressively down the
+            // image and destroying the finder patterns, so nothing ever decodes. It fails
+            // silently and only on devices whose analysis width isn't already aligned, which
+            // is why QR scanning worked on some phones and not others.
             val source = PlanarYUVLuminanceSource(
                 bytes,
-                imageProxy.width,
+                rowStride,
                 imageProxy.height,
                 0, 0,
                 imageProxy.width,

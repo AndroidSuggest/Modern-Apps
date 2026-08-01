@@ -1,5 +1,6 @@
-FORM      
- FIRM R   
+FORM
+
+ FIRM R
   O   IRON
  INFORM  O
 F  R   FOR
