@@ -130,6 +130,9 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
 kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }
+# Stripe compiles against kotlin-parcelize but doesn't publish the runtime as a POM
+# dependency, so consumers must add it themselves. See :fooddelivery.
+kotlin-parcelize-runtime = { group = "org.jetbrains.kotlin", name = "kotlin-parcelize-runtime", version.ref = "kotlinGradlePlugin" }
 
 # AndroidX – core & lifecycle
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
