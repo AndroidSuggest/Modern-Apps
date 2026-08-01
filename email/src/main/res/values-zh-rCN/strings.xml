@@ -121,4 +121,31 @@
     <string name="unsubscribe">取消订阅</string>
     <string name="failed">失败：<xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
     <string name="microsoft_sign_in_failed">Microsoft 登录失败</string>
+    <string name="normal">普通</string>
+    <string name="heading_1">一级标题</string>
+    <string name="heading_2">二级标题</string>
+    <string name="heading_3">三级标题</string>
+    <string name="left">左对齐</string>
+    <string name="center">居中对齐</string>
+    <string name="right">右对齐</string>
+    <string name="justify">两端对齐</string>
+    <string name="small">小</string>
+    <string name="large">大</string>
+    <string name="extra_large">特大</string>
+    <string name="font_default">默认</string>
+    <string name="sans">无衬线字体</string>
+    <string name="serif">衬线字体</string>
+    <string name="monospace">等宽字体</string>
+    <string name="alignment">对齐方式</string>
+    <string name="blockquote">块引用</string>
+    <string name="inline_code">行内代码</string>
+    <string name="horizontal_rule">水平线</string>
+    <string name="text_color">文本颜色</string>
+    <string name="highlight">突出显示</string>
+    <string name="font_size">字体大小</string>
+    <string name="font_family">字体系列</string>
+    <string name="clear_formatting">清除格式</string>
+    <string name="email_sync_channel_name">后台邮件同步</string>
+    <string name="email_sync_channel_desc">保持 IMAP 连接处于打开状态，以便新邮件及时送达。</string>
+    <string name="unified_inbox_label">统一收件箱</string>
 </resources>
