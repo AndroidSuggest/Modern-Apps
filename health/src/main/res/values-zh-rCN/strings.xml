@@ -139,4 +139,5 @@
     <string name="hydration_milliliters">毫升</string>
     <string name="route_recorded">路线已记录</string>
     <string name="create_your_first_recipe">创建您的第一个食谱</string>
+    <string name="kcal_2">千卡</string>
 </resources>
