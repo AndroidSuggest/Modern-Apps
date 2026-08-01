@@ -55,7 +55,7 @@
     <string name="tool_crop_rotate">裁剪和旋转</string>
     <string name="panorama">全景</string>
     <string name="tool_eyedropper">吸管</string>
-    <string name="adj_warmth">色温</string>
+    <string name="adj_warmth">暖度</string>
     <string name="tool_invert">反色</string>
     <string name="tool_photo_filter">照片滤镜</string>
     <string name="editor_desc_selective_color">在单一颜色范围内微调青色/紫红色/黄色。</string>
@@ -235,4 +235,6 @@
     <string name="wallpaper_set_failed">无法设置壁纸：<xliff:g id="error" example="IO error">%1$s</xliff:g></string>
     <string name="wallpaper_load_failed">无法加载图片</string>
     <string name="file_size">大小：<xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
+    <string name="edit_with_label">使用我的应用编辑</string>
+    <string name="share">分享</string>
 </resources>
