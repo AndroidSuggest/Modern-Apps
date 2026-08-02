@@ -18,6 +18,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavBackStack
@@ -128,6 +129,8 @@ private fun Navigation(
     vm: MessagesViewModel = viewModel(),
 ) {
     val backStack = rememberNavBackStack<Route>(Route.Inbox)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
 
     // Consume each newly-delivered intent exactly once. snapshotFlow
     // turns the State into a Flow so we get re-triggered every time

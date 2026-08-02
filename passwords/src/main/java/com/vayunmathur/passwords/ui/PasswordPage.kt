@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -243,7 +244,7 @@ fun PasswordScreen(
                                 .clickable {
                                     // open link
                                     val intent = Intent(Intent.ACTION_VIEW, sanitizeUrl(w).toUri())
-                                    context.startActivity(intent)
+                                    ExternalIntents.launch(context, intent)
                                 }
                                 .padding(vertical = 6.dp)) {
                                 Text(w, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)

@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -53,6 +55,8 @@ import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.AddressStore
 import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.CustomerSavings
+import com.vayunmathur.fooddelivery.data.PlatformSavings
+import com.vayunmathur.fooddelivery.data.Referral
 import com.vayunmathur.fooddelivery.data.SavedAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -68,6 +72,11 @@ fun AccountScreen() {
 
     var customer by remember { mutableStateOf<Customer?>(null) }
     var savings by remember { mutableStateOf<CustomerSavings?>(null) }
+    var referrals by remember { mutableStateOf<List<Referral>>(emptyList()) }
+    var platformSavings by remember { mutableStateOf<PlatformSavings?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var editingProfile by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var loggedIn by remember { mutableStateOf(BitesApi.isLoggedIn()) }
 
@@ -124,6 +133,8 @@ fun AccountScreen() {
         if (loggedIn) {
             customer = BitesApi.getCustomer()
             savings = BitesApi.getCustomerSavings()
+            referrals = BitesApi.getReferrals()
+            platformSavings = BitesApi.getPlatformSavings()
         }
         loading = false
     }
@@ -208,6 +219,27 @@ fun AccountScreen() {
                     }
                 }
             } else {
+                if (editingProfile) {
+                    customer?.let { c ->
+                        EditProfileDialog(
+                            customer = c,
+                            onDismiss = { editingProfile = false },
+                            onSave = { updated ->
+                                scope.launch {
+                                    editingProfile = false
+                                    val saved = BitesApi.createOrUpdateCustomer(updated)
+                                    if (saved != null) {
+                                        customer = saved
+                                        notice = "Profile updated"
+                                    } else {
+                                        notice = "Couldn't update your profile"
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+
                 customer?.let { c ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {
@@ -229,6 +261,10 @@ fun AccountScreen() {
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
+                                }
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { editingProfile = true }) {
+                                    Text(stringResource(R.string.edit))
                                 }
                             }
                         }
@@ -258,6 +294,94 @@ fun AccountScreen() {
                     }
                 }
 
+                // Email verification — the account's email is unverified until the emailed
+                // token is confirmed, so offer to (re)send it.
+                customer?.let { c ->
+                    if (c.email.isNotEmpty()) {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(stringResource(R.string.email_verification),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            val ok = BitesApi.sendEmailVerification(c.email)
+                                            notice = if (ok) "Verification email sent to ${c.email}"
+                                            else "Couldn't send the verification email"
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(stringResource(R.string.send_verification_email)) }
+                            }
+                        }
+                    }
+                }
+
+                if (referrals.isNotEmpty()) {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.referrals),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(8.dp))
+                            referrals.forEach { r ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(r.code ?: "#${r.id}", style = MaterialTheme.typography.bodyMedium)
+                                    Text(r.status ?: "", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                platformSavings?.let { ps ->
+                    if (ps.totalCustomerSavings > 0) {
+                        Text(
+                            stringResource(R.string.platform_savings, "$%.2f".format(ps.customerSavingsDollars)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                notice?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+
+                if (confirmDelete) {
+                    AlertDialog(
+                        onDismissRequest = { confirmDelete = false },
+                        title = { Text(stringResource(R.string.delete_account)) },
+                        text = { Text(stringResource(R.string.delete_account_warning)) },
+                        confirmButton = {
+                            Button(onClick = {
+                                scope.launch {
+                                    confirmDelete = false
+                                    if (BitesApi.deleteCustomer()) {
+                                        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                                            .edit().remove(KEY_TOKEN).apply()
+                                        BitesApi.clearToken()
+                                        loggedIn = false
+                                        customer = null
+                                        savings = null
+                                    } else {
+                                        notice = "Couldn't delete the account"
+                                    }
+                                }
+                            }) { Text(stringResource(R.string.delete_account)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmDelete = false }) {
+                                Text(stringResource(R.string.action_cancel))
+                            }
+                        },
+                    )
+                }
+
                 HorizontalDivider()
 
                 OutlinedButton(
@@ -272,6 +396,14 @@ fun AccountScreen() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(stringResource(R.string.sign_out))
+                }
+
+                TextButton(
+                    onClick = { confirmDelete = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.delete_account),
+                        color = MaterialTheme.colorScheme.error)
                 }
             }
 
@@ -435,7 +567,7 @@ fun AccountScreen() {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { resetAddressForm() },
                                 modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.cancel))
+                                Text(stringResource(R.string.action_cancel))
                             }
                             Button(
                                 onClick = {
@@ -476,7 +608,7 @@ fun AccountScreen() {
                                 modifier = Modifier.weight(1f)
                             ) {
                                 if (savingAddress) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                else Text(stringResource(R.string.save))
+                                else Text(stringResource(UiR.string.save))
                             }
                         }
                     }
@@ -496,4 +628,60 @@ private suspend fun geocodeAddress(context: Context, address: String): Pair<Doub
             } else null
         } catch (_: Exception) { null }
     }
+}
+
+/** Edit the name/email on the account; posts the whole customer to POST /customers/me. */
+@Composable
+private fun EditProfileDialog(
+    customer: Customer,
+    onDismiss: () -> Unit,
+    onSave: (Customer) -> Unit,
+) {
+    var firstName by remember { mutableStateOf(customer.firstName) }
+    var lastName by remember { mutableStateOf(customer.lastName) }
+    var email by remember { mutableStateOf(customer.email) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.edit_profile)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it },
+                    label = { Text(stringResource(R.string.first_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = lastName,
+                    onValueChange = { lastName = it },
+                    label = { Text(stringResource(R.string.last_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text(stringResource(R.string.email)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(customer.copy(
+                    firstName = firstName.trim(),
+                    lastName = lastName.trim(),
+                    email = email.trim(),
+                ))
+            }) { Text(stringResource(R.string.save_changes)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }

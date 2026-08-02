@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Kalendář</string>
-    <string name="ok">OK</string>
-    <string name="close">Zavřít</string>
-    <string name="delete">Smazat</string>
-    <string name="rename">Přejmenovat</string>
-    <string name="remove">Odstranit</string>
     <string name="search">Hledat</string>
     <string name="event_not_found">Událost nenalezena</string>
     <string name="twelve_am">12 dop.</string>
@@ -13,7 +8,6 @@
     <string name="label_description">Popis</string>
     <string name="label_location">Místo</string>
     <string name="select_calendar">Vybrat kalendář</string>
-    <string name="settings">Nastavení</string>
     <string name="no_account">(Žádný účet)</string>
     <string name="choose_calendar">Vyberte kalendář</string>
     <string name="local_account">(Lokální)</string>
@@ -32,7 +26,6 @@
     <string name="rename_calendar">Přejmenovat kalendář</string>
     <string name="new_name">Nový název</string>
     <string name="create_a_calendar">Vytvořit kalendář</string>
-    <string name="cancel">Zrušit</string>
     <string name="create">Vytvořit</string>
     <string name="no_title">(Bez názvu)</string>
     <string name="month_year_format"><xliff:g id="month_name" example="Leden">%1$s</xliff:g> <xliff:g id="year" example="2025">%2$d</xliff:g></string>
@@ -60,7 +53,6 @@
     <string name="delete_all_events">Smazat všechny události</string>
     <string name="create_new_calendar">+ Vytvořit nový kalendář</string>
     <string name="default_layout">Výchozí rozložení</string>
-    <string name="add">Přidat</string>
     <string name="layout_agenda">Agenda</string>
     <string name="layout_day">Denní</string>
     <string name="layout_work_week">Pracovní týden</string>

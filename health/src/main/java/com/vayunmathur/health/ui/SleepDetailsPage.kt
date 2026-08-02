@@ -31,6 +31,7 @@ import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.displayString
 import com.vayunmathur.health.util.formatHourAmPm
 import com.vayunmathur.health.util.formatTime24
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlin.time.Clock
@@ -47,12 +48,10 @@ fun SleepDetailsPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel)
     val tz = TimeZone.currentSystemDefault()
     val today = Clock.System.todayIn(tz)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.label_sleep)) },
-                navigationIcon = { IconNavigation(backStack) })
-        }) { padding ->
+    AppScaffold(
+        title = stringResource(R.string.label_sleep),
+        backStack = backStack,
+    ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)

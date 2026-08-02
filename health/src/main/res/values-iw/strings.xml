@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="cancel">ביטול</string>
     <string name="search">חיפוש</string>
     <string name="app_name">בריאות</string>
     <string name="grant_permissions">הענקת הרשאות</string>
@@ -27,8 +26,6 @@
     <string name="label_heart_rate">דופק</string>
     <string name="label_sleep">שינה</string>
     <string name="label_blood_pressure">לחץ דם</string>
-    <string name="save">שמירה</string>
-    <string name="add">הוספה</string>
     <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> ביום (בממוצע)</string>
     <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
     <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>

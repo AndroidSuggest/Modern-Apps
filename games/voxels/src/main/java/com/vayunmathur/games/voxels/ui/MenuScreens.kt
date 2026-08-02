@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.voxels.util.WorldInfo
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.IconButton
@@ -54,9 +56,10 @@ fun MenuScreen(
             Spacer(Modifier.height(20.dp))
 
             if (worlds.isEmpty()) {
-                Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.no_worlds_yet_create_one_to_start), color = MaterialTheme.colorScheme.onBackground)
-                }
+                EmptyState(
+                    title = stringResource(R.string.no_worlds_yet_create_one_to_start),
+                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                )
             } else {
                 LazyColumn(
                     Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -128,7 +131,7 @@ fun WorldCreatorScreen(
             )
             Spacer(Modifier.height(24.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.cancel)) }
+                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text(stringResource(UiR.string.cancel)) }
                 Button(onClick = { onCreate(name, seed) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.create_play)) }
             }
         }

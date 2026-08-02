@@ -3,6 +3,7 @@ package com.vayunmathur.everysync.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconBack
@@ -117,8 +118,9 @@ fun AccountDetailScreen(state: AccountDetailUiState, actions: AccountDetailActio
 
 @Composable
 private fun TypeToggle(labelRes: Int, checked: Boolean, onChange: (Boolean) -> Unit) {
-    ListItem(
-        content = { Text(stringResource(labelRes)) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
+    SettingsSwitchRow(
+        title = stringResource(labelRes),
+        checked = checked,
+        onCheckedChange = onChange,
     )
 }

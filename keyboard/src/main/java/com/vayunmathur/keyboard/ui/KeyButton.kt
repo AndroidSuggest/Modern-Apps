@@ -2,8 +2,6 @@
 
 package com.vayunmathur.keyboard.ui
 
-import androidx.compose.ui.res.stringResource
-import com.vayunmathur.keyboard.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -28,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -183,11 +182,15 @@ fun RowScope.SpecialKey(
     }
 }
 
-/** Space bar: tap inserts a space, long-press switches to the next IME. */
+/**
+ * Space bar: tap inserts a space, long-press switches to the next IME. [label] names the
+ * active layout, which is how the user can tell at a glance which language they are typing.
+ */
 @Composable
 fun RowScope.SpaceKey(
     height: Dp,
     weight: Float,
+    label: String,
     onSpace: () -> Unit,
     onLongPress: () -> Unit,
 ) {
@@ -209,9 +212,11 @@ fun RowScope.SpaceKey(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = stringResource(R.string.subtype_en),
+            text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

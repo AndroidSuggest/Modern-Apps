@@ -3,7 +3,6 @@ package com.vayunmathur.photos
 import android.Manifest
 import android.content.ContentUris
 import android.content.Context
-import android.widget.Toast
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.IconGroup
@@ -28,8 +28,6 @@ import com.vayunmathur.library.ui.IconPhotoLibrary
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.ShortNavigationBar
-import com.vayunmathur.library.ui.ShortNavigationBarItem
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -59,6 +57,8 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.MainNavigation
+import com.vayunmathur.library.util.BottomNavBar
+import com.vayunmathur.library.util.BottomNavBarItem
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.room.buildDatabase
@@ -318,7 +318,7 @@ private fun SecureFolderEntry(
                 onSuccess = { _, _ -> },
                 onFailure = { message ->
                     if (message != null) {
-                        Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
+                        AppMessages.show(message)
                     }
                     backStack.pop()
                 },
@@ -342,13 +342,16 @@ private enum class MainRoute(val route: Route, @StringRes val titleRes: Int, val
 
 @Composable
 fun NavigationBar(currentRoute: Route, backStack: NavBackStack<Route>) {
-    ShortNavigationBar {
+    BottomNavBar {
         MainRoute.entries.forEach {
-            ShortNavigationBarItem(it.route == currentRoute, { backStack.add(it.route) }, {
-                it.icon()
-            }, {
-                Text(stringResource(it.titleRes))
-            })
+            BottomNavBarItem(
+                selected = it.route == currentRoute,
+                // Photos pushes rather than resetting, so back returns to the
+                // previous tab instead of leaving the app.
+                onClick = { backStack.add(it.route) },
+                icon = { it.icon() },
+                label = stringResource(it.titleRes),
+            )
         }
     }
 }

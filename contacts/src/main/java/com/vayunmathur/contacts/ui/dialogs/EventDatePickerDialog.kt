@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui.dialogs
 
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -67,12 +68,12 @@ fun EventDatePickerDialog(id: String, initialDate: LocalDate?, onDismiss: () -> 
                 }
                 onDismiss()
             }) {
-                Text(stringResource(R.string.ok))
+                Text(stringResource(UiR.string.ok))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         },
         text = {

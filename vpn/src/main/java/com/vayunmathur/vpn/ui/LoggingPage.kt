@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
@@ -157,10 +158,10 @@ fun LoggingContent(
             title = { Text(stringResource(R.string.delete_all_logs)) },
             text = { Text(stringResource(R.string.this_will_permanently_remove_all_connect)) },
             confirmButton = {
-                Button(onClick = { onDeleteAllLogs(); showDeleteDialog = false }) { Text(stringResource(R.string.delete)) }
+                Button(onClick = { onDeleteAllLogs(); showDeleteDialog = false }) { Text(stringResource(UiR.string.delete)) }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.cancel)) }
+                OutlinedButton(onClick = { showDeleteDialog = false }) { Text(stringResource(UiR.string.cancel)) }
             }
         )
     }

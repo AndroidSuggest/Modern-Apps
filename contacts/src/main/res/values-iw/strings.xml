@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ok">אישור</string>
-    <string name="cancel">ביטול</string>
-    <string name="delete">מחיקה</string>
-    <string name="settings">הגדרות</string>
     <string name="app_name">אנשי קשר</string>
     <string name="contact_not_found">איש הקשר לא נמצא</string>
     <string name="share_contact">שיתוף איש קשר</string>
@@ -15,8 +11,6 @@
     <string name="on_device">במכשיר</string>
     <string name="add_contact">הוספת איש קשר</string>
     <string name="edit_contact">עריכת איש קשר</string>
-    <string name="save">שמירה</string>
-    <string name="done">סיום</string>
     <string name="first_name">שם פרטי</string>
     <string name="middle_name">שם אמצעי</string>
     <string name="last_name">שם משפחה</string>
@@ -41,7 +35,6 @@
     <string name="visible_accounts">חשבונות גלויים</string>
     <string name="add_contacts_account">הוספת חשבון אנשי קשר</string>
     <string name="account_name">שם חשבון</string>
-    <string name="add">הוספה</string>
     <string name="delete_contact_title">מחיקת איש קשר</string>
     <string name="delete_contact_confirm">למחוק איש קשר זה? לא ניתן לבטל פעולה זו.</string>
     <string name="grant_contacts_permission">נא להעניק גישה לאנשי הקשר</string>

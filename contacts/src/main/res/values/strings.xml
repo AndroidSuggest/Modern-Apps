@@ -27,10 +27,6 @@
     <string name="add_contact">Add contact</string>
     <!-- TopAppBar title for editing existing contact -->
     <string name="edit_contact">Edit contact</string>
-    <!-- Generic save button. Verb. Saves contact -->
-    <string name="save">Save</string>
-    <!-- Generic done button. Completes multi-select or edit flow -->
-    <string name="done">Done</string>
     <!-- Text field label for first/given name -->
     <string name="first_name">First name</string>
     <!-- Text field label for middle name -->
@@ -77,8 +73,6 @@
     <string name="remove_picture">Remove</string>
 
     <!-- SettingsPage -->
-    <!-- Bottom nav label and TopAppBar title for settings screen -->
-    <string name="settings">Settings</string>
     <!-- Settings section header: which accounts are visible in list -->
     <string name="visible_accounts">Visible Accounts</string>
     <!-- Settings button to add a new local contacts account -->
@@ -87,12 +81,6 @@
     <string name="enter_account_name">Enter a name for the new local account:</string>
     <!-- Text field label for account name input -->
     <string name="account_name">Account Name</string>
-    <!-- Generic add button. Verb. Confirms creation -->
-    <string name="add">Add</string>
-    <!-- Generic cancel button. Verb. Dismisses dialog -->
-    <string name="cancel">Cancel</string>
-    <!-- Generic OK confirmation button -->
-    <string name="ok">OK</string>
 
     <!-- Delete contact flow -->
     <!-- Dialog title for delete single contact confirmation -->
@@ -101,8 +89,6 @@
     <string name="delete_contact_confirm">Are you sure you want to delete this contact? This action cannot be undone.</string>
     <!-- Confirmation message with contact name quoted. %1$s = contact display name -->
     <string name="delete_contact_name_confirm">Are you sure you want to delete \"<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>\"? This action cannot be undone.</string>
-    <!-- Generic delete button. Verb. -->
-    <string name="delete">Delete</string>
 
     <!-- MainActivity permissions and hints -->
     <!-- Permission screen message when contacts permission not granted -->

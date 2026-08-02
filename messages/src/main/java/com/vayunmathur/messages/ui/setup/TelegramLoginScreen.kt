@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -70,13 +71,9 @@ fun TelegramLoginScreen(backStack: NavBackStack<Route>) {
         if (state is TelegramClient.State.Connected) backStack.pop()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.setup_telegram_title)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.setup_telegram_title),
+        backStack = backStack,
     ) { padding ->
         Column(
             modifier = Modifier

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+    <string name="close">关闭</string>
+    <string name="remove">移除</string>
+    <string name="rename">重命名</string>
+    <!-- Shown when no installed app can handle an intent. -->
+    <string name="no_app_found">没有应用可以打开此链接</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">设置</string>
+    <string name="save">保存</string>
+    <string name="add">添加</string>
+    <string name="done">完成</string>
+    <string name="ok">确定</string>
+    <string name="clear">清除</string>
+    <string name="share">分享</string>
+    <string name="undo">撤销</string>
+</resources>

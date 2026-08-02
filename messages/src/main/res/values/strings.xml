@@ -159,12 +159,8 @@
 
     <!-- AttachmentMenu: Button to share current location. Verb. -->
     <string name="share_location">Share location</string>
-    <!-- Button: Generic share verb -->
-    <string name="share">Share</string>
     <!-- Dialog: Field label for link name -->
     <string name="link_name">Link name</string>
-    <!-- Button: Cancel verb -->
-    <string name="cancel">Cancel</string>
     <!-- ComposeScreen: Hint for recipient input -->
     <string name="name_or_phone_number">Name or phone number</string>
     <!-- ConversationScreen: Button to block sender. Verb. -->
@@ -177,8 +173,6 @@
     <string name="new_conversation">New conversation</string>
     <!-- ComposeScreen: Prompt to choose account to send from -->
     <string name="choose_which_service_to_send_from">Choose which service to send from:</string>
-    <!-- Button: Delete verb, destructive -->
-    <string name="delete">Delete</string>
     <!-- Dialog title: Confirm delete conversation -->
     <string name="delete_conversation">Delete conversation?</string>
     <!-- InboxScreen: Error shown when no service connected -->

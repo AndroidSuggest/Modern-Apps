@@ -13,6 +13,7 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconDashboard
 import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.ui.IconSettings
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
@@ -100,6 +101,8 @@ sealed interface Route : NavKey {
 @Composable
 fun Navigation(vm: VpnViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.List)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     val current = backStack.last()
     MainNavigation(
         backStack,

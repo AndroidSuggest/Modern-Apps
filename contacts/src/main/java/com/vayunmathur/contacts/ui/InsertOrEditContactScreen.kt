@@ -30,6 +30,7 @@ import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.util.ContactSorting.groupKey
 import com.vayunmathur.contacts.util.ContactSorting.sortedLocale
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
@@ -91,7 +92,7 @@ fun InsertOrEditContactScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onExit) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = onExit) { Text(stringResource(UiR.string.cancel)) }
                 Button(onClick = {
                     backStack.setLast(
                         Route.EditContact(

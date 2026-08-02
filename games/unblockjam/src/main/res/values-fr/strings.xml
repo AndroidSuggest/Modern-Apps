@@ -4,7 +4,6 @@
     <string name="previous_level">Puzzle précédent</string>
     <string name="next_level">Puzzle suivant</string>
     <string name="level_selector">Sélection de puzzles</string>
-    <string name="undo">Annuler</string>
     <string name="restart">recommencer</string>
     <string name="level">Puzzle</string>
     <string name="completed">Terminé</string>

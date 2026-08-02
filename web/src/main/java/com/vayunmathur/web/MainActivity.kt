@@ -19,6 +19,7 @@ import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -142,6 +143,8 @@ private fun AppRoot(
 @Composable
 fun Navigation(viewModel: WebViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Browser)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     MainNavigation(backStack) {
         entry<Route.Browser> { BrowserPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.History> { HistoryPage(viewModel = viewModel, backStack = backStack) }

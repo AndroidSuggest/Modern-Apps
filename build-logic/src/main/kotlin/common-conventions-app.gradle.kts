@@ -79,6 +79,9 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         abortOnError = false
         // Don't fail on missing translations - empty skeletons exist for Weblate
         disable += listOf("MissingTranslation")
+        // Toast is banned repo-wide; this one fails the build even though
+        // abortOnError is off for everything else. See :lint-rules.
+        fatal += listOf("ToastUsage")
     }
 
     // Every app declares the same res/resources.properties (unqualifiedResLocale) for
@@ -186,6 +189,9 @@ dependencies {
 
     implementation(project(":library"))
     implementation(project(":library:ui"))
+
+    // Repo-specific lint checks (currently: no Toast).
+    lintChecks(project(":lint-rules"))
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlin.test.junit)

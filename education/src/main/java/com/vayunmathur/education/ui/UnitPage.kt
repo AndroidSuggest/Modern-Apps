@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FilledTonalButton
@@ -39,13 +40,9 @@ fun UnitPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, unit
     val content = viewModel.content
     val unit = content.unit(unitId)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(unit?.title ?: stringResource(R.string.unit)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = unit?.title ?: stringResource(R.string.unit),
+        backStack = backStack,
     ) { padding ->
         if (unit == null) {
             MissingContent(padding, stringResource(R.string.this_unit_is_unavailable))

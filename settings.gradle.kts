@@ -31,6 +31,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "apps"
+include(":lint-rules")
 include(":library")
 include(":library:network")
 include(":library:biometric")

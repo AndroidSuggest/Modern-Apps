@@ -15,6 +15,4 @@
     <string name="pdf_save">Zapisz</string>
     <string name="auto_detect">Automatyczne wykrywanie</string>
     <string name="safe_pdf_error">Tego pliku PDF nie można otworzyć za pomocą bezpiecznej przeglądarki. Możliwe, że jest uszkodzony lub korzysta z nieobsługiwanych funkcji.</string>
-    <string name="add">Dodaj</string>
-    <string name="cancel">Anuluj</string>
 </resources>

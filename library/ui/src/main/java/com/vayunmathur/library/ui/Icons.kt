@@ -2,6 +2,8 @@ package com.vayunmathur.library.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.DeliveryDining
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.Dehaze
@@ -1207,3 +1209,13 @@ fun IconLocalOffer(modifier: Modifier = Modifier, tint: Color = LocalContentColo
 @Composable
 fun IconPackage(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.Inventory2, "Orders", modifier, tint)
+
+/** Fork and knife — a restaurant/pickup location. */
+@Composable
+fun IconRestaurant(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Restaurant, "Restaurant", modifier, tint)
+
+/** Scooter with a delivery box — a courier in transit. */
+@Composable
+fun IconDeliveryDining(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.DeliveryDining, "Courier", modifier, tint)

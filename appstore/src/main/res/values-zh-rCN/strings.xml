@@ -4,7 +4,6 @@
     <string name="open">打开</string>
     <string name="uninstall">卸载</string>
     <string name="view_in_play_store">在 Play 商店中查看</string>
-    <string name="cancel">取消</string>
     <string name="search_f_droid_play_store">搜索 F-Droid 和 Play 商店</string>
     <string name="welcome_to_app_store">欢迎使用应用商店</string>
     <string name="combines_f_droid_repos_with_play_store_l">整合 F-Droid 仓库和 Play 商店列表</string>
@@ -21,7 +20,6 @@
     <string name="add_repository">添加仓库</string>
     <string name="repo_url">仓库网址</string>
     <string name="name_optional">名称（可选）</string>
-    <string name="add">添加</string>
     <string name="installed">已安装</string>
     <string name="installed_2">已安装 %1$s</string>
     <string name="downloading">正在下载 %1$s%%</string>

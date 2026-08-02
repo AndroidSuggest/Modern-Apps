@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -80,7 +81,7 @@ fun SettingsAddCalendarDialog(viewModel: CalendarViewModel, backStack: NavBackSt
             }) { Text(stringResource(R.string.create)) }
         },
         dismissButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
         }
     )
 }

@@ -1,6 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cancel">Скасувати</string>
-    <string name="delete">Видалити</string>
-    <string name="settings">Параметри</string>
 </resources>

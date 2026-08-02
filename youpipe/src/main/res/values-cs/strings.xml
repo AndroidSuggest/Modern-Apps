@@ -88,7 +88,6 @@
     <string name="action_remove">Odebrat</string>
     <string name="action_unblock">Odblokovat</string>
     <string name="action_unmute">Zrušit ztlumení</string>
-    <string name="cancel">Zrušit</string>
     <string name="download_options">Možnosti stažení</string>
     <string name="download">Stáhnout</string>
     <string name="resolution">Rozlišení</string>
@@ -100,7 +99,6 @@
     <string name="selected"><xliff:g id="count" example="3">%1$s</xliff:g> vybraných</string>
     <string name="clear_history">Smazat historii</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Jste si jistý, že chcete smazat veškerou historii sledování?</string>
-    <string name="clear">Smazat</string>
     <string name="downloads">Stažené</string>
     <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Vybraných</string>
     <string name="label_general">Obecné</string>

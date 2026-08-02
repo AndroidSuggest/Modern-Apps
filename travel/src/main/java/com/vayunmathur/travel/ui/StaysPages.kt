@@ -28,7 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ElevatedCard
@@ -371,13 +373,9 @@ fun StayGuestsPage(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.guest_details)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.guest_details),
+        backStack = backStack,
     ) { padding ->
         val loading = booking is StayBookingState.Loading
         Column(
@@ -493,7 +491,7 @@ fun StayConfirmationPage(
                     }
                 }
             }
-            Button(onClick = { backStack.reset(Route.Home) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.done)) }
+            Button(onClick = { backStack.reset(Route.Home) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(UiR.string.done)) }
         }
     }
 }

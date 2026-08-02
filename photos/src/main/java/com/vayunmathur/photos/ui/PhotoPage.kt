@@ -1,5 +1,7 @@
 package com.vayunmathur.photos.ui
 
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedMonthNames
 import android.app.Activity
@@ -530,7 +532,7 @@ fun PhotoDetailView(
                                             putExtra(Intent.EXTRA_STREAM, photo.uri.toUri())
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
-                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
+                                ExternalIntents.launch(context, Intent.createChooser(intent, context.getString(UiR.string.share)))
                             }
                     ) { IconShare(tint = Color.White) }
                     IconButton(onClick = { onDelete(photo) }) {
@@ -569,7 +571,7 @@ fun PhotoDetailView(
                         onClick = { showImmersive = false },
                         modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
                 ) {
-                    Text(stringResource(R.string.close))
+                    Text(stringResource(UiR.string.close))
                 }
             }
         }

@@ -13,6 +13,7 @@ import com.vayunmathur.everysync.ui.DavLoginScreen
 import com.vayunmathur.everysync.ui.EverySyncViewModel
 import com.vayunmathur.everysync.ui.SettingsScreen
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -46,6 +47,8 @@ sealed interface Route : NavKey {
 @Composable
 fun Navigation(viewModel: EverySyncViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Accounts)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     MainNavigation(backStack) {
         entry<Route.Accounts>(metadata = ListPage()) { AccountsScreen(backStack, viewModel) }
         entry<Route.AddAccount>(metadata = ListPage()) { AddAccountScreen(backStack, viewModel) }

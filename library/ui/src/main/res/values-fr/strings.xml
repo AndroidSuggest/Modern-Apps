@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">Annuler</string>
+    <string name="delete">Supprimer</string>
+    <string name="close">Fermer</string>
+    <string name="remove">Retirer</string>
+    <string name="rename">Renommer</string>
+    <!-- Shown when no installed app can handle an intent. -->
+    <string name="no_app_found">Aucune application ne peut ouvrir ce fichier</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">Paramètres</string>
+    <string name="save">Enregistrer</string>
+    <string name="add">Ajouter</string>
+    <string name="done">Terminer</string>
+    <string name="ok">Ok</string>
+    <string name="clear">Effacer</string>
+    <string name="undo">Annuler</string>
+</resources>

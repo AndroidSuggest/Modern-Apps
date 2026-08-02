@@ -17,7 +17,6 @@
     <string name="current_location">Posizione attuale</string>
     <string name="locations">Località</string>
     <string name="no_matches">Nessuna corrispondenza</string>
-    <string name="delete">Elimina</string>
     <string name="couldn_t_determine_location">Impossibile determinare la posizione</string>
     <string name="location_permission_denied">Autorizzazione localizzazione negata</string>
     <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>

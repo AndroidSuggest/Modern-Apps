@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -175,6 +176,8 @@ sealed interface Route : NavKey {
 @Composable
 fun MainGraph(viewModel: TravelViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Home)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     Box(Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
             entry<Route.Home> { HomePage(backStack, viewModel) }

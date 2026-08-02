@@ -35,17 +35,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.RadioButton
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -54,7 +59,10 @@ import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.CartItem
 import com.vayunmathur.fooddelivery.data.MerchantDetail
 import com.vayunmathur.fooddelivery.data.MenuItem
-import com.vayunmathur.fooddelivery.data.Modifier as DataModifier
+import com.vayunmathur.fooddelivery.data.MerchantRewards
+import com.vayunmathur.fooddelivery.data.SelectedModifier
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @Composable
 fun RestaurantScreen(
@@ -64,15 +72,33 @@ fun RestaurantScreen(
 ) {
     var merchant by remember { mutableStateOf<MerchantDetail?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var rewards by remember { mutableStateOf<MerchantRewards?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(merchantId) {
         merchant = BitesApi.getMerchantDetail(merchantId)
         loading = false
+        rewards = BitesApi.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
     }
 
     RestaurantContent(
         merchant = merchant,
         loading = loading,
+        rewards = rewards,
+        onJoinLoyalty = { code ->
+            scope.launch {
+                if (BitesApi.createCustomerMerchantLoyalty(code, merchantId)) {
+                    rewards = BitesApi.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
+                }
+            }
+        },
+        onLeaveLoyalty = {
+            scope.launch {
+                if (BitesApi.deleteCustomerMerchantLoyalty(merchantId)) {
+                    rewards = BitesApi.getCustomerMerchantRewards().firstOrNull { it.merchantId == merchantId }
+                }
+            }
+        },
         onBack = onBack,
         onAddItem = { item, selectedModifiers ->
             onAddToCart(CartItem(
@@ -93,10 +119,14 @@ fun RestaurantScreen(
 fun RestaurantContent(
     merchant: MerchantDetail?,
     loading: Boolean = false,
+    rewards: MerchantRewards? = null,
+    onJoinLoyalty: (String) -> Unit = {},
+    onLeaveLoyalty: () -> Unit = {},
     onBack: () -> Unit = {},
-    onAddItem: (MenuItem, List<DataModifier>) -> Unit = { _, _ -> },
+    onAddItem: (MenuItem, List<SelectedModifier>) -> Unit = { _, _ -> },
 ) {
     var customizeItem by remember { mutableStateOf<MenuItem?>(null) }
+    var query by remember { mutableStateOf("") }
 
     customizeItem?.let { item ->
         ModifierDialog(
@@ -115,9 +145,10 @@ fun RestaurantContent(
                 CircularProgressIndicator()
             }
         } else if (merchant == null) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.restaurant_not_found))
-            }
+            EmptyState(
+                title = stringResource(R.string.restaurant_not_found),
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
         } else {
             val m = merchant!!
             val itemsById = m.items.associateBy { it.id }
@@ -183,13 +214,58 @@ fun RestaurantContent(
                     }
                 }
 
+                item {
+                    MerchantRewardsCard(
+                        rewards = rewards,
+                        onJoin = onJoinLoyalty,
+                        onLeave = onLeaveLoyalty,
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text(stringResource(R.string.search_menu)) },
+                        singleLine = true,
+                        leadingIcon = { IconSearch() },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = "" }) { IconClose() }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+
+                val q = query.trim()
+                // Match on name or description; an empty query leaves the menu untouched.
+                fun matches(mi: MenuItem) = q.isEmpty() ||
+                    mi.name.contains(q, ignoreCase = true) ||
+                    mi.description.contains(q, ignoreCase = true)
+
                 val activeCategories = m.categories
                     .filter { it.isActive }
                     .sortedBy { it.sortOrder }
 
+                val anyMatch = activeCategories.any { category ->
+                    category.itemIds.mapNotNull { itemsById[it] }
+                        .any { it.isAvailable && it.isInStock && matches(it) }
+                }
+                if (!anyMatch) {
+                    item {
+                        Text(
+                            stringResource(R.string.no_menu_items_match, q),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                }
+
                 activeCategories.forEach { category ->
                     val categoryItems = category.itemIds.mapNotNull { itemsById[it] }
-                        .filter { it.isAvailable && it.isInStock }
+                        .filter { it.isAvailable && it.isInStock && matches(it) }
                     if (categoryItems.isNotEmpty()) {
                         item {
                             HorizontalDivider(Modifier.padding(horizontal = 16.dp))
@@ -216,13 +292,25 @@ fun RestaurantContent(
     }
 }
 
+/**
+ * Pick modifiers for [item]. Pass [initialSelection] to reopen it over an existing choice
+ * (editing a cart line) instead of starting empty.
+ */
 @Composable
-private fun ModifierDialog(
+fun ModifierDialog(
     item: MenuItem,
     onDismiss: () -> Unit,
-    onConfirm: (List<DataModifier>) -> Unit,
+    onConfirm: (List<SelectedModifier>) -> Unit,
+    initialSelection: List<SelectedModifier> = emptyList(),
+    confirmLabel: String? = null,
 ) {
-    val selections = remember { mutableStateMapOf<Int, MutableSet<Int>>() }
+    val selections = remember(item.id, initialSelection) {
+        mutableStateMapOf<Int, MutableSet<Int>>().apply {
+            initialSelection.forEach { sel ->
+                getOrPut(sel.modifierGroupId) { mutableSetOf() }.add(sel.modifierId)
+            }
+        }
+    }
 
     item.modifierGroups.forEach { group ->
         if (group.id !in selections) {
@@ -230,9 +318,18 @@ private fun ModifierDialog(
         }
     }
 
+    // Capture each pick together with the group it came from, so checkout never has to
+    // reconstruct modifierGroupId by searching the menu (which silently fell back to 0).
     val allModifiers = item.modifierGroups.flatMap { group ->
         val selected = selections[group.id] ?: emptySet()
-        group.modifiers.filter { it.id in selected }
+        group.modifiers.filter { it.id in selected }.map { mod ->
+            SelectedModifier(
+                modifierGroupId = group.id,
+                modifierId = mod.id,
+                name = mod.name,
+                price = mod.price,
+            )
+        }
     }
     val extrasTotal = allModifiers.sumOf { it.priceDollars }
     val totalPrice = item.priceDollars + extrasTotal
@@ -320,12 +417,12 @@ private fun ModifierDialog(
                 onClick = { onConfirm(allModifiers) },
                 enabled = requiredMet
             ) {
-                Text("Add $%.2f".format(totalPrice))
+                Text(confirmLabel ?: "Add $%.2f".format(totalPrice))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -374,6 +471,60 @@ private fun MenuItemRow(item: MenuItem, onAdd: () -> Unit) {
         }
         IconButton(onClick = onAdd) {
             IconAdd(tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/**
+ * Per-merchant reward balance plus loyalty enrolment. Joining takes the merchant's invite
+ * code; leaving removes the customer from that merchant's loyalty programme.
+ */
+@Composable
+private fun MerchantRewardsCard(
+    rewards: MerchantRewards?,
+    onJoin: (String) -> Unit,
+    onLeave: () -> Unit,
+) {
+    var code by remember { mutableStateOf("") }
+    val enrolled = rewards != null
+
+    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(stringResource(R.string.rewards), style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            if (rewards != null && rewards.balance > 0) {
+                Text(
+                    stringResource(R.string.rewards_available,
+                        "$%.2f".format(rewards.balanceDollars)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Text(stringResource(R.string.no_rewards_here_yet),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Spacer(Modifier.height(8.dp))
+            if (enrolled) {
+                OutlinedButton(onClick = onLeave) { Text(stringResource(R.string.leave_loyalty)) }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        label = { Text(stringResource(R.string.invite_code)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { onJoin(code.trim()); code = "" },
+                        enabled = code.isNotBlank(),
+                    ) { Text(stringResource(R.string.join)) }
+                }
+            }
         }
     }
 }

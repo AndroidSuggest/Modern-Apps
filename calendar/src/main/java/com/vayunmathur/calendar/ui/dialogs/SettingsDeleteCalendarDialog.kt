@@ -1,4 +1,5 @@
 package com.vayunmathur.calendar.ui.dialogs
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -41,10 +42,10 @@ fun SettingsDeleteCalendarDialog(viewModel: CalendarViewModel, backStack: NavBac
             Button(onClick = {
                 viewModel.deleteCalendar(calendarId)
                 backStack.pop()
-            }) { Text(stringResource(R.string.delete)) }
+            }) { Text(stringResource(UiR.string.delete)) }
         },
         dismissButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
         }
     )
 }

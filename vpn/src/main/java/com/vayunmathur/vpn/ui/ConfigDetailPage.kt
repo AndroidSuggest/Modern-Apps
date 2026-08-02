@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.Scaffold
@@ -40,10 +41,9 @@ fun ConfigDetailPage(backStack: NavBackStack<Route>, vm: VpnViewModel, id: Long)
     val cfg = vm.configState(id)
     var exportText by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.tunnel, cfg.name)) }, navigationIcon = { IconNavigation(backStack) })
-        }
+    AppScaffold(
+        title = stringResource(R.string.tunnel, cfg.name),
+        backStack = backStack,
     ) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).padding(16.dp).verticalScroll(rememberScrollState()),

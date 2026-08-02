@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
@@ -59,6 +60,17 @@ import java.net.URL
 
 private val Context.authDataStore by preferencesDataStore(name = "play_auth")
 private val PLAY_AUTH_JSON_KEY = stringPreferencesKey("play_auth_json")
+private val PLAY_AUTH_DISPENSED_AT_KEY = longPreferencesKey("play_auth_dispensed_at")
+
+/**
+ * How long a dispensed anonymous account is trusted before it is replaced.
+ *
+ * The dispenser hands out shared accounts that Google eventually invalidates,
+ * and a dead one fails silently - Play calls just start erroring and the app
+ * falls back to scraping. Cycling on age keeps that from being the way we find
+ * out.
+ */
+private const val PLAY_AUTH_MAX_AGE_MS = 12L * 60 * 60 * 1000
 
 enum class InstalledFilter { ALL, MODERN_APPS, FDROID, PLAYSTORE }
 
@@ -141,6 +153,9 @@ class AppStoreViewModel(
     private val sessionInstaller = SessionInstaller(context)
     private val playDownloader = PlayDownloader(context)
     private var cachedAuthData: AuthData? = null
+
+    /** When [cachedAuthData] was dispensed, for age-based cycling. */
+    private var authDispensedAt: Long = 0L
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -237,6 +252,13 @@ class AppStoreViewModel(
             val prefs = context.authDataStore.data.first()
             val jsonStr = prefs[PLAY_AUTH_JSON_KEY] ?: return
             if (jsonStr.isBlank()) return
+            val dispensedAt = prefs[PLAY_AUTH_DISPENSED_AT_KEY] ?: 0L
+            if (System.currentTimeMillis() - dispensedAt > PLAY_AUTH_MAX_AGE_MS) {
+                // Past its useful life; ensurePlayAuth will dispense a new one
+                // rather than spend a round-trip proving this is dead.
+                invalidatePlayAuth()
+                return
+            }
             try {
                 val authData = json.decodeFromString(AuthData.serializer(), jsonStr)
                 // Validate quickly via isValid (network check)
@@ -247,10 +269,67 @@ class AppStoreViewModel(
                 }
                 if (valid) {
                     cachedAuthData = authData
+                    authDispensedAt = dispensedAt
                     _playAuthState.value = PlayAuthState.Authenticated(authData)
+                } else {
+                    invalidatePlayAuth()
                 }
             } catch (_: Exception) { }
         } catch (_: Exception) { }
+    }
+
+    /**
+     * Forget the current anonymous account so the next Play call dispenses a
+     * fresh one. Clears the persisted copy too, or a restart would restore the
+     * dead credentials.
+     */
+    private suspend fun invalidatePlayAuth() {
+        cachedAuthData = null
+        authDispensedAt = 0L
+        _playAuthState.value = PlayAuthState.Idle
+        try {
+            context.authDataStore.edit { prefs ->
+                prefs.remove(PLAY_AUTH_JSON_KEY)
+                prefs.remove(PLAY_AUTH_DISPENSED_AT_KEY)
+            }
+        } catch (_: Exception) { }
+    }
+
+    /**
+     * Run a Play API call, cycling the anonymous account if it has died.
+     *
+     * Dispensed accounts are shared and Google invalidates them without
+     * warning. At the call site that failure is indistinguishable from any
+     * other error, which is why Play access used to stay broken until the app
+     * was restarted - every later call just fell through to scraping. Here a
+     * failure drops the account, dispenses another and retries once.
+     *
+     * Returns null when there is no account to use or both attempts failed, so
+     * callers keep their existing fallback. Deliberately does *not* dispense
+     * when nothing is cached: being signed out is the caller's cue to scrape,
+     * and dispensing there would put a retrying network call in front of every
+     * keystroke of search.
+     */
+    private suspend fun <T> withPlayApi(block: suspend (PlayStoreApi) -> T): T? {
+        val cached = cachedAuthData ?: return null
+        try {
+            return block(PlayStoreApi(cached, playHttpClient))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("AppStoreVM", "Play call failed; cycling anonymous account", e)
+        }
+
+        invalidatePlayAuth()
+        val fresh = ensurePlayAuth().getOrNull() ?: return null
+        return try {
+            block(PlayStoreApi(fresh, playHttpClient))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("AppStoreVM", "Play call failed again after cycling", e)
+            null
+        }
     }
 
     private suspend fun persistAuthData(authData: AuthData) {
@@ -258,17 +337,21 @@ class AppStoreViewModel(
             val jsonStr = json.encodeToString(AuthData.serializer(), authData)
             context.authDataStore.edit { prefs ->
                 prefs[PLAY_AUTH_JSON_KEY] = jsonStr
+                prefs[PLAY_AUTH_DISPENSED_AT_KEY] = authDispensedAt
             }
         } catch (_: Exception) { }
     }
 
     private suspend fun ensurePlayAuth(): Result<AuthData> {
-        // Return cached if present and still valid
+        // Return cached if present, young enough, and still valid.
         cachedAuthData?.let { cached ->
-            val valid = withContext(Dispatchers.IO) {
-                try { AuthHelper.using(playHttpClient).isValid(cached) } catch (_: Exception) { false }
+            if (System.currentTimeMillis() - authDispensedAt <= PLAY_AUTH_MAX_AGE_MS) {
+                val valid = withContext(Dispatchers.IO) {
+                    try { AuthHelper.using(playHttpClient).isValid(cached) } catch (_: Exception) { false }
+                }
+                if (valid) return Result.success(cached)
             }
-            if (valid) return Result.success(cached)
+            invalidatePlayAuth()
         }
 
         _playAuthState.value = PlayAuthState.Authenticating
@@ -280,6 +363,7 @@ class AppStoreViewModel(
         if (result.isSuccess) {
             val authData = result.getOrNull()!!
             cachedAuthData = authData
+            authDispensedAt = System.currentTimeMillis()
             _playAuthState.value = PlayAuthState.Authenticated(authData)
             _syncMessage.value = "Connected to the Play Store"
             persistAuthData(authData)
@@ -340,17 +424,11 @@ class AppStoreViewModel(
             kotlinx.coroutines.delay(400)
             _syncMessage.value = "Searching…"
             // If Play auth cached, use gplayapi search; else fallback to scraping provider
-            val results = if (cachedAuthData != null) {
-                try {
-                    val api = PlayStoreApi(cachedAuthData!!, playHttpClient)
-                    val gplay = api.search(q)
-                    if (gplay.isNotEmpty()) gplay else playProvider.search(q)
-                } catch (_: Exception) {
-                    playProvider.search(q)
-                }
-            } else {
-                playProvider.search(q)
-            }
+            // withPlayApi cycles the anonymous account if it has been
+            // invalidated, so a dead one costs a retry rather than silently
+            // demoting every later search to scraping.
+            val gplay = withPlayApi { api -> api.search(q) }
+            val results = if (!gplay.isNullOrEmpty()) gplay else playProvider.search(q)
             _playSearchResults.value = results
             _syncMessage.value = ""
         }
@@ -465,16 +543,8 @@ class AppStoreViewModel(
         if (inferredSource == AppSource.PLAYSTORE && app.description.isBlank()) {
             // Try to fetch via gplayapi if auth available, else via scraping provider
             viewModelScope.launch {
-                val details = if (cachedAuthData != null) {
-                    try {
-                        val api = PlayStoreApi(cachedAuthData!!, playHttpClient)
-                        api.getDetails(app.packageName)
-                    } catch (_: Exception) {
-                        playProvider.getDetails(app.packageName)
-                    }
-                } else {
-                    playProvider.getDetails(app.packageName)
-                }
+                val details = withPlayApi { api -> api.getDetails(app.packageName) }
+                    ?: playProvider.getDetails(app.packageName)
                 if (details != null) {
                     _selectedApp.value = details.copy(source = AppSource.PLAYSTORE)
                 }

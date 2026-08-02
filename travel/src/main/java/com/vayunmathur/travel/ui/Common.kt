@@ -1,5 +1,6 @@
 package com.vayunmathur.travel.ui
 
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
@@ -183,9 +184,9 @@ fun DateField(
                         onDate(date.toString())
                     }
                     show = false
-                }) { Text(stringResource(R.string.ok)) }
+                }) { Text(stringResource(UiR.string.ok)) }
             },
-            dismissButton = { TextButton(onClick = { show = false }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton(onClick = { show = false }) { Text(stringResource(UiR.string.cancel)) } },
         ) { DatePicker(state) }
     }
 }

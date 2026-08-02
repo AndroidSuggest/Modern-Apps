@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">Отменить</string>
+    <string name="delete">Удалить</string>
+    <string name="close">Закрыть</string>
+    <string name="remove">Удалить</string>
+    <string name="rename">Переименовать</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">Настройки</string>
+    <string name="ok">Хорошо</string>
+</resources>

@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Calendario</string>
-    <string name="ok">OK</string>
-    <string name="cancel">Annulla</string>
-    <string name="close">Chiudi</string>
-    <string name="delete">Elimina</string>
-    <string name="rename">Rinomina</string>
     <string name="create">Crea</string>
-    <string name="remove">Rimuovi</string>
     <string name="search">Cerca</string>
     <string name="event_not_found">Evento non trovato</string>
     <string name="date_range_format"><xliff:g id="start_date" example="Gen 1">%1$s</xliff:g> - <xliff:g id="end_date" example="Gen 2">%2$s</xliff:g></string>
@@ -24,7 +18,6 @@
     <string name="all_day">Tutto il giorno</string>
     <string name="does_not_repeat">Non si ripete</string>
     <string name="repeats">Ripete</string>
-    <string name="settings">Impostazioni</string>
     <string name="no_account">(Nessun account)</string>
     <string name="calendar_id_label">ID: <xliff:g id="calendar_id" example="1">%1$d</xliff:g></string>
     <string name="choose_calendar">Scegli calendario</string>
@@ -80,5 +73,4 @@
     <string name="theme_dark">Scuro</string>
     <string name="on_label">Il</string>
     <string name="month_option_nth_weekday">Il <xliff:g id="ordinal" example="secondo">%1$s</xliff:g> <xliff:g id="weekday" example="Lunedì">%2$s</xliff:g></string>
-    <string name="add">Aggiungi</string>
 </resources>

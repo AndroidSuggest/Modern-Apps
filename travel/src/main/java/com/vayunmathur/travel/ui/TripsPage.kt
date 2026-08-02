@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AssistChip
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -45,13 +46,9 @@ fun TripsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
         remote.orders.forEach { viewModel.loadOrderEvents(it.orderId) }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.my_trips)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.my_trips),
+        backStack = backStack,
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),

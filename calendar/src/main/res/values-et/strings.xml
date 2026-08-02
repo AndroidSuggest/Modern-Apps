@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="settings">Seadistused</string>
-    <string name="cancel">Katkesta</string>
-    <string name="ok">Sobib</string>
-    <string name="delete">Kustuta</string>
     <string name="app_name">Kalender</string>
-    <string name="close">Sulge</string>
-    <string name="rename">Muuda nime</string>
     <string name="create">Loo</string>
-    <string name="remove">Eemalda</string>
     <string name="search">Otsi</string>
     <string name="no_title">(Pealkirja pole)</string>
     <string name="event_not_found">Sündmust ei leidu</string>
@@ -136,7 +129,6 @@
         <item quantity="one">%1$d päev varem</item>
         <item quantity="other">%1$d päeva varem</item>
     </plurals>
-    <string name="add">Lisa</string>
     <string name="layout_short_day">Pv</string>
     <string name="holiday_calendars">Pühade kalendrid</string>
 </resources>

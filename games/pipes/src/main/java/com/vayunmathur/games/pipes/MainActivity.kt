@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -64,6 +65,7 @@ import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconStar
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.GameHubComposeHook
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavBackStack
@@ -107,6 +109,8 @@ sealed interface Route : NavKey {
 @Composable
 fun Navigation(viewModel: PipesViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.PackSelector)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     val newAchievement by viewModel.achievementsManager.newAchievement.collectAsState()
 
     GameHubComposeHook("pipes", viewModel.achievementsManager)
@@ -357,7 +361,7 @@ fun GameBoardScreen(
                     onClick = { actions.onUndo() },
                     enabled = enabled
                 ) {
-                    Text(stringResource(R.string.undo))
+                    Text(stringResource(UiR.string.undo))
                 }
                 Button(
                     onClick = { actions.onRestart() },
@@ -448,7 +452,7 @@ fun SettingsScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel) {
     val colorblind by viewModel.colorblind.collectAsState()
     Scaffold(topBar = {
         TopAppBar(
-            { Text(stringResource(R.string.settings)) },
+            { Text(stringResource(UiR.string.settings)) },
             navigationIcon = { IconNavigation(backStack) }
         )
     }) { paddingValues ->

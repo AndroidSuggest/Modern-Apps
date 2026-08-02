@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.stripe.android.PaymentConfiguration
+import com.stripe.android.Stripe
 import com.stripe.android.paymentsheet.PaymentSheet
 import com.stripe.android.paymentsheet.PaymentSheetResult
 import com.stripe.android.paymentsheet.rememberPaymentSheet
@@ -52,11 +54,15 @@ import com.vayunmathur.fooddelivery.data.AddressStore
 import com.vayunmathur.fooddelivery.data.CartItem
 import com.vayunmathur.fooddelivery.data.CheckoutAddress
 import com.vayunmathur.fooddelivery.data.CheckoutCartItem
-import com.vayunmathur.fooddelivery.data.CheckoutModifier
 import com.vayunmathur.fooddelivery.data.CheckoutRequest
+import com.vayunmathur.fooddelivery.data.Customer
+import com.vayunmathur.fooddelivery.data.Deal
+import com.vayunmathur.fooddelivery.data.OrderRewards
 import com.vayunmathur.fooddelivery.data.CheckoutResponse
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun CheckoutScreen(
@@ -75,38 +81,52 @@ fun CheckoutScreen(
     var orderSuccess by remember { mutableStateOf(false) }
     var checkoutResponse by remember { mutableStateOf<CheckoutResponse?>(null) }
 
+    var promoCode by remember { mutableStateOf("") }
+    var customer by remember { mutableStateOf<Customer?>(null) }
+    /** Reward credit applied to this order, per GET /orders/{uuid}/rewards. */
+    var rewards by remember { mutableStateOf<OrderRewards?>(null) }
+    var deals by remember { mutableStateOf<List<Deal>>(emptyList()) }
+    /** Order created by the last successful checkout call; re-priced in place, not re-created. */
+    var lastOrderUuid by remember { mutableStateOf<String?>(null) }
+    var selectedDealId by remember { mutableStateOf<Int?>(null) }
+
     val addresses = remember { AddressStore.getAll(context) }
     var selectedAddress by remember { mutableStateOf(AddressStore.getDefault(context)) }
 
+    // The reference sends the customer's identity with every checkout.
+    LaunchedEffect(Unit) { customer = BitesApi.getCustomer() }
+
     val subtotalCents = items.sumOf {
-        (it.menuItem.price + it.selectedModifiers.sumOf { m -> m.price }) * it.quantity
+        (it.menuItem.price + it.selectedModifiers.sumOf { m -> m.price * m.quantity }) * it.quantity
     }
     val subtotal = subtotalCents / 100.0
 
     val confirmedOrder = checkoutResponse?.order
+    /** Reference formula: component sum minus the reward credit applied to this order. */
+    val rewardsApplied = (rewards?.rewardsAvailable ?: 0) / 100.0
+    val payTotal = confirmedOrder?.let { it.componentTotal - rewardsApplied }
     val merchantId = items.firstOrNull()?.merchantId ?: 0
     val canFetch = items.isNotEmpty() && (isPickup || selectedAddress != null)
 
-    LaunchedEffect(isPickup, tipCents, selectedAddress?.id) {
+    // Deals the merchant currently has running; picking one sends its dealId with checkout.
+    LaunchedEffect(merchantId) {
+        deals = if (merchantId != 0) BitesApi.getActiveDealsByMerchant(merchantId) else emptyList()
+    }
+
+    LaunchedEffect(isPickup, tipCents, selectedAddress?.id, promoCode, customer?.uuid, selectedDealId) {
         if (!canFetch) return@LaunchedEffect
         checkoutResponse = null
         error = null
         fetchingPrices = true
         delay(400)
+        // Modifiers already carry their group id, price and quantity from selection time,
+        // so they go over the wire exactly as the reference cart stores them.
         val cartItems = items.map { item ->
             CheckoutCartItem(
                 itemId = item.menuItem.id,
                 quantity = item.quantity,
-                modifiers = item.selectedModifiers.map { mod ->
-                    val groupId = item.menuItem.modifierGroups
-                        .firstOrNull { g -> g.modifiers.any { it.id == mod.id } }?.id ?: 0
-                    CheckoutModifier(
-                        modifierId = mod.id,
-                        modifierGroupId = groupId,
-                        name = mod.name,
-                        price = mod.price,
-                    )
-                }
+                specialInstructions = item.specialInstructions,
+                modifiers = item.selectedModifiers,
             )
         }
         val addr = if (!isPickup) selectedAddress?.let { a ->
@@ -125,8 +145,15 @@ fun CheckoutScreen(
             address = addr,
             isPickup = isPickup,
             tips = tipCents,
+            promoCode = promoCode.trim().ifBlank { null },
+            dealId = selectedDealId,
             deliveryInstructions = deliveryInstructions.ifBlank { null },
             gateCode = selectedAddress?.gateCode?.ifBlank { null },
+            uuid = lastOrderUuid,
+            firstName = customer?.firstName?.ifBlank { null },
+            lastName = customer?.lastName?.ifBlank { null },
+            email = customer?.email?.ifBlank { null },
+            phone = customer?.phone?.ifBlank { null },
         )
         val response = BitesApi.checkout(merchantId, request)
         Log.d("Checkout", "response.order=${response?.order}")
@@ -136,6 +163,9 @@ fun CheckoutScreen(
             val o = response.order
             Log.d("Checkout", "order: foodTotal=${o.foodTotal} taxes=${o.taxes} deliveryFee=${o.deliveryFee} fees=${o.fees} tips=${o.tips} displayTotal=${o.displayTotal}")
         }
+        // Reuse the draft order on the next re-price; drop it if this call failed so we
+        // don't keep asking the server to update an order it can't find.
+        lastOrderUuid = response?.order?.uuid
         if (response == null) {
             error = "Failed to load pricing. Please try again."
         } else if (!response.isServiceable) {
@@ -144,6 +174,36 @@ fun CheckoutScreen(
             checkoutResponse = response
         }
         fetchingPrices = false
+    }
+
+    // The screen showed foodTotal+fees+taxes+deliveryFee+tips, which is the total *before*
+    // any reward credit — the reference fetches GET /orders/{uuid}/rewards and subtracts
+    // `rewardsAvailable` from that same sum before displaying it, which is why a discounted
+    // order read higher on screen than Stripe charged.
+    // The reference gates this on context.customer being present (:1255352) — it's a
+    // signed-in check, not a feature flag, so mirror it rather than always fetching.
+    LaunchedEffect(confirmedOrder?.uuid, customer?.uuid) {
+        val orderUuid = confirmedOrder?.uuid?.takeIf { it.isNotBlank() }
+        rewards = if (customer == null || orderUuid == null) null
+        else BitesApi.getOrderRewards(orderUuid)
+        Log.d("Checkout", "rewardsAvailable=${rewards?.rewardsAvailable} rate=${rewards?.rewardsRate}")
+    }
+
+    // Cross-check against what Stripe will really charge; UI follows the reference formula,
+    // but log loudly if the PaymentIntent disagrees so any remaining gap is visible.
+    LaunchedEffect(checkoutResponse?.clientSecret, payTotal) {
+        val secret = checkoutResponse?.clientSecret?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val amount = withContext(Dispatchers.IO) {
+            runCatching {
+                Stripe(context, PaymentConfiguration.getInstance(context).publishableKey)
+                    .retrievePaymentIntentSynchronous(secret)?.amount?.toInt()
+            }.onFailure { Log.w("Checkout", "PaymentIntent lookup failed", it) }.getOrNull()
+        } ?: return@LaunchedEffect
+        val shown = payTotal ?: return@LaunchedEffect
+        if (kotlin.math.abs(amount / 100.0 - shown) > 0.005) {
+            Log.w("Checkout", "MISMATCH: stripe=${amount / 100.0} shown=$shown " +
+                "componentTotal=${confirmedOrder?.componentTotal} rewards=${rewards?.rewardsAvailable}")
+        }
     }
 
     val paymentSheet = rememberPaymentSheet { result ->
@@ -347,6 +407,54 @@ fun CheckoutScreen(
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))
 
+                    if (deals.isNotEmpty()) {
+                        Text(stringResource(R.string.deals), style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        deals.forEach { deal ->
+                            val chosen = selectedDealId == deal.id
+                            Card(
+                                // Tapping a chosen deal clears it, so a deal can be removed.
+                                onClick = { selectedDealId = if (chosen) null else deal.id },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(deal.title, fontWeight = FontWeight.Medium,
+                                            style = MaterialTheme.typography.bodyMedium)
+                                        if (deal.description.isNotEmpty()) {
+                                            Text(deal.description, style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    if (chosen) {
+                                        IconCheck(modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    Text(stringResource(R.string.promo_code), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = promoCode,
+                        onValueChange = { promoCode = it },
+                        label = { Text(stringResource(R.string.promo_code_optional)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(12.dp))
+
                     PriceRow("Subtotal", subtotal)
                     if (fetchingPrices) {
                         Spacer(Modifier.height(8.dp))
@@ -362,12 +470,16 @@ fun CheckoutScreen(
                         if (confirmedOrder.deliveryFee > 0) PriceRow("Delivery fee", confirmedOrder.deliveryFeeDollars)
                         if (confirmedOrder.fees != null && confirmedOrder.fees > 0) PriceRow("Service fees", confirmedOrder.fees / 100.0)
                         if (confirmedOrder.tips > 0) PriceRow("Tip", confirmedOrder.tipsDollars)
+                        // Whatever the charge nets out below the component sum is a discount
+                        // (rewards / deal / promo / referral) — show it instead of silently
+                        // letting the total disagree with the components above it.
+                        if (rewardsApplied > 0.005) PriceRow("Rewards", -rewardsApplied)
                         Spacer(Modifier.height(8.dp))
                         HorizontalDivider()
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(stringResource(R.string.total), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("$%.2f".format(confirmedOrder.displayTotal), fontWeight = FontWeight.Bold,
+                            Text("$%.2f".format(payTotal ?: confirmedOrder.displayTotal), fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium)
                         }
                     }
@@ -400,7 +512,6 @@ fun CheckoutScreen(
                         if (paying || fetchingPrices) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
                         } else {
-                            val payTotal = confirmedOrder?.displayTotal
                             if (payTotal != null) {
                                 Text("Place Order · $%.2f".format(payTotal))
                             } else {

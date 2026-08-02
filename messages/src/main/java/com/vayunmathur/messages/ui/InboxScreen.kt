@@ -3,6 +3,7 @@ package com.vayunmathur.messages.ui
 import android.content.Context
 import android.text.format.DateFormat
 import androidx.compose.ui.platform.LocalContext
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlin.time.Instant
@@ -28,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -163,12 +165,9 @@ fun InboxScreen(
                 .fillMaxSize(),
         ) {
             if (state.rows.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        stringResource(R.string.inbox_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                EmptyState(
+                    title = stringResource(R.string.inbox_empty),
+                )
             } else {
                 LazyColumn(
                     // Room for the FAB so it doesn't cover the last row.
@@ -211,7 +210,7 @@ fun InboxScreen(
             dismissButton = {
                 com.vayunmathur.library.ui.TextButton(onClick = {
                     showSourcePicker = false
-                }) { Text(stringResource(R.string.cancel)) }
+                }) { Text(stringResource(UiR.string.cancel)) }
             },
         )
     }
@@ -230,11 +229,11 @@ fun InboxScreen(
                 com.vayunmathur.library.ui.TextButton(onClick = {
                     actions.deleteConversation(conv.id)
                     pendingDelete = null
-                }) { Text(stringResource(R.string.delete)) }
+                }) { Text(stringResource(UiR.string.delete)) }
             },
             dismissButton = {
                 com.vayunmathur.library.ui.TextButton(onClick = { pendingDelete = null }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             },
         )

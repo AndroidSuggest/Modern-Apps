@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.hub.MainRoute
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.ui.Button
@@ -41,7 +43,10 @@ fun SettingsScreen(
 ) {
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.tab_settings)) }, navigationIcon = { IconNavigation(backStack) }) }) { padding ->
+    AppScaffold(
+        title = stringResource(R.string.tab_settings),
+        backStack = backStack,
+    ) { padding ->
         LazyColumn(modifier = modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 Text(stringResource(R.string.backup_restore), style = MaterialTheme.typography.titleMedium)
@@ -72,8 +77,8 @@ fun SettingsScreen(
                 onDismissRequest = { showClearConfirm = false },
                 title = { Text(stringResource(R.string.clear_cache_1)) },
                 text = { Text(stringResource(R.string.this_will_delete_all_cached_games_achiev)) },
-                confirmButton = { Button(onClick = { viewModel.clearAllData(); showClearConfirm = false }) { Text(stringResource(R.string.clear)) } },
-                dismissButton = { com.vayunmathur.library.ui.TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.cancel)) } }
+                confirmButton = { Button(onClick = { viewModel.clearAllData(); showClearConfirm = false }) { Text(stringResource(UiR.string.clear)) } },
+                dismissButton = { com.vayunmathur.library.ui.TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(UiR.string.cancel)) } }
             )
         }
     }

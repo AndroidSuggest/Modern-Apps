@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cancel">Скасувати</string>
-    <string name="close">Закрити</string>
-    <string name="delete">Видалити</string>
-    <string name="rename">Перейменувати</string>
     <string name="create">Створити</string>
-    <string name="remove">Вилучити</string>
     <string name="search">Пошук</string>
     <string name="month_year_format">%1$s %2$d</string>
     <string name="date_range_format">%1$s - %2$s</string>
@@ -16,7 +11,6 @@
     <string name="label_location">Місцезнаходження</string>
     <string name="select_calendar">Вибрати календар</string>
     <string name="repeats">Повторюється</string>
-    <string name="settings">Параметри</string>
     <string name="calendar_id_label">ІД: %1$d</string>
     <string name="choose_calendar">Обрати календар</string>
     <string name="dropdown_freq_format">%1$s ▼</string>

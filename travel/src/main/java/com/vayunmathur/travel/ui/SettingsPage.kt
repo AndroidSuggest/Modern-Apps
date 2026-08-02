@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FilterChip
@@ -54,13 +56,9 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: TravelViewModel) {
 
     LaunchedEffect(Unit) { viewModel.loadAirlines() }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(UiR.string.settings),
+        backStack = backStack,
     ) { padding ->
         Column(
             Modifier
@@ -278,6 +276,6 @@ private fun AddFrequentFlyerForm(
             },
             enabled = iata.isNotBlank() && number.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(stringResource(R.string.save)) }
+        ) { Text(stringResource(UiR.string.save)) }
     }
 }

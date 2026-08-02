@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Kalendarz</string>
-    <string name="ok">OK</string>
-    <string name="cancel">Anuluj</string>
-    <string name="settings">Ustawienia</string>
-    <string name="delete">Usuń</string>
-    <string name="close">Zamknij</string>
-    <string name="rename">Zmień nazwę</string>
     <string name="create">Utwórz</string>
-    <string name="remove">Usuń</string>
     <string name="search">Szukaj</string>
     <string name="no_title">(Bez tytułu)</string>
     <string name="event_not_found">Nie znaleziono wydarzenia</string>
@@ -60,7 +53,6 @@
     <string name="default_layout">Domyślny układ</string>
     <string name="add_reminder">Dodaj przypomnienie</string>
     <string name="calendar_widget_description">Nadchodzące wydarzenia w skrócie — dotknij, aby otworzyć Kalendarz</string>
-    <string name="add">Dodaj</string>
     <string name="layout_work_week">Tydzień pracy</string>
     <string name="layout_full_week">Pełny tydzień</string>
     <string name="layout_short_month">M</string>

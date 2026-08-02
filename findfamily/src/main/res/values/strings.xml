@@ -233,8 +233,6 @@
     <string name="computing">Computing…</string>
     <!-- SecurityCodeDialog: Error when other party key not available. %1$s = person name. Sentence -->
     <string name="couldn_t_compute_yet_s_key_isn_t_availab">Couldn\'t compute yet — <xliff:g id="person_name" example="Bob">%1$s</xliff:g>\'s key isn\'t available. Make sure you\'re both connected, then try again.</string>
-    <!-- SecurityCodeDialog / generic: Done button. Verb -->
-    <string name="done">Done</string>
 
     <!-- UwbRangingScreen: Fallback for unknown direction/distance. Noun/adjective -->
     <string name="unknown">Unknown</string>
@@ -247,5 +245,4 @@
     <!-- UwbRangingScreen: Hint when azimuth null. Instruction sentence -->
     <string name="point_the_back_of_your_phone_toward_your">Point the back of your phone toward your contact</string>
 
-    <string name="ok">OK</string>
 </resources>

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -45,13 +46,9 @@ fun BadgesPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
     val statuses by remember { viewModel.badgeStatuses() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (band == Band.K2) stringResource(R.string.my_stickers) else stringResource(R.string.badges)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = if (band == Band.K2) stringResource(R.string.my_stickers) else stringResource(R.string.badges),
+        backStack = backStack,
     ) { padding ->
         LazyColumn(
             modifier = Modifier

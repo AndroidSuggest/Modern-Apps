@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDownload
@@ -60,9 +61,10 @@ fun DownloadsPage(
         }
     ) { paddingValues ->
         if (downloads.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.no_downloads), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            EmptyState(
+                title = stringResource(R.string.no_downloads),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+            )
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(paddingValues), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(downloads, key = { it.id }) { dl ->

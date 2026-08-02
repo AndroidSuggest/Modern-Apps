@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -39,13 +40,9 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
 
     LaunchedEffect(lessonId) { narrator?.speak(lesson?.title.orEmpty()) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(lesson?.title ?: stringResource(R.string.lesson)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = lesson?.title ?: stringResource(R.string.lesson),
+        backStack = backStack,
     ) { padding ->
         if (lesson == null) {
             MissingContent(padding, stringResource(R.string.let_s_go_back))

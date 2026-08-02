@@ -2,13 +2,7 @@
 <resources>
     <string name="app_name">Календарь</string>
     <string name="calendar_widget_description">Обзор предстоящих событий — нажмите, чтобы открыть календарь</string>
-    <string name="ok">Хорошо</string>
-    <string name="cancel">Отменить</string>
-    <string name="close">Закрыть</string>
-    <string name="delete">Удалить</string>
-    <string name="rename">Переименовать</string>
     <string name="create">Создать</string>
-    <string name="remove">Удалить</string>
     <string name="add_reminder">Добавить напоминание</string>
     <string name="search">Поиск</string>
     <string name="no_title">(Без названия)</string>
@@ -22,7 +16,6 @@
     <string name="all_day">В течение всего дня</string>
     <string name="does_not_repeat">Не повторяется</string>
     <string name="repeats">Повторы</string>
-    <string name="settings">Настройки</string>
     <string name="no_account">(Учетная запись отсутствует)</string>
     <string name="choose_calendar">Выберите календарь</string>
     <string name="local_account">(Местные)</string>

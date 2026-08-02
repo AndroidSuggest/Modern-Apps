@@ -17,7 +17,6 @@
     <string name="grant_image_video_permissions">Udziel uprawnień do obrazów/wideo</string>
     <string name="grant_storage_permission">Udziel uprawnienia do przechowywania</string>
     <string name="openassistant_not_found">Aplikacja OpenAssistant nie jest zainstalowana. Zainstaluj ją, aby włączyć tę funkcję.</string>
-    <string name="close">Zamknij</string>
     <string name="search_placeholder">Szukaj zdjęć…</string>
     <string name="model_downloading_description">Trwa pobieranie modelu SI. Może to potrwać kilka minut, w zależności od połączenia.</string>
     <string name="photo_widget_description">Zmieniające się zdjęcie z Twojej galerii — stuknij, aby wylosować</string>
@@ -34,5 +33,4 @@
         <item quantity="other">%1$d osób</item>
     </plurals>
     <string name="view_360">Widok 360°</string>
-    <string name="cancel">Anuluj</string>
 </resources>

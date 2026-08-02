@@ -1,4 +1,5 @@
 package com.vayunmathur.calendar.ui.dialogs
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DatePicker
 import com.vayunmathur.library.ui.DatePickerDialog
@@ -37,7 +38,7 @@ fun CalendarSetDateDialog(backStack: NavBackStack<Route>, dateViewingEpochDays: 
             }
         },
         dismissButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
         }
     ) {
         DatePicker(state)

@@ -1,12 +1,13 @@
 package com.vayunmathur.passwords
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.fragment.app.FragmentActivity
+import com.vayunmathur.library.util.openSettingsIfRequested
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.ListDetailPage
@@ -59,7 +60,7 @@ class MainActivity : FragmentActivity() {
                 }
             },
             onFailure = { message ->
-                message?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+                message?.let { AppMessages.show(it) }
                 finish()
             }
         )
@@ -91,6 +92,8 @@ fun Navigation(
     passphrase: String,
 ) {
     val backStack = rememberNavBackStack<Route>(Route.Menu)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     MainNavigation(backStack) {
         entry<Route.Menu>(metadata = ListPage()) {
             MenuPage(backStack, passwordsViewModel)

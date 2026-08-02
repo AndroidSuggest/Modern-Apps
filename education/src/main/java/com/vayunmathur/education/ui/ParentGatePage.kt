@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -64,7 +65,7 @@ fun ParentGatePage(backStack: NavBackStack<Route>, viewModel: EducationViewModel
                 Text(stringResource(R.string.incorrect_pin), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
                 Button(
                     onClick = {
                         if (viewModel.verifyPin(pin)) {

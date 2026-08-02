@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
@@ -35,13 +36,9 @@ fun LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, le
     val content = viewModel.content
     val lesson = content.lesson(lessonId)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(lesson?.title ?: stringResource(R.string.lesson)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = lesson?.title ?: stringResource(R.string.lesson),
+        backStack = backStack,
     ) { padding ->
         if (lesson == null) {
             MissingContent(padding, stringResource(R.string.this_lesson_is_unavailable))

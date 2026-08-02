@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.plus
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -77,7 +78,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.settings)) },
+                title = { Text(stringResource(UiR.string.settings)) },
             )
         },
         floatingActionButton = {
@@ -104,7 +105,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                 val hasCalendarPermissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
                     .all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
 
-                SafeListItem(
+                ListItem(
                     content = { Text(stringResource(R.string.sync_contacts_calendar)) },
                     trailingContent = {
                         if (hasCalendarPermissions) {
@@ -135,7 +136,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 val showAccountLabels by viewModel.showAccountLabels.collectAsStateWithLifecycle()
-                SafeListItem(
+                ListItem(
                     content = { Text(stringResource(R.string.show_account_labels)) },
                     trailingContent = {
                         Switch(
@@ -155,7 +156,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                SafeListItem(
+                ListItem(
                     content = { Text(stringResource(R.string.export_contacts)) },
                     trailingContent = {
                         IconButton(onClick = { exportLauncher.launch("contacts.vcf") }) {
@@ -164,7 +165,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                     }
                 )
                 HorizontalDivider()
-                SafeListItem(
+                ListItem(
                     content = { Text(stringResource(R.string.import_vcf_file)) },
                     supportingContent = { Text(stringResource(R.string.import_contacts_from_vcf_files)) },
                     modifier = Modifier.clickable {
@@ -196,7 +197,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
             items(accounts, key = { "${it.type}|${it.name}" }) { account ->
                 val isVisible = account.name !in hiddenAccounts
                 val onDevice = stringResource(R.string.on_device)
-                SafeListItem(
+                ListItem(
                     content = { Text(account.name.ifEmpty { onDevice }) },
                     supportingContent = { Text(account.type) },
                     trailingContent = {

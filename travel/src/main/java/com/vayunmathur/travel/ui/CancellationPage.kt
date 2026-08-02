@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -71,7 +72,7 @@ fun CancellationPage(
                             backStack.reset(Route.Home, Route.Trips)
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.done)) }
+                    ) { Text(stringResource(UiR.string.done)) }
                 }
                 state.quote != null -> {
                     val quote = state.quote!!

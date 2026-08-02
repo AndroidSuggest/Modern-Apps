@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -48,13 +49,9 @@ fun ExplorerCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewM
     val course = content.course(courseId)
     val accent = course?.let { subjectColor(it.subject) } ?: MaterialTheme.colorScheme.primary
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(course?.title ?: stringResource(R.string.topic)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = course?.title ?: stringResource(R.string.topic),
+        backStack = backStack,
     ) { padding ->
         if (course == null) {
             MissingContent(padding, stringResource(R.string.this_topic_is_unavailable))

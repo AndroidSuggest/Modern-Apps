@@ -3,6 +3,7 @@ package com.vayunmathur.games.solitaire.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +26,7 @@ fun GameActionBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Button(onClick = onUndo, enabled = undoEnabled) {
-            Text(stringResource(R.string.undo))
+            Text(stringResource(UiR.string.undo))
         }
         extraContent()
         Button(onClick = onGiveUp) {

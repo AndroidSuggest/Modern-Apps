@@ -10,7 +10,6 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.odf.OdfCell
-import com.vayunmathur.library.ui.odf.OdfContentBlock
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.OdfFrame
 import com.vayunmathur.library.ui.odf.OdfParagraph
@@ -19,10 +18,6 @@ import com.vayunmathur.library.ui.odf.OdfSheet
 import com.vayunmathur.library.ui.odf.OdfSlide
 import com.vayunmathur.library.ui.odf.OdfSlideElement
 import com.vayunmathur.library.ui.odf.OdfSpan
-import com.vayunmathur.library.ui.odf.OdfTable
-import com.vayunmathur.library.ui.odf.OdfTableCell
-import com.vayunmathur.library.ui.odf.OdfTableColumn
-import com.vayunmathur.library.ui.odf.OdfTableRow
 import com.vayunmathur.library.ui.odf.ParagraphStyle
 import com.vayunmathur.office.HomeScreen
 import com.vayunmathur.office.OfficeLightTheme
@@ -32,61 +27,21 @@ private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
 // --- Sample documents ------------------------------------------------------
 //
-// Hand-built [OdfDocument]s rather than the real .docx/.xlsx/.pptx files the old on-device
-// generator opened. The parser is not involved, so these render with no file, no storage
-// permission and no native code.
+// The text document is the real metadata_data/assets/sample1.docx, run through the app's own
+// importer offline (see SampleDocx.kt). The spreadsheet and presentation stay hand-built: the
+// spreadsheet's values would otherwise need the native formula engine, which Layoutlib cannot
+// load, and no sample .pptx renders meaningfully without its media.
 
-private fun para(
-    text: String,
-    style: ParagraphStyle = ParagraphStyle.BODY,
-    bold: Boolean = false,
-    italic: Boolean = false,
-) = OdfContentBlock.Paragraph(
-    OdfParagraph(listOf(OdfSpan(text, bold = bold, italic = italic)), style)
-)
-
-private fun tableCell(text: String, bold: Boolean = false) =
-    OdfTableCell(listOf(OdfParagraph(listOf(OdfSpan(text, bold = bold)))))
-
+/**
+ * `metadata_data/assets/sample1.docx`, imported by the app's own OOXML importer — so the
+ * listing image is the app opening a real Word document, not a model built to look like one.
+ *
+ * The import runs offline and its result is checked in as [SampleDocxBlocks]; see that file
+ * for why a preview cannot parse the .docx itself.
+ */
 private val SampleTextDocument = OdfDocument.TextDocument(
-    title = "Field Report.odt",
-    content = listOf(
-        para("Annual Field Report", ParagraphStyle.HEADING1),
-        para("Regional survey committee — season 2025", ParagraphStyle.BODY, italic = true),
-        para(""),
-        para("1. Introduction", ParagraphStyle.HEADING2),
-        para(
-            "This report summarises the observations collected over the 2025 season across " +
-                "the fourteen monitored sites, together with the method used to reconcile the " +
-                "readings taken by the two independent teams."
-        ),
-        para(""),
-        para(
-            "Where a site was inaccessible for part of the season the affected interval is " +
-                "marked in the summary table rather than interpolated."
-        ),
-        para(""),
-        para("2. Coverage by quarter", ParagraphStyle.HEADING2),
-        OdfContentBlock.Table(
-            OdfTable(
-                name = "Coverage",
-                columns = listOf(OdfTableColumn(), OdfTableColumn(), OdfTableColumn()),
-                rows = listOf(
-                    OdfTableRow(listOf(tableCell("Quarter", bold = true), tableCell("Visits", bold = true), tableCell("Coverage", bold = true))),
-                    OdfTableRow(listOf(tableCell("Q1"), tableCell("112"), tableCell("96%"))),
-                    OdfTableRow(listOf(tableCell("Q2"), tableCell("108"), tableCell("93%"))),
-                    OdfTableRow(listOf(tableCell("Q3"), tableCell("117"), tableCell("98%"))),
-                    OdfTableRow(listOf(tableCell("Q4"), tableCell("101"), tableCell("87%"))),
-                ),
-                headerRowCount = 1,
-            )
-        ),
-        para(""),
-        para(
-            "Variance between the two teams stayed inside the agreed tolerance at every site " +
-                "except site 11, which is discussed separately in section 3.2."
-        ),
-    ),
+    title = "sample1.docx",
+    content = SampleDocxBlocks,
 )
 
 private fun sheetCell(

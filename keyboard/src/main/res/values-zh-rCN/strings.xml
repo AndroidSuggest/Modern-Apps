@@ -5,7 +5,6 @@
     <string name="abc">ABC</string>
     <string name="enable_keyboard">启用键盘</string>
     <string name="choose_keyboard">选择键盘</string>
-    <string name="settings">设置</string>
     <string name="key_height">按键高度</string>
     <string name="theme">主题</string>
     <string name="follows_the_system_light_dark_theme_and">遵循系统浅色/深色主题和 Material You 配色</string>

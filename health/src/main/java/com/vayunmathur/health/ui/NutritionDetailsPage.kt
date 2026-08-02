@@ -23,6 +23,7 @@ import com.vayunmathur.health.ui.components.GroupedSectionDivider
 import com.vayunmathur.health.ui.components.HealthRow
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.displayString
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.round
@@ -41,13 +42,9 @@ fun NutritionDetailsPage(backStack: NavBackStack<Route>, viewModel: HealthViewMo
 
     val nutrients = nutrientCatalog
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.nutrition_breakdown)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        }
+    AppScaffold(
+        title = stringResource(R.string.nutrition_breakdown),
+        backStack = backStack,
     ) { padding ->
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             val day = today.minus(initialPage - page, DateTimeUnit.DAY)

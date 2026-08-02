@@ -7,7 +7,15 @@ import kotlinx.serialization.json.Json
 object CartStore {
 
     private const val PREFS_NAME = "fooddelivery_cart"
-    private const val KEY = "cart_items"
+
+    /**
+     * v2: modifiers changed from `Modifier{id,name,price}` to
+     * `SelectedModifier{modifierGroupId,modifierId,...}`. A v1 cart would still decode
+     * (ignoreUnknownKeys drops the old `id`) but every modifier would silently carry
+     * modifierId=0 and modifierGroupId=0 and check out mispriced — so read a new key and
+     * let stale carts fall away instead.
+     */
+    private const val KEY = "cart_items_v2"
 
     private val json = Json { ignoreUnknownKeys = true }
 

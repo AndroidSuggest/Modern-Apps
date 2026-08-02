@@ -26,9 +26,6 @@
     <string name="listening_for_new_mail">Oczekiwanie na nową pocztę</string>
     <string name="compose">Utwórz</string>
     <string name="body_label">Treść</string>
-    <string name="settings">Ustawienia</string>
     <string name="drafts">Wersje robocze</string>
-    <string name="save">Zapisz</string>
-    <string name="cancel">Anuluj</string>
     <string name="email_widget_description">Ostatnie wiadomości z Twojej ujednoliconej skrzynki odbiorczej — dotknij, aby otworzyć pocztę e-mail</string>
 </resources>

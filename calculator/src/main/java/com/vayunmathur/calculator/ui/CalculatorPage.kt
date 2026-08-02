@@ -31,6 +31,7 @@ import com.vayunmathur.calculator.util.CalculatorActions
 import com.vayunmathur.calculator.util.CalculatorUiState
 import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.calculator.util.HistoryEntry
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ButtonDefaults
@@ -266,10 +267,10 @@ private fun HistoryDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(UiR.string.close)) } },
         dismissButton = {
             if (history.isNotEmpty()) {
-                TextButton({ actions.clearHistory(); onDismiss() }) { Text(stringResource(R.string.clear)) }
+                TextButton({ actions.clearHistory(); onDismiss() }) { Text(stringResource(UiR.string.clear)) }
             }
         },
     )

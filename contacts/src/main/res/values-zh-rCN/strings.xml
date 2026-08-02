@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="ok">确定</string>
-    <string name="cancel">取消</string>
-    <string name="delete">删除</string>
-    <string name="settings">设置</string>
     <string name="app_name">联系人</string>
     <string name="contact_not_found">未找到联系人</string>
     <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g>（<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>）</string>
@@ -17,7 +13,6 @@
     <string name="on_device">设备端</string>
     <string name="add_contact">添加联系人</string>
     <string name="edit_contact">编辑联系人</string>
-    <string name="save">保存</string>
     <string name="first_name">名字</string>
     <string name="middle_name">中间名</string>
     <string name="last_name">姓氏</string>
@@ -44,7 +39,6 @@
     <string name="add_contacts_account">添加联系人账号</string>
     <string name="enter_account_name">请输入新本地账号的名称：</string>
     <string name="account_name">账号名称</string>
-    <string name="add">添加</string>
     <string name="delete_contact_title">删除联系人</string>
     <string name="delete_contact_confirm">确定要删除此联系人吗？此操作无法撤销。</string>
     <string name="delete_contact_name_confirm">确定要删除“<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>”吗？此操作无法撤销。</string>
@@ -86,7 +80,6 @@
     <plurals name="contacts_count">
         <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> 个联系人</item>
     </plurals>
-    <string name="done">完成</string>
     <string name="import_vcf_file">导入 .vcf 文件</string>
     <string name="import_to_existing_account">导入到现有账号</string>
     <string name="create_new_account_option">创建新账号</string>

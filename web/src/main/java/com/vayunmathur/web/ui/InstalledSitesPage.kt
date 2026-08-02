@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -52,13 +53,9 @@ fun InstalledSitesPage(
     val context = LocalContext.current
     val installed by viewModel.installedSites.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.installed_apps)) },
-                navigationIcon = { IconNavigation(backStack) }
-            )
-        }
+    AppScaffold(
+        title = stringResource(R.string.installed_apps),
+        backStack = backStack,
     ) { paddingValues ->
         if (installed.isEmpty()) {
             Box(

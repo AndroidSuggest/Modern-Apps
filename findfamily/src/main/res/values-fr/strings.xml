@@ -100,5 +100,4 @@
     <string name="uwb_status_failed">Échec de la recherche « À proximité » (UWB).</string>
     <string name="request_from">Demande de %1$s</string>
     <string name="status_already_requested">Demande de partage déjà envoyée à cette personne</string>
-    <string name="done">Terminer</string>
 </resources>

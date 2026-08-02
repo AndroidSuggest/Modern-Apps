@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">İptal et</string>
+    <string name="delete">Sil</string>
+    <string name="close">Kapat</string>
+    <string name="remove">Kaldır</string>
+    <string name="rename">Yeniden Adlandır</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">Ayarlar</string>
+</resources>

@@ -17,7 +17,6 @@
     <string name="grant_image_video_permissions">Luba õigused piltide ja videote vaatamiseks</string>
     <string name="grant_storage_permission">Luba õigused andmeruumi kasutamiseks</string>
     <string name="openassistant_not_found">OpenAssistant pole paigaldatud. Antud funktsionaalsuse kasutamiseks palun tee seda.</string>
-    <string name="close">Sulge</string>
     <string name="search_placeholder">Otsi fotosid…</string>
     <string name="model_downloading_description">Tehisaru mudel on allalaadimisel. Sõltuvalt sinu nutiseadme ühendusest võib selleks kuluda õige mitu minutit.</string>
     <string name="label_people">Inimesed</string>
@@ -37,7 +36,6 @@
     <string name="view_360">360° vaade</string>
     <string name="view_panorama">Vaata panoraampilti</string>
     <string name="level">Tase</string>
-    <string name="cancel">Katkesta</string>
     <string name="secure_folder_is_empty">Turvaline kaust on tühi</string>
     <string name="trash_is_empty">Prügikast on tühi</string>
     <string name="panorama">Panoraampilt</string>
@@ -45,7 +43,6 @@
     <string name="reset">Lähtesta</string>
     <string name="export_as_webp">Ekspordi WebP-failina</string>
     <string name="export_as_png">Ekspordi PNG-failina</string>
-    <string name="done">Valmis</string>
     <string name="apply">Rakenda</string>
     <string name="opacity">Läbipaistmatus</string>
     <string name="thickness">Paksus</string>

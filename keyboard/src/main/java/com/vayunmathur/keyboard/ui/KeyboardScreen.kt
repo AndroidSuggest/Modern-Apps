@@ -18,6 +18,7 @@ import com.vayunmathur.keyboard.ime.EnterAction
 import com.vayunmathur.keyboard.ime.ImeActions
 import com.vayunmathur.keyboard.ime.KeyboardState
 import com.vayunmathur.keyboard.ime.TextVariation
+import com.vayunmathur.keyboard.util.KeyboardLayout
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.Layouts
 import com.vayunmathur.keyboard.util.ShiftState
@@ -25,6 +26,7 @@ import com.vayunmathur.library.ui.IconArrowForward
 import com.vayunmathur.library.ui.IconBackspace
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconEmoji
+import com.vayunmathur.library.ui.IconLanguage
 import com.vayunmathur.library.ui.IconReturn
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconSend
@@ -58,9 +60,12 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
         ) {
             // The suggestion strip belongs to text entry only; numeric/phone/emoji pages
             // never compose words, so (like FUTO) they show no strip.
-            val textPage = state.page == KeyboardPage.LETTERS ||
+            // The strip is also hidden for layouts the bundled (English) dictionary can't
+            // serve, rather than leaving a permanently empty band above the keys.
+            val textPage = (state.page == KeyboardPage.LETTERS ||
                 state.page == KeyboardPage.SYMBOLS ||
-                state.page == KeyboardPage.MORE_SYMBOLS
+                state.page == KeyboardPage.MORE_SYMBOLS) &&
+                state.settings.activeLayout.englishDictionary
             if (state.settings.showSuggestions && textPage) {
                 SuggestionStrip(
                     height = 44.dp,
@@ -89,27 +94,44 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
     }
 }
 
+/**
+ * The letter page for whichever layout is active. Rows differ in length between layouts
+ * (QWERTY is 10/9/7, ЙЦУКЕН is 12/11/9), so short rows are centred inside the widest one
+ * and the shift/backspace pair takes whatever the bottom row leaves over — which reproduces
+ * QWERTY's familiar 0.5 spacers and 1.5-wide shift without hard-coding them.
+ */
 @Composable
 private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp) {
-    val rows = Layouts.LETTER_ROWS
+    val layout = state.settings.activeLayout
+    val rows = layout.rows
     val shift = state.shift
+    val slack = { row: Int -> (layout.width - rows[row].length) / 2f }
     if (state.settings.numberRow) {
         Row(Modifier.fillMaxWidth()) {
             "1234567890".forEach { SymbolKey(it, keyHeight, actions) }
         }
     }
     Row(Modifier.fillMaxWidth()) {
-        rows[0].forEach { LetterKey(it, shift, keyHeight, actions) }
+        if (slack(0) > 0f) Spacer(Modifier.weight(slack(0)))
+        rows[0].forEachIndexed { i, c -> LetterKey(layout, 0, i, c, shift, keyHeight, actions) }
+        if (slack(0) > 0f) Spacer(Modifier.weight(slack(0)))
     }
     Row(Modifier.fillMaxWidth()) {
-        Spacer(Modifier.weight(0.5f))
-        rows[1].forEach { LetterKey(it, shift, keyHeight, actions) }
-        Spacer(Modifier.weight(0.5f))
+        if (slack(1) > 0f) Spacer(Modifier.weight(slack(1)))
+        rows[1].forEachIndexed { i, c -> LetterKey(layout, 1, i, c, shift, keyHeight, actions) }
+        if (slack(1) > 0f) Spacer(Modifier.weight(slack(1)))
     }
     Row(Modifier.fillMaxWidth()) {
-        ShiftKey(keyHeight, 1.5f, shift, actions::onShift)
-        rows[2].forEach { LetterKey(it, shift, keyHeight, actions) }
-        RepeatKey(keyHeight, 1.5f, actions::onBackspace) { IconBackspace() }
+        val edge = slack(2).coerceAtLeast(1.25f)
+        // Arabic, Hebrew and Persian have neither case nor a shift layer; the key would do
+        // nothing, so the row keeps its alignment with a gap instead.
+        if (layout.hasShift) {
+            ShiftKey(keyHeight, edge, shift, actions::onShift)
+        } else {
+            Spacer(Modifier.weight(edge))
+        }
+        rows[2].forEachIndexed { i, c -> LetterKey(layout, 2, i, c, shift, keyHeight, actions) }
+        RepeatKey(keyHeight, edge, actions::onBackspace) { IconBackspace() }
     }
     // Email/URL fields surface @ or / where the comma usually sits.
     val commaChar = when (state.textVariation) {
@@ -123,9 +145,22 @@ private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp
     )
 }
 
+/**
+ * One letter key. What shift produces is the layout's business — upper case for most, a
+ * whole second character for Devanagari, Thai, Georgian and Turkish's dotted i — so the
+ * label comes from [KeyboardLayout.charAt] rather than from `uppercaseChar()` here.
+ */
 @Composable
-private fun RowScope.LetterKey(c: Char, shift: ShiftState, keyHeight: Dp, actions: ImeActions) {
-    val display = if (shift != ShiftState.OFF) c.uppercaseChar().toString() else c.toString()
+private fun RowScope.LetterKey(
+    layout: KeyboardLayout,
+    row: Int,
+    col: Int,
+    c: Char,
+    shift: ShiftState,
+    keyHeight: Dp,
+    actions: ImeActions,
+) {
+    val display = layout.charAt(row, col, shift != ShiftState.OFF)
     CharKey(
         label = display,
         height = keyHeight,
@@ -322,8 +357,18 @@ private fun BottomRow(
             Text(leftLabel, fontSize = 14.sp)
         }
         SpecialKey(keyHeight, 1f, onClick = { actions.setPage(KeyboardPage.EMOJI) }) { IconEmoji() }
+        // The globe earns its place on the row only once there is somewhere to switch to.
+        if (state.settings.layouts.size > 1) {
+            SpecialKey(keyHeight, 1f, onClick = actions::nextLayout) { IconLanguage() }
+        }
         CharKey(commaChar, keyHeight, 1f, onClick = { actions.onChar(commaChar) })
-        SpaceKey(keyHeight, 4f, actions::onSpace, actions::switchToNextIme)
+        SpaceKey(
+            height = keyHeight,
+            weight = 4f,
+            label = state.settings.activeLayout.name,
+            onSpace = actions::onSpace,
+            onLongPress = actions::switchToNextIme,
+        )
         CharKey(periodChar, keyHeight, 1f, onClick = { actions.onChar(periodChar) })
         EnterKey(state, actions, keyHeight, 1.5f)
     }

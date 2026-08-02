@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DatePicker
 import com.vayunmathur.library.ui.DatePickerDialog
@@ -65,13 +67,9 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
     // Which unit (if any) is currently having its deadline picked.
     var pendingDeadlineUnitId by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.parent_settings)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.parent_settings),
+        backStack = backStack,
     ) { padding ->
         Column(
             Modifier
@@ -179,10 +177,10 @@ fun ParentPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel) {
                         }
                         pendingDeadlineUnitId = null
                     },
-                ) { Text(stringResource(R.string.ok)) }
+                ) { Text(stringResource(UiR.string.ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeadlineUnitId = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { pendingDeadlineUnitId = null }) { Text(stringResource(UiR.string.cancel)) }
             },
         ) {
             DatePicker(state)
@@ -282,6 +280,6 @@ private fun ChangePinRow(onSetPin: (String) -> Unit) {
             onClick = { onSetPin(pin); pin = ""; saved = true },
             enabled = pin.length >= 4,
             modifier = Modifier.padding(start = 8.dp),
-        ) { Text(if (saved) stringResource(R.string.saved) else stringResource(R.string.save)) }
+        ) { Text(if (saved) stringResource(R.string.saved) else stringResource(UiR.string.save)) }
     }
 }

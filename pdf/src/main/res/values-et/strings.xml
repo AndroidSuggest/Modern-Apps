@@ -14,9 +14,7 @@
     <string name="continue_label">Jätka</string>
     <string name="auto_detect">Tuvasta automatselt</string>
     <string name="pdf_save">Salvesta</string>
-    <string name="add">Lisa</string>
     <string name="safe_pdf_error">Selle PDF-faili avamine ohutus režiimis polnud võimalik. Ta võib olla kahjustatud või on kasutusel mõni mittetoetatud funktsionaalsus.</string>
-    <string name="cancel">Katkesta</string>
     <string name="failed_to_save_pdf">PDF-faili salvestamine ei õnnestunud</string>
     <string name="password">Salasõna</string>
     <string name="encrypt_with_password">Krüpti salasõnaga</string>
@@ -29,7 +27,6 @@
     <string name="style">Stiil</string>
     <string name="save_as_u2026">Salvesta kui…</string>
     <string name="aa">Aa</string>
-    <string name="done">Valmis</string>
     <string name="color">Värv</string>
     <string name="searchable_ocr">Otsitav (tekstutuvastusega)</string>
     <string name="append_image">Lisa pilt uueks leheks</string>

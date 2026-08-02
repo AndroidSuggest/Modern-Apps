@@ -29,7 +29,6 @@ import com.vayunmathur.keyboard.ui.KeyboardScreen
 import com.vayunmathur.keyboard.util.Dictionary
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.KeyboardSettings
-import com.vayunmathur.keyboard.util.Layouts
 import com.vayunmathur.keyboard.util.ShiftState
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
@@ -105,6 +104,12 @@ class KeyboardService : InputMethodService(),
         scope.launch { ds.booleanFlow(keys.AUTO_CORRECT).collectLatest { update { copy(autoCorrect = it) } } }
         scope.launch { ds.booleanFlow(keys.NUMBER_ROW).collectLatest { update { copy(numberRow = it) } } }
         scope.launch { ds.doubleFlow(keys.KEY_HEIGHT).collectLatest { update { copy(keyHeightScale = it.toFloat()) } } }
+        scope.launch {
+            ds.stringFlow(keys.LAYOUTS).collectLatest {
+                update { copy(layoutIds = KeyboardSettings.decodeLayouts(it)) }
+            }
+        }
+        scope.launch { ds.stringFlow(keys.ACTIVE_LAYOUT).collectLatest { update { copy(activeLayoutId = it) } } }
     }
 
     private inline fun update(transform: KeyboardSettings.() -> KeyboardSettings) {
@@ -260,11 +265,14 @@ class KeyboardService : InputMethodService(),
 
     /**
      * Composing (word tracking) is needed for either suggestions or autocorrect, and only
-     * makes sense for plain text fields (never passwords or the numeric layout).
+     * makes sense for plain text fields (never passwords or the numeric layout). The only
+     * dictionary we ship is English, so it also stays off for every other layout rather than
+     * offering English words to someone writing Greek.
      */
     private fun useComposing(): Boolean =
         (kbState.settings.showSuggestions || kbState.settings.autoCorrect) &&
-            !kbState.passwordField && kbState.basePage == KeyboardPage.LETTERS
+            !kbState.passwordField && kbState.basePage == KeyboardPage.LETTERS &&
+            kbState.settings.activeLayout.englishDictionary
 
     // --- ImeActions ---
 
@@ -285,7 +293,7 @@ class KeyboardService : InputMethodService(),
     }
 
     override fun onCharLongPress(base: Char) {
-        val alts = Layouts.LETTER_ALTERNATES[base] ?: return
+        val alts = kbState.settings.activeLayout.alternates[base] ?: return
         if (alts.isEmpty()) return
         feedback()
         val ic = currentInputConnection ?: return
@@ -392,6 +400,24 @@ class KeyboardService : InputMethodService(),
         updateAutoCapShift()
     }
 
+    /**
+     * Cycle to the next layout the user enabled (the globe key, which only appears when
+     * there is more than one). The layouts may not even share a script, so anything still
+     * composing is committed first rather than carried across.
+     */
+    override fun nextLayout() {
+        feedback()
+        val ids = kbState.settings.layouts.map { it.id }
+        if (ids.size < 2) return
+        val next = ids[(ids.indexOf(kbState.settings.activeLayout.id) + 1) % ids.size]
+        currentInputConnection?.let { commitCurrentWord(it, autoCorrect = false) }
+        kbState.settings = kbState.settings.copy(activeLayoutId = next)
+        kbState.shift = ShiftState.OFF
+        kbState.suggestions = emptyList()
+        scope.launch { ds.setString(KeyboardSettings.Keys.ACTIVE_LAYOUT, next) }
+        updateAutoCapShift()
+    }
+
     override fun switchToNextIme() {
         feedback()
         val switched = switchToNextInputMethod(false)
@@ -434,6 +460,9 @@ class KeyboardService : InputMethodService(),
     /** Auto-capitalize the shift key when the cursor sits at the start of a sentence. */
     private fun updateAutoCapShift() {
         if (kbState.basePage != KeyboardPage.LETTERS) return
+        // Shift is a second character layer, not upper case, in scripts like Devanagari or
+        // Thai — auto-capitalizing there would silently swap the whole layout.
+        if (!kbState.settings.activeLayout.cased) return
         if (kbState.passwordField || kbState.textVariation != TextVariation.NORMAL) return
         if (kbState.shift == ShiftState.CAPS_LOCK) return
         if (!kbState.settings.autoCapitalize) return

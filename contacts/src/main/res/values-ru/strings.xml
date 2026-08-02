@@ -1,7 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ok">Хорошо</string>
-    <string name="cancel">Отменить</string>
-    <string name="delete">Удалить</string>
-    <string name="settings">Настройки</string>
 </resources>

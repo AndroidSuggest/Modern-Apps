@@ -1,4 +1,5 @@
 package com.vayunmathur.contacts.ui.dialogs
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
@@ -41,12 +42,12 @@ fun EventDeleteConfirmDialog(
                 }
                 onConfirm()
             }) {
-                Text(stringResource(R.string.delete))
+                Text(stringResource(UiR.string.delete))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     )

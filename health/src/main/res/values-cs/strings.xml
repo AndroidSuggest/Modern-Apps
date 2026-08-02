@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="cancel">Zrušit</string>
     <string name="search">Hledat</string>
     <string name="month_year_format">&lt;xliff:g id=\"month\" example=\"Leden\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2026\"&gt;%2$d&lt;/xliff:g&gt;</string>
-    <string name="save">Uložit</string>
-    <string name="add">Přidat</string>
     <string name="app_name">Zdraví</string>
     <string name="grant_permissions">Udělit oprávnění</string>
     <string name="tab_day">Den</string>

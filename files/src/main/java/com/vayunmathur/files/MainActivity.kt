@@ -39,6 +39,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -361,7 +362,7 @@ fun DirectoryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showArchiveDialog = false }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             })
     }

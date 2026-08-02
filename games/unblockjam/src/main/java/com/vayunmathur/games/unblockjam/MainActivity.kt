@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -310,7 +311,7 @@ fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
                     onClick = { actions.onUndo() },
                     enabled = state.canUndo && !isLevelWon
                 ) {
-                    Text(stringResource(R.string.undo))
+                    Text(stringResource(UiR.string.undo))
                 }
                 Button(
                     onClick = { actions.onRestart() },

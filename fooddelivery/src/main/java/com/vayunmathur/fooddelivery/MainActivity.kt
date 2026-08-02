@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.stripe.android.PaymentConfiguration
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconHome
+import com.vayunmathur.library.ui.IconLocalOffer
 import com.vayunmathur.library.ui.IconPackage
 import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconShoppingCart
@@ -26,7 +27,9 @@ import com.vayunmathur.fooddelivery.data.CartStore
 import com.vayunmathur.fooddelivery.ui.AccountScreen
 import com.vayunmathur.fooddelivery.ui.CartScreen
 import com.vayunmathur.fooddelivery.ui.CheckoutScreen
+import com.vayunmathur.fooddelivery.ui.DealsScreen
 import com.vayunmathur.fooddelivery.ui.HomeScreen
+import com.vayunmathur.fooddelivery.ui.OrderTrackingScreen
 import com.vayunmathur.fooddelivery.ui.OrdersScreen
 import com.vayunmathur.fooddelivery.ui.RestaurantScreen
 import kotlinx.serialization.Serializable
@@ -36,17 +39,22 @@ import com.vayunmathur.library.network.TrustBundle
 sealed interface Route : NavKey {
     @Serializable data object Home : Route
     @Serializable data object Cart : Route
+    @Serializable data object Deals : Route
     @Serializable data object Orders : Route
     @Serializable data object Account : Route
     @Serializable data class Restaurant(val id: Int) : Route
     @Serializable data object Checkout : Route
+    @Serializable data class OrderTracking(val orderId: Int) : Route
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Reduced CA hardening: FIRST_PARTY covers api.vayunmathur.com / data.vayunmathur.com (ISRG+GTS)
-        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
+        // api.deliverycollective.com is on AWS Elastic Beanstalk and serves an ACM cert
+        // chaining to Amazon Root CA 1, which FIRST_PARTY (ISRG + GTS only) doesn't carry —
+        // pinning to it fails the handshake before any request goes out. STANDARD adds the
+        // Amazon roots.
+        NetworkClient.init(this, TrustBundle.STANDARD)
         enableEdgeToEdge()
 
         val prefs = getSharedPreferences("fooddelivery_prefs", Context.MODE_PRIVATE)
@@ -78,6 +86,7 @@ private fun FoodDeliveryApp() {
     val pages = listOf(
         BottomBarItem("Home", Route.Home) { IconHome() },
         BottomBarItem("Cart", Route.Cart) { IconShoppingCart() },
+        BottomBarItem("Deals", Route.Deals) { IconLocalOffer() },
         BottomBarItem("Orders", Route.Orders) { IconPackage() },
         BottomBarItem("Account", Route.Account) { IconPerson() },
     )
@@ -93,10 +102,22 @@ private fun FoodDeliveryApp() {
             CartScreen(
                 items = cart,
                 onRemoveItem = { cart.removeAt(it); CartStore.save(context, cart) },
-                onCheckout = { backStack.add(Route.Checkout) }
+                onCheckout = { backStack.add(Route.Checkout) },
+                onEditModifiers = { index, modifiers ->
+                    cart[index] = cart[index].copy(selectedModifiers = modifiers)
+                    CartStore.save(context, cart)
+                },
             )
         }
-        entry<Route.Orders> { OrdersScreen() }
+        entry<Route.Deals> {
+            DealsScreen(onMerchantClick = { id -> backStack.add(Route.Restaurant(id)) })
+        }
+        entry<Route.Orders> {
+            OrdersScreen(onTrackOrder = { id -> backStack.add(Route.OrderTracking(id)) })
+        }
+        entry<Route.OrderTracking> { route ->
+            OrderTrackingScreen(orderId = route.orderId, onBack = { backStack.pop() })
+        }
         entry<Route.Account> { AccountScreen() }
         entry<Route.Checkout> {
             CheckoutScreen(

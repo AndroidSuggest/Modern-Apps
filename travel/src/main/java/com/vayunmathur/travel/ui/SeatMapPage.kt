@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconNavigation
@@ -162,7 +163,7 @@ fun SeatMapScreen(
             Button(
                 onClick = { actions.done() },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-            ) { Text(stringResource(R.string.done)) }
+            ) { Text(stringResource(UiR.string.done)) }
         }
     }
 }

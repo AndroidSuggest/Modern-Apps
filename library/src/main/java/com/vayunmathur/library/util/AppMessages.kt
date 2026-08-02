@@ -1,0 +1,49 @@
+package com.vayunmathur.library.util
+
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+
+/**
+ * App-wide channel for transient messages, drained by `MainNavigation` onto
+ * the snackbar.
+ *
+ * Exists because Toast is banned (see the `ToastUsage` lint check) and the
+ * obvious replacement, a snackbar, needs a composition to live in. Plenty of
+ * the places that need to say something - a ViewModel finishing a save, a
+ * worker reporting a failure - have no composition and often no Context
+ * either. Rather than thread a callback down to each of them, they post here
+ * and whichever screen is on top shows it.
+ *
+ * Replay is zero and the buffer drops oldest: a message posted while no screen
+ * is listening is gone rather than queued to ambush the next screen that
+ * opens. Anything that must survive that - a completed download, a failed
+ * sync - is a notification, not a transient message.
+ */
+object AppMessages {
+
+    data class Message(
+        val text: String,
+        val actionLabel: String? = null,
+        val onAction: (() -> Unit)? = null,
+    )
+
+    private val _messages = MutableSharedFlow<Message>(
+        replay = 0,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    val messages: SharedFlow<Message> = _messages.asSharedFlow()
+
+    /**
+     * Post a message from anywhere - ViewModel, worker, or a plain Activity.
+     *
+     * Never suspends and never fails; if nothing is collecting, the message is
+     * dropped.
+     */
+    fun show(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+        _messages.tryEmit(Message(text, actionLabel, onAction))
+    }
+}

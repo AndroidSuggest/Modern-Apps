@@ -23,8 +23,6 @@
     <string name="logging">Logging</string>
     <string name="delete_all_logs">Delete all logs?</string>
     <string name="this_will_permanently_remove_all_connect">This will permanently remove all connection logs and cannot be undone.</string>
-    <string name="delete">Delete</string>
-    <string name="cancel">Cancel</string>
     <string name="address">Address: %1$s</string>
     <string name="allowed">Allowed: %1$s</string>
     <string name="need_activity_to_grant_vpn_permission">Need Activity to grant VPN permission</string>

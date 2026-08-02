@@ -30,6 +30,8 @@ import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.exerciseSegmentTypeName
 import com.vayunmathur.health.util.exerciseTypeName
 import com.vayunmathur.health.util.formatTimeAmPm
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.serialization.json.Json
@@ -58,24 +60,17 @@ private val dateFormatter: DateTimeFormat<LocalDate> get() = LocalDate.Format {
 fun ExerciseDetailsPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
     val records by remember { viewModel.getAllRecordsOfType(RecordType.Exercise) }.collectAsState(emptyList())
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.label_exercise)) },
-                navigationIcon = { IconNavigation(backStack) })
-        }) { padding ->
+    AppScaffold(
+        title = stringResource(R.string.label_exercise),
+        backStack = backStack,
+    ) { padding ->
         if (records.isEmpty()) {
-            Box(
-                Modifier
+            EmptyState(
+                title = stringResource(R.string.no_workouts),
+                modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    stringResource(R.string.no_workouts),
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
+            )
         } else {
             LazyColumn(
                 modifier = Modifier

@@ -26,10 +26,7 @@
     <string name="ssl_tls">SSL/TLS</string>
     <string name="starttls">STARTTLS</string>
     <string name="listening_for_new_mail">Ootan, kas on uusi kirju</string>
-    <string name="settings">Seadistused</string>
     <string name="drafts">Kavandid</string>
-    <string name="save">Salvesta</string>
-    <string name="cancel">Katkesta</string>
     <string name="email_widget_description">Vaata e-kirju ühtsest postkastist - klõpsa ja ava E-post</string>
     <string name="sign_in_with_microsoft">Logi sisse Microsofti teenusega</string>
     <string name="account_added">Kasutajakonto on lisatud</string>

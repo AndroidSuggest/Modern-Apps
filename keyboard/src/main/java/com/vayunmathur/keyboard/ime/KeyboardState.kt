@@ -74,6 +74,9 @@ interface ImeActions {
     fun onCapsLock()
     fun setPage(page: KeyboardPage)
     fun commitSuggestion(word: String)
+
+    /** Switch to the next layout the user enabled in settings (the globe key). */
+    fun nextLayout()
     fun switchToNextIme()
 
     companion object {
@@ -92,6 +95,7 @@ interface ImeActions {
             override fun onCapsLock() {}
             override fun setPage(page: KeyboardPage) {}
             override fun commitSuggestion(word: String) {}
+            override fun nextLayout() {}
             override fun switchToNextIme() {}
         }
     }

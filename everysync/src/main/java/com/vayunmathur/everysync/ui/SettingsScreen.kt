@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
+import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconBack
@@ -94,9 +95,10 @@ fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
                 label = { Text(stringResource(R.string.global_interval)) },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             )
-            ListItem(
-                content = { Text(stringResource(R.string.wifi_only)) },
-                trailingContent = { Switch(checked = state.wifiOnly, onCheckedChange = { actions.setWifiOnly(it) }) },
+            SettingsSwitchRow(
+                title = stringResource(R.string.wifi_only),
+                checked = state.wifiOnly,
+                onCheckedChange = { actions.setWifiOnly(it) },
             )
             HorizontalDivider()
             Text(

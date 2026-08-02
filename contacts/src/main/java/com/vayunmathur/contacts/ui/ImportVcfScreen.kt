@@ -20,6 +20,7 @@ import com.vayunmathur.contacts.util.ContactAccount
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.launch
+import com.vayunmathur.library.ui.EmptyState
 
 enum class ImportMode { Existing, New }
 
@@ -125,14 +126,12 @@ fun ImportVcfScreen(
                 }
             }
             contacts.isEmpty() -> {
-                Box(
-                    Modifier
+                EmptyState(
+                    title = stringResource(R.string.no_contacts_found),
+                    modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(stringResource(R.string.no_contacts_found))
-                }
+                )
             }
             else -> {
                 LazyColumn(

@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="ok">确定</string>
     <string name="app_name">日历</string>
-    <string name="cancel">取消</string>
     <string name="month_year_format"><xliff:g id="month_name" example="January">%1$s</xliff:g> <xliff:g id="year" example="2025">%2$d</xliff:g></string>
     <string name="date_range_format"><xliff:g id="start_date" example="Jan 1">%1$s</xliff:g> - <xliff:g id="end_date" example="Jan 2">%2$s</xliff:g></string>
     <string name="date_time_range_format"><xliff:g id="date" example="Jan 1">%1$s</xliff:g> • <xliff:g id="start_time" example="9:00 AM">%2$s</xliff:g> - <xliff:g id="end_time" example="10:00 AM">%3$s</xliff:g></string>
     <string name="full_date_time_range_format"><xliff:g id="start_date" example="Jan 1">%1$s</xliff:g>, <xliff:g id="start_time" example="9:00 AM">%2$s</xliff:g> - <xliff:g id="end_date" example="Jan 2">%3$s</xliff:g>, <xliff:g id="end_time" example="10:00 AM">%4$s</xliff:g></string>
-    <string name="close">关闭</string>
-    <string name="delete">删除</string>
-    <string name="rename">重命名</string>
     <string name="create">创建</string>
-    <string name="remove">移除</string>
     <string name="search">搜索</string>
     <string name="no_title">（无标题）</string>
     <string name="event_not_found">未找到活动</string>
@@ -26,7 +20,6 @@
     <string name="all_day">全天</string>
     <string name="does_not_repeat">不重复</string>
     <string name="repeats">重复</string>
-    <string name="settings">设置</string>
     <string name="no_account">（无账号）</string>
     <string name="calendar_id_label">ID：<xliff:g id="calendar_id" example="1">%1$d</xliff:g></string>
     <string name="choose_calendar">选择日历</string>
@@ -128,7 +121,6 @@
     <plurals name="reminder_days_before">
         <item quantity="other">提前 <xliff:g id="count" example="3">%1$d</xliff:g> 天</item>
     </plurals>
-    <string name="add">添加</string>
     <string name="layout_short_day">D</string>
     <string name="holiday_calendars">节假日日历</string>
     <string name="widget_preview_event_1_title">团队站会</string>

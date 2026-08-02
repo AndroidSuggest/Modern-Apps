@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.Canvas
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -70,13 +71,9 @@ fun BypassListPage(backStack: NavBackStack<Route>) {
         value = withContext(Dispatchers.IO) { loadApps(context.packageManager, context.packageName) }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.bypass_list_title)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.bypass_list_title),
+        backStack = backStack,
     ) { pad ->
         val list = apps
         if (list == null) {

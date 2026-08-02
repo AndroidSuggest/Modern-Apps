@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
@@ -59,13 +61,9 @@ fun SettingsPage(
     val permCount by viewModel.sitePermissions.collectAsStateWithLifecycle()
     val installedCount by viewModel.installedSites.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings)) },
-                navigationIcon = { IconNavigation(backStack) }
-            )
-        }
+    AppScaffold(
+        title = stringResource(UiR.string.settings),
+        backStack = backStack,
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(paddingValues),
@@ -223,7 +221,7 @@ fun SettingsPage(
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showCacheDialog = false }) { Text(stringResource(R.string.close)) } }
+            confirmButton = { TextButton(onClick = { showCacheDialog = false }) { Text(stringResource(UiR.string.close)) } }
         )
     }
 
@@ -241,9 +239,9 @@ fun SettingsPage(
                     viewModel.clearAllDownloads()
                     viewModel.clearAllSiteData()
                     showClearDataDialog = false
-                }) { Text(stringResource(R.string.clear)) }
+                }) { Text(stringResource(UiR.string.clear)) }
             },
-            dismissButton = { TextButton(onClick = { showClearDataDialog = false }) { Text(stringResource(R.string.cancel)) } }
+            dismissButton = { TextButton(onClick = { showClearDataDialog = false }) { Text(stringResource(UiR.string.cancel)) } }
         )
     }
 }

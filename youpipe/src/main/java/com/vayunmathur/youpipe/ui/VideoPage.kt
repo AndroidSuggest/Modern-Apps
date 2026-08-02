@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -441,7 +442,7 @@ fun VideoDetails(
 
                     Spacer(Modifier.height(24.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { isDownloadDialogVisible = false }) { Text(stringResource(R.string.cancel)) }
+                        TextButton(onClick = { isDownloadDialogVisible = false }) { Text(stringResource(UiR.string.cancel)) }
                         TextButton(onClick = {
                             isDownloadDialogVisible = false
                             actions.download(selectedVideoStream.url, selectedAudioStream?.url)

@@ -56,6 +56,7 @@ import com.vayunmathur.games.logicgate.util.EvalStatus
 import com.vayunmathur.games.logicgate.util.LogicActions
 import com.vayunmathur.games.logicgate.util.LogicViewModel
 import com.vayunmathur.games.logicgate.util.UiState
+import com.vayunmathur.library.ui.LoadingState
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
@@ -362,7 +363,10 @@ fun GameScreen(
     }
 
     if (state.currentLevelId != levelId) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F1E2D)), contentAlignment = Alignment.Center) { Text(stringResource(R.string.loading)) }
+        LoadingState(
+            message = stringResource(R.string.loading),
+            modifier = Modifier.fillMaxSize().background(Color(0xFF0F1E2D)),
+        )
         return
     }
 

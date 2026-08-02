@@ -18,6 +18,7 @@ android {
 dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(project(":library:image"))
+    implementation(project(":library:map"))
     implementation(project(":library:network"))
     implementation(libs.stripe.android)
     // stripe-android applies the kotlin-parcelize compiler plugin but never publishes

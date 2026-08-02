@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.security.SecurityTier
@@ -326,7 +327,7 @@ fun AppDetailScreen(
                 }) { Text(stringResource(R.string.uninstall)) }
             },
             dismissButton = {
-                TextButton(onClick = { showUninstallConfirm = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { showUninstallConfirm = false }) { Text(stringResource(UiR.string.cancel)) }
             }
         )
     }

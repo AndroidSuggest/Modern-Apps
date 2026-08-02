@@ -3,7 +3,6 @@ package com.vayunmathur.email
 import androidx.compose.ui.res.pluralStringResource
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.util.openSettingsIfRequested
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,6 +49,7 @@ import com.vayunmathur.library.widgets.updateWidgetPreviews
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import com.vayunmathur.library.ui.EmptyState
 
 class MainActivity : ComponentActivity() {
 
@@ -211,6 +214,8 @@ fun EmailApp(viewModel: EmailViewModel) {
     val outbox by viewModel.outbox.collectAsStateWithLifecycle(emptyList())
 
     val backStack = rememberNavBackStack<Route>(Route.MessageList)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
 
     val navigationRoute = IntentState.navigationRoute
     LaunchedEffect(navigationRoute) {
@@ -308,7 +313,7 @@ fun EmailApp(viewModel: EmailViewModel) {
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
                         NavigationDrawerItem(
-                            label = { Text(stringResource(R.string.settings)) },
+                            label = { Text(stringResource(UiR.string.settings)) },
                             selected = false,
                             onClick = {
                                 backStack.add(Route.Settings)
@@ -887,7 +892,7 @@ fun MessageThreadScreen(
                 targetUri = targetUri,
             ) { ok, err ->
                 val toastText = if (ok) "Saved as .eml" else "Save failed: ${err ?: "unknown"}"
-                Toast.makeText(context, toastText, Toast.LENGTH_SHORT).show()
+                AppMessages.show(toastText)
             }
         }
     }
@@ -1016,7 +1021,7 @@ fun MessageItem(
                         val snooze = { at: Long ->
                             showSnooze = false
                             actions.snoozeMessage(msg.accountEmail, msg.folderName, msg.id, at)
-                            android.widget.Toast.makeText(context, context.getString(R.string.snoozed), android.widget.Toast.LENGTH_SHORT).show()
+                            AppMessages.show(context.getString(R.string.snoozed))
                             onBack()
                         }
                         DropdownMenuItem(text = { Text(stringResource(R.string.later_today_6_pm)) }, onClick = { snooze(scheduleTime(18, sameDay = true)) })
@@ -1129,7 +1134,7 @@ fun MessageItem(
             }
             TextButton(onClick = {
                 actions.blockSender(msg.from)
-                android.widget.Toast.makeText(context, context.getString(R.string.sender_blocked), android.widget.Toast.LENGTH_SHORT).show()
+                AppMessages.show(context.getString(R.string.sender_blocked))
                 onBack()
             }) { Text(stringResource(R.string.block_sender)) }
         }
@@ -1207,7 +1212,7 @@ fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
                         try {
                             context.startActivity(Intent.createChooser(intent, null))
                         } catch (e: Exception) {
-                            Toast.makeText(context, context.getString(R.string.no_app_can_open_this_file), Toast.LENGTH_SHORT).show()
+                            AppMessages.show(context.getString(R.string.no_app_can_open_this_file))
                         }
                     }
                 }
@@ -1218,10 +1223,10 @@ fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
                 actions.downloadAttachment(attachment, { path ->
                     downloading = false
                     localPath = path
-                    Toast.makeText(context, context.getString(R.string.saved_to_downloads), Toast.LENGTH_SHORT).show()
+                    AppMessages.show(context.getString(R.string.saved_to_downloads))
                 }, { error ->
                     downloading = false
-                    Toast.makeText(context, context.getString(R.string.download_failed, error), Toast.LENGTH_SHORT).show()
+                    AppMessages.show(context.getString(R.string.download_failed, error))
                 })
             }, enabled = !downloading) {
                 if (downloading) CircularProgressIndicator(modifier = Modifier.size(16.dp))
@@ -1421,7 +1426,7 @@ fun ComposerScreen(
                                         inReplyTo = inReplyTo,
                                         references = references, scheduledAt = at,
                                     ) { currentDraftId?.let { viewModel.deleteDraft(it) } }
-                                    android.widget.Toast.makeText(context, context.getString(R.string.scheduled), android.widget.Toast.LENGTH_SHORT).show()
+                                    AppMessages.show(context.getString(R.string.scheduled))
                                     onBack()
                                 }
                             }
@@ -1448,12 +1453,12 @@ fun ComposerScreen(
                             onSuccess = {
                                 sending = false
                                 currentDraftId?.let { viewModel.deleteDraft(it) }
-                                android.widget.Toast.makeText(context, context.getString(R.string.message_sent), android.widget.Toast.LENGTH_SHORT).show()
+                                AppMessages.show(context.getString(R.string.message_sent))
                                 onBack()
                             },
                             onError = { err ->
                                 sending = false
-                                android.widget.Toast.makeText(context, context.getString(R.string.saved_to_outbox, err), android.widget.Toast.LENGTH_LONG).show()
+                                AppMessages.show(context.getString(R.string.saved_to_outbox, err))
                                 onBack()
                             }
                         )
@@ -1860,7 +1865,7 @@ private fun EmailColorPickerDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         }
     )
 }
@@ -1897,7 +1902,7 @@ fun OutboxScreen(
                     if (outbox.isNotEmpty()) {
                         TextButton(onClick = {
                             viewModel.sendOutboxNow(context)
-                            android.widget.Toast.makeText(context, context.resources.getQuantityString(R.plurals.retrying_pending_messages, outbox.size, outbox.size), android.widget.Toast.LENGTH_SHORT).show()
+                            AppMessages.show(context.resources.getQuantityString(R.plurals.retrying_pending_messages, outbox.size, outbox.size))
                         }) { Text(stringResource(R.string.send_now)) }
                     }
                 },
@@ -1905,16 +1910,10 @@ fun OutboxScreen(
         },
     ) { padding ->
         if (outbox.isEmpty()) {
-            Box(
-                Modifier.padding(padding).fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    stringResource(R.string.outbox_is_empty),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            EmptyState(
+                title = stringResource(R.string.outbox_is_empty),
+                modifier = Modifier.padding(padding).fillMaxSize(),
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.padding(padding).fillMaxSize(),
@@ -1924,7 +1923,7 @@ fun OutboxScreen(
                         entry = entry,
                         onDelete = {
                             viewModel.deleteOutboxEntry(entry)
-                            android.widget.Toast.makeText(context, context.getString(R.string.deleted_from_outbox), android.widget.Toast.LENGTH_SHORT).show()
+                            AppMessages.show(context.getString(R.string.deleted_from_outbox))
                         },
                     )
                     HorizontalDivider()
@@ -2007,7 +2006,7 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.settings)) },
+                title = { Text(stringResource(UiR.string.settings)) },
                 navigationIcon = { IconNavigation(onBack) },
             )
         }
@@ -2038,11 +2037,11 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
                     Button(
                         onClick = {
                             viewModel.setSignature(acc.email, sig)
-                            android.widget.Toast.makeText(context, context.getString(R.string.signature_saved), android.widget.Toast.LENGTH_SHORT).show()
+                            AppMessages.show(context.getString(R.string.signature_saved))
                         },
                         modifier = Modifier.align(Alignment.End),
                     ) {
-                        Text(stringResource(R.string.save))
+                        Text(stringResource(UiR.string.save))
                     }
                 }
                 HorizontalDivider()
@@ -2083,9 +2082,10 @@ fun DraftsScreen(
         }
     ) { padding ->
         if (drafts.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.no_drafts))
-            }
+            EmptyState(
+                title = stringResource(R.string.no_drafts),
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                 items(drafts, key = { it.id }) { d ->
@@ -2194,7 +2194,7 @@ private fun UnsubscribeDialog(
         title = { Text(stringResource(R.string.unsubscribe)) },
         text = { Text(message) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } },
     )
 }
 
@@ -2207,10 +2207,10 @@ private fun performUnsubscribe(
 ) {
     when (method) {
         is UnsubscribeMethod.OneClickPost -> {
-            android.widget.Toast.makeText(context, context.getString(R.string.unsubscribing), android.widget.Toast.LENGTH_SHORT).show()
+            AppMessages.show(context.getString(R.string.unsubscribing))
             actions.oneClickUnsubscribe(method.url) { ok ->
                 val text = if (ok) "Unsubscribed" else "Unsubscribe failed"
-                android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+                AppMessages.show(text)
             }
         }
         is UnsubscribeMethod.OpenWeb -> {
@@ -2218,7 +2218,7 @@ private fun performUnsubscribe(
                 context.startActivity(Intent(Intent.ACTION_VIEW, method.url.toUri()))
             }.isSuccess
             if (!opened) {
-                android.widget.Toast.makeText(context, context.getString(R.string.couldn_t_open_unsubscribe_page), android.widget.Toast.LENGTH_SHORT).show()
+                AppMessages.show(context.getString(R.string.couldn_t_open_unsubscribe_page))
             }
         }
         is UnsubscribeMethod.SendMail -> onCompose(method.address, "Unsubscribe")

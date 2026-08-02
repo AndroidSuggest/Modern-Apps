@@ -39,9 +39,10 @@ fun SearchScreen(
     var query by remember { mutableStateOf(initialQuery) }
     var results by remember { mutableStateOf(actions.search(initialQuery)) }
 
-    Scaffold(topBar = {
-        TopAppBar(title = { Text(stringResource(R.string.search_1)) }, navigationIcon = { IconNavigation(backStack) })
-    }) { padding ->
+    AppScaffold(
+        title = stringResource(R.string.search_1),
+        backStack = backStack,
+    ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().padding(12.dp)) {
             OutlinedTextField(value = query, onValueChange = { query = it; results = actions.search(it) }, label = { Text(stringResource(R.string.search_stars_planets_messier)) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))

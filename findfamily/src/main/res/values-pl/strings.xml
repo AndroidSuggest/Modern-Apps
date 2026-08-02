@@ -86,5 +86,4 @@
     <string name="uwb_status_peer_disconnected">Zgubiłem drugie urządzenie. Podejdź bliżej.</string>
     <string name="uwb_status_unsupported">Funkcja Znajdź w pobliżu (UWB) nie jest obsługiwana na tym urządzeniu.</string>
     <string name="uwb_status_failed">Nie udało się znaleźć w pobliżu (UWB).</string>
-    <string name="ok">OK</string>
 </resources>

@@ -17,7 +17,6 @@
     <string name="grant_image_video_permissions">授予图片/视频权限</string>
     <string name="grant_storage_permission">授予存储权限</string>
     <string name="openassistant_not_found">OpenAssistant 应用未安装。请安装以启用此功能。</string>
-    <string name="close">关闭</string>
     <string name="search_placeholder">搜索照片…</string>
     <string name="model_downloading_description">AI 模型正在下载中。这可能需要几分钟，具体取决于您的连接情况。</string>
     <string name="label_people">人物</string>
@@ -151,7 +150,6 @@
     <string name="tool_cat_select">选择</string>
     <string name="adj_exposure">曝光度</string>
     <string name="tool_mixer">混合器</string>
-    <string name="cancel">取消</string>
     <string name="greens">绿色</string>
     <string name="blue_yellow">蓝-黄</string>
     <string name="cyan">青色</string>
@@ -220,7 +218,6 @@
     <string name="tool_cat_desc_draw">绘制、突出显示和添加文本。</string>
     <string name="adj_fade">褪色</string>
     <string name="editor_desc_selective">在特定点上绘制调整。</string>
-    <string name="done">完成</string>
     <string name="tool_line">线条</string>
     <string name="set_as_wallpaper">设为壁纸</string>
     <string name="wallpaper_home">主屏幕</string>
@@ -236,5 +233,4 @@
     <string name="wallpaper_load_failed">无法加载图片</string>
     <string name="file_size">大小：<xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
     <string name="edit_with_label">使用我的应用编辑</string>
-    <string name="share">分享</string>
 </resources>

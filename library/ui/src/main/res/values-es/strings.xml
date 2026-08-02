@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">Cancelar</string>
+    <string name="delete">Borrar</string>
+    <string name="close">Cerrar</string>
+    <string name="remove">Eliminar</string>
+    <string name="rename">Renombrar</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">Configuración</string>
+    <string name="ok">OK</string>
+</resources>

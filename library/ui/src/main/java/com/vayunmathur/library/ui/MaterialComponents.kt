@@ -650,11 +650,12 @@ fun ListItem(
     elevation: ListItemElevation = ListItemDefaults.elevation(),
     contentPadding: PaddingValues = ListItemDefaults.ContentPadding,
     content: @Composable () -> Unit,
-) = androidx.compose.material3.ListItem(
-    modifier = modifier, enabled = enabled, overlineContent = overlineContent,
-    supportingContent = supportingContent, leadingContent = leadingContent,
-    trailingContent = trailingContent, colors = colors, elevation = elevation,
-    contentPadding = contentPadding, content = content,
+) = SafeListItemLayout(
+    // Not material3's ListItem: it crashes on rotation inside the adaptive
+    // navigation scenes every app uses. See SafeListItemLayout.
+    colors = colors, modifier = modifier, enabled = enabled, contentPadding = contentPadding,
+    overlineContent = overlineContent, supportingContent = supportingContent,
+    leadingContent = leadingContent, trailingContent = trailingContent, content = content,
 )
 
 // --- List item (classic overload with headlineContent + tonal/shadow elevation) ---
@@ -669,11 +670,12 @@ fun ListItem(
     colors: ListItemColors = ListItemDefaults.colors(),
     tonalElevation: Dp = ListItemDefaults.Elevation,
     shadowElevation: Dp = ListItemDefaults.Elevation,
-) = androidx.compose.material3.ListItem(
-    headlineContent = headlineContent, modifier = modifier, overlineContent = overlineContent,
+) = SafeListItemLayout(
+    // See the overload above; elevation is accepted for source compatibility
+    // but nothing sets it away from zero.
+    colors = colors, modifier = modifier, overlineContent = overlineContent,
     supportingContent = supportingContent, leadingContent = leadingContent,
-    trailingContent = trailingContent, colors = colors, tonalElevation = tonalElevation,
-    shadowElevation = shadowElevation,
+    trailingContent = trailingContent, content = headlineContent,
 )
 
 // --- Selection controls ---

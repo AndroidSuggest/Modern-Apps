@@ -21,9 +21,19 @@ configure<com.android.build.api.dsl.LibraryExtension> {
     defaultConfig {
         minSdk = 31
     }
+
+    lint {
+        // Toast is banned repo-wide. Apps also catch this transitively via
+        // checkDependencies, but failing here gives faster feedback when
+        // working inside a library module.
+        fatal += listOf("ToastUsage")
+    }
 }
 
 dependencies {
+    // Repo-specific lint checks (currently: no Toast).
+    lintChecks(project(":lint-rules"))
+
     // AndroidX Core & Lifecycle
     implementation(libs.kotlinx.datetime)
     implementation(libs.androidx.core.ktx)

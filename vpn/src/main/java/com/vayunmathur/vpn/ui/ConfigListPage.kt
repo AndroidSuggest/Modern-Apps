@@ -3,7 +3,6 @@ package com.vayunmathur.vpn.ui
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.vpn.R
 import android.app.Activity
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -51,6 +50,8 @@ import com.vayunmathur.vpn.data.VpnConfig
 import com.vayunmathur.vpn.service.VpnTunnelService
 import com.vayunmathur.vpn.util.VpnViewModel
 import com.vayunmathur.library.util.NavBackStack
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @Composable
 fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
@@ -60,6 +61,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     val context = LocalContext.current
     val activity = context as? Activity
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // The only way to add a tunnel is opening a .conf file via SAF.
     val filePicker = rememberLauncherForActivityResult(
@@ -87,7 +89,9 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                 vm.stopVpn()
             } else {
                 if (activity != null) vm.startVpn(activity, cfg)
-                else Toast.makeText(context, context.getString(R.string.need_activity_to_grant_vpn_permission), Toast.LENGTH_SHORT).show()
+                else scope.launch {
+                    snackbar.showSnackbar(context.getString(R.string.need_activity_to_grant_vpn_permission))
+                }
             }
         },
         onOpen = { cfg -> backStack.add(Route.Detail(cfg.id)) },

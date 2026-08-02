@@ -101,6 +101,7 @@ import com.vayunmathur.library.ui.ReorderableItem
 import com.vayunmathur.library.ui.draggableHandle
 import com.vayunmathur.library.ui.rememberReorderableLazyListState
 import java.io.File
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.maps.R as MapsR
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -478,7 +479,7 @@ fun MapPage(backStack: NavBackStack<Route>, viewModel: SelectedFeatureViewModel,
                                 showDownloadDialog = false
                                 dismissedZone = activeZone
                             }) {
-                                Text(stringResource(MapsR.string.cancel))
+                                Text(stringResource(UiR.string.cancel))
                             }
                         }
                     )

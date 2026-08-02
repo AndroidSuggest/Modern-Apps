@@ -1,6 +1,7 @@
 package com.vayunmathur.contacts.ui.dialogs
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
@@ -45,12 +46,12 @@ fun AddAccountDialog(
                     }
                 }
             ) {
-                Text(stringResource(R.string.add))
+                Text(stringResource(UiR.string.add))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(UiR.string.cancel))
             }
         }
     )

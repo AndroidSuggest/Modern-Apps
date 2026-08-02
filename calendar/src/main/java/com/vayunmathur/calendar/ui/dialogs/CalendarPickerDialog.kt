@@ -1,4 +1,5 @@
 package com.vayunmathur.calendar.ui.dialogs
+import com.vayunmathur.library.ui.R as UiR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -70,7 +71,7 @@ fun CalendarPickerDialog(backStack: NavBackStack<Route>, resultKey: String) {
             }
         },
         confirmButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(com.vayunmathur.calendar.R.string.close)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.close)) }
         }
     )
 }

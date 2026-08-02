@@ -17,6 +17,4 @@
     <string name="safe_pdf_error">Impossibile aprire questo PDF con il visualizzatore sicuro. Potrebbe essere danneggiato o utilizzare funzionalità non supportate.</string>
     <string name="open">Apri</string>
     <string name="password">Password</string>
-    <string name="cancel">Annulla</string>
-    <string name="add">Aggiungi</string>
 </resources>

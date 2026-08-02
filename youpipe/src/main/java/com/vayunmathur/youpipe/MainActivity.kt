@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.util.Consumer
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconHistory
@@ -214,6 +215,8 @@ sealed interface Route: NavKey {
 @Composable
 fun Navigation(initialBackStack: List<Route>, ypvm: YouPipeViewModel) {
     val backStack = rememberNavBackStack(initialBackStack)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     MainNavigation(backStack) {
         entry<Route.SearchPage> {
             SearchPage(backStack, ypvm)

@@ -1,5 +1,6 @@
 package com.vayunmathur.calendar.ui
 
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.localizedAmPmMarker
 import kotlinx.datetime.format.DateTimeFormat
 import com.vayunmathur.library.util.DateNameStyle
@@ -284,7 +285,7 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
                     val initial = RecurrenceParams.fromRRule(rruleObj)
                     backStack.add(Route.EditEvent.RecurrenceDialog(KEY_RECURRENCE, startDate, initial))
                 }) },
-                { if (rruleObj != null) Text(stringResource(R.string.remove), Modifier.clickable {
+                { if (rruleObj != null) Text(stringResource(UiR.string.remove), Modifier.clickable {
                     rruleObj = null
                 }) }
             )
@@ -328,7 +329,7 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
                 Item(
                     { IconSchedule() },
                     { Text(reminderLabel(context, minutes)) },
-                    { Text(stringResource(R.string.remove), Modifier.clickable { reminders = reminders - minutes }) },
+                    { Text(stringResource(UiR.string.remove), Modifier.clickable { reminders = reminders - minutes }) },
                 )
             }
             var addReminderExpanded by remember { mutableStateOf(false) }

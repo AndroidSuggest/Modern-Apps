@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
@@ -87,7 +88,7 @@ fun DavLoginScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel
             ) { Text(stringResource(R.string.login)) }
         },
         dismissButton = {
-            TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

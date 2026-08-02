@@ -39,8 +39,6 @@
     <string name="apple_id_email">Apple ID email</string>
     <!-- DavLoginScreen iCloud variant: Label for app-specific password field -->
     <string name="app_specific_password">App-specific password</string>
-    <!-- Generic verb. Dismiss login dialog -->
-    <string name="cancel">Cancel</string>
 
     <!-- AccountDetailScreen: Toggle label for contacts sync capability. Verb phrase -->
     <string name="sync_contacts">Sync contacts</string>

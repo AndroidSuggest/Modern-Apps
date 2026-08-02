@@ -1,9 +1,9 @@
 package com.vayunmathur.notes.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconAdd
@@ -53,7 +53,7 @@ fun ExternalNoteScreen(
     LaunchedEffect(uri) {
         val result = notesViewModel.readExternal(uri)
         if (result == null) {
-            Toast.makeText(context, context.getString(R.string.external_read_failed), Toast.LENGTH_SHORT).show()
+            AppMessages.show(context.getString(R.string.external_read_failed))
             backStack.pop()
             return@LaunchedEffect
         }
@@ -71,7 +71,7 @@ fun ExternalNoteScreen(
                     IconButton(onClick = {
                         notesViewModel.saveExternal(uri, content) { ok ->
                             val msg = if (ok) R.string.external_saved else R.string.external_save_failed
-                            Toast.makeText(context, context.getString(msg), Toast.LENGTH_SHORT).show()
+                            AppMessages.show(context.getString(msg))
                         }
                     }) { IconSave() }
                     IconButton(onClick = {

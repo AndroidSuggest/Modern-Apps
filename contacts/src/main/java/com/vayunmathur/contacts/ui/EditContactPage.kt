@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
@@ -145,7 +146,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                         viewModel.saveEditDraft()
                         onExit()
                     }) {
-                        Text(stringResource(R.string.save))
+                        Text(stringResource(UiR.string.save))
                     }
                 }
             )

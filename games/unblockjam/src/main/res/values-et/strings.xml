@@ -4,7 +4,6 @@
     <string name="level">Pusletükk</string>
     <string name="level_selector">Pusletüki valik</string>
     <string name="pack_selector">Mitme tüki valik</string>
-    <string name="undo">Võta tagasi</string>
     <string name="restart">Alusta uuesti</string>
     <string name="previous_level">Eelmine pusletükk</string>
     <string name="next_level">Järgmine pusletükk</string>

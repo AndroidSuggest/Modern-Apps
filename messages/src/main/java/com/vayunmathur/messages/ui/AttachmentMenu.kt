@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
@@ -151,10 +152,10 @@ fun LocationDurationDialog(
                 onClick = {
                     onConfirm(name.trim().ifBlank { defaultName }, selected.millis)
                 },
-            ) { Text(stringResource(R.string.share)) }
+            ) { Text(stringResource(UiR.string.share)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

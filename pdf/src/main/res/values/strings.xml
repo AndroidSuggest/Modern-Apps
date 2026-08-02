@@ -65,16 +65,12 @@
     <string name="open">Open</string>
     <!-- Annotation type: yellow sticky note -->
     <string name="sticky_note">Sticky note</string>
-    <!-- Button: add annotation to document -->
-    <string name="add">Add</string>
     <!-- Toast: text copied to clipboard -->
     <string name="copied">Copied</string>
     <!-- Error shown after wrong password entered -->
     <string name="incorrect_password">Incorrect password</string>
     <!-- Dialog title/prompt asking for password -->
     <string name="password_required">Password required</string>
-    <!-- Generic dismiss button. Verb. -->
-    <string name="cancel">Cancel</string>
     <!-- Button: save PDF with password encryption applied -->
     <string name="save_encrypted">Save encrypted</string>
     <!-- Section header: annotation appearance style -->
@@ -91,8 +87,6 @@
     <string name="text">text</string>
     <!-- Slider label. %1$s = line width number, e.g. 2 -->
     <string name="line_width">Line width <xliff:g id="width" example="2">%1$s</xliff:g></string>
-    <!-- Generic completion button -->
-    <string name="done">Done</string>
     <!-- Tab title: PDF outline / bookmarks -->
     <string name="outline">Outline</string>
     <!-- Button: add signature annotation -->

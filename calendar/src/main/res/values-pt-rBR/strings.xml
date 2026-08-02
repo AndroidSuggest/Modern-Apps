@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Calendário</string>
-    <string name="cancel">Cancelar</string>
-    <string name="rename">Renomear</string>
-    <string name="ok">Ok</string>
-    <string name="close">Fechar</string>
-    <string name="delete">Excluir</string>
     <string name="create">Criar</string>
-    <string name="remove">Remover</string>
     <string name="search">Pesquisar</string>
     <string name="no_title">(Sem título)</string>
     <string name="event_not_found">Evento não encontrado</string>
@@ -23,7 +17,6 @@
     <string name="all_day">Dia inteiro</string>
     <string name="does_not_repeat">Não se repete</string>
     <string name="repeats">Repete</string>
-    <string name="settings">Configurações</string>
     <string name="no_account">(Sem conta)</string>
     <string name="calendar_id_label">ID: %1$d</string>
     <string name="choose_calendar">Escolher calendário</string>

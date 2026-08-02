@@ -78,8 +78,6 @@
     <!-- Import source: Apple Passwords product name -->
     <string name="import_source_apple">Apple Passwords</string>
 
-    <!-- Biometric prompt negative button text. Verb -->
-    <string name="cancel">Cancel</string>
     <string name="cable_channel_name">Cross-device sign-in</string>
     <string name="cable_starting">Starting cross-device sign-in</string>
     <string name="cable_prompt_title">Sign in on your other device?</string>

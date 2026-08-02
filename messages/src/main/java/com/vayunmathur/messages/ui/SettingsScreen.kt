@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ButtonDefaults
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -48,13 +49,9 @@ fun SettingsScreen(
 ) {
     val states by vm.connectionStates.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.settings_title),
+        backStack = backStack,
     ) { padding ->
         Column(
             modifier = Modifier

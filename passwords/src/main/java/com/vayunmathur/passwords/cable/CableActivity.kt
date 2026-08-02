@@ -1,5 +1,6 @@
 package com.vayunmathur.passwords.cable
 
+import com.vayunmathur.library.ui.R as UiR
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -75,7 +76,7 @@ class CableActivity : FragmentActivity() {
                 .setTitle(getString(R.string.cable_prompt_title))
                 .setSubtitle(getString(R.string.cable_prompt_subtitle))
                 .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                .setNegativeButtonText(getString(R.string.cancel))
+                .setNegativeButtonText(getString(UiR.string.cancel))
                 .build()
         )
     }

@@ -3,6 +3,7 @@ package com.vayunmathur.findfamily.ui.dialogs
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
@@ -52,6 +53,6 @@ fun SecurityCodeDialog(user: User, ffViewModel: FindFamilyViewModel, onDismiss: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.done)) } }
     )
 }

@@ -25,7 +25,6 @@
     <string name="metric_uv_index">紫外线指数</string>
     <string name="summary_high_low">最高 <xliff:g id="high" example="24°C">%1$s</xliff:g>，最低 <xliff:g id="low" example="12°C">%2$s</xliff:g>。</string>
     <string name="condition_snow">雪</string>
-    <string name="delete">删除</string>
     <string name="summary_slight_chance_rain">有小雨的可能。</string>
     <string name="metric_visibility">能见度</string>
     <string name="metric_temperature">温度</string>

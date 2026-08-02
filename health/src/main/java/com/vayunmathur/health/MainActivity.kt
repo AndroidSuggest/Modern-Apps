@@ -6,21 +6,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.IconBodySystem
 import com.vayunmathur.library.ui.IconDirectionsWalk
 import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconFire
-import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.health.connect.client.HealthConnectClient
@@ -72,6 +67,7 @@ import com.vayunmathur.health.util.HealthAPI
 import com.vayunmathur.health.util.HealthSyncWorker
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.PermissionWall
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -141,14 +137,16 @@ class MainActivity : ComponentActivity() {
                     }
                     Navigation(healthViewModel)
                 } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Button(onClick = { requestPermissions.launch(PERMISSIONS) }) {
-                            Text(stringResource(R.string.grant_permissions))
-                        }
-                    }
+                    // Health Connect has its own permission contract, which is
+                    // why this passes onRequest rather than using the runtime
+                    // permission helper.
+                    PermissionWall(
+                        title = stringResource(R.string.grant_permissions),
+                        actionLabel = stringResource(R.string.grant_permissions),
+                        onRequest = { requestPermissions.launch(PERMISSIONS) },
+                        rationale = stringResource(R.string.grant_permissions_rationale),
+                        icon = { IconFavorite() },
+                    )
                 }
             }
         }

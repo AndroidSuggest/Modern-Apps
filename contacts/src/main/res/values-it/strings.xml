@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="ok">OK</string>
-    <string name="cancel">Annulla</string>
-    <string name="delete">Elimina</string>
-    <string name="settings">Impostazioni</string>
     <string name="app_name">Contatti</string>
     <string name="contact_not_found">Contatto non trovato</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
@@ -16,7 +12,6 @@
     <string name="on_device">Nel dispositivo</string>
     <string name="add_contact">Aggiungi contatto</string>
     <string name="edit_contact">Modifica contatto</string>
-    <string name="save">Salva</string>
     <string name="first_name">Nome</string>
     <string name="middle_name">Secondo nome</string>
     <string name="last_name">Cognome</string>
@@ -43,7 +38,6 @@
     <string name="add_contacts_account">Aggiungi account contatti</string>
     <string name="enter_account_name">Inserisci un nome per il nuovo account locale:</string>
     <string name="account_name">Nome account</string>
-    <string name="add">Aggiungi</string>
     <string name="delete_contact_title">Elimina account</string>
     <string name="delete_contact_confirm">Sei sicuro di voler eliminare questo account? Questa operazione è irreversibile.</string>
     <string name="delete_contact_name_confirm">Sei sicuro di volere eliminare \"%1$s\"? Questa operazione è irreversibile.</string>
@@ -86,5 +80,4 @@
     <plurals name="contacts_count">
         <item quantity="other">%1$d contatti</item>
     </plurals>
-    <string name="done">Fatto</string>
 </resources>

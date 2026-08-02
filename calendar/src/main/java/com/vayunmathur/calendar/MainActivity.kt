@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.NoPermissionsScreen
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -33,6 +34,7 @@ import com.vayunmathur.calendar.util.RecurrenceParams
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.*
 import com.vayunmathur.library.widgets.updateWidgetPreviews
 import kotlin.time.Instant
@@ -63,7 +65,7 @@ class MainActivity : ComponentActivity() {
             }
             DynamicTheme(darkTheme) {
                 if (!hasPermissions) {
-                    NoPermissionsScreen(permissions) { hasPermissions = it }
+                    NoPermissionsScreen(permissions, stringResource(R.string.please_grant_calendar_permission)) { hasPermissions = it }
                 } else {
                     val viewModel: CalendarViewModel = viewModel()
 
@@ -124,30 +126,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean) -> Unit) {
-    val permissionRequestor = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissionsResult ->
-        setHasPermissions(permissionsResult.values.all { it })
-    }
-    LaunchedEffect(Unit) {
-        permissionRequestor.launch(permissions)
-    }
-    Scaffold {
-        Box(
-            modifier = Modifier
-                .padding(it)
-                .fillMaxSize()
-        ) {
-            Button(
-                {
-                    permissionRequestor.launch(permissions)
-                }, Modifier.align(Alignment.Center)
-            ) {
-                Text(text = stringResource(R.string.please_grant_calendar_permission))
-            }
-        }
-    }
-}
 
 sealed interface Route: NavKey {
     @Serializable
@@ -209,6 +187,8 @@ sealed interface Route: NavKey {
 @Composable
 fun Navigation(viewModel: CalendarViewModel, initialRoute: Route?, onImportClear: () -> Unit = {}) {
     val backStack = rememberNavBackStack(listOfNotNull(Route.Calendar, initialRoute))
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     LaunchedEffect(initialRoute) {
         if(initialRoute != null) {
             backStack.reset(Route.Calendar, initialRoute)

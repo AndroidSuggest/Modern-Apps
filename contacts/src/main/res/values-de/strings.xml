@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="contact_photo">Foto</string>
-    <string name="save">Speichern</string>
     <string name="add_date">Datum hinzufügen</string>
     <string name="select_contact_hint">Wähle einen Kontakt aus um Details zu sehen</string>
     <string name="account_name">Kontaktlisten Name</string>
@@ -22,8 +21,6 @@
     <string name="nickname">Spitzname</string>
     <string name="delete_contact_confirm">Sind Sie sicher, dass Sie diesen Kontakt Löschen möchtest? Es kann nicht rückgängig gemacht werden.</string>
     <string name="phone">Telefonnummer</string>
-    <string name="delete">Löschen</string>
-    <string name="ok">Ok</string>
     <string name="export_contacts">Alle Kontakte exportieren</string>
     <string name="account">Account</string>
     <string name="add_contact">Kontakt Hinzufüge</string>
@@ -34,21 +31,18 @@
     <string name="last_name">Nachname</string>
     <string name="share_contact">Kontakt teilen</string>
     <string name="favorites">Favoriten</string>
-    <string name="cancel">Abbrechen</string>
     <string name="add_address">Adresse hinzufüge</string>
     <string name="add_phone">Telefonnummer hinzufügen</string>
     <string name="remove_picture">Löschen</string>
     <string name="delete_contact_name_confirm">Sind Sie sicher, dass Sie \"%1$s\" löschen möchtest? Das kann nicht rückgängig gemacht werden.</string>
     <string name="first_name">Vorname</string>
     <string name="add_contacts_account">Kontaktaccount hinzufügen</string>
-    <string name="settings">Einstellungen</string>
     <string name="action_call">Anrufen</string>
     <string name="about_name">Über %1$s</string>
     <string name="delete_contact_title">Kontakt löschen</string>
     <string name="middle_name">Zweitname</string>
     <string name="app_name">Kontakte</string>
     <string name="add_email">E-Mail hinzufügen</string>
-    <string name="add">Hinzufügen</string>
     <string name="action_message">Nachricht</string>
     <string name="grant_contacts_permission">Bitte erlaube die Kontaktberechtigung</string>
     <string name="name_nickname_format">%1$s (%2$s)</string>
@@ -84,7 +78,6 @@
     <plurals name="contacts_count">
         <item quantity="other">%1$d Kontakte</item>
     </plurals>
-    <string name="done">Fertig</string>
     <string name="telegram">Telegram</string>
     <string name="google_meet">Google Meet</string>
 </resources>

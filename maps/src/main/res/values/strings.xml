@@ -42,14 +42,10 @@
     <string name="download_offline_map_text">You are viewing Zone <xliff:g id="zone" example="5">%1$d</xliff:g>. Would you like to download the high-detail offline map and enable navigation in this area?</string>
     <!-- Button: Verb. Download action -->
     <string name="download">Download</string>
-    <!-- Button: Generic cancel. Verb. -->
-    <string name="cancel">Cancel</string>
     <!-- DownloadedMapsPage: Dialog title for deleting offline map -->
     <string name="delete_offline_map_title">Delete Offline Map?</string>
     <!-- DownloadedMapsPage: Confirmation for deleting zone. %1$d=zone number -->
     <string name="delete_offline_map_text">Are you sure you want to delete or cancel the download for Zone <xliff:g id="zone" example="5">%1$d</xliff:g>?</string>
-    <!-- Button: Verb. Delete action -->
-    <string name="delete">Delete</string>
     <!-- DownloadedMapsPage: Download progress percent. %1$d=0-100 -->
     <string name="download_progress"><xliff:g id="progress" example="50">%1$d</xliff:g>%%</string>
 

@@ -2,6 +2,7 @@ package com.vayunmathur.health.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -59,8 +60,8 @@ fun LogBodyMetricDialog(
                         onDismiss()
                     }
                 },
-            ) { Text(stringResource(R.string.save)) }
+            ) { Text(stringResource(UiR.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } },
     )
 }

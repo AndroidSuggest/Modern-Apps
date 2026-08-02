@@ -11,10 +11,6 @@
     <string name="tab_settings">Settings</string>
     <!-- ProfileScreen / MainActivity: Title for Profile screen. Noun -->
     <string name="profile_title">Profile</string>
-    <!-- ProfileScreen / SettingsScreen: Button to save edited profile or dialog. Verb -->
-    <string name="save">Save</string>
-    <!-- ProfileScreen / SettingsScreen / dialog: Cancel button for edit dialogs. Verb -->
-    <string name="cancel">Cancel</string>
     <!-- StreakIndicator: Content description for streak icon. Noun -->
     <string name="streak">Streak</string>
     <!-- DashboardScreen: Section header for continue playing recent games list. Verb phrase -->
@@ -98,8 +94,6 @@
     <string name="clear_cache_1">Clear cache?</string>
     <!-- SettingsScreen: Confirmation dialog body warning deletion of all cached games/achievements/sessions/activity. Sentence -->
     <string name="this_will_delete_all_cached_games_achiev">This will delete all cached games, achievements, sessions, and activity. Games will re-register on next launch.</string>
-    <!-- SettingsScreen / dialog: Confirm button to clear. Verb -->
-    <string name="clear">Clear</string>
     <!-- StreakIndicator: Text showing current streak with emoji. %1$s = streak days count as string e.g. 5. Noun phrase celebratory -->
     <string name="day_streak"><xliff:g id="streak_days" example="5">%1$s</xliff:g> day streak 🔥</string>
     <!-- StreakIndicator: Longest streak display. %1$s = longest days count as string e.g. 12. Noun phrase -->

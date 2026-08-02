@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
@@ -509,16 +510,12 @@ fun BarChartDetailsScreen(
                 Spacer(Modifier.height(16.dp))
 
                 if (!hasData) {
-                    Box(
-                        Modifier
+                    EmptyState(
+                        title = stringResource(R.string.no_data_available),
+                        modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp), contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            stringResource(R.string.no_data_available),
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
+                            .height(180.dp),
+                    )
                 } else if (config.isLineChart) {
                     GenericLineChart(
                         data = dataState.chartData,

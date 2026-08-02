@@ -4,6 +4,8 @@
 
     <!-- MainActivity: Button text to request Health Connect permissions. Verb phrase -->
     <string name="grant_permissions">Grant Permissions</string>
+    <!-- Permission wall: explains why Health Connect access is needed. Sentence -->
+    <string name="grant_permissions_rationale">This app reads and writes your health data through Health Connect. Nothing leaves your device.</string>
 
     <!-- BarChartDetails: SecondaryTabRow tab for daily aggregation view. Noun -->
     <string name="tab_day">Day</string>
@@ -31,8 +33,6 @@
     <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
     <!-- BarChartDetails: Y-axis value formatter for >=10k, converting to k shorthand. %1$s = value divided by 1000 rounded e.g. 12 -->
     <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g>k</string>
-    <!-- Dialogs: Cancel button for ingredient search, meal log, body metric dialogs. Verb -->
-    <string name="cancel">Cancel</string>
 
     <!-- HealthMetricConfig titleRes: Display name for Energy Burned metric (calories). Noun phrase -->
     <string name="metric_energy_burned">Energy Burned</string>
@@ -193,12 +193,8 @@
     <string name="rename_ingredient">Rename Ingredient</string>
     <!-- RecipeManagementPage: Label for custom name input field. Noun phrase -->
     <string name="custom_name">Custom Name</string>
-    <!-- RecipeManagementPage / dialogs: Save button. Verb -->
-    <string name="save">Save</string>
     <!-- RecipeManagementPage: Input label for recipe name. Noun phrase -->
     <string name="recipe_name">Recipe Name</string>
-    <!-- RecipeManagementPage: Add button for recipe or ingredient. Verb -->
-    <string name="add">Add</string>
     <!-- RecipeManagementPage: Button to save recipe after ingredients added. Verb phrase -->
     <string name="save_recipe">Save Recipe</string>
     <!-- RecipeManagementPage: Dialog title to set quantity for ingredient. %1$s = ingredient display name e.g. Tomato -->

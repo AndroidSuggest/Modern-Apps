@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconButton
@@ -178,12 +179,12 @@ fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
                     selectedIds.clear()
                     showDeleteConfirmation = false
                 }) {
-                    Text(stringResource(R.string.delete))
+                    Text(stringResource(UiR.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             }
         )
@@ -363,7 +364,7 @@ fun ContactListPick(
         floatingActionButton = {
             if (allowMultiple) {
                 ExtendedFloatingActionButton(onClick = onConfirm) {
-                    val label = stringResource(R.string.done) +
+                    val label = stringResource(UiR.string.done) +
                         if (selectedUris.isNotEmpty()) " (${selectedUris.size})" else ""
                     Text(label)
                 }
@@ -595,19 +596,18 @@ fun ContactItem(
             content()
             dropdownList.forEachIndexed { idx, it ->
                 Spacer(Modifier.height(4.dp))
-                SafeListItem(
+                ListItem(
                     content = {
                         Text(text = it)
                     },
                     modifier = Modifier.clickable {
                         dropdownListClick(idx)
                     }.clip(RoundedCornerShape(0.dp, 0.dp, if(idx == dropdownList.size - 1) 16.dp else 0.dp, if(idx == dropdownList.size - 1) 16.dp else 0.dp)),
-                    containerColor = if (isSelected) {
+                    colors = ListItemDefaults.colors(containerColor = if (isSelected) {
                         MaterialTheme.colorScheme.secondaryContainer
                     } else {
                         MaterialTheme.colorScheme.surfaceContainer
-                    }
-                )
+                    }))
             }
         }
     } else {

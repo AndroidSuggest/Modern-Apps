@@ -1,7 +1,6 @@
 package com.vayunmathur.library.ui
 
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -17,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.BackupFormat
 import com.vayunmathur.library.util.DbBackupCodec
 import com.vayunmathur.library.util.ZipBackupFormat
@@ -147,12 +147,12 @@ private suspend fun runExport(
             format.export(context, password, os)
         }
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, context.getString(R.string.backup_export_success), Toast.LENGTH_SHORT).show()
+            AppMessages.show(context.getString(R.string.backup_export_success))
         }
     } catch (e: Exception) {
         Log.e("BackupButtons", "Export FAILED", e)
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, context.getString(R.string.backup_export_failed_format, e.message), Toast.LENGTH_LONG).show()
+            AppMessages.show(context.getString(R.string.backup_export_failed_format, e.message))
         }
     }
 }
@@ -168,12 +168,12 @@ private suspend fun runImport(
             format.import(context, password, isStream)
         }
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, context.getString(R.string.backup_import_success), Toast.LENGTH_LONG).show()
+            AppMessages.show(context.getString(R.string.backup_import_success))
         }
     } catch (e: Exception) {
         Log.e("BackupButtons", "Import FAILED", e)
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, context.getString(R.string.backup_import_failed_format, e.message), Toast.LENGTH_LONG).show()
+            AppMessages.show(context.getString(R.string.backup_import_failed_format, e.message))
         }
     }
 }

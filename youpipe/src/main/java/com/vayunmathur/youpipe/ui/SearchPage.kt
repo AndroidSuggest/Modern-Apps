@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ListItem
@@ -227,13 +228,10 @@ fun SearchScreen(
                 CircularProgressIndicator()
             }
         } else if (state.recommendations.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text(
-                    stringResource(R.string.empty_recommendations),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            EmptyState(
+                title = stringResource(R.string.empty_recommendations),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+            )
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 items(state.recommendations, key = { it.videoID }) { row ->

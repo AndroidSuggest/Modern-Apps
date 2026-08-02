@@ -4,9 +4,7 @@
     <string name="error_parse_level">Taseme andmete töötlemine ei õnnestunud.</string>
     <string name="level_number"><xliff:g id="level" example="12">%1$d</xliff:g>. tase</string>
     <string name="next_level">Järgmine tase</string>
-    <string name="close">Sulge</string>
     <string name="bonus_words">Boonussõnad</string>
-    <string name="settings">Seadistused</string>
     <string name="hint_confirmation">Kas oled kindel, et soovid kasutada vihjet?</string>
     <string name="yes">Jah</string>
     <string name="no">Ei</string>

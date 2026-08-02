@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconPlay
@@ -58,25 +59,16 @@ fun PlaylistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicVi
                         com.vayunmathur.library.ui.IconDelete()
                     }
                     if (showDeleteDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showDeleteDialog = false },
-                            title = { Text(stringResource(R.string.dialog_delete_playlist)) },
-                            text = { Text(stringResource(R.string.dialog_delete_playlist_confirm, playlist!!.name)) },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    showDeleteDialog = false
-                                    val toDelete = playlist!!
+                        ConfirmDialog(
+                            title = stringResource(R.string.dialog_delete_playlist),
+                            message = stringResource(R.string.dialog_delete_playlist_confirm, playlist!!.name),
+                            confirmLabel = stringResource(R.string.dialog_delete),
+                            dismissLabel = stringResource(R.string.dialog_cancel),
+                            onConfirm = { val toDelete = playlist!!
                                     backStack.pop()
-                                    musicViewModel.deletePlaylist(toDelete)
-                                }) {
-                                    Text(stringResource(R.string.dialog_delete))
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showDeleteDialog = false }) {
-                                    Text(stringResource(R.string.dialog_cancel))
-                                }
-                            }
+                                    musicViewModel.deletePlaylist(toDelete) },
+                            onDismiss = { showDeleteDialog = false },
+                            destructive = true,
                         )
                     }
                 }

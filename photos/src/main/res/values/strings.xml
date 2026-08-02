@@ -48,8 +48,6 @@
     <string name="openassistant_not_found">OpenAssistant app is not installed. Please install it to enable this feature.</string>
     <!-- ListItem shown when OpenAssistant installed but too old for AI photo search -->
     <string name="openassistant_needs_update">Update the OpenAssistant app to enable AI photo search.</string>
-    <!-- Generic close button for search sheet. Verb -->
-    <string name="close">Close</string>
     <!-- Description while AI model downloading, explains may take minutes -->
     <string name="model_downloading_description">The AI model is being downloaded. This may take a few minutes depending on your connection.</string>
 
@@ -105,10 +103,6 @@
     <string name="export_as_webp">Export as WebP</string>
     <!-- Export menu: export as PNG format. Verb phrase -->
     <string name="export_as_png">Export as PNG</string>
-    <!-- Completion button to confirm and exit tool. Verb -->
-    <string name="done">Done</string>
-    <!-- Cancel current edit operation. Verb -->
-    <string name="cancel">Cancel</string>
     <!-- Apply current transformation/adjustment baking it in. Verb -->
     <string name="apply">Apply</string>
 
@@ -497,5 +491,4 @@
     <!-- Desc: drag to draw a line -->
     <string name="editor_desc_shape_line">Drag to draw a line.</string>
     <string name="edit_with_label">Edit with My App</string>
-    <string name="share">Share</string>
 </resources>

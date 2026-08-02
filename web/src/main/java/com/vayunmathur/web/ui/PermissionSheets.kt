@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -128,7 +129,7 @@ fun FileChooserSheet(
             }
         },
         confirmButton = { TextButton(onClick = onTriggerPicker) { Text(stringResource(R.string.pick_files)) } },
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -241,7 +242,7 @@ private fun PermRow(label: String, allowed: Boolean?, onClear: () -> Unit) {
     if (allowed == null) return
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("$label: ${if (allowed) "Allowed" else "Blocked"}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-        TextButton(onClick = onClear) { Text(stringResource(R.string.clear)) }
+        TextButton(onClick = onClear) { Text(stringResource(UiR.string.clear)) }
     }
 }
 

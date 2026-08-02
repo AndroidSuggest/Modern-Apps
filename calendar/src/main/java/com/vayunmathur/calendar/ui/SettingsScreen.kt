@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
@@ -136,7 +137,7 @@ fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
 
     Scaffold(
         topBar = {
-            TopAppBar({Text(stringResource(R.string.settings))}, navigationIcon = {
+            TopAppBar({Text(stringResource(UiR.string.settings))}, navigationIcon = {
                 IconNavigation(actions::closeSettings)
             }, actions = {
                 if(selectedCalendarId != null) {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.FilterChip
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.IconPerson
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -170,9 +171,9 @@ fun ProfileScreen(
                         if (editName.isNotBlank()) actions.updateDisplayName(editName.trim())
                         actions.updateAvatarSymbol(selectedAvatar)
                         showEditDialog = false; editName = ""
-                    }) { Text(stringResource(R.string.save)) }
+                    }) { Text(stringResource(UiR.string.save)) }
                 },
-                dismissButton = { TextButton(onClick = { showEditDialog = false; editName = "" }) { Text(stringResource(R.string.cancel)) } }
+                dismissButton = { TextButton(onClick = { showEditDialog = false; editName = "" }) { Text(stringResource(UiR.string.cancel)) } }
             )
         }
     }

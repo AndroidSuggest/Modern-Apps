@@ -13,7 +13,6 @@
     <string name="unit_only_format">" <xliff:g id="unit" example="steps">%1$s</xliff:g>"</string>
     <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> päevas (keskmiselt)</string>
     <string name="month_year_format"><xliff:g id="month" example="Jaanuar">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
-    <string name="cancel">Katkesta</string>
     <string name="metric_energy_burned">Kulutatud energia</string>
     <string name="metric_active_calories">Aktiivseid kaloreid</string>
     <string name="metric_oxygen_saturation">Hapnikusisaldus</string>
@@ -68,14 +67,12 @@
     <string name="label_blood_pressure_unit">mm/Hg</string>
     <string name="label_nutrition_details">Toitumise üksikasjad</string>
     <string name="recipe_name">Retsepti nimi</string>
-    <string name="add">Lisa</string>
     <string name="save_recipe">Salvesta retsept</string>
     <string name="set_quantity_for_format">Sisesta kogus: <xliff:g id="ingredient" example="Tomat">%1$s</xliff:g></string>
     <string name="quantity">Kogus</string>
     <string name="unit">Ühik</string>
     <string name="confirm">Kinnita</string>
     <string name="search_ingredient">Otsi koostisosa</string>
-    <string name="save">Salvesta</string>
     <string name="rename_ingredient">Muuda koostisosa nime</string>
     <string name="ingredients">Koostisosad</string>
     <string name="nutrition_breakdown">Toitainete jaotus</string>

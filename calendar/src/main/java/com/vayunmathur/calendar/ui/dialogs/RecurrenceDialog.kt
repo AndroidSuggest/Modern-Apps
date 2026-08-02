@@ -1,4 +1,5 @@
 package com.vayunmathur.calendar.ui.dialogs
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -127,10 +128,10 @@ fun RecurrenceDialog(backStack: NavBackStack<Route>, resultKey: String, startDat
 
                 scope.launch { registry.dispatchResult(resultKey, rrule) }
                 backStack.pop()
-            }) { Text(stringResource(R.string.ok)) }
+            }) { Text(stringResource(UiR.string.ok)) }
         },
         dismissButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
         },
         text = {
             Column(Modifier.padding(8.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

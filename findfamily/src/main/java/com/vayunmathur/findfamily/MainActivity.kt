@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.MaterialTheme
@@ -229,28 +230,18 @@ fun NoPermissionsScreen(
     }
 
     if (showUpgradeDialog) {
-        AlertDialog(
-            onDismissRequest = { showUpgradeDialog = false },
-            title = { Text(stringResource(R.string.permission_upgrade_dialog_title)) },
-            text = { Text(stringResource(R.string.permission_upgrade_dialog_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showUpgradeDialog = false
-                    locationLauncher.launch(
+        ConfirmDialog(
+            title = stringResource(R.string.permission_upgrade_dialog_title),
+            message = stringResource(R.string.permission_upgrade_dialog_message),
+            confirmLabel = stringResource(R.string.permission_upgrade_dialog_confirm),
+            dismissLabel = stringResource(R.string.permission_upgrade_dialog_dismiss),
+            onConfirm = { locationLauncher.launch(
                         arrayOf(
                             Manifest.permission.ACCESS_FINE_LOCATION,
                             Manifest.permission.ACCESS_COARSE_LOCATION
                         )
-                    )
-                }) {
-                    Text(stringResource(R.string.permission_upgrade_dialog_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUpgradeDialog = false }) {
-                    Text(stringResource(R.string.permission_upgrade_dialog_dismiss))
-                }
-            }
+                    ) },
+            onDismiss = { showUpgradeDialog = false },
         )
     }
 }

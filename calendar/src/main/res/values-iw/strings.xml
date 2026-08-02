@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">לוח שנה</string>
-    <string name="ok">אישור</string>
-    <string name="cancel">ביטול</string>
-    <string name="close">סגירה</string>
-    <string name="delete">מחיקה</string>
-    <string name="rename">שינוי שם</string>
     <string name="create">יצירה</string>
-    <string name="remove">הסרה</string>
     <string name="add_reminder">הוספת תזכורת</string>
     <string name="search">חיפוש</string>
     <string name="no_title">(ללא כותרת)</string>
@@ -18,7 +12,6 @@
     <string name="all_day">כל היום</string>
     <string name="does_not_repeat">ללא חזרה</string>
     <string name="repeats">חזרה</string>
-    <string name="settings">הגדרות</string>
     <string name="no_account">ז</string>
     <string name="calendar_id_label">מזהה: %1$d</string>
     <string name="choose_calendar">בחירת לוח שנה</string>

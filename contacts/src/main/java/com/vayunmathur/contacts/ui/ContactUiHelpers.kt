@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
@@ -106,6 +107,6 @@ fun shareContactsAsVcf(
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, chooserTitle))
+        ExternalIntents.launch(context, Intent.createChooser(intent, chooserTitle))
     }
 }

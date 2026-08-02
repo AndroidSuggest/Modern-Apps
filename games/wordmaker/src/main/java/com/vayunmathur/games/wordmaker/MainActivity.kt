@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -96,6 +97,7 @@ import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.GameCenterScreen
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.library.util.GameHubSessionHook
 import com.vayunmathur.library.util.MainNavigation
@@ -133,6 +135,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             DynamicTheme {
                 val backStack = rememberNavBackStack<Route>(Route.Game)
+                // Land on settings when opened from the system App Info page.
+                backStack.openSettingsIfRequested(Route.Settings)
                 GameHubSessionHook("wordmaker", "Wordmaker")
                 MainNavigation(backStack) {
                     entry<Route.Game> {
@@ -896,7 +900,7 @@ fun DefinitionDialog(word: String, definition: List<String>, onDismiss: () -> Un
         text = { Text(text = definition.joinToString("\n\n")) },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text(stringResource(R.string.close))
+                Text(stringResource(UiR.string.close))
             }
         }
     )
@@ -930,7 +934,7 @@ fun BonusWordsDialog(
             Button(
                 onClick = onDismiss
             ) {
-                Text(stringResource(R.string.close))
+                Text(stringResource(UiR.string.close))
             }
         }
     )

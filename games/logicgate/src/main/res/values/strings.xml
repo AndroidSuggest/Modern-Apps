@@ -1,10 +1,6 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- Screens / MainActivity / launcher: App name. Noun, proper, title of logic gate puzzle game -->
     <string name="app_name">Logic Gate</string>
-    <!-- GameScreen top bar: Button to clear entire circuit wiring. Verb -->
-    <string name="clear">Clear</string>
-    <!-- GameScreen top bar: Button to undo last circuit edit. Verb -->
-    <string name="undo">Undo</string>
     <!-- GameScreen top bar: Button to redo after undo. Verb -->
     <string name="redo">Redo</string>
 

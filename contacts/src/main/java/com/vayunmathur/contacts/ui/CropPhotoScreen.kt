@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -136,7 +137,7 @@ fun CropPhotoScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.crop_photo)) },
                 navigationIcon = {
-                    TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = onCancel) { Text(stringResource(UiR.string.cancel)) }
                 },
                 actions = {
                     TextButton(onClick = {
@@ -156,7 +157,7 @@ fun CropPhotoScreen(
                         val scaled = Bitmap.createScaledBitmap(cropped, 1024, 1024, true)
                         if (cropped !== scaled) cropped.recycle()
                         onCropComplete(scaled)
-                    }) { Text(stringResource(R.string.done)) }
+                    }) { Text(stringResource(UiR.string.done)) }
                 }
             )
         }

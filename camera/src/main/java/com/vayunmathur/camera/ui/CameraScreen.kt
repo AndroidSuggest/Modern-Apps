@@ -14,7 +14,6 @@ import android.graphics.Shader
 import android.net.Uri
 import android.provider.MediaStore
 import android.util.Patterns
-import android.widget.Toast
 import android.util.Log
 import android.view.OrientationEventListener
 import androidx.camera.compose.CameraXViewfinder
@@ -50,6 +49,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -806,7 +807,7 @@ fun CameraScreen(
                             } else {
                                 Intent(Intent.ACTION_VIEW, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
                             }
-                            context.startActivity(intent)
+                            ExternalIntents.launch(context, intent)
                         }.onFailure { Log.w("CameraScreen", "Could not open image viewer", it) }
                     },
                     iconRotation = animatedRotation,
@@ -1525,7 +1526,7 @@ private fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Contex
                     try {
                         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                     } catch (e: ActivityNotFoundException) {
-                        Toast.makeText(context, R.string.no_app_to_open_url, Toast.LENGTH_SHORT).show()
+                        AppMessages.show(context.getString(R.string.no_app_to_open_url))
                     }
                 }) {
                     Text(stringResource(R.string.open_url))

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -135,7 +136,7 @@ fun GroupsScreen(state: GroupsUiState, actions: ContactsActions, expandGroupId: 
                             shape = headerShape,
                             color = headerColor,
                         ) {
-                            SafeListItem(
+                            ListItem(
                                 content = {
                                     Text(
                                         text = group.name,
@@ -166,8 +167,7 @@ fun GroupsScreen(state: GroupsUiState, actions: ContactsActions, expandGroupId: 
                                         IconDelete()
                                     }
                                 },
-                                containerColor = Color.Transparent
-                            )
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                         }
 
                         // Animate the contacts list expanding/collapsing in
@@ -220,12 +220,12 @@ fun GroupsScreen(state: GroupsUiState, actions: ContactsActions, expandGroupId: 
                         showAddDialog = false
                     }
                 }) {
-                    Text(stringResource(R.string.add))
+                    Text(stringResource(UiR.string.add))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             }
         )
@@ -241,12 +241,12 @@ fun GroupsScreen(state: GroupsUiState, actions: ContactsActions, expandGroupId: 
                     groupToDelete?.let { actions.deleteGroup(it.id) }
                     groupToDelete = null
                 }) {
-                    Text(stringResource(R.string.delete))
+                    Text(stringResource(UiR.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { groupToDelete = null }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             }
         )

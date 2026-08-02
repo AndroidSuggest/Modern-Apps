@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -83,7 +84,7 @@ fun TimezonePickerDialog(backStack: NavBackStack<com.vayunmathur.calendar.Route>
             }
         },
         confirmButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(R.string.close)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.close)) }
         }
     )
 }

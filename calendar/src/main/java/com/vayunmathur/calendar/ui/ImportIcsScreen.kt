@@ -27,6 +27,7 @@ import com.vayunmathur.calendar.ui.dialogs.COLOR_SWATCHES
 import com.vayunmathur.calendar.util.CalendarViewModel
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.coroutines.launch
+import com.vayunmathur.library.ui.EmptyState
 
 enum class ImportMode { Existing, New }
 
@@ -140,14 +141,12 @@ fun ImportIcsScreen(
                 }
             }
             events.isEmpty() -> {
-                Box(
-                    Modifier
+                EmptyState(
+                    title = stringResource(R.string.no_events_found),
+                    modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(stringResource(R.string.no_events_found))
-                }
+                )
             }
             else -> {
                 LazyColumn(

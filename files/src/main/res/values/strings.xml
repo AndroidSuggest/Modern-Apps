@@ -19,8 +19,6 @@
     <string name="archiving_started">Archiving started…</string>
     <!-- Generic verb. Confirm button in archive dialog to start zipping -->
     <string name="archive">Archive</string>
-    <!-- Generic verb. Dismiss dialog without action -->
-    <string name="cancel">Cancel</string>
     <!-- Snackbar after unzip enqueued. %1$s = destination folder name -->
     <string name="unzipping_started_to">Unzipping started to <xliff:g id="dest_name" example="Downloads">%1$s</xliff:g></string>
     <!-- Snackbar error when move/rename fails. %1$s = error message from exception -->

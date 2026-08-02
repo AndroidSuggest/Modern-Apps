@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="close">Schließen</string>
-    <string name="delete">Löschen</string>
-    <string name="ok">Ok</string>
-    <string name="cancel">Abbrechen</string>
-    <string name="settings">Einstellungen</string>
     <string name="app_name">Kalender</string>
-    <string name="rename">Umbenennen</string>
     <string name="create">Erstellen</string>
-    <string name="remove">Entfernen</string>
     <string name="search">Suchen</string>
     <string name="no_title">(Kein Titel)</string>
     <string name="event_not_found">Termin nicht gefunden</string>

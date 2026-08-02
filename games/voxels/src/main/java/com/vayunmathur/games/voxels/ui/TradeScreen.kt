@@ -21,6 +21,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.voxels.util.VoxelsNative
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Text
 
 private data class Trade(val cost: Int, val costN: Int, val give: Int, val giveN: Int)
@@ -64,7 +65,7 @@ fun TradeOverlay(tradesJson: String, onClose: () -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF3A6B3A)).clickable { onClose() }.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                Text(stringResource(R.string.close), color = Color.White)
+                Text(stringResource(UiR.string.close), color = Color.White)
             }
         }
     }

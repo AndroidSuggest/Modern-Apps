@@ -32,7 +32,6 @@
     <string name="password_required">Mot de passe requis</string>
     <string name="green">Vert</string>
     <string name="red">Rouge</string>
-    <string name="cancel">Annuler</string>
     <string name="outline">Contour</string>
     <string name="open">Ouvrir</string>
     <string name="append_pdf">Ajouter un PDF à la suite</string>
@@ -40,11 +39,9 @@
     <string name="tap_to_append_a_pdf_or_image">Appuyez sur + pour ajouter un PDF ou une image à la suite</string>
     <string name="text">texte</string>
     <string name="incorrect_password">Mot de passe incorrect</string>
-    <string name="add">Ajouter</string>
     <string name="save_encrypted">Enregistrer le PDF chiffré</string>
     <string name="color">Couleur</string>
     <string name="blue">Bleu</string>
     <string name="sticky_note">Note autocollante</string>
     <string name="aa">Aa</string>
-    <string name="done">Terminer</string>
 </resources>

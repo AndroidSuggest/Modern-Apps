@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cancel">Cancelar</string>
-    <string name="delete">Apagar</string>
-    <string name="ok">Ok</string>
-    <string name="settings">Configurações</string>
     <string name="share_contact">Partilhar Contacto</string>
     <string name="about_name">Sobre %1$s</string>
     <string name="birthday">Data de Nascimento</string>
@@ -14,7 +10,6 @@
     <string name="on_device">No dispositivo</string>
     <string name="add_contact">Adicionar contacto</string>
     <string name="edit_contact">Editar contacto</string>
-    <string name="save">­Guardar</string>
     <string name="first_name">Primeiro nome</string>
     <string name="middle_name">Nome do meio</string>
     <string name="last_name">Último nome</string>
@@ -32,7 +27,6 @@
     <string name="add_contacts_account">Adicionar Conta de Contactos</string>
     <string name="enter_account_name">Escolhe um nome para a nova conta local:</string>
     <string name="account_name">Nome de conta</string>
-    <string name="add">Adicionar</string>
     <string name="delete_contact_title">Apagar contacto</string>
     <string name="delete_contact_confirm">Tens acerteza que queres apagar este contacto? Esta ação não pode ser revertida.</string>
     <string name="delete_contact_name_confirm">Tens acerteza que queres apagar \"%1$s\"? Esta ação não pode ser revertida.</string>

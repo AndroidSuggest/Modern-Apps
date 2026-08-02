@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="ok">OK</string>
-    <string name="delete">Smazat</string>
-    <string name="settings">Nastavení</string>
     <string name="app_name">Kontakty</string>
     <string name="contact_not_found">Kontakt nenalezen</string>
     <string name="share_contact">Sdílet kontakt</string>
@@ -12,7 +9,6 @@
     <string name="export_contacts">Exportovat všechny kontakty</string>
     <string name="add_contact">Přidat kontakt</string>
     <string name="edit_contact">Upravit kontakt</string>
-    <string name="save">Uložit</string>
     <string name="first_name">Křestní jméno</string>
     <string name="middle_name">Prostřední jméno</string>
     <string name="last_name">Příjmení</string>
@@ -35,7 +31,6 @@
     <string name="visible_accounts">Viditelné Účty</string>
     <string name="enter_account_name">Zadejte jméno pro nový lokální účet:</string>
     <string name="account_name">Název Účtu</string>
-    <string name="add">Přidat</string>
     <string name="delete_contact_title">Smazat kontakt</string>
     <string name="select_contact_hint">Vyberte kontakt pro zobrazení detailů</string>
     <string name="import_contacts">Importovat kontakty</string>
@@ -49,7 +44,6 @@
     <string name="backup_and_export">Záloha a Export</string>
     <string name="delete_selected_contacts_title">Smazat vybrané kontakty</string>
     <string name="search_contacts">Hledat kontakty</string>
-    <string name="cancel">Zrušit</string>
     <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g> (<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>)</string>
     <string name="about_name">O <xliff:g id="first_name" example="John">%1$s</xliff:g></string>
     <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
@@ -65,7 +59,6 @@
     <string name="include_year">Zahrnout rok</string>
     <string name="contact_photo_description"><xliff:g id="contact_name" example="John Doe">%1$s</xliff:g> fotka</string>
     <string name="on_device">V zařízení</string>
-    <string name="done">Hotovo</string>
     <plurals name="delete_selected_contacts_confirm">
         <item quantity="other">Opravdu chcete smazat <xliff:g id="count" example="5">%1$d</xliff:g> vybraných kontaktů? This action cannot be undone.</item>
     </plurals>

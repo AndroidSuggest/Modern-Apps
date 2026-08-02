@@ -7,8 +7,6 @@
     <string name="level_selector">Puzzle Select</string>
     <!-- PackScreen: TopAppBar title for initial pack chooser. Noun phrase -->
     <string name="pack_selector">Pack Select</string>
-    <!-- GameScreen: Button to undo last move. Verb -->
-    <string name="undo">Undo</string>
     <!-- GameScreen: Button to reset current puzzle. Verb -->
     <string name="restart">Restart</string>
     <!-- GameScreen PuzzleInfoBox: Accessibility content description for back arrow to previous puzzle. Noun phrase -->

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">Zrušit</string>
+    <string name="delete">Smazat</string>
+    <string name="close">Zavřít</string>
+    <string name="remove">Odstranit</string>
+    <string name="rename">Přejmenovat</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">Nastavení</string>
+    <string name="save">Uložit</string>
+    <string name="add">Přidat</string>
+    <string name="done">Hotovo</string>
+    <string name="ok">OK</string>
+    <string name="clear">Smazat</string>
+    <string name="undo">Vrátit zpět</string>
+</resources>

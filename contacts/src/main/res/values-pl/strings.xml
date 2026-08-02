@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Kontakty</string>
-    <string name="ok">OK</string>
     <string name="contact_not_found">Kontakt nie znaleziony</string>
-    <string name="cancel">Anuluj</string>
     <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g> (<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>)</string>
     <string name="contact_photo_description">Zdjęcie <xliff:g id="contact_name" example="John Doe">%1$s</xliff:g></string>
     <string name="share_contact">Udostępnij kontakt</string>
@@ -15,7 +13,6 @@
     <string name="on_device">Na urządzeniu</string>
     <string name="add_contact">Dodaj kontakt</string>
     <string name="edit_contact">Edytuj kontakt</string>
-    <string name="save">Zapisz</string>
     <string name="first_name">Imię</string>
     <string name="middle_name">Drugie imię</string>
     <string name="last_name">Nazwisko</string>
@@ -30,15 +27,12 @@
     <string name="add_picture">Dodaj zdjęcie</string>
     <string name="change_picture">Zmień</string>
     <string name="remove_picture">Usuń</string>
-    <string name="settings">Ustawienia</string>
     <string name="visible_accounts">Widoczne konta</string>
     <string name="add_contacts_account">Dodaj konto kontaktów</string>
     <string name="enter_account_name">Wprowadź nazwę nowego konta lokalnego:</string>
     <string name="account_name">Nazwa konta</string>
-    <string name="add">Dodaj</string>
     <string name="delete_contact_title">Usuń kontakt</string>
     <string name="delete_contact_confirm">Czy na pewno chcesz usunąć ten kontakt? Tej czynności nie można cofnąć.</string>
-    <string name="delete">Usuń</string>
     <string name="grant_contacts_permission">Proszę zezwolić na dostęp do kontaktów</string>
     <string name="select_contact_hint">Wybierz kontakt, aby wyświetlić szczegóły</string>
     <string name="import_contacts">Importuj kontakty</string>
@@ -80,7 +74,6 @@
     <string name="telegram">Telegram</string>
     <string name="google_meet">Google Meet</string>
     <string name="no_groups_found">Nie znaleziono grup. Utwórz grupę w zakładce Grupy.</string>
-    <string name="done">Zrobione</string>
     <string name="import_vcf_file">Importuj plik .vcf</string>
     <string name="import_to_existing_account">Importuj do istniejącego konta</string>
     <string name="create_new_account_option">Utwórz nowe konto</string>

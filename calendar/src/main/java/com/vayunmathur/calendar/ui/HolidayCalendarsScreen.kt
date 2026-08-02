@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import com.vayunmathur.calendar.R
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -104,12 +106,10 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
         }
     }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(stringResource(R.string.holiday_calendars)) },
-            navigationIcon = { IconNavigation(backStack) },
-        )
-    }) { paddingValues ->
+    AppScaffold(
+        title = stringResource(R.string.holiday_calendars),
+        backStack = backStack,
+    ) { paddingValues ->
         Column(Modifier.padding(paddingValues).fillMaxSize()) {
             OutlinedTextField(
                 value = query,
@@ -138,7 +138,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
                             } else if (isAdded) {
                                 Switch(checked = true, onCheckedChange = { removeCountry(country.code) })
                             } else {
-                                TextButton(onClick = { showLangPickerFor = country.code }) { Text(stringResource(R.string.add)) }
+                                TextButton(onClick = { showLangPickerFor = country.code }) { Text(stringResource(UiR.string.add)) }
                             }
                         },
                     )
@@ -193,7 +193,7 @@ fun HolidayCalendarsScreen(viewModel: CalendarViewModel, backStack: NavBackStack
                 }
             },
             confirmButton = {
-                Button(onClick = { showLangPickerFor = null }) { Text(stringResource(R.string.close)) }
+                Button(onClick = { showLangPickerFor = null }) { Text(stringResource(UiR.string.close)) }
             }
         )
     }

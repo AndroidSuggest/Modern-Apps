@@ -4,7 +4,6 @@
     <string name="open">Apri</string>
     <string name="uninstall">Disinstalla</string>
     <string name="view_in_play_store">Visualizza nel Play Store</string>
-    <string name="cancel">Annulla</string>
     <string name="search_f_droid_play_store">Cerca F-Droid &amp; Play Store</string>
     <string name="welcome_to_app_store">Benvenuto nell\'App Store</string>
     <string name="combines_f_droid_repos_with_play_store_l">Combina i repository F-Droid con gli elenchi del Play Store</string>
@@ -21,7 +20,6 @@
     <string name="add_repository">Aggiungi repository</string>
     <string name="repo_url">URL repository</string>
     <string name="name_optional">Nome (opzionale)</string>
-    <string name="add">Aggiungi</string>
     <string name="installed">Installato</string>
     <string name="installed_2">Installato %1$s</string>
     <string name="downloading">Scaricamento %1$s%%</string>

@@ -43,20 +43,8 @@
     <string name="calendar_widget_description">Upcoming events at a glance — tap to open Calendar</string>
 
     <!-- Common actions: generic buttons used across dialogs -->
-    <!-- Generic confirmation button. Keep short. -->
-    <string name="ok">OK</string>
-    <!-- Generic cancel/dismiss button. Verb. -->
-    <string name="cancel">Cancel</string>
-    <!-- Generic close button. Verb. Dismisses dialog/sheet -->
-    <string name="close">Close</string>
-    <!-- Generic delete action. Verb. Removes item -->
-    <string name="delete">Delete</string>
-    <!-- Generic rename action. Verb. -->
-    <string name="rename">Rename</string>
     <!-- Generic create action. Verb. Creates new item -->
     <string name="create">Create</string>
-    <!-- Generic remove action. Verb. -->
-    <string name="remove">Remove</string>
     <!-- Event details: button to add a reminder/notification for event -->
     <string name="add_reminder">Add reminder</string>
     <!-- Toolbar: search events. Verb. -->
@@ -103,8 +91,6 @@
     <string name="repeats">Repeats</string>
 
     <!-- Settings screen -->
-    <!-- Settings: top bar title and bottom nav label. Noun. -->
-    <string name="settings">Settings</string>
     <!-- Account label when calendar has no account -->
     <string name="no_account">(No account)</string>
     <!-- Settings: shows calendar database ID. %1$d = numeric calendar ID -->
@@ -226,8 +212,6 @@
     <string name="search_countries">Search countries</string>
     <!-- Language picker dialog title for holiday calendar language -->
     <string name="choose_language">Choose language</string>
-    <!-- Generic add button. Verb. Adds selected item -->
-    <string name="add">Add</string>
     <!-- Settings: row title for managing holiday calendars -->
     <string name="holiday_calendars">Holiday calendars</string>
     <!-- Permission screen: shown when calendar permission not granted -->

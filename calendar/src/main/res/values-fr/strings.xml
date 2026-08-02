@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Calendrier</string>
-    <string name="ok">Ok</string>
-    <string name="settings">Paramètres</string>
-    <string name="cancel">Annuler</string>
-    <string name="delete">Supprimer</string>
-    <string name="close">Fermer</string>
-    <string name="rename">Renommer</string>
     <string name="create">Créer</string>
-    <string name="remove">Retirer</string>
     <string name="search">Rechercher</string>
     <string name="no_title">(Sans titre)</string>
     <string name="event_not_found">Événement non trouvé</string>
@@ -144,7 +137,6 @@
         <item quantity="many">%1$d jours avant</item>
         <item quantity="other">%1$d jours avant</item>
     </plurals>
-    <string name="add">Ajouter</string>
     <string name="layout_short_day">J</string>
     <string name="holiday_calendars">Calendriers des jours fériés</string>
 </resources>

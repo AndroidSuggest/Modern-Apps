@@ -3,9 +3,9 @@ package com.vayunmathur.office.util
 import android.app.Application
 import android.content.Context
 import android.net.Uri
-import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
@@ -2812,9 +2812,9 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                         syncDoc(currentDocId!!, currentDocKey!!)
                     }
                 }
-                launch(Dispatchers.Main) { Toast.makeText(getApplication<Application>(), getApplication<Application>().getString(R.string.saved), Toast.LENGTH_SHORT).show() }
+                launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(R.string.saved)) }
             } catch (e: Exception) {
-                launch(Dispatchers.Main) { Toast.makeText(getApplication<Application>(), getApplication<Application>().getString(R.string.save_failed, e.message), Toast.LENGTH_SHORT).show() }
+                launch(Dispatchers.Main) { AppMessages.show(getApplication<Application>().getString(R.string.save_failed, e.message)) }
             } finally {
                 _isSaving.value = false
             }

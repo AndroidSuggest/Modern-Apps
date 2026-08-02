@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">ביטול</string>
+    <string name="delete">מחיקה</string>
+    <string name="close">סגירה</string>
+    <string name="remove">הסרה</string>
+    <string name="rename">שינוי שם</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">הגדרות</string>
+    <string name="save">שמירה</string>
+    <string name="add">הוספה</string>
+    <string name="done">סיום</string>
+    <string name="ok">אישור</string>
+</resources>

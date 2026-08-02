@@ -32,14 +32,8 @@
     <string name="body_label">Body</string>
     <!-- Drawer / OutboxScreen: Label for Outbox folder containing pending sends. Noun -->
     <string name="outbox">Outbox</string>
-    <!-- Drawer / SettingsScreen: Title for settings. Noun -->
-    <string name="settings">Settings</string>
     <!-- Drawer / DraftsScreen: Label for drafts folder. Noun -->
     <string name="drafts">Drafts</string>
-    <!-- SettingsScreen: Button to save signature. Verb -->
-    <string name="save">Save</string>
-    <!-- Generic verb. Dismiss dialog/menu -->
-    <string name="cancel">Cancel</string>
     <!-- Drawer: Outbox label with pending count. %1$d = number of unsent messages -->
     <string name="outbox_with_count">Outbox (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <!-- OutboxScreen: TopBar action to send all pending. Verb phrase -->

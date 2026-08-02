@@ -1,6 +1,7 @@
 package com.vayunmathur.calendar.ui.dialogs
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -52,10 +53,10 @@ fun SettingsRenameCalendarDialog(viewModel: CalendarViewModel, backStack: NavBac
             Button(enabled = renameText.isNotBlank(), onClick = {
                 viewModel.renameCalendar(calendarId, renameText)
                 backStack.pop()
-            }) { Text(stringResource(R.string.rename)) }
+            }) { Text(stringResource(UiR.string.rename)) }
         },
         dismissButton = {
-            Button(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            Button(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.cancel)) }
         }
     )
 }

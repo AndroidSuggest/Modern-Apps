@@ -3,8 +3,6 @@
     <string name="app_name">Astronomy</string>
 
     <!-- SkyMapPage / TopAppBar -->
-    <!-- App-wide: button to open settings. Noun. -->
-    <string name="settings">Settings</string>
 
     <!-- SettingsPage: Display section -->
     <!-- SettingsPage: switch to show Messier deep-sky objects -->
@@ -15,8 +13,6 @@
     <!-- ObjectDetailPage: Rise / Transit / Set -->
 
     <!-- ObjectDetailPage: common and calculations -->
-    <!-- Generic dismiss button. Verb. -->
-    <string name="close">Close</string>
     <!-- ObjectDetailPage: error when object id not found. %1$s = object id or name searched -->
     <string name="object_not_found">Object not found: <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
     <!-- ObjectDetailPage: status when object never sets (circumpolar) -->

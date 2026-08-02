@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FloatingActionButton
@@ -108,13 +109,10 @@ fun AccountsScreen(state: AccountsUiState, actions: AccountsActions) {
         },
     ) { padding ->
         if (state.accounts.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(
-                    stringResource(R.string.no_accounts),
-                    Modifier.padding(32.dp),
-                    textAlign = TextAlign.Center,
-                )
-            }
+            EmptyState(
+                title = stringResource(R.string.no_accounts),
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
         } else {
             LazyColumn(Modifier.padding(padding)) {
                 items(state.accounts, key = { it.accountName }) { account ->

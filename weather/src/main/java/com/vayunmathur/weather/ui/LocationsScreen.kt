@@ -2,7 +2,6 @@ package com.vayunmathur.weather.ui
 
 import android.Manifest
 import android.content.Context
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -23,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -93,6 +94,7 @@ internal fun rememberRequestDeviceLocation(
     viewModel: WeatherViewModel,
 ): Pair<() -> Unit, Boolean> {
     val context = LocalContext.current
+    val messenger = rememberMessenger()
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
 
@@ -103,7 +105,7 @@ internal fun rememberRequestDeviceLocation(
             if (loc != null) {
                 viewModel.setCurrentLocation(context.getString(R.string.current_location), loc.latitude, loc.longitude)
             } else {
-                Toast.makeText(context, context.getString(R.string.couldn_t_determine_location), Toast.LENGTH_SHORT).show()
+                messenger.show(context.getString(R.string.couldn_t_determine_location))
             }
             loading = false
         }
@@ -115,7 +117,7 @@ internal fun rememberRequestDeviceLocation(
         if (granted.values.any { it }) {
             fetchLocation()
         } else {
-            Toast.makeText(context, context.getString(R.string.location_permission_denied), Toast.LENGTH_SHORT).show()
+            messenger.show(context.getString(R.string.location_permission_denied))
         }
     }
 
@@ -346,7 +348,7 @@ fun LocationsScreen(
                     leadingContent = {
                         IconDelete(tint = MaterialTheme.colorScheme.onSurface)
                     },
-                    content = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.onSurface) },
+                    content = { Text(stringResource(UiR.string.delete), color = MaterialTheme.colorScheme.onSurface) },
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
                 Spacer(Modifier.height(4.dp))

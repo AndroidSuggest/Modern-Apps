@@ -37,6 +37,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.BottomAppBar
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -459,7 +462,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 }
             },
             confirmButton = { TextButton({ needsPassword = false; password = pwInput }) { Text(stringResource(R.string.open)) } },
-            dismissButton = { TextButton({ onBack() }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton({ onBack() }) { Text(stringResource(UiR.string.cancel)) } },
         )
     }
 
@@ -739,7 +742,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_pdf)))
+        ExternalIntents.launch(context, Intent.createChooser(intent, context.getString(R.string.share_pdf)))
     }
 
     // "Save": overwrite the original file in place.
@@ -751,12 +754,8 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 val ok = bytes != null && runCatching {
                     context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } != null
                 }.getOrDefault(false)
-                android.widget.Toast.makeText(
-                    context,
-                    if (ok) context.getString(R.string.pdf_saved)
-                    else context.getString(R.string.pdf_save_error),
-                    android.widget.Toast.LENGTH_SHORT,
-                ).show()
+                AppMessages.show(if (ok) context.getString(R.string.pdf_saved)
+                    else context.getString(R.string.pdf_save_error))
             }
         }
     }
@@ -1051,9 +1050,9 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                         registerCreated(page, id); markEdited(page)
                     }
                     pendingNote = null
-                }) { Text(stringResource(R.string.add)) }
+                }) { Text(stringResource(UiR.string.add)) }
             },
-            dismissButton = { TextButton({ pendingNote = null }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton({ pendingNote = null }) { Text(stringResource(UiR.string.cancel)) } },
         )
     }
 
@@ -1071,9 +1070,9 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                         registerCreated(page, id); markEdited(page)
                     }
                     pendingCallout = null
-                }) { Text(stringResource(R.string.add)) }
+                }) { Text(stringResource(UiR.string.add)) }
             },
-            dismissButton = { TextButton({ pendingCallout = null }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton({ pendingCallout = null }) { Text(stringResource(UiR.string.cancel)) } },
         )
     }
 
@@ -1109,7 +1108,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                     if (pw.isNotEmpty()) { pendingEncryptPw = pw; encryptLauncher.launch("encrypted.pdf") }
                 }) { Text(stringResource(R.string.save_encrypted)) }
             },
-            dismissButton = { TextButton({ showEncrypt = false }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton({ showEncrypt = false }) { Text(stringResource(UiR.string.cancel)) } },
         )
     }
     }
@@ -2432,7 +2431,7 @@ private fun StyleDialog(
     var b by remember(color) { mutableFloatStateOf(color.blue) }
     com.vayunmathur.library.ui.AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.done)) } },
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(UiR.string.done)) } },
         title = { Text(stringResource(R.string.style)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {

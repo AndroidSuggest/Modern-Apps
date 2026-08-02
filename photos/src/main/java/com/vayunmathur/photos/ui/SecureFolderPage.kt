@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
@@ -103,9 +104,10 @@ fun SecureFolderPage(
         bottomBar = { if (!isSelectionMode) NavigationBar(Route.SecureFolder, backStack) }
     ) { paddingValues ->
         if (photos.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.secure_folder_is_empty), color = Color.Gray)
-            }
+            EmptyState(
+                title = stringResource(R.string.secure_folder_is_empty),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+            )
         } else {
             Box(
                 modifier = Modifier

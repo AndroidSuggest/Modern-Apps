@@ -3,6 +3,7 @@ package com.vayunmathur.messages.ui
 import android.text.format.DateUtils
 import android.content.Context
 import android.text.format.DateFormat
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlin.time.Clock
@@ -877,7 +878,7 @@ private fun MessageRequestBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextButton(onClick = onBlock) { Text(stringResource(R.string.block)) }
-                TextButton(onClick = onDelete) { Text(stringResource(R.string.delete)) }
+                TextButton(onClick = onDelete) { Text(stringResource(UiR.string.delete)) }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onAccept) {
                     Text(stringResource(R.string.accept), fontWeight = FontWeight.SemiBold)
@@ -910,7 +911,7 @@ private fun ReactionPickerDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         },
     )
 }

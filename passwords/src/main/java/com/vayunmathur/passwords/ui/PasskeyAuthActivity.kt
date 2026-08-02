@@ -5,7 +5,6 @@ package com.vayunmathur.passwords.ui
 import kotlin.uuid.Uuid
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import android.util.Base64
 import android.util.Log
 import androidx.credentials.CreatePublicKeyCredentialRequest
@@ -13,6 +12,7 @@ import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.biometric.unlockDatabaseWithBiometrics
 import com.vayunmathur.library.util.DatabaseHelper
 import com.vayunmathur.library.room.buildDatabase
@@ -52,7 +52,7 @@ class PasskeyAuthActivity : FragmentActivity() {
                     proceedWithFlow()
                 },
                 onFailure = { message ->
-                    message?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+                    message?.let { AppMessages.show(it) }
                     setResult(RESULT_CANCELED)
                     finish()
                 }

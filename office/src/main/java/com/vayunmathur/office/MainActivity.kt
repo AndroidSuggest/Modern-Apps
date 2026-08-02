@@ -9,6 +9,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.BottomBarItem
@@ -365,7 +366,7 @@ fun EnableOnlineDialog(onEnable: () -> Unit, onDismiss: () -> Unit) {
         title = { Text(stringResource(R.string.enable_online_sharing)) },
         text = { Text(stringResource(R.string.sharing_online_generates_your_encryption)) },
         confirmButton = { TextButton(onClick = onEnable) { Text(stringResource(R.string.enable)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -416,7 +417,7 @@ fun ShareOnlineDialog(
                                         else
                                             DropdownMenuItem(text = { Text(stringResource(R.string.make_editor)) }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.EDITOR) })
                                         DropdownMenuItem(text = { Text(stringResource(R.string.make_owner)) }, onClick = { memberMenu = null; onTransferOwner(m.id) })
-                                        DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.REVOKED) })
+                                        DropdownMenuItem(text = { Text(stringResource(UiR.string.remove)) }, onClick = { memberMenu = null; onSetRole(m.id, com.vayunmathur.office.util.OfficeRoles.REVOKED) })
                                     }
                                 }
                             }
@@ -446,7 +447,7 @@ fun ShareOnlineDialog(
                             value = docName, onValueChange = { docName = it },
                             label = { Text(stringResource(R.string.document_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth()
                         )
-                        TextButton(enabled = docName.isNotBlank() && docName.trim() != initialName, onClick = { onRename(docName.trim()) }) { Text(stringResource(R.string.rename)) }
+                        TextButton(enabled = docName.isNotBlank() && docName.trim() != initialName, onClick = { onRename(docName.trim()) }) { Text(stringResource(UiR.string.rename)) }
                         Spacer(Modifier.height(8.dp))
                     }
                     Text(stringResource(R.string.add_someone_by_device_id_copies_this_doc))
@@ -497,7 +498,7 @@ fun ShareOnlineDialog(
                         if (err == null) recipient = ""
                     }
                 }
-            ) { Text(if (sharing) stringResource(R.string.adding) else stringResource(R.string.add)) }
+            ) { Text(if (sharing) stringResource(R.string.adding) else stringResource(UiR.string.add)) }
             else TextButton(onClick = onDismiss) { Text(stringResource(R.string.close_search)) }
         },
         dismissButton = { if (isOwner) TextButton(onClick = onDismiss) { Text(stringResource(R.string.close_search)) } }
@@ -809,7 +810,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                 TextButton(onClick = { fileMenu = true }) { Text(stringResource(R.string.file)) }
                                 DropdownMenu(expanded = fileMenu, onDismissRequest = { fileMenu = false }) {
                                     if (!isOnline) {
-                                        DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, enabled = hasUnsavedChanges, leadingIcon = { IconSave() }, onClick = { fileMenu = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() })
+                                        DropdownMenuItem(text = { Text(stringResource(UiR.string.save)) }, enabled = hasUnsavedChanges, leadingIcon = { IconSave() }, onClick = { fileMenu = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() })
                                         DropdownMenuItem(text = { Text(stringResource(R.string.save_as_1)) }, onClick = { fileMenu = false; saveAsLauncher.launch(saveAsName) })
                                     } else {
                                         DropdownMenuItem(text = { Text(stringResource(R.string.synced_to_cloud)) }, enabled = false, leadingIcon = { IconSave() }, onClick = {})
@@ -817,11 +818,11 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                     DropdownMenuItem(text = { Text(stringResource(R.string.share_online_1)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; if (onlineEnabled) showShareDialog = true else showEnableOnlineDialog = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.print_doc)) }, onClick = { fileMenu = false; printDocument(activity, document) })
                                     viewModel.documentUri?.let { uri ->
-                                        DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, null)) })
+                                        DropdownMenuItem(text = { Text(stringResource(UiR.string.share)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, null)) })
                                     }
                                     DropdownMenuItem(text = { Text(stringResource(R.string.export)) }, leadingIcon = { IconDownload() }, onClick = { fileMenu = false; exportMenu = true })
                                     HorizontalDivider()
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { IconSettings() }, onClick = { fileMenu = false; showSettings = true })
+                                    DropdownMenuItem(text = { Text(stringResource(UiR.string.settings)) }, leadingIcon = { IconSettings() }, onClick = { fileMenu = false; showSettings = true })
                                 }
                                 // Export submenu (opened from File ▸ Export)
                                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
@@ -1119,13 +1120,13 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
     if (showUnsavedDialog) AlertDialog(onDismissRequest = { showUnsavedDialog = false }, title = { Text(stringResource(R.string.unsaved_changes)) },
         text = { Text(stringResource(R.string.unsaved_changes_message)) },
         confirmButton = { TextButton(onClick = { showUnsavedDialog = false; onBack() }) { Text(stringResource(R.string.discard), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { Row { TextButton(onClick = { showUnsavedDialog = false }) { Text(stringResource(R.string.cancel)) }
-            TextButton(onClick = { showUnsavedDialog = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() }) { Text(stringResource(R.string.save), fontWeight = FontWeight.Bold) } } })
+        dismissButton = { Row { TextButton(onClick = { showUnsavedDialog = false }) { Text(stringResource(UiR.string.cancel)) }
+            TextButton(onClick = { showUnsavedDialog = false; if (viewModel.needsSaveAs()) saveAsLauncher.launch(saveAsName) else viewModel.save() }) { Text(stringResource(UiR.string.save), fontWeight = FontWeight.Bold) } } })
     exportWarning?.let { action ->
         AlertDialog(onDismissRequest = { exportWarning = null }, title = { Text(stringResource(R.string.export_to_non_odf_format)) },
             text = { Text(stringResource(R.string.some_formatting_and_features_may_be_lost)) },
             confirmButton = { TextButton(onClick = { exportWarning = null; action() }) { Text(stringResource(R.string.export_1), fontWeight = FontWeight.Bold) } },
-            dismissButton = { TextButton(onClick = { exportWarning = null }) { Text(stringResource(R.string.cancel)) } })
+            dismissButton = { TextButton(onClick = { exportWarning = null }) { Text(stringResource(UiR.string.cancel)) } })
     }
     if (showSettings) SettingsDialog(autoSave = viewModel.getAutoSaveEnabled(context), autoSaveInterval = viewModel.getAutoSaveInterval(context),
         defaultFontSize = viewModel.getDefaultFontSize(context),
@@ -1236,7 +1237,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                     showPageSetup = false
                 }) { Text(stringResource(R.string.apply)) }
             },
-            dismissButton = { TextButton(onClick = { showPageSetup = false }) { Text(stringResource(R.string.cancel)) } })
+            dismissButton = { TextButton(onClick = { showPageSetup = false }) { Text(stringResource(UiR.string.cancel)) } })
     }
     if (showHeaderFooter) {
         val td = document as? OdfDocument.TextDocument
@@ -1275,8 +1276,8 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
             onDismissRequest = { showCellComment = false },
             title = { Text(stringResource(R.string.cell_comment)) },
             text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text(stringResource(R.string.comment)) }, modifier = Modifier.height(120.dp)) },
-            confirmButton = { TextButton(onClick = { viewModel.setCellComment(s, r, c, "", text); showCellComment = false }) { Text(stringResource(R.string.save)) } },
-            dismissButton = { TextButton(onClick = { showCellComment = false }) { Text(stringResource(R.string.cancel)) } }
+            confirmButton = { TextButton(onClick = { viewModel.setCellComment(s, r, c, "", text); showCellComment = false }) { Text(stringResource(UiR.string.save)) } },
+            dismissButton = { TextButton(onClick = { showCellComment = false }) { Text(stringResource(UiR.string.cancel)) } }
         )
     }
     if (showCellResize && (activeCell?.second ?: -1) >= 0) {
@@ -1298,7 +1299,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                 h.toFloatOrNull()?.let { viewModel.setRowHeight(s, r, it) }
                 showCellResize = false
             }) { Text(stringResource(R.string.apply)) } },
-            dismissButton = { TextButton(onClick = { showCellResize = false }) { Text(stringResource(R.string.cancel)) } }
+            dismissButton = { TextButton(onClick = { showCellResize = false }) { Text(stringResource(UiR.string.cancel)) } }
         )
     }
     if (showSlideNotes && isPresentation) {
@@ -1307,8 +1308,8 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
             onDismissRequest = { showSlideNotes = false },
             title = { Text(stringResource(R.string.speaker_notes)) },
             text = { TextField(value = text, onValueChange = { text = it }, placeholder = { Text(stringResource(R.string.notes_for_this_slide)) }, modifier = Modifier.height(160.dp)) },
-            confirmButton = { TextButton(onClick = { viewModel.setSlideNotes(activeSlide, text); showSlideNotes = false }) { Text(stringResource(R.string.save)) } },
-            dismissButton = { TextButton(onClick = { showSlideNotes = false }) { Text(stringResource(R.string.cancel)) } }
+            confirmButton = { TextButton(onClick = { viewModel.setSlideNotes(activeSlide, text); showSlideNotes = false }) { Text(stringResource(UiR.string.save)) } },
+            dismissButton = { TextButton(onClick = { showSlideNotes = false }) { Text(stringResource(UiR.string.cancel)) } }
         )
     }
     if (showSlideBackground && isPresentation) {
@@ -1330,7 +1331,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                 }
             },
             confirmButton = { TextButton(onClick = { viewModel.setSlideTransition(activeSlide, type.takeIf { it != "none" }, "medium"); showSlideTransition = false }) { Text(stringResource(R.string.apply)) } },
-            dismissButton = { TextButton(onClick = { showSlideTransition = false }) { Text(stringResource(R.string.cancel)) } }
+            dismissButton = { TextButton(onClick = { showSlideTransition = false }) { Text(stringResource(UiR.string.cancel)) } }
         )
     }
     if (cropImageBlock >= 0) {
@@ -1408,9 +1409,9 @@ private fun MetadataDialog(metadata: OdfMetadata, onSave: (OdfMetadata) -> Unit,
                     keywords = keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                 ))
                 onDismiss()
-            }) { Text(stringResource(R.string.save)) }
+            }) { Text(stringResource(UiR.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }
 
 @Composable private fun MetadataRow(label: String, value: String) {

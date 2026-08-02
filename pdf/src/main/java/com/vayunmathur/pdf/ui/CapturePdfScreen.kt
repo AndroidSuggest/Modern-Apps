@@ -3,7 +3,6 @@ package com.vayunmathur.pdf.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.BottomAppBar
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -113,10 +113,10 @@ fun CapturePdfScreen(
             if (pending != null && result.targetUri == pending) {
                 pendingTargetUri.value = null
                 if (result.success) {
-                    Toast.makeText(context, context.getString(R.string.pdf_saved), Toast.LENGTH_SHORT).show()
+                    AppMessages.show(context.getString(R.string.pdf_saved))
                     onPdfCreated(result.targetUri)
                 } else {
-                    Toast.makeText(context, context.getString(R.string.failed_to_save_pdf), Toast.LENGTH_SHORT).show()
+                    AppMessages.show(context.getString(R.string.failed_to_save_pdf))
                 }
             }
         }

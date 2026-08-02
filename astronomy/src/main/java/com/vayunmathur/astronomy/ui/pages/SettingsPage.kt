@@ -12,6 +12,7 @@ import com.vayunmathur.astronomy.ui.AstronomyViewModel
 import com.vayunmathur.astronomy.ui.ConstellationMode
 import com.vayunmathur.astronomy.ui.SettingsActions
 import com.vayunmathur.astronomy.ui.SettingsUiState
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
 import androidx.compose.ui.res.stringResource
@@ -60,9 +61,10 @@ fun SettingsScreen(backStack: NavBackStack<Route>, state: SettingsUiState, actio
     var latText by remember(state.latDeg) { mutableStateOf(state.latDeg?.toString() ?: "") }
     var lonText by remember(state.lonDeg) { mutableStateOf(state.lonDeg?.toString() ?: "") }
 
-    Scaffold(topBar = {
-        TopAppBar(title = { Text(stringResource(R.string.settings)) }, navigationIcon = { IconNavigation(backStack) })
-    }) { padding ->
+    AppScaffold(
+        title = stringResource(UiR.string.settings),
+        backStack = backStack,
+    ) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.display), style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

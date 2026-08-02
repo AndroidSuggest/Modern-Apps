@@ -26,10 +26,7 @@
     <string name="ssl_tls">SSL/TLS</string>
     <string name="starttls">STARTTLS</string>
     <string name="listening_for_new_mail">正在监听新邮件</string>
-    <string name="settings">设置</string>
     <string name="drafts">草稿</string>
-    <string name="save">保存</string>
-    <string name="cancel">取消</string>
     <string name="email_widget_description">来自统一收件箱的最新邮件 — 点按即可打开 Email</string>
     <string name="to_me">发给我</string>
     <string name="total_attachment_size_exceeds_25_mb_many">附件总大小超过 25 MB；许多邮件提供者将拒绝此附件。</string>

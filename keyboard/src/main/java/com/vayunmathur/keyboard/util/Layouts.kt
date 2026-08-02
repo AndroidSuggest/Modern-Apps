@@ -12,7 +12,11 @@ enum class ShiftState { OFF, SHIFTED, CAPS_LOCK }
  * added by the UI around these character rows so the data here stays simple.
  */
 object Layouts {
-    /** QWERTY letters (always lowercase here; the UI upper-cases per shift state). */
+    /**
+     * QWERTY letters (always lowercase here; the UI upper-cases per shift state). The letter
+     * rows the keyboard actually draws come from the user's chosen [KeyboardLayout] — this is
+     * the English one, shared by the other layouts that are plain QWERTY.
+     */
     val LETTER_ROWS = listOf(
         "qwertyuiop",
         "asdfghjkl",
@@ -40,11 +44,13 @@ object Layouts {
     )
 
     /**
-     * Long-press alternates for the letter page: vowels (and ç/ñ) expose common accents.
-     * No digits here — there's a dedicated number row. Long-pressing commits the first
-     * alternate (a simple, popup-free version of accent entry); an empty string = no alternate.
+     * Long-press alternates shared by the Latin layouts: vowels (and ç/ñ) expose common
+     * accents. No digits here — there's a dedicated number row. Long-pressing commits the
+     * first alternate (a simple, popup-free version of accent entry); an empty string = no
+     * alternate. Individual layouts override the keys their language cares about, so the
+     * Polish `a` gives `ą` rather than `à` (see [KeyboardLayouts]).
      */
-    val LETTER_ALTERNATES: Map<Char, String> = mapOf(
+    val LATIN_ALTERNATES: Map<Char, String> = mapOf(
         'q' to "", 'w' to "", 'e' to "éèêë", 'r' to "", 't' to "",
         'y' to "ÿ", 'u' to "úùûü", 'i' to "íìîï", 'o' to "óòôöø", 'p' to "",
         'a' to "àáâäã", 's' to "ß", 'd' to "", 'f' to "", 'g' to "",

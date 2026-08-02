@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.Surface
@@ -143,7 +144,7 @@ fun DrawingSettingsPage(
                 onClick = { dispatchAndPop() },
                 modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
             ) {
-                Text(stringResource(R.string.done))
+                Text(stringResource(UiR.string.done))
             }
         }
     }

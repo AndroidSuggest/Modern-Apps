@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="cancel">取消</string>
     <string name="app_name">VPN</string>
     <string name="vpn_wireguard_gotatun">VPN — WireGuard (gotatun)</string>
     <string name="no_tunnels_yet">尚无隧道</string>
@@ -19,7 +18,6 @@
     <string name="logging">日志记录</string>
     <string name="delete_all_logs">删除所有日志？</string>
     <string name="this_will_permanently_remove_all_connect">这将永久移除所有连接日志，且无法撤销。</string>
-    <string name="delete">删除</string>
     <string name="address">地址：%1$s</string>
     <string name="allowed">允许：%1$s</string>
     <string name="need_activity_to_grant_vpn_permission">需要 Activity 来授予 VPN 权限</string>

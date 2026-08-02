@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Astronomia</string>
-    <string name="settings">Impostazioni</string>
     <string name="night_mode">Modalità notte (rossa)</string>
-    <string name="close">Chiudi</string>
     <string name="object_not_found">Oggetto non trovato: <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
     <string name="circumpolar_never_sets">Circumpolare - non tramonta mai</string>
     <string name="alt_az">Alt: <xliff:g id="altitude" example="45">%1$s</xliff:g>° Az: <xliff:g id="azimuth" example="180">%2$s</xliff:g>°</string>

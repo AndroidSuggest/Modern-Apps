@@ -2,7 +2,6 @@
 <resources>
     <string name="search">Suchen</string>
     <string name="month_year_format">%1$s %2$d</string>
-    <string name="cancel">Abbrechen</string>
     <string name="app_name">Gesundheit</string>
     <string name="grant_permissions">Berechtigungen erlauben</string>
     <string name="tab_day">Tag</string>
@@ -79,9 +78,7 @@
     <string name="ingredients">Zutaten</string>
     <string name="rename_ingredient">Zutat umbenennen</string>
     <string name="custom_name">individueller Name</string>
-    <string name="save">Speichern</string>
     <string name="recipe_name">Rezept Name</string>
-    <string name="add">Hinzufügen</string>
     <string name="save_recipe">Rezept speichern</string>
     <string name="set_quantity_for_format">Menge für %1$s</string>
     <string name="quantity">Menge</string>

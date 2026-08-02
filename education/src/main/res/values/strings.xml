@@ -35,16 +35,12 @@
     <string name="pin">PIN</string>
     <!-- ParentGatePage: Error shown under PIN field when wrong PIN entered -->
     <string name="incorrect_pin">Incorrect PIN</string>
-    <!-- Generic verb. Dismiss dialog -->
-    <string name="cancel">Cancel</string>
     <!-- Generic verb. Submit PIN -->
     <string name="enter">Enter</string>
     <!-- ParentPage: TopAppBar title for parent settings screen -->
     <string name="parent_settings">Parent settings</string>
     <!-- Generic noun. Field label for learner name -->
     <string name="name">Name</string>
-    <!-- Generic OK confirmation. Button label -->
-    <string name="ok">OK</string>
     <!-- ParentPage: Dropdown label for grade selection. Noun -->
     <string name="grade">Grade</string>
     <!-- ParentPage: Label for band override dropdown to force K2/Explorer/Scholar shell. Noun -->
@@ -141,8 +137,6 @@
     <string name="change">Change</string>
     <!-- Generic confirmation that value was saved. Short status -->
     <string name="saved">Saved</string>
-    <!-- Generic verb. Button to save changes -->
-    <string name="save">Save</string>
     <!-- QuizPage: TopAppBar fallback title when exercise title blank. Noun, practice mode -->
     <string name="practice">Practice</string>
     <!-- QuizPage: Progress header counting questions. %1$s = current index, %2$s = total -->

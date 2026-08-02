@@ -11,8 +11,6 @@
     <!-- TopBar / ShutterRow controls -->
     <!-- ShutterRow: thumbnail button that opens last photo in gallery. Noun. Accessibility label -->
     <string name="open_gallery">Gallery</string>
-    <!-- TopAppBar title for settings screen and button to open settings -->
-    <string name="settings">Settings</string>
 
     <!-- Permissions -->
     <!-- Full-screen permission gate when CAMERA and RECORD_AUDIO not granted -->

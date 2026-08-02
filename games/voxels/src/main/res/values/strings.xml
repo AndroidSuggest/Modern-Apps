@@ -18,11 +18,9 @@
     <string name="seed">Seed</string>
     <string name="leave_blank_for_random">Leave blank for random</string>
     <string name="a_number_or_any_text_hashed_to_a_seed">A number, or any text (hashed to a seed).</string>
-    <string name="cancel">Cancel</string>
     <string name="create_play">Create &amp; Play</string>
     <string name="villager_trades">Villager Trades</string>
     <string name="tap_a_trade_to_exchange_need_the_cost_it">Tap a trade to exchange (need the cost items).</string>
-    <string name="close">Close</string>
     <string name="seed_2">Seed: %1$s  •  %2$s</string>
     <string name="estus">Estus ×%1$s</string>
     <string name="down">Down</string>

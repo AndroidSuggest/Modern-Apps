@@ -112,10 +112,6 @@
     <string name="clear_history">Clear History</string>
     <!-- Confirmation body text for clearing all watch history -->
     <string name="are_you_sure_you_want_to_clear_all_watch">Are you sure you want to clear all watch history?</string>
-    <!-- Generic clear action for history. Verb -->
-    <string name="clear">Clear</string>
-    <!-- Generic cancel button in dialogs. Verb -->
-    <string name="cancel">Cancel</string>
 
     <!-- TopAppBar title for offline downloads list (when not selecting). Noun plural -->
     <string name="downloads">Downloads</string>

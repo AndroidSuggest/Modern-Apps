@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -62,11 +64,10 @@ fun DownloadedMapsPage(backStack: NavBackStack<Route>, zonesViewModel: MapsZones
             .build()
     }
 
-    Scaffold(topBar = {
-        TopAppBar(title = { Text(stringResource(R.string.downloaded_maps)) }, navigationIcon = {
-            IconNavigation(backStack)
-        })
-    }) { paddingValues ->
+    AppScaffold(
+        title = stringResource(R.string.downloaded_maps),
+        backStack = backStack,
+    ) { paddingValues ->
         Box(
             Modifier
                 .padding(paddingValues)
@@ -160,7 +161,7 @@ fun DownloadedMapsPage(backStack: NavBackStack<Route>, zonesViewModel: MapsZones
             text = { Text(stringResource(R.string.download_offline_map_text, zoneId)) },
             dismissButton = {
                 TextButton({ showDownloadDialogForZone = null }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             }
         )
@@ -174,14 +175,14 @@ fun DownloadedMapsPage(backStack: NavBackStack<Route>, zonesViewModel: MapsZones
                     zonesViewModel.deleteZone(zoneId)
                     showDeleteDialogForZone = null
                 }) {
-                    Text(stringResource(R.string.delete))
+                    Text(stringResource(UiR.string.delete))
                 }
             },
             title = { Text(stringResource(R.string.delete_offline_map_title)) },
             text = { Text(stringResource(R.string.delete_offline_map_text, zoneId)) },
             dismissButton = {
                 TextButton({ showDeleteDialogForZone = null }) {
-                    Text(stringResource(R.string.cancel))
+                    Text(stringResource(UiR.string.cancel))
                 }
             }
         )

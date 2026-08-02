@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -1607,7 +1608,7 @@ private fun CropRotatePanel(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { IconClose(); Text(stringResource(R.string.cancel), fontSize = 13.sp) }
+                ) { IconClose(); Text(stringResource(UiR.string.cancel), fontSize = 13.sp) }
             }
             Surface(
                 modifier = Modifier.clickable { onApply() },
@@ -1977,7 +1978,7 @@ private fun FreeTransformPanel(
                 modifier = Modifier.clickable { onDone() },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
-            ) { Text(stringResource(R.string.done), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            ) { Text(stringResource(UiR.string.done), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             Surface(
                 modifier = Modifier.clickable { onApply() },
                 shape = RoundedCornerShape(8.dp),

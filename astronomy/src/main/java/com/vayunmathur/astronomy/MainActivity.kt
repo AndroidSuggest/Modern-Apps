@@ -15,6 +15,7 @@ import com.vayunmathur.astronomy.ui.pages.SkyMapPage
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -58,6 +59,8 @@ sealed interface Route : NavKey {
 @Composable
 fun Navigation(viewModel: AstronomyViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.SkyMap)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     MainNavigation(backStack) {
         entry<Route.SkyMap>(metadata = ListPage()) { SkyMapPage(backStack, viewModel) }
         entry<Route.ObjectDetail>(metadata = DialogPage()) { route -> ObjectDetailPage(backStack, viewModel, route.id) }

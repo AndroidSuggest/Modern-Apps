@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.*
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.health.util.FoodDatabase
 import com.vayunmathur.health.util.FoodSearchAPI
 import com.vayunmathur.health.util.HealthViewModel
@@ -156,10 +159,10 @@ fun IngredientsList(ingredients: List<Ingredient>, viewModel: HealthViewModel) {
                     val newIng = editingIngredient!!.copy(customName = customName.ifBlank { null })
                     viewModel.updateIngredient(newIng)
                     editingIngredient = null
-                }) { Text(stringResource(R.string.save)) }
+                }) { Text(stringResource(UiR.string.save)) }
             },
             dismissButton = {
-                TextButton(onClick = { editingIngredient = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { editingIngredient = null }) { Text(stringResource(UiR.string.cancel)) }
             }
         )
     }
@@ -254,15 +257,9 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (recipeId == null) stringResource(R.string.create_recipe) else stringResource(R.string.edit_recipe)) },
-                navigationIcon = {
-                    IconNavigation(backStack)
-                }
-            )
-        }
+    AppScaffold(
+        title = if (recipeId == null) stringResource(R.string.create_recipe) else stringResource(R.string.edit_recipe),
+        backStack = backStack,
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(
@@ -277,7 +274,7 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
                 TextButton(onClick = { showSearch = true }) {
                     IconAdd()
                     Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.add))
+                    Text(stringResource(UiR.string.add))
                 }
             }
 
@@ -411,7 +408,7 @@ fun IngredientQuantityDialog(
             ) { Text(stringResource(R.string.confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         }
     )
 }
@@ -519,9 +516,11 @@ fun IngredientSearchDialog(
                             query.isNotBlank() && foodDbStatus.installed != null
                         ) {
                             item {
-                                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                    Text(stringResource(R.string.no_results_found), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
-                                }
+                                EmptyState(
+                                    title = stringResource(R.string.no_results_found),
+                                    icon = { IconSearch() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                     }
@@ -537,7 +536,7 @@ fun IngredientSearchDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
         }
     )
 }

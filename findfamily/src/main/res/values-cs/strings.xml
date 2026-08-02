@@ -100,8 +100,6 @@
     <string name="uwb_status_peer_disconnected">Druhé zařízení bylo ztraceno. Přibližte se.</string>
     <string name="uwb_status_unsupported">Najít v okolí (UWB) není na tomto zažízení podporováno.</string>
     <string name="uwb_status_failed">Najít v okolí (UWB) selhalo.</string>
-    <string name="ok">OK</string>
-    <string name="done">Hotovo</string>
     <string name="disable_after">Vypnout po</string>
     <string name="enable_after">Zapnout po</string>
     <string name="auto_toggle_never">Nikdy</string>

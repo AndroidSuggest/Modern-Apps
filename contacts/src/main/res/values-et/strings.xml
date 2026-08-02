@@ -13,7 +13,6 @@
     <string name="on_device">Seadmes</string>
     <string name="add_contact">Lisa kontakt</string>
     <string name="edit_contact">Muuda kontakti</string>
-    <string name="save">Salvesta</string>
     <string name="first_name">Eesnimi</string>
     <string name="middle_name">Keskmine nimi</string>
     <string name="last_name">Perenimi</string>
@@ -28,16 +27,11 @@
     <string name="add_picture">Lisa pilt</string>
     <string name="change_picture">Muuda</string>
     <string name="remove_picture">Eemalda</string>
-    <string name="settings">Seadistused</string>
     <string name="visible_accounts">Nähtavad kasutajakontod</string>
     <string name="add_contacts_account">Lisa kontaktide kasutajakonto</string>
     <string name="enter_account_name">Sisesta nimi uue kohaliku kasutajakonto jaoks:</string>
     <string name="account_name">Kasutajakonto nimi</string>
-    <string name="add">Lisa</string>
-    <string name="cancel">Katkesta</string>
-    <string name="ok">Sobib</string>
     <string name="delete_contact_title">Kustuta kontakt</string>
-    <string name="delete">Kustuta</string>
     <string name="grant_contacts_permission">Palun anna õigused kontaktide kasutamiseks</string>
     <string name="select_contact_hint">Üksikasjade vaatamiseks palun vali kontakt</string>
     <string name="import_contacts">Impordi kontakte</string>
@@ -86,7 +80,6 @@
     <plurals name="contacts_count">
         <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> kontakti</item>
     </plurals>
-    <string name="done">Valmis</string>
     <string name="import_vcf_file">Impordi vcf-fail</string>
     <string name="import_to_existing_account">Impordi olemasoleva kasutajakonto jaoks</string>
     <string name="create_new_account_option">Loo uus kasutajakonto</string>

@@ -15,8 +15,6 @@
     <string name="continue_game">Continue</string>
     <!-- GameActionBar: Button to abandon current game (records loss). Verb phrase -->
     <string name="give_up">Give Up</string>
-    <!-- GameActionBar: Button to undo last move if history not empty and not won. Verb -->
-    <string name="undo">Undo</string>
     <!-- GameScreen TopAppBar / WinOverlay: Label for move counter HUD. Noun -->
     <string name="moves">Moves</string>
     <!-- WinOverlay: Label for elapsed time shown in win dialog, e.g. Time: 02:34. Noun -->

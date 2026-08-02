@@ -6,7 +6,6 @@
     <string name="label_resting_heart_rate">Fréquence cardiaque au repos</string>
     <string name="metric_height">Taille</string>
     <string name="label_deep">Profond</string>
-    <string name="save">Enregistrer</string>
     <string name="section_body_composition">Composition corporelle</string>
     <string name="tab_day">Jour</string>
     <string name="slash_value_format">%1$s/%2$s</string>
@@ -29,7 +28,6 @@
     <string name="metric_elevation_gained">Dénivelé positif</string>
     <string name="metric_heart_rate_variability">Variabilité de la fréquence cardiaque</string>
     <string name="metric_heart_rate">Fréquence cardiaque</string>
-    <string name="cancel">Annuler</string>
     <string name="metric_hydration">Hydratation</string>
     <string name="metric_blood_pressure">Tension artérielle</string>
     <string name="metric_exercise_duration">Exercice</string>
@@ -85,7 +83,6 @@
     <string name="rename_ingredient">Renommer un ingrédient</string>
     <string name="custom_name">Nom personnalisé</string>
     <string name="recipe_name">Nom de la recette</string>
-    <string name="add">Ajouter</string>
     <string name="save_recipe">Enregistrer la recette</string>
     <string name="metric_wheelchair_pushes">Poussées de fauteuil roulant</string>
     <string name="hours_minutes_format">%1$dh %2$dm</string>

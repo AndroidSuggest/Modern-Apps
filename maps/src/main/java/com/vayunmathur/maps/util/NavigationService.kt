@@ -2,7 +2,6 @@ package com.vayunmathur.maps.util
 
 import com.vayunmathur.library.util.localizedAmPmMarker
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -27,6 +26,7 @@ import kotlinx.datetime.format
 import kotlinx.datetime.format.Padding
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.roundToInt
+import com.vayunmathur.library.util.ensureNotificationChannel
 
 /**
  * Foreground service that owns the lifetime of a navigation session.
@@ -169,18 +169,15 @@ class NavigationService : Service() {
     // ----------------------------------------------------------------
 
     private fun ensureChannel() {
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.nav_channel_name),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = getString(R.string.nav_channel_desc)
+        ensureNotificationChannel(
+            id = CHANNEL_ID,
+            name = getString(R.string.nav_channel_name),
+            importance = NotificationManager.IMPORTANCE_LOW,
+            description = getString(R.string.nav_channel_desc),
+        ) {
             setSound(null, null)
             enableVibration(false)
         }
-        nm.createNotificationChannel(channel)
     }
 
     private fun buildNotification(state: NavigationSessionManager.NavState): Notification {

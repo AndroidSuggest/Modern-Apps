@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.BadgedBox
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DropdownMenu
@@ -255,9 +257,7 @@ fun ContactDetailsScreen(
                                     if (platforms.hasAnyPlatform) {
                                         showSmsDropdown = true
                                     } else {
-                                        val intent = Intent(Intent.ACTION_SENDTO)
-                                        intent.data = "sms:${phone.number}".toUri()
-                                        context.startActivity(intent)
+                                        ExternalIntents.sendSms(context, phone.number)
                                     }
                                 },
                                 onClick = {
@@ -300,9 +300,7 @@ fun ContactDetailsScreen(
                                 data = email.address,
                                 label = email.typeString(context),
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_SENDTO)
-                                    intent.data = "mailto:${email.address}".toUri()
-                                    context.startActivity(intent)
+                                    ExternalIntents.sendEmail(context, email.address)
                                 },
                                 shape = groupShape(index, details.emails.size),
                             )
@@ -320,9 +318,7 @@ fun ContactDetailsScreen(
                                 label = address.typeString(context),
                                 trailingIcon = { IconDirections() },
                                 onTrailingIconClick = {
-                                    val gmmIntentURI = "geo:0,0?q=${Uri.encode(address.formattedAddress)}".toUri()
-                                    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentURI)
-                                    context.startActivity(mapIntent)
+                                    ExternalIntents.openMap(context, address.formattedAddress)
                                 },
                                 shape = groupShape(index, details.addresses.size),
                             )
@@ -337,11 +333,11 @@ fun ContactDetailsScreen(
                     GroupedSection(title = stringResource(R.string.about_name, contact.name.firstName)) {
                         contact.birthday?.let { birthday ->
                             val birthdayText = birthday.startDate.formatDisplay()
-                            SafeListItem(
+                            ListItem(
                                 content = { Text(birthdayText) },
                                 supportingContent = { Text(stringResource(R.string.birthday)) },
                                 leadingContent = { IconCake() },
-                                containerColor = Color.Transparent,
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 modifier = Modifier.combinedClickable(
                                     onClick = { },
                                     onLongClick = {
@@ -352,11 +348,11 @@ fun ContactDetailsScreen(
                         }
                         details.dates.filter{it.type != CDKEvent.TYPE_BIRTHDAY }.forEach { event ->
                             val eventText = event.startDate.formatDisplay()
-                            SafeListItem(
+                            ListItem(
                                 content = { Text(eventText) },
                                 supportingContent = { Text(event.typeString(context)) },
                                 leadingContent = { IconEvent() },
-                                containerColor = Color.Transparent,
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 modifier = Modifier.combinedClickable(
                                     onClick = { },
                                     onLongClick = {
@@ -511,7 +507,7 @@ fun ActionButtonsRow(
                     if (platforms.hasAnyPlatform) {
                         showSmsDropdown = true
                     } else {
-                        context.startActivity(Intent(Intent.ACTION_SENDTO, "sms:$number".toUri()))
+                        ExternalIntents.sendSms(context, number)
                     }
                 },
                 dropdownContent = {
@@ -519,7 +515,7 @@ fun ActionButtonsRow(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.system_default)) },
                             onClick = {
-                                context.startActivity(Intent(Intent.ACTION_SENDTO, "sms:$number".toUri()))
+                                ExternalIntents.sendSms(context, number)
                                 showSmsDropdown = false
                             }
                         )
@@ -607,7 +603,7 @@ fun ActionButtonsRow(
             ActionButton(icon = { IconMail() }, label = stringResource(R.string.email)) {
                 val intent = Intent(Intent.ACTION_SENDTO)
                 intent.data = "mailto:$email".toUri()
-                context.startActivity(intent)
+                ExternalIntents.launch(context, intent)
             }
         }
     }
@@ -680,7 +676,7 @@ fun DetailItem(
                 onLongClick = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("detail", data))) } }
             )
     ) {
-        SafeListItem(
+        ListItem(
             content = {
                 Box {
                     Text(data, style = MaterialTheme.typography.bodyLarge)
@@ -699,8 +695,7 @@ fun DetailItem(
                     }
                 }
             },
-            containerColor = Color.Transparent
-        )
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent))
     }
 }
 
@@ -813,10 +808,10 @@ private fun placeCall(context: android.content.Context, number: String) {
             }
             telecomManager.placeCall(uri, extras)
         } catch (_: Exception) {
-            context.startActivity(Intent(Intent.ACTION_DIAL, uri))
+            ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, uri))
         }
     } else {
-        context.startActivity(Intent(Intent.ACTION_DIAL, uri))
+        ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, uri))
     }
 }
 

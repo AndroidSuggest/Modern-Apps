@@ -1,7 +1,6 @@
 package com.vayunmathur.messages.util
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -24,6 +23,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import com.vayunmathur.library.util.ensureNotificationChannel
 
 /**
  * Foreground service that hosts the two WebView puppets for the lifetime
@@ -128,31 +128,21 @@ class MessagesService : Service() {
     // ----------------------------------------------------------------
 
     private fun ensureChannels() {
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(SYNC_CHANNEL_ID) == null) {
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    SYNC_CHANNEL_ID,
-                    getString(R.string.channel_sync_name),
-                    NotificationManager.IMPORTANCE_LOW,
-                ).apply {
-                    description = getString(R.string.channel_sync_desc)
-                    setSound(null, null)
-                    enableVibration(false)
-                }
-            )
+        ensureNotificationChannel(
+            id = SYNC_CHANNEL_ID,
+            name = getString(R.string.channel_sync_name),
+            importance = NotificationManager.IMPORTANCE_LOW,
+            description = getString(R.string.channel_sync_desc),
+        ) {
+            setSound(null, null)
+            enableVibration(false)
         }
-        if (nm.getNotificationChannel(INCOMING_CHANNEL_ID) == null) {
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    INCOMING_CHANNEL_ID,
-                    getString(R.string.channel_incoming_name),
-                    NotificationManager.IMPORTANCE_HIGH,
-                ).apply {
-                    description = getString(R.string.channel_incoming_desc)
-                }
-            )
-        }
+        ensureNotificationChannel(
+            id = INCOMING_CHANNEL_ID,
+            name = getString(R.string.channel_incoming_name),
+            importance = NotificationManager.IMPORTANCE_HIGH,
+            description = getString(R.string.channel_incoming_desc),
+        )
     }
 
     private fun buildSyncNotification(states: Map<MessageSource, SourceConnectionState>): Notification {

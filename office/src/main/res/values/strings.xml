@@ -33,20 +33,12 @@
     <string name="outline">Outline</string>
     <!-- Button: Reset zoom/font size. Verb. -->
     <string name="reset">Reset</string>
-    <!-- Button: Share document. Verb. -->
-    <string name="share">Share</string>
-    <!-- Button: Finish editing. Verb. -->
-    <string name="done">Done</string>
-    <!-- Button: Save document. Verb. -->
-    <string name="save">Save</string>
     <!-- Dialog title: Unsaved changes warning -->
     <string name="unsaved_changes">Unsaved Changes</string>
     <!-- Dialog message: Ask to save before leaving -->
     <string name="unsaved_changes_message">You have unsaved changes. Do you want to save before leaving?</string>
     <!-- Button: Discard changes. Verb. -->
     <string name="discard">Discard</string>
-    <!-- Button: Generic cancel. Verb. -->
-    <string name="cancel">Cancel</string>
     <!-- Hint: Replace field in find/replace bar -->
     <string name="replace_hint">Replace with…</string>
     <!-- Button: Print document. Verb. -->
@@ -100,10 +92,6 @@
     <string name="add_bookmark">Add Bookmark</string>
     <!-- DocumentViews: Auto-save toggle label. Noun phrase. -->
     <string name="auto_save">Auto-save</string>
-    <!-- DocumentViews: Button Add. Verb. -->
-    <string name="add">Add</string>
-    <!-- DocumentViews: Generic OK button -->
-    <string name="ok">OK</string>
     <!-- DocumentViews: Menu insert hyperlink. Verb phrase. -->
     <string name="insert_hyperlink">Insert Hyperlink</string>
     <!-- DocumentViews: Button duplicate short. Verb abbreviation. -->
@@ -138,8 +126,6 @@
     <string name="go_to_slide">Go to Slide</string>
     <!-- DocumentViews: Field label footnote text. Noun. -->
     <string name="footnote_text">Footnote text</string>
-    <!-- DocumentViews: Button Delete. Verb, destructive. -->
-    <string name="delete">Delete</string>
     <!-- DocumentViews: Footer section label. Noun. -->
     <string name="footer">Footer</string>
     <!-- DocumentViews: Button add slide with plus -->
@@ -162,8 +148,6 @@
     <string name="interval_seconds">Interval (seconds)</string>
     <!-- MainActivity: Label for your device ID. Noun phrase with colon. -->
     <string name="your_device_id">Your device id:</string>
-    <!-- MainActivity: Button rename file. Verb. -->
-    <string name="rename">Rename</string>
     <!-- MainActivity: Long explanation of online sharing generating encryption keys and device id -->
     <string name="sharing_online_generates_your_encryption">Sharing online generates your encryption keys and a device id and registers your device so others can collaborate with you. You only need to do this once.</string>
     <!-- MainActivity: Field label file name. Noun. -->
@@ -188,8 +172,6 @@
     <string name="new_doc">New Doc</string>
     <!-- MainActivity: Menu export as text. Verb phrase. -->
     <string name="export_as_text">Export as Text</string>
-    <!-- MainActivity: Menu settings. Noun. -->
-    <string name="settings">Settings</string>
     <!-- MainActivity: Menu insert. Verb. -->
     <string name="insert">Insert</string>
     <!-- MainActivity: Button enable sharing. Verb. -->
@@ -280,8 +262,6 @@
     <string name="notes_for_this_slide">Notes for this slide</string>
     <!-- MainActivity: Menu page setup with ellipsis -->
     <string name="page_setup">Page setup…</string>
-    <!-- MainActivity: Button Remove access. Verb. -->
-    <string name="remove">Remove</string>
     <!-- MainActivity: Menu Comments with ellipsis -->
     <string name="comments">Comments…</string>
     <!-- MainActivity: Menu page setup without ellipsis -->

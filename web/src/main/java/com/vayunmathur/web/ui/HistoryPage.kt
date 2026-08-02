@@ -39,6 +39,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
@@ -87,9 +90,10 @@ fun HistoryPage(
         }
     ) { paddingValues ->
         if (history.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.no_history_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            EmptyState(
+                title = stringResource(R.string.no_history_yet),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
@@ -122,19 +126,14 @@ fun HistoryPage(
     }
 
     if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text(stringResource(R.string.clear_history)) },
-            text = { Text(stringResource(R.string.this_will_permanently_delete_your_browsi)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.clearHistory()
-                    showClearConfirm = false
-                }) { Text(stringResource(R.string.clear)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text(stringResource(R.string.cancel)) }
-            }
+        ConfirmDialog(
+            title = stringResource(R.string.clear_history),
+            message = stringResource(R.string.this_will_permanently_delete_your_browsi),
+            confirmLabel = stringResource(UiR.string.clear),
+            dismissLabel = stringResource(UiR.string.cancel),
+            onConfirm = { viewModel.clearHistory() },
+            onDismiss = { showClearConfirm = false },
+            destructive = true,
         )
     }
 }

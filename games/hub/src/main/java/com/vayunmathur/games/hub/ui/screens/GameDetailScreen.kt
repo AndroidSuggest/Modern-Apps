@@ -35,6 +35,8 @@ import com.vayunmathur.games.hub.util.formatDurationMs
 import com.vayunmathur.games.hub.util.formatPlaytime
 import com.vayunmathur.games.hub.util.formatRelativeTime
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.IconNavigation
@@ -64,10 +66,16 @@ fun GameDetailScreen(
         try { if (game?.packageName != null) { context.packageManager.getPackageInfo(game!!.packageName, 0); true } else false } catch (_: Exception) { false }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text(game?.displayName ?: gameId) }, navigationIcon = { IconNavigation(backStack) }) }) { padding ->
+    AppScaffold(
+        title = game?.displayName ?: gameId,
+        backStack = backStack,
+    ) { padding ->
         val g = game
         if (g == null) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { Text(stringResource(R.string.game_not_found), style = MaterialTheme.typography.bodyLarge) }
+            EmptyState(
+                title = stringResource(R.string.game_not_found),
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
             return@Scaffold
         }
         val iconBmp = remember(iconDrawable) { try { iconDrawable?.toBitmap(128,128) } catch (_:Exception){ null } }

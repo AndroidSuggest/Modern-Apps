@@ -5,15 +5,23 @@ import com.vayunmathur.library.network.SimpleResponse
 import android.util.Log
 import com.vayunmathur.fooddelivery.data.ApiResponse
 import com.vayunmathur.fooddelivery.data.AuthToken
+import com.vayunmathur.fooddelivery.data.CheckoutAddress
 import com.vayunmathur.fooddelivery.data.CheckoutRequest
 import com.vayunmathur.fooddelivery.data.CheckoutResponse
 import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.CustomerSavings
 import com.vayunmathur.fooddelivery.data.Deal
+import com.vayunmathur.fooddelivery.data.DealProgress
+import com.vayunmathur.fooddelivery.data.Feedback
+import com.vayunmathur.fooddelivery.data.FeedbackRequest
+import com.vayunmathur.fooddelivery.data.MerchantRewards
+import com.vayunmathur.fooddelivery.data.PlatformSavings
+import com.vayunmathur.fooddelivery.data.Referral
 import com.vayunmathur.fooddelivery.data.Merchant
 import com.vayunmathur.fooddelivery.data.MerchantDetail
 import com.vayunmathur.fooddelivery.data.MerchantsWrapper
 import com.vayunmathur.fooddelivery.data.Order
+import com.vayunmathur.fooddelivery.data.OrderRewards
 import com.vayunmathur.fooddelivery.data.Reward
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -27,6 +35,15 @@ object BitesApi {
         ignoreUnknownKeys = true
         isLenient = true
         coerceInputValues = true
+        // Without encodeDefaults, kotlinx drops every field still equal to its default —
+        // on a checkout that silently removed isMobile/isPickup/inStore/leaveAtDoor, tips
+        // when 0, and each modifier's quantity, none of which is visible in the Kotlin
+        // source. The reference sends all of them on every order.
+        encodeDefaults = true
+        // ...but it must not turn optional fields into explicit nulls: the reference leaves
+        // promoCode/scheduledDate/scheduledTime/isDriveThru off the wire entirely when unset
+        // (JSON.stringify drops undefined), so omit nulls to match.
+        explicitNulls = false
     }
 
     private var storedToken: AuthToken? = null
@@ -111,13 +128,19 @@ object BitesApi {
                 "$BASE/auth/verify_phone", "POST",
                 mapOf("Content-Type" to "application/json"), body
             )
+            Log.d("BitesApi", "verifyPhone -> ${resp.status} body=${resp.body.take(300)}")
             if (resp.isSuccess) {
                 val parsed = json.parseToJsonElement(resp.body)
                 if (parsed is kotlinx.serialization.json.JsonObject) {
                     (parsed["state_id"] ?: parsed["stateId"])?.toString()?.trim('"')
                 } else null
             } else null
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            // Swallowing this silently is what made a TLS-pinning failure look like
+            // "login does nothing" with an empty logcat.
+            Log.e("BitesApi", "verifyPhone failed", e)
+            null
+        }
     }
 
     suspend fun exchangeOtpCodeForToken(stateId: String, code: String): AuthToken? {
@@ -228,6 +251,35 @@ object BitesApi {
         }
     }
 
+    /** GET /orders/pickUpOrder/{uuid} — marks a pickup order collected. */
+    suspend fun pickUpOrder(orderUuid: String): Boolean = try {
+        authenticatedRequest("$API/orders/pickUpOrder/$orderUuid").isSuccess
+    } catch (e: Exception) {
+        Log.e("BitesApi", "pickUpOrder failed", e); false
+    }
+
+    /** GET /orders/email/{token} — look an order up by its email link. */
+    suspend fun getOrderByEmail(token: String): Order? = try {
+        val resp = authenticatedRequest("$API/orders/email/$token")
+        if (!resp.isSuccess) null else {
+            val dataEl = (json.parseToJsonElement(resp.body) as? kotlinx.serialization.json.JsonObject)?.get("data")
+            json.decodeFromString<Order>((dataEl ?: json.parseToJsonElement(resp.body)).toString())
+        }
+    } catch (e: Exception) {
+        Log.e("BitesApi", "getOrderByEmail failed", e); null
+    }
+
+    /** POST /merchants/{id}/check-serviceability — can this merchant deliver to [address]? */
+    suspend fun checkServiceability(merchantId: Int, address: CheckoutAddress): Boolean? = try {
+        val resp = authenticatedRequest(
+            "$API/merchants/$merchantId/check-serviceability", "POST",
+            json.encodeToString(CheckoutAddress.serializer(), address),
+        )
+        if (resp.isSuccess) true else if (resp.status in 400..499) false else null
+    } catch (e: Exception) {
+        Log.e("BitesApi", "checkServiceability failed", e); null
+    }
+
     // ---- Customer ----
 
     suspend fun getCustomer(): Customer? {
@@ -261,6 +313,25 @@ object BitesApi {
         } catch (_: Exception) { null }
     }
 
+    /**
+     * GET /orders/{uuid}/rewards — the credit applied to a specific order. The reference
+     * calls this right before showing the total and subtracts `rewardsAvailable` from the
+     * order's component sum (bites-js-decompiled.js:1255938).
+     */
+    suspend fun getOrderRewards(orderUuid: String): OrderRewards? {
+        return try {
+            val resp = authenticatedRequest("$API/orders/$orderUuid/rewards")
+            if (!resp.isSuccess) return null
+            val parsed = json.parseToJsonElement(resp.body)
+            val dataEl = (parsed as? kotlinx.serialization.json.JsonObject)?.get("data")
+            if (dataEl != null) json.decodeFromString<OrderRewards>(dataEl.toString())
+            else json.decodeFromString<OrderRewards>(resp.body)
+        } catch (e: Exception) {
+            Log.e("BitesApi", "getOrderRewards failed", e)
+            null
+        }
+    }
+
     suspend fun getRewards(): List<Reward> {
         return try {
             val resp = authenticatedRequest("$API/rewards")
@@ -275,6 +346,141 @@ object BitesApi {
             } else emptyList()
         } catch (_: Exception) { emptyList() }
     }
+
+    // ---- Feedback (POST/GET /orders/{uuid}/feedback) ----
+
+    suspend fun submitFeedback(orderUuid: String, request: FeedbackRequest): Boolean = try {
+        authenticatedRequest(
+            "$API/orders/$orderUuid/feedback", "POST",
+            json.encodeToString(FeedbackRequest.serializer(), request),
+        ).isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "submitFeedback failed", e); false }
+
+    suspend fun getFeedback(orderUuid: String): Feedback? =
+        decodeData("$API/orders/$orderUuid/feedback", Feedback.serializer())
+
+    // ---- Referrals & email verification ----
+
+    suspend fun createReferral(uuid: String, orderId: Int): Boolean = try {
+        authenticatedRequest(
+            "$API/customers/createReferral", "POST",
+            """{"uuid":"$uuid","orderId":$orderId}""",
+        ).isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "createReferral failed", e); false }
+
+    suspend fun getReferrals(): List<Referral> =
+        decodeDataList("$API/customers/getReferrals", Referral.serializer())
+
+    suspend fun sendEmailVerification(email: String): Boolean = try {
+        authenticatedRequest(
+            "$API/customers/send-email-verification", "POST",
+            """{"email":"$email"}""",
+        ).isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "sendEmailVerification failed", e); false }
+
+    suspend fun verifyEmailToken(token: String): Boolean = try {
+        authenticatedRequest("$API/customers/verify-email/$token", "POST", "{}").isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "verifyEmailToken failed", e); false }
+
+    // ---- Customer profile ----
+
+    /** POST /customers/me — create or update the signed-in customer. */
+    suspend fun createOrUpdateCustomer(customer: Customer): Customer? = try {
+        val resp = authenticatedRequest(
+            "$API/customers/me", "POST",
+            json.encodeToString(Customer.serializer(), customer),
+        )
+        if (!resp.isSuccess) null else unwrap(resp.body, Customer.serializer())
+    } catch (e: Exception) { Log.e("BitesApi", "createOrUpdateCustomer failed", e); null }
+
+    /** DELETE /customers/me — permanent account deletion. */
+    suspend fun deleteCustomer(): Boolean = try {
+        authenticatedRequest("$API/customers/me", "DELETE").isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "deleteCustomer failed", e); false }
+
+    /** POST /customers/me/pushNotifications — body is {token, uuid}. */
+    suspend fun registerPushNotification(token: String, uuid: String): Boolean = try {
+        authenticatedRequest(
+            "$API/customers/me/pushNotifications", "POST",
+            """{"token":"$token","uuid":"$uuid"}""",
+        ).isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "registerPushNotification failed", e); false }
+
+    // ---- Merchant loyalty & rewards ----
+
+    /** GET /customers/me/rewards — reward balance at every merchant, as the reference does. */
+    suspend fun getCustomerMerchantRewards(): List<MerchantRewards> =
+        decodeDataList("$API/customers/me/rewards", MerchantRewards.serializer())
+
+    /** POST /customers/merchantLoyaltyCode — body is {inviteCode, merchantId}. */
+    suspend fun createCustomerMerchantLoyalty(inviteCode: String, merchantId: Int): Boolean = try {
+        authenticatedRequest(
+            "$API/customers/merchantLoyaltyCode", "POST",
+            """{"inviteCode":"$inviteCode","merchantId":$merchantId}""",
+        ).isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "createCustomerMerchantLoyalty failed", e); false }
+
+    /** POST (not DELETE) /customers/deleteCustomerMerchantLoyalty — body is {merchantId}. */
+    suspend fun deleteCustomerMerchantLoyalty(merchantId: Int): Boolean = try {
+        authenticatedRequest(
+            "$API/customers/deleteCustomerMerchantLoyalty", "POST",
+            """{"merchantId":$merchantId}""",
+        ).isSuccess
+    } catch (e: Exception) { Log.e("BitesApi", "deleteCustomerMerchantLoyalty failed", e); false }
+
+    // ---- Merchants & savings ----
+
+    suspend fun getMerchantByName(storefrontAlias: String): MerchantDetail? =
+        decodeData("$API/merchants/storefront/$storefrontAlias", MerchantDetail.serializer())
+
+    suspend fun getMerchantReporting(merchantId: Int): String? = try {
+        authenticatedRequest("$API/merchants/reporting/$merchantId").takeIf { it.isSuccess }?.body
+    } catch (e: Exception) { Log.e("BitesApi", "getMerchantReporting failed", e); null }
+
+    suspend fun getPlatformSavings(): PlatformSavings? =
+        decodeData("$API/orders/savings/platform", PlatformSavings.serializer())
+
+    // ---- Deals ----
+
+    suspend fun getAllDeals(): List<Deal> = decodeDataList("$API/deals", Deal.serializer())
+
+    suspend fun getDealById(dealId: Int): Deal? =
+        decodeData("$API/deals/$dealId", Deal.serializer())
+
+    suspend fun getDealsByMerchant(merchantId: Int): List<Deal> =
+        decodeDataList("$API/deals/merchant/$merchantId", Deal.serializer())
+
+    suspend fun getActiveDealsByMerchant(merchantId: Int): List<Deal> =
+        decodeDataList("$API/deals/merchant/$merchantId/active", Deal.serializer())
+
+    suspend fun getDealProgress(dealId: Int): DealProgress? =
+        decodeData("$API/deals/$dealId/progress", DealProgress.serializer())
+
+    // ---- Shared decoding helpers ----
+
+    /** Unwrap the `{message, data}` envelope these endpoints use, falling back to the root. */
+    private fun <T> unwrap(body: String, serializer: kotlinx.serialization.KSerializer<T>): T? {
+        val root = json.parseToJsonElement(body)
+        val el = (root as? kotlinx.serialization.json.JsonObject)?.get("data") ?: root
+        return json.decodeFromString(serializer, el.toString())
+    }
+
+    private suspend fun <T> decodeData(
+        url: String,
+        serializer: kotlinx.serialization.KSerializer<T>,
+    ): T? = try {
+        val resp = authenticatedRequest(url)
+        if (!resp.isSuccess) null else unwrap(resp.body, serializer)
+    } catch (e: Exception) { Log.e("BitesApi", "GET $url failed", e); null }
+
+    private suspend fun <T> decodeDataList(
+        url: String,
+        serializer: kotlinx.serialization.KSerializer<T>,
+    ): List<T> = try {
+        val resp = authenticatedRequest(url)
+        if (!resp.isSuccess) emptyList()
+        else unwrap(resp.body, kotlinx.serialization.builtins.ListSerializer(serializer)) ?: emptyList()
+    } catch (e: Exception) { Log.e("BitesApi", "GET $url failed", e); emptyList() }
 
     // ---- Checkout ----
 

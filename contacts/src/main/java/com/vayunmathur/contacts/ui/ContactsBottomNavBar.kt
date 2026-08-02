@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui
 
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -7,6 +8,8 @@ import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.util.ContactsTab
 import com.vayunmathur.library.ui.IconSettings
+import com.vayunmathur.library.util.BottomNavBar
+import com.vayunmathur.library.util.BottomNavBarItem
 import com.vayunmathur.library.util.NavBackStack
 
 /** Bar for a screen that owns a back stack. */
@@ -26,24 +29,26 @@ fun ContactsBottomNavBar(backStack: NavBackStack<Route>) {
 /** Bar for a stateless screen: which tab is current in, which tab was tapped out. */
 @Composable
 fun ContactsBottomNavBar(selected: ContactsTab, onSelect: (ContactsTab) -> Unit) {
-    NavigationBar {
-        NavigationBarItem(
-            icon = { IconPerson() },
-            label = { Text(stringResource(R.string.contacts)) },
+    // Tabs here are an enum rather than routes, which is why this uses the
+    // content slot instead of the back-stack overload of BottomNavBar.
+    BottomNavBar {
+        BottomNavBarItem(
             selected = selected == ContactsTab.Contacts,
-            onClick = { onSelect(ContactsTab.Contacts) }
+            onClick = { onSelect(ContactsTab.Contacts) },
+            icon = { IconPerson() },
+            label = stringResource(R.string.contacts),
         )
-        NavigationBarItem(
-            icon = { IconGroup() },
-            label = { Text(stringResource(R.string.groups)) },
+        BottomNavBarItem(
             selected = selected == ContactsTab.Groups,
-            onClick = { onSelect(ContactsTab.Groups) }
+            onClick = { onSelect(ContactsTab.Groups) },
+            icon = { IconGroup() },
+            label = stringResource(R.string.groups),
         )
-        NavigationBarItem(
-            icon = { IconSettings() },
-            label = { Text(stringResource(R.string.settings)) },
+        BottomNavBarItem(
             selected = selected == ContactsTab.Settings,
-            onClick = { onSelect(ContactsTab.Settings) }
+            onClick = { onSelect(ContactsTab.Settings) },
+            icon = { IconSettings() },
+            label = stringResource(UiR.string.settings),
         )
     }
 }

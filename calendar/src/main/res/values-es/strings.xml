@@ -1,20 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Calendario</string>
-    <string name="ok">OK</string>
-    <string name="cancel">Cancelar</string>
-    <string name="close">Cerrar</string>
-    <string name="delete">Borrar</string>
-    <string name="rename">Renombrar</string>
     <string name="create">Crear</string>
-    <string name="remove">Eliminar</string>
     <string name="search">Buscar</string>
     <string name="no_title">(Sin título)</string>
     <string name="event_not_found">Evento no encontrado</string>
     <string name="all_day">Todo el día</string>
     <string name="does_not_repeat">No se repite</string>
     <string name="repeats">Se repite</string>
-    <string name="settings">Configuración</string>
     <string name="repeat">Repetir</string>
     <string name="on_days_of_week">En días de la semana</string>
     <string name="end">Fin</string>

@@ -27,6 +27,7 @@ import com.vayunmathur.contacts.ui.*
 import com.vayunmathur.contacts.ui.dialogs.*
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.*
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
@@ -45,7 +46,7 @@ class MainActivity : ComponentActivity() {
             var hasPermissions by remember { mutableStateOf(permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) }
             DynamicTheme {
                 if (!hasPermissions) {
-                    NoPermissionsScreen(permissions) { hasPermissions = it }
+                    NoPermissionsScreen(permissions, stringResource(R.string.grant_contacts_permission)) { hasPermissions = it }
                 } else {
                     val viewModel: ContactViewModel = viewModel()
                     
@@ -237,35 +238,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun NoPermissionsScreen(permissions: Array<String>, setHasPermissions: (Boolean) -> Unit) {
-    val permissionRequestor = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissionsResult ->
-        setHasPermissions(permissionsResult.values.all { it })
-    }
-    LaunchedEffect(Unit) {
-        permissionRequestor.launch(permissions)
-    }
-    Scaffold {
-        Box(
-            modifier = Modifier
-                .padding(it)
-                .fillMaxSize()
-        ) {
-            com.vayunmathur.library.ui.Button(
-                {
-                    permissionRequestor.launch(permissions)
-                }, Modifier.align(Alignment.Center)
-            ) {
-                Text(text = stringResource(R.string.grant_contacts_permission))
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Navigation(viewModel: ContactViewModel, initialRoute: Route? = null, onExit: () -> Unit = {}, onImportClear: () -> Unit = {}) {
     val backStack = rememberNavBackStack<Route>(initialRoute ?: Route.ContactsList)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
 
     LaunchedEffect(initialRoute) {
         if (initialRoute != null && backStack.last() != initialRoute) {

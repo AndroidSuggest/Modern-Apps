@@ -30,8 +30,6 @@
     <string name="city_name_hint">City name</string>
     <!-- Empty search results when query yields no city matches. Noun phrase -->
     <string name="no_matches">No matches</string>
-    <!-- Long-press bottom sheet action: delete saved location. Verb -->
-    <string name="delete">Delete</string>
     <!-- Bottom sheet confirmation button for delete action. Verb phrase -->
     <string name="confirm_delete">Confirm delete</string>
     <!-- Toast error when LocationProvider fails to obtain fix -->

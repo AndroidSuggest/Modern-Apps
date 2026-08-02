@@ -3,13 +3,13 @@ package com.vayunmathur.email.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
@@ -191,7 +191,7 @@ private fun EmlAttachmentItem(attachment: EmlAttachment) {
                 opening = true
                 openEmlAttachment(context, attachment) { success ->
                     opening = false
-                    if (!success) Toast.makeText(context, context.getString(R.string.no_app_can_open_this_file), Toast.LENGTH_SHORT).show()
+                    if (!success) AppMessages.show(context.getString(R.string.no_app_can_open_this_file))
                 }
             })
         }

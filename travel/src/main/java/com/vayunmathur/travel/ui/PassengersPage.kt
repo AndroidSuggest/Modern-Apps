@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ElevatedCard
@@ -84,13 +85,9 @@ fun PassengersPage(
     }
     val linkedInfantIds = passengers.mapNotNull { it.infantPassengerId }.filter { it.isNotBlank() }.toSet()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.passengers)) },
-                navigationIcon = { IconNavigation(backStack) },
-            )
-        },
+    AppScaffold(
+        title = stringResource(R.string.passengers),
+        backStack = backStack,
     ) { padding ->
         Column(
             Modifier

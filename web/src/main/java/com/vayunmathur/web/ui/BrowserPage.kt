@@ -40,6 +40,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -216,7 +218,7 @@ fun BrowserPage(
                                     ) {
                                         IconClose()
                                         Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(R.string.clear))
+                                        Text(stringResource(UiR.string.clear))
                                     }
                                 }
                             }
@@ -358,7 +360,7 @@ fun BrowserPage(
                                 }
                             }
                         )
-                        DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = {
+                        DropdownMenuItem(text = { Text(stringResource(UiR.string.share)) }, onClick = {
                             showMenu = false
                             activeTab?.let { tab ->
                                 if (tab.url.isBlank()) return@let
@@ -367,7 +369,7 @@ fun BrowserPage(
                                     putExtra(android.content.Intent.EXTRA_TEXT, tab.url)
                                     type = "text/plain"
                                 }
-                                context.startActivity(android.content.Intent.createChooser(sendIntent, context.getString(R.string.share_link)))
+                                ExternalIntents.launch(context, android.content.Intent.createChooser(sendIntent, context.getString(R.string.share_link)))
                             }
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.new_tab)) }, onClick = { showMenu = false; viewModel.newTab() })
@@ -377,7 +379,7 @@ fun BrowserPage(
                         DropdownMenuItem(text = { Text(stringResource(R.string.downloads)) }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.installed_apps)) }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.site_data)) }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, onClick = { showMenu = false; backStack.add(Route.Settings) })
+                        DropdownMenuItem(text = { Text(stringResource(UiR.string.settings)) }, onClick = { showMenu = false; backStack.add(Route.Settings) })
                     }
                 },
             ) { paddingValues ->
@@ -521,10 +523,10 @@ fun BrowserPage(
                             }
                         },
                         enabled = draftTitle.isNotBlank() || defaultTitle.isNotBlank()
-                    ) { Text(stringResource(R.string.add)) }
+                    ) { Text(stringResource(UiR.string.add)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showInstallDialog = false }) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { showInstallDialog = false }) { Text(stringResource(UiR.string.cancel)) }
                 }
             )
         }

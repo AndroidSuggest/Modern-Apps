@@ -91,14 +91,12 @@
     <string name="cc">Sous-titres</string>
     <string name="loading_recent_subscriptions">Chargement des abonnements récents</string>
     <string name="download_options">Options de téléchargement</string>
-    <string name="clear">Effacer</string>
     <string name="clear_history">Effacer l’historique</string>
     <string name="downloads">Téléchargements</string>
     <string name="off">Désactivé</string>
     <string name="selected">%1$s sélectionné(s)</string>
     <string name="selected_1">%1$s sélectionné(s)</string>
     <string name="download">Télécharger</string>
-    <string name="cancel">Annuler</string>
     <string name="language">Langue</string>
     <string name="chapter">Chapitre</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Voulez-vous vraiment effacer tout l’historique des vidéos regardées ?</string>

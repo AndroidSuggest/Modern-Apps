@@ -13,7 +13,6 @@
     <string name="month_year_format">%1$s %2$d</string>
     <string name="value_unit_space_format">%1$s %2$s</string>
     <string name="k_format">%1$sk</string>
-    <string name="cancel">Annulla</string>
     <string name="metric_energy_burned">Calorie bruciate</string>
     <string name="metric_active_calories">Calorie attive</string>
     <string name="metric_basal_metabolic_rate">Metabolismo basale</string>
@@ -96,9 +95,7 @@
     <string name="ingredients">Ingredienti</string>
     <string name="rename_ingredient">Rinomina ingredienti</string>
     <string name="custom_name">Nome personalizzato</string>
-    <string name="save">Salva</string>
     <string name="recipe_name">Nome ricetta</string>
-    <string name="add">Aggiungi</string>
     <string name="save_recipe">Salva ricetta</string>
     <string name="set_quantity_for_format">Imposta quantità per %1$s</string>
     <string name="quantity">Quantità</string>

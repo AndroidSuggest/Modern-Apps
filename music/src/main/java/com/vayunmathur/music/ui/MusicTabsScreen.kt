@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.vayunmathur.library.ui.ExperimentalMaterial3ExpressiveApi
-import com.vayunmathur.library.ui.FlexibleBottomAppBar
+import com.vayunmathur.library.util.BottomNavBar
+import com.vayunmathur.library.util.BottomNavBarItem
 import com.vayunmathur.library.ui.IconAlbum
 import com.vayunmathur.library.ui.IconLibraryMusic
 import com.vayunmathur.library.ui.IconPerson
-import com.vayunmathur.library.ui.NavigationBarItem
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
@@ -110,13 +110,15 @@ fun MusicTabsBar(selectedTab: Int, onSelectTab: (Int) -> Unit) {
         Triple(stringResource(R.string.nav_playlists), { IconLibraryMusic() }, 3),
     )
 
-    FlexibleBottomAppBar {
+    // Tabs are a selected index here, so this uses the content slot rather
+    // than the back-stack overload of BottomNavBar.
+    BottomNavBar {
         tabs.forEach { (name, icon, index) ->
-            NavigationBarItem(
+            BottomNavBarItem(
                 selected = selectedTab == index,
                 onClick = { onSelectTab(index) },
                 icon = icon,
-                label = { Text(name) },
+                label = name,
             )
         }
     }

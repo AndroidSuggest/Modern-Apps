@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared across every app. Defined here so each app does not carry
+         its own copy to translate; an app that needs different wording can
+         still override by declaring the same name. -->
+    <string name="cancel">Abbrechen</string>
+    <string name="delete">Löschen</string>
+    <string name="close">Schließen</string>
+    <string name="remove">Entfernen</string>
+    <string name="rename">Umbenennen</string>
+    <!-- Shared across every app; see the block above. -->
+    <string name="settings">Einstellungen</string>
+    <string name="save">Speichern</string>
+    <string name="add">Hinzufügen</string>
+    <string name="done">Fertig</string>
+    <string name="ok">Ok</string>
+</resources>

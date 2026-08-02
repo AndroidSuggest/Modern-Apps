@@ -4,7 +4,6 @@
     <string name="level">谜题</string>
     <string name="level_selector">谜题选择</string>
     <string name="pack_selector">选择拼图包</string>
-    <string name="undo">撤销</string>
     <string name="restart">重新开始</string>
     <string name="previous_level">上一题</string>
     <string name="next_level">下一题</string>

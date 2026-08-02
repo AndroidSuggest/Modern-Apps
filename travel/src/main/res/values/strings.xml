@@ -2,16 +2,6 @@
     <!-- App name displayed in launcher. Noun -->
     <string name="app_name">Travel</string>
 
-    <!-- Generic confirmation. Noun/adjective short -->
-    <string name="ok">OK</string>
-    <!-- Generic dismiss/cancel action. Verb -->
-    <string name="cancel">Cancel</string>
-    <!-- Generic clear action for recent searches. Verb -->
-    <string name="clear">Clear</string>
-    <!-- Generic complete/finish action. Verb -->
-    <string name="done">Done</string>
-    <!-- Generic save action for forms. Verb -->
-    <string name="save">Save</string>
 
     <!-- Section header: saved and remote trips grouped -->
     <string name="my_trips">My trips</string>
@@ -276,8 +266,6 @@
     <!-- TopAppBar title for seat map. Verb phrase -->
     <string name="choose_seats">Choose seats</string>
 
-    <!-- TopAppBar title for settings. Noun plural -->
-    <string name="settings">Settings</string>
     <!-- Section header: frequent flyer numbers saved. Noun phrase -->
     <string name="frequent_flyer_numbers">Frequent flyer numbers</string>
     <!-- Explanatory text: first half of sentence about FF numbers being sent during search. Trailing space intentional for concatenation -->

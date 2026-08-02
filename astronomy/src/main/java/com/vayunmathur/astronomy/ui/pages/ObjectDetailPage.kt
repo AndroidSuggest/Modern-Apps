@@ -11,6 +11,7 @@ import com.vayunmathur.astronomy.Route
 import com.vayunmathur.astronomy.domain.engine.TimeEngine
 import com.vayunmathur.astronomy.domain.engine.toDeg
 import com.vayunmathur.astronomy.ui.AstronomyViewModel
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.NavBackStack
 import kotlin.time.ExperimentalTime
@@ -25,9 +26,10 @@ fun ObjectDetailPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewMod
 
     val detail = remember(objectId, visibleSky) { resolveDetail(objectId, visibleSky, viewModel) }
 
-    Scaffold(topBar = {
-        TopAppBar(title = { Text(detail?.title ?: objectId) }, navigationIcon = { IconNavigation(backStack) })
-    }) { padding ->
+    AppScaffold(
+        title = detail?.title ?: objectId,
+        backStack = backStack,
+    ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (detail == null) {
                 Text(stringResource(R.string.object_not_found, objectId))
@@ -63,7 +65,7 @@ fun ObjectDetailPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewMod
 
             // No center button per request – detail only, view always follows phone
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.close)) }
+                OutlinedButton(onClick = { backStack.pop() }) { Text(stringResource(UiR.string.close)) }
             }
 
             if (trajectory.isNotEmpty()) {

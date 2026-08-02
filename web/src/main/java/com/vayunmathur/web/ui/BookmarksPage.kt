@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
@@ -175,13 +178,14 @@ fun BookmarksScreen(
             }
 
             if (filtered.isEmpty() && bookmarks.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.no_bookmarks_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                EmptyState(
+                    title = stringResource(R.string.no_bookmarks_yet),
+                )
             } else if (filtered.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.no_bookmarks_in_this_folder), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                EmptyState(
+                    title = stringResource(R.string.no_bookmarks_in_this_folder),
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -228,7 +232,7 @@ fun BookmarksScreen(
                 TextButton(onClick = {
                     newFolderName = ""
                     showNewFolderDialog = false
-                }) { Text(stringResource(R.string.cancel)) }
+                }) { Text(stringResource(UiR.string.cancel)) }
             }
         )
     }
@@ -242,29 +246,24 @@ fun BookmarksScreen(
                 TextButton(onClick = {
                     onDelete(bm)
                     showDeleteDialog = null
-                }) { Text(stringResource(R.string.delete)) }
+                }) { Text(stringResource(UiR.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = null }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { showDeleteDialog = null }) { Text(stringResource(UiR.string.cancel)) }
             }
         )
     }
 
     showFolderDeleteDialog?.let { folder ->
-        AlertDialog(
-            onDismissRequest = { showFolderDeleteDialog = null },
-            title = { Text(stringResource(R.string.delete_folder_2)) },
-            text = { Text(stringResource(R.string.bookmarks_inside_will_also_be_deleted, folder.name)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDeleteFolder(folder)
-                    if (selectedFolder == folder.id) selectedFolder = null
-                    showFolderDeleteDialog = null
-                }) { Text(stringResource(R.string.delete)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showFolderDeleteDialog = null }) { Text(stringResource(R.string.cancel)) }
-            }
+        ConfirmDialog(
+            title = stringResource(R.string.delete_folder_2),
+            message = stringResource(R.string.bookmarks_inside_will_also_be_deleted, folder.name),
+            confirmLabel = stringResource(UiR.string.delete),
+            dismissLabel = stringResource(UiR.string.cancel),
+            onConfirm = { onDeleteFolder(folder)
+                    if (selectedFolder == folder.id) selectedFolder = null },
+            onDismiss = { showFolderDeleteDialog = null },
+            destructive = true,
         )
     }
 }

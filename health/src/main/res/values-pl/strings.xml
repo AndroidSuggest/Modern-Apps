@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="cancel">Anuluj</string>
     <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
     <string name="app_name">Zdrowie</string>
     <string name="grant_permissions">Przyznaj uprawnienia</string>
@@ -96,9 +95,7 @@
     <string name="ingredients">Składniki</string>
     <string name="rename_ingredient">Zmień nazwę składnika</string>
     <string name="custom_name">Nazwa niestandardowa</string>
-    <string name="save">Zapisz</string>
     <string name="recipe_name">Nazwa przepisu</string>
-    <string name="add">Dodaj</string>
     <string name="save_recipe">Zapisz przepis</string>
     <string name="set_quantity_for_format">Ustaw ilość dla <xliff:g id="ingredient" example="Tomato">%1$s</xliff:g></string>
     <string name="quantity">Ilość</string>

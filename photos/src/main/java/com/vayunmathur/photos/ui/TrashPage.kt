@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
@@ -126,9 +127,10 @@ fun TrashPage(backStack: NavBackStack<Route>, galleryViewModel: GalleryViewModel
         bottomBar = { if (!isSelectionMode) NavigationBar(Route.Trash, backStack) }
     ) { paddingValues ->
         if (trashedPhotos.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.trash_is_empty), color = Color.Gray)
-            }
+            EmptyState(
+                title = stringResource(R.string.trash_is_empty),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+            )
         } else {
             Box(
                 modifier = Modifier

@@ -1,4 +1,5 @@
 package com.vayunmathur.maps.ui
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlinx.datetime.isoDayNumber
@@ -54,7 +55,7 @@ import kotlin.time.Clock
 fun goto(context: Context, uri: String) {
     val intent = Intent(Intent.ACTION_VIEW, uri.toUri())
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    context.startActivity(intent)
+    ExternalIntents.launch(context, intent)
 }
 
 @Composable

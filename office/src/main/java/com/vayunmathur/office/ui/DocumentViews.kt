@@ -41,6 +41,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
@@ -199,7 +200,7 @@ fun ColorPickerDialog(title: String, onColorSelected: (Long?) -> Unit, onDismiss
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -229,7 +230,7 @@ fun FontSizePickerDialog(onSizeSelected: (Float) -> Unit, onDismiss: () -> Unit)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -262,7 +263,7 @@ fun SpecialCharsDialog(onPick: (String) -> Unit, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -274,7 +275,7 @@ fun FootnoteDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.insert_footnote)) },
         text = { TextField(value = text, onValueChange = { text = it }, label = { Text(stringResource(R.string.footnote_text)) }, modifier = Modifier.fillMaxWidth()) },
         confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }
 
 @Composable
@@ -290,7 +291,7 @@ fun CommentDialog(onAdd: (author: String, text: String) -> Unit, onDismiss: () -
             }
         },
         confirmButton = { TextButton(onClick = { if (text.isNotBlank()) { onAdd(author, text); onDismiss() } }) { Text(stringResource(R.string.insert)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }
 
 @Composable
@@ -305,8 +306,8 @@ fun HeaderFooterDialog(initialHeader: String, initialFooter: String, onSave: (he
                 TextField(value = footer, onValueChange = { footer = it }, label = { Text(stringResource(R.string.footer)) }, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(header, footer); onDismiss() }) { Text(stringResource(R.string.save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+        confirmButton = { TextButton(onClick = { onSave(header, footer); onDismiss() }) { Text(stringResource(UiR.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } })
 }
 
 // --- Insert Table Dialog ---
@@ -333,7 +334,7 @@ fun InsertTableDialog(onInsert: (rows: Int, cols: Int) -> Unit, onDismiss: () ->
                 onDismiss()
             }) { Text(stringResource(R.string.insert)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -358,7 +359,7 @@ fun InsertHyperlinkDialog(onInsert: (text: String, url: String) -> Unit, onDismi
                 if (linkText.isNotBlank() && linkUrl.isNotBlank()) { onInsert(linkText, linkUrl); onDismiss() }
             }) { Text(stringResource(R.string.insert)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -380,7 +381,7 @@ fun GoToSlideDialog(total: Int, onGo: (Int) -> Unit, onDismiss: () -> Unit) {
                 if (n != null && n in 1..total) { onGo(n - 1); onDismiss() }
             }) { Text(stringResource(R.string.go)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -393,8 +394,8 @@ fun AddBookmarkDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.add_bookmark)) },
         text = { TextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { onAdd(name); onDismiss() } }) { Text(stringResource(R.string.add)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { onAdd(name); onDismiss() } }) { Text(stringResource(UiR.string.add)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -414,7 +415,7 @@ fun SettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings)) },
+        title = { Text(stringResource(UiR.string.settings)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -437,9 +438,9 @@ fun SettingsDialog(
             TextButton(onClick = {
                 onSave(autoSaveEnabled, interval.toIntOrNull() ?: 60, fontSize)
                 onDismiss()
-            }) { Text(stringResource(R.string.save)) }
+            }) { Text(stringResource(UiR.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -470,7 +471,7 @@ fun SortDialog(maxCols: Int, onSort: (colIndex: Int, ascending: Boolean) -> Unit
                 onSort(c, ascending); onDismiss()
             }) { Text(stringResource(R.string.sort)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -513,9 +514,9 @@ fun ChartEditorDialog(initial: OdfChart?, onConfirm: (OdfChart) -> Unit, onDismi
                     if (vals.isEmpty()) null else OdfChartSeries(name, vals)
                 }
                 if (cats.isNotEmpty() && series.isNotEmpty()) { onConfirm(OdfChart(type, cats, series)); onDismiss() }
-            }) { Text(stringResource(R.string.ok)) }
+            }) { Text(stringResource(UiR.string.ok)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
     )
 }
 
@@ -836,7 +837,7 @@ fun ImageCropDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = { onApply(0f, 0f, 0f, 0f); onDismiss() }) { Text(stringResource(R.string.reset)) }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
             }
         }
     )
@@ -1365,7 +1366,7 @@ fun SpreadsheetView(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { commitAndAdvance() }, onDone = { commitAndAdvance() }),
                     colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant))
-                TextButton(onClick = { val (si, r, c) = editingCell!!; onCellTextChange(si, r, c, editText.text); editingCell = null; onCellSelected(si, -1, -1) }) { Text(stringResource(R.string.done)) }
+                TextButton(onClick = { val (si, r, c) = editingCell!!; onCellTextChange(si, r, c, editText.text); editingCell = null; onCellSelected(si, -1, -1) }) { Text(stringResource(UiR.string.done)) }
             }
         }
 
@@ -1516,8 +1517,8 @@ fun SpreadsheetView(
     if (showRenameSheet) {
         AlertDialog(onDismissRequest = { showRenameSheet = false }, title = { Text(stringResource(R.string.rename_sheet)) },
             text = { TextField(value = renameText, onValueChange = { renameText = it }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { onRenameSheet(selectedSheet, renameText); showRenameSheet = false }) { Text(stringResource(R.string.ok)) } },
-            dismissButton = { TextButton(onClick = { showRenameSheet = false }) { Text(stringResource(R.string.cancel)) } })
+            confirmButton = { TextButton(onClick = { onRenameSheet(selectedSheet, renameText); showRenameSheet = false }) { Text(stringResource(UiR.string.ok)) } },
+            dismissButton = { TextButton(onClick = { showRenameSheet = false }) { Text(stringResource(UiR.string.cancel)) } })
     }
     if (showSortDialog) {
         val maxC = doc.sheets[selectedSheet].rows.maxOfOrNull { it.cells.size } ?: 1
@@ -1599,7 +1600,7 @@ fun PresentationView(
                 TextButton(onClick = { onMoveSlideUp(currentSlide); if (currentSlide > 0) currentSlide-- }) { Text("↑") }
                 TextButton(onClick = { onMoveSlideDown(currentSlide); if (currentSlide < doc.slides.size - 1) currentSlide++ }) { Text("↓") }
                 if (doc.slides.size > 1) TextButton(onClick = { onDeleteSlide(currentSlide); currentSlide = minOf(currentSlide, doc.slides.size - 2).coerceAtLeast(0) }) {
-                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(UiR.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             }
         }

@@ -5,6 +5,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -100,19 +102,14 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
     }
 
     if (showClearAllDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearAllDialog = false },
-            title = { Text(stringResource(R.string.clear_history)) },
-            text = { Text(stringResource(R.string.are_you_sure_you_want_to_clear_all_watch)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    youPipeViewModel.clearHistory()
-                    showClearAllDialog = false
-                }) { Text(stringResource(R.string.clear)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearAllDialog = false }) { Text(stringResource(R.string.cancel)) }
-            }
+        ConfirmDialog(
+            title = stringResource(R.string.clear_history),
+            message = stringResource(R.string.are_you_sure_you_want_to_clear_all_watch),
+            confirmLabel = stringResource(UiR.string.clear),
+            dismissLabel = stringResource(UiR.string.cancel),
+            onConfirm = { youPipeViewModel.clearHistory() },
+            onDismiss = { showClearAllDialog = false },
+            destructive = true,
         )
     }
 }
