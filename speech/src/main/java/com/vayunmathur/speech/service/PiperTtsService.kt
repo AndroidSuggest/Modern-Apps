@@ -23,8 +23,8 @@ import kotlin.math.roundToInt
  * Originally English-only (`en-US` Amy medium, 22050 Hz). After the multilingual
  * expansion we advertise only the voices that are actually extracted on disk under
  * `getExternalFilesDir()/piper/voices/<bcp47>/<id>/`, e.g. `de-DE`, `fr-FR`, etc.
- * Each voice's sample rate comes from its `config.json` (16 kHz for true low, 22 kHz
- * for medium-as-low), so [onSynthesizeText] must start the callback at the correct hz.
+ * Each voice's sample rate comes from its `config.json` — all high quality 22.05 kHz
+ * now (previously 16 kHz low) — so [onSynthesizeText] starts the callback at the correct hz.
  *
  * The Settings Play button is enabled only if:
  *   isLanguageAvailable >= LANG_AVAILABLE AND getDefaultVoiceNameFor returns a

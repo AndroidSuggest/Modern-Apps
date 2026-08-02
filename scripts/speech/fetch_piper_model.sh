@@ -67,7 +67,7 @@ if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-# Defaults based on language
+# Defaults based on language — now high quality 22 kHz for all langs
 if [ -z "$ESPEAK_VOICE" ]; then
   case "$LANG_CODE" in
     en) ESPEAK_VOICE="en-us" ;;
@@ -75,16 +75,10 @@ if [ -z "$ESPEAK_VOICE" ]; then
   esac
 fi
 if [ -z "$QUALITY" ]; then
-  case "$LANG_CODE" in
-    en) QUALITY="medium" ;;
-    *)  QUALITY="low" ;;
-  esac
+  QUALITY="high"
 fi
 if [ -z "$ARCHIVE_NAME" ]; then
-  case "$LANG_CODE" in
-    en) ARCHIVE_NAME="voice3.zip" ;;
-    *)  ARCHIVE_NAME="${LANG_CODE}-${QUALITY}.zip" ;;
-  esac
+  ARCHIVE_NAME="${LANG_CODE}-${QUALITY}.zip"
 fi
 
 DICT_FILE="${LANG_CODE}-word_id.bin"

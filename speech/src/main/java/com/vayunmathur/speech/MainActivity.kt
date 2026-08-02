@@ -325,10 +325,10 @@ fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
                 Spacer(Modifier.height(4.dp))
             }
 
-            // WiFi warning for large downloads
+            // WiFi warning — high quality 22kHz ~80-90 MB each
             if (state.ttsVoices.any { !it.isInstalled }) {
                 Text(
-                    text = "Voices download ~13-28 MB each on Wi-Fi. Total ~500 MB if all 20 installed.",
+                    text = "High-quality voices (22kHz) download ~80-90 MB each on Wi-Fi. Total ~1.6 GB if all 20 installed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

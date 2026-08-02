@@ -25,8 +25,8 @@ data class TtsVoiceUiState(
     val englishName: String,
     val isInstalled: Boolean,
     val progress: Float = 0f,
-    val sizeEstimateMb: Int = 28,
-    val quality: String = "low",
+    val sizeEstimateMb: Int = 80,
+    val quality: String = "high",
     val sampleRate: Int = 22050,
 )
 
