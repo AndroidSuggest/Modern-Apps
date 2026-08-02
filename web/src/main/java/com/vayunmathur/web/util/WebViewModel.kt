@@ -41,7 +41,6 @@ private const val P_CACHE_MODE = "web_cache_mode"
 private const val P_JS_ENABLED = "web_js_enabled"
 private const val P_BLOCK_THIRD_PARTY = "web_block_third_party"
 private const val P_DESKTOP_MODE = "web_desktop_mode"
-private const val P_ADBLOCK = "web_adblock"
 private const val P_SEARCH_ENGINE = "web_search_engine"
 
 data class PermissionPrompt(
@@ -77,7 +76,8 @@ class WebViewModel(
     var jsEnabled by mutableStateOf(true)
     var blockThirdPartyCookies by mutableStateOf(false)
     var desktopMode by mutableStateOf(false)
-    var adBlockEnabled by mutableStateOf(false)
+    /** Ad/tracker blocking is always enabled — cannot be disabled. */
+    val adBlockEnabled: Boolean = true
 
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks
@@ -134,14 +134,12 @@ class WebViewModel(
                     val js = sp.getBoolean(P_JS_ENABLED, true)
                     val blockThird = sp.getBoolean(P_BLOCK_THIRD_PARTY, false)
                     val desktop = sp.getBoolean(P_DESKTOP_MODE, false)
-                    val adblock = sp.getBoolean(P_ADBLOCK, false)
                     withContext(Dispatchers.Main) {
                         cacheModeName?.let { runCatching { CacheMode.valueOf(it) }.getOrNull()?.let { cm -> cacheMode = cm } }
                         searchEngineName?.let { runCatching { SearchEngine.valueOf(it) }.getOrNull()?.let { se -> searchEngine = se } }
                         jsEnabled = js
                         blockThirdPartyCookies = blockThird
                         desktopMode = desktop
-                        adBlockEnabled = adblock
 
                         if (savedTabs != null) {
                             runCatching {
@@ -357,11 +355,6 @@ class WebViewModel(
 
     fun updateDesktopMode(enabled: Boolean) {
         desktopMode = enabled
-        persistPrefs()
-    }
-
-    fun updateAdBlock(enabled: Boolean) {
-        adBlockEnabled = enabled
         persistPrefs()
     }
 
@@ -635,7 +628,6 @@ class WebViewModel(
                     .putBoolean(P_JS_ENABLED, jsEnabled)
                     .putBoolean(P_BLOCK_THIRD_PARTY, blockThirdPartyCookies)
                     .putBoolean(P_DESKTOP_MODE, desktopMode)
-                    .putBoolean(P_ADBLOCK, adBlockEnabled)
                     .apply()
             } catch (e: Exception) { Log.e(TAG, "persistPrefs failed", e) }
         }

@@ -163,11 +163,9 @@ fun WebViewBrowser(
                     )
 
                     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                        if (viewModel.adBlockEnabled) {
-                            val host = request.url.host ?: ""
-                            if (adHosts.any { host.contains(it) }) {
-                                return WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
-                            }
+                        val host = request.url.host ?: ""
+                        if (adHosts.any { host.contains(it) }) {
+                            return WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
                         }
                         return super.shouldInterceptRequest(view, request)
                     }

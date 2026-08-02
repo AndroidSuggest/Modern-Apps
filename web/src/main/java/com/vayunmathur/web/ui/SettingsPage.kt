@@ -124,10 +124,7 @@ fun SettingsPage(
             item {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.ad_tracker_blocking)) },
-                    supportingContent = { Text(stringResource(R.string.blocks_doubleclick_googletagmanager_anal)) },
-                    trailingContent = {
-                        Switch(checked = viewModel.adBlockEnabled, onCheckedChange = { viewModel.updateAdBlock(it) })
-                    }
+                    supportingContent = { Text(stringResource(R.string.blocks_doubleclick_googletagmanager_anal) + " — Always on") }
                 )
             }
 
