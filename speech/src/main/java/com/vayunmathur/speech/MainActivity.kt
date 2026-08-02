@@ -42,6 +42,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
@@ -168,13 +169,15 @@ private fun SetupScreen() {
  */
 @Composable
 fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
         StepCard(
             index = 1,
             title = "Speech recognition model",
@@ -240,6 +243,7 @@ fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
         }
 
         TtsTestSection(enabled = state.ttsModelReady)
+        }
     }
 }
 
