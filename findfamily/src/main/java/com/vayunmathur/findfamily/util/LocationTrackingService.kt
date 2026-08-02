@@ -174,19 +174,24 @@ class LocationTrackingService : Service(), SensorEventListener {
                 )
             }
 
-            // Auto-toggle check: flip sendingEnabled when scheduled time is due (Never = disabled)
-            currentUsers.forEach { u ->
-                val at = u.sharingAutoToggleAt
-                if (at != null && now >= at) {
-                    try {
-                        userDao.upsert(u.copy(sendingEnabled = !u.sendingEnabled, sharingAutoToggleAt = null))
-                    } catch (e: Exception) {
-                        Log.w("FF-Heartbeat", "auto-toggle failed for ${u.id}", e)
-                    }
+            // Auto-toggle check: atomic flip guarded by the timer value itself.
+            // If the user manually cleared or rescheduled after we read currentUsers, the
+            // WHERE clause (sharingAutoToggleAt <= now) won't match and we won't accidentally
+            // disable/enable when they didn't intend it. No stale copy() + upsert().
+            var publishBaseUsers = currentUsers
+            try {
+                val flipped = userDao.applyDueAutoToggles(now.epochSeconds)
+                if (flipped > 0) {
+                    Log.d("FF-Heartbeat", "auto-toggle flipped $flipped user(s), reloading sharing state before publish")
+                    // Reload fresh sharing flags so we don't publish once after an intended disable,
+                    // and we start publishing immediately after an intended enable.
+                    publishBaseUsers = userDao.getAll()
                 }
+            } catch (e: Exception) {
+                Log.w("FF-Heartbeat", "auto-toggle apply failed", e)
             }
 
-            val publishTargets = currentUsers.filter { it.id != Networking.userid && it.sendingEnabled }
+            val publishTargets = publishBaseUsers.filter { it.id != Networking.userid && it.sendingEnabled }
             Log.d("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=${publishTargets.map{ it.id.toULong() }} names=${publishTargets.map{ it.name }}")
             publishTargets.forEach {
                 val result = runCatching { Networking.publishLocation(locationValue, it) }
@@ -249,11 +254,15 @@ class LocationTrackingService : Service(), SensorEventListener {
                         ?: "Unknown Location"
 
                     if (currentId != prevId || displayName != user.locationName) {
-                        userDao.upsert(user.copy(
+                        // Atomic partial update — avoids stale snapshot via copy() + upsert()
+                        // clobbering sharingAutoToggleAt / sendingEnabled and accidentally
+                        // disabling sharing when you didn't intend it.
+                        userDao.updateLocationMeta(
+                            id = user.id,
                             locationName = displayName,
                             lastWaypointId = currentId,
-                            lastLocationChangeTime = lastLoc.timestamp
-                        ))
+                            lastLocationChangeTime = lastLoc.timestamp.epochSeconds
+                        )
                     }
 
                     if (currentId != prevId && user.id != Networking.userid) {

@@ -77,6 +77,42 @@ interface UserDao {
 
     @Delete
     suspend fun delete(value: User): Int
+
+    // --- Atomic helpers for the "Disable after / Enable after" feature ---
+
+    /** Atomically set only the auto-toggle deadline (Never = null). Avoids clobbering other columns. */
+    @Query("UPDATE User SET sharingAutoToggleAt = :atEpochSeconds WHERE id = :id")
+    suspend fun setSharingAutoToggleAt(id: Long, atEpochSeconds: Long?)
+
+    /** Atomically set sharing enabled AND clear any pending auto-toggle (manual toggle path). */
+    @Query("UPDATE User SET sendingEnabled = :enabled, sharingAutoToggleAt = NULL WHERE id = :id")
+    suspend fun setSendingEnabledAndClearToggle(id: Long, enabled: Boolean)
+
+    /**
+     * Atomically flip sharing for all rows whose timer is due. The WHERE clause guards against
+     * TOCTOU races: if the user manually cleared (NULL) or rescheduled to the future, the row
+     * no longer matches and we won't accidentally disable/enable when they didn't intend it.
+     * Returns number of rows flipped.
+     */
+    @Query("UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, sharingAutoToggleAt = NULL WHERE sharingAutoToggleAt IS NOT NULL AND sharingAutoToggleAt <= :nowEpochSeconds")
+    suspend fun applyDueAutoToggles(nowEpochSeconds: Long): Int
+
+    // --- Atomic partial updates to avoid heartbeat clobbering sharingAutoToggleAt / sendingEnabled ---
+
+    @Query("UPDATE User SET locationName = :locationName, lastWaypointId = :lastWaypointId, lastLocationChangeTime = :lastLocationChangeTime WHERE id = :id")
+    suspend fun updateLocationMeta(id: Long, locationName: String, lastWaypointId: Long?, lastLocationChangeTime: Long)
+
+    @Query("UPDATE User SET encryptionKey = :encryptionKey WHERE id = :id")
+    suspend fun setEncryptionKey(id: Long, encryptionKey: String)
+
+    @Query("UPDATE User SET pqcEncryptionKey = :pqcEncryptionKey WHERE id = :id")
+    suspend fun setPqcEncryptionKey(id: Long, pqcEncryptionKey: String)
+
+    @Query("UPDATE User SET platform = :platform WHERE id = :id")
+    suspend fun setPlatform(id: Long, platform: String)
+
+    @Query("UPDATE User SET name = :name, photo = :photo WHERE id = :id")
+    suspend fun updateContactNamePhoto(id: Long, name: String, photo: String?)
 }
 
 @Dao

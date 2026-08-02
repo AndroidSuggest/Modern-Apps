@@ -151,11 +151,14 @@ class FindFamilyViewModel(
     fun upsertUser(user: User, onDone: () -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             userDao.upsert(user)
-            // A new/updated connection can change whether sharing is enabled, so
-            // reconcile the tracking service (e.g. start it after the first
-            // person is added).
             LocationServiceController.syncServiceState(ctx)
             withContext(Dispatchers.Main) { onDone() }
+        }
+    }
+
+    fun updateContactNamePhoto(userId: Long, name: String, photo: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            userDao.updateContactNamePhoto(userId, name, photo)
         }
     }
 
@@ -332,41 +335,33 @@ class FindFamilyViewModel(
 
     /** Toggle per-person location sharing and reconcile the service so it stops
      * when nobody is being shared with and starts when sharing is (re)enabled.
-     * Manual toggle always resets auto-toggle to Never. */
+     * Manual toggle always resets auto-toggle to Never.
+     *
+     * Uses atomic DB update so a stale UI snapshot cannot clobber other columns
+     * (e.g. accidentally disabling/enabling when you didn't intend it). */
     override fun setUserSharing(user: User, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
-            userDao.upsert(user.copy(sendingEnabled = enabled, sharingAutoToggleAt = null))
+            userDao.setSendingEnabledAndClearToggle(user.id, enabled)
             LocationServiceController.syncServiceState(ctx)
         }
     }
 
-    /** Set auto-toggle for sharing — same durations as one-time links, Never = null. Single field. */
+    /** Set auto-toggle for sharing — same durations as one-time links, Never = null. Single field.
+     * Atomic — only touches sharingAutoToggleAt, so a stale User snapshot from Compose cannot
+     * accidentally flip sendingEnabled when you didn't intend it. */
     override fun setUserAutoToggle(user: User, duration: kotlin.time.Duration?) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (duration == null) {
-                userDao.upsert(user.copy(sharingAutoToggleAt = null))
-            } else {
-                val at = Clock.System.now() + duration
-                userDao.upsert(user.copy(sharingAutoToggleAt = at))
-            }
+            val epoch: Long? = if (duration == null) null else (Clock.System.now() + duration).epochSeconds
+            userDao.setSharingAutoToggleAt(user.id, epoch)
         }
     }
 
-    /** Called from foreground service (or init) when any auto-toggle is due. */
+    /** Called from foreground service (or init) when any auto-toggle is due.
+     * Atomic SQL flip guarded by the timer value itself — prevents TOCTOU where the user
+     * manually cleared or rescheduled the timer but a stale service snapshot still flips. */
     suspend fun applyDueAutoToggles() {
-        val now = Clock.System.now()
-        val all = userDao.getAll()
-        for (u in all) {
-            val at = u.sharingAutoToggleAt
-            if (at != null && now >= at) {
-                userDao.upsert(
-                    u.copy(
-                        sendingEnabled = !u.sendingEnabled,
-                        sharingAutoToggleAt = null
-                    )
-                )
-            }
-        }
+        val nowEpoch = Clock.System.now().epochSeconds
+        userDao.applyDueAutoToggles(nowEpoch)
     }
 
     /** Clears expired auto-toggles that are past due but without flipping — used during init cleanup. */

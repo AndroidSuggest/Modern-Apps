@@ -23,15 +23,18 @@ import kotlinx.coroutines.flow.asSharedFlow
  */
 object AppMessages {
 
+    enum class Duration { Short, Long, Indefinite }
+
     data class Message(
         val text: String,
         val actionLabel: String? = null,
         val onAction: (() -> Unit)? = null,
+        val duration: Duration = Duration.Short,
     )
 
     private val _messages = MutableSharedFlow<Message>(
         replay = 0,
-        extraBufferCapacity = 8,
+        extraBufferCapacity = 16,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
@@ -43,7 +46,7 @@ object AppMessages {
      * Never suspends and never fails; if nothing is collecting, the message is
      * dropped.
      */
-    fun show(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
-        _messages.tryEmit(Message(text, actionLabel, onAction))
+    fun show(text: String, actionLabel: String? = null, duration: Duration = Duration.Short, onAction: (() -> Unit)? = null) {
+        _messages.tryEmit(Message(text, actionLabel, onAction, duration))
     }
 }

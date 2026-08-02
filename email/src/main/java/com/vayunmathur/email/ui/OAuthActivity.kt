@@ -36,7 +36,7 @@ class OAuthActivity : ComponentActivity() {
         val raw = intent?.data
         if (raw == null) {
             Log.w(TAG, "OAuthActivity no data")
-            AppMessages.show("Microsoft sign-in failed: no redirect data")
+            AppMessages.show("Microsoft sign-in failed: no redirect data", duration = AppMessages.Duration.Indefinite)
             finish()
             return
         }
@@ -54,10 +54,10 @@ class OAuthActivity : ComponentActivity() {
                 )
             }
 
-            val msg = when (result) {
+            val (msg, duration) = when (result) {
                 is OutlookOAuth.OAuthResult.Success -> {
                     Log.d(TAG, "OAuth success email=${result.email}")
-                    getString(R.string.added, result.email)
+                    getString(R.string.added, result.email) to AppMessages.Duration.Long
                 }
                 is OutlookOAuth.OAuthResult.Failure -> {
                     // Surface the actual callback error instead of hardcoded string
@@ -69,10 +69,10 @@ class OAuthActivity : ComponentActivity() {
                     val detailed = parts.joinToString(": ")
                     Log.e(TAG, "OAuth failure: $detailed raw=$raw")
                     // Show callback error (error_description from Azure) not generic check-redirect message
-                    detailed
+                    detailed to AppMessages.Duration.Indefinite
                 }
             }
-            AppMessages.show(msg)
+            AppMessages.show(msg, duration = duration)
 
             startActivity(
                 Intent(this@OAuthActivity, MainActivity::class.java)

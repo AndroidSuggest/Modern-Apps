@@ -13,32 +13,31 @@ import java.util.zip.ZipInputStream
  * fetched as a single `.zip` from the mirror into `getExternalFilesDir()/piper/voices/`
  * and extracted into `piper/voices/<bcp47>/<id>/`.
  *
- * Mirrors the curated Translate 20-language set (`translate/util/Languages.kt:ALL`):
- * en, es, fr, de, it, pt, nl, ru, pl, tr, ar, hi, zh, ja, ko, vi, th, id, uk, sv.
+ * Originally curated as Translate 20 (Languages.ALL), expanded to every Piper checkpoint
+ * available at https://huggingface.co/datasets/rhasspy/piper-checkpoints (38 languages,
+ * 92 configs) plus ONNX-only langs from piper-voices. Goal: "every language we can".
  *
  * The original single-voice layout `piper/voice` (voice3.zip, Amy medium, 22050 Hz,
- * 125k-word dict 2.2 MB) is kept as a legacy path and migrated to the new layout on
- * first launch. New voices follow `<code>-low.zip` naming, but where a true low
- * checkpoint doesn't exist (only en, ar, cs had low on piper-checkpoints) we ship the
- * medium checkpoint labeled low (size ~28 MB instead of ~12-15 MB). The enum records
- * the real sample rate so the TTS service can `callback.start(sampleRate, ...)`.
+ * 125k-word dict 2.2 MB) is kept as legacy and migrated. English now defaults to
+ * Lessac low (16 kHz, ~28 MB zipped, 2.2 MB dict) — true low quality where ckpt exists
+ * (en lessac/low, ar kareem/low, cs jirka/low). Other voices are medium checkpoints
+ * labeled low for now (space transparency).
  *
  * Each [PiperVoiceDef] is SHA-256 pinned once its zip is published at
- * `https://data.vayunmathur.com/models/piper/`. Placeholder entries with null sha
- * skip verification until the mirror is populated.
+ * `https://data.vayunmathur.com/models/piper/`.
  */
 data class PiperVoiceDef(
     /** HF-style id "<locale>-<speaker>-<quality>", e.g. "en_US-amy-medium". */
     val id: String,
-    /** ISO-639-1 code, e.g. "en", "de". Matches Languages.ALL codes. */
+    /** ISO-639-1 or broader code, e.g. "en", "zh". Matches Languages or 38-lang set. */
     val code: String,
     /** BCP-47 tag used for `Voice(name)` and `Locale.forLanguageTag`. */
     val bcp47: String,
-    /** ISO-639-3, e.g. "eng", "deu". Used for CHECK_TTS_DATA. */
+    /** ISO-639-3, e.g. "eng", "deu". */
     val iso3: String,
-    /** ISO-3166-1 alpha-3 country, e.g. "USA", "DEU". Used with iso3 for TTS id. */
+    /** ISO-3166-1 alpha-3 country, e.g. "USA", "DEU". */
     val iso3Country: String,
-    /** Native name from Languages.byCode, e.g. "Deutsch". */
+    /** Native name, e.g. "Deutsch". */
     val nativeName: String,
     /** English name, e.g. "German". */
     val englishName: String,
@@ -46,15 +45,14 @@ data class PiperVoiceDef(
     val remoteArchive: String,
     /** Dictionary file inside voice dir, e.g. "de-word_id.bin". */
     val dictFile: String,
-    /** SHA-256 of the remote archive, null until published. */
+    /** SHA-256 of remote archive, null until published. */
     val sha256: String?,
     /** "low" or "medium" (low may be medium ckpt placeholder). */
     val quality: String,
-    /** Sample rate from config.json, 16000 for true low, 22050 for medium-as-low. */
+    /** Sample rate from config.json. */
     val sampleRate: Int,
-    /** Estimated installed size badge in MB (zip ~12-28). */
+    /** Estimated size badge in MB. */
     val sizeEstimateMb: Int,
-    /** Speaker id for multi-speaker voices, 0 for single. */
     val speakerId: Int = 0,
     val isMultiSpeaker: Boolean = false,
 )
@@ -73,33 +71,40 @@ object PiperVoiceRegistry {
     private val REQUIRED_NETS = listOf("_enc_p", "_dp", "_flow", "_dec")
 
     /**
-     * Full 20-language catalog matching `Languages.ALL`. English keeps the existing
-     * voice3.zip SHA so existing installs don't re-download.
+     * Full catalog: 20 curated Translate + every rhasspy/piper-checkpoints language
+     * (38 distinct langs). English now uses `en-low.zip` (Lessac low, 16 kHz, 28.6 MB,
+     * SHA `71e72d12…` from our build) instead of `voice3.zip` Amy medium, per user fix.
+     * `voice3.zip` remains live for compat / migration (old SHA `49a18080…` kept in fallback).
      *
-     * SHA values for non-EN voices are null until mirror publishes per-lang zips.
-     * When published, pin them here for integrity verification.
+     * True low checkpoints (16 kHz, hidden_channels 128): en lessac/low, ar kareem/low,
+     * cs jirka/low. Others are medium checkpoints labeled low for now (space estimate 28-34 MB).
+     * SHAs pinned for 16 voices we built in this wave; remaining 22 will be null until mirror
+     * upload, then pinned.
      *
-     * Quality: en uses medium (amy, 22050 Hz, 28 MB) as baseline; de, fr, es etc.
-     * use medium-as-low until true low checkpoints are trained. True low where ckpt
-     * exists: en (lessac/low 16000), ar (kareem/low 16000). Others marked sampleRate
-     * 22050 to indicate they're actually medium.
+     * Missing ckpt langs (only ONNX in piper-voices, no ckpt): it, ja, th, sv from original 20.
+     * Plus additional 38-lang set gaps without ckpt download yet.
      */
     val ALL: List<PiperVoiceDef> = listOf(
+        // --- English: now en-low.zip (Lessac low 16k) instead of voice3.zip ---
         PiperVoiceDef(
-            id = "en_US-amy-medium",
+            id = "en_US-lessac-low",
             code = "en",
             bcp47 = "en-US",
             iso3 = "eng",
             iso3Country = "USA",
             nativeName = "English",
             englishName = "English",
-            remoteArchive = "voice3.zip",
+            remoteArchive = "en-low.zip",
             dictFile = "en-word_id.bin",
-            sha256 = "49a18080c2e97b066854d2a5360443275ef3041c7524fcc023b7efdcb063952c",
-            quality = "medium",
-            sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sha256 = "71e72d12a66222dd439fc2031bc1d03fc106d827d5060a40c591a9b71c7699fd",
+            quality = "low",
+            sampleRate = 16000,
+            sizeEstimateMb = 29,
         ),
+        // Legacy English medium (Amy) kept as fallback id for migration but not default download.
+        // Old SHA 49a18080… is the live mirror file; new rebuild SHA 679d2583… differs slightly
+        // (dict size). Keep old for compat.
+        // Actually we still include it in legacyArchive handling, not in ALL default list duplication.
         PiperVoiceDef(
             id = "es_ES-sharvard-medium",
             code = "es",
@@ -110,10 +115,10 @@ object PiperVoiceRegistry {
             englishName = "Spanish",
             remoteArchive = "es-low.zip",
             dictFile = "es-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "3a5d14ad7687e4ed71e93eec4e5373dad75cec6a97ed1e88e5247e15afb3aab5",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 34,
         ),
         PiperVoiceDef(
             id = "fr_FR-siwis-medium",
@@ -125,10 +130,10 @@ object PiperVoiceRegistry {
             englishName = "French",
             remoteArchive = "fr-low.zip",
             dictFile = "fr-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "ae372af01d6efd92c4ac0adb45f11db0f9ac24c571b46ace0aca050c34a9a7e5",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "de_DE-thorsten-medium",
@@ -140,11 +145,12 @@ object PiperVoiceRegistry {
             englishName = "German",
             remoteArchive = "de-low.zip",
             dictFile = "de-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "d62e94bedbeaf7f16cc485e24f11fe25891f060f632e2de3ac742ff77f70cf2a",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
+        // Original 20 with missing ckpt (ONNX only) — keep null until built
         PiperVoiceDef(
             id = "it_IT-riccardo-medium",
             code = "it",
@@ -170,10 +176,10 @@ object PiperVoiceRegistry {
             englishName = "Portuguese",
             remoteArchive = "pt-low.zip",
             dictFile = "pt-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "07a93715c0ed4e6ea1351d4a98abdbf6a1c7bb97e45034ffee8ae9fad1e7d25c",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "nl_BE-nathalie-medium",
@@ -185,10 +191,10 @@ object PiperVoiceRegistry {
             englishName = "Dutch",
             remoteArchive = "nl-low.zip",
             dictFile = "nl-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "f7cfff1040cd325fadb1ec49476b77090877907a0eedffe5c5cde870737e5cba",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "ru_RU-denis-medium",
@@ -200,10 +206,10 @@ object PiperVoiceRegistry {
             englishName = "Russian",
             remoteArchive = "ru-low.zip",
             dictFile = "ru-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "7995a39b9a8e02c9840bd29d3d3e6ab1991bb26f5b85f674e47dadf4eca87b6e",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "pl_PL-darkman-medium",
@@ -215,10 +221,10 @@ object PiperVoiceRegistry {
             englishName = "Polish",
             remoteArchive = "pl-low.zip",
             dictFile = "pl-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "1d2f12113f76368f4c5e50c5c67c09c216d50077261dbafae3c6fdbb4b04714d",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "tr_TR-dfki-medium",
@@ -230,8 +236,8 @@ object PiperVoiceRegistry {
             englishName = "Turkish",
             remoteArchive = "tr-low.zip",
             dictFile = "tr-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "3f7e36d044b37a4fe82579b991ae36c05dd7d2f9683bf7eb177d58d4de468f52",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
             sizeEstimateMb = 28,
         ),
@@ -245,10 +251,10 @@ object PiperVoiceRegistry {
             englishName = "Arabic",
             remoteArchive = "ar-low.zip",
             dictFile = "ar-word_id.bin",
-            sha256 = null,
+            sha256 = "1d478620ad8f484c19fa2dc0fc1cbd231d8c786c26b57deee01ed994b282c1f2",
             quality = "low",
             sampleRate = 16000,
-            sizeEstimateMb = 13,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "hi_IN-rohan-medium",
@@ -260,8 +266,8 @@ object PiperVoiceRegistry {
             englishName = "Hindi",
             remoteArchive = "hi-low.zip",
             dictFile = "hi-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "92f1469eaee834e51ae6b6176c50a301ccf8322cd42c24b39842fb32a50442e9",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
             sizeEstimateMb = 28,
         ),
@@ -275,10 +281,10 @@ object PiperVoiceRegistry {
             englishName = "Chinese",
             remoteArchive = "zh-low.zip",
             dictFile = "zh-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "64dfea77bd960093d122cb8e2cceac450e5ced0f34f074fb4fcf4d48a43df81e",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 29,
         ),
         PiperVoiceDef(
             id = "ja_JP-kana-medium",
@@ -305,7 +311,7 @@ object PiperVoiceRegistry {
             englishName = "Korean",
             remoteArchive = "ko-low.zip",
             dictFile = "ko-word_id.bin",
-            sha256 = null,
+            sha256 = null, // last.ckpt had MRD discriminator, needs newer piper1-gpl
             quality = "low",
             sampleRate = 22050,
             sizeEstimateMb = 28,
@@ -320,8 +326,8 @@ object PiperVoiceRegistry {
             englishName = "Vietnamese",
             remoteArchive = "vi-low.zip",
             dictFile = "vi-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "4dc346df5e71b6f268456d4dc30e22f9928bb2e8d5a73aa80cee5a9f1b703938",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
             sizeEstimateMb = 28,
         ),
@@ -350,8 +356,8 @@ object PiperVoiceRegistry {
             englishName = "Indonesian",
             remoteArchive = "id-low.zip",
             dictFile = "id-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "39ea9531b7039c71c3e300e9ecbe14ecf2ba49ac67ec84988de4267c6b2a9fef",
+            quality = "low (medium checkpoint for now)",
             sampleRate = 22050,
             sizeEstimateMb = 28,
         ),
@@ -365,10 +371,10 @@ object PiperVoiceRegistry {
             englishName = "Ukrainian",
             remoteArchive = "uk-low.zip",
             dictFile = "uk-word_id.bin",
-            sha256 = null,
-            quality = "low",
+            sha256 = "efb9f61d6a32160c06c9a79fbba52561c85ad5590e823c07ada033592f0f2447",
+            quality = "low (medium checkpoint, multi-speaker)",
             sampleRate = 22050,
-            sizeEstimateMb = 28,
+            sizeEstimateMb = 34,
         ),
         PiperVoiceDef(
             id = "sv_SE-nst-medium",
@@ -385,9 +391,341 @@ object PiperVoiceRegistry {
             sampleRate = 22050,
             sizeEstimateMb = 28,
         ),
+
+        // --- Expanded 38-lang checkpoint set (every lang we can) ---
+        PiperVoiceDef(
+            id = "bg_BG-dimitar-medium",
+            code = "bg",
+            bcp47 = "bg-BG",
+            iso3 = "bul",
+            iso3Country = "BGR",
+            nativeName = "Български",
+            englishName = "Bulgarian",
+            remoteArchive = "bg-low.zip",
+            dictFile = "bg-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "bn_BD-google-medium",
+            code = "bn",
+            bcp47 = "bn-BD",
+            iso3 = "ben",
+            iso3Country = "BGD",
+            nativeName = "বাংলা",
+            englishName = "Bengali",
+            remoteArchive = "bn-low.zip",
+            dictFile = "bn-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ca_ES-upc_ona-medium",
+            code = "ca",
+            bcp47 = "ca-ES",
+            iso3 = "cat",
+            iso3Country = "ESP",
+            nativeName = "Català",
+            englishName = "Catalan",
+            remoteArchive = "ca-low.zip",
+            dictFile = "ca-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "cs_CZ-jirka-low",
+            code = "cs",
+            bcp47 = "cs-CZ",
+            iso3 = "ces",
+            iso3Country = "CZE",
+            nativeName = "Čeština",
+            englishName = "Czech",
+            remoteArchive = "cs-low.zip",
+            dictFile = "cs-word_id.bin",
+            sha256 = null,
+            quality = "low",
+            sampleRate = 16000,
+            sizeEstimateMb = 13,
+        ),
+        PiperVoiceDef(
+            id = "da_DK-talesyntese-medium",
+            code = "da",
+            bcp47 = "da-DK",
+            iso3 = "dan",
+            iso3Country = "DNK",
+            nativeName = "Dansk",
+            englishName = "Danish",
+            remoteArchive = "da-low.zip",
+            dictFile = "da-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "el_GR-rapunzelina-medium",
+            code = "el",
+            bcp47 = "el-GR",
+            iso3 = "ell",
+            iso3Country = "GRC",
+            nativeName = "Ελληνικά",
+            englishName = "Greek",
+            remoteArchive = "el-low.zip",
+            dictFile = "el-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "fi_FI-harri-medium",
+            code = "fi",
+            bcp47 = "fi-FI",
+            iso3 = "fin",
+            iso3Country = "FIN",
+            nativeName = "Suomi",
+            englishName = "Finnish",
+            remoteArchive = "fi-low.zip",
+            dictFile = "fi-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "he_IL-saspeech-medium",
+            code = "he",
+            bcp47 = "he-IL",
+            iso3 = "heb",
+            iso3Country = "ISR",
+            nativeName = "עברית",
+            englishName = "Hebrew",
+            remoteArchive = "he-low.zip",
+            dictFile = "he-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "hu_HU-anna-medium",
+            code = "hu",
+            bcp47 = "hu-HU",
+            iso3 = "hun",
+            iso3Country = "HUN",
+            nativeName = "Magyar",
+            englishName = "Hungarian",
+            remoteArchive = "hu-low.zip",
+            dictFile = "hu-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ka_GE-natia-medium",
+            code = "ka",
+            bcp47 = "ka-GE",
+            iso3 = "kat",
+            iso3Country = "GEO",
+            nativeName = "ქართული",
+            englishName = "Georgian",
+            remoteArchive = "ka-low.zip",
+            dictFile = "ka-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ku_TR-berfin_renas-medium",
+            code = "ku",
+            bcp47 = "ku-TR",
+            iso3 = "kur",
+            iso3Country = "TUR",
+            nativeName = "Kurdî",
+            englishName = "Kurdish",
+            remoteArchive = "ku-low.zip",
+            dictFile = "ku-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "lb_LU-marylux-medium",
+            code = "lb",
+            bcp47 = "lb-LU",
+            iso3 = "ltz",
+            iso3Country = "LUX",
+            nativeName = "Lëtzebuergesch",
+            englishName = "Luxembourgish",
+            remoteArchive = "lb-low.zip",
+            dictFile = "lb-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ml_IN-arjun-medium",
+            code = "ml",
+            bcp47 = "ml-IN",
+            iso3 = "mal",
+            iso3Country = "IND",
+            nativeName = "മലയാളം",
+            englishName = "Malayalam",
+            remoteArchive = "ml-low.zip",
+            dictFile = "ml-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "mr_IN-google-medium",
+            code = "mr",
+            bcp47 = "mr-IN",
+            iso3 = "mar",
+            iso3Country = "IND",
+            nativeName = "मराठी",
+            englishName = "Marathi",
+            remoteArchive = "mr-low.zip",
+            dictFile = "mr-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ne_NP-google-medium",
+            code = "ne",
+            bcp47 = "ne-NP",
+            iso3 = "nep",
+            iso3Country = "NPL",
+            nativeName = "नेपाली",
+            englishName = "Nepali",
+            remoteArchive = "ne-low.zip",
+            dictFile = "ne-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "no_NO-talesyntese-medium",
+            code = "nb",
+            bcp47 = "nb-NO",
+            iso3 = "nob",
+            iso3Country = "NOR",
+            nativeName = "Norsk Bokmål",
+            englishName = "Norwegian",
+            remoteArchive = "nb-low.zip",
+            dictFile = "nb-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ro_RO-mihai-medium",
+            code = "ro",
+            bcp47 = "ro-RO",
+            iso3 = "ron",
+            iso3Country = "ROU",
+            nativeName = "Română",
+            englishName = "Romanian",
+            remoteArchive = "ro-low.zip",
+            dictFile = "ro-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "sk_SK-lili-medium",
+            code = "sk",
+            bcp47 = "sk-SK",
+            iso3 = "slk",
+            iso3Country = "SVK",
+            nativeName = "Slovenčina",
+            englishName = "Slovak",
+            remoteArchive = "sk-low.zip",
+            dictFile = "sk-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "sr_RS-serbski_institut-medium",
+            code = "sr",
+            bcp47 = "sr-RS",
+            iso3 = "srp",
+            iso3Country = "SRB",
+            nativeName = "Српски",
+            englishName = "Serbian",
+            remoteArchive = "sr-low.zip",
+            dictFile = "sr-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "sw_CD-lanfrica-medium",
+            code = "sw",
+            bcp47 = "sw-CD",
+            iso3 = "swa",
+            iso3Country = "COD",
+            nativeName = "Kiswahili",
+            englishName = "Swahili",
+            remoteArchive = "sw-low.zip",
+            dictFile = "sw-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "te_IN-maya-medium",
+            code = "te",
+            bcp47 = "te-IN",
+            iso3 = "tel",
+            iso3Country = "IND",
+            nativeName = "తెలుగు",
+            englishName = "Telugu",
+            remoteArchive = "te-low.zip",
+            dictFile = "te-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
+        PiperVoiceDef(
+            id = "ur_PK-fasih-medium",
+            code = "ur",
+            bcp47 = "ur-PK",
+            iso3 = "urd",
+            iso3Country = "PAK",
+            nativeName = "اردو",
+            englishName = "Urdu",
+            remoteArchive = "ur-low.zip",
+            dictFile = "ur-word_id.bin",
+            sha256 = null,
+            quality = "low (medium checkpoint)",
+            sampleRate = 22050,
+            sizeEstimateMb = 28,
+        ),
     )
 
-    /** Default English voice used for backward compat (voice3.zip / Amy medium). */
+    /** Default English voice — now en-low.zip (Lessac low 16k) instead of voice3.zip. */
     val DEFAULT: PiperVoiceDef = ALL.first { it.code == "en" }
 
     private val byCodeMap: Map<String, PiperVoiceDef> = ALL.associateBy { it.code.lowercase() }
@@ -403,9 +741,7 @@ object PiperVoiceRegistry {
     fun byRemoteArchive(name: String): PiperVoiceDef? = byRemoteMap[name]
 
     /**
-     * Resolve a def from free-form TTS request fields:
-     * lang may be ISO-639-1 ("de"), ISO-639-3 ("deu"), BCP-47 ("de-DE"),
-     * country "DEU", variant "x-en_US-amy-medium", voiceName BCP-47+extension.
+     * Resolve a def from free-form TTS request fields.
      */
     fun resolve(
         lang: String? = null,
@@ -413,37 +749,22 @@ object PiperVoiceRegistry {
         variant: String? = null,
         voiceName: String? = null,
     ): PiperVoiceDef? {
-        // Voice name has highest priority — it may contain bcp47 + x-id extension.
         voiceName?.let { name ->
-            // Exact bcp47 or bcp47-x-<id> prefix: "en-US-x-en_US-amy-medium" or "de-DE"
             val lower = name.lowercase()
-            // Try id contained in extension: extract after "-x-" if present.
             val xIdx = lower.indexOf("-x-")
             if (xIdx >= 0) {
                 val bcpPart = name.substring(0, xIdx)
                 byBcp47(bcpPart)?.let { return it }
-                // Id part might be the voice id itself.
                 val idPart = name.substring(xIdx + 3)
-                // idPart could be like "en_US-amy-medium" or "de-low" alias
                 byId(idPart)?.let { return it }
-                // Also try without ext: search by prefix.
-                ALL.firstOrNull { idPart.contains(it.code) }?.let { def ->
-                    // Prefer exact bcp match first, then code.
-                    byBcp47(bcpPart)?.let { return it }
-                }
             }
-            // Direct BCP47
             byBcp47(name)?.let { return it }
-            // Direct id
             byId(name)?.let { return it }
-            // Code embedded (e.g. "de-DE")
-            // Try first 2-3 chars as iso code
             val parts = name.split("-", "_")
             if (parts.isNotEmpty()) {
                 byCode(parts[0])?.let { return it }
                 byIso3(parts[0])?.let { return it }
             }
-            // Legacy "eng-USA" style — iso3-country
             if (parts.size >= 2) {
                 byIso3(parts[0])?.let { return it }
             }
@@ -454,19 +775,13 @@ object PiperVoiceRegistry {
             byCode(ll)?.let { return it }
             byIso3(ll)?.let { return it }
             byBcp47(ll)?.let { return it }
-            // Handle "en_US" with underscore
             val normalized = ll.replace('_', '-')
             byBcp47(normalized)?.let { return it }
-            // ISO3 with variant may come as "eng" -> resolve
-            // Last resort: prefix match "en-..." startsWith code
             if (ll.length >= 2) {
                 val prefix = ll.substring(0, 2)
                 byCode(prefix)?.let { return it }
             }
         }
-
-        // country as iso3 country e.g. "DEU" could still hint at language via lang param already?
-        // If only country given? Ignore.
 
         return null
     }
@@ -489,7 +804,6 @@ object PiperVoiceRegistry {
         return File(root, "$VOICES_ROOT/${def.remoteArchive}")
     }
 
-    /** Historical on-disk archive location used before multi-voice (piper/voice.zip). */
     fun legacyArchive(context: Context): File {
         val root = rootDir(context) ?: return File(LEGACY_ARCHIVE)
         return File(root, LEGACY_ARCHIVE)
@@ -500,29 +814,18 @@ object PiperVoiceRegistry {
         return File(root, LEGACY_VOICE_DIR)
     }
 
-    /** Discovered `<voice>` prefix inside voiceDir, e.g. "amy" from amy_enc_p.ncnn.param. */
     fun voicePrefix(context: Context, def: PiperVoiceDef): String? {
         val files = voiceDir(context, def).listFiles() ?: return null
         val encoder = files.firstOrNull { it.name.endsWith(ENCODER_SUFFIX) } ?: return null
         return encoder.name.removeSuffix(ENCODER_SUFFIX)
     }
 
-    /**
-     * True once [def] has been extracted and looks complete. Guards:
-     * - No .onnx legacy
-     * - Dict exists and size >= threshold (100k for non-en, 1M for en legacy guard)
-     * - All required nets param+bin present under discovered prefix
-     * - config.json exists
-     */
     fun isExtracted(context: Context, def: PiperVoiceDef): Boolean {
         val dir = voiceDir(context, def)
         if (!dir.isDirectory) {
-            // Also check legacy location for default EN voice before migration.
             if (def.code == "en") {
                 val legacyDir = legacyVoiceDir(context)
                 if (legacyDir.isDirectory) {
-                    // Legacy check delegated to legacy helpers — treat as not extracted here
-                    // so migration logic can handle it.
                     return isLegacyExtracted(context)
                 }
             }
@@ -530,18 +833,12 @@ object PiperVoiceRegistry {
         }
         if (dir.listFiles()?.any { it.name.endsWith(".onnx") } == true) return false
 
-        // Dict size guard: old 33k dict 593 KB vs new 2.2 MB (English). For non-EN
-        // we only know minimal 100k threshold; small dict indicates broken download.
         val dictPath = File(dir, def.dictFile)
-        // Also accept en-word_id.bin as alternative for non-EN dirs that may ship both
         val altEnDict = File(dir, "en-word_id.bin")
         val dictFile = when {
             dictPath.exists() -> dictPath
             altEnDict.exists() -> altEnDict
             else -> {
-                // For EN def, dictFile must exist; for non-EN we allowed fallback to any *-word_id.bin
-                // via native patch, but Kotlin side still expects a dict to consider extracted.
-                // Accept any *-word_id.bin found.
                 dir.listFiles()?.firstOrNull { it.name.endsWith("-word_id.bin") }
             }
         }
@@ -579,7 +876,6 @@ object PiperVoiceRegistry {
         return true
     }
 
-    /** Legacy single-voice extraction check (piper/voice). */
     private fun isLegacyExtracted(context: Context): Boolean {
         val dir = legacyVoiceDir(context)
         val files = dir.listFiles() ?: return false
@@ -595,20 +891,17 @@ object PiperVoiceRegistry {
         return netsOk && File(dir, CONFIG).exists()
     }
 
-    /** True if any voice is ready (used as overall TTS ready flag). */
     fun isAnyExtracted(context: Context): Boolean =
         ALL.any { isExtracted(context, it) } || isLegacyExtracted(context)
 
     fun installedDefs(context: Context): List<PiperVoiceDef> =
         ALL.filter { isExtracted(context, it) }.let { list ->
-            // Include default EN if only legacy exists (pre-migration)
             if (list.isEmpty() && isLegacyExtracted(context)) listOf(DEFAULT) else list
         }
 
     fun installedCodes(context: Context): List<String> =
         installedDefs(context).map { it.code }.distinct()
 
-    /** ModelDownloadItem list for the given codes (or all pending if codes empty). */
     fun downloadItems(codes: List<String>): List<ModelDownloadItem> {
         val defs = if (codes.isEmpty()) ALL else codes.mapNotNull { byCode(it) }
         return defs.map { def ->
@@ -638,35 +931,27 @@ object PiperVoiceRegistry {
         return (ds.getDouble(key) ?: 0.0).toFloat()
     }
 
-    /** Averaged progress across given codes (for overall badge). */
     fun overallProgress(ds: DataStoreUtils, codes: List<String>? = null): Float {
         val defs = if (codes == null) ALL else codes.mapNotNull { byCode(it) }
         if (defs.isEmpty()) return 0f
         return defs.map { progress(ds, it) }.average().toFloat()
     }
 
-    /**
-     * Ensure [def] is extracted, unzipping the downloaded archive on first use and
-     * then deleting the archive to save space. Returns true if ready.
-     */
     @Synchronized
     fun installIfNeeded(context: Context, def: PiperVoiceDef): Boolean {
         if (isExtracted(context, def)) return true
         val zip = archiveFile(context, def)
 
-        // Compatibility: also check alternative locations where DownloadManager may
-        // have placed the file before the multi-voice refactor.
         val altZips = mutableListOf<File>()
         if (def.code == "en") {
-            // Old single-voice archive locations
             altZips += legacyArchive(context)
             File(rootDir(context), "$DIR/${def.remoteArchive}").let { altZips += it }
+            File(rootDir(context), "$DIR/$LEGACY_REMOTE_ARCHIVE").let { altZips += it }
         }
 
         val usableZip = when {
             zip.exists() -> zip
             else -> altZips.firstOrNull { it.exists() }?.also { found ->
-                // Normalize to expected location
                 found.renameTo(zip)
             } ?: return false
         }
@@ -678,10 +963,6 @@ object PiperVoiceRegistry {
         return try {
             unzip(usableZip, tmp)
 
-            // Backward-compat for ncnn-android <1.7.1: old native requires en-word_id.bin mandatory.
-            // If the extracted voice only has <lang>-word_id.bin, ensure en-word_id.bin also exists
-            // so 1.7.0 AAR still loads (copy from default en voice dir if available, or duplicate lang dict).
-            // With 1.7.1 the native fallback handles any *-word_id.bin, so this copy is harmless.
             if (!File(tmp, "en-word_id.bin").exists()) {
                 val enDir = voiceDir(context, DEFAULT)
                 val enDictSrc = File(enDir, "en-word_id.bin")
@@ -690,12 +971,10 @@ object PiperVoiceRegistry {
                     if (enDictSrc.exists()) {
                         enDictSrc.copyTo(File(tmp, "en-word_id.bin"), overwrite = false)
                     } else if (anyDict != null) {
-                        // Duplicate lang dict as en fallback for 1.7.0 compat.
                         anyDict.copyTo(File(tmp, "en-word_id.bin"), overwrite = false)
                         Log.d(TAG, "copied ${anyDict.name} -> en-word_id.bin for 1.7.0 compat in ${def.id}")
                     }
                 } catch (_: Throwable) {
-                    // Ignore, isExtracted will report false if dict still missing.
                 }
             }
 
@@ -703,10 +982,8 @@ object PiperVoiceRegistry {
             dir.deleteRecursively()
             if (!tmp.renameTo(dir)) throw IllegalStateException("rename $tmp -> $dir failed")
             usableZip.delete()
-            // Clean up alternative leftover zips for this voice
             altZips.forEach { it.takeIf { f -> f.exists() && f.absolutePath != usableZip.absolutePath }?.delete() }
             if (def.code == "en") {
-                // Also clean up legacy remote name file if present
                 File(rootDir(context), "$DIR/${LEGACY_REMOTE_ARCHIVE}").takeIf { it.exists() }?.delete()
             }
             isExtracted(context, def)
@@ -718,7 +995,6 @@ object PiperVoiceRegistry {
         }
     }
 
-    /** Install all archives whose download has completed (or progress >= 1.0). */
     fun installAllIfNeeded(context: Context, ds: DataStoreUtils) {
         for (def in ALL) {
             val p = progress(ds, def)
@@ -751,7 +1027,6 @@ object PiperVoiceRegistry {
         }
     }
 
-    /** Total installed bytes across all extracted voices. */
     fun installedBytes(context: Context): Long {
         var total = 0L
         for (def in ALL) {
@@ -760,7 +1035,6 @@ object PiperVoiceRegistry {
                 total += dir.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
             }
         }
-        // Include legacy if present
         if (isLegacyExtracted(context)) {
             val legacy = legacyVoiceDir(context)
             total += legacy.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
@@ -768,17 +1042,11 @@ object PiperVoiceRegistry {
         return total
     }
 
-    /**
-     * Migrate legacy `piper/voice` (amy medium) to new location
-     * `piper/voices/en-US/en_US-amy-medium`. Called on first launch after upgrade.
-     * Keeps legacy dir if rename fails.
-     */
     @Synchronized
     fun migrateLegacyIfNeeded(context: Context) {
         val legacy = legacyVoiceDir(context)
         if (!legacy.isDirectory) return
         if (!isLegacyExtracted(context)) {
-            // Tiny dict or broken — delete so it is re-downloaded at new location.
             Log.d(TAG, "legacy dir present but not valid, deleting for migration")
             legacy.deleteRecursively()
             return
@@ -786,7 +1054,6 @@ object PiperVoiceRegistry {
         val def = DEFAULT
         val newDir = voiceDir(context, def)
         if (newDir.exists() && isExtracted(context, def)) {
-            // Already migrated
             Log.d(TAG, "legacy already migrated, deleting legacy $legacy")
             legacy.deleteRecursively()
             return
@@ -796,7 +1063,6 @@ object PiperVoiceRegistry {
             if (newDir.exists()) newDir.deleteRecursively()
             val renamed = legacy.renameTo(newDir)
             if (!renamed) {
-                // Fallback copy
                 Log.d(TAG, "rename failed, copying legacy to $newDir")
                 legacy.copyRecursively(newDir, overwrite = true)
                 legacy.deleteRecursively()

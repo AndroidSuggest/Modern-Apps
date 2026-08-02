@@ -290,7 +290,8 @@ object Networking {
             Base64.decode(user.encryptionKey)
         } else {
             getKey(user.id)?.also {
-                userDao.upsert(user.copy(encryptionKey = Base64.encode(it)))
+                // Atomic partial update — avoids stale User copy clobbering sharing flags.
+                runCatching { userDao.setEncryptionKey(user.id, Base64.encode(it)) }
             }
         }
         if (keyPem == null) {
@@ -383,10 +384,8 @@ object Networking {
         if (decoded.isNotEmpty()) {
             decoded.forEach { (loc, platform) ->
                 if (platform != null) {
-                    val u = userDao.getById(loc.userid)
-                    if (u != null && u.platform != platform) {
-                        userDao.upsert(u.copy(platform = platform))
-                    }
+                    // Atomic — don't use copy()+upsert() which can clobber sharing timer.
+                    runCatching { userDao.setPlatform(loc.userid, platform) }
                 }
             }
         }
@@ -431,8 +430,7 @@ object Networking {
         decoded.forEach { (loc, platform) ->
             if (platform != null) {
                 runCatching {
-                    val u = userDao.getById(loc.userid)
-                    if (u != null && u.platform != platform) userDao.upsert(u.copy(platform = platform))
+                    userDao.setPlatform(loc.userid, platform)
                 }
             }
         }
@@ -455,9 +453,9 @@ object Networking {
         val resolvedUser = recipient ?: userDao.getById(recipientUserId)
         val pqcBundle = resolvedUser?.let { peerPqcBundle(it) } ?: getPqcKey(recipientUserId)
         if (pqcBundle != null) {
-            // Cache bundle if we just fetched.
+            // Cache bundle if we just fetched — atomic to avoid clobbering sharing flags.
             if (resolvedUser != null && resolvedUser.pqcEncryptionKey == null) {
-                runCatching { userDao.upsert(resolvedUser.copy(pqcEncryptionKey = Base64.encode(pqcBundle))) }
+                runCatching { userDao.setPqcEncryptionKey(resolvedUser.id, Base64.encode(pqcBundle)) }
             }
             return publishUwbMessagePqc(envelope, recipientUserId, pqcBundle)
         }
@@ -628,7 +626,9 @@ object Networking {
     private suspend fun peerPublicKeyPem(user: User): ByteArray? {
         user.encryptionKey?.let { return Base64.decode(it) }
         val pem = getKey(user.id) ?: return null
-        userDao.upsert(user.copy(encryptionKey = Base64.encode(pem)))
+        // Atomic — stale copy() + upsert() would clobber sharingAutoToggleAt / sendingEnabled
+        // and accidentally disable sharing when you didn't intend it.
+        runCatching { userDao.setEncryptionKey(user.id, Base64.encode(pem)) }
         return pem
     }
 
@@ -641,7 +641,7 @@ object Networking {
         if (!pqcReady) return null
         user.pqcEncryptionKey?.let { return Base64.decode(it) }
         val bundle = getPqcKey(user.id) ?: return null
-        userDao.upsert(user.copy(pqcEncryptionKey = Base64.encode(bundle)))
+        runCatching { userDao.setPqcEncryptionKey(user.id, Base64.encode(bundle)) }
         return bundle
     }
 

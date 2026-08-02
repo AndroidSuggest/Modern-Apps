@@ -126,6 +126,11 @@ fun <T: NavKey> MainNavigation(backStack: NavBackStack<T>, bottomBar: @Composabl
             val result = snackbarHostState.showSnackbar(
                 message = message.text,
                 actionLabel = message.actionLabel,
+                duration = when (message.duration) {
+                    AppMessages.Duration.Short -> androidx.compose.material3.SnackbarDuration.Short
+                    AppMessages.Duration.Long -> androidx.compose.material3.SnackbarDuration.Long
+                    AppMessages.Duration.Indefinite -> androidx.compose.material3.SnackbarDuration.Indefinite
+                },
             )
             if (result == SnackbarResult.ActionPerformed) message.onAction?.invoke()
         }

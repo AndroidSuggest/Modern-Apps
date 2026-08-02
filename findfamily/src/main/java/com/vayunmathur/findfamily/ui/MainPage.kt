@@ -340,7 +340,7 @@ fun MainPage(
             } else if (selectedUserId != null) {
                 val selectedUser by ffViewModel.userByIdState(selectedUserId!!)
                 val requestPickContact = platform.requestPickContact { name, photo ->
-                    selectedUser?.let { ffViewModel.upsertUser(it.copy(name = name, photo = photo)) }
+                    selectedUser?.let { ffViewModel.updateContactNamePhoto(it.id, name, photo) }
                 }
                 selectedUser?.let { user ->
                     val personActions = object : PersonActions by ffViewModel {
