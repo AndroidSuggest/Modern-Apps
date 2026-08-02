@@ -86,4 +86,7 @@
     <string name="shortcuts_launch_pwaactivity_standalone">Shortcuts launch PwaActivity standalone WebView (permission handling, downloads, third-party cookies enabled). Remove here deletes DB entry; pinned launcher icon must be removed via long-press if already pinned.</string>
     <string name="bookmarks_inside_will_also_be_deleted">Bookmarks inside \"%1$s\" will also be deleted.</string>
     <string name="share_link">Share link</string>
+    <string name="new_window">New Window</string>
+    <string name="new_incognito_window">New Incognito Window</string>
+    <string name="new_incognito_tab">New Incognito Tab</string>
 </resources>

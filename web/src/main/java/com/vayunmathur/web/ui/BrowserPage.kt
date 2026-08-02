@@ -402,8 +402,9 @@ fun BrowserPage(
                 activeTabId = viewModel.activeTabId,
                 onSwitch = { viewModel.switchToTab(it) },
                 onClose = { viewModel.closeTab(it) },
-                onNewTab = { viewModel.newTab() },
-                onNewPrivateTab = { viewModel.newTab(isPrivate = true) },
+                onNewTab = { viewModel.newTab(isPrivate = viewModel.activeTab?.isPrivate == true) },
+                onNewWindow = { viewModel.newTab() },
+                onNewIncognitoTab = { viewModel.newTab(isPrivate = true) },
                 onDismiss = { viewModel.showTabSwitcher = false },
                 modifier = Modifier.fillMaxSize()
             )
@@ -682,9 +683,12 @@ fun TabSwitcher(
     onSwitch: (String) -> Unit,
     onClose: (String) -> Unit,
     onNewTab: () -> Unit,
-    onNewPrivateTab: () -> Unit,
+    onNewWindow: () -> Unit = onNewTab,
+    onNewIncognitoTab: () -> Unit = {},
+    onNewPrivateTab: () -> Unit = onNewIncognitoTab,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    isIncognitoWindow: Boolean = tabs.find { it.id == activeTabId }?.isPrivate == true,
 ) {
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.98f))) {
         Column(Modifier.fillMaxSize()) {
@@ -722,9 +726,23 @@ fun TabSwitcher(
                     }
                 }
                 item {
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onNewTab, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.new_tab)) }
-                        OutlinedButton(onClick = onNewPrivateTab, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.private_tab)) }
+                    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                if (isIncognitoWindow) onNewIncognitoTab() else onNewTab()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (isIncognitoWindow) R.string.new_incognito_tab else R.string.new_tab
+                                )
+                            )
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onNewWindow, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.new_window)) }
+                            OutlinedButton(onClick = onNewIncognitoTab, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.new_incognito_window)) }
+                        }
                     }
                 }
             }
