@@ -78,15 +78,6 @@
 -keep class com.vayunmathur.ncnn.** { *; }
 -dontwarn com.vayunmathur.ncnn.**
 
-# sherpa-onnx (vendored AAR in speech/libs, offline Piper TTS in :speech) — as above.
-# libsherpa-onnx-jni.so FindClass-es com/k2fsa/sherpa/onnx/{GeneratedAudio,WaveData,
-# DenoisedAudio,OfflineRecognizerResult,OnlineRecognizerResult,AudioEvent,SpeechSegment,
-# KeywordSpotterResult,OfflineSpeakerDiarizationSegment} and builds them from native code,
-# so their constructors have no Java-visible caller for R8 to see and get stripped. The
-# AAR's bundled proguard.txt is empty (0 bytes), so nothing keeps them but this.
--keep class com.k2fsa.sherpa.onnx.** { *; }
--dontwarn com.k2fsa.sherpa.onnx.**
-
 # Stockfish (com.github.vayun-mathur:Stockfish-Library, used by :games:chess) — the
 # native libstockfish.so calls back into Kotlin via JNI. nativeSetOutputCallback looks
 # up Stockfish$OutputCallback.onOutput(String) by name via GetMethodID, and the lambda

@@ -13,14 +13,14 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * System text-to-speech engine backed by offline **Piper (VITS)** via sherpa-onnx. Once
- * selected as the device's TTS engine, any app that uses [android.speech.tts.TextToSpeech]
- * (Translate's read-aloud, TalkBack, ebook readers, …) synthesizes fully on-device — no
- * network, no Google.
+ * System text-to-speech engine backed by offline **Piper (VITS)** running on ncnn
+ * ([com.vayunmathur.ncnn.Vits]). Once selected as the device's TTS engine, any app that uses
+ * [android.speech.tts.TextToSpeech] (Translate's read-aloud, TalkBack, ebook readers, …)
+ * synthesizes fully on-device — no network, no Google.
  *
  * The bundled voice is English (en-US), so we advertise only that; the framework won't route
- * other languages to us. Synthesis streams PCM to the [SynthesisCallback] as sherpa produces
- * it, so audio starts before a long sentence finishes.
+ * other languages to us. Synthesis is blocking — the whole utterance is generated, then fed
+ * to the [SynthesisCallback] in chunks.
  */
 class PiperTtsService : TextToSpeechService() {
 
@@ -161,7 +161,7 @@ class PiperTtsService : TextToSpeechService() {
             return
         }
 
-        // Framework rate is a percentage of normal (100 = 1.0×); sherpa's speed is the same
+        // Framework rate is a percentage of normal (100 = 1.0×); Vits's speed is the same
         // multiplier (larger = faster). Clamp to a sane range.
         val speed = (request.speechRate / 100f).coerceIn(0.3f, 3.0f)
 

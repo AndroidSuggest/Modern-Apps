@@ -10,20 +10,36 @@ import java.util.zip.ZipInputStream
 
 /**
  * Runtime-download config for the offline **Piper (VITS)** text-to-speech voice. The voice
- * is a directory tree (the `.onnx` model, `tokens.txt`, and the large `espeak-ng-data/`
- * phonemizer data), so it's fetched as a single `.zip` from the mirror into
+ * is a directory tree, so it's fetched as a single `.zip` from the mirror into
  * `getExternalFilesDir()` and extracted once into [voiceDir]; the archive is then deleted.
- * sherpa-onnx loads it from those real file paths (espeak-ng needs real paths — it can't
- * read from the APK, which is why the voice isn't bundled).
+ * `com.vayunmathur.ncnn.Vits` loads it from those real file paths, which is why the voice
+ * isn't bundled in the APK.
  *
- * Mirror layout (zip the voice dir's *contents* — `<voice>.onnx`, `tokens.txt`,
- * `espeak-ng-data/` at the zip root; `scripts/speech/fetch_piper_model.sh` stages it):
+ * The VITS graph is exported as five separate ncnn nets, because the alignment between the
+ * duration predictor and the flow depends on the predicted durations and can't be expressed
+ * as ncnn ops. So the voice directory holds, for a voice named `<voice>`:
+ *   `<voice>_enc_p.ncnn.{param,bin}`   text encoder
+ *   `<voice>_dp.ncnn.{param,bin}`      duration predictor
+ *   `<voice>_flow.ncnn.{param,bin}`
+ *   `<voice>_dec.ncnn.{param,bin}`     HiFi-GAN vocoder
+ *   `<voice>_emb_g.ncnn.{param,bin}`   speaker embedding, multi-speaker voices only
+ *   `en-word_id.bin`                   grapheme-to-phoneme dictionary
+ *   `config.json`                      sample rate + inference scales
+ *
+ * Mirror layout (zip the voice dir's *contents* at the zip root;
+ * `scripts/speech/fetch_piper_model.sh` stages it):
  *   https://data.vayunmathur.com/models/piper/voice.zip
  */
 object PiperModel {
     const val DIR = "piper"
-    const val TOKENS = "tokens.txt"
-    const val ESPEAK_DATA = "espeak-ng-data"
+    const val DICT = "en-word_id.bin"
+    const val CONFIG = "config.json"
+
+    /** Identifies the voice: whatever precedes this is the `<voice>` prefix. */
+    private const val ENCODER_SUFFIX = "_enc_p.ncnn.param"
+
+    /** The nets that every voice has. `_emb_g` is multi-speaker-only, so not required. */
+    private val REQUIRED_NETS = listOf("_enc_p", "_dp", "_flow", "_dec")
 
     private const val BASE = "https://data.vayunmathur.com/models/piper/"
     private const val ARCHIVE = "$DIR/voice.zip"
@@ -44,31 +60,41 @@ object PiperModel {
         return File(root, ARCHIVE)
     }
 
-    /** The extracted voice directory sherpa-onnx loads from. */
+    /** The extracted voice directory [com.vayunmathur.ncnn.Vits] loads from. */
     fun voiceDir(context: Context): File {
         val root = rootDir(context) ?: return File("$DIR/voice")
         return File(root, "$DIR/voice")
     }
 
-    fun onnxFile(context: Context): File? {
-        val dir = voiceDir(context)
-        val files = dir.listFiles() ?: return null
-        return files.firstOrNull { it.name.endsWith(".onnx") }
+    /**
+     * The `<voice>` prefix the net files share, discovered from whichever file ends in
+     * `_enc_p.ncnn.param`. Null if the voice isn't extracted. Vits does the same scan
+     * natively; this mirrors it so [isExtracted] can verify the rest of the set.
+     */
+    fun voicePrefix(context: Context): String? {
+        val files = voiceDir(context).listFiles() ?: return null
+        val encoder = files.firstOrNull { it.name.endsWith(ENCODER_SUFFIX) } ?: return null
+        return encoder.name.removeSuffix(ENCODER_SUFFIX)
     }
 
     /** True once the voice has been extracted and looks complete. */
     fun isExtracted(context: Context): Boolean {
         val dir = voiceDir(context)
+        val prefix = voicePrefix(context)
         val result = dir.isDirectory &&
-            (dir.listFiles()?.any { it.name.endsWith(".onnx") } == true) &&
-            File(dir, TOKENS).exists() &&
-            File(dir, ESPEAK_DATA).isDirectory
-        Log.d(TAG, "isExtracted dir=$dir exists=${dir.exists()} isDir=${dir.isDirectory} root=${rootDir(context)} result=$result")
+            prefix != null &&
+            REQUIRED_NETS.all { net ->
+                File(dir, "$prefix$net.ncnn.param").exists() &&
+                    File(dir, "$prefix$net.ncnn.bin").exists()
+            } &&
+            File(dir, DICT).exists() &&
+            File(dir, CONFIG).exists()
+        Log.d(TAG, "isExtracted dir=$dir exists=${dir.exists()} isDir=${dir.isDirectory} prefix=$prefix root=${rootDir(context)} result=$result")
         if (!result) {
             // Also probe the known external absolute path as fallback diagnostic
             try {
                 val ext = context.getExternalFilesDir(null)
-                Log.d(TAG, "extDir=$ext tokensExists=${File(dir, TOKENS).exists()} espeakExists=${File(dir, ESPEAK_DATA).exists()} list=${dir.list()?.toList()}")
+                Log.d(TAG, "extDir=$ext dictExists=${File(dir, DICT).exists()} configExists=${File(dir, CONFIG).exists()} list=${dir.list()?.toList()}")
             } catch (t: Throwable) {
                 Log.d(TAG, "isExtracted probe failed", t)
             }

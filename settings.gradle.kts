@@ -22,11 +22,8 @@ dependencyResolutionManagement {
         mavenLocal()
         google()
         mavenCentral()
-        // JitPack kept only for Stockfish-Library (games:chess)
+        // JitPack for Stockfish-Library (games:chess) and ncnn-android
         maven("https://jitpack.io")
-        // sherpa-onnx (offline Piper TTS in :speech) isn't on Maven Central; the official
-        // Apache-2.0 AAR is vendored into speech/libs by scripts/speech/fetch_sherpa_onnx.sh.
-        flatDir { dirs("speech/libs") }
     }
 }
 
