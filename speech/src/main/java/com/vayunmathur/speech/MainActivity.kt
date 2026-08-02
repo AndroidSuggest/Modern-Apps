@@ -42,9 +42,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
-import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.speech.service.WhisperRecognitionService
@@ -110,8 +108,33 @@ private fun SetupScreen() {
                 micPermission.launch(Manifest.permission.RECORD_AUDIO)
 
             override fun openVoiceInputSettings() {
-                runCatching { context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
-                    .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
+                // ACTION_VOICE_INPUT_SETTINGS lands on "Default assistant" on Pixel (it
+                // is really Settings.ACTION_VOICE_INPUT_SETTINGS = "android.settings.VOICE_INPUT_SETTINGS"
+                // i.e. the Assistant picker). We want System > Language & Region > Speech > Voice input.
+                // Deep-link into Language settings and let user navigate to Speech > Voice input,
+                // falling back to VOICE_INPUT_SETTINGS, LOCALE_SETTINGS, then generic SETTINGS.
+                val localeIntent = Intent(Settings.ACTION_LOCALE_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                val voiceInputIntent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                val candidates = listOf(
+                    // Most specific we can reliably fire cross-OEM: Language & region
+                    localeIntent,
+                    voiceInputIntent,
+                    Intent(Settings.ACTION_SETTINGS).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
+                )
+                var launched = false
+                for (i in candidates) {
+                    if (runCatching { context.startActivity(i) }.isSuccess) {
+                        launched = true
+                        break
+                    }
+                }
+                if (!launched) {
+                    runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
+                }
                 refresh++
             }
 
@@ -145,116 +168,78 @@ private fun SetupScreen() {
  */
 @Composable
 fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.recognition_service_label)) }) }) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        StepCard(
+            index = 1,
+            title = "Speech recognition model",
+            done = state.modelReady,
         ) {
-            Text(
-                stringResource(R.string.offline_on_device_speech_whisper_recogni) +
-                    "the whole system via MA Speech. Models download once, then everything runs with no internet, " +
-                    "no Google — works on GrapheneOS.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            // 1) Download the offline recognition model
-            StepCard(
-                index = 1,
-                title = "Speech recognition model",
-                done = state.modelReady,
-                body = if (state.modelReady) {
-                    "The Whisper model is installed — recognition runs fully offline."
-                } else {
-                    "Download the multilingual Whisper model (~113 MB) once. Runs offline afterward."
-                },
-            ) {
-                if (!state.modelReady) {
-                    ModelDownloadButton(
-                        label = stringResource(R.string.download_model_113_mb),
-                        progressOf = actions::recognitionProgress,
-                        download = actions::downloadRecognitionModel,
-                        onDone = actions::refresh,
-                    )
-                }
+            if (!state.modelReady) {
+                ModelDownloadButton(
+                    label = stringResource(R.string.download_model_113_mb),
+                    progressOf = actions::recognitionProgress,
+                    download = actions::downloadRecognitionModel,
+                    onDone = actions::refresh,
+                )
             }
-
-            // 2) Microphone permission
-            StepCard(
-                index = 2,
-                title = "Microphone access",
-                done = state.hasMic,
-                body = "Needed to record your voice for transcription.",
-            ) {
-                if (!state.hasMic) {
-                    Button(onClick = actions::requestMicPermission) {
-                        Text(stringResource(R.string.grant_microphone))
-                    }
-                }
-            }
-
-            // 3) Set as the device's recognizer
-            StepCard(
-                index = 3,
-                title = "Set as speech recognizer",
-                done = state.isRecognizerDefault,
-                body = if (state.isRecognizerDefault) {
-                    "This app is your device's speech recognizer. Other apps' voice input now runs offline."
-                } else {
-                    "Open voice-input settings and choose \"MA Speech\" as the on-device / " +
-                        "voice-input service so other apps (like Translate) use it."
-                },
-            ) {
-                OutlinedButton(onClick = actions::openVoiceInputSettings) {
-                    Text(stringResource(R.string.open_voice_input_settings))
-                }
-            }
-
-            // 3) Try it
-            TestSection(enabled = state.hasMic)
-
-            // 4) Download the offline TTS voice
-            StepCard(
-                index = 4,
-                title = "Text-to-speech voice",
-                done = state.ttsModelReady,
-                body = if (state.ttsModelReady) {
-                    "The offline Piper voice is installed — apps can speak fully offline."
-                } else {
-                    "Download the Piper voice (~64 MB) once. Runs offline afterward."
-                },
-            ) {
-                if (!state.ttsModelReady) {
-                    ModelDownloadButton(
-                        label = stringResource(R.string.download_voice_64_mb),
-                        progressOf = actions::voiceProgress,
-                        download = actions::downloadVoice,
-                        onDone = actions::refresh,
-                    )
-                }
-            }
-
-            // 5) Set as the device's TTS engine
-            StepCard(
-                index = 5,
-                title = "Set as text-to-speech engine",
-                done = state.isTtsDefault,
-                body = if (state.isTtsDefault) {
-                    "This app is your device's text-to-speech engine. Other apps' read-aloud now runs offline."
-                } else {
-                    "Open text-to-speech settings and choose \"MA Speech\" as the preferred engine."
-                },
-            ) {
-                OutlinedButton(onClick = actions::openTtsSettings) {
-                    Text(stringResource(R.string.open_text_to_speech_settings))
-                }
-            }
-
-            TtsTestSection(enabled = state.ttsModelReady)
         }
+
+        StepCard(
+            index = 2,
+            title = "Microphone access",
+            done = state.hasMic,
+        ) {
+            if (!state.hasMic) {
+                Button(onClick = actions::requestMicPermission) {
+                    Text(stringResource(R.string.grant_microphone))
+                }
+            }
+        }
+
+        StepCard(
+            index = 3,
+            title = "Set as speech recognizer",
+            done = state.isRecognizerDefault,
+        ) {
+            OutlinedButton(onClick = actions::openVoiceInputSettings) {
+                Text(stringResource(R.string.open_voice_input_settings))
+            }
+        }
+
+        TestSection(enabled = state.hasMic)
+
+        StepCard(
+            index = 4,
+            title = "Text-to-speech voice",
+            done = state.ttsModelReady,
+        ) {
+            if (!state.ttsModelReady) {
+                ModelDownloadButton(
+                    label = stringResource(R.string.download_voice_64_mb),
+                    progressOf = actions::voiceProgress,
+                    download = actions::downloadVoice,
+                    onDone = actions::refresh,
+                )
+            }
+        }
+
+        StepCard(
+            index = 5,
+            title = "Set as text-to-speech engine",
+            done = state.isTtsDefault,
+        ) {
+            OutlinedButton(onClick = actions::openTtsSettings) {
+                Text(stringResource(R.string.open_text_to_speech_settings))
+            }
+        }
+
+        TtsTestSection(enabled = state.ttsModelReady)
     }
 }
 
@@ -263,7 +248,6 @@ private fun StepCard(
     index: Int,
     title: String,
     done: Boolean,
-    body: String,
     action: @Composable () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -273,7 +257,6 @@ private fun StepCard(
                 fontWeight = FontWeight.Bold,
                 color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
-            Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
             action()
         }
     }
