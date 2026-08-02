@@ -56,7 +56,7 @@ fun AncillariesPage(
     ) { padding ->
         if (offer == null) {
             StatusBox(loading = false, error = null, isEmpty = true, emptyMessage = "No offer selected.")
-            return@Scaffold
+            return@AppScaffold
         }
         Column(
             Modifier

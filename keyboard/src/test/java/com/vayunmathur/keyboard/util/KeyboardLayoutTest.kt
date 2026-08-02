@@ -18,10 +18,11 @@ class KeyboardLayoutTest {
         assertEquals(ids.size, ids.toSet().size, "duplicate layout id")
     }
 
+    /** Three rows, or four for the layouts that take over the digit row (注音, JIS kana). */
     @Test
-    fun `every layout has three non-empty rows`() {
+    fun `every layout has three or four non-empty rows`() {
         for (layout in KeyboardLayouts.ALL) {
-            assertEquals(3, layout.rows.size, "${layout.id} row count")
+            assertTrue(layout.rows.size in 3..4, "${layout.id} has ${layout.rows.size} rows")
             assertTrue(layout.rows.all { it.isNotEmpty() }, "${layout.id} has an empty row")
         }
     }
@@ -87,6 +88,30 @@ class KeyboardLayoutTest {
             assertFalse(layout.hasShift, "$id should have no shift key")
             assertFalse(layout.cased)
         }
+    }
+
+    /**
+     * Composed scripts must not auto-capitalize: their shift key selects a second character
+     * layer (katakana, tense consonants), so "capitalizing" would change what is typed.
+     */
+    @Test
+    fun `composed layouts do not auto-capitalize`() {
+        for (layout in KeyboardLayouts.ALL.filter { it.composer != null }) {
+            assertFalse(layout.cased, "${layout.id} would auto-capitalize")
+        }
+    }
+
+    @Test
+    fun `the composed scripts are all present`() {
+        val byComposer = KeyboardLayouts.ALL.mapNotNull { it.composer }.toSet()
+        assertEquals(ComposerKind.entries.toSet(), byComposer, "an engine has no layout")
+    }
+
+    /** Only the Chinese engines put anything in the strip; the others compose silently. */
+    @Test
+    fun `candidate layouts are the Chinese ones`() {
+        val offering = KeyboardLayouts.ALL.filter { it.offersCandidates }.map { it.id }
+        assertEquals(listOf("zh_pinyin", "zh_pinyin_tc", "zh_bopomofo"), offering)
     }
 
     @Test

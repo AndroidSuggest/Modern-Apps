@@ -430,6 +430,34 @@ fun renumberLists(doc: OdfDocument.TextDocument): OdfDocument.TextDocument {
 }
 
 /**
+ * Fills in running numbers for numbered list items an importer left unnumbered (index 0), which
+ * would otherwise all render as "1." Items the importer *did* number are left alone — they may
+ * legitimately start at N or continue a previous list — but they still advance the counter. (bugfix)
+ */
+fun numberUnnumberedListItems(doc: OdfDocument.TextDocument): OdfDocument.TextDocument {
+    val counters = HashMap<Int, Int>()
+    var changed = false
+    val blocks = doc.content.map { block ->
+        val para = (block as? OdfContentBlock.Paragraph)?.paragraph
+        if (para == null || para.style != ParagraphStyle.LIST_ITEM || para.listType != ListType.NUMBERED) {
+            counters.clear()
+            return@map block
+        }
+        val level = para.listLevel.coerceAtLeast(1)
+        if (para.listItemIndex > 0) {
+            counters[level] = para.listItemIndex
+            return@map block
+        }
+        val n = (counters[level] ?: 0) + 1
+        counters[level] = n
+        counters.keys.filter { it > level }.toList().forEach { counters.remove(it) }
+        changed = true
+        OdfContentBlock.Paragraph(para.copy(listItemIndex = n))
+    }
+    return if (changed) doc.copy(content = blocks) else doc
+}
+
+/**
  * Handles Enter at [gPos] by splitting the current paragraph explicitly, so the markdown editor
  * never relies on the text-diff reconciler for newline insertion (which misattributes a newline
  * inserted right before an existing list line, wrongly giving the new line that list's marker).

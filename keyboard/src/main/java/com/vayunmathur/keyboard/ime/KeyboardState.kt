@@ -66,7 +66,6 @@ class KeyboardState {
  */
 interface ImeActions {
     fun onChar(text: String)
-    fun onCharLongPress(base: Char)
     fun onBackspace()
     fun onEnter()
     fun onSpace()
@@ -87,7 +86,6 @@ interface ImeActions {
          */
         val Noop: ImeActions = object : ImeActions {
             override fun onChar(text: String) {}
-            override fun onCharLongPress(base: Char) {}
             override fun onBackspace() {}
             override fun onEnter() {}
             override fun onSpace() {}

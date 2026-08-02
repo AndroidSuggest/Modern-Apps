@@ -26,9 +26,11 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.vayunmathur.keyboard.ui.KeyboardScreen
+import com.vayunmathur.keyboard.util.ComposerKind
 import com.vayunmathur.keyboard.util.Dictionary
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.KeyboardSettings
+import com.vayunmathur.keyboard.util.PinyinDictionary
 import com.vayunmathur.keyboard.util.ShiftState
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
@@ -69,6 +71,19 @@ class KeyboardService : InputMethodService(),
 
     /** The word currently being composed (underlined) on the letters page. */
     private val composing = StringBuilder()
+
+    /**
+     * The composition engine for the active layout, or null for layouts whose keys are
+     * already characters. Owns everything about Hangul/pinyin/kana input; the service only
+     * applies what it returns to the [InputConnection].
+     */
+    private var composer: Composer? = null
+    private var composerKind: ComposerKind? = null
+    private var pinyinSimplified = PinyinDictionary.EMPTY
+    private var pinyinTraditional = PinyinDictionary.EMPTY
+    private var bopomofoSpellings: Map<String, String> = emptyMap()
+    private var loadingChinese = false
+
     private var lastSpaceTime = 0L
     private var lastShiftTime = 0L
 
@@ -90,6 +105,7 @@ class KeyboardService : InputMethodService(),
 
         // Load the dictionary off the main thread; suggestions stay empty until it is ready.
         scope.launch { dictionary = Dictionary.load(this@KeyboardService) }
+        syncComposer()
         observeSettings()
     }
 
@@ -109,7 +125,87 @@ class KeyboardService : InputMethodService(),
                 update { copy(layoutIds = KeyboardSettings.decodeLayouts(it)) }
             }
         }
-        scope.launch { ds.stringFlow(keys.ACTIVE_LAYOUT).collectLatest { update { copy(activeLayoutId = it) } } }
+        scope.launch {
+            ds.stringFlow(keys.ACTIVE_LAYOUT).collectLatest {
+                update { copy(activeLayoutId = it) }
+                syncComposer()
+            }
+        }
+    }
+
+    // --- Composition engines ---
+
+    /** Point [composer] at whatever the active layout needs, keeping it across no-op changes. */
+    private fun syncComposer() {
+        val kind = kbState.settings.activeLayout.composer
+        if (kind == composerKind && (kind == null || composer != null)) return
+        composerKind = kind
+        composer = when (kind) {
+            null -> null
+            ComposerKind.HANGUL -> HangulComposer()
+            ComposerKind.ROMAJI -> RomajiComposer()
+            ComposerKind.KANA -> KanaKeyComposer()
+            ComposerKind.ETHIOPIC -> EthiopicComposer()
+            ComposerKind.PINYIN_SIMPLIFIED -> HanComposer(pinyinSimplified, SpellingScheme.Pinyin)
+            ComposerKind.PINYIN_TRADITIONAL -> HanComposer(pinyinTraditional, SpellingScheme.Pinyin)
+            ComposerKind.BOPOMOFO ->
+                HanComposer(pinyinTraditional, SpellingScheme.Bopomofo(bopomofoSpellings))
+        }
+        if (kind?.needsChineseData == true) loadChineseData()
+    }
+
+    /**
+     * Read the pinyin tables the first time a Chinese layout is chosen — they are ~130 KiB of
+     * asset that a keyboard used for English should never touch. Until they arrive the engine
+     * simply has no candidates, and the composer is rebuilt around them once it does.
+     */
+    private fun loadChineseData() {
+        if (loadingChinese || pinyinSimplified !== PinyinDictionary.EMPTY) return
+        loadingChinese = true
+        scope.launch {
+            pinyinSimplified = PinyinDictionary.load(this@KeyboardService, "pinyin_sc")
+            pinyinTraditional = PinyinDictionary.load(this@KeyboardService, "pinyin_tc")
+            bopomofoSpellings = PinyinDictionary.loadBopomofo(this@KeyboardService)
+            loadingChinese = false
+            composerKind = null // force a rebuild now that there is something to look up in
+            syncComposer()
+        }
+    }
+
+    private val ComposerKind.needsChineseData: Boolean
+        get() = this == ComposerKind.PINYIN_SIMPLIFIED ||
+            this == ComposerKind.PINYIN_TRADITIONAL ||
+            this == ComposerKind.BOPOMOFO
+
+    /**
+     * Apply one composition step: settled text (if any) replaces the composing region and
+     * becomes final, then whatever is still being composed goes back under it.
+     */
+    private fun applyComposition(ic: InputConnection, engine: Composer, result: ComposeResult) {
+        if (result.commit.isNotEmpty()) ic.commitText(result.commit, 1)
+        if (result.composing.isNotEmpty()) {
+            ic.setComposingText(result.composing, 1)
+        } else if (result.commit.isEmpty()) {
+            // Nothing settled and nothing left: the last backspace emptied the composition.
+            ic.setComposingText("", 1)
+            ic.finishComposingText()
+        }
+        kbState.suggestions = engine.candidates
+    }
+
+    /** Make the composition final, giving the engine its last chance to rewrite it. */
+    private fun finishComposition(ic: InputConnection) {
+        val engine = composer ?: return
+        if (engine.isComposing) {
+            val result = engine.finish()
+            if (result != null && result.commit.isNotEmpty()) {
+                ic.commitText(result.commit, 1)
+            } else {
+                ic.finishComposingText()
+            }
+        }
+        engine.reset()
+        kbState.suggestions = emptyList()
     }
 
     private inline fun update(transform: KeyboardSettings.() -> KeyboardSettings) {
@@ -150,6 +246,8 @@ class KeyboardService : InputMethodService(),
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         composing.setLength(0)
+        syncComposer()
+        composer?.reset()
         configureForEditor(info)
         kbState.suggestions = emptyList()
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
@@ -187,6 +285,7 @@ class KeyboardService : InputMethodService(),
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
         composing.setLength(0)
+        composer?.reset()
     }
 
     override fun onDestroy() {
@@ -279,6 +378,20 @@ class KeyboardService : InputMethodService(),
     override fun onChar(text: String) {
         feedback()
         val ic = currentInputConnection ?: return
+        val engine = composer
+        if (engine != null) {
+            val result = engine.accept(text)
+            if (result != null) {
+                applyComposition(ic, engine, result)
+                consumeShift()
+                return
+            }
+            // Punctuation, a symbol-page key: settle the composition and type it plainly.
+            finishComposition(ic)
+            ic.commitText(text, 1)
+            consumeShift()
+            return
+        }
         if (useComposing() && text.length == 1 && text[0].isLetter()) {
             composing.append(text)
             ic.setComposingText(composing, 1)
@@ -292,21 +405,19 @@ class KeyboardService : InputMethodService(),
         updateAutoCapShift()
     }
 
-    override fun onCharLongPress(base: Char) {
-        val alts = kbState.settings.activeLayout.alternates[base] ?: return
-        if (alts.isEmpty()) return
-        feedback()
-        val ic = currentInputConnection ?: return
-        commitCurrentWord(ic, autoCorrect = false)
-        ic.commitText(alts[0].toString(), 1)
-        kbState.suggestions = emptyList()
-        consumeShift()
-        updateAutoCapShift()
-    }
-
     override fun onBackspace() {
         feedback()
         val ic = currentInputConnection ?: return
+        val engine = composer
+        if (engine != null) {
+            // Backspace takes a composition apart one jamo/letter at a time, and only deletes
+            // from the field once there is no composition left.
+            val result = engine.backspace()
+            if (result != null) {
+                applyComposition(ic, engine, result)
+                return
+            }
+        }
         if (composing.isNotEmpty()) {
             composing.deleteCharAt(composing.length - 1)
             if (composing.isEmpty()) {
@@ -334,6 +445,7 @@ class KeyboardService : InputMethodService(),
         val ic = currentInputConnection ?: return
         // Finish the composing word first: performEditorAction hands control to the app,
         // which would otherwise read the field without the last (still-composing) word.
+        finishComposition(ic)
         commitCurrentWord(ic, autoCorrect = false)
         // performEditorAction returns false when the target can't handle the action (a
         // dead connection, or an actionId the app declines). Fall back to a real Enter so
@@ -349,6 +461,19 @@ class KeyboardService : InputMethodService(),
     override fun onSpace() {
         feedback()
         val ic = currentInputConnection ?: return
+        val engine = composer
+        if (engine != null) {
+            // In a CJK engine space means "take the best candidate", not "type a space".
+            val result = engine.space()
+            if (result != null) {
+                applyComposition(ic, engine, result)
+                return
+            }
+            finishComposition(ic)
+            ic.commitText(" ", 1)
+            lastSpaceTime = SystemClock.uptimeMillis()
+            return
+        }
         commitCurrentWord(ic, autoCorrect = kbState.settings.autoCorrect)
         val before = ic.getTextBeforeCursor(2, 0)
         val now = SystemClock.uptimeMillis()
@@ -391,6 +516,12 @@ class KeyboardService : InputMethodService(),
     override fun commitSuggestion(word: String) {
         feedback()
         val ic = currentInputConnection ?: return
+        val engine = composer
+        if (engine != null) {
+            // A picked candidate is the character itself; no trailing space, unlike a word.
+            applyComposition(ic, engine, engine.pick(word))
+            return
+        }
         ic.setComposingText(word, 1)
         ic.finishComposingText()
         ic.commitText(" ", 1)
@@ -410,10 +541,14 @@ class KeyboardService : InputMethodService(),
         val ids = kbState.settings.layouts.map { it.id }
         if (ids.size < 2) return
         val next = ids[(ids.indexOf(kbState.settings.activeLayout.id) + 1) % ids.size]
-        currentInputConnection?.let { commitCurrentWord(it, autoCorrect = false) }
+        currentInputConnection?.let {
+            finishComposition(it)
+            commitCurrentWord(it, autoCorrect = false)
+        }
         kbState.settings = kbState.settings.copy(activeLayoutId = next)
         kbState.shift = ShiftState.OFF
         kbState.suggestions = emptyList()
+        syncComposer()
         scope.launch { ds.setString(KeyboardSettings.Keys.ACTIVE_LAYOUT, next) }
         updateAutoCapShift()
     }

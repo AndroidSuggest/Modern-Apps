@@ -90,6 +90,14 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         com.vayunmathur.email.util.AppLifecycleTracker.isAppInForeground = true
+        // If BootReceiver deferred IDLE on S+ boot, start it now that we're foreground.
+        com.vayunmathur.email.util.AppLifecycleTracker.tryStartIdleIfForeground(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Extra safety: also try on resume in case onStart ran before flag set.
+        com.vayunmathur.email.util.AppLifecycleTracker.tryStartIdleIfForeground(this)
     }
 
     override fun onStop() {

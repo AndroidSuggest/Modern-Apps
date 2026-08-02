@@ -55,7 +55,7 @@ fun ExplorerCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewM
     ) { padding ->
         if (course == null) {
             MissingContent(padding, stringResource(R.string.this_topic_is_unavailable))
-            return@Scaffold
+            return@AppScaffold
         }
 
         // The first not-yet-mastered unit is the recommended next step.

@@ -5,7 +5,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.core.text.HtmlCompat
 import kotlinx.serialization.Serializable
-import jakarta.mail.internet.InternetAddress
+import com.vayunmathur.email.imap.MimeParser
 
 @Serializable
 @Entity(primaryKeys = ["accountEmail", "fullName"])
@@ -174,10 +174,26 @@ fun accountColor(email: String): Long {
 fun EmailMessage.plainTextBody(): String? =
     body?.let { if (isHtml) HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString() else it }
 
-/** Display name for a "Name <addr>" sender header, falling back to the address. */
-fun senderDisplayName(from: String): String =
-    runCatching { InternetAddress.parse(from).firstOrNull()?.let { it.personal ?: it.address } }
-        .getOrNull() ?: from.substringBefore("<").trim()
+/** Display name for a "Name <addr>" sender header, falling back to the address.
+ * Implemented via own RFC2047 decode + simple parse to remove Jakarta dependency. */
+fun senderDisplayName(from: String): String {
+    if (from.isBlank()) return ""
+    // Try to extract "Name <addr>" pattern
+    val trimmed = from.trim()
+    // Decode RFC2047 first
+    val decoded = MimeParser.decodeHeader(trimmed)
+    // Look for <...> format
+    val angleMatch = Regex("""^(.*)<([^>]+)>$""").find(decoded.trim())
+    if (angleMatch != null) {
+        val namePart = angleMatch.groupValues[1].trim().trim('"').trim()
+        val addr = angleMatch.groupValues[2].trim()
+        if (namePart.isNotBlank()) return namePart
+        return addr
+    }
+    // No angle brackets — could be bare address or just name
+    if (decoded.contains("@")) return decoded.substringBefore("<").trim()
+    return decoded
+}
 
 /**
  * A detected way to unsubscribe from a message. Produced by [detectUnsubscribe]

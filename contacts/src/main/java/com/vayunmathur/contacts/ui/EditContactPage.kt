@@ -267,7 +267,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 icon = { IconCall() },
                 keyboardType = KeyboardType.Phone,
                 visualTransformation = VisualTransformation.None,
-                options = listOf(CDKPhone.TYPE_MOBILE, CDKPhone.TYPE_HOME, CDKPhone.TYPE_WORK, CDKPhone.TYPE_OTHER)
+                options = listOf(CDKPhone.TYPE_MOBILE, CDKPhone.TYPE_HOME, CDKPhone.TYPE_WORK, CDKPhone.TYPE_OTHER, CDKPhone.TYPE_CUSTOM)
             )
             Spacer(Modifier.height(8.dp))
 
@@ -280,7 +280,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 icon = { IconMail() },
                 keyboardType = KeyboardType.Email,
                 visualTransformation = VisualTransformation.None,
-                options = listOf(CDKEmail.TYPE_HOME, CDKEmail.TYPE_WORK, CDKEmail.TYPE_OTHER, CDKEmail.TYPE_MOBILE)
+                options = listOf(CDKEmail.TYPE_HOME, CDKEmail.TYPE_WORK, CDKEmail.TYPE_OTHER, CDKEmail.TYPE_MOBILE, CDKEmail.TYPE_CUSTOM)
             )
 
             Spacer(Modifier.height(16.dp))
@@ -294,7 +294,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 details = currentDraft.dates,
                 onDetailsChange = { list -> viewModel.updateEditDraft { it.copy(dates = list) } },
                 icon = { IconEvent() },
-                options = listOf(CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER)
+                options = listOf(CDKEvent.TYPE_ANNIVERSARY, CDKEvent.TYPE_OTHER, CDKEvent.TYPE_CUSTOM)
             )
 
             Spacer(Modifier.height(12.dp))
@@ -308,7 +308,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 icon = { IconEvent() },
                 keyboardType = KeyboardType.Text,
                 visualTransformation = VisualTransformation.None,
-                options = listOf(CDKStructuredPostal.TYPE_HOME, CDKStructuredPostal.TYPE_WORK, CDKStructuredPostal.TYPE_OTHER)
+                options = listOf(CDKStructuredPostal.TYPE_HOME, CDKStructuredPostal.TYPE_WORK, CDKStructuredPostal.TYPE_OTHER, CDKStructuredPostal.TYPE_CUSTOM)
             )
 
             Spacer(Modifier.height(16.dp))
@@ -477,6 +477,7 @@ private fun ColumnScope.DateDetailsSection(
     val context = LocalContext.current
     details.forEachIndexed { index, detail ->
         if(detail.type == CDKEvent.TYPE_BIRTHDAY) return@forEachIndexed
+        val isCustom = detail.type == CDKEvent.TYPE_CUSTOM
         Box {
             ResultEffect<LocalDate>(detail.id.toString()) { newDate ->
                 onDetailsChange(details.toMutableList().also { list -> list[index] = detail.withValue(newDate.toString()) })
@@ -523,6 +524,18 @@ private fun ColumnScope.DateDetailsSection(
                     .clickable { backStack.add(Route.EventDatePickerDialog(detail.id.toString(),detail.startDate)) }) {}
             }
         }
+        if (isCustom) {
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = detail.label,
+                onValueChange = { newLabel ->
+                    onDetailsChange(details.toMutableList().also { it[index] = detail.withLabel(newLabel) })
+                },
+                label = { Text(stringResource(R.string.custom_label)) },
+                placeholder = { Text(stringResource(R.string.enter_custom_label)) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Spacer(Modifier.height(8.dp))
     }
     FilledTonalButton(
@@ -549,6 +562,8 @@ private inline fun <reified T : ContactDetail<T>> ColumnScope.DetailsSection(
 ) {
     val context = LocalContext.current
     details.forEachIndexed { index, detail ->
+        // Heuristic: TYPE_CUSTOM is 0 across all CommonDataKinds
+        val isCustom = detail.type == 0
         OutlinedTextField(
             value = detail.value,
             onValueChange = { newNumber ->
@@ -591,6 +606,24 @@ private inline fun <reified T : ContactDetail<T>> ColumnScope.DetailsSection(
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             modifier = Modifier.fillMaxWidth()
         )
+        if (isCustom) {
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = when (detail) {
+                    is PhoneNumber -> detail.label
+                    is com.vayunmathur.contacts.data.Email -> detail.label
+                    is com.vayunmathur.contacts.data.Address -> detail.label
+                    is Event -> detail.label
+                    else -> ""
+                },
+                onValueChange = { newLabel ->
+                    onDetailsChange(details.toMutableList().also { it[index] = detail.withLabel(newLabel) })
+                },
+                label = { Text(stringResource(R.string.custom_label)) },
+                placeholder = { Text(stringResource(R.string.enter_custom_label)) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Spacer(Modifier.height(8.dp))
     }
     FilledTonalButton(

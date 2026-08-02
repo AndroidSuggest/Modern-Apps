@@ -75,6 +75,7 @@ interface ContactDetail<T: ContactDetail<T>> {
     val value: String
     fun withType(type: Int): T
     fun withValue(value: String): T
+    fun withLabel(label: String): T
     fun typeString(context: Context): String
 
     companion object {
@@ -92,36 +93,39 @@ interface ContactDetail<T: ContactDetail<T>> {
 }
 
 @Serializable
-data class PhoneNumber(override val id: Long, val number: String, override val type: Int): ContactDetail<PhoneNumber> {
+data class PhoneNumber(override val id: Long, val number: String, override val type: Int, val label: String = ""): ContactDetail<PhoneNumber> {
     override val value: String
         get() = number
 
-    override fun withType(type: Int) = PhoneNumber(id, number, type)
-    override fun withValue(value: String) = PhoneNumber(id, value, type)
+    override fun withType(type: Int) = copy(type = type)
+    override fun withValue(value: String) = copy(number = value)
+    override fun withLabel(label: String) = copy(label = label)
 
-    override fun typeString(context: Context) = CDKPhone.getTypeLabel(context.resources, type, "").toString()
+    override fun typeString(context: Context) = CDKPhone.getTypeLabel(context.resources, type, label).toString()
 }
 
 @Serializable
-data class Email(override val id: Long, val address: String, override val type: Int): ContactDetail<Email> {
+data class Email(override val id: Long, val address: String, override val type: Int, val label: String = ""): ContactDetail<Email> {
     override val value: String
         get() = address
 
-    override fun withType(type: Int) = Email(id, address, type)
-    override fun withValue(value: String) = Email(id, value, type)
+    override fun withType(type: Int) = copy(type = type)
+    override fun withValue(value: String) = copy(address = value)
+    override fun withLabel(label: String) = copy(label = label)
 
-    override fun typeString(context: Context) = CDKEmail.getTypeLabel(context.resources, type, "").toString()
+    override fun typeString(context: Context) = CDKEmail.getTypeLabel(context.resources, type, label).toString()
 }
 
 @Serializable
-data class Address(override val id: Long, val formattedAddress: String, override val type: Int): ContactDetail<Address> {
+data class Address(override val id: Long, val formattedAddress: String, override val type: Int, val label: String = ""): ContactDetail<Address> {
     override val value: String
         get() = formattedAddress
 
-    override fun withType(type: Int) = Address(id, formattedAddress, type)
-    override fun withValue(value: String) = Address(id, value, type)
+    override fun withType(type: Int) = copy(type = type)
+    override fun withValue(value: String) = copy(formattedAddress = value)
+    override fun withLabel(label: String) = copy(label = label)
 
-    override fun typeString(context: Context) = CDKStructuredPostal.getTypeLabel(context.resources, type, "").toString()
+    override fun typeString(context: Context) = CDKStructuredPostal.getTypeLabel(context.resources, type, label).toString()
 }
 
 @Serializable
@@ -132,19 +136,21 @@ data class Photo(override val id: Long, val photo: String): ContactDetail<Photo>
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of photo")
     override fun withValue(value: String) = Photo(id, value)
+    override fun withLabel(label: String): Photo = this
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Photo doesn't have type")
 }
 
 @Serializable
-data class Event(override val id: Long, val startDate: LocalDate, override val type: Int): ContactDetail<Event> {
+data class Event(override val id: Long, val startDate: LocalDate, override val type: Int, val label: String = ""): ContactDetail<Event> {
     override val value: String
         get() = startDate.format(LocalDate.Formats.ISO)
 
-    override fun withType(type: Int) = Event(id, startDate, type)
-    override fun withValue(value: String) = Event(id, LocalDate.parse(value), type)
+    override fun withType(type: Int) = copy(type = type)
+    override fun withValue(value: String) = copy(startDate = LocalDate.parse(value))
+    override fun withLabel(label: String) = copy(label = label)
 
-    override fun typeString(context: Context) = CDKEvent.getTypeLabel(context.resources, type, "").toString()
+    override fun typeString(context: Context) = CDKEvent.getTypeLabel(context.resources, type, label).toString()
 }
 
 @Serializable
@@ -155,6 +161,7 @@ data class Organization(override val id: Long, val company: String): ContactDeta
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of photo")
     override fun withValue(value: String) = Organization(id, value)
+    override fun withLabel(label: String): Organization = this
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Photo doesn't have type")
 }
@@ -174,6 +181,7 @@ data class Name(
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of name")
     override fun withValue(value: String) = throw UnsupportedOperationException("Cannot change value of name")
+    override fun withLabel(label: String): Name = this
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Name doesn't have type")
 }
@@ -186,6 +194,7 @@ data class Note(override val id: Long, val content: String): ContactDetail<Note>
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of note")
     override fun withValue(value: String) = copy(content = value)
+    override fun withLabel(label: String): Note = this
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Note doesn't have type")
 }
@@ -197,6 +206,7 @@ data class Nickname(override val id: Long, val nickname: String, override val ty
 
     override fun withType(type: Int) = copy(type = type)
     override fun withValue(value: String) = copy(nickname = value)
+    override fun withLabel(label: String): Nickname = this
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Nickname types shouldn't be written")
 }
@@ -209,6 +219,7 @@ data class GroupMembership(override val id: Long, val groupId: Long): ContactDet
 
     override fun withType(type: Int) = throw UnsupportedOperationException("Cannot change type of group membership")
     override fun withValue(value: String) = copy(groupId = value.toLong())
+    override fun withLabel(label: String): GroupMembership = this
 
     override fun typeString(context: Context) = throw UnsupportedOperationException("Group membership doesn't have type")
 }
@@ -326,18 +337,22 @@ data class Contact(
             is PhoneNumber -> this
                 .withValue(CDKPhone.NUMBER, detail.number)
                 .withValue(CDKPhone.TYPE, detail.type)
+                .withValue(CDKPhone.LABEL, detail.label)
                 .build()
             is Email -> this
                 .withValue(CDKEmail.ADDRESS, detail.address)
                 .withValue(CDKEmail.TYPE, detail.type)
+                .withValue(CDKEmail.LABEL, detail.label)
                 .build()
             is Address -> this
                 .withValue(CDKStructuredPostal.FORMATTED_ADDRESS, detail.formattedAddress)
                 .withValue(CDKStructuredPostal.TYPE, detail.type)
+                .withValue(CDKStructuredPostal.LABEL, detail.label)
                 .build()
             is Event -> this
                 .withValue(CDKEvent.START_DATE, detail.startDate.format(LocalDate.Formats.ISO))
                 .withValue(CDKEvent.TYPE, detail.type)
+                .withValue(CDKEvent.LABEL, detail.label)
                 .build()
             is Photo -> this
                 .withValue(ContactsContract.Data.IS_SUPER_PRIMARY, 1)
@@ -528,16 +543,19 @@ fun getDetailsInternal(context: Context, id: Long? = null, isProfile: Boolean = 
                         CDKPhone.CONTENT_ITEM_TYPE -> {
                             val number = cursor.getStringOrNull(d1Idx) ?: ""
                             val type = cursor.getInt(d2Idx)
-                            phoneNumbersMap.getOrPut(rawId) { mutableListOf() }.add(PhoneNumber(dataId, number, type))
+                            val label = cursor.getStringOrNull(d3Idx) ?: ""
+                            phoneNumbersMap.getOrPut(rawId) { mutableListOf() }.add(PhoneNumber(dataId, number, type, label))
                         }
                         CDKEmail.CONTENT_ITEM_TYPE -> {
                             val address = cursor.getStringOrNull(d1Idx) ?: ""
                             val type = cursor.getInt(d2Idx)
-                            emailsMap.getOrPut(rawId) { mutableListOf() }.add(Email(dataId, address, type))
+                            val label = cursor.getStringOrNull(d3Idx) ?: ""
+                            emailsMap.getOrPut(rawId) { mutableListOf() }.add(Email(dataId, address, type, label))
                         }
                         CDKStructuredPostal.CONTENT_ITEM_TYPE -> {
                             var formatted = cursor.getStringOrNull(d1Idx)
                             val type = cursor.getInt(d2Idx)
+                            val label = cursor.getStringOrNull(d3Idx) ?: ""
                             if (formatted.isNullOrBlank()) {
                                 val street = cursor.getStringOrNull(d4Idx)
                                 val city = cursor.getStringOrNull(d7Idx)
@@ -548,17 +566,18 @@ fun getDetailsInternal(context: Context, id: Long? = null, isProfile: Boolean = 
                                     .filter { it.isNotBlank() }
                                     .joinToString(", ")
                             }
-                            addressesMap.getOrPut(rawId) { mutableListOf() }.add(Address(dataId, formatted, type))
+                            addressesMap.getOrPut(rawId) { mutableListOf() }.add(Address(dataId, formatted, type, label))
                         }
                         CDKEvent.CONTENT_ITEM_TYPE -> {
                             val date = cursor.getStringOrNull(d1Idx) ?: ""
                             val type = cursor.getInt(d2Idx)
+                            val label = cursor.getStringOrNull(d3Idx) ?: ""
                             val localDate = runCatching { LocalDate.parse(date, LocalDate.Formats.ISO) }.getOrNull()
                                 ?: runCatching { LocalDate.parse(date, LocalDate.Format { year(); monthNumber(); day() }) }.getOrNull()
                                 ?: if (date.startsWith("--")) runCatching { LocalDate.parse("1604" + date.substring(2)) }.getOrNull() else null
 
                             if (localDate != null) {
-                                datesMap.getOrPut(rawId) { mutableListOf() }.add(Event(dataId, localDate, type))
+                                datesMap.getOrPut(rawId) { mutableListOf() }.add(Event(dataId, localDate, type, label))
                             }
                         }
                         CDKPhoto.CONTENT_ITEM_TYPE -> runCatching {

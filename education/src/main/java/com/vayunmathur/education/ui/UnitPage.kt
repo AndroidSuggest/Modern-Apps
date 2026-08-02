@@ -46,7 +46,7 @@ fun UnitPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, unit
     ) { padding ->
         if (unit == null) {
             MissingContent(padding, stringResource(R.string.this_unit_is_unavailable))
-            return@Scaffold
+            return@AppScaffold
         }
         LazyColumn(
             modifier = Modifier

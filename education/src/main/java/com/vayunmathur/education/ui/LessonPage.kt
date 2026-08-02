@@ -42,7 +42,7 @@ fun LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, le
     ) { padding ->
         if (lesson == null) {
             MissingContent(padding, stringResource(R.string.this_lesson_is_unavailable))
-            return@Scaffold
+            return@AppScaffold
         }
         Column(
             Modifier

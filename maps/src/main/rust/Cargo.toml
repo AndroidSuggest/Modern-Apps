@@ -10,7 +10,7 @@ name = "offlinerouter"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# JNI surface (armv8-only, in-repo jni-android – see third_party/jni-android).
+# JNI surface (armv8-only). Upstream jni from crates.io; see the root Cargo.toml.
 jni.workspace = true
 # mmap of the whole-world graph (nodes/edges/intermediate/…), mirroring the old
 # C++ router's mmap loader. Direct libc rather than memmap2 to keep the dep tree

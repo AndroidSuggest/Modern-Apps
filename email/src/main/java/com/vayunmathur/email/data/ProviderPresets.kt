@@ -28,6 +28,7 @@ const val PROVIDER_YAHOO = "yahoo"
 const val PROVIDER_ICLOUD = "icloud"
 const val PROVIDER_FASTMAIL = "fastmail"
 const val PROVIDER_CUSTOM = "custom"
+const val PROVIDER_AOL = "aol"
 
 val PROVIDER_PRESETS: List<ProviderPreset> = listOf(
     ProviderPreset(
@@ -40,8 +41,8 @@ val PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         instructions = listOf(
             "Two-step verification must be enabled on your Google account.",
             "Go to https://myaccount.google.com/apppasswords.",
-            "Pick \"Mail\" and \"Other\" — name it \"Email\".",
-            "Copy the 16-character app password Google shows and paste it below.",
+            "Create a new app password named \"Email\".",
+            "Copy the 16-character password and paste it below.",
         ),
     ),
     ProviderPreset(
@@ -52,8 +53,9 @@ val PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         authType = "oauth2",
         appPasswordHelpUrl = null,
         instructions = listOf(
-            "Microsoft no longer allows app passwords for mail.",
-            "Tap \"Sign in with Microsoft\" and approve access.",
+            "Microsoft has disabled basic auth (app passwords) for most accounts.",
+            "Tap \"Sign in with Microsoft\" and approve IMAP/SMTP access.",
+            "If your organization still allows app passwords and OAuth fails, tap \"Use app password instead\".",
         ),
     ),
     ProviderPreset(
@@ -64,10 +66,21 @@ val PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         authType = "password",
         appPasswordHelpUrl = "https://help.yahoo.com/kb/SLN15241.html",
         instructions = listOf(
-            "Sign in to Yahoo and open Account Info → Account security.",
-            "Choose \"Generate app password\" (or \"Manage app passwords\").",
-            "Pick \"Other app\" and name it \"Email\".",
-            "Copy the 16-character password Yahoo shows and paste it below.",
+            "Go to Account Info → Account security → Generate app password.",
+            "Select Other app and name it \"Email\".",
+            "Copy the generated password and paste it below.",
+        ),
+    ),
+    ProviderPreset(
+        id = PROVIDER_AOL,
+        displayName = "AOL Mail",
+        imap = ServerConfig("imap.aol.com", 993, useSsl = true),
+        smtp = ServerConfig("smtp.aol.com", 465, useSsl = true),
+        authType = "password",
+        appPasswordHelpUrl = "https://help.aol.com/articles/Create-and-manage-app-password",
+        instructions = listOf(
+            "Go to your AOL account security settings → Generate app password.",
+            "Copy the generated password and paste it below.",
         ),
     ),
     ProviderPreset(
@@ -93,10 +106,9 @@ val PROVIDER_PRESETS: List<ProviderPreset> = listOf(
         authType = "password",
         appPasswordHelpUrl = "https://www.fastmail.help/hc/en-us/articles/1500000278342",
         instructions = listOf(
-            "Sign in at https://www.fastmail.com and open Settings → Password & Security.",
-            "Under \"App passwords\", click \"New app password\".",
-            "Give it a name like \"Email\" and grant IMAP + SMTP access.",
-            "Copy the password and paste it below.",
+            "Go to Settings → Password & Security → App passwords.",
+            "Create a new app password for Email.",
+            "Copy and paste it below.",
         ),
     ),
     ProviderPreset(

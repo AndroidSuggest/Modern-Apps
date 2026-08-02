@@ -11,19 +11,43 @@ package com.vayunmathur.speech.util
  * There is no ViewModel here. Every field below is a fact about the device (a granted
  * permission, a Settings.Secure entry, a downloaded model) that the binder re-reads when
  * the user returns from a settings screen, so the state is assembled at the call site.
+ *
+ * After multilingual expansion (20 TTS voices) the TTS section is a list of per-language
+ * download rows with progress, size badge, delete, plus storage total and current test lang.
  */
 
-/** Which of the five setup steps are already done. */
+/** Per-voice UI row in the voices section. */
+data class TtsVoiceUiState(
+    val code: String,
+    val bcp47: String,
+    val iso3: String,
+    val nativeName: String,
+    val englishName: String,
+    val isInstalled: Boolean,
+    val progress: Float = 0f,
+    val sizeEstimateMb: Int = 28,
+    val quality: String = "low",
+    val sampleRate: Int = 22050,
+)
+
+/** Which of the five setup steps are already done + voices list. */
 data class SpeechSetupUiState(
     /** Whisper recognition model present on disk. */
     val modelReady: Boolean = false,
     val hasMic: Boolean = false,
     /** This app is the device's `voice_recognition_service`. */
     val isRecognizerDefault: Boolean = false,
-    /** Piper TTS voice present on disk. */
+    /** Any Piper TTS voice present on disk (overall flag, legacy name). */
     val ttsModelReady: Boolean = false,
     /** This app is the device's `tts_default_synth`. */
     val isTtsDefault: Boolean = false,
+
+    /** All 20 voices with install/progress status (for expanded UI). */
+    val ttsVoices: List<TtsVoiceUiState> = emptyList(),
+    /** Total installed bytes across all voices. */
+    val installedBytes: Long = 0L,
+    /** Currently selected language code for TTS test (must be installed code). */
+    val currentTestLang: String = "en",
 )
 
 /**
@@ -44,8 +68,15 @@ interface SpeechSetupActions {
     fun recognitionProgress(): Float = 0f
     suspend fun downloadRecognitionModel() {}
 
+    /** Overall voice progress (averaged) for legacy single-voice UI. */
     fun voiceProgress(): Float = 0f
     suspend fun downloadVoice() {}
+
+    /** Per-code progress (for expanded multi-voice UI). */
+    fun voiceProgress(code: String): Float = 0f
+    suspend fun downloadVoice(code: String) {}
+    fun deleteVoice(code: String) {}
+    fun installedCodes(): List<String> = emptyList()
 
     companion object {
         val Noop: SpeechSetupActions = object : SpeechSetupActions {}

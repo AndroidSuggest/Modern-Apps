@@ -87,7 +87,7 @@ fun BypassListPage(backStack: NavBackStack<Route>) {
                     )
                 }
             }
-            return@Scaffold
+            return@AppScaffold
         }
 
         LazyColumn(Modifier.fillMaxSize().padding(pad)) {

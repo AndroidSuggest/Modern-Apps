@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.BadgedBox
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -331,7 +332,8 @@ fun ContactDetailsScreen(
                 item {
                     val clipboard = LocalClipboard.current
                     GroupedSection(title = stringResource(R.string.about_name, contact.name.firstName)) {
-                        contact.birthday?.let { birthday ->
+                        val birthday = contact.birthday
+                        if (birthday != null) {
                             val birthdayText = birthday.startDate.formatDisplay()
                             ListItem(
                                 content = { Text(birthdayText) },
@@ -346,7 +348,7 @@ fun ContactDetailsScreen(
                                 )
                             )
                         }
-                        details.dates.filter{it.type != CDKEvent.TYPE_BIRTHDAY }.forEach { event ->
+                        for (event in details.dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }) {
                             val eventText = event.startDate.formatDisplay()
                             ListItem(
                                 content = { Text(eventText) },

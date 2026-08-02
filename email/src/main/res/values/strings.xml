@@ -1,243 +1,133 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <!-- App name displayed in launcher and system labels -->
     <string name="app_name">Email</string>
-    <!-- EmailWidget: Description shown in widget picker. Explains widget purpose -->
     <string name="email_widget_description">Recent messages from your unified inbox — tap to open Email</string>
 
-    <!-- MessageListScreen Drawer: Label for unified inbox showing all accounts combined -->
     <string name="all_accounts">All Accounts</string>
-    <!-- Drawer / AddAccountScreen: Button/title to add new email account. Verb phrase -->
     <string name="add_account">Add Account</string>
-    <!-- Drawer footer: Button to logout currently selected account. Verb phrase -->
     <string name="logout_current_account">Logout Current Account</string>
-    <!-- MessageListScreen: TopAppBar when bulk selection active. %1$d = selected count -->
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> selected</string>
-    <!-- MessageItem: Outlined button to reply to a message. Verb -->
     <string name="reply">Reply</string>
-    <!-- MessageItem: Outlined button to forward current message. Verb -->
     <string name="forward">Forward</string>
-    <!-- Composer: TopAppBar title and widget compose action content description. Verb -->
     <string name="compose">Compose</string>
-    <!-- Message detail bottom sheet / Composer: Label for From field. Noun -->
     <string name="from_label">From</string>
-    <!-- Composer: Dialog title for picking sending account. Placeholder when none selected -->
     <string name="select_account">Select Account</string>
-    <!-- Composer: Dialog title to choose sender identity/account -->
     <string name="select_sender">Select Sender</string>
-    <!-- Composer / Detail sheet: Label for To/recipient field. Noun -->
     <string name="to_label">To</string>
-    <!-- Composer: Label for Subject field. Noun -->
     <string name="subject_label">Subject</string>
-    <!-- Composer: Label for body/html editor. Noun -->
     <string name="body_label">Body</string>
-    <!-- Drawer / OutboxScreen: Label for Outbox folder containing pending sends. Noun -->
     <string name="outbox">Outbox</string>
-    <!-- Drawer / DraftsScreen: Label for drafts folder. Noun -->
     <string name="drafts">Drafts</string>
-    <!-- Drawer: Outbox label with pending count. %1$d = number of unsent messages -->
     <string name="outbox_with_count">Outbox (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
-    <!-- OutboxScreen: TopBar action to send all pending. Verb phrase -->
     <string name="send_now">Send now</string>
 
-    <!-- AddAccountScreen: Email address field label. Noun phrase -->
     <string name="email_address">Email address</string>
-    <!-- AddAccountScreen: Button state while testing IMAP/SMTP connection. Progress -->
     <string name="testing_connection">Testing connection…</string>
-    <!-- AddAccountScreen: Button to test connection and persist account on success -->
     <string name="test_connection_and_save">Test connection &amp; save</string>
-    <!-- AddAccountScreen: Button to open provider app-password help page. %1$s = provider name e.g. Google -->
     <string name="open_app_password_help">Open <xliff:g id="provider" example="Google">%1$s</xliff:g> app-password help</string>
-    <!-- AddAccountScreen DAV form: Label for server host field. Noun -->
     <string name="host_label">Host</string>
-    <!-- AddAccountScreen DAV form: Label for port number field. Noun -->
     <string name="port_label">Port</string>
-    <!-- AddAccountScreen security chip: SSL/TLS option. Acronym -->
     <string name="ssl_tls">SSL/TLS</string>
-    <!-- AddAccountScreen security chip: STARTTLS option. Acronym -->
     <string name="starttls">STARTTLS</string>
 
-    <!-- ImapIdleService: Foreground notification content text showing idle push watching -->
     <string name="listening_for_new_mail">Listening for new mail</string>
 
-    <!-- AddAccountScreen OAuthForm: Subtitle/button for Microsoft/Google OAuth flow -->
-    <string name="sign_in_with_microsoft">Sign in with Microsoft</string>
-    <!-- AddAccountScreen: Toast when account added successfully -->
+    <!-- Microsoft OAuth (only Outlook) + app-password toasts -->
     <string name="account_added">Account added</string>
-    <!-- AddAccountScreen: Field label for username when login differs from email. Noun -->
-    <string name="username">Username</string>
-    <!-- AddAccountScreen: Checkbox label when username is separate from email -->
-    <string name="username_is_not_my_email">Username is not my email</string>
-    <!-- AddAccountScreen: Section header for SMTP outgoing server settings -->
-    <string name="smtp_outgoing">SMTP (outgoing)</string>
-    <!-- AddAccountScreen: Section header for IMAP incoming server settings -->
-    <string name="imap_incoming">IMAP (incoming)</string>
-    <!-- AddAccountScreen: Card title with instructions how to generate app password -->
-    <string name="how_to_get_your_app_password">How to get your app password</string>
-    <!-- OAuthForm: Card showing Sign in with provider. %1$s = provider name e.g. Microsoft -->
+    <string name="added">Added <xliff:g id="email" example="user@example.com">%1$s</xliff:g></string>
+    <string name="sign_in_with_microsoft">Sign in with Microsoft</string>
+    <string name="oauth_sign_in">OAuth sign-in</string>
+    <string name="oauth_sign_in_failed">Microsoft sign-in failed — check Azure redirect com.vayunmathur.email://oauth</string>
     <string name="sign_in_with">Sign in with <xliff:g id="provider" example="Microsoft">%1$s</xliff:g></string>
-    <!-- AddAccountScreen DAV form: Label prefix for security chips row. Noun with colon -->
+    <string name="email_address_optional">Email address (optional)</string>
+    <string name="use_app_password_instead">Use app password instead</string>
+
+    <string name="username">Username</string>
+    <string name="username_is_not_my_email">Username is not my email</string>
+    <string name="smtp_outgoing">SMTP (outgoing)</string>
+    <string name="imap_incoming">IMAP (incoming)</string>
+    <string name="how_to_get_your_app_password">How to get your app password</string>
     <string name="security">Security:</string>
-    <!-- EmailWidget: Empty state when no recent emails to show -->
     <string name="no_recent_emails">No recent emails</string>
-    <!-- EmlViewerScreen: Button to retry opening .eml after failure. Verb -->
     <string name="retry">Retry</string>
-    <!-- EmlViewerScreen: Error title when .eml file cannot be opened -->
     <string name="couldn_t_open_this_eml_file">Couldn\'t open this .eml file</string>
-    <!-- EmlViewerScreen / Message detail header: To field with recipient. %1$s = recipient list -->
     <string name="to">To: <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
-    <!-- Attachment row: Text button to open attachment. Verb -->
     <string name="open">Open</string>
-    <!-- EmlViewerScreen header: Cc field. %1$s = cc recipient list -->
     <string name="cc_1">Cc: <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
-    <!-- SettingsScreen: Toast after signature saved -->
     <string name="signature_saved">Signature saved</string>
-    <!-- MessageThreadScreen: Toast when browser intent to open unsubscribe URL fails -->
     <string name="couldn_t_open_unsubscribe_page">Couldn\'t open unsubscribe page</string>
-    <!-- MessageListScreen filter chip: All messages filter. Adjective -->
     <string name="unread">Unread</string>
-    <!-- Composer schedule menu: Option to schedule send in 1 hour. Time phrase -->
     <string name="in_1_hour">In 1 hour</string>
-    <!-- MessageThreadScreen snooze menu: Option later today 6 PM -->
     <string name="later_today_6_pm">Later today (6 PM)</string>
-    <!-- MessageThreadScreen: Toast after blocking sender -->
     <string name="sender_blocked">Sender blocked</string>
-    <!-- Message Thread overflow: Action to save raw message as .eml file -->
     <string name="save_as_eml">Save as .eml</string>
-    <!-- Settings blocked senders: Empty state when no blocked entries. Noun -->
     <string name="none">None</string>
-    <!-- OutboxScreen TopBar: Toast while retrying pending messages. %1$s = count -->
     <plurals name="retrying_pending_messages">
         <item quantity="one">Retrying <xliff:g id="count" example="3">%1$s</xliff:g> pending message…</item>
         <item quantity="other">Retrying <xliff:g id="count" example="3">%1$s</xliff:g> pending messages…</item>
     </plurals>
-    <!-- Settings blocked senders: Button to unblock a sender. Verb -->
     <string name="unblock">Unblock</string>
-    <!-- Composer schedule / Snooze menu: Tomorrow 8 AM option -->
     <string name="tomorrow_8_am">Tomorrow (8 AM)</string>
-    <!-- Drawer: Section header for folder list when account selected. Noun plural -->
     <string name="folders">Folders</string>
-    <!-- MessageItem: Text button to unsubscribe via List-Unsubscribe header -->
     <string name="unsubscribe">Unsubscribe</string>
-    <!-- Composer schedule menu: This evening 6 PM option -->
     <string name="this_evening_6_pm">This evening (6 PM)</string>
-    <!-- Snooze menu: In 1 week option -->
     <string name="in_1_week">In 1 week</string>
-    <!-- Attachment handling: Toast when no activity can open the file -->
     <string name="no_app_can_open_this_file">No app can open this file</string>
-    <!-- MessageThreadScreen: TextButton to open snooze options menu. Verb -->
     <string name="snooze">Snooze</string>
-    <!-- SettingsScreen: Section title for signature editing. Noun plural -->
     <string name="signatures">Signatures</string>
-    <!-- Composer: TextButton to open schedule send menu. Noun/verb, later send -->
     <string name="later">Later</string>
-    <!-- MessageThreadScreen: Toast before performing one-click unsubscribe POST -->
     <string name="unsubscribing">Unsubscribing…</string>
-    <!-- Drawer: Section header for account list. Noun plural -->
     <string name="accounts">Accounts</string>
-    <!-- MessageItem/EmlViewer: Banner when remote images blocked for privacy -->
     <string name="remote_images_blocked">Remote images blocked</string>
-    <!-- Composer: Toggle button to reveal Cc/Bcc fields. Label concatenating Cc/Bcc -->
     <string name="cc_bcc">Cc/Bcc</string>
-    <!-- SettingsScreen: Section header for blocked senders list -->
     <string name="blocked_senders">Blocked senders</string>
-    <!-- Composer: Summary showing inline images count and size. %1$s = count, %2$s = size e.g. 1.2 MB -->
     <string name="inline_images">Inline images (<xliff:g id="count" example="2">%1$s</xliff:g> - <xliff:g id="size" example="1.2 MB">%2$s</xliff:g>)</string>
-    <!-- MessageThreadScreen: Toast confirming message snoozed -->
     <string name="snoozed">Snoozed</string>
-    <!-- Attachment: Toast when download fails. %1$s = error message -->
     <string name="download_failed">Download failed: <xliff:g id="error" example="Network error">%1$s</xliff:g></string>
-    <!-- SettingsScreen: Placeholder label for signature input field -->
     <string name="your_signature">Your signature</string>
-    <!-- MessageListScreen filter chip: All messages, no filter. Adjective -->
     <string name="all">All</string>
-    <!-- MessageListScreen filter chip: Filter to messages with attachments. Noun -->
     <string name="attachments">Attachments</string>
-    <!-- Composer: Label for Cc field when expanded. Noun short -->
     <string name="cc">Cc</string>
-    <!-- ComposeScreen: Toast when message scheduled for later send. Status -->
     <string name="scheduled">Scheduled</string>
-    <!-- DraftsScreen: Empty state when no drafts saved -->
     <string name="no_drafts">No drafts</string>
-    <!-- Composer: Toast when message sent successfully -->
     <string name="message_sent">Message sent</string>
-    <!-- MessageItem/EmlViewer: Button to load remote images in current email -->
     <string name="load_images">Load images</string>
-    <!-- MessageListScreen: Header title for AI summary card shown during search. Noun phrase -->
     <string name="ai_summary">AI Summary</string>
-    <!-- OutboxScreen: Toast after deleting message from outbox queue -->
     <string name="deleted_from_outbox">Deleted from Outbox</string>
-    <!-- Composer: Label for Bcc field when expanded. Noun short -->
     <string name="bcc">Bcc</string>
-    <!-- Composer: Header for attachments section showing total size. %1$s = e.g. 2.3 MB -->
     <string name="attachments_1">Attachments (<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>)</string>
-    <!-- Composer Attachment header: Fallback header without size before attachments list -->
     <string name="attachments_2">Attachments:</string>
-    <!-- Drawer / MessageListScreen: Title for unified inbox (no account selected). Noun phrase -->
     <string name="unified_inbox">Unified Inbox</string>
-    <!-- Attachment: Toast after attachment saved to Downloads folder -->
     <string name="saved_to_downloads">Saved to Downloads</string>
-    <!-- Composer: Toast when send failed and saved to outbox. %1$s = error reason -->
     <string name="saved_to_outbox">Saved to Outbox: <xliff:g id="reason" example="No network">%1$s</xliff:g></string>
-    <!-- MessageListScreen AI card: Loading row while generating AI summary. Progress -->
     <string name="generating_summary">Generating summary…</string>
-    <!-- MessageItem overflow: Action to block sender and hide future messages. Verb phrase -->
     <string name="block_sender">Block sender</string>
-    <!-- OutlookOAuthActivity: Success toast after OAuth account added. %1$s = email address -->
-    <string name="added">Added <xliff:g id="email" example="user@example.com">%1$s</xliff:g></string>
-    <!-- OutlookOAuthActivity: Failure toast when Microsoft sign-in failed -->
-    <string name="microsoft_sign_in_failed">Microsoft sign-in failed</string>
 
-    <!-- AddAccountScreen: Picker title asking to choose email provider -->
     <string name="choose_your_email_provider">Choose your email provider</string>
-    <!-- AddAccountScreen Custom provider: Subtitle prompting manual IMAP/SMTP entry -->
     <string name="enter_imap_smtp_server_details_manually">Enter IMAP/SMTP server details manually</string>
-    <!-- AddAccountScreen: Internal auth type constant value for OAuth. Keep as oauth2, do not translate -->
-    <string name="oauth2">oauth2</string>
-    <!-- AddAccountScreen: Subtitle label for app-password based providers and generic password label -->
     <string name="app_password">App password</string>
-    <!-- AddAccountScreen custom provider: Label for password field when custom IMAP server (not app password) -->
     <string name="password">Password</string>
-    <!-- AddAccountScreen: Button to hide visible password. Verb -->
     <string name="hide">Hide</string>
-    <!-- AddAccountScreen: Button to reveal hidden password. Verb -->
     <string name="show">Show</string>
-    <!-- EmlViewerScreen: TopAppBar fallback title. Noun phrase for email file type -->
     <string name="e_mail_file">E-mail file</string>
-    <!-- EmlViewerScreen: Fallback error detail when specific reason unknown -->
     <string name="unknown_error">Unknown error</string>
-    <!-- EmlViewerScreen: Placeholder when email body has no content -->
     <string name="no_content_1">(No content)</string>
-    <!-- MessageListScreen: Empty inbox centered text with hint to pull-to-refresh -->
     <string name="no_messages_found_pull_down_to_refresh">No messages found. Pull down to refresh.</string>
-    <!-- MessageThreadScreen: Title for conversation/thread view. Noun fallback -->
     <string name="conversation">Conversation</string>
-    <!-- MessageItem: Label chip indicating email was sent to current user -->
     <string name="to_me">to me</string>
-    <!-- MessageItem: Button to hide quoted history/reply chain. Verb phrase -->
     <string name="hide_quoted_text">Hide quoted text</string>
-    <!-- MessageItem: Button to show quoted history/reply chain. Verb phrase -->
     <string name="show_quoted_text">Show quoted text</string>
-    <!-- MessageItem: Placeholder when message body empty -->
     <string name="no_content">(No Content)</string>
-    <!-- Composer: Warning when total attachment size exceeds 25 MB limit -->
     <string name="total_attachment_size_exceeds_25_mb_many">Total attachment size exceeds 25 MB; many providers will reject it.</string>
-    <!-- OutboxScreen: Empty state when no pending messages -->
     <string name="outbox_is_empty">Outbox is empty</string>
-    <!-- MessageList/Outbox/Drafts row: Fallback when no subject header present -->
     <string name="no_subject">(no subject)</string>
-    <!-- OutboxRow / Drafts row: From line showing sending account. %1$s = account email -->
     <string name="from">From <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
-    <!-- OutboxRow: To line with recipient list. %1$s = recipient email(s) -->
     <string name="to_1">To <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
-    <!-- OutboxRow: Error line showing last failure reason. %1$s = error message -->
     <string name="failed">Failed: <xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
-    <!-- OutboxRow: Showing number of send attempts. %1$s = count -->
     <plurals name="attempts">
         <item quantity="one"><xliff:g id="count" example="2">%1$s</xliff:g> attempt</item>
         <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> attempts</item>
     </plurals>
 
-    <!-- Composer format toolbar: Accessibility content description for insert image button -->
     <string name="cd_insert_image">Insert image</string>
     <string name="normal">Normal</string>
     <string name="heading_1">Heading 1</string>

@@ -46,7 +46,7 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
     ) { padding ->
         if (lesson == null) {
             MissingContent(padding, stringResource(R.string.let_s_go_back))
-            return@Scaffold
+            return@AppScaffold
         }
         Column(
             Modifier

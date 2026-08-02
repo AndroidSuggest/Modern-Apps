@@ -134,7 +134,6 @@ sealed interface Route : NavKey {
     @Serializable data object Updates : Route
     @Serializable data object Repos : Route
     @Serializable data object Detail : Route
-    @Serializable data object SecurityTiers : Route
 }
 
 @Composable
@@ -156,7 +155,7 @@ private fun AppRoot(
     MainNavigation(
         backStack,
         bottomBar = {
-            if (current !is Route.Detail && current !is Route.SecurityTiers) {
+            if (current !is Route.Detail) {
                 BottomNavBar(
                     backStack,
                     listOf(
@@ -189,18 +188,11 @@ private fun AppRoot(
             })
         }
         entry<Route.Repos> {
-            ReposPage(viewModel = viewModel, onOpenTiers = { backStack.add(Route.SecurityTiers) })
+            ReposPage(viewModel = viewModel)
         }
         entry<Route.Detail> {
             AppDetailPage(
                 viewModel = viewModel,
-                onBack = { backStack.pop() },
-                onOpenTiers = { backStack.add(Route.SecurityTiers) },
-            )
-        }
-        entry<Route.SecurityTiers> {
-            com.vayunmathur.appstore.ui.SecurityTiersPage(
-                ownSigningCertificates = viewModel.ownSigningCertificates,
                 onBack = { backStack.pop() },
             )
         }

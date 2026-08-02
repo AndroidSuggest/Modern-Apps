@@ -119,6 +119,33 @@ class OoxmlImporterTest {
         assertEquals("1", list.paragraph.listNumberFormat)
     }
 
+    /** Numbered items must count 1, 2, 3 …; an unset index renders every item as "1." */
+    @Test fun docxNumberedListItemsCountUp() {
+        fun item(numId: Int, ilvl: Int, text: String) =
+            "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"$ilvl\"/><w:numId w:val=\"$numId\"/></w:numPr></w:pPr>" +
+                "<w:r><w:t>$text</w:t></w:r></w:p>"
+        val entries = mapOf(
+            "word/document.xml" to ("<w:document xmlns:w=\"w\"><w:body>" +
+                item(1, 0, "a") + item(1, 0, "b") +
+                item(1, 1, "b1") + item(1, 1, "b2") +
+                item(1, 0, "c") +
+                "<w:p><w:r><w:t>gap</w:t></w:r></w:p>" +
+                item(2, 0, "d") +
+                "</w:body></w:document>"),
+            "word/numbering.xml" to ("<w:numbering xmlns:w=\"w\"><w:abstractNum w:abstractNumId=\"0\">" +
+                "<w:lvl w:ilvl=\"0\"><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.\"/></w:lvl>" +
+                "<w:lvl w:ilvl=\"1\"><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%2.\"/></w:lvl></w:abstractNum>" +
+                "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>" +
+                "<w:num w:numId=\"2\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>")
+        )
+        val doc = OoxmlImporter.import(zipless(entries), "test.docx") as OdfDocument.TextDocument
+        val numbered = doc.content.filterIsInstance<OdfContentBlock.Paragraph>()
+            .map { it.paragraph }.filter { it.listType == ListType.NUMBERED && it.style == ParagraphStyle.LIST_ITEM }
+        assertEquals(listOf("a", "b", "b1", "b2", "c", "d"), numbered.map { it.spans[0].text })
+        // Nested items count on their own level; a separate numId (the last item) starts over.
+        assertEquals(listOf(1, 2, 1, 2, 3, 1), numbered.map { it.listItemIndex })
+    }
+
     // ---- XLSX ----
 
     @Test fun xlsxImportsValuesAndMerges() {

@@ -70,6 +70,10 @@ object OdfParser {
         }
     }
 
+    /** Parses a flat-ODF/content.xml string as a text document. Test seam for the body parser. */
+    internal fun parseTextXml(xml: String, fileName: String = "test"): OdfDocument.TextDocument =
+        parseTextDocument(xml, parseStyles(xml), parseListStyles(xml), fileName, OdfMetadata(), emptyMap(), null)
+
     /** Parses settings.xml for per-sheet freeze-pane info: sheet name -> (freezeRows, freezeCols). (C2) */
     private fun parseSettings(xml: String): Map<String, Pair<Int, Int>> {
         val out = mutableMapOf<String, Pair<Int, Int>>()
@@ -1300,6 +1304,12 @@ object OdfParser {
         val listTypeStack = mutableListOf<ListType>()
         val listItemCounter = mutableListOf<Int>()
         val listStyleStack = mutableListOf<ListStyleInfo?>()
+        // Word (and LibreOffice) export one <text:list> per item and chain them with
+        // text:continue-numbering / text:continue-list; without honoring those every item restarts
+        // at 1. Remember where each list left off, by nesting depth and by xml:id. (bugfix)
+        val listEndByDepth = HashMap<Int, Int>()
+        val listEndById = HashMap<String, Int>()
+        val listIdStack = mutableListOf<String?>()
         var pendingListItemChecked = false
         val outlineStyle = listStyles["%outline%"]
         val outlineCounters = IntArray(11)
@@ -1447,14 +1457,25 @@ object OdfParser {
                             else -> ListType.BULLET
                         }
                         listTypeStack.add(type)
-                        // Honor text:start-value so numbered lists can begin at N (not always 1).
+                        // Honor text:start-value so numbered lists can begin at N (not always 1),
+                        // and text:continue-numbering / text:continue-list so a list that continues
+                        // a previous one picks up where that one stopped instead of restarting.
                         val startValue = styleInfo?.levelStyle(listDepth)?.startValue ?: 1
-                        listItemCounter.add((startValue - 1).coerceAtLeast(0))
+                        val continueList = getAttr(parser, "continue-list")
+                        val continued = when {
+                            continueList != null -> listEndById[continueList] ?: listEndByDepth[listDepth]
+                            getAttr(parser, "continue-numbering") == "true" -> listEndByDepth[listDepth]
+                            else -> null
+                        }
+                        listItemCounter.add((continued ?: (startValue - 1)).coerceAtLeast(0))
                         listStyleStack.add(styleInfo)
+                        listIdStack.add(getAttr(parser, "id"))
                     }
                     inBody && parser.name == "list-item" -> {
                         if (listItemCounter.isNotEmpty()) {
-                            listItemCounter[listItemCounter.size - 1]++
+                            val startValue = getAttr(parser, "start-value")?.toIntOrNull()
+                            listItemCounter[listItemCounter.size - 1] =
+                                startValue ?: (listItemCounter.last() + 1)
                         }
                         pendingListItemChecked = getAttr(parser, "checkbox-status")?.let { it == "checked" || it == "true" } ?: false
                     }
@@ -1475,9 +1496,16 @@ object OdfParser {
                 XmlPullParser.END_TAG -> when {
                     parser.name == "text" && parser.namespace?.contains("office") == true -> inBody = false
                     parser.name == "list" && inBody -> {
+                        val endedDepth = listDepth
                         listDepth--
                         if (listTypeStack.isNotEmpty()) listTypeStack.removeAt(listTypeStack.size - 1)
-                        if (listItemCounter.isNotEmpty()) listItemCounter.removeAt(listItemCounter.size - 1)
+                        if (listItemCounter.isNotEmpty()) {
+                            // Remember the final number so a following continue-numbering list resumes here.
+                            val ended = listItemCounter.removeAt(listItemCounter.size - 1)
+                            listEndByDepth[endedDepth] = ended
+                            listIdStack.lastOrNull()?.let { listEndById[it] = ended }
+                        }
+                        if (listIdStack.isNotEmpty()) listIdStack.removeAt(listIdStack.size - 1)
                         if (listStyleStack.isNotEmpty()) listStyleStack.removeAt(listStyleStack.size - 1)
                     }
                     parser.name == "section" && inBody -> content.add(OdfContentBlock.SectionEnd)

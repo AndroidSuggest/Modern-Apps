@@ -8,7 +8,6 @@ import android.os.Handler
 import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import jakarta.mail.internet.InternetAddress
 import com.vayunmathur.email.data.EmailDatabase
 import com.vayunmathur.email.data.EmailSyncState
 import com.vayunmathur.email.data.EmailSyncWorker
@@ -575,6 +574,23 @@ class EmailViewModel(application: Application) :
 }
 
 /** Extract the bare email address from a "Name <addr@x>" header, or "" if none. */
-private fun extractEmailAddress(from: String): String =
-    runCatching { InternetAddress.parse(from).firstOrNull()?.address }
-        .getOrNull()?.takeIf { it.contains("@") } ?: ""
+private fun extractEmailAddress(from: String): String {
+    val trimmed = from.trim()
+    if (trimmed.isEmpty()) return ""
+    val angleMatch = Regex("""<([^>]+@[^>]+)>""").find(trimmed)
+    if (angleMatch != null) {
+        val addr = angleMatch.groupValues[1].trim()
+        if (addr.contains("@")) return addr
+    }
+    // Try bare address token
+    val tokens = trimmed.split(Regex("[\\s,;<>]+"))
+    for (t in tokens) {
+        if (t.contains("@") && t.contains(".")) return t.trim().trim('"', '\'', '<', '>')
+    }
+    // Fallback: contains @ anywhere
+    if (trimmed.contains("@")) {
+        val maybe = trimmed.substringAfterLast(' ').trim()
+        if (maybe.contains("@")) return maybe.trim('<', '>', '"', '\'')
+    }
+    return ""
+}

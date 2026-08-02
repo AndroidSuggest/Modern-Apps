@@ -7,6 +7,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -384,6 +386,8 @@ private data class EditAction(
  */
 private const val MIN_ZOOM = 0.5f
 private const val MAX_ZOOM = 6f
+private const val DOUBLE_TAP_ZOOM = 2.5f
+private const val DOUBLE_TAP_ZOOM_THRESHOLD = 1.2f
 
 /**
  * Clamp the zoom [pan] (screen-pixel translation) so the content, scaled by
@@ -625,6 +629,13 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         // nothing to pan to.
         pan = if (zoom > 1f) clampPan(pivoted + panChange, zoom, viewportSize) else Offset.Zero
     }
+
+    // Double-tap to zoom in/out with animation centered on the tap.
+    val latestZoom by rememberUpdatedState(zoom)
+    val latestPan by rememberUpdatedState(pan)
+    val latestViewport by rememberUpdatedState(viewportSize)
+    val latestEditMode by rememberUpdatedState(editMode)
+    val latestTool by rememberUpdatedState(tool)
 
     val searchFocus = remember { FocusRequester() }
     LaunchedEffect(searching) {
@@ -946,6 +957,42 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                             multiTouch = e.changes.count { it.pressed } >= 2
                         }
                     }
+                }
+                // Double-tap to zoom in/out, centered on the tap with animation.
+                // Disabled in edit mode (except SELECT) to avoid conflicting with annotation taps.
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = { tapOffset ->
+                            if (latestEditMode && latestTool != EditTool.SELECT) return@detectTapGestures
+                            val vp = latestViewport
+                            if (vp == IntSize.Zero) return@detectTapGestures
+                            val targetZoom = if (latestZoom < DOUBLE_TAP_ZOOM_THRESHOLD) DOUBLE_TAP_ZOOM else 1f
+                            val origin = Offset(vp.width / 2f, 0f)
+                            // Where the tap point should end up: zoomed-in it's offset from center.
+                            val targetPan = if (targetZoom <= 1f) {
+                                Offset.Zero
+                            } else {
+                                val zoomDelta = targetZoom / latestZoom.coerceAtLeast(0.001f)
+                                val pivoted = latestPan + (tapOffset - origin - latestPan) * (1f - zoomDelta)
+                                clampPan(pivoted, targetZoom, vp)
+                            }
+                            scope.launch {
+                                val startZoom = latestZoom
+                                val startPan = latestPan
+                                val anim = Animatable(0f)
+                                anim.animateTo(1f, animationSpec = tween(durationMillis = 250)) {
+                                    val t = value
+                                    zoom = startZoom + (targetZoom - startZoom) * t
+                                    pan = Offset(
+                                        startPan.x + (targetPan.x - startPan.x) * t,
+                                        startPan.y + (targetPan.y - startPan.y) * t,
+                                    )
+                                }
+                                zoom = targetZoom
+                                pan = targetPan
+                            }
+                        }
+                    )
                 }
                 // Above the graphicsLayer so gesture coordinates are plain viewport pixels.
                 .transformable(transformState, enabled = !editMode || tool == EditTool.SELECT)

@@ -18,12 +18,25 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Outlook / Microsoft 365 OAuth2 (Authorization Code + PKCE). Microsoft has
- * disabled basic auth (app passwords) for IMAP/SMTP, so Outlook accounts sign in
- * here and authenticate to the mail servers with XOAUTH2 access tokens.
+ * Outlook / Microsoft 365 OAuth2 — Authorization Code + PKCE for our own Azure
+ * app registered as Mobile and desktop applications with redirect
+ * `com.vayunmathur.email://oauth` (RFC8252 compliant native flow, same as
+ * Thunderbird Desktop `useExternalBrowser=true` in `OAuth2Providers.sys.mjs`).
  *
- * Public client — no secret ships in the APK (PKCE). The client ID is a public
- * identifier baked into [BuildConfig] so the build stays reproducible.
+ * Flow:
+ * 1. `start()` — generate verifier (64 base64Url), challenge S256, state 24,
+ *    persist to `outlook_oauth` prefs, open Custom Tab at Microsoft authorize endpoint.
+ * 2. Redirect `com.vayunmathur.email://oauth?code=...&state=...` → [com.vayunmathur.email.ui.OAuthActivity]
+ *    → `complete()` validates state, POSTs to token endpoint (form-urlencoded),
+ *    parses access_token + refresh_token + id_token.email, persists account with `authType=oauth2`.
+ * 3. `freshAccessToken()` — refreshes <1min expiry via `grant_type=refresh_token`.
+ *
+ * Fix for "browser closed but not signed in":
+ * - Intent-filter for `com.vayunmathur.email://oauth` now exists (was missing) + bare `/oauth` path variant
+ * - Fallback `extractQueryParam()` for OEMs that lose query in single-slash URIs
+ * - Explicit error logging of `error`, `error_description` from Microsoft, clearing stale prefs only after failure
+ * - Email from id_token (`preferred_username` for Entra) + fallback to emailHint if user typed it
+ * - CustomTabs failure fallback to VIEW intent + FLAG_ACTIVITY_NEW_TASK
  */
 object OutlookOAuth {
     private const val TAG = "OutlookOAuth"
@@ -31,7 +44,6 @@ object OutlookOAuth {
     private const val TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     private const val PREFS = "outlook_oauth"
 
-    /** IMAP/SMTP XOAUTH2 scopes + OIDC scopes so we can read the account address. */
     private val SCOPES = listOf(
         "https://outlook.office.com/IMAP.AccessAsUser.All",
         "https://outlook.office.com/SMTP.Send",
@@ -43,40 +55,79 @@ object OutlookOAuth {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    val isConfigured: Boolean get() = BuildConfig.OUTLOOK_OAUTH_CLIENT_ID.isNotBlank()
+    fun isConfigured(): Boolean = BuildConfig.OUTLOOK_OAUTH_CLIENT_ID.isNotBlank()
 
-    /** Launch the Microsoft sign-in page in a Custom Tab. */
-    fun start(context: Context) {
-        if (!isConfigured) return
+    fun start(context: Context, emailHint: String = "") {
+        if (!isConfigured()) return
         val verifier = randomUrlSafe(64)
         val challenge = codeChallenge(verifier)
         val state = randomUrlSafe(24)
+
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("verifier", verifier)
             .putString("state", state)
+            .putString("emailHint", emailHint)
             .apply()
+
+        val redirectUri = BuildConfig.OUTLOOK_REDIRECT_URI.ifBlank { BuildConfig.OAUTH_REDIRECT_URI.ifBlank { "com.vayunmathur.email://oauth" } }
 
         val url = Uri.parse(AUTH_ENDPOINT).buildUpon()
             .appendQueryParameter("client_id", BuildConfig.OUTLOOK_OAUTH_CLIENT_ID)
             .appendQueryParameter("response_type", "code")
-            .appendQueryParameter("redirect_uri", BuildConfig.OUTLOOK_REDIRECT_URI)
+            .appendQueryParameter("redirect_uri", redirectUri)
             .appendQueryParameter("response_mode", "query")
             .appendQueryParameter("scope", SCOPES.joinToString(" "))
             .appendQueryParameter("code_challenge", challenge)
             .appendQueryParameter("code_challenge_method", "S256")
             .appendQueryParameter("state", state)
+            .apply {
+                if (emailHint.isNotBlank()) appendQueryParameter("login_hint", emailHint)
+            }
             .build()
-        CustomTabsIntent.Builder().build().launchUrl(context, url)
+
+        Log.d(TAG, "Starting Outlook OAuth -> $url redirect=$redirectUri")
+        try {
+            CustomTabsIntent.Builder().build().apply {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }.launchUrl(context, url)
+        } catch (e: Exception) {
+            Log.w(TAG, "CustomTabs failed, fallback to VIEW: ${e.message}")
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(android.content.Intent.ACTION_VIEW, url).apply {
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            }
+        }
     }
 
-    /** Handle the redirect: exchange the code, persist the account. Returns the email on success. */
     suspend fun complete(context: Context, redirect: Uri): String? {
+        val rawStr = redirect.toString()
+        Log.d(TAG, "complete redirect=$redirect host=${redirect.host} path=${redirect.path} query=${redirect.query} raw=$rawStr")
+
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val verifier = prefs.getString("verifier", null) ?: return null
+        val verifier = prefs.getString("verifier", null)
+        if (verifier == null) {
+            Log.e(TAG, "No verifier — prefs $PREFS missing; wrong flow or cleared?")
+            return null
+        }
         val expectedState = prefs.getString("state", null)
-        val code = redirect.getQueryParameter("code") ?: return null
-        if (redirect.getQueryParameter("state") != expectedState) {
-            Log.e(TAG, "OAuth state mismatch")
+        val emailHintSaved = prefs.getString("emailHint", "") ?: ""
+
+        val code = redirect.getQueryParameter("code") ?: extractQueryParam(rawStr, "code")
+        if (code == null) {
+            val err = redirect.getQueryParameter("error") ?: extractQueryParam(rawStr, "error")
+            val desc = redirect.getQueryParameter("error_description") ?: extractQueryParam(rawStr, "error_description")
+            Log.e(TAG, "No code, error=$err desc=$desc raw=$rawStr")
+            if (err != null) prefs.edit().clear().apply()
+            return null
+        }
+
+        val returnedState = redirect.getQueryParameter("state") ?: extractQueryParam(rawStr, "state")
+        if (expectedState != null && returnedState != null && returnedState != expectedState) {
+            Log.e(TAG, "State mismatch exp=$expectedState got=$returnedState")
+            prefs.edit().clear().apply()
             return null
         }
 
@@ -85,14 +136,24 @@ object OutlookOAuth {
                 "client_id" to BuildConfig.OUTLOOK_OAUTH_CLIENT_ID,
                 "grant_type" to "authorization_code",
                 "code" to code,
-                "redirect_uri" to BuildConfig.OUTLOOK_REDIRECT_URI,
+                "redirect_uri" to BuildConfig.OUTLOOK_REDIRECT_URI.ifBlank { BuildConfig.OAUTH_REDIRECT_URI.ifBlank { "com.vayunmathur.email://oauth" } },
                 "code_verifier" to verifier,
                 "scope" to SCOPES.joinToString(" "),
             ),
-        ) ?: return null
+        ) ?: run {
+            Log.e(TAG, "Token exchange null for code")
+            prefs.edit().clear().apply()
+            return null
+        }
+
         prefs.edit().clear().apply()
 
-        val email = tokens.idTokenEmail ?: return null
+        val email = tokens.idTokenEmail ?: emailHintSaved.takeIf { it.contains("@") }
+        if (email.isNullOrBlank()) {
+            Log.e(TAG, "No email from id_token, hint='$emailHintSaved'")
+            return null
+        }
+
         val account = EmailAccount(
             email = email,
             provider = PROVIDER_OUTLOOK,
@@ -108,26 +169,25 @@ object OutlookOAuth {
             expiresAt = tokens.expiresAtMs,
         )
         EmailDatabase.getInstance(context).emailDao().insertAccount(account)
-        // IDLE push for INBOX, hourly non-INBOX poll, pull-to-refresh on-demand.
         EmailSyncWorker.scheduleHourlyNonInboxSync(context)
         EmailSyncWorker.runOneOffSync(context)
         ImapIdleService.start(context)
+        Log.d(TAG, "Outlook persisted: $email")
         return email
     }
 
-    /**
-     * Return a valid access token for [account], refreshing (and persisting) it
-     * first when it is within a minute of expiring.
-     */
     suspend fun freshAccessToken(context: Context, account: EmailAccount): String? {
-        if (account.expiresAt > System.currentTimeMillis() + 60_000) return account.accessToken
+        if (account.expiresAt > System.currentTimeMillis() + 60_000 && account.accessToken.isNotBlank()) {
+            return account.accessToken
+        }
         val refresh = account.refreshToken?.takeIf { it.isNotBlank() } ?: return account.accessToken.ifBlank { null }
+
         val tokens = exchange(
             mapOf(
                 "client_id" to BuildConfig.OUTLOOK_OAUTH_CLIENT_ID,
                 "grant_type" to "refresh_token",
                 "refresh_token" to refresh,
-                "redirect_uri" to BuildConfig.OUTLOOK_REDIRECT_URI,
+                "redirect_uri" to BuildConfig.OUTLOOK_REDIRECT_URI.ifBlank { BuildConfig.OAUTH_REDIRECT_URI.ifBlank { "com.vayunmathur.email://oauth" } },
                 "scope" to SCOPES.joinToString(" "),
             ),
         ) ?: return account.accessToken.ifBlank { null }
@@ -141,60 +201,63 @@ object OutlookOAuth {
         return updated.accessToken
     }
 
-    private data class Tokens(
-        val accessToken: String,
-        val refreshToken: String?,
-        val expiresAtMs: Long,
-        val idTokenEmail: String?,
-    )
+    private data class Tokens(val accessToken: String, val refreshToken: String?, val expiresAtMs: Long, val idTokenEmail: String?)
 
     private suspend fun exchange(form: Map<String, String>): Tokens? = withContext(Dispatchers.IO) {
         try {
-            val body = form.entries.joinToString("&") {
-                "${Uri.encode(it.key)}=${Uri.encode(it.value)}"
-            }
+            val body = form.entries.joinToString("&") { "${Uri.encode(it.key)}=${Uri.encode(it.value)}" }
             val conn = (URL(TOKEN_ENDPOINT).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
+                connectTimeout = 20_000
+                readTimeout = 20_000
                 setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                setRequestProperty("Accept", "application/json")
             }
             conn.outputStream.use { it.write(body.toByteArray()) }
-            val text = if (conn.responseCode in 200..299) {
-                conn.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                Log.e(TAG, "token endpoint ${conn.responseCode}: ${conn.errorStream?.bufferedReader()?.readText()}")
+            val respCode = conn.responseCode
+            val text = if (respCode in 200..299) conn.inputStream.bufferedReader().readText() else conn.errorStream?.bufferedReader()?.readText() ?: ""
+            Log.d(TAG, "token $respCode body=$text formKeys=${form.keys.filter { it != "code" && it != "refresh_token" && it != "code_verifier" }}")
+            if (respCode !in 200..299) {
+                Log.e(TAG, "token exchange $respCode: $text")
                 return@withContext null
             }
             val root = json.parseToJsonElement(text) as? JsonObject ?: return@withContext null
             val access = root["access_token"]?.jsonPrimitive?.contentOrNull() ?: return@withContext null
-            val expiresIn = root["expires_in"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull() ?: 3600L
-            Tokens(
-                accessToken = access,
-                refreshToken = root["refresh_token"]?.jsonPrimitive?.contentOrNull(),
-                expiresAtMs = System.currentTimeMillis() + expiresIn * 1000,
-                idTokenEmail = root["id_token"]?.jsonPrimitive?.contentOrNull()?.let { emailFromIdToken(it) },
-            )
+            val expiresIn = root["expires_in"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull()
+                ?: root["expires_in"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toLong() ?: 3600L
+            Tokens(access, root["refresh_token"]?.jsonPrimitive?.contentOrNull(), System.currentTimeMillis() + expiresIn * 1000, root["id_token"]?.jsonPrimitive?.contentOrNull()?.let { emailFromIdToken(it) })
         } catch (e: Exception) {
-            Log.e(TAG, "token exchange failed", e)
+            Log.e(TAG, "exchange exception", e)
             null
         }
     }
 
-    /** Pull the address out of the OIDC id_token (email, else preferred_username). */
-    private fun emailFromIdToken(idToken: String): String? {
-        return try {
-            val payload = idToken.split(".").getOrNull(1) ?: return null
-            val decoded = String(Base64.decode(payload, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP))
-            val obj = json.parseToJsonElement(decoded) as? JsonObject ?: return null
-            (obj["email"] ?: obj["preferred_username"] ?: obj["upn"])?.jsonPrimitive?.contentOrNull()
-        } catch (e: Exception) {
-            Log.e(TAG, "id_token decode failed", e)
-            null
-        }
+    private fun emailFromIdToken(idToken: String): String? = try {
+        val payload = idToken.split(".").getOrNull(1) ?: return null
+        val decoded = String(Base64.decode(payload, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP))
+        val obj = json.parseToJsonElement(decoded) as? JsonObject ?: return null
+        (obj["email"] ?: obj["preferred_username"] ?: obj["upn"] ?: obj["unique_name"])?.jsonPrimitive?.contentOrNull()
+    } catch (e: Exception) {
+        Log.e(TAG, "id_token decode", e)
+        null
     }
 
-    private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? =
-        runCatching { content }.getOrNull()?.ifBlank { null }
+    private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? = runCatching { content }.getOrNull()?.ifBlank { null }
+
+    private fun extractQueryParam(rawUrl: String, key: String): String? = try {
+        val qIdx = rawUrl.indexOf('?'); if (qIdx == -1) return null
+        val hIdx = rawUrl.indexOf('#', qIdx)
+        val query = if (hIdx == -1) rawUrl.substring(qIdx + 1) else rawUrl.substring(qIdx + 1, hIdx)
+        for (pair in query.split('&')) {
+            val eq = pair.indexOf('=')
+            if (eq != -1) {
+                val k = Uri.decode(pair.substring(0, eq))
+                if (k == key) return Uri.decode(pair.substring(eq + 1))
+            }
+        }
+        null
+    } catch (_: Exception) { null }
 
     private fun randomUrlSafe(bytes: Int): String {
         val buf = ByteArray(bytes)

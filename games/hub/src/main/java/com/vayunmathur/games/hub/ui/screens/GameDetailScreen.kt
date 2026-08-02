@@ -76,7 +76,7 @@ fun GameDetailScreen(
                 title = stringResource(R.string.game_not_found),
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
-            return@Scaffold
+            return@AppScaffold
         }
         val iconBmp = remember(iconDrawable) { try { iconDrawable?.toBitmap(128,128) } catch (_:Exception){ null } }
 

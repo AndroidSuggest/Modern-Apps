@@ -20,10 +20,23 @@ resolver = "2"
 # Centralized Rust versions – armv8-only (aarch64-linux-android)
 
 [workspace.dependencies]
-jni = { path = "third_party/jni-android", version = "0.21" }
+# Upstream jni from crates.io, not a vendored fork.
+#
+# This was a local fork (third_party/jni-android) of 0.21.1 that trimmed the
+# dependency tree: it hand-wrote the JNI signature parser to drop `combine`
+# (and transitively `bytes`), dropped the `walkdir` build-dep and `windows-sys`,
+# and moved to thiserror 2. That saved a handful of crates at the cost of
+# carrying ~20 vendored files that had to be kept in sync with upstream by hand
+# - and 0.21.1 is from March 2023, so it had drifted three years behind.
+#
+# 0.22 is the current release but is a substantial API change (native methods
+# now receive `EnvUnowned` and must adapt it via `with_env` plus an
+# `ErrorPolicy`, and `GlobalRef`/`AutoLocal` were renamed). That migration
+# touches all 31 native entry points across maps and games/voxels and needs an
+# Android build to verify, so it is deliberately left as a follow-up.
+jni = "0.21.1"
 jni-sys = "0.3.1"
 cesu8 = "1.1.0"
-# combine removed – jni-android now parses JNI signatures by hand (no combine, no bytes)
 thiserror = { version = "2" }
 log = "0.4.33"
 cfg-if = "1.0.4"
@@ -73,7 +86,6 @@ indexmap = { version = "2.10.0" }
 hashbrown = "0.14.5"
 byteorder = "1.5.0"
 smallvec = "1.14.0"
-# bytes removed – it was only ever pulled transitively by combine (now gone from jni-android)
 
 # No HTTP client crate anywhere: Rust reaches the network through library:network via
 # the flat-framed JNI bridge in library/jni-http, so no .so links its own TLS.

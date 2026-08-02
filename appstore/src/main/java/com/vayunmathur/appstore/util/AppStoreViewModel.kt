@@ -199,12 +199,16 @@ class AppStoreViewModel(
     val filteredInstalled: StateFlow<List<InstalledInfo>> = combine(
         _installedApps, _installedSourceMap, _installedFilter
     ) { installed, srcMap, filter ->
-        val inStore = installed.filter { srcMap.containsKey(it.packageName) }
+        // Show all installed apps instantly — don't wait for srcMap to be ready.
+        // srcMap defaults to PLAYSTORE for unknown packages (see refreshInstalled).
         when (filter) {
-            InstalledFilter.ALL -> inStore
-            InstalledFilter.MODERN_APPS -> inStore.filter { srcMap[it.packageName] == AppSource.MODERN_APPS }
-            InstalledFilter.FDROID -> inStore.filter { srcMap[it.packageName] == AppSource.FDROID }
-            InstalledFilter.PLAYSTORE -> inStore.filter { srcMap[it.packageName] == AppSource.PLAYSTORE }
+            InstalledFilter.ALL -> installed
+            InstalledFilter.MODERN_APPS -> installed.filter { srcMap[it.packageName] == AppSource.MODERN_APPS }
+            InstalledFilter.FDROID -> installed.filter { srcMap[it.packageName] == AppSource.FDROID }
+            InstalledFilter.PLAYSTORE -> installed.filter {
+                val src = srcMap[it.packageName]
+                src == AppSource.PLAYSTORE || src == null
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -474,7 +478,11 @@ class AppStoreViewModel(
     fun refreshInstalled() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val all = pm.getInstalledApplications(PackageManager.MATCH_ALL)
+            val all = try {
+                pm.getInstalledApplications(PackageManager.MATCH_ALL)
+            } catch (_: Exception) {
+                emptyList()
+            }
             val userApps = all.filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
             val installed = userApps.mapNotNull { ai ->
                 try {
@@ -488,15 +496,24 @@ class AppStoreViewModel(
                 } catch (_: Exception) { null }
             }.sortedBy { it.name.lowercase() }
 
+            // Publish the list immediately so the Installed tab is not blank for 10s.
+            withContext(Dispatchers.Main) {
+                _installedApps.value = installed
+            }
+
+            // Resolve sources from local DB only — no network. The old code called
+            // playProvider.isPresent() which scraped Play for every package, sequentially,
+            // which was the 10s bottleneck and also left filteredInstalled empty until it finished.
+            resolveInstalledSources(installed.map { it.packageName })
+
+            // Icons are expensive (binder + bitmap decode) — load after the list is visible.
             val icons = userApps.mapNotNull { ai ->
                 try { ai.packageName to pm.getApplicationIcon(ai.packageName) } catch (_: Exception) { null }
             }.toMap()
 
             withContext(Dispatchers.Main) {
-                _installedApps.value = installed
                 _installedIcons.value = icons
             }
-            resolveInstalledSources(installed.map { it.packageName })
         }
     }
 
@@ -506,27 +523,36 @@ class AppStoreViewModel(
      * Reads the cached rows directly rather than going through the providers'
      * in-memory caches: those are primed asynchronously from the same table, so asking
      * them right after a sync could race and report a Modern Apps package as absent.
+     *
+     * Fast path: no network. Anything not in Modern Apps or F-Droid is assumed Play Store,
+     * which avoids N sequential Play scrapes (the 10s delay) and makes the Installed tab
+     * show instantly. Play presence is not critical for the installed list — the package
+     * is already on device.
      */
     private fun resolveInstalledSources(packages: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
-            val rows = try { db.cachedAppDao().all() } catch (_: Exception) { emptyList() }
-            val bySource = rows.groupBy(
-                { runCatching { AppSource.valueOf(it.source) }.getOrNull() },
-                { it.packageName },
-            ).mapValues { (_, v) -> v.toSet() }
-            val modern = bySource[AppSource.MODERN_APPS].orEmpty()
-            val fdroid = bySource[AppSource.FDROID].orEmpty()
+            try {
+                val rows = db.cachedAppDao().all()
+                val bySource = rows.groupBy(
+                    { runCatching { AppSource.valueOf(it.source) }.getOrNull() },
+                    { it.packageName },
+                ).mapValues { (_, v) -> v.toSet() }
+                val modern = bySource[AppSource.MODERN_APPS].orEmpty()
+                val fdroid = bySource[AppSource.FDROID].orEmpty()
 
-            val map = mutableMapOf<String, AppSource>()
-            for (pkg in packages) {
-                map[pkg] = when {
-                    pkg in modern -> AppSource.MODERN_APPS
-                    pkg in fdroid -> AppSource.FDROID
-                    playProvider.isPresent(pkg) -> AppSource.PLAYSTORE
-                    else -> continue
+                val map = mutableMapOf<String, AppSource>()
+                for (pkg in packages) {
+                    map[pkg] = when {
+                        pkg in modern -> AppSource.MODERN_APPS
+                        pkg in fdroid -> AppSource.FDROID
+                        else -> AppSource.PLAYSTORE
+                    }
                 }
+                _installedSourceMap.value = map
+            } catch (_: Exception) {
+                // Fallback: still show everything as Play Store so list isn't empty
+                _installedSourceMap.value = packages.associateWith { AppSource.PLAYSTORE }
             }
-            _installedSourceMap.value = map
         }
     }
 

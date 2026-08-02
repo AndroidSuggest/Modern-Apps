@@ -2,7 +2,7 @@
 
 [workspace.dependencies]
 # Mirrors root workspace catalog to avoid duplicate JNI/Walkdir/Windows pulling in voxels
-jni = { path = "../../../../../third_party/jni-android", version = "0.21" }
+jni = "0.21.1"
 
 [package]
 name = "voxels_engine"

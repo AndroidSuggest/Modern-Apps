@@ -14,22 +14,21 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.glance.appwidget.updateAll
-import org.eclipse.angus.mail.imap.IMAPFolder
-import org.eclipse.angus.mail.imap.IMAPStore
+import com.vayunmathur.email.EmailAccount
+import com.vayunmathur.email.EmailFolder
 import com.vayunmathur.email.EmailManager
 import com.vayunmathur.email.R
+import com.vayunmathur.email.imap.ImapAuthException
+import com.vayunmathur.email.imap.ImapClient
+import com.vayunmathur.email.imap.RawImapConnection
+import com.vayunmathur.email.imap.TrustAll
 import com.vayunmathur.email.resolveAuth
 import com.vayunmathur.email.imapServer
 import com.vayunmathur.email.loginUser
-import java.util.Collections
-import jakarta.mail.Flags
-import jakarta.mail.Folder
-import jakarta.mail.UIDFolder
-import jakarta.mail.event.MessageChangedEvent
-import jakarta.mail.event.MessageChangedListener
-import jakarta.mail.event.MessageCountAdapter
-import jakarta.mail.event.MessageCountEvent
+import com.vayunmathur.email.util.AppLifecycleTracker
+import com.vayunmathur.email.util.EmailNotifications
+import com.vayunmathur.email.widget.EmailWidget
+import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,19 +40,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Foreground service that keeps one IMAP IDLE connection open per account.
- *
- * IDLE push model:
- * - INBOX is watched via `IMAPFolder.idle(true)` for instant push (1 RTT).
- *   A watchdog triggers a graceful refresh at ~24 min to beat the server's
- *   ~29 min IDLE timeout — avoids BYE + full TLS re-handshake by closing
- *   INBOX and reopening it on the same STORE.
- * - Folder list refreshed on every store connect.
- * - Read/unread via [MessageChangedListener] (FLAGS_CHANGED).
- * - Deletions via `messagesRemoved` (EXPUNGE).
- *
- * Non-INBOX: INBOX is live push; other folders hourly via
- * [EmailSyncWorker.scheduleHourlyNonInboxSync] + on-demand pull-to-refresh.
+ * Foreground service — raw IMAP IDLE (no Jakarta), app-password + Outlook OAuth XOAUTH2.
+ * Fix for BOOT_COMPLETED crash: start() returns Boolean, onStartCommand catches FGS exception.
  */
 class ImapIdleService : Service() {
 
@@ -63,272 +51,215 @@ class ImapIdleService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildOngoingNotification(), foregroundServiceType())
+        try {
+            startForeground(NOTIFICATION_ID, buildOngoingNotification(), foregroundServiceType())
+        } catch (e: Exception) {
+            Log.w(TAG, "startForeground failed: ${e.message}", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         scope.launch { startIdleLoops() }
         return START_STICKY
     }
 
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
-    }
+    override fun onDestroy() { scope.cancel(); super.onDestroy() }
 
     private suspend fun startIdleLoops() {
         val dao = EmailDatabase.getInstance(applicationContext).emailDao()
         val accounts = dao.getAccounts()
-        if (accounts.isEmpty()) {
-            stopSelf()
-            return
-        }
-        try {
-            EmailSyncWorker.scheduleHourlyNonInboxSync(applicationContext)
-        } catch (_: Throwable) {}
-        val currentEmails = accounts.map { it.email }.toSet()
-        accountJobs.keys.filter { it !in currentEmails }.forEach { email ->
-            accountJobs[email]?.cancel()
-            accountJobs.remove(email)
-        }
+        if (accounts.isEmpty()) { stopSelf(); return }
+        try { EmailSyncWorker.scheduleHourlyNonInboxSync(applicationContext) } catch (_: Throwable) {}
+        val current = accounts.map { it.email }.toSet()
+        accountJobs.keys.filter { it !in current }.forEach { accountJobs[it]?.cancel(); accountJobs.remove(it) }
         for (account in accounts) {
             accountJobs[account.email]?.cancel()
             accountJobs[account.email] = scope.launch { idleLoop(account) }
         }
     }
 
-    private suspend fun idleLoop(account: com.vayunmathur.email.EmailAccount) {
+    private suspend fun idleLoop(account: EmailAccount) {
         var backoffMs = 2_000L
         val maxBackoffMs = 60_000L
         while (scope.coroutineContext.isActive) {
             try {
-                runIdleSession(account)
+                runIdleSessionRaw(account)
                 backoffMs = 2_000L
                 delay(1_000L)
-            } catch (e: jakarta.mail.AuthenticationFailedException) {
-                Log.w(TAG, "IDLE auth failed for ${account.email}; stopping retries")
+            } catch (e: ImapAuthException) {
+                Log.w(TAG, "IDLE auth failed for ${account.email}; stop")
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "IDLE error for ${account.email}: ${e.javaClass.simpleName}: ${e.message}")
+                val msg = e.message?.lowercase() ?: ""
+                if (msg.contains("auth") && msg.contains("fail")) { Log.w(TAG, "IDLE auth fail ${account.email}"); return }
+                Log.w(TAG, "IDLE err ${account.email}: ${e.javaClass.simpleName}: ${e.message}")
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(maxBackoffMs)
             }
         }
     }
 
-    private suspend fun runIdleSession(account: com.vayunmathur.email.EmailAccount) {
-        withContext(Dispatchers.IO) {
-            val mgr = EmailManager()
-            mgr.withStore(
-                server = account.imapServer(),
-                user = account.loginUser(),
-                auth = account.resolveAuth(applicationContext),
-            ) { store ->
-                val dao = EmailDatabase.getInstance(applicationContext).emailDao()
-                try {
-                    val folders = mgr.fetchFoldersInStore(store, account.email)
-                    dao.insertFolders(folders)
-                    Log.d(TAG, "Folder discovery for ${account.email}: ${folders.size} folders")
-                } catch (t: Throwable) {
-                    Log.w(TAG, "Folder discovery failed for ${account.email}: ${t.message}")
-                }
+    private suspend fun runIdleSessionRaw(account: EmailAccount) = withContext(Dispatchers.IO) {
+        val server = account.imapServer()
+        val user = account.loginUser()
+        val auth = account.resolveAuth(applicationContext)
+        val useTrustAll = !TrustAll.isKnownHost(server.host)
+        val rawConn = RawImapConnection(server, trustAll = useTrustAll)
+        try {
+            rawConn.connect()
+            var caps = rawConn.capability()
+            if (!server.useSsl && caps.has("STARTTLS")) {
+                try { rawConn.startTls(); caps = rawConn.capability() } catch (e: Exception) { Log.w(TAG, "STARTTLS fail ${account.email}: ${e.message}") }
+            }
 
-                val imapStore = store as? IMAPStore
-                val supportsIdle = try {
-                    imapStore?.hasCapability("IDLE") ?: true
-                } catch (_: Throwable) { true }
-                if (!supportsIdle) {
-                    Log.w(TAG, "Server ${account.imapServer().host} no IDLE cap; poll fallback")
+            when (auth) {
+                is EmailManager.AuthType.OAuth -> rawConn.authenticateXoauth2(user, auth.token)
+                is EmailManager.AuthType.Password -> {
+                    try { rawConn.login(user, auth.value) } catch (e: Exception) {
+                        if (caps.has("AUTH=PLAIN")) rawConn.authenticatePlain(user, auth.value) else throw e
+                    }
                 }
+            }
 
+            val supportsIdle = caps.has("IDLE")
+            Log.d(TAG, "Raw IDLE supports $supportsIdle for ${account.email}")
+
+            if (!supportsIdle) {
                 while (scope.coroutineContext.isActive) {
-                    val folder = store.getFolder("INBOX") as IMAPFolder
-                    folder.open(Folder.READ_ONLY)
-
-                    val sawNewMail = AtomicBoolean(false)
-                    val sawFlagsChanged = AtomicBoolean(false)
-                    val flaggedUids = Collections.synchronizedSet(mutableSetOf<Long>())
-                    val removedUids = Collections.synchronizedSet(mutableSetOf<Long>())
-                    val isProactiveRefresh = AtomicBoolean(false)
-
-                    folder.addMessageCountListener(object : MessageCountAdapter() {
-                        override fun messagesAdded(e: MessageCountEvent) {
-                            Log.d(TAG, "EXISTS for ${account.email}: ${e.messages.size} new")
-                            sawNewMail.store(true)
-                        }
-                        override fun messagesRemoved(e: MessageCountEvent) {
-                            for (msg in e.messages) {
-                                try {
-                                    val uid = (folder as UIDFolder).getUID(msg)
-                                    if (uid != -1L) removedUids.add(uid)
-                                } catch (_: Throwable) {}
-                            }
-                            if (e.messages.isNotEmpty()) {
-                                Log.d(TAG, "EXPUNGE for ${account.email}: ${e.messages.size} removed, uids=$removedUids")
-                            }
-                        }
-                    })
-
-                    folder.addMessageChangedListener(object : MessageChangedListener {
-                        override fun messageChanged(e: MessageChangedEvent) {
-                            if (e.messageChangeType == MessageChangedEvent.FLAGS_CHANGED) {
-                                sawFlagsChanged.store(true)
-                                try {
-                                    val uid = (folder as UIDFolder).getUID(e.message)
-                                    if (uid != -1L) flaggedUids.add(uid)
-                                } catch (_: Throwable) {}
-                                Log.d(TAG, "FLAGS_CHANGED for ${account.email}: uid in $flaggedUids")
-                            }
-                        }
-                    })
-
-                    var folderNeedsReopen = false
+                    delay(FALLBACK_NO_IDLE_POLL_MS)
                     try {
-                        Log.d(TAG, "Entering IDLE loop for ${account.email} (cap=$supportsIdle)")
-                        while (scope.coroutineContext.isActive && folder.isOpen && !folderNeedsReopen) {
-                            val watchdog = if (supportsIdle) {
-                                scope.launch {
-                                    delay(IDLE_REFRESH_MS)
-                                    if (isActive && folder.isOpen) {
-                                        Log.d(TAG, "Proactive IDLE refresh for ${account.email} (24 min)")
-                                        isProactiveRefresh.store(true)
-                                        try { folder.close(false) } catch (_: Throwable) {}
-                                    }
-                                }
-                            } else null
-
-                            try {
-                                if (supportsIdle) {
-                                    folder.idle(true)
-                                } else {
-                                    delay(FALLBACK_NO_IDLE_POLL_MS)
-                                    sawNewMail.store(true)
-                                    sawFlagsChanged.store(true)
-                                }
-                            } catch (e: Exception) {
-                                if (isProactiveRefresh.exchange(false)) {
-                                    Log.d(TAG, "IDLE 24-min refresh — reopening INBOX on same store for ${account.email}")
-                                    folderNeedsReopen = true
-                                } else {
-                                    throw e
-                                }
-                            } finally {
-                                watchdog?.cancel()
-                            }
-
-                            if (folderNeedsReopen) break
-
-                            if (sawNewMail.exchange(false)) {
-                                try {
-                                    if (folder.isOpen) quickInboxFetch(folder, account.email)
-                                } catch (t: Throwable) {
-                                    Log.w(TAG, "Inline INBOX fetch failed for ${account.email}: ${t.message}")
-                                }
-                            }
-
-                            if (removedUids.isNotEmpty()) {
-                                val toDelete = synchronized(removedUids) { removedUids.toList().also { removedUids.clear() } }
-                                try { handleExpunged(account.email, toDelete) } catch (t: Throwable) {
-                                    Log.w(TAG, "Expunge handling failed: ${t.message}")
-                                }
-                            }
-
-                            if (sawFlagsChanged.exchange(false) || flaggedUids.isNotEmpty()) {
-                                val flaggedSnapshot = synchronized(flaggedUids) { flaggedUids.toList().also { flaggedUids.clear() } }
-                                try {
-                                    if (folder.isOpen) handleFlagChanges(folder, account.email, flaggedSnapshot)
-                                } catch (t: Throwable) {
-                                    Log.w(TAG, "Flag handling failed: ${t.message}")
-                                }
-                            }
-                        }
-                    } finally {
-                        try { folder.close(false) } catch (_: Throwable) {}
-                    }
-
-                    if (folderNeedsReopen || isProactiveRefresh.load()) {
-                        isProactiveRefresh.store(false)
-                        delay(200L)
-                        continue
-                    }
-                    if (!scope.coroutineContext.isActive) break
-                    Log.d(TAG, "INBOX session ended for ${account.email} — reopening on same store")
-                    delay(500L)
+                        val dao = EmailDatabase.getInstance(applicationContext).emailDao()
+                        val known = dao.getKnownUids(account.email, "INBOX").toSet()
+                        val deleted = dao.getDeletedUids(account.email, "INBOX").toSet()
+                        val (msgs, atts) = ImapClient.fetchMessagesInConnection(rawConn, account.email, "INBOX", 50, 0, false, known + deleted, applicationContext)
+                        if (msgs.isNotEmpty()) { dao.insertMessages(msgs); if (atts.isNotEmpty()) dao.insertAttachments(atts); postNewMailNotification(account.email, msgs) }
+                        syncReadStatusPullRaw(applicationContext, account, known)
+                    } catch (t: Throwable) { Log.w(TAG, "Raw poll fail: ${t.message}") }
                 }
+                return@withContext
             }
-        }
-    }
 
-    private suspend fun handleExpunged(accountEmail: String, uids: List<Long>) {
-        if (uids.isEmpty()) return
-        val dao = EmailDatabase.getInstance(applicationContext).emailDao()
-        for (uid in uids) {
-            try { dao.deleteMessageRow(accountEmail, "INBOX", uid) } catch (_: Throwable) {}
-        }
-        Log.d(TAG, "Expunge cleaned $uids for $accountEmail")
-        try { com.vayunmathur.email.widget.EmailWidget().updateAll(applicationContext) } catch (_: Throwable) {}
-    }
-
-    private suspend fun handleFlagChanges(folder: IMAPFolder, accountEmail: String, flaggedUids: List<Long>) {
-        val dao = EmailDatabase.getInstance(applicationContext).emailDao()
-        if (flaggedUids.isNotEmpty()) {
-            val uidFolder = folder as? UIDFolder
-            for (uid in flaggedUids) {
+            val dao = EmailDatabase.getInstance(applicationContext).emailDao()
+            while (scope.coroutineContext.isActive) {
+                val sel = rawConn.select("INBOX")
+                Log.d(TAG, "SELECT INBOX ${account.email} exists=${sel.exists}")
                 try {
-                    val msg = uidFolder?.getMessageByUID(uid) ?: continue
-                    val isRead = msg.isSet(Flags.Flag.SEEN)
-                    dao.updateReadStatus(accountEmail, "INBOX", uid, isRead)
-                } catch (_: Throwable) {}
-            }
-        } else {
-            try {
-                val known = dao.getKnownUids(accountEmail, "INBOX").sortedDescending().take(50)
-                val uidFolder = folder as? UIDFolder ?: return
-                for (uid in known) {
-                    try {
-                        val msg = uidFolder.getMessageByUID(uid) ?: continue
-                        dao.updateReadStatus(accountEmail, "INBOX", uid, msg.isSet(Flags.Flag.SEEN))
-                    } catch (_: Throwable) {}
+                    val folders = rawConn.list("", "*").map { entry ->
+                        val fullName = entry.mailbox
+                        val delim = entry.delimiter ?: "/"
+                        val nm = if (fullName.contains(delim)) fullName.substringAfterLast(delim) else fullName.substringAfterLast('/')
+                        val parent = fullName.lastIndexOf(delim).let { if (it > 0) fullName.substring(0, it) else null }
+                        val holds = !entry.flags.any { f -> f.equals("\\Noselect", ignoreCase = true) }
+                        EmailFolder(account.email, fullName, nm.ifBlank { fullName }, parent, holds, delim)
+                    }
+                    dao.insertFolders(folders)
+                } catch (t: Throwable) { Log.w(TAG, "folder discovery fail: ${t.message}") }
+
+                var sawNewMail = false
+                var sawExpunge = false
+                var sawFlags = false
+                val expungedSeqs = mutableListOf<Int>()
+                var needReopen = false
+                var isProactiveRefresh = false
+
+                while (scope.coroutineContext.isActive && !needReopen) {
+                    val idleTag = rawConn.sendIdle()
+                    Log.d(TAG, "IDLE start ${account.email} tag=$idleTag")
+
+                    val watchdog = scope.launch {
+                        delay(IDLE_REFRESH_MS)
+                        if (isActive) { Log.d(TAG, "proactive refresh ${account.email}"); isProactiveRefresh = true; try { rawConn.sendIdleDone() } catch (_: Throwable) {} }
+                    }
+
+                    var idleEnded = false
+                    var idleLoopActive = true
+                    while (idleLoopActive && scope.coroutineContext.isActive) {
+                        val line = withContext(Dispatchers.IO) { try { rawConn.readIdleLine() } catch (_: Exception) { null } } ?: break
+                        Log.d(TAG, "IDLE line ${account.email}: $line")
+                        if (line.startsWith(idleTag)) { idleEnded = true; idleLoopActive = false; break }
+                        when {
+                            Regex("""^\* (\d+) EXISTS""").containsMatchIn(line) -> sawNewMail = true
+                            Regex("""^\* (\d+) EXPUNGE""").containsMatchIn(line) -> {
+                                val seq = Regex("""^\* (\d+) EXPUNGE""").find(line)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+                                if (seq != -1) expungedSeqs.add(seq); sawExpunge = true
+                            }
+                            line.contains("FETCH") && line.contains("FLAGS") -> sawFlags = true
+                        }
+                        if (sawNewMail || sawExpunge || sawFlags) { try { rawConn.sendIdleDone() } catch (_: Throwable) {} }
+                    }
+
+                    if (!idleEnded) { try { rawConn.sendIdleDone() } catch (_: Throwable) {}; try { rawConn.readIdleResponseForTag(idleTag) } catch (_: Throwable) {} }
+
+                    watchdog.cancel()
+
+                    if (isProactiveRefresh) { Log.d(TAG, "24-min refresh ${account.email}"); isProactiveRefresh = false; needReopen = true; delay(200L); break }
+
+                    if (sawNewMail && !needReopen) {
+                        sawNewMail = false
+                        try {
+                            val known = dao.getKnownUids(account.email, "INBOX").toSet()
+                            val deleted = dao.getDeletedUids(account.email, "INBOX").toSet()
+                            val (msgs, atts) = ImapClient.fetchMessagesInConnection(rawConn, account.email, "INBOX", 50, 0, false, known + deleted, applicationContext)
+                            if (msgs.isNotEmpty()) { dao.insertMessages(msgs); if (atts.isNotEmpty()) dao.insertAttachments(atts); postNewMailNotification(account.email, msgs) }
+                        } catch (t: Throwable) { Log.w(TAG, "quick fetch fail: ${t.message}") }
+                    }
+
+                    if (sawExpunge && expungedSeqs.isNotEmpty() && !needReopen) {
+                        sawExpunge = false; expungedSeqs.clear(); try { EmailWidget().updateAll(applicationContext) } catch (_: Throwable) {}
+                    }
+
+                    if (sawFlags && !needReopen) {
+                        sawFlags = false
+                        try { syncReadStatusPullRaw(applicationContext, account, dao.getKnownUids(account.email, "INBOX").toSet()) } catch (t: Throwable) { Log.w(TAG, "flag sync fail: ${t.message}") }
+                    }
+
+                    if (needReopen) break
+                    if (scope.coroutineContext.isActive) delay(500L)
                 }
-            } catch (_: Throwable) {}
-        }
+                if (!scope.coroutineContext.isActive) break
+                if (needReopen) continue
+                delay(500L)
+            }
+        } catch (e: Exception) { try { rawConn.close() } catch (_: Throwable) {}; throw e }
     }
 
-    private suspend fun quickInboxFetch(folder: IMAPFolder, accountEmail: String) {
-        val dao = EmailDatabase.getInstance(applicationContext).emailDao()
-        val known = dao.getKnownUids(accountEmail, "INBOX").toSet()
-        val deleted = dao.getDeletedUids(accountEmail, "INBOX").toSet()
-        val (messages, attachments) = EmailManager().fetchMessagesFromOpenFolder(
-            folder = folder, user = accountEmail, folderName = "INBOX",
-            limit = 50, offset = 0, fetchBodies = false, skipUids = known + deleted,
-        )
-        if (messages.isEmpty()) {
-            Log.d(TAG, "Inline INBOX fetch: nothing new for $accountEmail")
-            return
-        }
-        dao.insertMessages(messages)
-        if (attachments.isNotEmpty()) dao.insertAttachments(attachments)
-        Log.d(TAG, "Inline INBOX fetch: ${messages.size} new for $accountEmail")
-
-        val prefs = applicationContext.getSharedPreferences("email_notif_last_seen", Context.MODE_PRIVATE)
-        val prefKey = "$accountEmail::INBOX"
-        val lastSeen = prefs.getLong(prefKey, -1L)
+    private suspend fun postNewMailNotification(accountEmail: String, messages: List<com.vayunmathur.email.EmailMessage>) {
+        if (messages.isEmpty()) return
+        val ctx = applicationContext ?: return
+        val prefs = ctx.getSharedPreferences("email_notif_last_seen", Context.MODE_PRIVATE)
+        val lastSeen = prefs.getLong("$accountEmail::INBOX", -1L)
         val notifiable = if (lastSeen == -1L) messages else messages.filter { it.id > lastSeen }
-        if (notifiable.isNotEmpty() && !com.vayunmathur.email.util.AppLifecycleTracker.isAppInForeground) {
-            com.vayunmathur.email.util.EmailNotifications.postForNewMessages(applicationContext, accountEmail, notifiable)
+        if (notifiable.isNotEmpty() && !AppLifecycleTracker.isAppInForeground) {
+            EmailNotifications.postForNewMessages(ctx, accountEmail, notifiable)
         }
-        val maxUid = messages.maxOf { it.id }
-        if (maxUid > lastSeen) prefs.edit().putLong(prefKey, maxUid).apply()
+        val maxUid = messages.maxOfOrNull { it.id } ?: lastSeen
+        if (maxUid > lastSeen) prefs.edit().putLong("$accountEmail::INBOX", maxUid).apply()
+        try { EmailWidget().updateAll(ctx) } catch (t: Throwable) { Log.w(TAG, "widget fail ${t.message}") }
+    }
 
-        try { com.vayunmathur.email.widget.EmailWidget().updateAll(applicationContext) } catch (t: Throwable) {
-            Log.w(TAG, "Widget update failed: ${t.message}")
-        }
+    private suspend fun syncReadStatusPullRaw(context: Context, account: EmailAccount, knownUids: Set<Long>) {
+        if (knownUids.isEmpty()) return
+        try {
+            val dao = EmailDatabase.getInstance(context).emailDao()
+            val uidsToCheck = knownUids.sortedDescending().take(50)
+            val auth = account.resolveAuth(context)
+            ImapClient.withConnection(account.imapServer(), account.loginUser(), auth) { conn ->
+                conn.select("INBOX")
+                val results = conn.uidFetchHeaders(uidsToCheck.joinToString(","))
+                for (r in results) {
+                    val isRead = r.flags.any { it.equals("\\Seen", ignoreCase = true) }
+                    try { dao.updateReadStatus(account.email, "INBOX", r.uid, isRead) } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun buildOngoingNotification(): Notification {
         ensureChannel(applicationContext)
-        return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+        return androidx.core.app.NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_mail)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.listening_for_new_mail))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setShowWhen(false)
             .build()
@@ -344,8 +275,8 @@ class ImapIdleService : Service() {
         private const val TAG = "ImapIdle"
         private const val CHANNEL_ID = "imap_idle"
         private const val NOTIFICATION_ID = 9001
-        private const val IDLE_REFRESH_MS = 24L * 60 * 1000
-        private const val FALLBACK_NO_IDLE_POLL_MS = 5L * 60 * 1000
+        const val IDLE_REFRESH_MS = 24L * 60 * 1000
+        const val FALLBACK_NO_IDLE_POLL_MS = 5L * 60 * 1000
 
         private fun ensureChannel(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -358,17 +289,16 @@ class ImapIdleService : Service() {
             )
         }
 
-        fun start(context: Context) {
-            val intent = Intent(context, ImapIdleService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+        fun start(context: Context): Boolean {
+            return try {
+                val intent = Intent(context, ImapIdleService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "start failed: ${e.message}", e); false
             }
         }
 
-        fun stop(context: Context) {
-            context.stopService(Intent(context, ImapIdleService::class.java))
-        }
+        fun stop(context: Context) { context.stopService(Intent(context, ImapIdleService::class.java)) }
     }
 }

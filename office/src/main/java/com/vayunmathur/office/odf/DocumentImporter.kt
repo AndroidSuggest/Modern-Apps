@@ -9,6 +9,7 @@ import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.OdfParagraph
 import com.vayunmathur.library.ui.odf.OdfSpan
 import com.vayunmathur.library.ui.odf.RtfOdfConverter
+import com.vayunmathur.library.ui.odf.numberUnnumberedListItems
 
 /**
  * Routes an opened file to the right importer by extension, with a content sniff fallback:
@@ -18,6 +19,12 @@ import com.vayunmathur.library.ui.odf.RtfOdfConverter
 object DocumentImporter {
 
     fun open(context: Context, uri: Uri, fileName: String): OdfDocument {
+        val doc = import(context, uri, fileName)
+        // Safety net: a numbered item an importer couldn't number would render as "1." forever.
+        return if (doc is OdfDocument.TextDocument) numberUnnumberedListItems(doc) else doc
+    }
+
+    private fun import(context: Context, uri: Uri, fileName: String): OdfDocument {
         return when (fileName.substringAfterLast('.', "").lowercase()) {
             "odt", "ods", "odp", "odg", "fodt", "fods", "fodp", "fodg", "xml" ->
                 OdfParser.parse(context, uri, fileName)

@@ -58,20 +58,28 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
                 .fillMaxWidth()
                 .padding(bottom = bottomPad),
         ) {
-            // The suggestion strip belongs to text entry only; numeric/phone/emoji pages
-            // never compose words, so (like FUTO) they show no strip.
-            // The strip is also hidden for layouts the bundled (English) dictionary can't
-            // serve, rather than leaving a permanently empty band above the keys.
-            val textPage = (state.page == KeyboardPage.LETTERS ||
+            // The strip belongs to text entry only; numeric/phone/emoji pages never compose
+            // words, so (like FUTO) they show no strip. Nor do layouts that have nothing to
+            // put in it: the one dictionary we ship is English.
+            val layout = state.settings.activeLayout
+            val textPage = state.page == KeyboardPage.LETTERS ||
                 state.page == KeyboardPage.SYMBOLS ||
-                state.page == KeyboardPage.MORE_SYMBOLS) &&
-                state.settings.activeLayout.englishDictionary
-            if (state.settings.showSuggestions && textPage) {
-                SuggestionStrip(
+                state.page == KeyboardPage.MORE_SYMBOLS
+            when {
+                // Candidates are not a suggestion the user can decline — on a Chinese layout
+                // they are the only way a character gets typed — so the "show suggestions"
+                // preference does not apply to them.
+                textPage && layout.offersCandidates -> CandidateStrip(
                     height = 44.dp,
-                    suggestions = state.suggestions,
+                    candidates = state.suggestions,
                     onPick = actions::commitSuggestion,
                 )
+                textPage && layout.englishDictionary && state.settings.showSuggestions ->
+                    SuggestionStrip(
+                        height = 44.dp,
+                        suggestions = state.suggestions,
+                        onPick = actions::commitSuggestion,
+                    )
             }
             when (state.page) {
                 KeyboardPage.LETTERS -> LettersPage(state, actions, keyHeight)
@@ -99,6 +107,9 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
  * (QWERTY is 10/9/7, ЙЦУКЕН is 12/11/9), so short rows are centred inside the widest one
  * and the shift/backspace pair takes whatever the bottom row leaves over — which reproduces
  * QWERTY's familiar 0.5 spacers and 1.5-wide shift without hard-coding them.
+ *
+ * A layout may also have four rows (注音, JIS kana). Those take the digit row's place rather
+ * than stacking on top of it, which is what the physical keyboards they come from do.
  */
 @Composable
 private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp) {
@@ -106,23 +117,21 @@ private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp
     val rows = layout.rows
     val shift = state.shift
     val slack = { row: Int -> (layout.width - rows[row].length) / 2f }
-    if (state.settings.numberRow) {
+    if (state.settings.numberRow && rows.size < 4) {
         Row(Modifier.fillMaxWidth()) {
             "1234567890".forEach { SymbolKey(it, keyHeight, actions) }
         }
     }
-    Row(Modifier.fillMaxWidth()) {
-        if (slack(0) > 0f) Spacer(Modifier.weight(slack(0)))
-        rows[0].forEachIndexed { i, c -> LetterKey(layout, 0, i, c, shift, keyHeight, actions) }
-        if (slack(0) > 0f) Spacer(Modifier.weight(slack(0)))
+    for (r in 0 until rows.size - 1) {
+        Row(Modifier.fillMaxWidth()) {
+            if (slack(r) > 0f) Spacer(Modifier.weight(slack(r)))
+            rows[r].forEachIndexed { i, c -> LetterKey(layout, r, i, c, shift, keyHeight, actions) }
+            if (slack(r) > 0f) Spacer(Modifier.weight(slack(r)))
+        }
     }
+    val bottom = rows.size - 1
     Row(Modifier.fillMaxWidth()) {
-        if (slack(1) > 0f) Spacer(Modifier.weight(slack(1)))
-        rows[1].forEachIndexed { i, c -> LetterKey(layout, 1, i, c, shift, keyHeight, actions) }
-        if (slack(1) > 0f) Spacer(Modifier.weight(slack(1)))
-    }
-    Row(Modifier.fillMaxWidth()) {
-        val edge = slack(2).coerceAtLeast(1.25f)
+        val edge = slack(bottom).coerceAtLeast(1.25f)
         // Arabic, Hebrew and Persian have neither case nor a shift layer; the key would do
         // nothing, so the row keeps its alignment with a gap instead.
         if (layout.hasShift) {
@@ -130,18 +139,21 @@ private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp
         } else {
             Spacer(Modifier.weight(edge))
         }
-        rows[2].forEachIndexed { i, c -> LetterKey(layout, 2, i, c, shift, keyHeight, actions) }
+        rows[bottom].forEachIndexed { i, c ->
+            LetterKey(layout, bottom, i, c, shift, keyHeight, actions)
+        }
         RepeatKey(keyHeight, edge, actions::onBackspace) { IconBackspace() }
     }
     // Email/URL fields surface @ or / where the comma usually sits.
     val commaChar = when (state.textVariation) {
         TextVariation.EMAIL -> "@"
         TextVariation.URL -> "/"
-        TextVariation.NORMAL -> ","
+        TextVariation.NORMAL -> layout.comma
     }
     BottomRow(
         state, actions, keyHeight,
-        leftLabel = "?123", leftTarget = KeyboardPage.SYMBOLS, commaChar = commaChar,
+        leftLabel = "?123", leftTarget = KeyboardPage.SYMBOLS,
+        commaChar = commaChar, periodChar = layout.period,
     )
 }
 
@@ -160,12 +172,15 @@ private fun RowScope.LetterKey(
     keyHeight: Dp,
     actions: ImeActions,
 ) {
-    val display = layout.charAt(row, col, shift != ShiftState.OFF)
+    val shifted = shift != ShiftState.OFF
+    val display = layout.charAt(row, col, shifted)
+    val alternates = layout.alternates[c].orEmpty().let { if (shifted) it.uppercase() else it }
     CharKey(
         label = display,
         height = keyHeight,
+        alternates = alternates,
         onClick = { actions.onChar(display) },
-        onLongClick = { actions.onCharLongPress(c) },
+        onAlternate = actions::onChar,
     )
 }
 

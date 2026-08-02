@@ -5,27 +5,40 @@ package com.vayunmathur.keyboard.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -43,6 +56,7 @@ import com.vayunmathur.library.ui.LocalContentColor
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 
 /**
@@ -68,9 +82,14 @@ fun specialKeyColor(): Color = MaterialTheme.colorScheme.surfaceContainer
 fun pressedKeyColor(): Color = MaterialTheme.colorScheme.surfaceBright
 
 /**
- * A letter/symbol key: tap commits, optional long-press commits an alternate. An optional
- * [hint] draws a small secondary label beneath the main one (the ABC/DEF letters on the
- * phone dial-pad, matching FUTO's phone layout).
+ * A letter/symbol key: tap commits [label]; holding it opens the [alternates] — the accented
+ * or related characters that key can also produce — and sliding onto one picks it, the way
+ * every phone keyboard does accents. An optional [hint] draws a small secondary label beneath
+ * the main one (the ABC/DEF letters on the phone dial-pad, matching FUTO's phone layout).
+ *
+ * The whole thing is one gesture: press, hold, slide, release. Nothing has to dismiss the
+ * popup, which matters in an IME — a focusable popup would take focus away from the very
+ * field being typed into, and a non-focusable one has no way to learn about a tap outside it.
  */
 @Composable
 fun RowScope.CharKey(
@@ -78,24 +97,77 @@ fun RowScope.CharKey(
     height: Dp,
     weight: Float = 1f,
     hint: String? = null,
+    alternates: String = "",
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
+    onAlternate: ((String) -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    // -1 while the popup is closed, otherwise the alternate under the finger.
+    var selected by remember { mutableIntStateOf(-1) }
+    var keyLeft by remember { mutableFloatStateOf(0f) }
+    var keyWidth by remember { mutableFloatStateOf(0f) }
+
+    val density = LocalDensity.current
+    val screenWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val itemWidth = with(density) { AlternateWidth.toPx() }
+    // Where the popup's left edge sits relative to the key's: centred on the key, then
+    // nudged back inside the screen. The drag-to-select maths below uses the same number,
+    // so what the finger is over is always what is highlighted.
+    val popupOffset = remember(alternates, keyLeft, keyWidth) {
+        val total = itemWidth * alternates.length
+        val centred = keyLeft + (keyWidth - total) / 2f
+        val clamped = centred.coerceIn(0f, (screenWidth - total).coerceAtLeast(0f))
+        clamped - keyLeft
+    }
+
     Box(
         modifier = Modifier
             .weight(weight)
             .padding(KeyPadding)
             .height(height)
+            .onGloballyPositioned {
+                keyLeft = it.positionInWindow().x
+                keyWidth = it.size.width.toFloat()
+            }
             .clip(KeyShape)
             .background(if (pressed) pressedKeyColor() else charKeyColor())
-            .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
+            // Written out rather than assembled from detectTapGestures because tap and
+            // long-press are one continuous gesture here: the long press opens the popup
+            // and the *same* touch goes on to choose from it.
+            .pointerInput(alternates, onClick, onAlternate) {
+                while (true) {
+                    val down = awaitPointerEventScope { awaitFirstDown(requireUnconsumed = false) }
+                    val press = PressInteraction.Press(down.position)
+                    interaction.emit(press)
+                    val lifted = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        awaitPointerEventScope { waitForUpOrCancellation() }
+                    }
+                    if (lifted != null) {
+                        interaction.emit(PressInteraction.Release(press))
+                        if (lifted.position.isInside(size)) onClick()
+                        continue
+                    }
+                    if (alternates.isEmpty() || onAlternate == null) {
+                        awaitPointerEventScope { waitForUpOrCancellation() }
+                        interaction.emit(PressInteraction.Release(press))
+                        continue
+                    }
+                    val picked = awaitPointerEventScope {
+                        selected = indexAt(down.position.x, popupOffset, itemWidth, alternates.length)
+                        var change = down
+                        while (change.pressed) {
+                            change = awaitPointerEvent().changes
+                                .firstOrNull { it.id == down.id } ?: break
+                            selected = indexAt(change.position.x, popupOffset, itemWidth, alternates.length)
+                        }
+                        selected
+                    }
+                    selected = -1
+                    interaction.emit(PressInteraction.Release(press))
+                    onAlternate(alternates[picked].toString())
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         if (hint != null) {
@@ -106,11 +178,87 @@ fun RowScope.CharKey(
         } else {
             Text(text = label, color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp)
         }
-        // FUTO/AOSP-style preview: while held, balloon the character above the key so
-        // the finger doesn't hide it. clippingEnabled=false lets it float above the
-        // top row (outside the keyboard bounds).
-        if (pressed) KeyPreview(label)
+        // A small dot marks the keys that have something under a long press, so the
+        // accents are discoverable instead of folklore.
+        if (alternates.isNotEmpty()) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 5.dp)
+                    .size(3.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant),
+            )
+        }
+        when {
+            selected >= 0 -> AlternatesPopup(alternates, selected, popupOffset.toInt())
+            // FUTO/AOSP-style preview: while held, balloon the character above the key so
+            // the finger doesn't hide it. clippingEnabled=false lets it float above the
+            // top row (outside the keyboard bounds).
+            pressed -> KeyPreview(label)
+        }
     }
+}
+
+/** True while the finger is still over the key it went down on. */
+private fun Offset.isInside(size: IntSize): Boolean =
+    x >= 0f && y >= 0f && x <= size.width && y <= size.height
+
+private fun indexAt(x: Float, popupOffset: Float, itemWidth: Float, count: Int): Int =
+    (((x - popupOffset) / itemWidth).toInt()).coerceIn(0, count - 1)
+
+/** The row of alternates above a held key, with the one under the finger highlighted. */
+@Composable
+private fun AlternatesPopup(alternates: String, selected: Int, offsetX: Int) {
+    Popup(
+        popupPositionProvider = remember(offsetX) { AlternatesPositionProvider(offsetX) },
+        properties = PopupProperties(focusable = false, clippingEnabled = false),
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(bottom = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceBright),
+        ) {
+            alternates.forEachIndexed { index, c ->
+                Box(
+                    modifier = Modifier
+                        .width(AlternateWidth)
+                        .height(52.dp)
+                        .background(
+                            if (index == selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = c.toString(),
+                        color = if (index == selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        fontSize = 22.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val AlternateWidth = 44.dp
+
+/** Places the alternates row directly above the key, shifted by the clamped [offsetX]. */
+private class AlternatesPositionProvider(private val offsetX: Int) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset = IntOffset(anchorBounds.left + offsetX, anchorBounds.top - popupContentSize.height)
 }
 
 /** The pop-up character preview shown above a held key. */

@@ -168,6 +168,9 @@ object HtmlOdfConverter {
         private var curStyle: ParagraphStyle = ParagraphStyle.BODY
         private var listType: ListType? = null
         private var listLevel = 0
+        /** Running item number per open list level, so <ol> items count 1, 2, 3 … (bugfix) */
+        private val listCounters = ArrayList<Int>()
+        private var curListIndex = 0
         private var align: androidx.compose.ui.text.style.TextAlign? = null
         private var pendingHref: String? = null
 
@@ -212,9 +215,17 @@ object HtmlOdfConverter {
                 "h1", "h2", "h3", "h4", "h5", "h6" -> if (closing) flushParagraph() else { flushParagraph(); curStyle = heading(name) }
                 "blockquote" -> if (closing) flushParagraph() else flushParagraph()
                 "hr" -> { flushParagraph(); out.add(OdfContentBlock.Paragraph(OdfParagraph(listOf(OdfSpan("")), borderColor = 0xFF888888))) }
-                "ul" -> if (closing) { listLevel--; if (listLevel <= 0) listType = null } else { listLevel++; listType = ListType.BULLET }
-                "ol" -> if (closing) { listLevel--; if (listLevel <= 0) listType = null } else { listLevel++; listType = ListType.NUMBERED }
-                "li" -> if (closing) flushListItem() else { flushParagraph(); curStyle = ParagraphStyle.LIST_ITEM }
+                "ul" -> if (closing) closeList() else { listLevel++; listType = ListType.BULLET; listCounters.add(0) }
+                "ol" -> if (closing) closeList() else {
+                    listLevel++; listType = ListType.NUMBERED
+                    listCounters.add((attrs["start"]?.toIntOrNull() ?: 1) - 1)
+                }
+                "li" -> if (closing) flushListItem() else {
+                    flushParagraph()
+                    curStyle = ParagraphStyle.LIST_ITEM
+                    curListIndex = attrs["value"]?.toIntOrNull() ?: ((listCounters.lastOrNull() ?: 0) + 1)
+                    if (listCounters.isNotEmpty()) listCounters[listCounters.size - 1] = curListIndex
+                }
                 "img" -> emitImage(attrs)
                 "table" -> parseTable()
                 "style", "script", "head" -> skipUntilClose(name)
@@ -227,6 +238,17 @@ object HtmlOdfConverter {
         }
         private fun popStyle() { if (styleStack.size > 1) styleStack.removeLast() }
 
+        private fun closeList() {
+            listLevel--
+            if (listCounters.isNotEmpty()) listCounters.removeAt(listCounters.size - 1)
+            if (listLevel <= 0) {
+                listType = null
+                // Text after the list is body text, not one more (unnumbered) item. (bugfix)
+                if (curSpans.isEmpty() && curStyle == ParagraphStyle.LIST_ITEM) curStyle = ParagraphStyle.BODY
+                curListIndex = 0
+            }
+        }
+
         private fun flushParagraph() {
             if (curSpans.isEmpty()) { align = null; if (curStyle != ParagraphStyle.LIST_ITEM) curStyle = ParagraphStyle.BODY; return }
             out.add(OdfContentBlock.Paragraph(OdfParagraph(
@@ -234,7 +256,8 @@ object HtmlOdfConverter {
                 style = curStyle,
                 alignment = align,
                 listType = listType ?: ListType.BULLET,
-                listLevel = if (curStyle == ParagraphStyle.LIST_ITEM) listLevel.coerceAtLeast(1) else 0
+                listLevel = if (curStyle == ParagraphStyle.LIST_ITEM) listLevel.coerceAtLeast(1) else 0,
+                listItemIndex = if (curStyle == ParagraphStyle.LIST_ITEM) curListIndex.coerceAtLeast(1) else 0
             )))
             curSpans = ArrayList()
             curStyle = if (listType != null) ParagraphStyle.LIST_ITEM else ParagraphStyle.BODY

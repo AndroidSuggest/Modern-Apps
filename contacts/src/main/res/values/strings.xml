@@ -200,4 +200,14 @@
     <string name="crop_photo">Crop Photo</string>
     <!-- Settings: row label for importing contacts from VCF files -->
     <string name="import_contacts_from_vcf_files">Import contacts from .vcf files</string>
+
+    <!-- Custom label support -->
+    <!-- Generic \"Custom\" type label shown in dropdown -->
+    <string name="custom">Custom</string>
+    <!-- Label for custom label text field -->
+    <string name="custom_label">Custom label</string>
+    <!-- Placeholder / description for entering custom label -->
+    <string name="enter_custom_label">Enter custom label</string>
+    <!-- Edit action for custom label (unused but reserved) -->
+    <string name="edit_custom_label">Edit custom label</string>
 </resources>

@@ -45,8 +45,7 @@ object Layouts {
 
     /**
      * Long-press alternates shared by the Latin layouts: vowels (and ç/ñ) expose common
-     * accents. No digits here — there's a dedicated number row. Long-pressing commits the
-     * first alternate (a simple, popup-free version of accent entry); an empty string = no
+     * accents. No digits here — there's a dedicated number row; an empty string = no
      * alternate. Individual layouts override the keys their language cares about, so the
      * Polish `a` gives `ą` rather than `à` (see [KeyboardLayouts]).
      */

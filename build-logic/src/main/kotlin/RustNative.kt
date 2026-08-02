@@ -83,9 +83,8 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
             inputs.file(rootProject.file("Cargo.toml"))
             inputs.file(rootProject.file("Cargo.lock"))
             inputs.file(rootProject.file("rust-toolchain.toml"))
-            // Only rust third_party crates – avoid pulling third_party:nanojson java outputs (was implicit dep failure)
-            inputs.dir(rootProject.file("third_party/jni-android/src"))
-            inputs.file(rootProject.file("third_party/jni-android/Cargo.toml"))
+            // Only rust third_party crates – avoid pulling third_party:nanojson java outputs (was implicit dep failure).
+            // jni is a crates.io dependency now, so Cargo.lock above covers it.
             inputs.dir(rootProject.file("third_party/om-file-format-sys/src"))
             inputs.file(rootProject.file("third_party/om-file-format-sys/Cargo.toml"))
             inputs.file(rootProject.file("third_party/om-file-format-sys/build.rs"))

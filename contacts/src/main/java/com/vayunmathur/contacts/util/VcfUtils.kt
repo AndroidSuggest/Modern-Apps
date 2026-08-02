@@ -33,7 +33,7 @@ object VcfUtils {
                     val fnValue = fn.ifBlank { (details.names.firstOrNull()?.value ?: "") }
                     writeFolded(writer, "FN:${escapeV(fnValue)}")
 
-                    // Phones
+                    // Phones - preserve custom label as X- token for roundtrip
                     for (phone in details.phoneNumbers) {
                         val typeToken = when (phone.type) {
                             ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE -> "CELL"
@@ -41,6 +41,10 @@ object VcfUtils {
                             ContactsContract.CommonDataKinds.Phone.TYPE_WORK -> "WORK"
                             ContactsContract.CommonDataKinds.Phone.TYPE_FAX_WORK,
                             ContactsContract.CommonDataKinds.Phone.TYPE_FAX_HOME -> "FAX"
+                            ContactsContract.CommonDataKinds.Phone.TYPE_CUSTOM -> {
+                                val sanitized = phone.label.ifBlank { "CUSTOM" }.replace(",", "").replace(";", "").replace(":", "")
+                                "X-$sanitized"
+                            }
                             else -> "VOICE"
                         }
                         writeFolded(writer, "TEL;TYPE=$typeToken:${escapeV(phone.number)}")
@@ -51,6 +55,10 @@ object VcfUtils {
                         val typeToken = when (email.type) {
                             ContactsContract.CommonDataKinds.Email.TYPE_HOME -> "HOME"
                             ContactsContract.CommonDataKinds.Email.TYPE_WORK -> "WORK"
+                            ContactsContract.CommonDataKinds.Email.TYPE_CUSTOM -> {
+                                val sanitized = email.label.ifBlank { "CUSTOM" }.replace(",", "").replace(";", "").replace(":", "")
+                                "X-$sanitized"
+                            }
                             else -> "INTERNET"
                         }
                         writeFolded(writer, "EMAIL;TYPE=$typeToken:${escapeV(email.address)}")
@@ -59,7 +67,20 @@ object VcfUtils {
                     // Addresses
                     for (addr in details.addresses) {
                         val formatted = addr.formattedAddress
-                        writeFolded(writer, "ADR;TYPE=HOME:;;${escapeV(formatted)};;;;")
+                        val typeToken = if (addr.type == ContactsContract.CommonDataKinds.StructuredPostal.TYPE_CUSTOM) {
+                            val sanitized = addr.label.ifBlank { "CUSTOM" }.replace(",", "").replace(";", "").replace(":", "")
+                            "X-$sanitized"
+                        } else "HOME"
+                        writeFolded(writer, "ADR;TYPE=$typeToken:;;${escapeV(formatted)};;;;")
+                    }
+
+                    // Other dates (non-birthday) with custom label support
+                    for (event in details.dates.filter { it.type != ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY }) {
+                        val typeToken = if (event.type == ContactsContract.CommonDataKinds.Event.TYPE_CUSTOM) {
+                            val sanitized = event.label.ifBlank { "CUSTOM" }.replace(",", "").replace(";", "").replace(":", "")
+                            "X-$sanitized"
+                        } else "OTHER"
+                        writeFolded(writer, "X-EVENT;TYPE=$typeToken:${escapeV(event.startDate.toString())}")
                     }
 
                     // Organization
@@ -186,12 +207,12 @@ object VcfUtils {
                     }
                 }
                 "TEL" -> {
-                    val ttype = detectPhoneType(params)
-                    currentContact.phones.add(PhoneNumber(0, value, ttype))
+                    val (ttype, tlabel) = detectPhoneTypeWithLabel(params)
+                    currentContact.phones.add(PhoneNumber(0, value, ttype, tlabel))
                 }
                 "EMAIL" -> {
-                    val etype = detectEmailType(params)
-                    currentContact.emails.add(Email(0, value, etype))
+                    val (etype, elabel) = detectEmailTypeWithLabel(params)
+                    currentContact.emails.add(Email(0, value, etype, elabel))
                 }
                 "ADR" -> {
                     val comps = value.split(';')
@@ -201,8 +222,21 @@ object VcfUtils {
                     val postal = comps.getOrNull(5) ?: ""
                     val country = comps.getOrNull(6) ?: ""
                     val formatted = listOfNotNull(street.ifEmpty { null }, city.ifEmpty { null }, region.ifEmpty { null }, postal.ifEmpty { null }, country.ifEmpty { null }).joinToString(", ")
-                    val atype = if (params["TYPE"]?.any { it.equals("HOME", ignoreCase = true) } == true) ContactsContract.CommonDataKinds.StructuredPostal.TYPE_HOME else ContactsContract.CommonDataKinds.StructuredPostal.TYPE_WORK
-                    currentContact.addresses.add(Address(0, formatted, atype))
+                    val (atype, alabel) = detectAddressTypeWithLabel(params)
+                    currentContact.addresses.add(Address(0, formatted, atype, alabel))
+                }
+                "X-EVENT" -> {
+                    var dv = value
+                    if (dv.matches(Regex("^\\d{8}"))) {
+                        dv = dv.take(4) + "-" + dv.substring(4,6) + "-" + dv.substring(6,8)
+                    } else if (dv.startsWith("--")) {
+                        dv = "1604" + dv.substring(2)
+                    }
+                    try {
+                        val date = LocalDate.parse(dv)
+                        val (dtype, dlabel) = detectEventTypeWithLabel(params)
+                        currentContact.dates.add(Event(0, date, dtype, dlabel))
+                    } catch (_: Exception) { }
                 }
                 "ORG" -> {
                     currentContact.orgs.clear()
@@ -318,23 +352,69 @@ object VcfUtils {
         return out.toString(charset(charsetName))
     }
 
-    private fun detectPhoneType(params: Map<String, List<String>>): Int {
-        val tokens = params.values.flatten().joinToString(";")
-        return when {
-            tokens.contains("CELL", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE
-            tokens.contains("HOME", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_HOME
-            tokens.contains("WORK", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_WORK
-            tokens.contains("FAX", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_FAX_WORK
-            else -> ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE
+    private data class TypedLabel(val type: Int, val label: String)
+
+    private fun extractCustomLabel(tokens: List<String>): String? {
+        for (t in tokens) {
+            if (t.startsWith("X-", ignoreCase = true) && t.length > 2) {
+                return t.substring(2)
+            }
         }
+        return null
     }
 
-    private fun detectEmailType(params: Map<String, List<String>>): Int {
-        val tokens = params.values.flatten().joinToString(";")
-        return when {
-            tokens.contains("WORK", ignoreCase = true) -> ContactsContract.CommonDataKinds.Email.TYPE_WORK
-            tokens.contains("HOME", ignoreCase = true) -> ContactsContract.CommonDataKinds.Email.TYPE_HOME
+    private fun detectPhoneTypeWithLabel(params: Map<String, List<String>>): TypedLabel {
+        val allTokens = params.values.flatten()
+        val customLabel = extractCustomLabel(allTokens)
+        val tokenStr = allTokens.joinToString(";")
+        val type = when {
+            customLabel != null -> ContactsContract.CommonDataKinds.Phone.TYPE_CUSTOM
+            tokenStr.contains("CELL", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE
+            tokenStr.contains("HOME", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_HOME
+            tokenStr.contains("WORK", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_WORK
+            tokenStr.contains("FAX", ignoreCase = true) -> ContactsContract.CommonDataKinds.Phone.TYPE_FAX_WORK
+            else -> ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE
+        }
+        return TypedLabel(type, customLabel ?: "")
+    }
+
+    private fun detectPhoneType(params: Map<String, List<String>>): Int = detectPhoneTypeWithLabel(params).type
+
+    private fun detectEmailTypeWithLabel(params: Map<String, List<String>>): TypedLabel {
+        val allTokens = params.values.flatten()
+        val customLabel = extractCustomLabel(allTokens)
+        val tokenStr = allTokens.joinToString(";")
+        val type = when {
+            customLabel != null -> ContactsContract.CommonDataKinds.Email.TYPE_CUSTOM
+            tokenStr.contains("WORK", ignoreCase = true) -> ContactsContract.CommonDataKinds.Email.TYPE_WORK
+            tokenStr.contains("HOME", ignoreCase = true) -> ContactsContract.CommonDataKinds.Email.TYPE_HOME
             else -> ContactsContract.CommonDataKinds.Email.TYPE_OTHER
+        }
+        return TypedLabel(type, customLabel ?: "")
+    }
+
+    private fun detectEmailType(params: Map<String, List<String>>): Int = detectEmailTypeWithLabel(params).type
+
+    private fun detectAddressTypeWithLabel(params: Map<String, List<String>>): TypedLabel {
+        val allTokens = params.values.flatten()
+        val customLabel = extractCustomLabel(allTokens)
+        val tokenStr = allTokens.joinToString(";")
+        val type = when {
+            customLabel != null -> ContactsContract.CommonDataKinds.StructuredPostal.TYPE_CUSTOM
+            tokenStr.contains("HOME", ignoreCase = true) -> ContactsContract.CommonDataKinds.StructuredPostal.TYPE_HOME
+            tokenStr.contains("WORK", ignoreCase = true) -> ContactsContract.CommonDataKinds.StructuredPostal.TYPE_WORK
+            else -> ContactsContract.CommonDataKinds.StructuredPostal.TYPE_HOME
+        }
+        return TypedLabel(type, customLabel ?: "")
+    }
+
+    private fun detectEventTypeWithLabel(params: Map<String, List<String>>): TypedLabel {
+        val allTokens = params.values.flatten()
+        val customLabel = extractCustomLabel(allTokens)
+        return if (customLabel != null) {
+            TypedLabel(ContactsContract.CommonDataKinds.Event.TYPE_CUSTOM, customLabel)
+        } else {
+            TypedLabel(ContactsContract.CommonDataKinds.Event.TYPE_OTHER, "")
         }
     }
 }
