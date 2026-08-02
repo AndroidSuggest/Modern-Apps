@@ -88,17 +88,37 @@ done
 cp "$SRC/config.json" "$TMP/"
 
 # Phoneme dictionary. Without a word list, fetch CMUdict and strip it to bare words.
+# NOTE: The old shell pipeline (grep -v + awk + sed + LC_ALL=C grep) broke on macOS
+# where sed/grep fail with "illegal byte sequence" on UTF-8 CMUdict and produced only
+# 33k words (missing HELLO/WORLD), causing the engine to fall back to spelling
+# letter-by-letter. Use Python for robust parsing.
 if [ -z "$WORDS" ]; then
   echo "Fetching CMUdict for the word list..."
   curl -fL https://raw.githubusercontent.com/Alexir/CMUdict/master/cmudict-0.7b \
     -o "$TMP/cmudict.txt"
-  # Drop ;;; comments, take column 1, drop (2)/(3) pronunciation variants, keep
-  # alphabetic words only (punctuation entries like !EXCLAMATION-POINT are noise here).
-  LC_ALL=C grep -v '^;;;' "$TMP/cmudict.txt" \
-    | awk '{print $1}' \
-    | sed 's/([0-9]*)$//' \
-    | LC_ALL=C grep -E "^[A-Za-z'-]+$" \
-    | sort -u > "$TMP/words.txt"
+  python3 <<PY
+import re
+from pathlib import Path
+pattern = re.compile(r"^[A-Za-z'-]+$")
+seen=set()
+words=[]
+src=Path("$TMP/cmudict.txt")
+for line in src.read_text(encoding='utf-8', errors='ignore').splitlines():
+    if line.startswith(';;;'): continue
+    line=line.strip()
+    if not line: continue
+    w=line.split()[0] if line.split() else ''
+    w=re.sub(r'\(\d+\)$','',w)
+    if not w: continue
+    if any(c.isspace() for c in w): continue
+    if not pattern.match(w): continue
+    low=w.lower()
+    if low in seen: continue
+    seen.add(low)
+    words.append(w)
+Path("$TMP/words.txt").write_text("\n".join(words), encoding='utf-8')
+print(f"CMUdict: {len(words)} words")
+PY
   WORDS="$TMP/words.txt"
 fi
 echo "Word list: $WORDS ($(wc -l < "$WORDS" | tr -d ' ') lines)"

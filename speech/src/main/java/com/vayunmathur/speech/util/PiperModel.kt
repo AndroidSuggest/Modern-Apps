@@ -28,7 +28,11 @@ import java.util.zip.ZipInputStream
  *
  * Mirror layout (zip the voice dir's *contents* at the zip root;
  * `scripts/speech/fetch_piper_model.sh` stages it):
- *   https://data.vayunmathur.com/models/piper/voice.zip
+ *   https://data.vayunmathur.com/models/piper/voice2.zip
+ *
+ * voice2.zip is the ncnn VITS bundle (amy medium, 22050 Hz). voice.zip was the old
+ * sherpa-onnx layout and was removed to bust Cloudflare cache; voice2 is used to
+ * avoid the 404 / stale edge-cache after deletion.
  */
 object PiperModel {
     const val DIR = "piper"
@@ -42,15 +46,25 @@ object PiperModel {
     private val REQUIRED_NETS = listOf("_enc_p", "_dp", "_flow", "_dec")
 
     private const val BASE = "https://data.vayunmathur.com/models/piper/"
+
+    /**
+     * The downloadable archive name. Uses voice2.zip to bust Cloudflare cache — voice.zip
+     * served stale sherpa-onnx data, deleting it caused 404s on edge, so voice2.zip is the
+     * canonical ncnn VITS voice now. The on-disk archive path is still piper/voice.zip for
+     * backward compat, but the URL points to voice2.zip on the mirror.
+     */
+    const val REMOTE_ARCHIVE = "voice2.zip"
+
+    /** On-disk archive path (under getExternalFilesDir). Kept as voice.zip for compat. */
     private const val ARCHIVE = "$DIR/voice.zip"
 
     /** The single downloadable archive (extracted app-side into [voiceDir]), SHA-256 pinned. */
     val FILES: List<ModelDownloadItem> = listOf(
         ModelDownloadItem(
-            "${BASE}voice.zip",
+            "${BASE}${REMOTE_ARCHIVE}",
             ARCHIVE,
             "Piper voice (TTS)",
-            "ca20be58bda0514d57cb8ce6c0cf84b40aae8427a6f48739472f99e9bcdd8fa6",
+            "49a18080c2e97b066854d2a5360443275ef3041c7524fcc023b7efdcb063952c",
         ),
     )
 
@@ -86,6 +100,12 @@ object PiperModel {
     fun isExtracted(context: Context): Boolean {
         val dir = voiceDir(context)
         val prefix = voicePrefix(context)
+        val legacyOnnx = dir.listFiles()?.any { it.name.endsWith(".onnx") } == true
+        // If legacy sherpa .onnx remains, force re-download (old layout → new ncnn).
+        if (legacyOnnx) {
+            Log.d(TAG, "legacy .onnx detected, forcing invalidation")
+            return false
+        }
         val result = dir.isDirectory &&
             prefix != null &&
             REQUIRED_NETS.all { net ->
@@ -96,7 +116,6 @@ object PiperModel {
             File(dir, CONFIG).exists()
         Log.d(TAG, "isExtracted dir=$dir exists=${dir.exists()} isDir=${dir.isDirectory} prefix=$prefix root=${rootDir(context)} result=$result")
         if (!result) {
-            // Also probe the known external absolute path as fallback diagnostic
             try {
                 val ext = context.getExternalFilesDir(null)
                 Log.d(TAG, "extDir=$ext dictExists=${File(dir, DICT).exists()} configExists=${File(dir, CONFIG).exists()} list=${dir.list()?.toList()}")
@@ -108,7 +127,21 @@ object PiperModel {
     }
 
     /** True if TTS can run now (extracted). Extraction happens immediately after download. */
-    fun isReady(context: Context): Boolean = isExtracted(context)
+    fun isReady(context: Context): Boolean {
+        // Migration: old voice.zip was sherpa-onnx (.onnx + tokens.txt + espeak-ng-data/).
+        // If that remains on disk, delete it so downloadModels fetches voice2.zip.
+        val dir = voiceDir(context)
+        if (dir.isDirectory) {
+            val legacy = dir.listFiles()?.any { it.name.endsWith(".onnx") } == true ||
+                File(dir, "tokens.txt").exists() ||
+                File(dir, "espeak-ng-data").isDirectory
+            if (legacy) {
+                Log.d(TAG, "deleting legacy sherpa voice at $dir for migration to ncnn")
+                dir.deleteRecursively()
+            }
+        }
+        return isExtracted(context)
+    }
 
     /** Download the voice archive if missing; suspends until complete. */
     suspend fun download(context: Context, ds: DataStoreUtils) = downloadModels(context, ds, FILES)
@@ -125,10 +158,14 @@ object PiperModel {
     fun installIfNeeded(context: Context): Boolean {
         if (isExtracted(context)) return true
         val zip = archive(context)
-        if (!zip.exists()) return false
+        if (!zip.exists()) {
+            // Also check new archive name on disk (in case download used new path).
+            val zip2 = File(rootDir(context), "$DIR/$REMOTE_ARCHIVE")
+            if (!zip2.exists()) return false
+            // Rename to expected on-disk name for rest of flow.
+            zip2.renameTo(zip)
+        }
         val dir = voiceDir(context)
-        // Extract to a temp dir then swap in, so a crash mid-unzip can't leave a half-written
-        // voice that looks installed.
         val tmp = File(context.getExternalFilesDir(null), "$DIR/voice.tmp")
         tmp.deleteRecursively()
         return try {
@@ -136,11 +173,12 @@ object PiperModel {
             dir.deleteRecursively()
             if (!tmp.renameTo(dir)) throw IllegalStateException("rename $tmp -> $dir failed")
             zip.delete()
+            // Clean up possible leftover voice2 zip at new name.
+            File(rootDir(context), "$DIR/$REMOTE_ARCHIVE").takeIf { it.exists() }?.delete()
             isExtracted(context)
         } catch (t: Throwable) {
             Log.e(TAG, "extracting Piper voice failed", t)
             tmp.deleteRecursively()
-            // Drop the (possibly corrupt) archive so it re-downloads next time.
             zip.delete()
             false
         }
