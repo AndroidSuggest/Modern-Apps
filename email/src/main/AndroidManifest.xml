@@ -112,7 +112,9 @@
 
         <!-- Microsoft OAuth redirect handler. Azure app registered as Mobile & Desktop
              with redirect com.vayunmathur.email://oauth per RFC8252 compliant native pattern.
-             Thunderbird Desktop uses useExternalBrowser=true + custom scheme same as this. -->
+             Thunderbird Desktop uses useExternalBrowser=true + custom scheme same as this.
+             Single filter only — second filter with host=\"\" was invalid on Android 12+ (AOSP disallows empty host)
+             and prevented intent resolution for com.vayunmathur.email://oauth. -->
         <activity
             android:name=".ui.OAuthActivity"
             android:exported="true"
@@ -123,13 +125,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.vayunmathur.email" android:host="oauth" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Also accept explicit path /oauth for some OEM parsers -->
-                <data android:scheme="com.vayunmathur.email" android:host="" android:path="/oauth" />
             </intent-filter>
         </activity>
 
