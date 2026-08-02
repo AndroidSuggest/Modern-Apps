@@ -36,24 +36,42 @@ class OAuthActivity : ComponentActivity() {
         val raw = intent?.data
         if (raw == null) {
             Log.w(TAG, "OAuthActivity no data")
+            AppMessages.show("Microsoft sign-in failed: no redirect data")
             finish()
             return
         }
         Log.d(TAG, "Redirect raw=$raw host=${raw.host} path=${raw.path} query=${raw.query}")
 
         lifecycleScope.launch {
-            var email: String? = null
-            var failReason: String? = null
-            try {
-                email = OutlookOAuth.complete(applicationContext, raw)
-                if (email == null) failReason = "token exchange or email resolution failed"
+            val result: OutlookOAuth.OAuthResult = try {
+                OutlookOAuth.complete(applicationContext, raw)
             } catch (t: Throwable) {
                 Log.e(TAG, "complete threw", t)
-                failReason = t.javaClass.simpleName + ": " + (t.message ?: "")
+                OutlookOAuth.OAuthResult.Failure(
+                    reason = t.message ?: "${t.javaClass.simpleName} during sign-in",
+                    error = t.javaClass.simpleName,
+                    errorDescription = t.message
+                )
             }
 
-            val msg = if (email != null) getString(R.string.added, email) else getString(R.string.oauth_sign_in_failed)
-            Log.d(TAG, "OAuth result email=$email fail=$failReason")
+            val msg = when (result) {
+                is OutlookOAuth.OAuthResult.Success -> {
+                    Log.d(TAG, "OAuth success email=${result.email}")
+                    getString(R.string.added, result.email)
+                }
+                is OutlookOAuth.OAuthResult.Failure -> {
+                    // Surface the actual callback error instead of hardcoded string
+                    val parts = listOfNotNull(
+                        result.reason.takeIf { it.isNotBlank() },
+                        result.error?.takeIf { it.isNotBlank() },
+                        result.errorDescription?.takeIf { it.isNotBlank() }
+                    ).distinct()
+                    val detailed = parts.joinToString(": ")
+                    Log.e(TAG, "OAuth failure: $detailed raw=$raw")
+                    // Show callback error (error_description from Azure) not generic check-redirect message
+                    detailed
+                }
+            }
             AppMessages.show(msg)
 
             startActivity(
