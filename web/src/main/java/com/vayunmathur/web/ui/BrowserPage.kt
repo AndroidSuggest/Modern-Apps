@@ -37,8 +37,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,6 +90,7 @@ fun BrowserPage(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val webViewPool = remember { mutableStateMapOf<String, WebView>() }
 
     LaunchedEffect(viewModel.tabs.size) {
@@ -112,6 +116,7 @@ fun BrowserPage(
 
     var showMenu by remember { mutableStateOf(false) }
     var showInstallDialog by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
 
     BackHandler(enabled = viewModel.showTabSwitcher) { viewModel.showTabSwitcher = false }
     BackHandler(enabled = !viewModel.showTabSwitcher && viewModel.omniboxFocused) {
@@ -120,6 +125,15 @@ fun BrowserPage(
     }
     BackHandler(enabled = !viewModel.showTabSwitcher && !viewModel.omniboxFocused && canGoBack) {
         activeTab?.let { tab -> webViewPool[tab.id]?.goBack() }
+    }
+
+    LaunchedEffect(viewModel.omniboxFocused) {
+        if (viewModel.omniboxFocused) {
+            // Let the new Scaffold compose before requesting focus
+            kotlinx.coroutines.delay(100)
+            try { searchFocusRequester.requestFocus() } catch (_: Exception) {}
+            keyboardController?.show()
+        }
     }
 
     val currentDraft = viewModel.searchDraft
@@ -147,7 +161,9 @@ fun BrowserPage(
                             OutlinedTextField(
                                 value = viewModel.searchDraft,
                                 onValueChange = { viewModel.searchDraft = it },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(searchFocusRequester),
                                 placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
                                 leadingIcon = { IconSearch() },
                                 trailingIcon = if (viewModel.searchDraft.isNotEmpty()) {
