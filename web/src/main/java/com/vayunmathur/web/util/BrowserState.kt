@@ -15,19 +15,26 @@ data class BrowserTab(
 val BrowserTab.isNewTab: Boolean
     get() = url.isBlank() || url == "about:blank"
 
-/** Only DuckDuckGo is used now — choice removed per design request. */
 enum class SearchEngine(
     val displayName: String,
     val searchUrl: String,
     val homepage: String,
 ) {
-    DUCKDUCKGO("DuckDuckGo", "https://duckduckgo.com/?q=%s", "https://duckduckgo.com");
+    GOOGLE("Google", "https://www.google.com/search?q=%s", "https://www.google.com"),
+    DUCKDUCKGO("DuckDuckGo", "https://duckduckgo.com/?q=%s", "https://duckduckgo.com"),
+    BING("Bing", "https://www.bing.com/search?q=%s", "https://www.bing.com"),
+    BRAVE("Brave", "https://search.brave.com/search?q=%s", "https://search.brave.com"),
+    STARTPAGE("Startpage", "https://www.startpage.com/do/search?q=%s", "https://www.startpage.com"),
+    ECOSIA("Ecosia", "https://www.ecosia.org/search?q=%s", "https://www.ecosia.org"),
+    QWANT("Qwant", "https://www.qwant.com/?q=%s", "https://www.qwant.com");
 
     fun buildQueryUrl(query: String): String =
         searchUrl.replace("%s", Uri.encode(query))
 
     companion object {
         val DEFAULT = DUCKDUCKGO
+        fun fromName(name: String): SearchEngine =
+            entries.find { it.name == name } ?: DEFAULT
     }
 }
 
@@ -50,7 +57,7 @@ object BrowserUtils {
         "^(https?://)?([a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|localhost|\\d{1,3}(\\.\\d{1,3}){3})(:\\d+)?(/.*)?$"
     )
 
-    /** Kept as search fallback only — blank new tabs use "" not HOMEPAGE. */
+    /** Kept for migration only — new tabs use "" and search uses selected engine. */
     const val HOMEPAGE = "https://duckduckgo.com"
 
     /** Full address for display — no truncation. Keep prettyUrl() for subtitles. */
@@ -63,20 +70,18 @@ object BrowserUtils {
         return URL_LIKE.matches(trimmed)
     }
 
-    /** Search or navigate — always uses DuckDuckGo for queries. */
-    fun toNavigationUrl(input: String): String {
+    /** Search or navigate using the selected engine. */
+    fun toNavigationUrl(input: String, searchEngine: SearchEngine): String {
         val trimmed = input.trim()
-        if (trimmed.isEmpty()) return HOMEPAGE
+        if (trimmed.isEmpty()) return searchEngine.homepage
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
         if (looksLikeUrl(trimmed)) {
             return if (trimmed.startsWith("http")) trimmed else "https://$trimmed"
         }
-        return SearchEngine.DEFAULT.buildQueryUrl(trimmed)
+        return searchEngine.buildQueryUrl(trimmed)
     }
 
-    // Legacy overload kept for call sites that still pass engine — always DuckDuckGo
-    fun toNavigationUrl(input: String, @Suppress("UNUSED_PARAMETER") searchEngine: SearchEngine): String =
-        toNavigationUrl(input)
+    fun toNavigationUrl(input: String): String = toNavigationUrl(input, SearchEngine.DEFAULT)
 
     fun hostFromUrl(url: String): String {
         return try { Uri.parse(url).host ?: url } catch (_: Exception) { url }

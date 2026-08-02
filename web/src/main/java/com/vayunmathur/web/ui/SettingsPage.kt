@@ -45,6 +45,7 @@ import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.util.CacheMode
+import com.vayunmathur.web.util.SearchEngine
 import com.vayunmathur.web.util.WebViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,6 +57,7 @@ fun SettingsPage(
     val context = LocalContext.current
     var showClearDataDialog by remember { mutableStateOf(false) }
     var showCacheDialog by remember { mutableStateOf(false) }
+    var showSearchEngineDialog by remember { mutableStateOf(false) }
 
     val storageCount by viewModel.storageInfos.collectAsStateWithLifecycle()
     val permCount by viewModel.sitePermissions.collectAsStateWithLifecycle()
@@ -76,7 +78,8 @@ fun SettingsPage(
             item {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.search_engine)) },
-                    supportingContent = { Text(stringResource(R.string.duckduckgo_locked)) }
+                    supportingContent = { Text(viewModel.searchEngine.displayName) },
+                    modifier = Modifier.clickable { showSearchEngineDialog = true }
                 )
             }
 
@@ -222,6 +225,36 @@ fun SettingsPage(
                 }
             },
             confirmButton = { TextButton(onClick = { showCacheDialog = false }) { Text(stringResource(UiR.string.close)) } }
+        )
+    }
+
+
+    if (showSearchEngineDialog) {
+        AlertDialog(
+            onDismissRequest = { showSearchEngineDialog = false },
+            title = { Text(stringResource(R.string.search_engine)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    SearchEngine.entries.forEach { engine ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                viewModel.updateSearchEngine(engine); showSearchEngineDialog = false
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = viewModel.searchEngine == engine, onClick = {
+                                viewModel.updateSearchEngine(engine); showSearchEngineDialog = false
+                            })
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(engine.displayName, style = MaterialTheme.typography.bodyMedium)
+                                Text(engine.homepage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSearchEngineDialog = false }) { Text(stringResource(UiR.string.close)) } }
         )
     }
 

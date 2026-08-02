@@ -42,6 +42,7 @@ private const val P_JS_ENABLED = "web_js_enabled"
 private const val P_BLOCK_THIRD_PARTY = "web_block_third_party"
 private const val P_DESKTOP_MODE = "web_desktop_mode"
 private const val P_ADBLOCK = "web_adblock"
+private const val P_SEARCH_ENGINE = "web_search_engine"
 
 data class PermissionPrompt(
     val id: String = Uuid.random().toString(),
@@ -69,9 +70,8 @@ class WebViewModel(
     var omniboxFocused by mutableStateOf(false)
     var searchDraft by mutableStateOf("")
 
-    // DuckDuckGo only — engine choice removed
-    val searchEngine: SearchEngine = SearchEngine.DEFAULT
-    val homepage: String = BrowserUtils.HOMEPAGE
+    var searchEngine by mutableStateOf(SearchEngine.DEFAULT)
+    val homepage: String get() = searchEngine.homepage
 
     var cacheMode by mutableStateOf(CacheMode.DEFAULT)
     var jsEnabled by mutableStateOf(true)
@@ -130,12 +130,14 @@ class WebViewModel(
                     val savedTabs = sp.getString(P_SAVED_TABS, null)
                     val activeId = sp.getString(P_ACTIVE_TAB, null)
                     val cacheModeName = sp.getString(P_CACHE_MODE, null)
+                    val searchEngineName = sp.getString(P_SEARCH_ENGINE, null)
                     val js = sp.getBoolean(P_JS_ENABLED, true)
                     val blockThird = sp.getBoolean(P_BLOCK_THIRD_PARTY, false)
                     val desktop = sp.getBoolean(P_DESKTOP_MODE, false)
                     val adblock = sp.getBoolean(P_ADBLOCK, false)
                     withContext(Dispatchers.Main) {
                         cacheModeName?.let { runCatching { CacheMode.valueOf(it) }.getOrNull()?.let { cm -> cacheMode = cm } }
+                        searchEngineName?.let { runCatching { SearchEngine.valueOf(it) }.getOrNull()?.let { se -> searchEngine = se } }
                         jsEnabled = js
                         blockThirdPartyCookies = blockThird
                         desktopMode = desktop
@@ -294,7 +296,7 @@ class WebViewModel(
 
     fun navigateActiveTab(input: String) {
         val active = activeTab ?: return
-        val dest = BrowserUtils.toNavigationUrl(input)
+        val dest = BrowserUtils.toNavigationUrl(input, searchEngine)
         onTabUrlChange(active.id, dest)
         omniboxFocused = false
     }
@@ -335,6 +337,11 @@ class WebViewModel(
 
     fun updateCacheMode(mode: CacheMode) {
         cacheMode = mode
+        persistPrefs()
+    }
+
+    fun updateSearchEngine(engine: SearchEngine) {
+        searchEngine = engine
         persistPrefs()
     }
 
@@ -624,6 +631,7 @@ class WebViewModel(
                 val sp = context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
                 sp.edit()
                     .putString(P_CACHE_MODE, cacheMode.name)
+                    .putString(P_SEARCH_ENGINE, searchEngine.name)
                     .putBoolean(P_JS_ENABLED, jsEnabled)
                     .putBoolean(P_BLOCK_THIRD_PARTY, blockThirdPartyCookies)
                     .putBoolean(P_DESKTOP_MODE, desktopMode)

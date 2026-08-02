@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,18 +48,18 @@ import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
+import com.vayunmathur.library.ui.CommonSearchBar
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.LinearProgressIndicator
+import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.SearchBar
-import com.vayunmathur.library.ui.SearchBarInputField
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
@@ -66,9 +69,7 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconArrowForward
 import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconClose
-import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconMoreVert
-import com.vayunmathur.library.ui.IconRefresh
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
@@ -133,185 +134,148 @@ fun BrowserPage(
 
     Box(Modifier.fillMaxSize()) {
         if (viewModel.omniboxFocused) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
-                SearchBar(
-                    inputField = {
-                        SearchBarInputField(
-                            query = viewModel.searchDraft,
-                            onQueryChange = { viewModel.searchDraft = it },
-                            onSearch = { q ->
-                                if (q.isNotBlank()) viewModel.navigateActiveTab(q)
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = {
                                 focusManager.clearFocus()
                                 viewModel.omniboxFocused = false
-                            },
-                            expanded = true,
-                            onExpandedChange = { expanded ->
-                                if (!expanded) {
-                                    focusManager.clearFocus()
-                                    viewModel.omniboxFocused = false
-                                }
-                            },
-                            placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
-                            leadingIcon = {
-                                IconButton(onClick = {
-                                    focusManager.clearFocus()
-                                    viewModel.omniboxFocused = false
-                                }) { IconBack() }
-                            },
-                            trailingIcon = if (viewModel.searchDraft.isNotEmpty()) {
-                                {
-                                    IconButton(onClick = { viewModel.searchDraft = "" }) { IconClose() }
-                                }
-                            } else null
-                        )
-                    },
-                    expanded = true,
-                    onExpandedChange = { expanded ->
-                        if (!expanded) {
-                            focusManager.clearFocus()
-                            viewModel.omniboxFocused = false
+                            }) { IconBack() }
+                        },
+                        title = {
+                            OutlinedTextField(
+                                value = viewModel.searchDraft,
+                                onValueChange = { viewModel.searchDraft = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
+                                leadingIcon = { IconSearch() },
+                                trailingIcon = if (viewModel.searchDraft.isNotEmpty()) {
+                                    {
+                                        IconButton(onClick = { viewModel.searchDraft = "" }) { IconClose() }
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(28.dp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = {
+                                    if (viewModel.searchDraft.isNotBlank()) {
+                                        viewModel.navigateActiveTab(viewModel.searchDraft)
+                                        focusManager.clearFocus()
+                                        viewModel.omniboxFocused = false
+                                    }
+                                })
+                            )
                         }
-                    },
-                    modifier = Modifier.fillMaxSize()
+                    )
+                }
+            ) { paddingValues ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
                 ) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
-                    ) {
+                    if (currentDraft.isNotBlank()) {
                         item {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            activeTab?.let { webViewPool[it.id]?.reload() }
-                                            focusManager.clearFocus()
-                                            viewModel.omniboxFocused = false
-                                        },
-                                        enabled = !isNewTabActive,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        IconRefresh()
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(R.string.reload))
-                                    }
-                                    OutlinedButton(
-                                        onClick = { viewModel.searchDraft = "" },
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        IconClose()
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(stringResource(UiR.string.clear))
-                                    }
+                            ListItem(
+                                headlineContent = { Text(currentDraft, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = {
+                                    Text(
+                                        text = BrowserUtils.hostFromUrl(
+                                            BrowserUtils.toNavigationUrl(currentDraft, viewModel.searchEngine)
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                leadingContent = { IconSearch() },
+                                modifier = Modifier.clickable {
+                                    viewModel.navigateActiveTab(currentDraft)
+                                    focusManager.clearFocus()
+                                    viewModel.omniboxFocused = false
                                 }
-                            }
+                            )
                         }
+                        item { HorizontalDivider(Modifier.padding(vertical = 4.dp)) }
+                    }
 
-                        if (currentDraft.isNotBlank()) {
-                            item {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.navigateActiveTab(currentDraft)
-                                            focusManager.clearFocus()
-                                            viewModel.omniboxFocused = false
-                                        },
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                                ) {
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        IconSearch()
-                                        Spacer(Modifier.width(12.dp))
-                                        Column {
-                                            Text(text = currentDraft, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(
-                                                text = BrowserUtils.hostFromUrl(BrowserUtils.toNavigationUrl(currentDraft)),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(8.dp))
-                            }
+                    if (filteredBookmarks.isNotEmpty()) {
+                        item {
+                            Text(
+                                stringResource(R.string.bookmarks),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
                         }
-
-                        if (filteredBookmarks.isNotEmpty()) {
-                            item {
-                                Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
-                            }
-                            items(filteredBookmarks, key = { "bm-${it.id}" }) { bm ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            viewModel.navigateActiveTab(bm.url)
-                                            focusManager.clearFocus()
-                                            viewModel.omniboxFocused = false
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    IconSearch()
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(bm.title.ifBlank { bm.url }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                                        Text(BrowserUtils.prettyUrl(bm.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                        items(filteredBookmarks, key = { "bm-${it.id}" }) { bm ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        bm.title.ifBlank { bm.url },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        BrowserUtils.prettyUrl(bm.url),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                leadingContent = { IconSearch() },
+                                modifier = Modifier.clickable {
+                                    viewModel.navigateActiveTab(bm.url)
+                                    focusManager.clearFocus()
+                                    viewModel.omniboxFocused = false
                                 }
-                            }
+                            )
                         }
+                    }
 
-                        if (filteredHistory.isNotEmpty()) {
-                            item {
-                                Text(stringResource(R.string.history), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
-                            }
-                            items(filteredHistory, key = { "h-${it.id}" }) { h ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            viewModel.navigateActiveTab(h.url)
-                                            focusManager.clearFocus()
-                                            viewModel.omniboxFocused = false
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    IconSearch()
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(h.title.ifBlank { h.url }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                                        Text(BrowserUtils.prettyUrl(h.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                    if (filteredHistory.isNotEmpty()) {
+                        item {
+                            Text(
+                                stringResource(R.string.history),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).padding(top = if (filteredBookmarks.isNotEmpty()) 12.dp else 0.dp)
+                            )
+                        }
+                        items(filteredHistory, key = { "h-${it.id}" }) { h ->
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        h.title.ifBlank { h.url },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        BrowserUtils.prettyUrl(h.url),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                leadingContent = { IconSearch() },
+                                modifier = Modifier.clickable {
+                                    viewModel.navigateActiveTab(h.url)
+                                    focusManager.clearFocus()
+                                    viewModel.omniboxFocused = false
                                 }
-                            }
+                            )
                         }
                     }
                 }
@@ -322,7 +286,6 @@ fun BrowserPage(
                 tabCount = viewModel.tabs.size,
                 canGoBack = canGoBack,
                 canGoForward = canGoForward,
-                // A blank new tab is not loading anything, so never show the bar for one.
                 progress = if (activeTab != null && !isNewTabActive) progress else 0f,
                 onBack = { if (canGoBack) activeTab?.let { webViewPool[it.id]?.goBack() } },
                 onForward = { if (canGoForward) activeTab?.let { webViewPool[it.id]?.goForward() } },
@@ -335,6 +298,16 @@ fun BrowserPage(
                 onMenuClick = { showMenu = true },
                 menu = {
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        if (!isNewTabActive) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.reload)) },
+                                onClick = {
+                                    showMenu = false
+                                    activeTab?.let { webViewPool[it.id]?.reload() }
+                                }
+                            )
+                        }
+
                         if (activeTab != null && !isNewTabActive) {
                             val pwa = viewModel.getPwaInfo(activeTab.id)
                             val pinSupported = PwaHelper.isPinSupported(context)
@@ -533,15 +506,6 @@ fun BrowserPage(
     }
 }
 
-/**
- * The browser chrome — back/forward, the address pill, the tab counter and the overflow
- * button — around whatever [content] the active tab needs. Split out of [BrowserPage] with no
- * ViewModel reference so the new-tab screen can be rendered from a `@Preview`; see
- * `src/screenshotTest`, which is where the store listing images come from.
- *
- * [menu] is a slot rather than a list of callbacks because the overflow menu has to stay
- * anchored inside the app bar's `actions` row to pop up in the right place.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserChrome(
@@ -549,7 +513,6 @@ fun BrowserChrome(
     tabCount: Int,
     canGoBack: Boolean = false,
     canGoForward: Boolean = false,
-    /** Load progress of the visible page; outside 0.01..0.99 the thin bar is hidden. */
     progress: Float = 0f,
     onBack: () -> Unit = {},
     onForward: () -> Unit = {},
@@ -611,25 +574,28 @@ private fun DisplayOnlyAddressPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onClick)
-    ) {
-        val isPlaceholder = fullUrl.isBlank()
-        Text(
-            text = if (isPlaceholder) "Search or enter address" else fullUrl,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (isPlaceholder) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-            else MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+    // Now matches CommonSearchBar visually: OutlinedTextField 28dp rounded, search icon, same padding.
+    Box(modifier = modifier) {
+        OutlinedTextField(
+            value = fullUrl,
+            onValueChange = {},
+            readOnly = true,
+            placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
+            leadingIcon = { IconSearch() },
+            singleLine = true,
+            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+        // Overlay to handle tap without focusing the field
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(28.dp))
+                .clickable(onClick = onClick)
         )
     }
 }
 
-/** The blank-new-tab landing page. Public so the store-listing previews can render it. */
 @Composable
 fun QuickAccess(
     bookmarks: List<com.vayunmathur.web.data.Bookmark>,
