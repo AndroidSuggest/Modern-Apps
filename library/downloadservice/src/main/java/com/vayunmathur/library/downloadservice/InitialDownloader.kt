@@ -197,16 +197,33 @@ private suspend fun runDownloadsCore(
     val active = mutableListOf<Active>()
     val dir = context.getExternalFilesDir(null)
     for (spec in specs) {
-        // Gate purely on disk presence — there is no persisted "done" flag that
-        // could drift out of sync with disk and hang the init screen. If the file
-        // is already on disk, mark its bar complete and skip; otherwise download.
-        if (File(dir, spec.fileName).exists()) {
-            ds.setDouble("progress_${spec.fileName}", 1.0)
-            continue
+        val file = File(dir, spec.fileName)
+        // If file already exists, verify SHA when pinned; a stale or tiny old bundle
+        // (e.g. 593 KB dict vs 2.2 MB, or sherpa .onnx leftover) must be re-downloaded.
+        if (file.exists()) {
+            if (checksumOk(dir, spec)) {
+                ds.setDouble("progress_${spec.fileName}", 1.0)
+                continue
+            } else {
+                file.delete()
+                ds.setLong("dlid_${spec.fileName}", 0L)
+                ds.setDouble("progress_${spec.fileName}", 0.0)
+            }
         }
         val existingId = ds.getLong("dlid_${spec.fileName}") ?: 0L
         val id = if (existingId > 0L && isQueryable(dm, existingId)) {
-            existingId
+            // Reuse only if the underlying row is not already FAILED/SUCCESSFUL with
+            // missing file; checksum failure above cleared the id, but a FAILED id may
+            // still be queryable and cause "download doesn't work" UI freeze.
+            val status = dm.query(DownloadManager.Query().setFilterById(existingId))?.use { c ->
+                if (c.moveToFirst()) c.getInt(c.getColumnIndex(DownloadManager.COLUMN_STATUS)) else -1
+            } ?: -1
+            if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
+                existingId
+            } else {
+                ds.setLong("dlid_${spec.fileName}", 0L)
+                enqueue(dm, context, ds, spec)
+            }
         } else {
             enqueue(dm, context, ds, spec)
         }
