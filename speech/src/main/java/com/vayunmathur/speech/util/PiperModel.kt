@@ -100,10 +100,16 @@ object PiperModel {
     fun isExtracted(context: Context): Boolean {
         val dir = voiceDir(context)
         val prefix = voicePrefix(context)
+        // Invalidate: old sherpa .onnx bundle, or old ncnn bundle with tiny 33k dict (593 KB)
+        // due to CMUdict shell-pipeline breakage. New dict is 2.2 MB / 125k entries.
         val legacyOnnx = dir.listFiles()?.any { it.name.endsWith(".onnx") } == true
-        // If legacy sherpa .onnx remains, force re-download (old layout → new ncnn).
         if (legacyOnnx) {
             Log.d(TAG, "legacy .onnx detected, forcing invalidation")
+            return false
+        }
+        val dictFile = File(dir, DICT)
+        if (dictFile.exists() && dictFile.length() < 1_000_000L) {
+            Log.d(TAG, "old tiny dict ${dictFile.length()} bytes, forcing invalidation")
             return false
         }
         val result = dir.isDirectory &&
@@ -112,13 +118,13 @@ object PiperModel {
                 File(dir, "$prefix$net.ncnn.param").exists() &&
                     File(dir, "$prefix$net.ncnn.bin").exists()
             } &&
-            File(dir, DICT).exists() &&
+            dictFile.exists() &&
             File(dir, CONFIG).exists()
-        Log.d(TAG, "isExtracted dir=$dir exists=${dir.exists()} isDir=${dir.isDirectory} prefix=$prefix root=${rootDir(context)} result=$result")
+        Log.d(TAG, "isExtracted dir=$dir exists=${dir.exists()} isDir=${dir.isDirectory} prefix=$prefix dictSize=${if (dictFile.exists()) dictFile.length() else -1} root=${rootDir(context)} result=$result")
         if (!result) {
             try {
                 val ext = context.getExternalFilesDir(null)
-                Log.d(TAG, "extDir=$ext dictExists=${File(dir, DICT).exists()} configExists=${File(dir, CONFIG).exists()} list=${dir.list()?.toList()}")
+                Log.d(TAG, "extDir=$ext dictExists=${dictFile.exists()} configExists=${File(dir, CONFIG).exists()} list=${dir.list()?.toList()}")
             } catch (t: Throwable) {
                 Log.d(TAG, "isExtracted probe failed", t)
             }
@@ -128,16 +134,25 @@ object PiperModel {
 
     /** True if TTS can run now (extracted). Extraction happens immediately after download. */
     fun isReady(context: Context): Boolean {
-        // Migration: old voice.zip was sherpa-onnx (.onnx + tokens.txt + espeak-ng-data/).
-        // If that remains on disk, delete it so downloadModels fetches voice2.zip.
         val dir = voiceDir(context)
         if (dir.isDirectory) {
             val legacy = dir.listFiles()?.any { it.name.endsWith(".onnx") } == true ||
                 File(dir, "tokens.txt").exists() ||
-                File(dir, "espeak-ng-data").isDirectory
+                File(dir, "espeak-ng-data").isDirectory ||
+                File(dir, DICT).let { it.exists() && it.length() < 1_000_000L }
             if (legacy) {
-                Log.d(TAG, "deleting legacy sherpa voice at $dir for migration to ncnn")
+                Log.d(TAG, "deleting legacy/broken voice at $dir for migration to ncnn full dict")
                 dir.deleteRecursively()
+            }
+        }
+        // Old archive from sherpa path (64 MB) or earlier broken ncnn (33k dict) should be
+        // dropped so downloadModels re-fetches voice2.zip with correct SHA.
+        val root = rootDir(context)
+        if (root != null) {
+            val oldArchive = File(root, ARCHIVE)
+            if (oldArchive.exists() && oldArchive.length() < 5_000_000L) {
+                Log.d(TAG, "deleting suspiciously small archive $oldArchive")
+                oldArchive.delete()
             }
         }
         return isExtracted(context)
