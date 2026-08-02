@@ -28,11 +28,12 @@ import java.util.zip.ZipInputStream
  *
  * Mirror layout (zip the voice dir's *contents* at the zip root;
  * `scripts/speech/fetch_piper_model.sh` stages it):
- *   https://data.vayunmathur.com/models/piper/voice2.zip
+ *   https://data.vayunmathur.com/models/piper/voice3.zip
  *
- * voice2.zip is the ncnn VITS bundle (amy medium, 22050 Hz). voice.zip was the old
- * sherpa-onnx layout and was removed to bust Cloudflare cache; voice2 is used to
- * avoid the 404 / stale edge-cache after deletion.
+ * voice3.zip is the ncnn VITS bundle (amy medium, 22050 Hz, 125k-word dict, 2.2 MB
+ * en-word_id.bin). voice.zip was the old sherpa-onnx layout, voice2.zip was the first
+ * ncnn bundle but with the broken 33k-word CMUdict parse (593 KB dict, missing HELLO)
+ * due to shell sed illegal-byte-sequence on macOS; voice3 busts Cloudflare cache again.
  */
 object PiperModel {
     const val DIR = "piper"
@@ -48,12 +49,12 @@ object PiperModel {
     private const val BASE = "https://data.vayunmathur.com/models/piper/"
 
     /**
-     * The downloadable archive name. Uses voice2.zip to bust Cloudflare cache — voice.zip
-     * served stale sherpa-onnx data, deleting it caused 404s on edge, so voice2.zip is the
-     * canonical ncnn VITS voice now. The on-disk archive path is still piper/voice.zip for
-     * backward compat, but the URL points to voice2.zip on the mirror.
+     * The downloadable archive name. Uses voice3.zip to bust Cloudflare cache — voice.zip
+     * served stale sherpa-onnx data, voice2.zip served the first ncnn bundle with the broken
+     * 33k-word dict (HELLO missing → letter-by-letter spelling). voice3 is the 125k-word full
+     * dict. The on-disk archive path is still piper/voice.zip for backward compat.
      */
-    const val REMOTE_ARCHIVE = "voice2.zip"
+    const val REMOTE_ARCHIVE = "voice3.zip"
 
     /** On-disk archive path (under getExternalFilesDir). Kept as voice.zip for compat. */
     private const val ARCHIVE = "$DIR/voice.zip"
@@ -143,16 +144,6 @@ object PiperModel {
             if (legacy) {
                 Log.d(TAG, "deleting legacy/broken voice at $dir for migration to ncnn full dict")
                 dir.deleteRecursively()
-            }
-        }
-        // Old archive from sherpa path (64 MB) or earlier broken ncnn (33k dict) should be
-        // dropped so downloadModels re-fetches voice2.zip with correct SHA.
-        val root = rootDir(context)
-        if (root != null) {
-            val oldArchive = File(root, ARCHIVE)
-            if (oldArchive.exists() && oldArchive.length() < 5_000_000L) {
-                Log.d(TAG, "deleting suspiciously small archive $oldArchive")
-                oldArchive.delete()
             }
         }
         return isExtracted(context)

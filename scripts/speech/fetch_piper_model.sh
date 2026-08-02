@@ -2,7 +2,7 @@
 #
 # Stage an offline Piper (VITS) voice, in ncnn format, as a single zip for the model
 # mirror. The :speech app downloads it at runtime — it is NOT bundled in the APK — from
-#   https://data.vayunmathur.com/models/piper/voice.zip
+#   https://data.vayunmathur.com/models/piper/voice3.zip
 # and extracts it (see PiperModel). The zip must contain the voice's CONTENTS at its root:
 #   <voice>_enc_p.ncnn.{param,bin}   text encoder
 #   <voice>_dp.ncnn.{param,bin}      duration predictor
@@ -130,13 +130,18 @@ echo "Word list: $WORDS ($(wc -l < "$WORDS" | tr -d ' ') lines)"
   --out "$TMP/en-word_id.bin"
 
 mkdir -p "${ABS_DEST}"
-rm -f "${ABS_DEST}/voice.zip"
+rm -f "${ABS_DEST}/voice.zip" "${ABS_DEST}/voice2.zip" "${ABS_DEST}/voice3.zip"
 # Zip the CONTENTS (not the wrapping folder) so entries sit at the zip root.
+# Produce voice.zip for compat and voice3.zip as the cache-busted canonical name
+# (voice.zip was old sherpa, voice2.zip had 33k-word dict missing HELLO).
 ( cd "$TMP" && rm -f cmudict.txt words.txt && zip -r -q -X "${ABS_DEST}/voice.zip" . )
+cp "${ABS_DEST}/voice.zip" "${ABS_DEST}/voice2.zip"
+cp "${ABS_DEST}/voice.zip" "${ABS_DEST}/voice3.zip"
 
 echo
-echo "Staged ${DEST}/voice.zip"
-du -sh "${ABS_DEST}/voice.zip"
+echo "Staged ${DEST}/voice.zip + voice2.zip + voice3.zip (same content)"
+du -sh "${ABS_DEST}/voice.zip" "${ABS_DEST}/voice3.zip"
 shasum -a 256 "${ABS_DEST}/voice.zip"
-echo "Upload it to: https://data.vayunmathur.com/models/piper/voice.zip"
-echo "The SHA-256 above must match what the download config pins."
+shasum -a 256 "${ABS_DEST}/voice3.zip"
+echo "Upload voice3.zip to: https://data.vayunmathur.com/models/piper/voice3.zip"
+echo "And voice.zip for compat. SHA-256 must match PiperModel.FILES pin."
