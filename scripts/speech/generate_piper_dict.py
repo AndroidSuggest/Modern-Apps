@@ -70,7 +70,7 @@ def phonemize(words: list, voice: str) -> list:
     for start in range(0, len(words), BATCH):
         chunk = words[start:start + BATCH]
         proc = subprocess.run(
-            ["espeak-ng", "-q", "-v", voice, "--ipa", "--stdin"],
+            ["espeak-ng", "-q", "-v", voice, "--ipa"],
             input="\n".join(chunk),
             capture_output=True,
             text=True,

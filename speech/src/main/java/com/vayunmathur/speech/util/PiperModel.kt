@@ -44,9 +44,14 @@ object PiperModel {
     private const val BASE = "https://data.vayunmathur.com/models/piper/"
     private const val ARCHIVE = "$DIR/voice.zip"
 
-    /** The single downloadable archive (extracted app-side into [voiceDir]). */
+    /** The single downloadable archive (extracted app-side into [voiceDir]), SHA-256 pinned. */
     val FILES: List<ModelDownloadItem> = listOf(
-        ModelDownloadItem("${BASE}voice.zip", ARCHIVE, "Piper voice (TTS)"),
+        ModelDownloadItem(
+            "${BASE}voice.zip",
+            ARCHIVE,
+            "Piper voice (TTS)",
+            "ca20be58bda0514d57cb8ce6c0cf84b40aae8427a6f48739472f99e9bcdd8fa6",
+        ),
     )
 
     private fun rootDir(context: Context): File? {
