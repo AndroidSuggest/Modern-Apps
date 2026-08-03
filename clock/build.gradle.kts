@@ -17,6 +17,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":library:widgets"))
     implementRoom(libs)
     implementation(project(":library:room"))
 }

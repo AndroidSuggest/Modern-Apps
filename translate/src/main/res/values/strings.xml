@@ -8,4 +8,6 @@
     <string name="translation">Translation</string>
     <string name="translation_model_not_installed_showing">Translation model not installed — showing detected text only</string>
     <string name="grant_camera_access">Grant camera access to translate what you see</string>
+    <string name="no_voice_installed">No %1$s voice installed</string>
+    <string name="install_voice">Install</string>
 </resources>

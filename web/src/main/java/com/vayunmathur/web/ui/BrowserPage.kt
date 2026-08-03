@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -382,14 +383,21 @@ fun BrowserPage(
                         )
                     } else if (activeTab != null) {
                         Box(Modifier.fillMaxSize()) {
-                            WebViewBrowser(
-                                tabId = activeTab.id,
-                                initialUrl = activeTab.url,
-                                viewModel = viewModel,
-                                webViewPool = webViewPool,
-                                onRequestNewTab = { url -> viewModel.newTab(url = url) },
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            // Force a new WebViewBrowser composition per tabId so the AndroidView
+                            // factory runs and loads the new URL immediately. Without this, the
+                            // same AndroidView instance is reused across tab switches and the old
+                            // page remains visible until an update triggers, causing topbar/content
+                            // mismatch when an external intent opens a new tab.
+                            key(activeTab.id) {
+                                WebViewBrowser(
+                                    tabId = activeTab.id,
+                                    initialUrl = activeTab.url,
+                                    viewModel = viewModel,
+                                    webViewPool = webViewPool,
+                                    onRequestNewTab = { url -> viewModel.newTab(url = url) },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         }
                     }
                 }

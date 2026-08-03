@@ -1,7 +1,5 @@
 package com.vayunmathur.appstore.ui
 
-import androidx.compose.ui.res.stringResource
-import com.vayunmathur.appstore.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,27 +9,32 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.DefaultRepos
 import com.vayunmathur.appstore.data.FDroidRepository
 import com.vayunmathur.appstore.data.ModernAppsRepo
 import com.vayunmathur.appstore.data.security.ApkCertificates
-import com.vayunmathur.appstore.data.security.SecurityTier
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.CenterAlignedTopAppBar
+import com.vayunmathur.library.ui.IconBack
+import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TopAppBar
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Sources are fixed and not user-editable — see [DefaultRepos] for why. This page shows
@@ -39,41 +42,57 @@ import com.vayunmathur.library.ui.TopAppBar
  * values rather than taken on faith.
  */
 @Composable
-fun ReposPage(viewModel: AppStoreViewModel, onOpenTiers: () -> Unit = {}) {
+fun SourcesPage(
+    viewModel: AppStoreViewModel,
+    onBack: () -> Unit,
+    onOpenTrust: () -> Unit = {},
+) {
     val repos by viewModel.repos.collectAsState()
-    val isSyncing by viewModel.isSyncing.collectAsState()
-    val syncMessage by viewModel.syncMessage.collectAsState()
+    val home by viewModel.home.collectAsState()
     val fdroid = repos.find { it.url == DefaultRepos.FDROID_MAIN }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.repositories)) }) }
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text(stringResource(R.string.repositories)) },
+                navigationIcon = { IconButton(onClick = onBack) { IconBack() } },
+            )
+        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(stringResource(R.string.sources_are_fixed), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    stringResource(R.string.sources_are_fixed),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { viewModel.syncRepos() },
-                        enabled = !isSyncing,
+                        onClick = { viewModel.syncSources() },
+                        enabled = !home.isSyncing,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(stringResource(if (isSyncing) R.string.repos_syncing else R.string.repos_sync_sources))
+                        Text(
+                            stringResource(
+                                if (home.isSyncing) R.string.repos_syncing
+                                else R.string.repos_sync_sources
+                            )
+                        )
                     }
-                    Button(onClick = onOpenTiers, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.security_tiers))
+                    OutlinedButton(onClick = onOpenTrust, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.trust_page_title))
                     }
                 }
             }
-            if (syncMessage.isNotBlank()) {
+            if (home.statusMessage.isNotBlank()) {
                 item {
                     Text(
-                        syncMessage,
+                        home.statusMessage,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary,
                     )
@@ -84,7 +103,6 @@ fun ReposPage(viewModel: AppStoreViewModel, onOpenTiers: () -> Unit = {}) {
                 SourceCard(
                     title = stringResource(R.string.source_modern_apps),
                     subtitle = ModernAppsRepo.PROJECT_URL,
-                    tier = SecurityTier.FIRST_PARTY,
                     pinLabel = stringResource(R.string.source_modern_apps_pin),
                     pins = viewModel.ownSigningCertificates,
                     lastSync = 0L,
@@ -94,7 +112,6 @@ fun ReposPage(viewModel: AppStoreViewModel, onOpenTiers: () -> Unit = {}) {
                 SourceCard(
                     title = stringResource(R.string.source_fdroid),
                     subtitle = DefaultRepos.FDROID_MAIN,
-                    tier = SecurityTier.REPRODUCIBLE,
                     pinLabel = stringResource(R.string.source_fdroid_pin),
                     pins = setOfNotNull(
                         fdroid?.fingerprint ?: FDroidRepository.FDROID_SIGNING_CERT_SHA256
@@ -106,7 +123,6 @@ fun ReposPage(viewModel: AppStoreViewModel, onOpenTiers: () -> Unit = {}) {
                 SourceCard(
                     title = stringResource(R.string.source_play),
                     subtitle = "play.google.com",
-                    tier = SecurityTier.GOOGLE_PLAY,
                     pinLabel = stringResource(R.string.source_play_pin),
                     pins = emptySet(),
                     lastSync = 0L,
@@ -120,20 +136,19 @@ fun ReposPage(viewModel: AppStoreViewModel, onOpenTiers: () -> Unit = {}) {
 private fun SourceCard(
     title: String,
     subtitle: String,
-    tier: SecurityTier,
     pinLabel: String,
     pins: Set<String>,
     lastSync: Long,
 ) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SecurityTierBadge(tier)
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            }
-            Text(subtitle, style = MaterialTheme.typography.labelSmall)
-            Spacer(Modifier.height(2.dp))
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
             Text(
                 pinLabel,
                 style = MaterialTheme.typography.labelSmall,
@@ -150,7 +165,8 @@ private fun SourceCard(
                 Text(
                     stringResource(
                         R.string.last_sync,
-                        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(java.util.Date(lastSync)),
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                            .format(Date(lastSync)),
                     ),
                     style = MaterialTheme.typography.labelSmall,
                 )

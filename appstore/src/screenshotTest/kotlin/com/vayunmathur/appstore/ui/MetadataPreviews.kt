@@ -11,8 +11,12 @@ import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.security.VerificationResult
 import com.vayunmathur.appstore.util.AppDetailActions
 import com.vayunmathur.appstore.util.AppDetailUiState
-import com.vayunmathur.appstore.util.BrowseActions
-import com.vayunmathur.appstore.util.BrowseUiState
+import com.vayunmathur.appstore.util.AppSection
+import com.vayunmathur.appstore.util.HomeActions
+import com.vayunmathur.appstore.util.HomeUiState
+import com.vayunmathur.appstore.util.SearchActions
+import com.vayunmathur.appstore.util.SearchUiState
+import com.vayunmathur.appstore.util.SectionLayout
 import com.vayunmathur.library.ui.DynamicTheme
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
@@ -42,12 +46,13 @@ private fun tile(top: Long, bottom: Long): Drawable =
  * Two things to keep in mind when editing:
  *
  *  - Order matters, and it comes from the function names. The generated PNG filenames
- *    embed the function name, so `Preview1Browse`/`Preview2Detail`/... sort into listing
+ *    embed the function name, so `Preview1Home`/`Preview2Detail`/... sort into listing
  *    order no matter how the plugin formats the rest of the filename. Renumber the
  *    functions if you reorder the listing.
  *  - Everything must be a literal. These render with no ViewModel, no database and no
  *    network, so the state below is the whole input — which is also what makes the output
- *    reproducible from a clean checkout.
+ *    reproducible from a clean checkout. In particular no preview can show a screenshot
+ *    or a remote icon, since both would need a fetch.
  *  - Each preview needs @PreviewTest as well as @Preview. @Preview alone renders in
  *    Studio but is not collected as a screenshot test, and the build fails with the
  *    unhelpful "did not discover any tests".
@@ -56,27 +61,43 @@ private fun tile(top: Long, bottom: Long): Drawable =
  *    JUnit tests and needs a real class to attach them to — top-level functions land in a
  *    synthetic `…Kt` facade and are silently skipped.
  *
- * Two of the four slots go to the security-tiers explainer, because the tier a package
- * got and why is the thing that distinguishes this store from any other F-Droid client.
+ * The last slot goes to the "how apps are checked" page, because comparing what each
+ * source actually guarantees is the thing that distinguishes this store from any other
+ * F-Droid or Play client.
  */
 class MetadataPreviews {
 
     @PreviewTest
-    @Preview(name = "1-browse", device = PHONE, showSystemUi = true)
+    @Preview(name = "1-home", device = PHONE, showSystemUi = true)
     @Composable
-    fun Preview1Browse() {
+    fun Preview1Home() {
         DynamicTheme(darkTheme = true) {
-            SearchAndBrowseScreen(
-                state = BrowseUiState(
-                    apps = CATALOGUE,
+            HomeScreen(
+                state = HomeUiState(
+                    sections = listOf(
+                        AppSection(
+                            id = "modern",
+                            title = "From Modern Apps",
+                            subtitle = "Built in this repo and signed with the same key as this store",
+                            apps = MODERN,
+                        ),
+                        AppSection(
+                            id = "recent",
+                            title = "New and updated",
+                            subtitle = "The newest builds F-Droid has reproduced",
+                            apps = FDROID,
+                            layout = SectionLayout.LIST,
+                        ),
+                    ),
+                    categories = listOf("Security", "Internet", "Multimedia", "Writing"),
+                    updateCount = 3,
                     installedPackages = setOf(
                         "com.vayunmathur.calculator",
                         "com.beemdevelopment.aegis",
                     ),
-                    downloadProgress = mapOf("com.nutomic.syncthingandroid" to 0.42f),
                     installedIcons = ICONS,
                 ),
-                actions = BrowseActions.Noop,
+                actions = HomeActions.Noop,
             )
         }
     }
@@ -96,8 +117,11 @@ class MetadataPreviews {
                         categories = listOf("Security", "Internet"),
                         sourceCode = "https://github.com/beemdevelopment/Aegis",
                         website = "https://getaegis.app",
+                        contentRating = "Everyone",
+                        antiFeatures = listOf("NonFreeNet"),
                         whatsNew = "Faster vault unlock and a fix for importing " +
                             "Authenticator Plus backups.",
+                        updatedOn = "28 July 2026",
                         description = "Aegis is a free, secure and open source app for " +
                             "Android to manage your 2-step verification tokens.\n\n" +
                             "Vaults are encrypted with AES-256 and can be unlocked with " +
@@ -123,27 +147,33 @@ class MetadataPreviews {
     }
 
     @PreviewTest
-    @Preview(name = "3-guarantees", device = PHONE, showSystemUi = true)
+    @Preview(name = "3-search", device = PHONE, showSystemUi = true)
     @Composable
-    fun Preview3Guarantees() {
+    fun Preview3Search() {
         DynamicTheme(darkTheme = true) {
-            SecurityTiersPage(
-                ownSigningCertificates = setOf(SAMPLE_FINGERPRINT),
-                onBack = {},
+            SearchScreen(
+                state = SearchUiState(
+                    query = "password",
+                    results = SEARCH_HITS,
+                    hasSearched = true,
+                    installedPackages = setOf("com.beemdevelopment.aegis"),
+                    installedIcons = ICONS,
+                ),
+                actions = SearchActions.Noop,
             )
         }
     }
 
     @PreviewTest
-    @Preview(name = "4-tiers", device = PHONE, showSystemUi = true)
+    @Preview(name = "4-trust", device = PHONE, showSystemUi = true)
     @Composable
-    fun Preview4Tiers() {
+    fun Preview4Trust() {
         DynamicTheme(darkTheme = true) {
-            SecurityTiersPage(
+            TrustPage(
                 ownSigningCertificates = setOf(SAMPLE_FINGERPRINT),
                 onBack = {},
-                // Items 0 and 1 are the intro and the shared-guarantees card, which the
-                // previous shot already covers; 2 is the first per-tier card.
+                // Items 0 and 1 are the intro and the shared-guarantees card; 2 is the
+                // first per-source card, which is what the listing should show.
                 initialFirstVisibleItem = 2,
             )
         }
@@ -166,12 +196,7 @@ private val AEGIS = UnifiedApp(
     author = "Beem Development",
 )
 
-/**
- * A browse list as it looks after a sync: this repo's own apps first (tier 1), then the
- * F-Droid builds that were independently reproduced (tier 2), then Play (tier 3). That is
- * the order `combinedBrowse` produces, so the sample keeps it.
- */
-private val CATALOGUE = listOf(
+private val MODERN = listOf(
     UnifiedApp(
         packageName = "com.vayunmathur.calculator",
         source = AppSource.MODERN_APPS,
@@ -199,6 +224,18 @@ private val CATALOGUE = listOf(
         versionName = "1.8.0",
         versionCode = 180,
     ),
+    UnifiedApp(
+        packageName = "com.vayunmathur.photos",
+        source = AppSource.MODERN_APPS,
+        name = "Photos",
+        summary = "Gallery with on-device search and a non-destructive editor",
+        author = "Vayun Mathur",
+        versionName = "1.8.0",
+        versionCode = 180,
+    ),
+)
+
+private val FDROID = listOf(
     AEGIS,
     UnifiedApp(
         packageName = "com.kunzisoft.keepass.libre",
@@ -214,19 +251,44 @@ private val CATALOGUE = listOf(
         summary = "Continuous file synchronisation between your own devices",
         author = "Syncthing Community",
     ),
+)
+
+/** A search that hit all three sources, which is the point of the screen. */
+private val SEARCH_HITS = listOf(
     UnifiedApp(
-        packageName = "org.mozilla.firefox",
-        source = AppSource.PLAYSTORE,
-        name = "Firefox",
-        summary = "Web browser with tracking protection and add-ons",
-        author = "Mozilla",
+        packageName = "com.kunzisoft.keepass.libre",
+        source = AppSource.FDROID,
+        name = "KeePassDX",
+        summary = "Password manager for KeePass databases, fully offline",
+        author = "Kunzisoft",
+    ),
+    AEGIS,
+    UnifiedApp(
+        packageName = "com.vayunmathur.passwords",
+        source = AppSource.MODERN_APPS,
+        name = "Passwords",
+        summary = "Password manager with autofill and an encrypted local vault",
+        author = "Vayun Mathur",
     ),
     UnifiedApp(
-        packageName = "org.thoughtcrime.securesms",
+        packageName = "com.agilebits.onepassword",
         source = AppSource.PLAYSTORE,
-        name = "Signal",
-        summary = "End-to-end encrypted messaging and calls",
-        author = "Signal Messenger",
+        name = "1Password",
+        summary = "Password manager and secure wallet",
+        author = "AgileBits",
+        rating = 4.4f,
+        ratingCount = 512_000,
+        installs = 10_000_000,
+    ),
+    UnifiedApp(
+        packageName = "com.bitwarden.authenticator",
+        source = AppSource.PLAYSTORE,
+        name = "Bitwarden Authenticator",
+        summary = "Two-factor codes, from the Bitwarden team",
+        author = "Bitwarden Inc.",
+        rating = 4.6f,
+        ratingCount = 21_000,
+        installs = 1_000_000,
     ),
 )
 
@@ -234,9 +296,11 @@ private val ICONS: Map<String, Drawable> = mapOf(
     "com.vayunmathur.calculator" to tile(0xFF6D5BD0, 0xFF2E2467),
     "com.vayunmathur.email" to tile(0xFF1E88A8, 0xFF0B3C4C),
     "com.vayunmathur.maps" to tile(0xFF2E9E63, 0xFF0F4630),
+    "com.vayunmathur.photos" to tile(0xFFC2456A, 0xFF541C2E),
+    "com.vayunmathur.passwords" to tile(0xFF8A6D3B, 0xFF3B2E19),
     "com.beemdevelopment.aegis" to tile(0xFF3A6EA5, 0xFF17324D),
     "com.kunzisoft.keepass.libre" to tile(0xFFB0562A, 0xFF4C2312),
     "com.nutomic.syncthingandroid" to tile(0xFF3E6FB5, 0xFF17304F),
-    "org.mozilla.firefox" to tile(0xFFE05C2A, 0xFF5E2210),
-    "org.thoughtcrime.securesms" to tile(0xFF3A76F0, 0xFF15306A),
+    "com.agilebits.onepassword" to tile(0xFF1A73E8, 0xFF0B2E5C),
+    "com.bitwarden.authenticator" to tile(0xFF175DDC, 0xFF0A2456),
 )

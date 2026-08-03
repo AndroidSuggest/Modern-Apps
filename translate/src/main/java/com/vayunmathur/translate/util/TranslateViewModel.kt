@@ -67,9 +67,16 @@ class TranslateViewModel(app: Application) : AndroidViewModel(app) {
         return translator.translate(text, from, _targetLang.value)
     }
 
-    /** Speak [text] in [languageCode] (defaults to the current target). */
-    fun speak(text: String, languageCode: String = _targetLang.value) =
-        tts.speak(text, languageCode)
+    /**
+     * Speak [text] in [languageCode] (defaults to the current target). Nothing is spoken
+     * when the TTS engine has no voice for that language — [onMissingVoice] fires instead,
+     * so the caller can say so rather than have it read out in the device's language.
+     */
+    fun speak(
+        text: String,
+        languageCode: String = _targetLang.value,
+        onMissingVoice: (() -> Unit)? = null,
+    ) = tts.speak(text, languageCode, onMissingVoice)
 
     fun stopSpeaking() = tts.stop()
 

@@ -26,7 +26,7 @@
     <string name="app_name">Courrier</string>
     <string name="add_account">Ajouter un compte</string>
     <string name="drafts">Brouillons</string>
-    <string name="email_widget_description">Messages récents de votre boîte de réception unifiée — appuyez pour ouvrir Courrier</string>
+    <string name="email_widget_description">Messages récents de votre boîte de réception unifiée - appuyez pour ouvrir Courrier</string>
     <string name="open_app_password_help">Ouvrir l’aide de %1$s sur les mots de passe d’application</string>
     <string name="to_me">à moi</string>
     <string name="total_attachment_size_exceeds_25_mb_many">La taille totale des pièces jointes dépasse 25 Mo ; de nombreux fournisseurs rejetteront le message.</string>

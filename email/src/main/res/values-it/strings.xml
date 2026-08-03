@@ -27,7 +27,7 @@
     <string name="starttls">STARTTLS</string>
     <string name="listening_for_new_mail">In attesa di nuove email</string>
     <string name="drafts">Bozze</string>
-    <string name="email_widget_description">I messaggi recenti dalla tua casella unificata — tocca per aprire Email</string>
+    <string name="email_widget_description">I messaggi recenti dalla tua casella unificata - tocca per aprire Email</string>
     <string name="sign_in_with_microsoft">Accedi con Microsoft</string>
     <string name="account_added">Account aggiunto</string>
     <string name="username">Nome utente</string>

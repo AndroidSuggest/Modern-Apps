@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,6 +112,7 @@ fun RowScope.CharKey(
     val density = LocalDensity.current
     val screenWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
     val itemWidth = with(density) { AlternateWidth.toPx() }
+
     // Where the popup's left edge sits relative to the key's: centred on the key, then
     // nudged back inside the screen. The drag-to-select maths below uses the same number,
     // so what the finger is over is always what is highlighted.
@@ -120,6 +122,15 @@ fun RowScope.CharKey(
         val clamped = centred.coerceIn(0f, (screenWidth - total).coerceAtLeast(0f))
         clamped - keyLeft
     }
+
+    // The gesture below reads all of these through snapshots rather than capturing them, so it
+    // never has to be restarted to pick up a new value — including popupOffset, which is still
+    // 0 on the first composition and only gets its real value once the key has been positioned.
+    // See the note on `pointerInput(Unit)`.
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnAlternate by rememberUpdatedState(onAlternate)
+    val currentAlternates by rememberUpdatedState(alternates)
+    val currentPopupOffset by rememberUpdatedState(popupOffset)
 
     Box(
         modifier = Modifier
@@ -135,37 +146,52 @@ fun RowScope.CharKey(
             // Written out rather than assembled from detectTapGestures because tap and
             // long-press are one continuous gesture here: the long press opens the popup
             // and the *same* touch goes on to choose from it.
-            .pointerInput(alternates, onClick, onAlternate) {
+            //
+            // Keyed on Unit, deliberately. Keying it on the callbacks instead restarts the
+            // gesture whenever a recomposition reallocates them, and `ImeActions` is an
+            // interface so Compose treats it as unstable and reallocates them every time.
+            // A restart cancels this coroutine, and if that lands between the down and the
+            // up — a suggestion arriving, auto-capitalise flipping shift, a settings flow
+            // emitting, all of which happen mid-keypress — the Press interaction is never
+            // released and the key stays lit with its preview stuck above it until it
+            // leaves composition (i.e. until the user switches to another page).
+            .pointerInput(Unit) {
                 while (true) {
                     val down = awaitPointerEventScope { awaitFirstDown(requireUnconsumed = false) }
                     val press = PressInteraction.Press(down.position)
-                    interaction.emit(press)
-                    val lifted = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                        awaitPointerEventScope { waitForUpOrCancellation() }
-                    }
-                    if (lifted != null) {
-                        interaction.emit(PressInteraction.Release(press))
-                        if (lifted.position.isInside(size)) onClick()
-                        continue
-                    }
-                    if (alternates.isEmpty() || onAlternate == null) {
-                        awaitPointerEventScope { waitForUpOrCancellation() }
-                        interaction.emit(PressInteraction.Release(press))
-                        continue
-                    }
-                    val picked = awaitPointerEventScope {
-                        selected = indexAt(down.position.x, popupOffset, itemWidth, alternates.length)
-                        var change = down
-                        while (change.pressed) {
-                            change = awaitPointerEvent().changes
-                                .firstOrNull { it.id == down.id } ?: break
-                            selected = indexAt(change.position.x, popupOffset, itemWidth, alternates.length)
+                    try {
+                        interaction.emit(press)
+                        val lifted = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            awaitPointerEventScope { waitForUpOrCancellation() }
                         }
-                        selected
+                        if (lifted != null) {
+                            if (lifted.position.isInside(size)) currentOnClick()
+                            continue
+                        }
+                        val alts = currentAlternates
+                        val onAlt = currentOnAlternate
+                        if (alts.isEmpty() || onAlt == null) {
+                            awaitPointerEventScope { waitForUpOrCancellation() }
+                            continue
+                        }
+                        val picked = awaitPointerEventScope {
+                            selected = indexAt(down.position.x, currentPopupOffset, itemWidth, alts.length)
+                            var change = down
+                            while (change.pressed) {
+                                change = awaitPointerEvent().changes
+                                    .firstOrNull { it.id == down.id } ?: break
+                                selected = indexAt(change.position.x, currentPopupOffset, itemWidth, alts.length)
+                            }
+                            selected
+                        }
+                        onAlt(alts[picked].toString())
+                    } finally {
+                        // tryEmit, not emit: this also has to run on the cancellation path,
+                        // where a suspending emit would itself be cancelled and leave the
+                        // key stuck. `continue` runs it too, so every exit clears the press.
+                        selected = -1
+                        interaction.tryEmit(PressInteraction.Release(press))
                     }
-                    selected = -1
-                    interaction.emit(PressInteraction.Release(press))
-                    onAlternate(alternates[picked].toString())
                 }
             },
         contentAlignment = Alignment.Center,

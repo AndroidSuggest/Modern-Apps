@@ -47,8 +47,30 @@ data class CachedAppEntity(
     val apkSha256: String? = null,
     val license: String? = null,
     val website: String? = null,
-    val sourceCode: String? = null
+    val sourceCode: String? = null,
+    /** Newline-joined listing screenshot URLs, in publication order. */
+    val screenshots: String? = null,
+    val featureGraphic: String? = null,
+    val rating: Float? = null,
+    val ratingCount: Long = 0L,
+    val installs: Long = 0L,
+    val updatedOn: String? = null,
+    val contentRating: String? = null,
+    val containsAds: Boolean = false,
+    /** Comma-joined F-Droid anti-feature identifiers. */
+    val antiFeatures: String? = null,
+    val whatsNew: String? = null,
+    val addedTimestamp: Long = 0L,
 )
+
+/** URLs never contain a newline, so this survives values a comma would split apart. */
+private const val LIST_SEP = "\n"
+
+private fun List<String>.packList(): String? =
+    filter { it.isNotBlank() }.joinToString(LIST_SEP).ifBlank { null }
+
+private fun String?.unpackList(): List<String> =
+    this?.split(LIST_SEP)?.filter { it.isNotBlank() } ?: emptyList()
 
 fun UnifiedApp.toEntity(): CachedAppEntity = CachedAppEntity(
     packageName = packageName,
@@ -71,6 +93,17 @@ fun UnifiedApp.toEntity(): CachedAppEntity = CachedAppEntity(
     license = license,
     website = website,
     sourceCode = sourceCode,
+    screenshots = screenshots.packList(),
+    featureGraphic = featureGraphic,
+    rating = rating,
+    ratingCount = ratingCount,
+    installs = installs,
+    updatedOn = updatedOn,
+    contentRating = contentRating,
+    containsAds = containsAds,
+    antiFeatures = antiFeatures.packList(),
+    whatsNew = whatsNew,
+    addedTimestamp = addedTimestamp,
 )
 
 fun CachedAppEntity.toUnifiedApp(): UnifiedApp = UnifiedApp(
@@ -94,6 +127,17 @@ fun CachedAppEntity.toUnifiedApp(): UnifiedApp = UnifiedApp(
     license = license,
     website = website,
     sourceCode = sourceCode,
+    screenshots = screenshots.unpackList(),
+    featureGraphic = featureGraphic,
+    rating = rating,
+    ratingCount = ratingCount,
+    installs = installs,
+    updatedOn = updatedOn,
+    contentRating = contentRating,
+    containsAds = containsAds,
+    antiFeatures = antiFeatures.unpackList(),
+    whatsNew = whatsNew,
+    addedTimestamp = addedTimestamp,
 )
 
 /**
@@ -142,10 +186,53 @@ interface RepoDao {
     suspend fun deleteByUrl(url: String)
 }
 
+/**
+ * The three columns every catalogue-wide question needs, without dragging each app's
+ * description and screenshot list into memory with them.
+ *
+ * The store caches the whole F-Droid index — several thousand rows — so the old habit of
+ * collecting `allFlow()` and filtering in Kotlin meant holding the entire catalogue live
+ * just to answer "is this package known, and is it newer than what's installed".
+ */
+data class PackageIndexRow(
+    val packageName: String,
+    val source: String,
+    val versionCode: Long,
+)
+
 @Dao
 interface CachedAppDao {
     @Query("SELECT * FROM CachedAppEntity ORDER BY name ASC")
     fun allFlow(): Flow<List<CachedAppEntity>>
+
+    /** Package → source/version, for attribution and update detection. */
+    @Query("SELECT packageName, source, versionCode FROM CachedAppEntity")
+    fun indexFlow(): Flow<List<PackageIndexRow>>
+
+    @Query("SELECT * FROM CachedAppEntity WHERE source = :source ORDER BY name ASC")
+    fun bySourceFlow(source: String): Flow<List<CachedAppEntity>>
+
+    @Query("SELECT * FROM CachedAppEntity ORDER BY lastUpdated DESC LIMIT :limit")
+    suspend fun recentlyUpdated(limit: Int): List<CachedAppEntity>
+
+    @Query(
+        "SELECT * FROM CachedAppEntity WHERE ',' || categories || ',' LIKE '%,' || :category || ',%' " +
+            "ORDER BY lastUpdated DESC LIMIT :limit"
+    )
+    suspend fun byCategory(category: String, limit: Int): List<CachedAppEntity>
+
+    @Query("SELECT categories FROM CachedAppEntity WHERE categories != ''")
+    suspend fun allCategoryStrings(): List<String>
+
+    @Query("SELECT * FROM CachedAppEntity WHERE packageName IN (:packages)")
+    suspend fun byPackages(packages: List<String>): List<CachedAppEntity>
+
+    @Query(
+        "SELECT * FROM CachedAppEntity WHERE " +
+            "packageName LIKE '%' || :q || '%' OR name LIKE '%' || :q || '%' " +
+            "OR summary LIKE '%' || :q || '%' ORDER BY name ASC LIMIT :limit"
+    )
+    suspend fun searchAll(q: String, limit: Int): List<CachedAppEntity>
 
     @Query("SELECT * FROM CachedAppEntity WHERE packageName LIKE '%' || :q || '%' OR name LIKE '%' || :q || '%' ORDER BY name ASC")
     fun searchFlow(q: String): Flow<List<CachedAppEntity>>
@@ -178,7 +265,7 @@ interface CachedAppDao {
 
 @Database(
     entities = [RepoEntity::class, CachedAppEntity::class, PinnedStampEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -216,6 +303,23 @@ abstract class AppDatabase : RoomDatabase() {
                             "stampSha256 TEXT NOT NULL, " +
                             "firstSeen INTEGER NOT NULL)"
                     )
+                }
+            },
+            object : Migration(4, 5) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    // Listing media and store metadata. All nullable or defaulted, so
+                    // existing rows stay usable and fill in on the next sync.
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN screenshots TEXT")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN featureGraphic TEXT")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN rating REAL")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN ratingCount INTEGER NOT NULL DEFAULT 0")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN installs INTEGER NOT NULL DEFAULT 0")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN updatedOn TEXT")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN contentRating TEXT")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN containsAds INTEGER NOT NULL DEFAULT 0")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN antiFeatures TEXT")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN whatsNew TEXT")
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN addedTimestamp INTEGER NOT NULL DEFAULT 0")
                 }
             }
         )

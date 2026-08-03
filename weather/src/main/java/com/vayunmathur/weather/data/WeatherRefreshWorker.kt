@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vayunmathur.library.room.buildDatabase
+import com.vayunmathur.weather.glance.WeatherBlobGlanceWidget
 import com.vayunmathur.weather.glance.WeatherGlanceWidget
 import com.vayunmathur.weather.network.WeatherApi
 import java.util.concurrent.TimeUnit
@@ -37,6 +38,7 @@ class WeatherRefreshWorker(
             }
 
             WeatherGlanceWidget().updateAll(context)
+            WeatherBlobGlanceWidget().updateAll(context)
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Weather refresh failed", e)

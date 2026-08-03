@@ -30,23 +30,14 @@ import java.net.URL
  * index, a compromised GitHub account, or a hostile CDN can change which bytes are
  * offered, but cannot produce bytes that will install: that needs the release signing
  * key, which is the sole trust root here.
+ *
+ * Reads go through [CatalogRepository], which queries the cache table this writes.
  */
-class ModernAppsProvider(private val appContext: Context) : AppProvider {
-
-    override val id = "modern-apps"
-    override val name = "Modern Apps"
-    override val source = AppSource.MODERN_APPS
-
-    @Volatile
-    var cachedPackageNames: Set<String> = emptySet()
-        private set
-
-    @Volatile
-    private var cached: List<UnifiedApp> = emptyList()
+class ModernAppsProvider(private val appContext: Context) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    override suspend fun fetchAll(): List<UnifiedApp> = withContext(Dispatchers.IO) {
+    private suspend fun fetchAll(): List<UnifiedApp> = withContext(Dispatchers.IO) {
         val release = json.decodeFromString(
             GithubRelease.serializer(),
             httpGetString(ModernAppsRepo.LATEST_RELEASE_API, accept = GITHUB_ACCEPT),
@@ -57,10 +48,7 @@ class ModernAppsProvider(private val appContext: Context) : AppProvider {
         } else {
             fetchFromGitTree(release)
         }
-        val filtered = AppProvider.filterTargetSdk(apps).distinctBy { it.packageName }
-        cached = filtered
-        cachedPackageNames = filtered.map { it.packageName }.toSet()
-        filtered
+        AppProvider.filterTargetSdk(apps).distinctBy { it.packageName }
     }
 
     /** Preferred path: the release states its own contents. */
@@ -182,37 +170,12 @@ class ModernAppsProvider(private val appContext: Context) : AppProvider {
         lastUpdated = publishedAt,
     )
 
-    override suspend fun search(query: String): List<UnifiedApp> {
-        if (query.isBlank()) return emptyList()
-        val q = query.lowercase()
-        return cached.filter {
-            it.name.lowercase().contains(q) ||
-                it.packageName.lowercase().contains(q) ||
-                it.summary.lowercase().contains(q)
-        }
-    }
-
-    override suspend fun isPresent(packageName: String): Boolean =
-        cachedPackageNames.contains(packageName)
-
-    override suspend fun getDetails(packageName: String): UnifiedApp? =
-        cached.find { it.packageName == packageName }
-
     /** Refresh from GitHub and replace this source's rows in the shared cache table. */
     suspend fun syncIntoDb(db: AppDatabase): Int = withContext(Dispatchers.IO) {
         val apps = fetchAll()
         db.cachedAppDao().deleteByRepo(ModernAppsRepo.REPO_KEY)
         db.cachedAppDao().upsertAll(apps.map { it.toEntity() })
         apps.size
-    }
-
-    /** Seed the in-memory view from previously cached rows so browse works offline. */
-    fun primeFrom(entities: List<CachedAppEntity>) {
-        val apps = entities
-            .filter { it.source == AppSource.MODERN_APPS.name }
-            .map { it.toUnifiedApp() }
-        cached = apps
-        cachedPackageNames = apps.map { it.packageName }.toSet()
     }
 
     private fun httpGetString(url: String, accept: String): String {

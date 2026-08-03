@@ -807,60 +807,55 @@ object PiperVoiceRegistry {
         return encoder.name.removeSuffix(ENCODER_SUFFIX)
     }
 
-    fun isExtracted(context: Context, def: PiperVoiceDef): Boolean {
-        val dir = voiceDir(context, def)
-        if (!dir.isDirectory) {
-            if (def.code == "en") {
-                val legacyDir = legacyVoiceDir(context)
-                if (legacyDir.isDirectory) {
-                    return isLegacyExtracted(context)
-                }
-            }
-            return false
-        }
+    private fun isValidVoiceDir(dir: File, minDictBytes: Long = 100_000L): Boolean {
+        if (!dir.isDirectory) return false
         if (dir.listFiles()?.any { it.name.endsWith(".onnx") } == true) return false
-
-        val dictPath = File(dir, def.dictFile)
-        val altEnDict = File(dir, "en-word_id.bin")
-        val dictFile = when {
-            dictPath.exists() -> dictPath
-            altEnDict.exists() -> altEnDict
-            else -> {
-                dir.listFiles()?.firstOrNull { it.name.endsWith("-word_id.bin") }
-            }
-        }
-
-        if (dictFile == null || !dictFile.exists()) {
-            Log.d(TAG, "dict missing for ${def.id} in $dir")
-            return false
-        }
-        val minSize = if (def.code == "en") 1_000_000L else 100_000L
-        if (dictFile.length() < minSize) {
-            Log.d(TAG, "tiny dict for ${def.id}: ${dictFile.length()} < $minSize")
-            return false
-        }
-
-        val prefix = voicePrefix(context, def)
-        if (prefix == null) {
-            Log.d(TAG, "no prefix for ${def.id} in $dir")
-            return false
-        }
-
+        val dict = dir.listFiles()?.firstOrNull { it.name.endsWith("-word_id.bin") } ?: return false
+        if (dict.length() < minDictBytes) return false
+        val enc = dir.listFiles()?.firstOrNull { it.name.endsWith(ENCODER_SUFFIX) } ?: return false
+        val prefix = enc.name.removeSuffix(ENCODER_SUFFIX)
         val netsOk = REQUIRED_NETS.all { net ->
             File(dir, "${prefix}${net}.ncnn.param").exists() &&
                 File(dir, "${prefix}${net}.ncnn.bin").exists()
         }
-        if (!netsOk) {
-            Log.d(TAG, "nets missing for ${def.id} prefix=$prefix in $dir")
-            return false
-        }
-
-        if (!File(dir, CONFIG).exists()) {
-            Log.d(TAG, "config missing for ${def.id} in $dir")
-            return false
-        }
-
+        if (!netsOk) return false
+        if (!File(dir, CONFIG).exists()) return false
         return true
+    }
+
+    /**
+     * Find any valid voice dir under `piper/voices/<bcp47>/` – tolerates old speaker-specific
+     * ids like `en_US-lessac-low` after we renamed to generic `en_US-high`. Used to make
+     * CHECK_TTS_DATA and onGetVoices work on upgraded installs.
+     */
+    fun findAnyValidDirForBcp47(context: Context, bcp47: String): File? {
+        return try {
+            val bcpRoot = File(voicesDir(context), bcp47)
+            if (!bcpRoot.isDirectory) return null
+            bcpRoot.listFiles()?.firstOrNull { child ->
+                child.isDirectory && isValidVoiceDir(child, if (bcp47.startsWith("en")) 1_000_000L else 100_000L)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun isExtracted(context: Context, def: PiperVoiceDef): Boolean {
+        val dir = voiceDir(context, def)
+        if (dir.isDirectory && isValidVoiceDir(dir, if (def.code == "en") 1_000_000L else 100_000L)) {
+            return true
+        }
+        // Fallback: any valid dir under same BCP-47 (old speaker-specific ids)
+        if (findAnyValidDirForBcp47(context, def.bcp47) != null) {
+            return true
+        }
+        if (def.code == "en") {
+            val legacyDir = legacyVoiceDir(context)
+            if (legacyDir.isDirectory && isLegacyExtracted(context)) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun isLegacyExtracted(context: Context): Boolean {

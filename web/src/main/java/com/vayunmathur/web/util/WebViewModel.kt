@@ -141,15 +141,48 @@ class WebViewModel(
                         blockThirdPartyCookies = blockThird
                         desktopMode = desktop
 
-                        if (savedTabs != null) {
-                            runCatching {
-                                val decoded = json.decodeFromString<List<BrowserTab>>(savedTabs)
-                                if (decoded.isNotEmpty()) {
+                        // Capture any tabs that were already created (e.g., from an external intent arriving before restore finishes)
+                        val preExisting = tabs.toList()
+                        val preExistingActive = activeTabId
+
+                        val decodedSaved: List<BrowserTab>? = if (savedTabs != null) {
+                            runCatching { json.decodeFromString<List<BrowserTab>>(savedTabs) }.getOrNull()?.takeIf { it.isNotEmpty() }
+                        } else null
+
+                        when {
+                            decodedSaved != null -> {
+                                if (preExisting.isNotEmpty()) {
+                                    // Merge: keep saved tabs + any extra tabs created before restore (like external URL)
+                                    val decodedIds = decodedSaved.map { it.id }.toSet()
+                                    val extras = preExisting.filter { it.id !in decodedIds }
                                     tabs.clear()
-                                    tabs.addAll(decoded)
+                                    tabs.addAll(decodedSaved)
+                                    if (extras.isNotEmpty()) {
+                                        tabs.addAll(extras)
+                                        // If the active tab was one of the extras, keep it active (new tab wins)
+                                        if (preExistingActive != null && extras.any { it.id == preExistingActive }) {
+                                            activeTabId = preExistingActive
+                                        } else {
+                                            activeTabId = activeId ?: tabs.firstOrNull()?.id
+                                        }
+                                    } else {
+                                        activeTabId = activeId ?: tabs.firstOrNull()?.id
+                                    }
+                                } else {
+                                    tabs.clear()
+                                    tabs.addAll(decodedSaved)
+                                    activeTabId = activeId ?: tabs.firstOrNull()?.id
                                 }
                             }
+                            preExisting.isNotEmpty() -> {
+                                // No saved tabs but we already have tabs (external intent race) -> keep them
+                                if (activeTabId == null) activeTabId = preExisting.firstOrNull()?.id
+                            }
+                            else -> {
+                                // No saved and no pre-existing -> will create blank below
+                            }
                         }
+
                         if (tabs.isEmpty()) {
                             val tab = BrowserTab(id = Uuid.random().toString(), url = "")
                             tabs.add(tab)
@@ -165,7 +198,10 @@ class WebViewModel(
                                 tabs.clear()
                                 tabs.addAll(migrated)
                             }
-                            activeTabId = activeId ?: tabs.firstOrNull()?.id
+                            // Ensure active id is still valid after migration
+                            if (activeTabId == null || tabs.none { it.id == activeTabId }) {
+                                activeTabId = activeId ?: tabs.firstOrNull()?.id
+                            }
                         }
                         activeTab?.let {
                             omniboxText = if (it.url.isBlank() || it.url == "about:blank") "" else it.url
@@ -634,12 +670,8 @@ class WebViewModel(
     }
 
     fun externalIntentUrl(url: String) {
-        if (tabs.size == 1 && tabs[0].url.isBlank()) {
-            onTabUrlChange(tabs[0].id, url)
-            activeTabId = tabs[0].id
-        } else {
-            newTab(url = url, makeActive = true)
-        }
+        // Per product requirement: external links from other apps always open a new tab.
+        newTab(url = url, makeActive = true)
     }
 }
 

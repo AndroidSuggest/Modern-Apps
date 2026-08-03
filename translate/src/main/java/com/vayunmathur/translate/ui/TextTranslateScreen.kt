@@ -6,6 +6,9 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.speech.tts.TextToSpeech
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +52,7 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.translate.util.AndroidSpeechRecognizer
 import com.vayunmathur.translate.util.Languages
 import com.vayunmathur.translate.util.MicState
@@ -79,6 +83,7 @@ fun TextTranslatePage(
     onOpenCamera: () -> Unit,
 ) {
     val context = LocalContext.current
+    val messenger = rememberMessenger()
 
     val sourceLang by viewModel.sourceLang.collectAsState()
     val targetLang by viewModel.targetLang.collectAsState()
@@ -138,6 +143,13 @@ fun TextTranslatePage(
         isTranslating = false
     }
 
+    // Read here, not in the callback below: stringResource is @Composable.
+    val missingVoiceMessage = stringResource(
+        R.string.no_voice_installed,
+        Languages.byCode(targetLang).englishName,
+    )
+    val installLabel = stringResource(R.string.install_voice)
+
     TextTranslateScreen(
         state = TextTranslateUiState(
             sourceLang = sourceLang,
@@ -168,8 +180,17 @@ fun TextTranslatePage(
             }
 
             override fun copyOutput() = copyToClipboard(context, outputText)
+
+            // Say so rather than let the engine read the translation out in the device's
+            // language, and offer the engine's own voice-download screen as the fix.
             override fun speakOutput() {
-                viewModel.speak(outputText, targetLang)
+                viewModel.speak(outputText, targetLang) {
+                    messenger.show(
+                        message = missingVoiceMessage,
+                        actionLabel = installLabel,
+                        onAction = { installVoiceData(context) },
+                    )
+                }
             }
 
             override fun openCamera() = onOpenCamera()
@@ -367,6 +388,20 @@ private fun OutputCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Open the TTS engine's voice-download screen. Not every engine declares the activity, so
+ * a missing handler is just a no-op rather than a crash.
+ */
+private fun installVoiceData(context: Context) {
+    val intent = Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (t: Throwable) {
+        Log.w("TextTranslate", "no activity for ACTION_INSTALL_TTS_DATA", t)
     }
 }
 

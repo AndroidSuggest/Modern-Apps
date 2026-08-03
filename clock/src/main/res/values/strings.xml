@@ -116,7 +116,7 @@
     <!-- Widget picker label for analog clock widget -->
     <string name="analog_clock_widget_label">Analog Clock</string>
     <!-- Widget picker description for analog clock widget, shown in widget gallery -->
-    <string name="analog_clock_widget_description">Material You analog clock — tap to open the clock</string>
+    <string name="analog_clock_widget_description">Material You analog clock - tap to open the clock</string>
 
     <!-- AlarmSettingsPage -->
     <!-- TopAppBar title for alarm settings screen -->

@@ -2,14 +2,18 @@ package com.vayunmathur.library.map
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -19,6 +23,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -31,9 +38,13 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.library.image.ImageLoader
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sign
 
 /** Placement of one tile in the viewport, in logical (dp) coordinates. */
 private data class TileBox(
@@ -89,6 +100,16 @@ fun RasterMap(
     }
     LaunchedEffect(visible) { visible.forEach { cache.request(scope, it.key) } }
 
+    // In-flight double-tap zoom animation, cancelled as soon as a new gesture
+    // wants to drive the camera itself.
+    val zoomAnim = remember { mutableStateOf<Job?>(null) }
+    fun toDp(offsetPx: Offset) = Offset(offsetPx.x / density, offsetPx.y / density)
+    fun clickAt(offsetPx: Offset) {
+        val proj = cameraState.projection ?: return
+        val dp = toDp(offsetPx)
+        onMapClick(proj.positionFromScreenLocation(DpOffset(dp.x.dp, dp.y.dp)))
+    }
+
     Box(
         modifier
             .fillMaxSize()
@@ -96,12 +117,13 @@ fun RasterMap(
             .onSizeChanged {
                 cameraState.setViewport(Size(it.width / density, it.height / density))
             }
-            .pointerInput(cameraState, gestures, zoomRange) {
+            .pointerInput(cameraState, gestures, zoomRange, density) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
                     if (!gestures.isScrollEnabled && !gestures.isZoomEnabled) return@detectTransformGestures
+                    zoomAnim.value?.cancel()
                     cameraState.onGesture(
-                        centroidDp = Offset(centroid.x / density, centroid.y / density),
-                        panDp = Offset(pan.x / density, pan.y / density),
+                        centroidDp = toDp(centroid),
+                        panDp = toDp(pan),
                         zoomChange = zoom,
                         minZoom = zoomRange.start.toDouble(),
                         maxZoom = zoomRange.endInclusive.toDouble(),
@@ -110,10 +132,41 @@ fun RasterMap(
                     )
                 }
             }
-            .pointerInput(cameraState) {
-                detectTapGestures { offset ->
-                    val proj = cameraState.projection ?: return@detectTapGestures
-                    onMapClick(proj.positionFromScreenLocation(DpOffset((offset.x / density).dp, (offset.y / density).dp)))
+            // Declared after the transform detector so it sees pointer events
+            // first and can consume a quick-zoom drag out from under it.
+            .pointerInput(cameraState, gestures, zoomRange, density) {
+                if (!gestures.isZoomEnabled) {
+                    // Nothing to disambiguate against, so report taps immediately.
+                    detectTapGestures { clickAt(it) }
+                } else {
+                    var quickZoomStart = cameraState.position
+                    detectTapAndQuickZoomGestures(
+                        onTap = { clickAt(it) },
+                        onDoubleTap = { anchor ->
+                            zoomAnim.value?.cancel()
+                            zoomAnim.value = scope.launch {
+                                cameraState.animateZoomBy(
+                                    deltaZoom = 1.0,
+                                    anchorDp = toDp(anchor),
+                                    minZoom = zoomRange.start.toDouble(),
+                                    maxZoom = zoomRange.endInclusive.toDouble(),
+                                )
+                            }
+                        },
+                        onQuickZoomStart = {
+                            zoomAnim.value?.cancel()
+                            quickZoomStart = cameraState.position
+                        },
+                        onQuickZoom = { anchor, dragPx ->
+                            cameraState.onQuickZoom(
+                                from = quickZoomStart,
+                                anchorDp = toDp(anchor),
+                                dragDp = dragPx / density,
+                                minZoom = zoomRange.start.toDouble(),
+                                maxZoom = zoomRange.endInclusive.toDouble(),
+                            )
+                        },
+                    )
                 }
             },
     ) {
@@ -132,6 +185,76 @@ fun RasterMap(
             Attribution(tileSource.attribution, Modifier.align(Alignment.BottomStart))
         }
     }
+}
+
+/**
+ * Single-pointer tap gestures: [onTap], [onDoubleTap], and the "quick zoom"
+ * that follows a double-tap the user holds and swipes — [onQuickZoomStart]
+ * then [onQuickZoom] with the tapped anchor and the signed vertical drag in px
+ * (down is positive). A gesture reports either a double-tap or a quick zoom,
+ * never both.
+ *
+ * Meant to sit alongside [detectTransformGestures]: it stays out of the way of
+ * pan/pinch, and once a quick-zoom drag passes touch slop it consumes the
+ * moves so the transform detector cancels instead of also panning.
+ */
+private suspend fun PointerInputScope.detectTapAndQuickZoomGestures(
+    onTap: (Offset) -> Unit,
+    onDoubleTap: (Offset) -> Unit,
+    onQuickZoomStart: () -> Unit,
+    onQuickZoom: (anchor: Offset, dragPx: Float) -> Unit,
+) = awaitEachGesture {
+    val down = awaitFirstDown()
+    down.consume()
+    val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+    up.consume()
+
+    val secondDown = awaitSecondDown(up)
+    if (secondDown == null) {
+        onTap(up.position)
+        return@awaitEachGesture
+    }
+    secondDown.consume()
+
+    // Zoom about the tapped point, which stays put for the whole gesture
+    // (following the finger instead would drift the map out from under it).
+    val anchor = up.position
+    val slop = viewConfiguration.touchSlop
+    var zooming = false
+    var dragOrigin = 0f
+    while (true) {
+        val event = awaitPointerEvent()
+        // A second finger means the user wants a pinch; hand it over untouched.
+        if (event.changes.size > 1) return@awaitEachGesture
+        val change = event.changes.firstOrNull { it.id == secondDown.id } ?: break
+        if (!change.pressed) {
+            change.consume()
+            break
+        }
+        val dy = change.position.y - secondDown.position.y
+        if (!zooming) {
+            if (abs(dy) < slop) continue
+            // Start measuring from the slop boundary so the zoom doesn't jump.
+            dragOrigin = dy - slop * sign(dy)
+            zooming = true
+            onQuickZoomStart()
+        }
+        change.consume()
+        onQuickZoom(anchor, dy - dragOrigin)
+    }
+    if (!zooming) onDoubleTap(anchor)
+}
+
+/** The second down of a double-tap, or null if none arrives in time. */
+private suspend fun AwaitPointerEventScope.awaitSecondDown(
+    firstUp: PointerInputChange,
+): PointerInputChange? = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+    val minUptime = firstUp.uptimeMillis + viewConfiguration.doubleTapMinTimeMillis
+    var change: PointerInputChange
+    do {
+        change = awaitFirstDown()
+    } while (change.uptimeMillis < minUptime)
+    change
 }
 
 /** Draws one tile, falling back to a scaled ancestor when the exact tile is missing. */

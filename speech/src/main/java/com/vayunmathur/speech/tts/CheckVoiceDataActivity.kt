@@ -11,12 +11,13 @@ import com.vayunmathur.speech.util.PiperVoiceRegistry
  * Answers the framework's `CHECK_TTS_DATA` probe: the system TTS settings run this
  * before letting the user pick our engine, to learn which voices are installed.
  *
- * Originally reported only `eng-USA` (en-US Amy medium). After multilingual
- * expansion we report all installed voices as ISO3 triples (e.g. `eng-USA`,
- * `deu-DEU`, `fra-FRA`, ...) so each language shows an enabled Play button.
- *
- * Legacy single-voice path via [PiperModel] is kept as fallback so older installs
- * still PASS before migration runs.
+ * Must keep ISO3 format (e.g. `eng-USA`, `deu-DEU`) in EXTRA_AVAILABLE_VOICES.
+ * The Play button in Settings is enabled only if CHECK returns PASS and
+ * PiperTtsService.onGetVoices() contains voices matching BCP-47 and ISO3 variants,
+ * and onGetDefaultVoiceNameFor(null,null,null) returns a non-empty installed voice
+ * name. If any of those disagree, Play silently does nothing — this was the bug
+ * after registry renamed to generic IDs (en_US-high) while old dirs still existed
+ * as en_US-lessac-low.
  */
 class CheckVoiceDataActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,35 +27,42 @@ class CheckVoiceDataActivity : Activity() {
         val unavailable = ArrayList<String>()
 
         try {
+            // Ensure old low/medium -> high migration + removal of dup archives
             PiperVoiceRegistry.migrateLegacyIfNeeded(this)
+            // Also allow old speaker-specific dirs to count as installed (via fallback
+            // findAnyValidDirForBcp47) so Settings Play works on upgraded installs.
             val installed = PiperVoiceRegistry.installedDefs(this)
             if (installed.isNotEmpty()) {
                 for (def in installed) {
-                    available.add("${def.iso3}-${def.iso3Country}")
+                    val iso = "${def.iso3}-${def.iso3Country}"
+                    if (!available.contains(iso)) {
+                        available.add(iso)
+                    }
                 }
-                // Also add uninstalled voices as unavailable so Settings can
-                // distinguish missing vs present if framework cares.
+                // Report everything else as unavailable, de-duped.
                 for (def in PiperVoiceRegistry.ALL) {
-                    if (def !in installed) {
-                        unavailable.add("${def.iso3}-${def.iso3Country}")
+                    val iso = "${def.iso3}-${def.iso3Country}"
+                    if (iso !in available && iso !in unavailable) {
+                        // Only report as unavailable if not extracted
+                        if (!PiperVoiceRegistry.isExtracted(this, def)) {
+                            unavailable.add(iso)
+                        }
                     }
                 }
             } else {
-                // Fallback: legacy single-voice check (pre-migration or empty)
                 if (PiperModel.isExtracted(this)) {
                     available.add(VOICE)
                 } else {
                     unavailable.add(VOICE)
-                    // Report all others as unavailable too
                     for (def in PiperVoiceRegistry.ALL) {
-                        if (def.code != "en") {
-                            unavailable.add("${def.iso3}-${def.iso3Country}")
+                        val iso = "${def.iso3}-${def.iso3Country}"
+                        if (def.code != "en" && iso !in unavailable && iso !in available) {
+                            unavailable.add(iso)
                         }
                     }
                 }
             }
         } catch (_: Throwable) {
-            // Safety: at least report eng-USA if legacy exists.
             if (PiperModel.isExtracted(this)) {
                 available.add(VOICE)
             } else {
@@ -67,18 +75,14 @@ class CheckVoiceDataActivity : Activity() {
             putStringArrayListExtra(TextToSpeech.Engine.EXTRA_UNAVAILABLE_VOICES, unavailable)
         }
         setResult(
-            if (available.isNotEmpty()) {
-                TextToSpeech.Engine.CHECK_VOICE_DATA_PASS
-            } else {
-                TextToSpeech.Engine.CHECK_VOICE_DATA_FAIL
-            },
+            if (available.isNotEmpty()) TextToSpeech.Engine.CHECK_VOICE_DATA_PASS
+            else TextToSpeech.Engine.CHECK_VOICE_DATA_FAIL,
             data,
         )
         finish()
     }
 
     private companion object {
-        // Legacy single-voice id.
         const val VOICE = "eng-USA"
     }
 }

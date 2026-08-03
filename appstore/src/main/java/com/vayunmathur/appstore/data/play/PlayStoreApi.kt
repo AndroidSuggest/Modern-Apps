@@ -1,16 +1,26 @@
 package com.vayunmathur.appstore.data.play
 
 import android.content.Context
+import com.aurora.gplayapi.data.models.App
 import com.aurora.gplayapi.data.models.AuthData
 import com.aurora.gplayapi.data.models.PlayFile
+import com.aurora.gplayapi.data.models.StreamCluster
 import com.aurora.gplayapi.helpers.AppDetailsHelper
 import com.aurora.gplayapi.helpers.PurchaseHelper
 import com.aurora.gplayapi.helpers.SearchHelper
+import com.aurora.gplayapi.helpers.StreamHelper
+import com.aurora.gplayapi.helpers.TopChartsHelper
+import com.aurora.gplayapi.helpers.contracts.StreamContract
+import com.aurora.gplayapi.helpers.contracts.TopChartsContract
+import com.vayunmathur.appstore.data.AppProvider
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** A titled row of apps, as Play's own home screen is built from. */
+data class PlayCluster(val title: String, val apps: List<UnifiedApp>)
 
 /**
  * Wrapper around gplayapi helpers for Play Store operations.
@@ -23,63 +33,79 @@ class PlayStoreApi(
 
     suspend fun getDetails(packageName: String): UnifiedApp? = withContext(Dispatchers.IO) {
         try {
-            val helper = AppDetailsHelper(authData).using(httpClient)
-            val app = helper.getAppByPackageName(packageName)
-
-            UnifiedApp(
-                packageName = app.packageName,
-                source = AppSource.PLAYSTORE,
-                name = app.displayName.takeIf { it.isNotBlank() } ?: packageName.substringAfterLast('.'),
-                summary = app.shortDescription,
-                description = app.description.takeIf { it.isNotBlank() } ?: app.shortDescription,
-                iconUrl = app.iconArtwork.url.takeIf { it.isNotBlank() },
-                author = app.developerName,
-                categories = emptyList(),
-                versionName = app.versionName,
-                versionCode = app.versionCode,
-                sizeBytes = app.size,
-                website = "https://play.google.com/store/apps/details?id=$packageName",
-                offerType = app.offerType,
-                isFree = app.isFree,
-                whatsNew = app.changes.takeIf { it.isNotBlank() },
-                targetSdk = app.targetSdk,
-                // AppDetails.certificateSet[].sha256 is the signing certificate Google
-                // says this package should carry — the same expectation the Play client
-                // stores on its library entry and compares against PackageManager. It
-                // pins the bytes against a swapped CDN response, but note that Google
-                // supplies both this value and the APK, so it is not a publisher key.
-                expectedSigners = app.certificateSetList
-                    .mapNotNull { it.sha256?.let(ApkCertificates::normalizeFingerprint) }
-                    .distinct(),
-            )
-        } catch (e: Exception) {
+            AppDetailsHelper(authData).using(httpClient)
+                .getAppByPackageName(packageName)
+                .toUnifiedApp()
+        } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Details for many packages in one request.
+     *
+     * Play accepts a batch here, and the update check is the reason it matters: asking
+     * per-package meant one round trip plus a throttling delay for every installed app,
+     * so a phone with 60 Play apps spent minutes on a check that this does in a handful
+     * of requests. Chunked because the endpoint rejects unbounded lists.
+     */
+    suspend fun getDetails(packageNames: List<String>): List<UnifiedApp> = withContext(Dispatchers.IO) {
+        if (packageNames.isEmpty()) return@withContext emptyList()
+        val helper = AppDetailsHelper(authData).using(httpClient)
+        packageNames.chunked(DETAILS_BATCH).flatMap { chunk ->
+            try {
+                helper.getAppByPackageName(chunk).map { it.toUnifiedApp() }
+            } catch (_: Exception) {
+                emptyList()
+            }
         }
     }
 
     suspend fun search(query: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
         try {
-            val helper = SearchHelper(authData).using(httpClient)
-            val bundle = helper.searchResults(query)
-            val allApps = bundle.streamClusters.values.flatMap { it.clusterAppList }
-            allApps.mapNotNull { app ->
-                try {
-                    UnifiedApp(
-                        packageName = app.packageName,
-                        source = AppSource.PLAYSTORE,
-                        name = app.displayName.takeIf { it.isNotBlank() } ?: app.packageName.substringAfterLast('.'),
-                        summary = app.shortDescription,
-                        description = app.shortDescription,
-                        iconUrl = app.iconArtwork.url.takeIf { it.isNotBlank() },
-                        author = app.developerName,
-                        versionName = app.versionName,
-                        versionCode = app.versionCode,
-                        website = "https://play.google.com/store/apps/details?id=${app.packageName}",
-                        offerType = app.offerType
-                    )
-                } catch (_: Exception) { null }
-            }
-        } catch (e: Exception) {
+            val bundle = SearchHelper(authData).using(httpClient).searchResults(query)
+            bundle.streamClusters.values
+                .flatMap { it.clusterAppList }
+                .map { it.toUnifiedApp() }
+                .distinctBy { it.packageName }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** A real top chart, rather than whatever the store's HTML happened to render. */
+    suspend fun topChart(
+        type: TopChartsContract.Type = TopChartsContract.Type.APPLICATION,
+        chart: TopChartsContract.Chart = TopChartsContract.Chart.TOP_SELLING_FREE,
+    ): List<UnifiedApp> = withContext(Dispatchers.IO) {
+        try {
+            TopChartsHelper(authData).using(httpClient)
+                .getCluster(type.value, chart.value)
+                .toApps()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Play's own home stream: several titled clusters ("Recommended for you", "New
+     * releases", …). Used to give the browse screen real editorial rows instead of one
+     * undifferentiated list.
+     */
+    suspend fun homeClusters(
+        category: StreamContract.Category = StreamContract.Category.APPLICATION,
+    ): List<PlayCluster> = withContext(Dispatchers.IO) {
+        try {
+            StreamHelper(authData).using(httpClient)
+                .fetch(StreamContract.Type.HOME, category)
+                .streamClusters.values
+                .mapNotNull { cluster ->
+                    val apps = cluster.toApps()
+                    if (apps.isEmpty()) null
+                    else PlayCluster(cluster.clusterTitle.ifBlank { "" }, apps)
+                }
+                .filter { it.title.isNotBlank() }
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -98,4 +124,65 @@ class PlayStoreApi(
         val purchaseHelper = PurchaseHelper(authData).using(httpClient)
         purchaseHelper.purchase(packageName, versionCode, offerType, certHash)
     }
+
+    private fun StreamCluster.toApps(): List<UnifiedApp> =
+        AppProvider.filterTargetSdk(clusterAppList.map { it.toUnifiedApp() })
+            .distinctBy { it.packageName }
+
+    companion object {
+        /**
+         * Play rejects very long batches, and a rejected chunk loses every package in it,
+         * so this stays well under whatever the real ceiling is.
+         */
+        private const val DETAILS_BATCH = 40
+    }
+}
+
+/**
+ * Everything Play publishes that the store shows, in one place.
+ *
+ * Cluster listings fill in far less than a details call does — most fields come back
+ * empty — which is fine: the detail screen refetches by package name, and the empty
+ * defaults on [UnifiedApp] are what a list row falls back to.
+ */
+internal fun App.toUnifiedApp(): UnifiedApp {
+    val ratingCount = rating.let {
+        it.oneStar + it.twoStar + it.threeStar + it.fourStar + it.fiveStar
+    }
+    return UnifiedApp(
+        packageName = packageName,
+        source = AppSource.PLAYSTORE,
+        name = displayName.takeIf { it.isNotBlank() } ?: packageName.substringAfterLast('.'),
+        summary = shortDescription,
+        description = description.takeIf { it.isNotBlank() } ?: shortDescription,
+        iconUrl = iconArtwork.url.takeIf { it.isNotBlank() },
+        featureGraphic = coverArtwork.url.takeIf { it.isNotBlank() },
+        screenshots = screenshots.mapNotNull { it.url.takeIf { u -> u.isNotBlank() } },
+        author = developerName.takeIf { it.isNotBlank() },
+        categories = listOfNotNull(categoryName.takeIf { it.isNotBlank() }),
+        versionName = versionName.takeIf { it.isNotBlank() },
+        versionCode = versionCode,
+        sizeBytes = size,
+        website = "https://play.google.com/store/apps/details?id=$packageName",
+        offerType = offerType,
+        isFree = isFree,
+        whatsNew = changes.takeIf { it.isNotBlank() },
+        targetSdk = targetSdk.takeIf { it > 0 },
+        rating = rating.average.toFloat().takeIf { it > 0f },
+        ratingCount = ratingCount,
+        installs = installs,
+        updatedOn = updatedOn.takeIf { it.isNotBlank() },
+        contentRating = contentRating.title.takeIf { it.isNotBlank() },
+        privacyPolicyUrl = privacyPolicyUrl.takeIf { it.isNotBlank() },
+        containsAds = containsAds,
+        permissions = permissions,
+        // AppDetails.certificateSet[].sha256 is the signing certificate Google
+        // says this package should carry — the same expectation the Play client
+        // stores on its library entry and compares against PackageManager. It
+        // pins the bytes against a swapped CDN response, but note that Google
+        // supplies both this value and the APK, so it is not a publisher key.
+        expectedSigners = certificateSetList
+            .mapNotNull { it.sha256?.let(ApkCertificates::normalizeFingerprint) }
+            .distinct(),
+    )
 }

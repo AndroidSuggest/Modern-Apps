@@ -3,25 +3,21 @@ package com.vayunmathur.appstore.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.security.ApkCertificates
-import com.vayunmathur.appstore.data.security.SecurityTier
 import com.vayunmathur.appstore.data.security.StoreGuarantees
+import com.vayunmathur.appstore.data.security.TrustProfile
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CenterAlignedTopAppBar
 import com.vayunmathur.library.ui.HorizontalDivider
@@ -32,20 +28,23 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 
 /**
- * What the tier badges mean. Reached by tapping any "Tier N" chip.
+ * How each source is checked, side by side and deliberately not ranked.
  *
- * The framing throughout is deliberately "who has to be compromised", because that is
- * the only property that survives contact with reality once an app is installed: review,
- * scanning and store policy are filters that reduce the odds of a bad app, while the
- * signing key decides who is *able* to replace a good one.
+ * The page this replaced was a 1-2-3 "security tier" ladder with Play at the bottom. That
+ * scored a single property — whether this phone can check the download against a
+ * publisher key — and then presented it as overall safety, which understates Play badly:
+ * verified developer identity, upload and on-device scanning, HSM-held signing keys and
+ * fleet-wide takedown are real protections that F-Droid has no equivalent of. Each card
+ * below therefore states what the source itself does, what this app checks on top, and
+ * where that source is weaker, and the reader draws their own conclusion.
  */
 @Composable
-fun SecurityTiersPage(
+fun TrustPage(
     ownSigningCertificates: Set<String>,
     onBack: () -> Unit,
     /**
      * Seed for the list's own scroll position. The app always takes the default; the store
-     * listing previews set it so a tier card can be captured without driving a scroll
+     * listing previews set it so a source card can be captured without driving a scroll
      * gesture, which a `@Preview` cannot do.
      */
     initialFirstVisibleItem: Int = 0,
@@ -53,7 +52,7 @@ fun SecurityTiersPage(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.security_tiers)) },
+                title = { Text(stringResource(R.string.trust_page_title)) },
                 navigationIcon = { IconButton(onClick = onBack) { IconBack() } },
             )
         }
@@ -66,24 +65,21 @@ fun SecurityTiersPage(
         ) {
             item {
                 Text(
-                    stringResource(R.string.security_tiers_intro),
+                    stringResource(R.string.trust_intro),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
 
             item {
                 Card(Modifier.fillMaxWidth()) {
-                    Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            stringResource(R.string.security_tiers_all_tiers),
+                            stringResource(R.string.trust_every_app),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            stringResource(R.string.security_tiers_all_tiers_detail),
+                            stringResource(R.string.trust_every_app_detail),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -104,23 +100,23 @@ fun SecurityTiersPage(
                 }
             }
 
-            items(SecurityTier.entries.toList()) { tier -> TierCard(tier) }
+            items(TrustProfile.entries.toList()) { profile -> ProfileCard(profile) }
 
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            stringResource(R.string.security_tiers_own_key_title),
+                            stringResource(R.string.trust_own_key_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            stringResource(R.string.security_tiers_own_key_detail),
+                            stringResource(R.string.trust_own_key_detail),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         if (ownSigningCertificates.isEmpty()) {
                             Text(
-                                stringResource(R.string.security_tiers_own_key_unreadable),
+                                stringResource(R.string.trust_own_key_unreadable),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
@@ -136,53 +132,51 @@ fun SecurityTiersPage(
                     }
                 }
             }
-
         }
     }
 }
 
 @Composable
-private fun TierCard(tier: SecurityTier) {
+private fun ProfileCard(profile: TrustProfile) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SecurityTierBadge(tier)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(tier.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-            Text(stringResource(tier.summary), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                stringResource(profile.title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(stringResource(profile.summary), style = MaterialTheme.typography.bodyMedium)
 
             HorizontalDivider()
-            Text(
-                stringResource(R.string.security_tiers_threat_heading),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(stringResource(tier.threatModel), style = MaterialTheme.typography.bodySmall)
+            Heading(R.string.trust_heading_source_does)
+            profile.sourcePractices.forEach { Bullet(it) }
 
-            Text(
-                stringResource(R.string.security_tiers_checks_heading),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            tier.additionalChecks.forEach {
-                Text(
-                    stringResource(R.string.security_tiers_bullet, stringResource(it)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+            Heading(R.string.trust_heading_we_check)
+            profile.ourChecks.forEach { Bullet(it) }
 
+            Heading(R.string.trust_heading_weaker)
             Text(
-                stringResource(R.string.security_tiers_tradeoff_heading),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            // Every tier has a trade-off, so this is informational rather than a warning.
-            Text(
-                stringResource(tier.caveat),
+                stringResource(profile.limits),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+}
+
+@Composable
+private fun Heading(res: Int) {
+    Text(
+        stringResource(res),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
+private fun Bullet(res: Int) {
+    Text(
+        stringResource(R.string.trust_bullet, stringResource(res)),
+        style = MaterialTheme.typography.bodySmall,
+    )
 }

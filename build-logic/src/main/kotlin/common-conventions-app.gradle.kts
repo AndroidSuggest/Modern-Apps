@@ -34,7 +34,7 @@ val (appVersionCode, appVersionName) = readVersionInfo()
 // commit for reproducible builds, wrapped in the standard foreground vector, and
 // wired into every variant's generated res.
 val launcherIcon = extensions.create("launcherIcon", LauncherIconExtension::class.java).apply {
-    scale.convention(0.58)
+    scale.convention(0.435)
 }
 val materialSymbolsRef = "819d78680a849ceef4c78f863d8753e3160b7c89"
 val materialSymbolsCache = File(gradle.gradleUserHomeDir, "material-symbols-cache")

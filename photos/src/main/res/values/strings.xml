@@ -2,7 +2,7 @@
     <!-- App name: launcher label and widget owner title -->
     <string name="app_name">Photos</string>
     <!-- Glance widget description shown in widget picker. Full sentence describing rotating photo widget -->
-    <string name="photo_widget_description">A rotating photo from your gallery — tap to shuffle</string>
+    <string name="photo_widget_description">A rotating photo from your gallery - tap to shuffle</string>
 
     <!-- Permission prompt button to grant READ_MEDIA_IMAGES/VIDEO. Verb phrase -->
     <string name="grant_image_video_permissions">Grant Image/Video Permissions</string>

@@ -194,6 +194,9 @@ object FDroidRepository {
         var added: Long = 0L
         var lastUpdated: Long = 0L
         var iconUrl: String? = null
+        var featureGraphic: String? = null
+        var screenshots: List<String> = emptyList()
+        var antiFeatures: List<String> = emptyList()
         var latestAdded: Long = -1L
         var latestFileName: String? = null
         var latestSize: Long = 0L
@@ -227,6 +230,14 @@ object FDroidRepository {
                                 val iconName = readIconName(reader)
                                 if (iconName != null) iconUrl = repoBase + "/" + iconName.trimStart('/')
                             }
+                            "featureGraphic" -> {
+                                val name = readIconName(reader)
+                                if (name != null) featureGraphic = repoBase + "/" + name.trimStart('/')
+                            }
+                            "screenshots" -> screenshots = readScreenshotsV2(reader, repoBase)
+                            // v2 states anti-features as a map of id -> localised reason;
+                            // the ids are what the UI shows, so only the keys are kept.
+                            "antiFeatures" -> antiFeatures = readObjectKeys(reader)
                             else -> reader.skipValue()
                         }
                     }
@@ -340,6 +351,9 @@ object FDroidRepository {
             summary = metaSummary ?: "",
             description = metaDesc ?: "",
             iconUrl = iconUrl,
+            featureGraphic = featureGraphic,
+            screenshots = screenshots,
+            antiFeatures = antiFeatures,
             author = author,
             categories = categories,
             versionName = latestVersionName,
@@ -414,6 +428,15 @@ object FDroidRepository {
                     summary = meta.summary ?: "",
                     description = meta.description ?: "",
                     iconUrl = meta.icon?.let { "$repoBase/icons/$it" },
+                    // v1 localised media is stored per-locale under the package's own
+                    // directory, so the locale the names came from is part of the path.
+                    featureGraphic = meta.featureGraphic?.let {
+                        "$repoBase/$pkg/${meta.localeDir}/$it"
+                    },
+                    screenshots = meta.phoneScreenshots.map {
+                        "$repoBase/$pkg/${meta.localeDir}/phoneScreenshots/$it"
+                    },
+                    antiFeatures = meta.antiFeatures,
                     author = meta.authorName,
                     categories = meta.categories,
                     versionName = latest?.versionName,
@@ -448,7 +471,19 @@ object FDroidRepository {
         val sourceCode: String?,
         val license: String?,
         val added: Long,
-        val lastUpdated: Long
+        val lastUpdated: Long,
+        val antiFeatures: List<String> = emptyList(),
+        val featureGraphic: String? = null,
+        val phoneScreenshots: List<String> = emptyList(),
+        /** Locale the media above came from; it is a path segment in v1. */
+        val localeDir: String = "en-US",
+    )
+
+    /** The subset of a v1 `localized` block this store shows. */
+    private data class V1Localized(
+        val locale: String,
+        val featureGraphic: String?,
+        val phoneScreenshots: List<String>,
     )
 
     private data class V1PackageLatest(
@@ -475,6 +510,8 @@ object FDroidRepository {
         var license: String? = null
         var added: Long = 0L
         var lastUpdated: Long = 0L
+        var antiFeatures: List<String> = emptyList()
+        var localized: V1Localized? = null
 
         reader.beginObject()
         while (reader.hasNext()) {
@@ -491,12 +528,67 @@ object FDroidRepository {
                 "license" -> license = nextStringOrNull(reader)
                 "added" -> added = nextLongOrNull(reader) ?: 0L
                 "lastUpdated" -> lastUpdated = nextLongOrNull(reader) ?: 0L
+                // v1 lists anti-features as plain strings, unlike v2's id -> reason map.
+                "antiFeatures" -> antiFeatures = readStringArray(reader)
+                "localized" -> localized = readV1Localized(reader)
                 else -> reader.skipValue()
             }
         }
         reader.endObject()
         val pkg = packageName ?: return null
-        return V1AppMeta(pkg, name, summary, description, icon, authorName, categories, webSite, sourceCode, license, added, lastUpdated)
+        return V1AppMeta(
+            pkg, name, summary, description, icon, authorName, categories, webSite,
+            sourceCode, license, added, lastUpdated,
+            antiFeatures = antiFeatures,
+            featureGraphic = localized?.featureGraphic,
+            phoneScreenshots = localized?.phoneScreenshots ?: emptyList(),
+            localeDir = localized?.locale ?: "en-US",
+        )
+    }
+
+    /**
+     * v1 `localized`: `{ "en-US": { "phoneScreenshots": ["1.png"], "featureGraphic": … } }`.
+     *
+     * Takes the first locale that actually carries media rather than insisting on en-US,
+     * since an app localised only into, say, German still has usable screenshots.
+     */
+    private fun readV1Localized(reader: JsonReader): V1Localized? {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return null
+        }
+        var best: V1Localized? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val locale = reader.nextName()
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            var feature: String? = null
+            var shots: List<String> = emptyList()
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "featureGraphic" -> feature = nextStringOrNull(reader)
+                    "phoneScreenshots" -> shots = readStringArray(reader)
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+            val candidate = V1Localized(locale, feature, shots)
+            val hasMedia = feature != null || shots.isNotEmpty()
+            // en-US wins outright; otherwise the first locale with anything to show.
+            if (hasMedia && (locale == "en-US" || best == null)) {
+                best = candidate
+                if (locale == "en-US") {
+                    // Keep draining so the object closes cleanly.
+                    while (reader.hasNext()) { reader.nextName(); reader.skipValue() }
+                }
+            }
+        }
+        reader.endObject()
+        return best
     }
 
     private fun parseV1PackagesArray(
@@ -629,6 +721,99 @@ object FDroidRepository {
             }
             else -> { reader.skipValue(); null }
         }
+    }
+
+    /**
+     * index-v2 `screenshots`: `{ phone: { "en-US": [ { name, sha256, size }, … ] }, … }`.
+     *
+     * Only the phone set is taken — the tablet, TV and wear sets are the same app shot on
+     * hardware the reader isn't holding, and mixing them makes the carousel jump between
+     * aspect ratios. Falls back to whichever set exists if there is no phone one.
+     */
+    private fun readScreenshotsV2(reader: JsonReader, repoBase: String): List<String> {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return emptyList()
+        }
+        var phone: List<String> = emptyList()
+        var fallback: List<String> = emptyList()
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val kind = reader.nextName()
+            val shots = readLocalizedFileList(reader, repoBase)
+            when {
+                kind == "phone" -> phone = shots
+                fallback.isEmpty() -> fallback = shots
+            }
+        }
+        reader.endObject()
+        return phone.ifEmpty { fallback }
+    }
+
+    /** `{ "en-US": [ { "name": "/pkg/en-US/phoneScreenshots/1.png" }, … ], … }`. */
+    private fun readLocalizedFileList(reader: JsonReader, repoBase: String): List<String> {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return emptyList()
+        }
+        var enUs: List<String>? = null
+        var en: List<String>? = null
+        var first: List<String>? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val locale = reader.nextName()
+            val names = readFileNameArray(reader).map { repoBase + "/" + it.trimStart('/') }
+            if (first == null) first = names
+            when (locale) {
+                "en-US" -> enUs = names
+                "en" -> en = names
+            }
+        }
+        reader.endObject()
+        return enUs ?: en ?: first ?: emptyList()
+    }
+
+    /** `[ { "name": …, "sha256": …, "size": … }, … ]` reduced to the names. */
+    private fun readFileNameArray(reader: JsonReader): List<String> {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return emptyList()
+        }
+        val names = mutableListOf<String>()
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            reader.beginObject()
+            while (reader.hasNext()) {
+                if (reader.nextName() == "name") {
+                    nextStringOrNull(reader)?.let { names.add(it) }
+                } else {
+                    reader.skipValue()
+                }
+            }
+            reader.endObject()
+        }
+        reader.endArray()
+        return names
+    }
+
+    /** Keys of an object whose values are of no interest, e.g. v2's anti-feature map. */
+    private fun readObjectKeys(reader: JsonReader): List<String> {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return emptyList()
+        }
+        val keys = mutableListOf<String>()
+        reader.beginObject()
+        while (reader.hasNext()) {
+            keys.add(reader.nextName())
+            reader.skipValue()
+        }
+        reader.endObject()
+        return keys
     }
 
     private fun readStringArray(reader: JsonReader): List<String> {

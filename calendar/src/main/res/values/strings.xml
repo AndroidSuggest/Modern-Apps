@@ -40,7 +40,7 @@
     <!-- Settings: dark theme option -->
     <string name="theme_dark">Dark</string>
     <!-- Widget: content description for app widget in widget picker -->
-    <string name="calendar_widget_description">Upcoming events at a glance — tap to open Calendar</string>
+    <string name="calendar_widget_description">Upcoming events at a glance - tap to open Calendar</string>
 
     <!-- Common actions: generic buttons used across dialogs -->
     <!-- Generic create action. Verb. Creates new item -->

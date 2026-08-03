@@ -1,6 +1,6 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Email</string>
-    <string name="email_widget_description">Recent messages from your unified inbox — tap to open Email</string>
+    <string name="email_widget_description">Recent messages from your unified inbox - tap to open Email</string>
 
     <string name="all_accounts">All Accounts</string>
     <string name="add_account">Add Account</string>

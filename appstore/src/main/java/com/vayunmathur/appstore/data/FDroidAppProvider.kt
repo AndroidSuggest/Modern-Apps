@@ -16,57 +16,18 @@ import kotlinx.coroutines.withContext
  * Both gates fail closed: if the signed index or the verification feed can't be
  * fetched and checked, the sync throws and the previous catalogue is left untouched
  * rather than being replaced with unverified entries.
+ *
+ * Reads go through [CatalogRepository], which queries the cache table this writes.
  */
 class FDroidAppProvider(
     private val db: AppDatabase,
-    private val appContext: Context
-) : AppProvider {
-    override val id = "fdroid"
-    override val name = "F-Droid"
-    override val source = AppSource.FDROID
-
-    @Volatile var cachedPackageNames: Set<String> = emptySet()
+    private val appContext: Context,
+) {
 
     /** Number of packages dropped by the reproducibility gate on the last sync. */
-    @Volatile var lastFilteredOut: Int = 0
+    @Volatile
+    var lastFilteredOut: Int = 0
         private set
-
-    override suspend fun fetchAll(): List<UnifiedApp> = withContext(Dispatchers.IO) {
-        val result = fetchVerifiedIndex()
-        cachedPackageNames = result.apps.map { it.packageName }.toSet()
-        result.apps
-    }
-
-    override suspend fun search(query: String): List<UnifiedApp> = withContext(Dispatchers.IO) {
-        if (query.isBlank()) return@withContext emptyList()
-        // Search the synced cache; re-downloading a 54 MB index per keystroke is not an option.
-        try {
-            db.cachedAppDao().search(AppSource.FDROID.name, query).map { it.toUnifiedApp() }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    override suspend fun isPresent(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        if (cachedPackageNames.contains(packageName)) return@withContext true
-        try {
-            val entity = db.cachedAppDao().byPackage(packageName) ?: return@withContext false
-            if (entity.source != AppSource.FDROID.name) return@withContext false
-            if (entity.targetSdk != null && entity.targetSdk < AppProvider.MIN_TARGET_SDK) {
-                return@withContext false
-            }
-            true
-        } catch (_: Exception) { false }
-    }
-
-    override suspend fun getDetails(packageName: String): UnifiedApp? = withContext(Dispatchers.IO) {
-        try {
-            val entity = db.cachedAppDao().byPackage(packageName) ?: return@withContext null
-            if (entity.source != AppSource.FDROID.name) return@withContext null
-            if (entity.targetSdk != null && entity.targetSdk < AppProvider.MIN_TARGET_SDK) {
-                return@withContext null
-            }
-            entity.toUnifiedApp()
-        } catch (_: Exception) { null }
-    }
 
     /**
      * Refresh from f-droid.org and replace this source's rows. Throws if either the index
@@ -84,7 +45,6 @@ class FDroidAppProvider(
                 lastSync = System.currentTimeMillis(),
             )
         )
-        cachedPackageNames = result.apps.map { it.packageName }.toSet()
         result.apps.size
     }
 

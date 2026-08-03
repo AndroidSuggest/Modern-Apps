@@ -27,5 +27,5 @@
     <string name="compose">Utwórz</string>
     <string name="body_label">Treść</string>
     <string name="drafts">Wersje robocze</string>
-    <string name="email_widget_description">Ostatnie wiadomości z Twojej ujednoliconej skrzynki odbiorczej — dotknij, aby otworzyć pocztę e-mail</string>
+    <string name="email_widget_description">Ostatnie wiadomości z Twojej ujednoliconej skrzynki odbiorczej - dotknij, aby otworzyć pocztę e-mail</string>
 </resources>

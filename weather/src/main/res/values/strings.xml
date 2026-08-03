@@ -2,7 +2,7 @@
     <!-- App name: launcher label and system widget owner title. Noun -->
     <string name="app_name">Weather</string>
     <!-- Glance widget metadata description shown in widget picker — what widget does. Full sentence -->
-    <string name="weather_widget_description">Current time, date, and weather at a glance — tap for the forecast</string>
+    <string name="weather_widget_description">Current time, date, and weather at a glance - tap for the forecast</string>
     <!-- Empty-state TopAppBar title when no locations saved yet. Noun -->
     <string name="weather_title">Weather</string>
 
@@ -205,4 +205,6 @@
     <string name="weather_no_data">—</string>
     <!-- Widget: temperature format for glance widget. %1$d = rounded Celsius temperature integer -->
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
+    <!-- Blob widget description shown in widget picker. Full sentence -->
+    <string name="weather_blob_widget_description">Weather in an organic blob - big temperature with icon, dark teal background</string>
 </resources>

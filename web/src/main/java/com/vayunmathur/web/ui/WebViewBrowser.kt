@@ -373,10 +373,10 @@ fun WebViewBrowser(
             val desired = viewModel.getCurrentUrl(tabId)
             if (desired.isNotBlank() && desired != current && !viewModel.omniboxFocused) {
                 if (viewModel.activeTabId == tabId) {
-                    val prog = viewModel.getProgress(tabId)
-                    if (current.isBlank() || (current != desired && prog >= 1f)) {
-                        webView.loadUrl(desired)
-                    }
+                    // Always load when desired differs — the previous prog >= 1f guard prevented
+                    // external intents from loading while the current page was still loading,
+                    // causing topbar/content mismatch.
+                    webView.loadUrl(desired)
                 }
             }
             applySettings(webView, viewModel)

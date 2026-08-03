@@ -14,12 +14,16 @@ import java.io.File
  * [PiperVoiceDef.id] so switching languages doesn't pay a cold-load each time and
  * RAM stays bounded.
  *
+ * Multi-quality migration: old installs have dirs like `en_US-lessac-low` or
+ * `de_DE-thorsten-medium` while new registry uses generic `en_US-high`. [isExtracted]
+ * tolerates old ids via [PiperVoiceRegistry.findAnyValidDirForBcp47], so this wrapper
+ * must also be tolerant when resolving the actual dir for Vits loading – otherwise
+ * in-app play works but Settings play (which goes through
+ * [com.vayunmathur.speech.service.PiperTtsService]) fails.
+ *
  * Not thread-safe beyond the `@Synchronized` methods; the TTS framework calls
  * [com.vayunmathur.speech.service.PiperTtsService.onSynthesizeText] serially, so
  * single-thread contract holds.
- *
- * Backward-compat overloads without a voice id still work, delegating to the default
- * English voice (`en_US-amy-medium`) for existing callers.
  */
 class PiperEngine(private val context: Context) {
 
@@ -27,13 +31,11 @@ class PiperEngine(private val context: Context) {
     private val cache = LinkedHashMap<String, Vits>(2, 0.75f, true)
     private val failed = mutableMapOf<String, Boolean>()
 
-    /** Load now (e.g. to warm up off the main thread). Returns true if ready. */
     fun preload(): Boolean = ensure()
 
-    /** Load a specific language/code/id, e.g. "de" or "de-DE" or "en_US-amy-medium". */
+    /** Load a specific language/code/id, e.g. "de" or "de-DE" or "en_US-high". */
     fun preload(code: String): Boolean = ensure(code)
 
-    /** Warm only the default voice to avoid RAM blow (per plan). */
     fun preloadAllInstalled(): Boolean = ensure(PiperVoiceRegistry.DEFAULT.id)
 
     /** Native sample rate of the default loaded voice (Hz); 0 if not loaded. */
@@ -48,22 +50,16 @@ class PiperEngine(private val context: Context) {
         return cache[def.id]?.sampleRate() ?: 0
     }
 
-    /** Backward-compat: synthesize with default voice. */
     @Synchronized
     fun synthesize(text: String, speed: Float, onChunk: (FloatArray) -> Boolean): Boolean =
         synthesize(text, PiperVoiceRegistry.DEFAULT.id, speed, onChunk)
 
-    /**
-     * Synthesize [text] into PCM float chunks using [voiceIdOrCode] (code, BCP-47,
-     * ISO3, or full id). [onChunk] receives each chunk and returns false to abort.
-     */
     @Synchronized
     fun synthesize(text: String, voiceIdOrCode: String, speed: Float, onChunk: (FloatArray) -> Boolean): Boolean {
         if (!ensure(voiceIdOrCode)) return false
         val def = resolveDef(voiceIdOrCode) ?: return false
         val engine = cache[def.id] ?: return false
         return try {
-            // speakerId from def (0 for single-speaker, >0 for multi)
             val samples = engine.generate(text, def.speakerId, speed)
             if (samples.isEmpty()) return true
             var offset = 0
@@ -88,7 +84,6 @@ class PiperEngine(private val context: Context) {
     @Synchronized
     fun close(voiceIdOrCode: String) {
         val def = resolveDef(voiceIdOrCode) ?: run {
-            // If voiceIdOrCode is raw id not resolvable, try direct cache remove
             cache[voiceIdOrCode]?.let { v ->
                 try { v.close() } catch (_: Throwable) {}
                 cache.remove(voiceIdOrCode)
@@ -105,10 +100,7 @@ class PiperEngine(private val context: Context) {
     @Synchronized
     fun closeAll() {
         for ((_, v) in cache) {
-            try {
-                v.close()
-            } catch (_: Throwable) {
-            }
+            try { v.close() } catch (_: Throwable) {}
         }
         cache.clear()
     }
@@ -123,19 +115,18 @@ class PiperEngine(private val context: Context) {
             return false
         }
         val id = def.id
-        if (failed[id] == true) return false
+        // Don't hard-fail on previously-failed cache entry – retry once after migration,
+        // because registry IDs changed (en_US-lessac-low -> en_US-high) and old failed latch
+        // would block Settings Play forever.
+        if (failed[id] == true) {
+            failed.remove(id)
+        }
 
-        // Cache hit — LinkedHashMap accessOrder moves it to MRU on get.
         if (cache.containsKey(id)) {
-            // Touch to update LRU order
-            cache[id]?.let { v ->
-                // Re-insert to enforce access order if needed (get already does)
-                cache[id] = v
-            }
+            cache[id]?.let { v -> cache[id] = v }
             return true
         }
 
-        // Check extraction; for default en also accept legacy dir via PiperModel shim.
         val extracted = PiperVoiceRegistry.isExtracted(context, def) ||
             (def.code == "en" && PiperModel.isExtracted(context))
         if (!extracted) return false
@@ -143,6 +134,11 @@ class PiperEngine(private val context: Context) {
         return try {
             PiperVoiceRegistry.migrateLegacyIfNeeded(context)
             val dir = voiceDirForDef(def)
+            if (!dir.isDirectory) {
+                Log.e(TAG, "voice dir missing for $id resolved to $dir, code=$voiceIdOrCode")
+                failed[id] = true
+                return false
+            }
             val engine = Vits(dir.absolutePath)
             if (!engine.isAvailable) {
                 Log.e(TAG, "Vits could not load the voice in $dir for $id")
@@ -150,7 +146,6 @@ class PiperEngine(private val context: Context) {
                 failed[id] = true
                 return false
             }
-            // Evict LRU if at capacity
             if (cache.size >= MAX_CACHED) {
                 val eldestKey = cache.keys.firstOrNull()
                 eldestKey?.let { key ->
@@ -162,47 +157,64 @@ class PiperEngine(private val context: Context) {
             cache[id] = engine
             true
         } catch (t: Throwable) {
-            Log.e(TAG, "Piper load failed for $id", t)
+            Log.e(TAG, "Piper load failed for $id (code=$voiceIdOrCode)", t)
             failed[id] = true
             false
         }
     }
 
-    /** Resolve a def from code, BCP-47, ISO3, id, or voice name extension. */
     private fun resolveDef(voiceIdOrCode: String): PiperVoiceDef? {
         if (voiceIdOrCode.isBlank()) return PiperVoiceRegistry.DEFAULT
-        // Use registry's smart resolver first
         PiperVoiceRegistry.resolve(
             lang = voiceIdOrCode,
             voiceName = voiceIdOrCode,
         )?.let { return it }
-
-        // Direct lookups as fallback
         PiperVoiceRegistry.byId(voiceIdOrCode)?.let { return it }
         PiperVoiceRegistry.byCode(voiceIdOrCode)?.let { return it }
         PiperVoiceRegistry.byBcp47(voiceIdOrCode)?.let { return it }
         PiperVoiceRegistry.byBcp47(voiceIdOrCode.replace('_', '-'))?.let { return it }
         PiperVoiceRegistry.byIso3(voiceIdOrCode)?.let { return it }
-
-        // Legacy: "en" prefix heuristics handled by registry.resolve already; try 2-char prefix
         if (voiceIdOrCode.length >= 2) {
             PiperVoiceRegistry.byCode(voiceIdOrCode.take(2))?.let { return it }
         }
-
         return null
     }
 
     private fun voiceDirForDef(def: PiperVoiceDef): File {
-        val newDir = PiperVoiceRegistry.voiceDir(context, def)
-        if (newDir.isDirectory) return newDir
+        val direct = PiperVoiceRegistry.voiceDir(context, def)
+        if (direct.isDirectory) return direct
+        // Tolerate old speaker-specific ids after rename to generic (e.g. en_US-lessac-low
+        // dir present but registry now expects en_US-high). This makes Settings Play work
+        // on upgraded installs.
+        PiperVoiceRegistry.findAnyValidDirForBcp47(context, def.bcp47)?.let { return it }
+        try {
+            val vRoot = PiperVoiceRegistry.voicesDir(context)
+            if (vRoot.isDirectory) {
+                // Search same BCP-47 folder for any dir with encoder – last resort
+                val bcpRoot = File(vRoot, def.bcp47)
+                if (bcpRoot.isDirectory) {
+                    bcpRoot.listFiles()?.firstOrNull { child ->
+                        child.isDirectory && child.listFiles()?.any { it.name.endsWith("_enc_p.ncnn.param") } == true
+                    }?.let { return it }
+                }
+                // Broader search: any BCP-47 starting with code
+                vRoot.listFiles()?.forEach { bcpDir ->
+                    if (!bcpDir.isDirectory) return@forEach
+                    if (!bcpDir.name.equals(def.bcp47, ignoreCase = true) &&
+                        !bcpDir.name.lowercase().startsWith(def.code.lowercase())) return@forEach
+                    bcpDir.listFiles()?.firstOrNull { child ->
+                        child.isDirectory && child.listFiles()?.any { it.name.endsWith("_enc_p.ncnn.param") } == true
+                    }?.let { return it }
+                }
+            }
+        } catch (_: Throwable) {}
         if (def.code == "en") {
             val legacy = PiperVoiceRegistry.legacyVoiceDir(context)
             if (legacy.isDirectory) return legacy
-            // Also check PiperModel's view
             val shim = PiperModel.voiceDir(context)
             if (shim.isDirectory) return shim
         }
-        return newDir
+        return direct
     }
 
     companion object {

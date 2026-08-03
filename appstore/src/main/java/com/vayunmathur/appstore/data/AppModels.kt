@@ -30,9 +30,26 @@ data class UnifiedApp(
     val antiFeatures: List<String> = emptyList(),
     val repoUrl: String? = null,
     val offerType: Int = 0,
-    val rating: Float? = null,
     val containsSplit: Boolean = false,
     val isFree: Boolean = true,
+    /** Listing screenshots, in the order the source published them. */
+    val screenshots: List<String> = emptyList(),
+    /** Wide header image, where the source publishes one. */
+    val featureGraphic: String? = null,
+    /** Average star rating, 0..5. Null when the source doesn't publish one. */
+    val rating: Float? = null,
+    /** How many ratings [rating] is an average of, 0 when unknown. */
+    val ratingCount: Long = 0L,
+    /** Install count as the source reports it, 0 when unknown. */
+    val installs: Long = 0L,
+    /** Human-readable release date from the source, e.g. "Jul 28, 2026". */
+    val updatedOn: String? = null,
+    /** Age rating label, e.g. "Everyone" / "PEGI 3". */
+    val contentRating: String? = null,
+    val privacyPolicyUrl: String? = null,
+    val containsAds: Boolean = false,
+    /** Permission names the listing declares, before install. */
+    val permissions: List<String> = emptyList(),
     /**
      * Lowercase-hex SHA-256 fingerprints of the certificates the publisher says this
      * APK is signed with, from a source we authenticated (a JAR-signed F-Droid index).
@@ -41,14 +58,19 @@ data class UnifiedApp(
     val expectedSigners: List<String> = emptyList(),
     /** Lowercase-hex SHA-256 of the APK itself, when the source publishes one. */
     val apkSha256: String? = null,
-)
+) {
+    /** The single best image to head the detail page with. */
+    val heroImage: String? get() = featureGraphic ?: screenshots.firstOrNull()
+}
 
 data class InstalledInfo(
     val packageName: String,
     val name: String,
     val versionName: String?,
     val versionCode: Long,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** When the package was last updated on this device, ms since epoch. */
+    val lastUpdateTime: Long = 0L,
 )
 
 /**

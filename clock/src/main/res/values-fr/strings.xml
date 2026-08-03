@@ -36,7 +36,7 @@
     <string name="channel_ongoing_timers_description">Compte à rebours en cours</string>
     <string name="channel_completed_timers_description">Alertes lorsque les minuteurs sont écoulés</string>
     <string name="analog_clock_widget_label">Horloge analogique</string>
-    <string name="analog_clock_widget_description">Horloge analogique Material You — appuyez pour ouvrir l\'horloge</string>
+    <string name="analog_clock_widget_description">Horloge analogique Material You - appuyez pour ouvrir l\'horloge</string>
     <string name="channel_stopwatch_name">Chronomètre</string>
     <string name="channel_stopwatch_description">Commandes du chronomètre</string>
     <string name="action_pause">Pause</string>

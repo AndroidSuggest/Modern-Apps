@@ -80,6 +80,50 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
     }
 
     /**
+     * Animated zoom by [deltaZoom] levels, keeping the geographic point under
+     * [anchorDp] fixed for the whole flight (double-tap to zoom).
+     */
+    internal suspend fun animateZoomBy(
+        deltaZoom: Double,
+        anchorDp: Offset,
+        minZoom: Double,
+        maxZoom: Double,
+        durationMs: Int = 250,
+    ) {
+        val vp = viewportDp ?: return
+        val start = position
+        val target = clampZoom(start.zoom + deltaZoom, vp, minZoom, maxZoom)
+        if (target == start.zoom) return
+        Animatable(0f).animateTo(1f, tween(durationMs)) {
+            position = anchoredZoom(start, lerp(start.zoom, target, value.toDouble()), anchorDp, vp)
+        }
+    }
+
+    /**
+     * Applies a "quick zoom" drag (double-tap, hold, then swipe). [dragDp] is
+     * the vertical distance dragged since the gesture began — down is positive
+     * and zooms in, up zooms out — and [from] is the camera as of that start,
+     * so the zoom is absolute rather than accumulated frame by frame. The
+     * geographic point under [anchorDp] stays fixed.
+     */
+    internal fun onQuickZoom(
+        from: CameraPosition,
+        anchorDp: Offset,
+        dragDp: Float,
+        minZoom: Double,
+        maxZoom: Double,
+    ) {
+        val vp = viewportDp ?: return
+        if (vp.height <= 0f) return
+        val delta = dragDp / vp.height * QUICK_ZOOM_LEVELS_PER_VIEWPORT
+        position = anchoredZoom(from, clampZoom(from.zoom + delta, vp, minZoom, maxZoom), anchorDp, vp)
+    }
+
+    /** Clamps [zoom] to [minZoom]..[maxZoom], never below the "fill" floor for [vp]. */
+    private fun clampZoom(zoom: Double, vp: Size, minZoom: Double, maxZoom: Double): Double =
+        zoom.coerceIn(maxOf(minZoom, fillZoom(vp)), maxZoom)
+
+    /**
      * Applies a transform gesture, anchoring the geographic point under
      * [centroidDp] so pinch-zoom keeps that point fixed. Deltas are in logical
      * (dp) units.
@@ -94,8 +138,6 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         zoomEnabled: Boolean,
     ) {
         val vp = viewportDp ?: return
-        val halfW = vp.width / 2.0
-        val halfH = vp.height / 2.0
         // Never zoom out past a full-screen world.
         val effectiveMinZoom = maxOf(minZoom, fillZoom(vp))
         var zoom = position.zoom
@@ -115,18 +157,32 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         if (zoomEnabled && zoomChange != 1f && zoomChange > 0f) {
             val newZoom = (zoom + log2(zoomChange.toDouble())).coerceIn(effectiveMinZoom, maxZoom)
             if (newZoom != zoom) {
-                val cw = Mercator.project(center.longitude, center.latitude, zoom)
-                val underX = cw.x + (centroidDp.x - halfW)
-                val underY = cw.y + (centroidDp.y - halfH)
-                val geo = Mercator.unproject(underX, underY, zoom)
-                val gw = Mercator.project(geo.longitude, geo.latitude, newZoom)
-                center = Mercator.unproject(gw.x - (centroidDp.x - halfW), gw.y - (centroidDp.y - halfH), newZoom)
-                zoom = newZoom
+                val zoomed = anchoredZoom(CameraPosition(center, zoom), newZoom, centroidDp, vp)
+                center = zoomed.target
+                zoom = zoomed.zoom
             }
         }
 
         position = CameraPosition(center, zoom)
     }
+}
+
+/** Zoom levels covered by a quick-zoom drag across the full viewport height. */
+private const val QUICK_ZOOM_LEVELS_PER_VIEWPORT = 4.0
+
+/** [from] re-centered so the geo point under [anchorDp] is still there at [newZoom]. */
+private fun anchoredZoom(
+    from: CameraPosition,
+    newZoom: Double,
+    anchorDp: Offset,
+    vp: Size,
+): CameraPosition {
+    val dx = anchorDp.x - vp.width / 2.0
+    val dy = anchorDp.y - vp.height / 2.0
+    val cw = Mercator.project(from.target.longitude, from.target.latitude, from.zoom)
+    val geo = Mercator.unproject(cw.x + dx, cw.y + dy, from.zoom)
+    val gw = Mercator.project(geo.longitude, geo.latitude, newZoom)
+    return CameraPosition(Mercator.unproject(gw.x - dx, gw.y - dy, newZoom), newZoom)
 }
 
 private fun lerp(start: Double, end: Double, t: Double): Double = start + (end - start) * t
