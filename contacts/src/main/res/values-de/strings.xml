@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="contact_photo">Foto</string>
     <string name="add_date">Datum hinzufügen</string>
     <string name="select_contact_hint">Wähle einen Kontakt aus um Details zu sehen</string>
@@ -80,4 +80,16 @@
     </plurals>
     <string name="telegram">Telegram</string>
     <string name="google_meet">Google Meet</string>
+    <plurals name="import_summary_contacts">
+    </plurals>
+    <string name="select_account"></string>
+    <string name="add_number_to_contact"></string>
+    <string name="crop_photo"></string>
+    <string name="import_to_existing_account"></string>
+    <string name="no_name"></string>
+    <string name="create_new_account_option"></string>
+    <string name="create_new_contact"></string>
+    <string name="no_contacts_found"></string>
+    <string name="import_contacts_from_vcf_files"></string>
+    <string name="import_vcf_file"></string>
 </resources>
