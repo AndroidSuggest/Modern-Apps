@@ -26,10 +26,10 @@
     <string name="app_name">Courrier</string>
     <string name="add_account">Ajouter un compte</string>
     <string name="drafts">Brouillons</string>
-    <string name="email_widget_description">Messages récents de votre boîte de réception unifiée - appuyez pour ouvrir Courrier</string>
+    <string name="email_widget_description">Messages récents de votre boîte de réception unifiée — appuyez pour ouvrir Courrier</string>
     <string name="open_app_password_help">Ouvrir l’aide de %1$s sur les mots de passe d’application</string>
     <string name="to_me">à moi</string>
-    <string name="total_attachment_size_exceeds_25_mb_many">La taille totale des pièces jointes dépasse 25 Mo ; de nombreux fournisseurs rejetteront le message.</string>
+    <string name="total_attachment_size_exceeds_25_mb_many">La taille totale des pièces jointes dépasse 25 Mo ; de nombreux fournisseurs rejetteront le message.</string>
     <string name="later_today_6_pm">Plus tard aujourd’hui (18 h)</string>
     <string name="snooze">Mettre en attente</string>
     <string name="scheduled">Programmés</string>
@@ -61,12 +61,12 @@
     <string name="your_signature">Votre signature</string>
     <string name="attachments">Pièces jointes</string>
     <string name="remote_images_blocked">Images distantes bloquées</string>
-    <string name="to">À : %1$s</string>
+    <string name="to">À : %1$s</string>
     <string name="no_content_1">(Aucun contenu)</string>
     <string name="imap_incoming">IMAP (entrant)</string>
     <string name="generating_summary">Génération du résumé…</string>
     <string name="no_messages_found_pull_down_to_refresh">Aucun message trouvé. Faites glisser vers le bas pour actualiser.</string>
-    <string name="saved_to_outbox">Enregistré dans la boîte d’envoi : %1$s</string>
+    <string name="saved_to_outbox">Enregistré dans la boîte d’envoi : %1$s</string>
     <plurals name="attempts">
         <item quantity="other">%1$s tentative(s)</item>
     </plurals>
@@ -90,7 +90,7 @@
     <string name="hide">Masquer</string>
     <string name="tomorrow_8_am">Demain (8 h)</string>
     <string name="attachments_1">Pièces jointes (%1$s)</string>
-    <string name="cc_1">Cc : %1$s</string>
+    <string name="cc_1">Cc : %1$s</string>
     <string name="open">Ouvrir</string>
     <string name="this_evening_6_pm">Ce soir (18 h)</string>
     <string name="no_subject">(sans objet)</string>
@@ -100,14 +100,14 @@
     <string name="block_sender">Bloquer l’expéditeur</string>
     <string name="conversation">Conversation</string>
     <string name="no_drafts">Aucun brouillon</string>
-    <string name="download_failed">Échec du téléchargement : %1$s</string>
+    <string name="download_failed">Échec du téléchargement : %1$s</string>
     <string name="unblock">Débloquer</string>
     <string name="no_recent_emails">Aucun e-mail récent</string>
     <string name="how_to_get_your_app_password">Comment obtenir votre mot de passe d’application</string>
     <string name="enter_imap_smtp_server_details_manually">Saisissez manuellement les informations des serveurs IMAP et SMTP</string>
-    <string name="security">Sécurité :</string>
+    <string name="security">Sécurité :</string>
     <string name="show">Afficher</string>
-    <string name="attachments_2">Pièces jointes :</string>
+    <string name="attachments_2">Pièces jointes :</string>
     <string name="to_1">À %1$s</string>
     <string name="snoozed">Mis en attente</string>
     <string name="sender_blocked">Expéditeur bloqué</string>
@@ -116,6 +116,6 @@
     <string name="later">Plus tard</string>
     <string name="signature_saved">Signature enregistrée</string>
     <string name="unsubscribe">Se désabonner</string>
-    <string name="failed">Échec : %1$s</string>
+    <string name="failed">Échec : %1$s</string>
     <string name="microsoft_sign_in_failed">Échec de la connexion avec Microsoft</string>
 </resources>
