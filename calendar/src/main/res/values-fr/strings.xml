@@ -139,10 +139,4 @@
     </plurals>
     <string name="layout_short_day">J</string>
     <string name="holiday_calendars">Calendriers des jours fériés</string>
-    <string name="widget_preview_event_3_time"></string>
-    <string name="widget_preview_event_1_time"></string>
-    <string name="widget_preview_event_2_title"></string>
-    <string name="widget_preview_event_2_time"></string>
-    <string name="widget_preview_event_3_title"></string>
-    <string name="widget_preview_event_1_title"></string>
 </resources>
