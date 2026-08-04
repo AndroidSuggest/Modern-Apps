@@ -37,7 +37,7 @@
     <string name="local_account">(Local)</string>
     <string name="until">Hasta</string>
     <string name="new_local_calendar">Nuevo calendario local</string>
-    <string name="calendar_widget_description">Vista previa de los próximos eventos - toca para abrir el Calendario</string>
+    <string name="calendar_widget_description">Vista previa de los próximos eventos — toca para abrir el Calendario</string>
     <string name="add_reminder">Añadir recordatorio</string>
     <string name="twelve_am">12:00</string>
     <string name="twelve_pm">00:00</string>
