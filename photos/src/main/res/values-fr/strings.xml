@@ -19,12 +19,12 @@
     <string name="label_gallery">Galerie</string>
     <string name="label_trash">Corbeille</string>
     <string name="items_selected">%1$d sélectionné</string>
-    <string name="photo_widget_description">Une photo en rotation issue de votre galerie - appuyez pour passer à la suivante</string>
+    <string name="photo_widget_description">Une photo en rotation issue de votre galerie — appuyez pour passer à la suivante</string>
     <string name="label_secure_folder">Dossier sécurisé</string>
     <string name="action_save">Enregistrer</string>
     <string name="openassistant_needs_update">Mettez à jour l\'application OpenAssistant pour activer la recherche de photos par IA.</string>
     <string name="model_downloading_description">Le téléchargement du modèle d\'IA est en cours. Cela peut prendre quelques minutes, selon votre connexion.</string>
-    <string name="resolution">Résolution : %1$d × %2$d</string>
+    <string name="resolution">Résolution : %1$d × %2$d</string>
     <plurals name="people_photo_count">
         <item quantity="other">%1$d photos</item>
     </plurals>
@@ -212,7 +212,7 @@
     <string name="adj_saturation">Saturation</string>
     <string name="tool_balance">Balance des couleurs</string>
     <string name="length">Longueur</string>
-    <string name="editor_desc_selection">Tracer une zone ; les modifications ne s’appliqueront qu’à l’intérieur.</string>
+    <string name="editor_desc_selection">Tracer une zone ; les modifications ne s’appliqueront qu’à l’intérieur.</string>
     <string name="editor_desc_photo_filter">Appliquer un voile coloré chaud ou froid.</string>
     <string name="color">Couleur</string>
     <string name="tool_liquify">Fluidité</string>
@@ -230,7 +230,7 @@
     <string name="wallpaper_scrollable_desc">Les fonds d’écran défilants sont plus larges et se déplacent lorsque vous balayez l’écran pour passer d’un écran d’accueil à l’autre</string>
     <string name="set_wallpaper">Définir le fond d’écran</string>
     <string name="setting_wallpaper">Définition du fond d’écran…</string>
-    <string name="wallpaper_set_success">Fond d’écran appliqué !</string>
-    <string name="wallpaper_set_failed">Échec de l’application du fond d’écran : <xliff id="error" example="IO error">%1$s</xliff></string>
+    <string name="wallpaper_set_success">Fond d’écran appliqué !</string>
+    <string name="wallpaper_set_failed">Échec de l’application du fond d’écran : <xliff id="error" example="IO error">%1$s</xliff></string>
     <string name="wallpaper_load_failed">Impossible de charger l’image</string>
 </resources>
