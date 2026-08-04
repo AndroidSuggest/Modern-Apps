@@ -43,4 +43,5 @@
     <string name="blue"></string>
     <string name="sticky_note"></string>
     <string name="aa"></string>
+    <string name="open">Abrir</string>
 </resources>
