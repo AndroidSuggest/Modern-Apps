@@ -10,4 +10,5 @@
     <string name="feature_minimum">最小值</string>
     <string name="feature_maximum">最大值</string>
     <string name="feature_intersection">交点</string>
+    <string name="toggle_curve_visibility">显示或隐藏此曲线</string>
 </resources>
