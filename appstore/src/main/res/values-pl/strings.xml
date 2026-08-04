@@ -1,3 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="updates">Aktualizacje</string>
+    <string name="update_all">Aktualizuj wszystko (%1$s)</string>
+    <string name="last_sync">Ostatnia synchronizacja: %1$s</string>
+    <string name="installed">Zainstalowano</string>
+    <string name="all_apps_up_to_date">Wszystkie aplikacje aktualne</string>
+    <string name="uninstall">Odinstaluj</string>
+    <string name="this_will_uninstall_you_can_reinstall_la">Spowoduje to odinstalowanie %1$s. Możesz zainstalować ponownie później ze sklepu.</string>
+    <plurals name="updates_count">
+        <item quantity="one">%1$s aktualizacja</item>
+        <item quantity="few">%1$s aktualizacje</item>
+        <item quantity="many">%1$s aktualizacji</item>
+        <item quantity="other">%1$s aktualizacji</item>
+    </plurals>
+    <string name="open">Otwórz</string>
+    <string name="uninstall_3">Odinstalować %1$s?</string>
+    <string name="view_in_play_store">Zobacz w Sklepie Play</string>
+    <string name="installed_2">Zainstalowano %1$s</string>
+    <string name="repositories">Repozytoria</string>
 </resources>
