@@ -6,6 +6,7 @@
     <string name="go_to_source">Jdi na <xliff:g id="source" example="All Songs">%1$s</xliff:g></string>
     <string name="label_album">Alba</string>
     <plurals name="num_songs_format">
+        <item quantity="many"><xliff:g id="count" example="10">%1$d</xliff:g> skladeb</item>
         <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> skladeb</item>
     </plurals>
     <string name="label_play">Přehrát</string>
