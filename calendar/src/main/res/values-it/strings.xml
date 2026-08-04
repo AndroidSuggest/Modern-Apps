@@ -52,7 +52,7 @@
     <string name="create_new_calendar">+ Crea nuovo calendario</string>
     <string name="default_layout">Layout predefinito</string>
     <string name="add_reminder">Aggiungi promemoria</string>
-    <string name="calendar_widget_description">Un riepilogo dei prossimi eventi - tocca per aprire il Calendario</string>
+    <string name="calendar_widget_description">Un riepilogo dei prossimi eventi — tocca per aprire il Calendario</string>
     <string name="month_option_day_of_month">Il giorno <xliff:g id="day" example="15">%1$d</xliff:g> del mese</string>
     <string name="layout_agenda">Agenda</string>
     <string name="layout_day">Giorno</string>
