@@ -96,7 +96,7 @@ class MetadataPreviews {
                 onNewTab = {},
                 onNewWindow = {},
                 onNewIncognitoTab = {},
-                onNewPrivateTab = {},
+                onNewIncognitoWindow = {},
                 onDismiss = {},
                 modifier = Modifier.fillMaxSize(),
             )

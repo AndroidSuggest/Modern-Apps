@@ -50,6 +50,10 @@ class MainActivity : ComponentActivity() {
         NetworkClient.init(this, TrustBundle.SYSTEM)
         enableEdgeToEdge()
 
+        // Each task (window) carries its own window id + incognito flag so it keeps an independent tab set.
+        val windowId = intent?.getStringExtra(EXTRA_WINDOW_ID) ?: WebViewModel.DEFAULT_WINDOW_ID
+        val incognito = intent?.getBooleanExtra(EXTRA_INCOGNITO, false) ?: false
+
         lifecycleScope.launch(Dispatchers.IO) {
             val db = buildDatabase<WebDatabase>(dbName = DB_NAME)
             val factory = WebViewModelFactory(
@@ -59,7 +63,9 @@ class MainActivity : ComponentActivity() {
                 storageInfoDao = db.storageInfoDao(),
                 downloadDao = db.downloadDao(),
                 installedSiteDao = db.installedSiteDao(),
-                context = applicationContext
+                context = applicationContext,
+                windowId = windowId,
+                incognito = incognito,
             )
             withContext(Dispatchers.Main) {
                 factoryState = factory
@@ -109,6 +115,31 @@ class MainActivity : ComponentActivity() {
         Regex("https?://\\S+").find(trimmed)?.let { return it.value }
         return null
     }
+
+    companion object {
+        const val EXTRA_WINDOW_ID = "com.vayunmathur.web.WINDOW_ID"
+        const val EXTRA_INCOGNITO = "com.vayunmathur.web.INCOGNITO"
+    }
+}
+
+/**
+ * Opens a brand-new browser window as its own task (separate Recents entry) with an
+ * independent set of tabs. Incognito windows keep everything private and unpersisted.
+ */
+fun launchNewWebWindow(context: android.content.Context, incognito: Boolean) {
+    val windowId = java.util.UUID.randomUUID().toString()
+    val intent = Intent(context, MainActivity::class.java).apply {
+        putExtra(MainActivity.EXTRA_WINDOW_ID, windowId)
+        putExtra(MainActivity.EXTRA_INCOGNITO, incognito)
+        // Unique data keeps each window a distinct document task in Recents.
+        data = android.net.Uri.parse("web-window://$windowId")
+        addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                Intent.FLAG_ACTIVITY_NEW_DOCUMENT
+        )
+    }
+    context.startActivity(intent)
 }
 
 @Serializable

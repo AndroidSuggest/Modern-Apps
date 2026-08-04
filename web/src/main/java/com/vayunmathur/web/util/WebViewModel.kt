@@ -59,7 +59,21 @@ class WebViewModel(
     private val downloadDao: DownloadDao,
     private val installedSiteDao: InstalledSiteDao,
     private val context: Context,
+    /** Identifies this window's independent tab set; the default window keeps the legacy pref keys. */
+    private val windowId: String = DEFAULT_WINDOW_ID,
+    /** An incognito window: every tab is private and nothing is persisted. */
+    val incognito: Boolean = false,
 ) : ViewModel() {
+
+    companion object {
+        const val DEFAULT_WINDOW_ID = "main"
+    }
+
+    // Persistence keys are namespaced per window; the default window keeps the legacy keys for back-compat.
+    private val savedTabsKey = if (windowId == DEFAULT_WINDOW_ID) P_SAVED_TABS else "${P_SAVED_TABS}_$windowId"
+    private val activeTabKey = if (windowId == DEFAULT_WINDOW_ID) P_ACTIVE_TAB else "${P_ACTIVE_TAB}_$windowId"
+
+    private fun blankTab() = BrowserTab(id = Uuid.random().toString(), url = "", isPrivate = incognito)
 
     val tabs = mutableStateListOf<BrowserTab>()
     var activeTabId by mutableStateOf<String?>(null)
@@ -127,8 +141,9 @@ class WebViewModel(
             withContext(Dispatchers.IO) {
                 try {
                     val sp = context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
-                    val savedTabs = sp.getString(P_SAVED_TABS, null)
-                    val activeId = sp.getString(P_ACTIVE_TAB, null)
+                    // Incognito windows never restore persisted tabs — they start fresh and private.
+                    val savedTabs = if (incognito) null else sp.getString(savedTabsKey, null)
+                    val activeId = if (incognito) null else sp.getString(activeTabKey, null)
                     val cacheModeName = sp.getString(P_CACHE_MODE, null)
                     val searchEngineName = sp.getString(P_SEARCH_ENGINE, null)
                     val js = sp.getBoolean(P_JS_ENABLED, true)
@@ -184,7 +199,7 @@ class WebViewModel(
                         }
 
                         if (tabs.isEmpty()) {
-                            val tab = BrowserTab(id = Uuid.random().toString(), url = "")
+                            val tab = blankTab()
                             tabs.add(tab)
                             activeTabId = tab.id
                         } else {
@@ -212,7 +227,7 @@ class WebViewModel(
                     Log.e(TAG, "Failed to load prefs", e)
                     withContext(Dispatchers.Main) {
                         if (tabs.isEmpty()) {
-                            val tab = BrowserTab(id = Uuid.random().toString(), url = "")
+                            val tab = blankTab()
                             tabs.add(tab)
                             activeTabId = tab.id
                         }
@@ -281,7 +296,8 @@ class WebViewModel(
     }
 
     fun newTab(url: String = "", makeActive: Boolean = true, isPrivate: Boolean = false) {
-        val tab = BrowserTab(id = Uuid.random().toString(), url = url, isPrivate = isPrivate)
+        // Every tab in an incognito window is private, regardless of the caller's request.
+        val tab = BrowserTab(id = Uuid.random().toString(), url = url, isPrivate = isPrivate || incognito)
         tabs.add(tab)
         if (makeActive) {
             activeTabId = tab.id
@@ -305,7 +321,7 @@ class WebViewModel(
         if (activeTabId == tabId) {
             activeTabId = when {
                 tabs.isEmpty() -> {
-                    val tab = BrowserTab(id = Uuid.random().toString(), url = "")
+                    val tab = blankTab()
                     tabs.add(tab)
                     tab.id
                 }
@@ -644,12 +660,14 @@ class WebViewModel(
     }
 
     private fun persistTabsSync() {
+        // Incognito windows leave no trace on disk.
+        if (incognito) return
         try {
             val sp = context.getSharedPreferences("web_prefs", Context.MODE_PRIVATE)
             val toSave = tabs.filter { !it.isPrivate }
             sp.edit()
-                .putString(P_SAVED_TABS, json.encodeToString(toSave))
-                .putString(P_ACTIVE_TAB, activeTabId)
+                .putString(savedTabsKey, json.encodeToString(toSave))
+                .putString(activeTabKey, activeTabId)
                 .apply()
         } catch (e: Exception) { Log.e(TAG, "persistTabs failed", e) }
     }
@@ -683,11 +701,13 @@ class WebViewModelFactory(
     private val downloadDao: DownloadDao,
     private val installedSiteDao: InstalledSiteDao,
     private val context: Context,
+    private val windowId: String = WebViewModel.DEFAULT_WINDOW_ID,
+    private val incognito: Boolean = false,
 ) : androidx.lifecycle.ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WebViewModel::class.java)) {
-            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, installedSiteDao, context) as T
+            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, installedSiteDao, context, windowId, incognito) as T
         }
         throw IllegalArgumentException("Unknown ViewModel $modelClass")
     }
