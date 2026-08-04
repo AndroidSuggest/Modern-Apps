@@ -8,6 +8,7 @@
     <string name="recipes">Recepty (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
     <string name="used_in">Použito v (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
     <plurals name="locked_recipes">
+        <item quantity="many">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> uzamčených receptů.</item>
         <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> uzamčených receptů.</item>
     </plurals>
     <string name="locked_description">Odemkněte všechny výsledky těchto receptů, abyste je viděli.</string>
