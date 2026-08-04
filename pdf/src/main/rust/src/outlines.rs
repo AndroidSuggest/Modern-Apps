@@ -295,6 +295,23 @@ fn resolve_gid(fi: &FontInfo, face: &ttf_parser::Face, code: u32) -> Option<ttf_
             return Some(gid);
         }
     }
+    // Built-in (non-Unicode) cmap lookup by raw code. Symbolic subset TrueType
+    // fonts (e.g. macOS Quartz output) often carry only a (1,0) Macintosh or
+    // (3,0) symbol subtable that maps the raw content-stream code directly to a
+    // glyph id. `ttf_parser::Face::glyph_index` consults only Unicode subtables,
+    // so those mappings are invisible to the lookups above and we would wrongly
+    // fall through to code-as-gid. Query every subtable with the raw code (and
+    // the 0xF000 symbol alias) before that last resort.
+    if let Some(cmap) = face.tables().cmap {
+        for st in cmap.subtables {
+            if let Some(gid) = st.glyph_index(code) {
+                return Some(gid);
+            }
+            if let Some(gid) = st.glyph_index(0xF000 + code) {
+                return Some(gid);
+            }
+        }
+    }
     as_gid(code)
 }
 
