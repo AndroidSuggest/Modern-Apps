@@ -1,12 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="open_a_folder_to_browse_your_project_or"></string>
-    <string name="all"></string>
-    <string name="no_folder_opened"></string>
-    <string name="open_file"></string>
-    <string name="no_file_open"></string>
-    <string name="open_folder"></string>
-    <string name="replace"></string>
-    <string name="app_name"></string>
-    <string name="find"></string>
-</resources>
+    </resources>
