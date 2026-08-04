@@ -201,6 +201,9 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
     var showSearch by remember { mutableStateOf(false) }
     var editingIngredientData by remember { mutableStateOf<RecipeIngredientData?>(null) }
     var isAddingNewIngredient by remember { mutableStateOf(false) }
+    // Guards against repeated taps launching multiple saves (which created
+    // duplicate recipes and popped the back stack more than once).
+    var saving by remember { mutableStateOf(false) }
 
     // Load existing recipe if editing
     LaunchedEffect(recipeId) {
@@ -303,6 +306,8 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
 
             Button(
                 onClick = {
+                    if (saving) return@Button
+                    saving = true
                     val items = recipeIngredients.map {
                         HealthViewModel.RecipeIngredientLoad(it.ingredient, it.unit, it.quantity)
                     }
@@ -311,7 +316,7 @@ fun RecipeEditorPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel,
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = recipeName.isNotBlank() && recipeIngredients.isNotEmpty()
+                enabled = recipeName.isNotBlank() && recipeIngredients.isNotEmpty() && !saving
             ) {
                 Text(stringResource(R.string.save_recipe))
             }
