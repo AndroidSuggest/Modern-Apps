@@ -33,10 +33,4 @@
     <string name="grant_storage_permissions">Erlaube Speicher Berechtigung</string>
     <string name="content_desc_album_art">Album Cover</string>
     <string name="content_desc_album_art_grid">Album Cover Raster</string>
-    <string name="dialog_create_playlist"></string>
-    <string name="dialog_delete"></string>
-    <string name="playlist_name_hint"></string>
-    <string name="dialog_delete_playlist"></string>
-    <string name="dialog_delete_playlist_confirm"></string>
-    <string name="dialog_create"></string>
 </resources>
