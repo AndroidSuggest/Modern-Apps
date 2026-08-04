@@ -3,14 +3,14 @@
     <string name="title_field"></string>
     <string name="comment"></string>
     <string name="viewer"></string>
-    <string name="center"></string>
+    <string name="center">Centro</string>
     <string name="no_tracked_changes_in_this_document"></string>
     <string name="heading_4"></string>
     <string name="csv"></string>
     <string name="role"></string>
     <string name="html_html"></string>
     <string name="insert_table_1"></string>
-    <string name="heading_1"></string>
+    <string name="heading_1">Intestazione 1</string>
     <string name="opens_odf_word_excel_powerpoint_csv_tsv"></string>
     <string name="cell_comment"></string>
     <string name="words_chars_min"></string>
@@ -20,7 +20,7 @@
     <string name="footnote"></string>
     <string name="reset"></string>
     <string name="text_txt"></string>
-    <string name="heading_2"></string>
+    <string name="heading_2">Intestazione 2</string>
     <string name="compare_with_the_recipient_out_of_band_i"></string>
     <string name="go_to_slide"></string>
     <string name="unfreeze"></string>
@@ -57,7 +57,7 @@
     <string name="line"></string>
     <string name="integer"></string>
     <string name="date"></string>
-    <string name="normal"></string>
+    <string name="normal">Normale</string>
     <string name="print_doc"></string>
     <string name="all"></string>
     <string name="insert_comment"></string>
@@ -73,7 +73,7 @@
     <string name="online"></string>
     <string name="save_failed"></string>
     <string name="reject_all"></string>
-    <string name="right"></string>
+    <string name="right">Destra</string>
     <string name="on"></string>
     <string name="insert"></string>
     <string name="apply"></string>
@@ -161,7 +161,7 @@
     <string name="delete_row"></string>
     <string name="your_device_id"></string>
     <string name="page_of"></string>
-    <string name="left"></string>
+    <string name="left">Sinistra</string>
     <string name="meta_author"></string>
     <string name="insert_hyperlink"></string>
     <string name="chart"></string>
@@ -174,7 +174,7 @@
     <string name="page_break"></string>
     <string name="shape"></string>
     <string name="restart_numbering"></string>
-    <string name="justify"></string>
+    <string name="justify">Giustifica</string>
     <string name="column_index_0"></string>
     <string name="hide"></string>
     <string name="portrait_1"></string>
@@ -215,7 +215,7 @@
     <string name="edit_chart"></string>
     <string name="tracked_change_author_date"></string>
     <string name="slide_of"></string>
-    <string name="heading_3"></string>
+    <string name="heading_3">Intestazione 3</string>
     <string name="duplicate_paragraph"></string>
     <string name="font_size_2"></string>
     <string name="night_reading_mode"></string>
