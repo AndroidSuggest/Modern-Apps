@@ -9,4 +9,5 @@
     <string name="external_save_failed">Impossible d\'enregistrer (le fichier est peut-être en lecture seule)</string>
     <string name="external_read_failed">Impossible d\'ouvrir le fichier</string>
     <string name="note">note</string>
+    <string name="share_note"></string>
 </resources>
