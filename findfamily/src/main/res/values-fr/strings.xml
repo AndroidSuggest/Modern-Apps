@@ -100,4 +100,17 @@
     <string name="uwb_status_failed">Échec de la recherche « À proximité » (UWB).</string>
     <string name="request_from">Demande de %1$s</string>
     <string name="status_already_requested">Demande de partage déjà envoyée à cette personne</string>
+    <string name="point_the_back_of_your_phone_toward_your"></string>
+    <string name="enable_after"></string>
+    <string name="compare_this_code_with_on_their_device_i"></string>
+    <string name="auto_toggle_never"></string>
+    <string name="dist"></string>
+    <string name="unknown"></string>
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab"></string>
+    <string name="security_code"></string>
+    <string name="el"></string>
+    <string name="link_pqc_unavailable"></string>
+    <string name="az"></string>
+    <string name="computing"></string>
+    <string name="disable_after"></string>
 </resources>
