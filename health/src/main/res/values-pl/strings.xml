@@ -134,4 +134,5 @@
     <string name="lap">Okrążenie <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
     <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> powtórzeń</string>
     <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> posiłków · <xliff:g id="total_cal" example="850">%2$s</xliff:g> kcal</string>
+    <string name="kcal_2"></string>
 </resources>
