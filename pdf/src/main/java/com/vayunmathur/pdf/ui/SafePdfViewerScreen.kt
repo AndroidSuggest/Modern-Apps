@@ -1410,11 +1410,14 @@ private fun NonEditOverlay(
     for (link in links) {
         val leftDp = with(density) { (link.x0 * scale).toDp() }
         val topDp = with(density) { (ch - link.y1 * scale).toDp() }
-        val wDp = with(density) { ((link.x1 - link.x0) * scale).toDp() }
-        val hDp = with(density) { ((link.y1 - link.y0) * scale).toDp() }
+        // A link rect can sit at/above the page top or off the left edge, making these
+        // negative; use offset (which permits it) rather than padding (which throws).
+        // Coerce the size non-negative in case a malformed link has x1<x0 or y1<y0.
+        val wDp = with(density) { ((link.x1 - link.x0) * scale).toDp() }.coerceAtLeast(0.dp)
+        val hDp = with(density) { ((link.y1 - link.y0) * scale).toDp() }.coerceAtLeast(0.dp)
         Box(
             Modifier
-                .padding(start = leftDp, top = topDp)
+                .offset(x = leftDp, y = topDp)
                 .size(wDp, hDp)
                 .clickable {
                     if (link.uri.isNotEmpty()) {
