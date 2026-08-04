@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return@launch
                 val liveWindowIds = am.appTasks.mapNotNull { task ->
-                    val base = runCatching { task.taskInfo.baseIntent }.getOrNull()
+                    val base = runCatching { task.taskInfo?.baseIntent }.getOrNull()
                     base?.getStringExtra(EXTRA_WINDOW_ID)
                         ?: base?.data?.takeIf { it.scheme == "web-window" }?.host
                 }.toSet()
