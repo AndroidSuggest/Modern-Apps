@@ -466,9 +466,14 @@ object FoodDatabase {
         target.delete()
         val db = SQLiteDatabase.openOrCreateDatabase(target.absolutePath, "", null, null)
         try {
-            db.execSQL("PRAGMA journal_mode = OFF")
-            db.execSQL("PRAGMA synchronous = OFF")
-            db.execSQL("PRAGMA temp_store = MEMORY")
+            // journal_mode returns the resulting mode as a row; net.zetetic's
+            // execSQL() runs everything as executeUpdateDelete and rejects any
+            // result-producing statement ("Queries can be performed using ...
+            // query or rawQuery methods only"). rawExecSQL is the correct call
+            // for value-returning PRAGMAs.
+            db.rawExecSQL("PRAGMA journal_mode = OFF")
+            db.rawExecSQL("PRAGMA synchronous = OFF")
+            db.rawExecSQL("PRAGMA temp_store = MEMORY")
             db.execSQL(
                 """
                 CREATE TABLE products (
@@ -534,7 +539,7 @@ object FoodDatabase {
             )
             // DELETE, not OFF: the database is reopened read-only, which a
             // journal mode of OFF does not survive cleanly.
-            db.execSQL("PRAGMA journal_mode = DELETE")
+            db.rawExecSQL("PRAGMA journal_mode = DELETE")
         } finally {
             try { db.close() } catch (_: Exception) {}
         }
