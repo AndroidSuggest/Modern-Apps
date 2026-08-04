@@ -27,7 +27,7 @@
     <string name="starttls">STARTTLS</string>
     <string name="listening_for_new_mail">正在监听新邮件</string>
     <string name="drafts">草稿</string>
-    <string name="email_widget_description">来自统一收件箱的最新邮件 - 点按即可打开 Email</string>
+    <string name="email_widget_description">来自统一收件箱的最新邮件 — 点按即可打开 Email</string>
     <string name="to_me">发给我</string>
     <string name="total_attachment_size_exceeds_25_mb_many">附件总大小超过 25 MB；许多邮件提供者将拒绝此附件。</string>
     <string name="later_today_6_pm">今天晚些时候（下午 6 点）</string>
@@ -119,9 +119,9 @@
     <string name="failed">失败：<xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
     <string name="microsoft_sign_in_failed">Microsoft 登录失败</string>
     <string name="normal">普通</string>
-    <string name="heading_1">一级标题</string>
-    <string name="heading_2">二级标题</string>
-    <string name="heading_3">三级标题</string>
+    <string name="heading_1">标题 1</string>
+    <string name="heading_2">标题 2</string>
+    <string name="heading_3">标题 3</string>
     <string name="left">左对齐</string>
     <string name="center">居中对齐</string>
     <string name="right">右对齐</string>
