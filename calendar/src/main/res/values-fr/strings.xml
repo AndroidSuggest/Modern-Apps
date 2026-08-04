@@ -52,7 +52,7 @@
     <string name="default_layout">Affichage par défaut</string>
     <string name="open_location_in_navigation">Ouvrir l\'emplacement</string>
     <string name="add_reminder">Définir un rappel</string>
-    <string name="calendar_widget_description">Aperçu des événements à venir - tapoter pour ouvrir le calendrier</string>
+    <string name="calendar_widget_description">Aperçu des événements à venir ― tapoter pour ouvrir le calendrier</string>
     <string name="month_option_day_of_month">Le %1$d du mois</string>
     <string name="month_option_last_weekday">Chaque dernier %1$s du mois</string>
     <string name="year_option_week">La %1$de semaine de l\'année, le %2$s</string>
