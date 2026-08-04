@@ -37,4 +37,23 @@
     <string name="time_pm">PM</string>
     <string name="analog_clock_widget_label">Orologio analogico</string>
     <string name="analog_clock_widget_description">Orologio analogico Materiale You — tocca per aprire l\'orologio</string>
+    <string name="action_reset"></string>
+    <string name="snooze_length"></string>
+    <string name="action_resume"></string>
+    <string name="ringtone_custom"></string>
+    <string name="ringtone_silent"></string>
+    <string name="action_stop"></string>
+    <string name="gradually_increase_volume"></string>
+    <string name="sound"></string>
+    <string name="ringtone_default"></string>
+    <string name="channel_stopwatch_name"></string>
+    <string name="action_pause"></string>
+    <string name="action_lap"></string>
+    <string name="vibrate"></string>
+    <string name="defaults_for_new_alarms"></string>
+    <string name="timer_name_optional"></string>
+    <string name="gradual_off"></string>
+    <string name="channel_stopwatch_description"></string>
+    <string name="action_cancel"></string>
+    <string name="alarm_settings"></string>
 </resources>
