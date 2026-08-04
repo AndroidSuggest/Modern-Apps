@@ -41,6 +41,20 @@ class ProjectionTest {
     }
 
     @Test
+    fun stereographic_forward_view_chirality() {
+        // Window/forward view on the north horizon: higher altitude renders above
+        // center, higher azimuth (east) renders to the right.
+        val vs = ViewState(0.0, 0.0, 60f, 1000f, 1000f)
+        val proj = StereographicProjection(vs)
+        val up = proj.project(AltAz(0.0, 10.0.toRad()))!!
+        assertTrue(abs(up.x - 500f) < 1f, "up: x should stay centered, got ${up.x}")
+        assertTrue(up.y < 500f, "higher object should be above center, got y=${up.y}")
+        val east = proj.project(AltAz(10.0.toRad(), 0.0))!!
+        assertTrue(east.x > 500f, "east object should be right of center, got x=${east.x}")
+        assertTrue(abs(east.y - 500f) < 1f, "east: y should stay centered, got ${east.y}")
+    }
+
+    @Test
     fun stereographic_horizon_culling() {
         val vs = ViewState(0.0, (30.0).toRad(), 60f, 1080f, 1920f)
         val proj = StereographicProjection(vs)

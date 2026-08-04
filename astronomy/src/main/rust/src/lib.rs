@@ -92,6 +92,22 @@ mod tests {
     }
 
     #[test]
+    fn project_forward_view_chirality() {
+        // Window/forward view centered on the north horizon (az=0, alt=0).
+        let w = 1000.0;
+        let h = 1000.0;
+        let ten = 10.0_f64.to_radians();
+        // Higher altitude than center -> above center on screen (smaller y).
+        let up = batch_project(&[0.0, ten], 0.0, 0.0, 60.0, w, h, 0.0);
+        assert!((up[0] as f64 - w / 2.0).abs() < 1e-3, "up: x should stay centered");
+        assert!((up[1] as f64) < h / 2.0, "higher object should be above center, got y={}", up[1]);
+        // Higher azimuth (toward east) -> right of center (larger x).
+        let east = batch_project(&[ten, 0.0], 0.0, 0.0, 60.0, w, h, 0.0);
+        assert!((east[0] as f64) > w / 2.0, "east object should be right of center, got x={}", east[0]);
+        assert!((east[1] as f64 - h / 2.0).abs() < 1e-3, "east: y should stay centered");
+    }
+
+    #[test]
     fn project_outside_fov_returns_nan() {
         let w = 1080.0;
         let h = 1920.0;

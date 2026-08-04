@@ -92,8 +92,10 @@ impl Projector {
         let cos_daz = d_az.cos();
         let phi = (sin_daz * cos_alt)
             .atan2(self.cos_center_alt * sin_alt - self.sin_center_alt * cos_alt * cos_daz);
+        // Forward-facing window view: +x = increasing azimuth (right), higher altitude
+        // than center (phi≈0) maps to -y (up on screen). Matches Kotlin projectCore.
         let x = rho * phi.sin();
-        let y = rho * phi.cos();
+        let y = -rho * phi.cos();
         let cos_r = self.rotation_rad.cos();
         let sin_r = self.rotation_rad.sin();
         let xr = x * cos_r - y * sin_r;

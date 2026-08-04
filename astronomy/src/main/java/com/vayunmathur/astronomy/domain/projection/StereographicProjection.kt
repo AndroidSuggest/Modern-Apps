@@ -88,7 +88,10 @@ class StereographicProjection(private val viewState: ViewState) : SkyProjection 
         val dAz = (altAz.azRad - centerAz).let { ((it + PI) % (2*PI)) - PI }
         val sinDaz = sin(dAz); val cosDaz = cos(dAz)
         val phi = atan2(sinDaz * cosAlt, cosCenterAlt * sinAlt - sinCenterAlt * cosAlt * cosDaz)
-        val x = rho * sin(phi); val y = rho * cos(phi) // inversion fix: move up shows up
+        // Forward-facing window view: +x = increasing azimuth (right), higher altitude
+        // than center (phi≈0) maps to -y (up on screen). This is the exact inverse of
+        // `unproject`'s atan2(x, -y).
+        val x = rho * sin(phi); val y = -rho * cos(phi)
         val cosR = cos(viewState.rotationRad); val sinR = sin(viewState.rotationRad)
         val xr = x * cosR - y * sinR; val yr = x * sinR + y * cosR
         return Offset((viewState.screenW / 2 + xr).toFloat(), (viewState.screenH / 2 + yr).toFloat())

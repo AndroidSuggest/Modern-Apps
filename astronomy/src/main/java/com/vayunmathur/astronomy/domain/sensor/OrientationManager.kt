@@ -20,10 +20,13 @@ data class DeviceOrientation(
     val rollDeg: Double,
     val accuracy: Int = SensorManager.SENSOR_STATUS_ACCURACY_HIGH,
     val declinationDeg: Double = 0.0,
-    // Full 3-axis device pointing: screen normal +Z in world ENU
-    // Flat screen-up => +Z Up => alt +90 zenith, vertical => horizon 0°, flat down => nadir -90°
-    // Az uses +Z projection onto horizontal plane (stable vs charging-port up/down)
-    // Roll fixes backwards: viewRotation = roll (inverted) so content tracks phone
+    // "Window" model: the view looks where the BACK of the phone points, i.e. the
+    // device -Z axis (the camera's optical axis), expressed in world ENU. Hold the
+    // phone up like a pane of glass and the sky drawn matches what's behind it (and
+    // what the AR camera sees). Flat screen-up => back faces the ground => nadir;
+    // vertical => horizon; back facing the zenith => alt +90.
+    // viewRotationDeg is the true roll about that -Z axis, so content stays fixed to
+    // the sky as the phone rolls.
     val pointingAzTrueDeg: Double = azimuthTrueDeg,
     val pointingAltDeg: Double = 0.0,
     val viewRotationDeg: Double = 0.0
@@ -49,6 +52,7 @@ class OrientationManager(private val context: Context) : SensorEventListener {
     private var smoothedRoll = 0.0
     private var smoothedPointingAzMag = 0.0
     private var smoothedPointingAlt = 0.0
+    private var smoothedViewRot = 0.0
     private var first = true
     private val alpha = 0.15f
     private val alphaPointing = 0.15f
@@ -114,10 +118,12 @@ class OrientationManager(private val context: Context) : SensorEventListener {
         val pitch = Math.toDegrees(o[1].toDouble()); val roll = Math.toDegrees(o[2].toDouble())
 
         val (pointAzMag, pointAlt) = pointingFromDeviceToWorld(RdeviceToWorld)
+        val vrot = viewRotationFromDeviceToWorld(RdeviceToWorld)
 
         if (first) {
             smoothedAz = azMag; smoothedPitch = pitch; smoothedRoll = roll
             smoothedPointingAzMag = pointAzMag; smoothedPointingAlt = pointAlt
+            smoothedViewRot = if (vrot.isNaN()) 0.0 else vrot
             first = false
         } else {
             var d = azMag - smoothedAz; d = ((d + 540) % 360) - 180
@@ -127,12 +133,10 @@ class OrientationManager(private val context: Context) : SensorEventListener {
             var dp = pointAzMag - smoothedPointingAzMag; dp = ((dp + 540) % 360) - 180
             smoothedPointingAzMag = (smoothedPointingAzMag + dp * alphaPointing + 360) % 360
             smoothedPointingAlt = smoothedPointingAlt + (pointAlt - smoothedPointingAlt) * alphaPointing
+            if (!vrot.isNaN()) { var dv = vrot - smoothedViewRot; dv = ((dv + 540) % 360) - 180; smoothedViewRot += dv * alpha }
         }
         val trueAz = (smoothedAz + declinationDeg + 360) % 360
         val pointTrueAz = (smoothedPointingAzMag + declinationDeg + 360) % 360
-        // Inversion fix: roll and altitude were backwards (move up shows down)
-        // Alt: screen normal +Z gives correct anchor (flat 90, vertical 0). Keep true for numbers.
-        // Roll: invert so sky rotates with device, not against.
         _orientation.value = DeviceOrientation(
             azimuthTrueDeg = trueAz,
             azimuthMagDeg = smoothedAz,
@@ -142,19 +146,46 @@ class OrientationManager(private val context: Context) : SensorEventListener {
             declinationDeg = declinationDeg,
             pointingAzTrueDeg = pointTrueAz,
             pointingAltDeg = smoothedPointingAlt,
-            viewRotationDeg = -smoothedRoll
+            viewRotationDeg = smoothedViewRot
         )
     }
 
-    // Screen-normal +Z pointing: flat up = +90 zenith, vertical = 0 horizon, flat down = -90 nadir
-    // Stable vs charging-port up/down (uses column2, not Y)
+    // Window model: the view forward is the back of the phone = device -Z axis (the
+    // camera's optical axis) in world ENU. -Z is the negated third column of the
+    // device->world matrix. Back facing the zenith => alt +90, horizon => 0, ground
+    // => -90. Uses the whole axis (not Y) so it's stable to charging-port up/down.
     private fun pointingFromDeviceToWorld(R: FloatArray): Pair<Double, Double> {
-        val east = R[2].toDouble()
-        val north = R[5].toDouble()
-        val up = R[8].toDouble()
+        val east = -R[2].toDouble()
+        val north = -R[5].toDouble()
+        val up = -R[8].toDouble()
         var az = Math.toDegrees(atan2(east, north)); az = (az + 360) % 360
         val alt = Math.toDegrees(asin(up.coerceIn(-1.0, 1.0)))
         return az to alt
+    }
+
+    // Roll about the viewing axis, returned as the rotation (deg) to apply to the
+    // projected sky so celestial-up lines up with the phone's physical up. Derived
+    // straight from the rotation matrix (getOrientation's "roll" is about device Y,
+    // which is the wrong axis once the phone is held vertical to look at the sky).
+    // Returns NaN near the zenith/nadir where roll is undefined.
+    private fun viewRotationFromDeviceToWorld(R: FloatArray): Double {
+        // Camera forward = device -Z (out the back, toward the sky).
+        val fx = -R[2].toDouble(); val fy = -R[5].toDouble(); val fz = -R[8].toDouble()
+        // Device screen "up" = +Y column (top edge of the phone), already ⟂ to f.
+        val ux = R[1].toDouble(); val uy = R[4].toDouble(); val uz = R[7].toDouble()
+        // Celestial-up reference: world zenith (0,0,1) projected into the screen plane.
+        val zf = fz // world zenith · f
+        var px = -zf * fx; var py = -zf * fy; var pz = 1.0 - zf * fz
+        val pl = sqrt(px * px + py * py + pz * pz)
+        if (pl < 1e-6) return Double.NaN // looking near straight up/down: roll undefined
+        px /= pl; py /= pl; pz /= pl
+        val dot = px * ux + py * uy + pz * uz
+        // (P_up × u) · f => signed angle of device-up from celestial-up about f.
+        val cx = py * uz - pz * uy; val cy = pz * ux - px * uz; val cz = px * uy - py * ux
+        val crossDotF = cx * fx + cy * fy + cz * fz
+        val rollRad = atan2(crossDotF, dot)
+        // Rotate the drawn sky by -roll so it stays fixed to the world as the phone rolls.
+        return Math.toDegrees(-rollRad)
     }
 
     @Suppress("DEPRECATION")
@@ -176,9 +207,11 @@ class OrientationManager(private val context: Context) : SensorEventListener {
         val azMag = (Math.toDegrees(o[0].toDouble()) + 360) % 360
         val pitch = Math.toDegrees(o[1].toDouble()); val roll = Math.toDegrees(o[2].toDouble())
         val (pAz, pAlt) = pointingFromDeviceToWorld(R)
+        val vrot = viewRotationFromDeviceToWorld(R)
         if (first) {
             smoothedAz = azMag; smoothedPitch = pitch; smoothedRoll = roll
             smoothedPointingAzMag = pAz; smoothedPointingAlt = pAlt
+            smoothedViewRot = if (vrot.isNaN()) 0.0 else vrot
             first = false
         } else {
             var d = azMag - smoothedAz; d = ((d + 540) % 360) - 180
@@ -188,6 +221,7 @@ class OrientationManager(private val context: Context) : SensorEventListener {
             var dp = pAz - smoothedPointingAzMag; dp = ((dp + 540) % 360) - 180
             smoothedPointingAzMag = (smoothedPointingAzMag + dp * alphaPointing + 360) % 360
             smoothedPointingAlt = smoothedPointingAlt + (pAlt - smoothedPointingAlt) * alphaPointing
+            if (!vrot.isNaN()) { var dv = vrot - smoothedViewRot; dv = ((dv + 540) % 360) - 180; smoothedViewRot += dv * alpha }
         }
         val trueAz = (smoothedAz + declinationDeg + 360) % 360
         val pTrueAz = (smoothedPointingAzMag + declinationDeg + 360) % 360
@@ -200,7 +234,7 @@ class OrientationManager(private val context: Context) : SensorEventListener {
             declinationDeg = declinationDeg,
             pointingAzTrueDeg = pTrueAz,
             pointingAltDeg = smoothedPointingAlt,
-            viewRotationDeg = -smoothedRoll
+            viewRotationDeg = smoothedViewRot
         )
     }
 }
