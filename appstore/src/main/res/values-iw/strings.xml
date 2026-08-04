@@ -4,15 +4,4 @@
     <string name="uninstall">הסרת התקנה</string>
     <string name="open">פתיחה</string>
     <string name="repositories">מאגרים</string>
-    <string name="update_all"></string>
-    <string name="last_sync"></string>
-    <string name="installed"></string>
-    <string name="all_apps_up_to_date"></string>
-    <string name="this_will_uninstall_you_can_reinstall_la"></string>
-    <plurals name="updates_count">
-    </plurals>
-    <string name="uninstall_3"></string>
-    <string name="view_in_play_store"></string>
-    <string name="installed_2"></string>
-    <string name="app_name"></string>
 </resources>
