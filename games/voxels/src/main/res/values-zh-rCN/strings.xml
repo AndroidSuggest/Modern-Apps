@@ -1,3 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="equipped_armor">装备护甲</string>
+    <string name="hold_an_armor_piece_in_hand_to_equip_it">手持护甲即可装备。</string>
+    <string name="create_world">创建世界</string>
+    <string name="world_name">世界名称</string>
+    <string name="craft">合成</string>
+    <string name="tap_a_trade_to_exchange_need_the_cost_it">点击交易项目进行交换（需要消耗物品）。</string>
+    <string name="rust_lib_missing_vulkan_unavailable">Rust 库缺失 — Vulkan 不可用</string>
+    <string name="villager_trades">村民交易</string>
+    <string name="leave_blank_for_random">留空以随机生成</string>
+    <string name="create_play">创建并开始游戏</string>
+    <string name="resume">继续</string>
+    <string name="create_new_world">创建新世界</string>
+    <string name="products">产品</string>
+    <string name="paused">已暂停</string>
+    <string name="down">向下</string>
+    <string name="inventory_drag_to_rearrange">物品栏 — 拖动以重新排列</string>
+    <string name="crafting_table">工作台</string>
+    <string name="seed_2">种子：%1$s • %2$s</string>
+    <string name="a_number_or_any_text_hashed_to_a_seed">数字或任意文本（哈希为种子）。</string>
+    <string name="select_a_world">选择世界</string>
+    <string name="estus">原素 ×%1$s</string>
+    <string name="app_name">Voxels</string>
+    <string name="seed">种子</string>
+    <string name="no_worlds_yet_create_one_to_start">尚无世界 — 创建一个开始。</string>
+    <string name="save_quit_to_menu">保存并退出到菜单</string>
 </resources>
