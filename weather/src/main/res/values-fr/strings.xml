@@ -8,7 +8,7 @@
     <string name="search_location">Rechercher un lieu</string>
     <string name="app_name">Météo</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
-    <string name="weather_widget_description">L\'heure, la date et la météo du moment en un coup d\'œil - appuyez pour consulter les prévisions</string>
+    <string name="weather_widget_description">L\'heure, la date et la météo du moment en un coup d\'œil — appuyez pour consulter les prévisions</string>
     <string name="add_a_city_or_use_your_current_location">Ajoutez une ville ou utilisez votre position actuelle pour consulter les prévisions.</string>
     <string name="locations">Lieux</string>
     <string name="summary_winds_noticeable">Le vent se fera sentir aujourd’hui.</string>
@@ -23,7 +23,7 @@
     <string name="metric_humidity">Humidité</string>
     <string name="summary_mixed_conditions">des conditions variables</string>
     <string name="metric_uv_index">Indice UV</string>
-    <string name="summary_high_low">Maximale : %1$s, minimale : %2$s.</string>
+    <string name="summary_high_low">Maximale : %1$s, minimale : %2$s.</string>
     <string name="condition_snow">Neige</string>
     <string name="summary_slight_chance_rain">Faible risque de pluie.</string>
     <string name="metric_visibility">Visibilité</string>
@@ -31,7 +31,7 @@
     <string name="from_gusts">Vent de %1$s · Rafales à %2$s</string>
     <string name="condition_clear">Dégagé</string>
     <string name="metric_feels_like">Ressenti</string>
-    <string name="feels_like">Ressenti : %1$s</string>
+    <string name="feels_like">Ressenti : %1$s</string>
     <string name="use_current_location">Utiliser la position actuelle</string>
     <string name="condition_partly_cloudy">Partiellement nuageux</string>
     <string name="condition_rain">Pluie</string>
