@@ -21,8 +21,4 @@
     <string name="tap_to_spell_description">Appuyez sur les lettres pour former des mots au lieu de les faire glisser</string>
     <string name="hint_confirmation">Êtes-vous sûr de vouloir utiliser un indice ?</string>
     <string name="competitive_timed_out">Temps écoulé ! %1$d points</string>
-    <string name="cd_hint"></string>
-    <string name="cd_shuffle"></string>
-    <string name="cd_submit"></string>
-    <string name="cd_backspace"></string>
 </resources>
