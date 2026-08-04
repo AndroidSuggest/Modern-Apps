@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="nav_playlists">Playlisten</string>
     <string name="nav_home">Home</string>
     <string name="nav_albums">Alben</string>
@@ -33,4 +33,10 @@
     <string name="grant_storage_permissions">Erlaube Speicher Berechtigung</string>
     <string name="content_desc_album_art">Album Cover</string>
     <string name="content_desc_album_art_grid">Album Cover Raster</string>
+    <string name="dialog_create_playlist"></string>
+    <string name="dialog_delete"></string>
+    <string name="playlist_name_hint"></string>
+    <string name="dialog_delete_playlist"></string>
+    <string name="dialog_delete_playlist_confirm"></string>
+    <string name="dialog_create"></string>
 </resources>
