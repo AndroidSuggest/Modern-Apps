@@ -60,6 +60,7 @@
     <string name="contact_photo_description"><xliff:g id="contact_name" example="John Doe">%1$s</xliff:g> fotka</string>
     <string name="on_device">V zařízení</string>
     <plurals name="delete_selected_contacts_confirm">
+        <item quantity="many">Opravdu chcete smazat <xliff:g id="count" example="5">%1$d</xliff:g> vybraných kontaktů? This action cannot be undone.</item>
         <item quantity="other">Opravdu chcete smazat <xliff:g id="count" example="5">%1$d</xliff:g> vybraných kontaktů? This action cannot be undone.</item>
     </plurals>
     <string name="show_account_labels">Zobrazit účty kontaktů</string>
@@ -78,6 +79,7 @@
     <string name="delete_group_confirm">Opravdu chcete smazat tuto skupinu? Kontakty nebudou smazány.</string>
     <string name="no_groups_found">Nebyly nalezeny žádné skupiny. Vytvořte ji na kartě skupiny.</string>
     <plurals name="contacts_count">
+        <item quantity="many"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktů</item>
         <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktů</item>
     </plurals>
     <string name="import_vcf_file">Import .vcf souboru</string>
@@ -85,6 +87,7 @@
     <string name="create_new_account_option">Vytvořit nový účet</string>
     <string name="no_contacts_found">Nenalezeny žádné kontaky</string>
     <plurals name="import_summary_contacts">
+        <item quantity="many"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktů je připraveno k importování</item>
         <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktů je připraveno k importování</item>
     </plurals>
     <string name="select_account">Vybrerte účet</string>
