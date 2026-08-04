@@ -54,6 +54,9 @@ class MainActivity : ComponentActivity() {
         val windowId = intent?.getStringExtra(EXTRA_WINDOW_ID) ?: WebViewModel.DEFAULT_WINDOW_ID
         val incognito = intent?.getBooleanExtra(EXTRA_INCOGNITO, false) ?: false
 
+        // Reap tab-sets left behind by windows the user has since closed (swiped from Recents).
+        pruneClosedWindowTabs()
+
         lifecycleScope.launch(Dispatchers.IO) {
             val db = buildDatabase<WebDatabase>(dbName = DB_NAME)
             val factory = WebViewModelFactory(
@@ -114,6 +117,45 @@ class MainActivity : ComponentActivity() {
         }
         Regex("https?://\\S+").find(trimmed)?.let { return it.value }
         return null
+    }
+
+    /**
+     * Removes persisted tab-sets whose window is no longer a live task. Each non-incognito window
+     * stores its tabs under keys suffixed with its window id (see [WebViewModel]); when the user
+     * swipes a window out of Recents those keys would otherwise linger forever.
+     */
+    private fun pruneClosedWindowTabs() {
+        // Must mirror WebViewModel's namespaced key format: "<P_SAVED_TABS>_<windowId>" etc.
+        val savedTabsPrefix = "web_saved_tabs_"
+        val activeTabPrefix = "web_active_tab_id_"
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return@launch
+                val liveWindowIds = am.appTasks.mapNotNull { task ->
+                    val base = runCatching { task.taskInfo.baseIntent }.getOrNull()
+                    base?.getStringExtra(EXTRA_WINDOW_ID)
+                        ?: base?.data?.takeIf { it.scheme == "web-window" }?.host
+                }.toSet()
+
+                val sp = getSharedPreferences("web_prefs", MODE_PRIVATE)
+                val editor = sp.edit()
+                var changed = false
+                for (key in sp.all.keys) {
+                    val windowId = when {
+                        key.startsWith(savedTabsPrefix) -> key.removePrefix(savedTabsPrefix)
+                        key.startsWith(activeTabPrefix) -> key.removePrefix(activeTabPrefix)
+                        else -> null
+                    } ?: continue
+                    if (windowId !in liveWindowIds) {
+                        editor.remove(key)
+                        changed = true
+                    }
+                }
+                if (changed) editor.apply()
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "pruneClosedWindowTabs failed", e)
+            }
+        }
     }
 
     companion object {
