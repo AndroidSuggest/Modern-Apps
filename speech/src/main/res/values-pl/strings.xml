@@ -1,3 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="heard"></string>
+    <string name="download_model_113_mb"></string>
+    <string name="test_microphone"></string>
+    <string name="try_it"></string>
+    <string name="tts_engine_label"></string>
+    <string name="try_the_voice"></string>
+    <string name="open_text_to_speech_settings"></string>
+    <string name="open_voice_input_settings"></string>
+    <string name="recognition_service_label"></string>
+    <string name="grant_microphone"></string>
+    <string name="download_voice_64_mb"></string>
+    <string name="speak_sample"></string>
+    <string name="app_name"></string>
+    <string name="offline_on_device_speech_whisper_recogni"></string>
 </resources>
