@@ -27,7 +27,7 @@
     <string name="label_sleep">שינה</string>
     <string name="label_blood_pressure">לחץ דם</string>
     <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> ביום (בממוצע)</string>
-    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="unit_only_format"><xliff:g id="unit" example="steps">%1$s</xliff:g></string>
     <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
     <string name="label_steps">צעדים</string>
     <string name="unit_steps">צעדים</string>
