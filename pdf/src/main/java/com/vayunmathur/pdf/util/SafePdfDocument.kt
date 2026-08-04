@@ -329,5 +329,41 @@ class SafePdfDocument private constructor(
                 }.getOrNull() ?: return@withContext 0
                 PdfNative.pdfPasswordState(bytes)
             }
+
+        /**
+         * True if [uri] begins like a real PDF — a `%PDF-` header within the first 1024
+         * bytes, as the spec requires readers to look for. Used to tell "not a PDF at all"
+         * (e.g. a download that returned an HTML error/challenge page saved with a .pdf
+         * name) apart from a genuine PDF the parser can't handle, so the error message can
+         * be honest. Only the head is read, so it's cheap even for huge inputs.
+         */
+        suspend fun looksLikePdf(context: Context, uri: Uri): Boolean =
+            withContext(Dispatchers.IO) {
+                val head = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val buf = ByteArray(1024)
+                        var off = 0
+                        while (off < buf.size) {
+                            val r = input.read(buf, off, buf.size - off)
+                            if (r < 0) break
+                            off += r
+                        }
+                        buf.copyOf(off)
+                    }
+                }.getOrNull() ?: return@withContext false
+                indexOf(head, "%PDF-".toByteArray(Charsets.US_ASCII)) >= 0
+            }
+
+        /** First index of [needle] in [haystack], or -1. */
+        private fun indexOf(haystack: ByteArray, needle: ByteArray): Int {
+            if (needle.isEmpty() || haystack.size < needle.size) return -1
+            outer@ for (i in 0..haystack.size - needle.size) {
+                for (j in needle.indices) {
+                    if (haystack[i + j] != needle[j]) continue@outer
+                }
+                return i
+            }
+            return -1
+        }
     }
 }

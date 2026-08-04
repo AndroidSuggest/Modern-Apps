@@ -190,7 +190,9 @@ import java.io.ByteArrayOutputStream
 
 private sealed interface LoadState {
     data object Loading : LoadState
-    data object Error : LoadState
+    /** [notPdf] true when the bytes aren't a PDF at all (e.g. an HTML download page), as
+     *  opposed to a genuine PDF the parser can't handle. */
+    data class Error(val notPdf: Boolean = false) : LoadState
     data class Loaded(val document: SafePdfDocument) : LoadState
 }
 
@@ -441,7 +443,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         } else {
             when (SafePdfDocument.passwordState(context, uri)) {
                 1 -> { needsPassword = true; pwError = password != null; LoadState.Loading }
-                else -> LoadState.Error
+                else -> LoadState.Error(notPdf = !SafePdfDocument.looksLikePdf(context, uri))
             }
         }
     }
@@ -1023,8 +1025,10 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         ) {
             when (val state = loadState) {
                 LoadState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                LoadState.Error -> Text(
-                    text = stringResource(R.string.safe_pdf_error),
+                is LoadState.Error -> Text(
+                    text = stringResource(
+                        if (state.notPdf) R.string.safe_pdf_not_a_pdf else R.string.safe_pdf_error
+                    ),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 )

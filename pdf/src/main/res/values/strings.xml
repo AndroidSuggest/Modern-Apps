@@ -8,6 +8,7 @@
     <string name="open_pdf">Open PDF</string>
     <!-- MainActivity: Error dialog text when safe viewer cannot render file -->
     <string name="safe_pdf_error">This PDF could not be opened by the safe viewer. It may be damaged or use unsupported features.</string>
+    <string name="safe_pdf_not_a_pdf">This file isn\'t a PDF</string>
     <!-- MainActivity: Button to create PDF from camera capture -->
     <string name="capture_pdf">Capture PDF</string>
     <!-- MainActivity: Toolbar title for camera capture flow -->
