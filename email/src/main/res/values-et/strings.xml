@@ -106,4 +106,41 @@
     <plurals name="attempts">
         <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> katse(t)</item>
     </plurals>
+    <string name="total_attachment_size_exceeds_25_mb_many"></string>
+    <string name="center"></string>
+    <string name="text_color"></string>
+    <string name="font_size"></string>
+    <string name="heading_1"></string>
+    <string name="blockquote"></string>
+    <string name="heading_2"></string>
+    <string name="from"></string>
+    <string name="highlight"></string>
+    <string name="normal"></string>
+    <string name="right"></string>
+    <string name="unified_inbox_label"></string>
+    <string name="added"></string>
+    <string name="clear_formatting"></string>
+    <string name="email_sync_channel_desc"></string>
+    <string name="saved_to_outbox"></string>
+    <string name="outbox_is_empty"></string>
+    <string name="extra_large"></string>
+    <string name="small"></string>
+    <string name="unified_inbox"></string>
+    <string name="left"></string>
+    <string name="inline_code"></string>
+    <string name="justify"></string>
+    <string name="large"></string>
+    <string name="monospace"></string>
+    <plurals name="retrying_pending_messages">
+    </plurals>
+    <string name="horizontal_rule"></string>
+    <string name="sans"></string>
+    <string name="email_sync_channel_name"></string>
+    <string name="heading_3"></string>
+    <string name="serif"></string>
+    <string name="to_1"></string>
+    <string name="font_default"></string>
+    <string name="font_family"></string>
+    <string name="alignment"></string>
+    <string name="failed"></string>
 </resources>
