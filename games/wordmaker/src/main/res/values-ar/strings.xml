@@ -1,3 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    </resources>
+    <string name="difficulty_hard"></string>
+    <string name="cd_hint"></string>
+    <string name="competitive_score"></string>
+    <string name="bonus_words"></string>
+    <string name="mode_casual"></string>
+    <string name="hint_confirmation"></string>
+    <string name="no"></string>
+    <string name="competitive_solved"></string>
+    <string name="level_number"></string>
+    <string name="cd_shuffle"></string>
+    <string name="yes"></string>
+    <string name="competitive_start"></string>
+    <string name="tap_to_spell_description"></string>
+    <string name="cd_submit"></string>
+    <string name="cd_backspace"></string>
+    <string name="competitive_difficulty"></string>
+    <string name="competitive_time_limit"></string>
+    <string name="next_level"></string>
+    <string name="difficulty_easy"></string>
+    <string name="mode_competitive"></string>
+    <string name="competitive_timed_out"></string>
+    <string name="error_parse_level"></string>
+    <string name="difficulty_medium"></string>
+    <string name="tap_to_spell"></string>
+    <string name="app_name"></string>
+</resources>
