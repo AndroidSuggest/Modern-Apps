@@ -1,3 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="b_in_b_out_target">&lt;xliff:g id=\"name\" example=\"AND\"&gt;%1$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"in_bits\" example=\"2\"&gt;%2$s&lt;/xliff:g&gt;b 输入 [&lt;xliff:g id=\"in_widths\" example=\"1,1\"&gt;%3$s&lt;/xliff:g&gt;] → &lt;xliff:g id=\"out_bits\" example=\"1\"&gt;%4$s&lt;/xliff:g&gt;b 输出 [&lt;xliff:g id=\"out_widths\" example=\"1\"&gt;%5$s&lt;/xliff:g&gt;] • 目标 &lt;xliff:g id=\"target_name\" example=\"AND\"&gt;%6$s&lt;/xliff:g&gt;</string>
+    <string name="hint_1">提示：&lt;xliff:g id=\"hint_text\" example=\"NAND(in,in)=NOT\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="cd_achievements">成就</string>
+    <string name="unknown_target_chip">未知目标芯片 &lt;xliff:g id=\"chip_id\" example=\"AND\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="got">实际</string>
+    <string name="sr_latch_2_nor_cross_coupled_feedback_cy">SR 锁存器：2 个或非门交叉耦合反馈 – 预期循环，结构通过</string>
+    <string name="hide_tt">隐藏真值表</string>
+    <string name="inputs">输入</string>
+    <string name="tick">时钟节拍</string>
+    <string name="gate">门 %1$s</string>
+    <string name="lock">锁定</string>
+    <string name="failing_check_wiring_width_match_join_8">&lt;xliff:g id=\"failing_count\" example=\"3\"&gt;%1$s&lt;/xliff:g&gt; 失败 • 检查线宽是否匹配 JOIN_8/SPLIT_8</string>
+    <string name="cancel_wire">取消连线</string>
+    <string name="next_level">下一关</string>
+    <string name="keep_editing">继续编辑</string>
+    <string name="sim_speed">仿真速度</string>
+    <string name="outputs">输出</string>
+    <string name="completed">&lt;xliff:g id=\"completed_count\" example=\"5\"&gt;%1$s&lt;/xliff:g&gt; / &lt;xliff:g id=\"total\" example=\"36\"&gt;%2$s&lt;/xliff:g&gt; 已完成</string>
+    <string name="start_with_nand_end_with_a_computer">从与非门开始。以计算机结束。</string>
+    <string name="exp">预期</string>
+    <string name="back_to_map">返回地图</string>
+    <string name="show_tt">显示真值表</string>
+    <string name="hz">%1$shz</string>
+    <string name="expected">%1$s 预期</string>
+    <string name="level_complete_title">关卡完成！</string>
+    <string name="got_2">%1$s 实际</string>
+    <string name="no_chips_all">无芯片 • 全部</string>
+    <string name="tap_to_play_lines_show_dependencies_36_l">点击开始游戏 • 线条显示依赖关系 • 36 个关卡</string>
+    <string name="loading">正在加载…</string>
+    <string name="play">玩</string>
+    <string name="level_complete_body">您已解决 &lt;xliff:g id=\"level_name\" example=\"XOR\"&gt;%1$s&lt;/xliff:g&gt;。</string>
+    <string name="gates">&lt;xliff:g id=\"gate_count\" example=\"5\"&gt;%1$s&lt;/xliff:g&gt; 个逻辑门</string>
+    <string name="app_name">逻辑门</string>
+    <string name="redo">重做</string>
+    <string name="sampled_cases_bus_needs_join_8_split_8">采样 &lt;xliff:g id=\"display_limit\" example=\"64\"&gt;%1$s&lt;/xliff:g&gt; / &lt;xliff:g id=\"total_cases\" example=\"1024\"&gt;%2$s&lt;/xliff:g&gt;+ 种情况（总线需要 JOIN_8/SPLIT_8）</string>
+    <string name="done">完成</string>
 </resources>
