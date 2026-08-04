@@ -233,7 +233,4 @@
     <string name="wallpaper_set_success">Fond d’écran appliqué !</string>
     <string name="wallpaper_set_failed">Échec de l’application du fond d’écran : <xliff id="error" example="IO error">%1$s</xliff></string>
     <string name="wallpaper_load_failed">Impossible de charger l’image</string>
-    <string name="editor_desc_none"></string>
-    <string name="file_size"></string>
-    <string name="edit_with_label"></string>
 </resources>

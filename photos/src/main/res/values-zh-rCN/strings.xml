@@ -233,5 +233,4 @@
     <string name="wallpaper_load_failed">无法加载图片</string>
     <string name="file_size">大小：<xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
     <string name="edit_with_label">使用我的应用编辑</string>
-    <string name="editor_desc_none"></string>
 </resources>
