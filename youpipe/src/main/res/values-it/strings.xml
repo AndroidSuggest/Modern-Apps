@@ -88,21 +88,4 @@
     <string name="label_no_channels">Nessun canale correlato rilevato</string>
     <string name="label_no_topics">Nessun argomento correlato rilevato</string>
     <string name="action_unmute">Attiva audio</string>
-    <string name="page_home"></string>
-    <string name="cc"></string>
-    <string name="loading_recent_subscriptions"></string>
-    <string name="download_options"></string>
-    <string name="clear_history"></string>
-    <string name="downloads"></string>
-    <string name="off"></string>
-    <string name="selected"></string>
-    <string name="selected_1"></string>
-    <string name="download"></string>
-    <string name="label_default_page"></string>
-    <string name="language"></string>
-    <string name="label_general"></string>
-    <string name="chapter"></string>
-    <string name="are_you_sure_you_want_to_clear_all_watch"></string>
-    <string name="resolution"></string>
-    <string name="page_downloads"></string>
 </resources>
