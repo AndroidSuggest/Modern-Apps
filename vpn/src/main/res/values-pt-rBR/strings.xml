@@ -1,3 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="add_a_connection_by_opening_a_conf_file"></string>
+    <string name="open_conf_file"></string>
+    <string name="allowedips"></string>
+    <string name="this_will_permanently_remove_all_connect"></string>
+    <string name="allowed"></string>
+    <string name="connected_via_gotatun_wireguard"></string>
+    <string name="bypass_list"></string>
+    <string name="imported_from_wireguard_conf_using_gotat"></string>
+    <string name="vpn_channel_name"></string>
+    <string name="name"></string>
+    <string name="bypass_loading_apps"></string>
+    <string name="open_system_vpn_settings"></string>
+    <string name="endpoint"></string>
+    <string name="settings_about"></string>
+    <string name="delete_all_logs"></string>
+    <string name="dns"></string>
+    <string name="bypass_lockdown_warning"></string>
+    <string name="privatekey"></string>
+    <string name="tunnel"></string>
+    <string name="peer_publickey"></string>
+    <string name="address"></string>
+    <string name="export_as_conf"></string>
+    <string name="bypass_list_title"></string>
+    <string name="publickey"></string>
+    <string name="need_activity_to_grant_vpn_permission"></string>
+    <string name="bypass_selected_count"></string>
+    <string name="vpn_wireguard_gotatun"></string>
+    <string name="logging"></string>
+    <string name="no_tunnels_yet"></string>
+    <string name="always_on_vpn"></string>
+    <string name="app_name"></string>
+    <string name="mtu_keepalive_s"></string>
 </resources>
