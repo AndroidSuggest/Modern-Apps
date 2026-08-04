@@ -140,4 +140,5 @@
     <string name="open_app_password_help"></string>
     <string name="alignment"></string>
     <string name="failed"></string>
+    <string name="open">פתיחה</string>
 </resources>
