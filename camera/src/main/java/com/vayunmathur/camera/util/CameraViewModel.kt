@@ -2458,7 +2458,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                                         ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
                                     val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
                                     MediaStoreSaver.saveBitmap(app.contentResolver, values, adjusted)
-                                        ?.also { writeCaptureExif(it, sourceJpeg, degrees) }
+                                        ?.also { writeCaptureExif(it, sourceJpeg, degrees, mirrored = mirror) }
                                         .also { adjusted.recycle() }
                                 }
                                 finishCapture(uri)
@@ -3098,7 +3098,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * and stamps GPS when location is enabled. For the night merge there is no single source frame,
      * so [sourceJpeg] is null and only orientation + GPS are written.
      */
-    private fun writeCaptureExif(uri: Uri, sourceJpeg: ByteArray?, rotationDegrees: Int) {
+    private fun writeCaptureExif(uri: Uri, sourceJpeg: ByteArray?, rotationDegrees: Int, mirrored: Boolean = false) {
         try {
             val source = sourceJpeg?.let { ExifInterface(ByteArrayInputStream(it)) }
             app.contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
@@ -3108,9 +3108,14 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                         src.getAttribute(tag)?.let { dest.setAttribute(tag, it) }
                     }
                 }
+                // When the pixels have already been horizontally mirrored (front camera),
+                // the EXIF rotation must be inverted: flip and rotate don't commute, and
+                // FLIP∘ROTATE(θ)∘FLIP = ROTATE(−θ). Without this, portrait selfies (θ=90/270)
+                // save upside down; landscape (θ=0/180) commutes and is unaffected.
+                val effectiveDegrees = if (mirrored) (360 - rotationDegrees) % 360 else rotationDegrees
                 dest.setAttribute(
                     ExifInterface.TAG_ORIENTATION,
-                    when (rotationDegrees) {
+                    when (effectiveDegrees) {
                         90 -> ExifInterface.ORIENTATION_ROTATE_90
                         180 -> ExifInterface.ORIENTATION_ROTATE_180
                         270 -> ExifInterface.ORIENTATION_ROTATE_270
