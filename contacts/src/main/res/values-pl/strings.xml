@@ -84,4 +84,22 @@
     <string name="create_new_contact">Utwórz nowy kontakt</string>
     <string name="crop_photo">Przytnij zdjęcie</string>
     <string name="import_contacts_from_vcf_files">Importuj kontakty z plików .vcf</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> kontakt gotowy do importu</item>
+        <item quantity="few"><xliff:g id="count" example="10">%1$d</xliff:g> kontakty gotowe do zaimportowania</item>
+        <item quantity="many"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktów gotowych do zaimportowania</item>
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> kontaktów gotowych do zaimportowania</item>
+    </plurals>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="one">Czy na pewno chcesz usunąć <xliff:g id="count" example="5">%1$d</xliff:g> zaznaczony kontakt? Tej czynności nie można cofnąć.</item>
+        <item quantity="few">Czy na pewno chcesz usunąć <xliff:g id="count" example="5">%1$d</xliff:g> zaznaczone kontakty? Tej czynności nie można cofnąć.</item>
+        <item quantity="many">Czy na pewno chcesz usunąć <xliff:g id="count" example="5">%1$d</xliff:g> zaznaczonych kontaktów? Tej czynności nie można cofnąć.</item>
+        <item quantity="other">Czy na pewno chcesz usunąć <xliff:g id="count" example="5">%1$d</xliff:g> zaznaczonych kontaktów? Tej czynności nie można cofnąć.</item>
+    </plurals>
+    <plurals name="contacts_count">
+        <item quantity="one"><xliff:g id="count" example="42">%1$d</xliff:g> kontakt</item>
+        <item quantity="few"><xliff:g id="count" example="42">%1$d</xliff:g> kontakty</item>
+        <item quantity="many"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktów</item>
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> kontaktów</item>
+    </plurals>
 </resources>
