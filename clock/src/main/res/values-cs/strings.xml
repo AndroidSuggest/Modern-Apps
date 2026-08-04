@@ -51,4 +51,9 @@
     <string name="ringtone_default">Výchozí</string>
     <string name="ringtone_silent">Tichý</string>
     <string name="ringtone_custom">Vlastní</string>
+    <string name="snooze_length"></string>
+    <string name="gradually_increase_volume"></string>
+    <string name="sound"></string>
+    <string name="vibrate"></string>
+    <string name="timer_name_optional"></string>
 </resources>
