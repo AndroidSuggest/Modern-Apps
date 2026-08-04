@@ -119,17 +119,11 @@
     </plurals>
     <string name="cd_insert_image">Inserisci immagine</string>
     <string name="center">Centro</string>
-    <string name="text_color"/>
-    <string name="font_size"/>
     <string name="heading_1">Intestazione 1</string>
     <string name="blockquote">Citazione</string>
     <string name="heading_2">Intestazione 2</string>
-    <string name="highlight"/>
     <string name="normal">Normale</string>
     <string name="right">Destra</string>
-    <string name="unified_inbox_label"/>
-    <string name="clear_formatting"/>
-    <string name="email_sync_channel_desc"/>
     <string name="extra_large">Molto grande</string>
     <string name="small">Piccolo</string>
     <string name="left">Sinistra</string>
@@ -137,12 +131,9 @@
     <string name="justify">Giustifica</string>
     <string name="large">Grande</string>
     <string name="monospace">Monospaziato</string>
-    <string name="horizontal_rule"/>
     <string name="sans">Senza grazie</string>
-    <string name="email_sync_channel_name"/>
     <string name="heading_3">Intestazione 3</string>
     <string name="serif">Graziato</string>
     <string name="font_default">Predefinito</string>
-    <string name="font_family"/>
     <string name="alignment">Allineamento</string>
 </resources>
