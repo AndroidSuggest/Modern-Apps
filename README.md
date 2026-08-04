@@ -32,6 +32,10 @@ Every released and planned app is listed here:
 
 Though some apps may have exceptions, generally a 64-bit device running at least Android 12 is required.
 
+If using F-Droid, to get faster updates and the apps currently unavailable on the main F-Droid repo:
+
+**ADD THIS REPO TO YOUR F-DROID CLIENT: [http://ma.vayunmathur.com/fdroid](http://ma.vayunmathur.com/fdroid)**
+
 | App Name | Homepage | F-Droid | Obtainium |
 | :--- | :---: | :---: | :---: |
 | **Astronomy** | [Homepage](https://ma.vayunmathur.com/apps/astronomy) | In Progress | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Astronomy&packageName=com.vayunmathur.astronomy&apk=astronomy-release.apk) |
