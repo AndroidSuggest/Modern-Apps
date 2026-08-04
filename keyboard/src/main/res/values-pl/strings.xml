@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="subtype_en">Angielski</string>
+    <string name="abc">ABC</string>
+    <string name="theme">Motyw</string>
+    <string name="follows_the_system_light_dark_theme_and">Podąża za jasnym/ciemnym motywem systemu i kolorami Material You</string>
+    <string name="try_the_keyboard_here">Wypróbuj klawiaturę tutaj</string>
+    <string name="key_height">Wysokość klawiatury</string>
+    <string name="enable_keyboard">Włącz klawiaturę</string>
+    <string name="choose_keyboard">Wybierz klawiaturę</string>
+    <string name="app_name">Klawiatura</string>
 </resources>
