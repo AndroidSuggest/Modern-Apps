@@ -13,4 +13,11 @@
     <string name="collection">Kollektion</string>
     <string name="discovered_counter">%1$d / %2$d endteckt</string>
     <string name="item_details">Objektbeschreibung</string>
+    <string name="id"></string>
+    <string name="cd_final_item"></string>
+    <string name="item_discovered"></string>
+    <plurals name="items_discovered">
+    </plurals>
+    <string name="hide_maxed_elements"></string>
+    <string name="cd_delete"></string>
 </resources>
