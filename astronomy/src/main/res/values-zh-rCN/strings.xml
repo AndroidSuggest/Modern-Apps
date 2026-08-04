@@ -30,4 +30,22 @@
     <string name="night_mode">夜间模式（红色）</string>
     <string name="alt_az">高度角：&lt;xliff:g id=\"altitude\" example=\"45\"&gt;%1$s&lt;/xliff:g&gt;° 方位角：&lt;xliff:g id=\"azimuth\" example=\"180\"&gt;%2$s&lt;/xliff:g&gt;°</string>
     <string name="rise_1">升起：&lt;xliff:g id=\"time\" example=\"18:45\"&gt;%1$s&lt;/xliff:g&gt; ?:</string>
+    <string name="search_1">搜索</string>
+    <string name="save_location">保存位置</string>
+    <string name="constellations">星座</string>
+    <string name="coordinate_grid_whole_sphere">坐标网格（整个球体）</string>
+    <string name="latitude_deg">纬度</string>
+    <string name="search_result_star_mag">星等 &lt;xliff:g id=\"magnitude\" example=\"2.1\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="display">显示</string>
+    <string name="planets_sun_moon">行星/太阳/月球</string>
+    <string name="longitude_deg">经度</string>
+    <string name="search_result_constellation">星座 &lt;xliff:g id=\"constellation\" example=\"Orion\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="planet_moon">月球</string>
+    <string name="location">位置</string>
+    <string name="notes_true_north_correction_via_geomagne">注：通过地磁偏角进行真北校正。AR 使用 CameraX + 旋转向量融合。</string>
+    <string name="use_current_location">使用当前位置</string>
+    <string name="search_result_planet">行星</string>
+    <string name="lines_art">显示星座线和艺术形象</string>
+    <string name="trajectory_24h_15m_steps_yellow_line_on">24小时轨迹（15分钟步长）- 地图上的黄线</string>
+    <string name="app_name">天文</string>
 </resources>
