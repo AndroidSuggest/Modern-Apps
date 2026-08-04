@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Szachy</string>
     <string name="start_new_game">Startuj nową grę</string>
     <string name="play_as">"Graj jako    "</string>
@@ -29,4 +29,33 @@
     <string name="piece_black_bishop">Czarny goniec</string>
     <string name="piece_black_knight">Czarny skoczek</string>
     <string name="piece_black_pawn">Czarny pionek</string>
+    <string name="learn_stage_complete_n"></string>
+    <string name="learn_failed"></string>
+    <string name="puzzle_difficulty_medium"></string>
+    <string name="puzzle_failed"></string>
+    <string name="puzzle_black_to_move"></string>
+    <string name="learn_completed"></string>
+    <string name="puzzle_solved"></string>
+    <string name="draw_insufficient_material"></string>
+    <string name="puzzle_loading"></string>
+    <string name="puzzle_difficulty_hard"></string>
+    <string name="learn_next_stage"></string>
+    <string name="puzzle_show_solution"></string>
+    <string name="puzzle_rating"></string>
+    <string name="puzzle_your_move"></string>
+    <string name="puzzle_next"></string>
+    <string name="learn_back_to_menu"></string>
+    <string name="tab_play"></string>
+    <string name="learn_lets_go"></string>
+    <string name="learn_next"></string>
+    <string name="puzzle_white_to_move"></string>
+    <string name="tab_learn"></string>
+    <string name="learn_retry"></string>
+    <string name="tab_puzzles"></string>
+    <string name="stalemate"></string>
+    <string name="puzzle_retry"></string>
+    <string name="learn_your_score"></string>
+    <string name="learn_stage_number"></string>
+    <string name="learn_progress"></string>
+    <string name="puzzle_difficulty_easy"></string>
 </resources>
