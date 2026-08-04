@@ -1,34 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="dav_login_title"></string>
-    <string name="provider_via_health_connect"></string>
-    <string name="never_synced"></string>
-    <string name="need_permissions"></string>
-    <string name="add_account_title"></string>
-    <string name="sync_calendar"></string>
-    <string name="sync_health"></string>
-    <string name="everysync_privacy_policy"></string>
-    <string name="app_specific_password"></string>
-    <string name="icloud_create_password"></string>
-    <string name="no_accounts"></string>
-    <string name="settings_title"></string>
-    <string name="conflict_policy"></string>
-    <string name="dav_base_url"></string>
-    <string name="sync_contacts"></string>
-    <string name="last_synced"></string>
-    <string name="remove_account"></string>
-    <string name="conflict_lww"></string>
-    <string name="global_interval"></string>
-    <string name="conflict_remote"></string>
-    <string name="icloud_app_password_steps"></string>
-    <string name="wifi_only"></string>
-    <string name="syncing"></string>
-    <string name="sync_now"></string>
-    <string name="conflict_local"></string>
-    <string name="dav_password"></string>
-    <string name="login"></string>
-    <string name="apple_id_email"></string>
-    <string name="dav_username"></string>
-    <string name="accounts_title"></string>
-    <string name="app_name"></string>
-</resources>
+    </resources>
