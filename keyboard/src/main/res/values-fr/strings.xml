@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="subtype_en"></string>
+    <string name="abc"></string>
+    <string name="theme"></string>
+    <string name="follows_the_system_light_dark_theme_and"></string>
+    <string name="try_the_keyboard_here"></string>
+    <string name="key_height"></string>
+    <string name="enable_keyboard"></string>
+    <string name="choose_keyboard"></string>
+    <string name="app_name"></string>
 </resources>
