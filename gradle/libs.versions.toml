@@ -101,8 +101,7 @@ sqlcipherAndroid = "4.17.0"
 libsignalAndroid = "0.86.5"
 # signalProtocolJava removed — WhatsApp X3DH now via Rust libwhatsapp_signal
 
-# Mail & XML
-jakartaMail = "2.0.3"
+# XML
 kxml2 = "2.3.0"
 
 # Payments, telephony & auth
@@ -257,8 +256,7 @@ cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-pr
 sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipherAndroid" }
 libsignal-android = { module = "org.signal:libsignal-android", version.ref = "libsignalAndroid" }
 
-# Mail & XML
-jakarta-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "jakartaMail" }
+# XML
 kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
 
 # Payments, telephony & auth
