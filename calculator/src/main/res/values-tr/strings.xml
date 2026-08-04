@@ -1,14 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="add_function"></string>
-    <string name="toggle_curve_visibility"></string>
-    <string name="feature_intersection"></string>
-    <string name="feature_y_intercept"></string>
-    <string name="feature_root"></string>
-    <string name="no_calculations_yet"></string>
-    <string name="history"></string>
-    <string name="graph"></string>
-    <string name="app_name"></string>
-    <string name="feature_minimum"></string>
-    <string name="feature_maximum"></string>
-</resources>
+    </resources>
