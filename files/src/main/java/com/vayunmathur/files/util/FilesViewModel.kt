@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipFile
 
 /**
@@ -524,6 +525,10 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     val intents: SharedFlow<Intent> = _intents.asSharedFlow()
 
     private var observerJob: Job? = null
+    private var loadJob: Job? = null
+    // Guards against a stale reload (e.g. a FileObserver event that snapshots the
+    // directory mid-deletion) overwriting a newer one. Only the latest load wins.
+    private val loadGeneration = AtomicInteger(0)
 
     init {
         loadDirectory()
@@ -532,16 +537,16 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     fun loadDirectory() {
+        val gen = loadGeneration.incrementAndGet()
+        loadJob?.cancel()
         val zipFile = _zipPath.value
-        if (zipFile == null) {
-            val dir = _currentDirectory.value
-            viewModelScope.launch(Dispatchers.IO) {
-                _entries.value = sortEntries(listRealDir(dir))
-            }
-        } else {
-            val inner = _zipInternalPath.value
-            viewModelScope.launch(Dispatchers.IO) {
-                _entries.value = sortEntries(listZipDir(zipFile, inner))
+        val dir = _currentDirectory.value
+        val inner = _zipInternalPath.value
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
+            val listed = if (zipFile == null) listRealDir(dir) else listZipDir(zipFile, inner)
+            val sorted = sortEntries(listed)
+            if (gen == loadGeneration.get()) {
+                _entries.value = sorted
             }
         }
     }
