@@ -1,3 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="planet_uranus">天王星</string>
+    <string name="magnitude_limit">星等限制：&lt;xliff:g id=\"limit\" example=\"4.5\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="lines_only">仅显示星座线</string>
+    <string name="rise_transit_set">升起/过中天/落下</string>
+    <string name="fov">视场角：&lt;xliff:g id=\"degrees\" example=\"60\"&gt;%1$s&lt;/xliff:g&gt;°</string>
+    <string name="never_rises_at_this_location">在此位置永不升起</string>
+    <string name="planet_jupiter">木星</string>
+    <string name="planet_mars">火星</string>
+    <string name="calculating">正在计算…</string>
+    <string name="set_1">落下：&lt;xliff:g id=\"time\" example=\"04:12\"&gt;%1$s&lt;/xliff:g&gt; ?:</string>
+    <string name="ra_h_h">赤经（小时）：&lt;xliff:g id=\"hours\" example=\"5.5\"&gt;%1$s&lt;/xliff:g&gt;小时</string>
+    <string name="transit_1">过中天：&lt;xliff:g id=\"time\" example=\"21:30\"&gt;%1$s&lt;/xliff:g&gt; ?:</string>
+    <string name="planet_saturn">土星</string>
+    <string name="planet_venus">金星</string>
+    <string name="object_not_found">未找到天体：&lt;xliff:g id=\"object_name\" example=\"Polaris\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="off">已关闭</string>
+    <string name="planet_mercury">水星</string>
+    <string name="catalog_stars_constellations_dso">星表：&lt;xliff:g id=\"star_count\" example=\"5000\"&gt;%1$s&lt;/xliff:g&gt; 颗恒星，&lt;xliff:g id=\"constellation_count\" example=\"88\"&gt;%2$s&lt;/xliff:g&gt; 个星座，&lt;xliff:g id=\"dso_count\" example=\"110\"&gt;%3$s&lt;/xliff:g&gt; 个深空天体。</string>
+    <string name="planet_sun">太阳</string>
+    <string name="mag">星等：&lt;xliff:g id=\"magnitude\" example=\"1.5\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="show_below_horizon_all_sky">显示地平线以下（整个天空）</string>
+    <string name="planet_neptune">海王星</string>
+    <string name="ra_dec">赤经：&lt;xliff:g id=\"ra\" example=\"5.5\"&gt;%1$s&lt;/xliff:g&gt;° 赤纬：&lt;xliff:g id=\"dec\" example=\"-8.2\"&gt;%2$s&lt;/xliff:g&gt;°</string>
+    <string name="show_deep_sky">深空（梅西耶天体）</string>
+    <string name="search_result_star_fallback">恒星 &lt;xliff:g id=\"star_id\" example=\"123\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="circumpolar_never_sets">拱极星 - 永不落下</string>
+    <string name="search_stars_planets_messier">搜索恒星、行星、梅西耶天体</string>
+    <string name="night_mode">夜间模式（红色）</string>
+    <string name="alt_az">高度角：&lt;xliff:g id=\"altitude\" example=\"45\"&gt;%1$s&lt;/xliff:g&gt;° 方位角：&lt;xliff:g id=\"azimuth\" example=\"180\"&gt;%2$s&lt;/xliff:g&gt;°</string>
+    <string name="rise_1">升起：&lt;xliff:g id=\"time\" example=\"18:45\"&gt;%1$s&lt;/xliff:g&gt; ?:</string>
 </resources>
