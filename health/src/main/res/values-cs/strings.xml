@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="search">Hledat</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month\" example=\"Leden\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2026\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="month_year_format"><xliff:g id="month" example="Leden">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
     <string name="app_name">Zdraví</string>
     <string name="grant_permissions">Udělit oprávnění</string>
     <string name="tab_day">Den</string>
     <string name="tab_week">Týden</string>
     <string name="tab_month">Měsíc</string>
     <string name="tab_year">Rok</string>
-    <string name="week_range">&lt;xliff:g id=\"start_date\" example=\"Kvě 12.\"&gt;%1$s&lt;/xliff:g&gt; – &lt;xliff:g id=\"end_date\" example=\"Kvě 18.\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="week_range"><xliff:g id="start_date" example="Kvě 12.">%1$s</xliff:g> – <xliff:g id="end_date" example="Kvě 18.">%2$s</xliff:g></string>
     <string name="no_data_available">Nejsou dostupná žádna data pro toto období</string>
-    <string name="unit_per_day_avg_format">&lt;xliff:g id=\"unit\" example=\"kroků\"&gt;%1$s&lt;/xliff:g&gt; za den (prům)</string>
-    <string name="unit_only_format">" &lt;xliff:g id=\"unit\" example=\"steps\"&gt;%1$s&lt;/xliff:g&gt;"</string>
-    <string name="value_unit_space_format">&lt;xliff:g id=\"value\" example=\"12 345\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"unit\" example=\"kroky\"&gt;%2$s&lt;/xliff:g&gt;</string>
-    <string name="k_format">&lt;xliff:g id=\"thousands\" example=\"12\"&gt;%1$s&lt;/xliff:g&gt; tis.</string>
+    <string name="unit_per_day_avg_format"><xliff:g id="unit" example="kroků">%1$s</xliff:g> za den (prům)</string>
+    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="value_unit_space_format"><xliff:g id="value" example="12 345">%1$s</xliff:g> <xliff:g id="unit" example="kroky">%2$s</xliff:g></string>
+    <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g> tis.</string>
     <string name="metric_energy_burned">Spálené kalorie</string>
     <string name="metric_active_calories">Aktivní kalorie</string>
     <string name="metric_basal_metabolic_rate">Bazální metabolismus</string>
@@ -47,10 +47,10 @@
     <string name="section_body_composition">Tělesné složení</string>
     <string name="label_active">Aktivní</string>
     <string name="label_today">Dnes</string>
-    <string name="slash_value_format">&lt;xliff:g id=\"first\" example=\"120\"&gt;%1$s&lt;/xliff:g&gt;/&lt;xliff:g id=\"second\" example=\"80\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="slash_value_format"><xliff:g id="first" example="120">%1$s</xliff:g>/<xliff:g id="second" example="80">%2$s</xliff:g></string>
     <string name="dash_value_format"><xliff:g id="min" example="60">%1$s</xliff:g> - <xliff:g id="max" example="140">%2$s</xliff:g></string>
-    <string name="hours_minutes_format">&lt;xliff:g id=\"hours\" example=\"7\"&gt;%1$d&lt;/xliff:g&gt;h &lt;xliff:g id=\"minutes\" example=\"30\"&gt;%2$d&lt;/xliff:g&gt;min</string>
-    <string name="minutes_format">&lt;xliff:g id=\"minutes\" example=\"25\"&gt;%1$d&lt;/xliff:g&gt; min</string>
+    <string name="hours_minutes_format"><xliff:g id="hours" example="7">%1$d</xliff:g>h <xliff:g id="minutes" example="30">%2$d</xliff:g>min</string>
+    <string name="minutes_format"><xliff:g id="minutes" example="25">%1$d</xliff:g> min</string>
     <string name="label_steps">Kroky</string>
     <string name="label_wheelchair_pushes">Odrazy na vozíku</string>
     <string name="label_mindfulness">Všímavost</string>
@@ -90,7 +90,7 @@
     <string name="custom_name">Vlastní název</string>
     <string name="recipe_name">Název receptu</string>
     <string name="save_recipe">Uložit recept</string>
-    <string name="set_quantity_for_format">Nastavit množství pro &lt;xliff:g id=\"ingredient\" example=\"Tomato\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="set_quantity_for_format">Nastavit množství pro <xliff:g id="ingredient" example="Tomato">%1$s</xliff:g></string>
     <string name="quantity">Množství</string>
     <string name="unit">Jednotka</string>
     <string name="confirm">Potvrdit</string>
