@@ -1,3 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="add_function">Dodaj funkcję</string>
+    <string name="toggle_curve_visibility">Pokaż lub ukryj tę krzywą</string>
+    <string name="feature_intersection">przecięcie</string>
+    <string name="feature_y_intercept">punkt przecięcia z osią y</string>
+    <string name="feature_root">miejsce zerowe</string>
+    <string name="no_calculations_yet">Nie wykonano jeszcze żadnych obliczeń.</string>
+    <string name="history">Historia</string>
+    <string name="graph">Wykres</string>
+    <string name="app_name">Kalkulator</string>
+    <string name="feature_minimum">minimum</string>
+    <string name="feature_maximum">maksimum</string>
 </resources>
