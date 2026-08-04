@@ -31,7 +31,7 @@
     <string name="section_modern_apps_subtitle">Built in this repo and signed with the same key as this store</string>
     <string name="section_play_top_charts">Top on the Play Store</string>
     <string name="section_recently_updated">New and updated</string>
-    <string name="section_recently_updated_subtitle">The newest builds F-Droid has reproduced</string>
+    <string name="section_recently_updated_subtitle">The newest builds on F-Droid</string>
     <string name="section_category_subtitle">Apps from the offline catalogue in this category</string>
     <string name="home_empty_title">Nothing here yet</string>
     <string name="home_empty_message">Sync your sources to fill this up, or search for an app by name.</string>
@@ -104,6 +104,7 @@
     <string name="detail_rating_count">Ratings</string>
     <string name="detail_permissions">Permissions</string>
     <string name="chip_contains_ads">Contains ads</string>
+    <string name="chip_reproducible">Reproducible build</string>
     <string name="link_website">Website</string>
     <string name="link_source">Source code</string>
     <string name="link_privacy">Privacy policy</string>
@@ -154,13 +155,13 @@
     <string name="trust_modern_apps_limits">One developer, one key, no independent review and nobody rebuilding the source to confirm the app matches it. There is no scanning and no way to pull a bad release off phones that already took it.</string>
 
     <string name="trust_fdroid_title">F-Droid</string>
-    <string name="trust_fdroid_summary">Built from public source code, and independently rebuilt by a second machine that got an identical file. Only versions that were reproduced are offered here.</string>
+    <string name="trust_fdroid_summary">Built from public source code. Versions a second machine independently rebuilt to an identical file are badged as reproducible.</string>
     <string name="trust_fdroid_practice_source">Every app is built from source F-Droid publishes, not from a binary a developer sent in</string>
-    <string name="trust_fdroid_practice_rebuild">A second build server rebuilds it and compares the result byte for byte</string>
+    <string name="trust_fdroid_practice_rebuild">A second build server rebuilds many apps and compares the result byte for byte</string>
     <string name="trust_fdroid_practice_antifeatures">Tracking, ads and non-free dependencies are labelled on the listing</string>
     <string name="trust_fdroid_check_index_signed">F-Droid\'s app list is signed, and checked against a key built into this store</string>
     <string name="trust_fdroid_check_chained">Every entry in that list is chained back to the signature</string>
-    <string name="trust_fdroid_check_rebuilt">F-Droid\'s second build server rebuilt this exact version and got the same file</string>
+    <string name="trust_fdroid_check_rebuilt">Versions F-Droid\'s second build server reproduced bit-for-bit are badged as reproducible</string>
     <string name="trust_fdroid_check_hash_and_key">The hash and the signing key both come from the signed list</string>
     <string name="trust_fdroid_limits">F-Droid holds the signing key, not the developer, so its build servers can sign anything. Nobody checks what an app does, only that it matches its source. Updates wait to be rebuilt, which can take days or weeks — security fixes included — and there is no way to pull a bad app back off phones.</string>
 
@@ -180,7 +181,7 @@
     <string name="repos_sync_sources">Sync sources</string>
     <string name="source_modern_apps">Modern Apps</string>
     <string name="source_modern_apps_pin">Pinned to this app\'s own signing key</string>
-    <string name="source_fdroid">F-Droid (reproducible builds only)</string>
+    <string name="source_fdroid">F-Droid</string>
     <string name="source_fdroid_pin">Pinned to F-Droid\'s app list signing key</string>
     <string name="source_play">Play Store (anonymous)</string>
     <string name="source_play_pin">Nothing to pin: Google holds the signing key</string>

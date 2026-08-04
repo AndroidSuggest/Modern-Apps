@@ -29,8 +29,9 @@ import java.io.File
  * never match the published APK's hash — `verified` is the field that carries the
  * verdict, not a hash comparison.
  *
- * This is a hard gate: [ReproducibleBuilds.fetch] throwing means the F-Droid sync fails
- * rather than falling back to importing unreproduced apps.
+ * This drives a per-app **badge**, not a gate: [ReproducibleBuilds.fetch] is best-effort,
+ * and a failure just means no app is badged reproducible this sync — the catalogue is still
+ * imported in full. See [FDroidAppProvider].
  */
 object ReproducibleBuilds {
 

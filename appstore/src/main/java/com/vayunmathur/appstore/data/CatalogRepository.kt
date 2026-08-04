@@ -15,7 +15,8 @@ enum class SyncStep { FDROID, MODERN_APPS }
 /** What one sync run managed to do, per source. */
 data class SyncReport(
     val fdroidCount: Int? = null,
-    val fdroidSkipped: Int = 0,
+    /** How many F-Droid apps carry the reproducible badge this sync. */
+    val fdroidReproducible: Int = 0,
     val modernCount: Int? = null,
 ) {
     val anyFailed: Boolean get() = fdroidCount == null || modernCount == null
@@ -145,7 +146,7 @@ class CatalogRepository(
 
         SyncReport(
             fdroidCount = fdroid,
-            fdroidSkipped = fdroidProvider.lastFilteredOut,
+            fdroidReproducible = fdroidProvider.lastReproducibleCount,
             modernCount = modern,
         )
     }

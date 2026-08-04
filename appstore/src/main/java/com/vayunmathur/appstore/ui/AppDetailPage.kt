@@ -378,12 +378,16 @@ private fun WhatsNew(app: UnifiedApp) {
 
 @Composable
 private fun Chips(app: UnifiedApp) {
-    if (app.categories.isEmpty() && app.antiFeatures.isEmpty() && !app.containsAds) return
+    if (app.categories.isEmpty() && app.antiFeatures.isEmpty() && !app.containsAds && !app.reproducible) return
     LazyRow(
         Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // F-Droid versions the verification server rebuilt bit-for-bit earn a positive badge.
+        if (app.reproducible) {
+            item("reproducible") { InfoChip(stringResource(R.string.chip_reproducible)) }
+        }
         items(app.categories, key = { "cat-$it" }) { InfoChip(it) }
         if (app.containsAds) {
             item("ads") { InfoChip(stringResource(R.string.chip_contains_ads), emphasise = true) }

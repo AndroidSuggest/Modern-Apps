@@ -16,6 +16,31 @@ import java.util.Properties
  */
 object DeviceInfoProvider {
 
+    /**
+     * The exact device profile Aurora ships and its dispenser is tuned to:
+     * gplayapi's bundled `gplayapi_px_9a.properties` (Pixel 9a, Finsky 45.8.21-31,
+     * Vending 84582130, sdk 35). The AAR merges its res/raw into this module, so we
+     * load it by name.
+     *
+     * Prefer this over [buildDeviceProperties]: the shared anonymous accounts the
+     * dispenser hands out are minted against this standard profile, and gplayapi's
+     * hardcoded `X-DFE-Encoded-Targets`/`X-DFE-Phenotype` headers are tuned for this
+     * Finsky version. A runtime-built native profile (esp. on de-Googled ROMs, where
+     * [GsfVersionProvider] falls back to a 2020-era Finsky 21.5.17) is inconsistent
+     * with those headers and gets auth/purchase rejected — i.e. "keys not working".
+     * Falls back to the native profile only if the bundled resource is missing.
+     */
+    fun auroraProfile(context: Context): Properties = try {
+        val id = context.resources.getIdentifier("gplayapi_px_9a", "raw", context.packageName)
+        if (id != 0) {
+            context.resources.openRawResource(id).use { input -> Properties().apply { load(input) } }
+        } else {
+            buildDeviceProperties(context)
+        }
+    } catch (_: Exception) {
+        buildDeviceProperties(context)
+    }
+
     fun buildDeviceProperties(context: Context): Properties {
         val props = Properties()
         val pm = context.packageManager

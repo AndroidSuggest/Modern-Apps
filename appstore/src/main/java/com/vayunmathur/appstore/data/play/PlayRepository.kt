@@ -148,7 +148,9 @@ class PlayRepository(private val context: Context) {
 
         _authState.value = PlayAuthState.Authenticating
 
-        val deviceProps = DeviceInfoProvider.buildDeviceProperties(context)
+        // Use the same curated Pixel 9a profile Aurora + its dispenser are tuned to,
+        // so the dispensed anonymous accounts and gplayapi's DFE headers stay consistent.
+        val deviceProps = DeviceInfoProvider.auroraProfile(context)
         val result = anonAuthRepo.ensureAuthData(context, deviceProps)
         val authData = result.getOrElse { err ->
             _authState.value = PlayAuthState.Error(anonAuthRepo.errorMessage(err))

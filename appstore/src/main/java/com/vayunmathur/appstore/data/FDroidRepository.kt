@@ -40,28 +40,27 @@ object FDroidRepository {
      * Fetch and verify [repoUrl]'s index.
      *
      * [pinnedFingerprint] null means trust-on-first-use, and the caller must persist
-     * [IndexResult.signerSha256]. [acceptVersion] decides which versions of a package may
-     * be offered at all — the newest *accepted* version wins, so a package whose latest
-     * build has not yet been reproduced falls back to its newest reproduced one rather
-     * than disappearing.
+     * [IndexResult.signerSha256]. Every app's newest version is imported; [isReproducible]
+     * only *tags* whether that version was independently reproduced (surfaced as a badge),
+     * it never drops a version or a package.
      */
     suspend fun fetchRepoIndex(
         context: Context,
         repoUrl: String,
         pinnedFingerprint: String?,
-        acceptVersion: (packageName: String, versionCode: Long) -> Boolean,
+        isReproducible: (packageName: String, versionCode: Long) -> Boolean,
     ): IndexResult = withContext(Dispatchers.IO) {
         val base = repoUrl.trimEnd('/')
         val work = File(context.cacheDir, "fdroid-index/${base.hashCode()}").apply { mkdirs() }
         try {
             val errors = mutableListOf<String>()
             try {
-                return@withContext fetchV2(base, pinnedFingerprint, work, acceptVersion)
+                return@withContext fetchV2(base, pinnedFingerprint, work, isReproducible)
             } catch (e: Exception) {
                 errors += "index-v2: ${e.message}"
             }
             try {
-                return@withContext fetchV1(base, pinnedFingerprint, work, acceptVersion)
+                return@withContext fetchV1(base, pinnedFingerprint, work, isReproducible)
             } catch (e: Exception) {
                 errors += "index-v1: ${e.message}"
             }
@@ -80,7 +79,7 @@ object FDroidRepository {
         base: String,
         pinnedFingerprint: String?,
         work: File,
-        acceptVersion: (String, Long) -> Boolean,
+        isReproducible: (String, Long) -> Boolean,
     ): IndexResult {
         val entryJar = File(work, "entry.jar")
         downloadToFile("$base/entry.jar", entryJar)
@@ -102,7 +101,7 @@ object FDroidRepository {
         }
 
         return IndexResult(
-            apps = AppProvider.filterTargetSdk(parseV2Streaming(indexFile, base, acceptVersion)),
+            apps = AppProvider.filterTargetSdk(parseV2Streaming(indexFile, base, isReproducible)),
             signerSha256 = verified.signerSha256,
         )
     }
@@ -112,14 +111,14 @@ object FDroidRepository {
         base: String,
         pinnedFingerprint: String?,
         work: File,
-        acceptVersion: (String, Long) -> Boolean,
+        isReproducible: (String, Long) -> Boolean,
     ): IndexResult {
         val jar = File(work, "index-v1.jar")
         downloadToFile("$base/index-v1.jar", jar)
         val indexFile = File(work, "index-v1.json")
         val signer = SignedJarIndex.extractVerified(jar, "index-v1.json", pinnedFingerprint, indexFile)
         return IndexResult(
-            apps = AppProvider.filterTargetSdk(parseV1Streaming(indexFile, base, acceptVersion)),
+            apps = AppProvider.filterTargetSdk(parseV1Streaming(indexFile, base, isReproducible)),
             signerSha256 = signer,
         )
     }
@@ -147,7 +146,7 @@ object FDroidRepository {
     private fun parseV2Streaming(
         file: File,
         repoBase: String,
-        acceptVersion: (String, Long) -> Boolean,
+        isReproducible: (String, Long) -> Boolean,
     ): List<UnifiedApp> {
         val result = mutableListOf<UnifiedApp>()
         JsonReader(file.reader()).use { r ->
@@ -160,7 +159,7 @@ object FDroidRepository {
                         while (r.hasNext()) {
                             val pkg = r.nextName()
                             try {
-                                val app = parsePackageV2(r, pkg, repoBase, acceptVersion)
+                                val app = parsePackageV2(r, pkg, repoBase, isReproducible)
                                 if (app != null) result.add(app)
                             } catch (_: Exception) {
                                 try { r.skipValue() } catch (_: Exception) {}
@@ -180,7 +179,7 @@ object FDroidRepository {
         reader: JsonReader,
         packageName: String,
         repoBase: String,
-        acceptVersion: (String, Long) -> Boolean,
+        isReproducible: (String, Long) -> Boolean,
     ): UnifiedApp? {
         // reader at BEGIN_OBJECT of package
         var metaName: String? = null
@@ -311,10 +310,9 @@ object FDroidRepository {
                                 }
                             }
                             reader.endObject()
-                            // Newest *acceptable* version wins: a package whose latest build
-                            // hasn't been reproduced yet falls back to its newest reproduced
-                            // one instead of vanishing from the catalogue.
-                            if (vAdded >= latestAdded && acceptVersion(packageName, vVersionCode)) {
+                            // Newest version always wins; reproducibility is recorded as a
+                            // badge below, not used to drop older-but-reproduced builds.
+                            if (vAdded >= latestAdded) {
                                 latestAdded = vAdded
                                 latestFileName = vFileName
                                 latestSize = vFileSize
@@ -336,8 +334,8 @@ object FDroidRepository {
         }
         reader.endObject()
 
-        // No version passed acceptVersion — drop the package entirely rather than
-        // advertising an entry that has no installable APK behind it.
+        // No usable version at all — drop the package rather than advertising an entry
+        // that has no installable APK behind it.
         if (latestAdded < 0L || latestFileName == null) return null
 
         // index-v2 file names are repo-absolute ("/com.example_12.apk").
@@ -347,6 +345,7 @@ object FDroidRepository {
             source = AppSource.FDROID,
             expectedSigners = latestSigners,
             apkSha256 = latestSha256,
+            reproducible = isReproducible(packageName, latestVersionCode),
             name = metaName ?: packageName.substringAfterLast('.'),
             summary = metaSummary ?: "",
             description = metaDesc ?: "",
@@ -376,7 +375,7 @@ object FDroidRepository {
     private fun parseV1Streaming(
         file: File,
         repoBase: String,
-        acceptVersion: (String, Long) -> Boolean,
+        isReproducible: (String, Long) -> Boolean,
     ): List<UnifiedApp> {
         val appsMeta = mutableMapOf<String, V1AppMeta>()
         val packagesMap = mutableMapOf<String, V1PackageLatest>()
@@ -402,7 +401,7 @@ object FDroidRepository {
                         while (r.hasNext()) {
                             val pkgName = r.nextName()
                             try {
-                                val latest = parseV1PackagesArray(r, pkgName, acceptVersion)
+                                val latest = parseV1PackagesArray(r)
                                 if (latest != null) packagesMap[pkgName] = latest
                             } catch (_: Exception) {
                                 try { r.skipValue() } catch (_: Exception) {}
@@ -418,7 +417,7 @@ object FDroidRepository {
 
         val result = mutableListOf<UnifiedApp>()
         for ((pkg, meta) in appsMeta) {
-            // Same rule as v2: no acceptable version means no catalogue entry.
+            // No version at all means no catalogue entry.
             val latest = packagesMap[pkg] ?: continue
             result.add(
                 UnifiedApp(
@@ -444,6 +443,7 @@ object FDroidRepository {
                     sizeBytes = latest?.size ?: 0L,
                     apkUrl = latest?.apkName?.let { repoBase + "/" + it.trimStart('/') },
                     targetSdk = latest?.targetSdk,
+                    reproducible = latest?.let { isReproducible(pkg, it.versionCode) } ?: false,
                     expectedSigners = listOfNotNull(latest?.signer),
                     // v1 states the hash algorithm; only pin it when it really is SHA-256.
                     apkSha256 = latest?.hash?.takeIf { latest?.hashType.equals("sha256", true) },
@@ -593,11 +593,10 @@ object FDroidRepository {
 
     private fun parseV1PackagesArray(
         reader: JsonReader,
-        packageName: String,
-        acceptVersion: (String, Long) -> Boolean,
     ): V1PackageLatest? {
-        // array of package versions, take the last acceptable one
-        var last: V1PackageLatest? = null
+        // Array of package versions; keep the one with the highest versionCode rather than
+        // relying on array order.
+        var best: V1PackageLatest? = null
         reader.beginArray()
         while (reader.hasNext()) {
             try {
@@ -624,8 +623,8 @@ object FDroidRepository {
                     }
                 }
                 reader.endObject()
-                if (acceptVersion(packageName, versionCode)) {
-                    last = V1PackageLatest(
+                if (best == null || versionCode > best.versionCode) {
+                    best = V1PackageLatest(
                         apkName, versionName, versionCode, size, targetSdk, hash, hashType, signer
                     )
                 }
@@ -635,7 +634,7 @@ object FDroidRepository {
             }
         }
         reader.endArray()
-        return last
+        return best
     }
 
     // ---- Helpers ----

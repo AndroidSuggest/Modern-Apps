@@ -5,17 +5,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * F-Droid, restricted twice over:
+ * F-Droid, from a single hard-pinned repository.
  *
- * 1. **One repository only** — [DefaultRepos.FDROID_MAIN], with its index signing
- *    certificate hard-pinned. Third-party F-Droid-format repos are not supported and
- *    cannot be added, because they ship binaries the upstream developer built.
- * 2. **Reproduced builds only** — a version is offered only if F-Droid's verification
- *    server independently rebuilt it and got identical bytes (see [ReproducibleBuilds]).
+ * **One repository only** — [DefaultRepos.FDROID_MAIN], with its index signing certificate
+ * hard-pinned. Third-party F-Droid-format repos are not supported and cannot be added,
+ * because they ship binaries the upstream developer built.
  *
- * Both gates fail closed: if the signed index or the verification feed can't be
- * fetched and checked, the sync throws and the previous catalogue is left untouched
- * rather than being replaced with unverified entries.
+ * The whole catalogue is imported (newest version of every app). F-Droid's reproducibility
+ * feed ([ReproducibleBuilds]) is consulted only to *badge* the versions that were
+ * independently reproduced bit-for-bit — it no longer decides what is listed. That feed is
+ * best-effort: if it can't be fetched, apps are simply imported without the badge rather
+ * than the sync failing. The signed-index gate still fails closed, so the catalogue is
+ * never replaced with entries whose hashes and signer keys weren't authenticated.
  *
  * Reads go through [CatalogRepository], which queries the cache table this writes.
  */
@@ -24,15 +25,15 @@ class FDroidAppProvider(
     private val appContext: Context,
 ) {
 
-    /** Number of packages dropped by the reproducibility gate on the last sync. */
+    /** Number of packages tagged reproducible on the last sync. */
     @Volatile
-    var lastFilteredOut: Int = 0
+    var lastReproducibleCount: Int = 0
         private set
 
     /**
-     * Refresh from f-droid.org and replace this source's rows. Throws if either the index
-     * signature or the reproducibility feed can't be obtained — the caller surfaces that
-     * instead of silently serving a stale or unverified catalogue.
+     * Refresh from f-droid.org and replace this source's rows. Throws if the signed index
+     * can't be obtained — the caller surfaces that instead of silently serving a stale or
+     * unauthenticated catalogue. A missing reproducibility feed is not fatal.
      */
     suspend fun syncIntoDb(): Int = withContext(Dispatchers.IO) {
         val result = fetchVerifiedIndex()
@@ -49,23 +50,20 @@ class FDroidAppProvider(
     }
 
     private suspend fun fetchVerifiedIndex(): FDroidRepository.IndexResult {
-        // Fetch the reproducibility verdicts first: no verdicts means no catalogue, and
-        // there is no point pulling 54 MB of index we would then throw away.
-        val verified = ReproducibleBuilds.fetch(appContext)
-        if (verified.size == 0) {
-            throw java.io.IOException("F-Droid verification feed listed no reproduced builds")
-        }
-        var rejected = 0
+        // Reproducibility verdicts are best-effort: a fetch failure just means nothing gets
+        // the badge this sync, not that the catalogue disappears.
+        val verified = runCatching { ReproducibleBuilds.fetch(appContext) }.getOrNull()
+        var reproduced = 0
         val result = FDroidRepository.fetchRepoIndex(
             context = appContext,
             repoUrl = DefaultRepos.FDROID_MAIN,
             pinnedFingerprint = FDroidRepository.FDROID_SIGNING_CERT_SHA256,
         ) { pkg, versionCode ->
-            val ok = verified.contains(pkg, versionCode)
-            if (!ok) rejected++
+            val ok = verified?.contains(pkg, versionCode) == true
+            if (ok) reproduced++
             ok
         }
-        lastFilteredOut = rejected
+        lastReproducibleCount = reproduced
         return result
     }
 }

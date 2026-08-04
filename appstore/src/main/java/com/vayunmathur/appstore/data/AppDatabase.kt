@@ -39,6 +39,8 @@ data class CachedAppEntity(
     val sizeBytes: Long,
     val apkUrl: String?,
     val targetSdk: Int?,
+    /** True when this version was reproduced bit-for-bit by F-Droid's verification server. */
+    val reproducible: Boolean = false,
     val repoUrl: String?,
     val lastUpdated: Long,
     /** Comma-joined SHA-256 signing-certificate fingerprints from an authenticated index. */
@@ -86,6 +88,7 @@ fun UnifiedApp.toEntity(): CachedAppEntity = CachedAppEntity(
     sizeBytes = sizeBytes,
     apkUrl = apkUrl,
     targetSdk = targetSdk,
+    reproducible = reproducible,
     repoUrl = repoUrl?.removeSuffix("/") ?: DefaultRepos.FDROID_MAIN,
     lastUpdated = lastUpdated,
     expectedSigners = expectedSigners.joinToString(",").ifBlank { null },
@@ -120,6 +123,7 @@ fun CachedAppEntity.toUnifiedApp(): UnifiedApp = UnifiedApp(
     sizeBytes = sizeBytes,
     apkUrl = apkUrl,
     targetSdk = targetSdk,
+    reproducible = reproducible,
     repoUrl = repoUrl,
     lastUpdated = lastUpdated,
     expectedSigners = expectedSigners?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
@@ -265,7 +269,7 @@ interface CachedAppDao {
 
 @Database(
     entities = [RepoEntity::class, CachedAppEntity::class, PinnedStampEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -320,6 +324,14 @@ abstract class AppDatabase : RoomDatabase() {
                     db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN antiFeatures TEXT")
                     db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN whatsNew TEXT")
                     db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN addedTimestamp INTEGER NOT NULL DEFAULT 0")
+                }
+            },
+            object : Migration(5, 6) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    // Reproducibility became a per-app badge rather than an import gate, so
+                    // the catalogue now lists non-reproduced F-Droid apps too. Existing rows
+                    // predate the badge; the next sync repopulates it. Default false.
+                    db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN reproducible INTEGER NOT NULL DEFAULT 0")
                 }
             }
         )

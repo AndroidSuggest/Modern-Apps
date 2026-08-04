@@ -21,6 +21,12 @@ data class UnifiedApp(
     val sizeBytes: Long = 0L,
     val apkUrl: String? = null,
     val targetSdk: Int? = null,
+    /**
+     * True when this exact version (packageName + versionCode) was independently
+     * reproduced bit-for-bit by F-Droid's verification server. F-Droid only; a badge,
+     * not a gate — apps are listed regardless. See [com.vayunmathur.appstore.data.ReproducibleBuilds].
+     */
+    val reproducible: Boolean = false,
     val license: String? = null,
     val website: String? = null,
     val sourceCode: String? = null,

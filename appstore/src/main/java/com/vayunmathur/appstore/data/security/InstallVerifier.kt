@@ -97,17 +97,23 @@ object InstallVerifier {
         }
 
         // The catalogue filters on the target SDK each source *claims*, which a source
-        // may not state at all. Re-check it against the manifest we now hold, so the
-        // floor holds for every install regardless of what the listing said.
-        parsed.firstNotNullOfOrNull { (_, info) -> info?.applicationInfo?.targetSdkVersion }
-            ?.let { target ->
-                if (target < AppProvider.MIN_TARGET_SDK) {
-                    return VerificationResult.Rejected(
-                        "it is built for Android API $target, and this store needs " +
-                            "${AppProvider.MIN_TARGET_SDK} or newer"
-                    )
-                }
-            }
+        // may not state at all. Re-check it against the manifest we now hold, so the floor
+        // holds for every install regardless of what the listing said.
+        //
+        // Read it from the *base* APK specifically: a config split carries no <uses-sdk>,
+        // so an arbitrary file's value (0, or absent) is meaningless and reading it first
+        // by chance would either miss a low-target base or wrongly reject a valid one. Block
+        // only when the base APK's target is actually readable and below the floor —
+        // targetSdkVersion == 0 means "couldn't determine", which stays allowed by policy.
+        val baseTargetSdk = parsed.firstOrNull { (_, info) ->
+            info?.packageName == requirement.expectedPackage && info.splitNames.isNullOrEmpty()
+        }?.second?.applicationInfo?.targetSdkVersion ?: 0
+        if (baseTargetSdk in 1 until AppProvider.MIN_TARGET_SDK) {
+            return VerificationResult.Rejected(
+                "it is built for Android API $baseTargetSdk, and this store needs " +
+                    "${AppProvider.MIN_TARGET_SDK} or newer"
+            )
+        }
 
         // Signers of the bytes we actually hold. Every readable file must agree, or the
         // set is mixed and something has been substituted.

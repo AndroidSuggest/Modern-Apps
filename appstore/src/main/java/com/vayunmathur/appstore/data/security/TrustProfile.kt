@@ -73,8 +73,9 @@ enum class TrustProfile {
     MODERN_APPS,
 
     /**
-     * F-Droid, restricted to builds F-Droid's verification server independently
-     * reproduced bit-for-bit.
+     * F-Droid, from the one hard-pinned repository. Versions independently reproduced
+     * bit-for-bit by F-Droid's verification server are badged; reproducibility is a badge,
+     * not an admission gate.
      */
     FDROID,
 
@@ -150,8 +151,8 @@ enum class TrustProfile {
     companion object {
         fun of(source: AppSource): TrustProfile = when (source) {
             AppSource.MODERN_APPS -> MODERN_APPS
-            // Non-reproduced F-Droid packages are dropped during sync and never reach the
-            // UI, so anything surviving from FDROID really was rebuilt.
+            // The whole F-Droid catalogue is listed; whether a given version was reproduced
+            // is shown per-app as a badge (see UnifiedApp.reproducible).
             AppSource.FDROID -> FDROID
             AppSource.PLAYSTORE -> PLAY
         }
