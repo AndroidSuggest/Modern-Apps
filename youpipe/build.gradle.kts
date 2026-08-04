@@ -23,6 +23,8 @@ rustNativeLib("youpipe_extractor", "youpipe")
 
 android {
     defaultConfig {
+        versionCode = 20260804
+        versionName = "v2.6.5"
         applicationId = "com.vayunmathur.youpipe"
     }
     buildTypes {
