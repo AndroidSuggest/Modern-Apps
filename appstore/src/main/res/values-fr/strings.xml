@@ -7,4 +7,12 @@
     <string name="open">Ouvrir</string>
     <string name="view_in_play_store">Voir sur Play Store</string>
     <string name="repositories">Dépôts</string>
+    <string name="update_all"></string>
+    <string name="last_sync"></string>
+    <string name="this_will_uninstall_you_can_reinstall_la"></string>
+    <plurals name="updates_count">
+    </plurals>
+    <string name="uninstall_3"></string>
+    <string name="installed_2"></string>
+    <string name="app_name"></string>
 </resources>
