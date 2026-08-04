@@ -9,5 +9,4 @@
     <string name="external_save_failed">Salvestamine ei õnnestunud (fail võib olla vaid lugemisõigustes)</string>
     <string name="external_read_failed">Faili avamine ei õnnestunud</string>
     <string name="note">märge</string>
-    <string name="share_note"></string>
 </resources>
