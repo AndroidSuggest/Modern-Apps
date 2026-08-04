@@ -1,3 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="codec_avc_description">Najbardziej kompatybilny</string>
+    <string name="ae_af_lock">BLOKADA AE/AF</string>
+    <string name="night">Noc</string>
+    <string name="blur">Rozmycie</string>
+    <string name="settings_video_codec">Kodek wideo</string>
+    <string name="night_2">Noc %1$s%%</string>
+    <string name="qr_result">Kod QR</string>
+    <string name="settings_aspect_ratio">Proporcje obrazu</string>
+    <string name="settings_location">Lokalizacja</string>
+    <string name="codec_av1_label">AV1</string>
+    <string name="warmth">Temperatura</string>
+    <string name="no_app_to_open_url">Brak aplikacji do otwarcia tego linku</string>
+    <string name="codec_av1_description">Najbardziej wydajny</string>
+    <string name="grant_camera_permission">Zezwól na dostęp do aparatu</string>
+    <string name="settings_video_codec_label">Kodek wideo</string>
+    <string name="processing_panorama_u2026">Przetwarzanie panoramy…</string>
+    <string name="not_available">Niedostępne</string>
+    <string name="codec_hevc_description">Bardziej wydajny</string>
+    <string name="open_url">Otwórz URL</string>
+    <string name="codec_avc_label">H.264 / AVC</string>
+    <string name="burst_count">Seria: &lt;xliff:g id=\"count\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="shadows">Cienie</string>
+    <string name="auto">Auto</string>
+    <string name="settings_location_description">Zapisz lokalizację w metadanych zdjęcia</string>
+    <string name="copy_text">Kopiuj</string>
+    <string name="app_name">Aparat</string>
+    <string name="codec_hevc_label">H.265 / HEVC</string>
+    <string name="brightness">Jasność</string>
+    <string name="open_gallery">Galeria</string>
 </resources>
