@@ -7,7 +7,7 @@
     <string name="counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="recipes">Receptury (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
     <string name="used_in">Używane w (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
-    <string name="locked_description">Odblokuj wszystkie wyniki tych przepisów, aby je wyświetlić.</string>
+    <string name="locked_description">Odblokuj wszystkie wyniki tych receptur, aby je wyświetlić.</string>
     <string name="collection">Kolekcja</string>
     <string name="discovered_counter">Odkryte: <xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">\\%2$d</xliff:g></string>
     <string name="hide_maxed_elements">Ukryj elementy zmaksymalizowane</string>
@@ -15,4 +15,16 @@
     <string name="item_discovered">Przedmiot odkryto!</string>
     <string name="cd_final_item">Ostatni element</string>
     <string name="cd_delete">Usuń</string>
+    <plurals name="items_discovered">
+        <item quantity="one">Odkryto <xliff:g id="count" example="3">%1$s</xliff:g> element!</item>
+        <item quantity="few">Odkryto <xliff:g id="count" example="3">%1$s</xliff:g> elementy!</item>
+        <item quantity="many">Odkryto <xliff:g id="count" example="3">%1$s</xliff:g> elementów!</item>
+        <item quantity="other">Odkryto <xliff:g id="count" example="3">%1$s</xliff:g> elementów!</item>
+    </plurals>
+    <plurals name="locked_recipes">
+        <item quantity="one">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> zablokowana receptura.</item>
+        <item quantity="few">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> zablokowane receptury.</item>
+        <item quantity="many">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> zablokowanych receptur.</item>
+        <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> zablokowanych receptur.</item>
+    </plurals>
 </resources>
