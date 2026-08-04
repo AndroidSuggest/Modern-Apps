@@ -101,4 +101,8 @@
     <string name="chapter">Chapitre</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Voulez-vous vraiment effacer tout l’historique des vidéos regardées ?</string>
     <string name="resolution">Résolution</string>
+    <string name="page_home"></string>
+    <string name="label_default_page"></string>
+    <string name="label_general"></string>
+    <string name="page_downloads"></string>
 </resources>
