@@ -19,7 +19,7 @@
     <string name="openassistant_not_found">Aplikacja OpenAssistant nie jest zainstalowana. Zainstaluj ją, aby włączyć tę funkcję.</string>
     <string name="search_placeholder">Szukaj zdjęć…</string>
     <string name="model_downloading_description">Trwa pobieranie modelu SI. Może to potrwać kilka minut, w zależności od połączenia.</string>
-    <string name="photo_widget_description">Zmieniające się zdjęcie z Twojej galerii - stuknij, aby wylosować</string>
+    <string name="photo_widget_description">Zmieniające się zdjęcie z Twojej galerii — stuknij, aby wylosować</string>
     <string name="label_people">Ludzie</string>
     <string name="openassistant_needs_update">Zaktualizuj aplikację OpenAssistant, aby włączyć wyszukiwanie zdjęć za pomocą sztucznej inteligencji.</string>
     <string name="people_empty">Nie znaleziono jeszcze żadnych osób. Skanowanie odbywa się w tle — sprawdź ponownie po zindeksowaniu zdjęć.</string>
