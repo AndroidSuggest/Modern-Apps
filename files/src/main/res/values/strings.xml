@@ -41,4 +41,103 @@
     <string name="archiving">Archiving…</string>
     <!-- Snackbar: incoming shared files saved to current directory successfully -->
     <string name="files_saved">Files saved successfully</string>
+
+    <!-- Content description / hint for the search field in the top bar -->
+    <string name="search">Search</string>
+    <!-- Placeholder shown in the search field -->
+    <string name="search_files">Search files…</string>
+    <!-- Overflow menu header for choosing sort order. Noun phrase -->
+    <string name="sort_by">Sort by</string>
+    <!-- Sort option: by file/folder name -->
+    <string name="sort_name">Name</string>
+    <!-- Sort option: by last-modified date -->
+    <string name="sort_date">Date</string>
+    <!-- Sort option: by file size -->
+    <string name="sort_size">Size</string>
+    <!-- Sort option: by file type/extension -->
+    <string name="sort_type">Type</string>
+    <!-- Menu item toggling ascending/descending order -->
+    <string name="reverse_order">Reverse order</string>
+    <!-- Sort direction options -->
+    <string name="sort_ascending">Ascending</string>
+    <string name="sort_descending">Descending</string>
+    <!-- Navigation drawer: header + home entry -->
+    <string name="menu">Menu</string>
+    <string name="home">Home</string>
+    <!-- Menu item switching between grid and list layouts -->
+    <string name="grid_view">Grid view</string>
+    <string name="list_view">List view</string>
+    <!-- Menu item selecting every item in the current folder -->
+    <string name="select_all">Select all</string>
+    <!-- Selection action: copy selected files to the clipboard -->
+    <string name="copy">Copy</string>
+    <!-- Selection action: cut (move) selected files to the clipboard -->
+    <string name="cut">Cut</string>
+    <!-- Action: paste clipboard files into the current folder -->
+    <string name="paste">Paste</string>
+    <!-- Selection action: share selected files -->
+    <string name="share">Share</string>
+    <!-- Rename dialog title. Verb -->
+    <string name="rename">Rename</string>
+    <!-- Rename dialog: TextField label for the new name -->
+    <string name="new_name_label">New name</string>
+    <!-- Snackbar after copying to clipboard. %1$d = item count -->
+    <string name="copied_n">Copied <xliff:g id="count" example="3">%1$d</xliff:g> item(s)</string>
+    <!-- Snackbar after cutting to clipboard. %1$d = item count -->
+    <string name="cut_n">Cut <xliff:g id="count" example="3">%1$d</xliff:g> item(s)</string>
+    <!-- Paste bar label. %1$d = number of items on the clipboard -->
+    <string name="ready_to_paste"><xliff:g id="count" example="3">%1$d</xliff:g> item(s) ready to paste</string>
+
+    <!-- Snackbar when creating a file/folder fails -->
+    <string name="create_failed">Could not create item</string>
+    <!-- Snackbar after bookmarking a folder -->
+    <string name="bookmark_added">Bookmark added</string>
+
+    <!-- Home screen: category shortcut labels -->
+    <string name="cat_images">Images</string>
+    <string name="cat_videos">Videos</string>
+    <string name="cat_audio">Audio</string>
+    <string name="cat_documents">Documents</string>
+    <string name="cat_downloads">Downloads</string>
+
+    <!-- Home screen section headers -->
+    <string name="internal_storage">Internal storage</string>
+    <string name="categories">Categories</string>
+    <string name="bookmarks">Bookmarks</string>
+    <string name="recent_files">Recent files</string>
+    <!-- Storage meter caption. %1$s = used size, %2$s = total size -->
+    <string name="storage_usage"><xliff:g id="used" example="12 GB">%1$s</xliff:g> used of <xliff:g id="total" example="128 GB">%2$s</xliff:g></string>
+
+    <!-- Create menu items and dialogs -->
+    <string name="new_folder">New folder</string>
+    <string name="new_file">New file</string>
+    <string name="folder_name_label">Folder name</string>
+    <string name="file_name_label">File name</string>
+    <string name="create">Create</string>
+
+    <!-- Selection actions -->
+    <string name="open_with">Open with</string>
+    <string name="properties">Properties</string>
+    <string name="add_bookmark">Add bookmark</string>
+    <string name="remove_bookmark">Remove bookmark</string>
+
+    <!-- Overflow: show/hide dot-prefixed hidden files -->
+    <string name="show_hidden">Show hidden files</string>
+    <string name="hide_hidden">Hide hidden files</string>
+
+    <!-- Empty folder placeholder -->
+    <string name="no_files">Nothing here</string>
+
+    <!-- Properties dialog rows -->
+    <string name="prop_path">Path</string>
+    <string name="prop_type">Type</string>
+    <string name="prop_size">Size</string>
+    <string name="prop_modified">Modified</string>
+    <string name="prop_items">Contents</string>
+    <string name="type_folder">Folder</string>
+    <string name="type_file">File</string>
+    <!-- Folder contents count. %1$d = number of items -->
+    <string name="items_count"><xliff:g id="count" example="12">%1$d</xliff:g> item(s)</string>
+    <!-- Close a dialog -->
+    <string name="close">Close</string>
 </resources>

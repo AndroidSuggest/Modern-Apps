@@ -11,6 +11,20 @@ import java.io.File
  * dependency runs one way, and [FilesViewModel] implements [FilesActions] directly.
  */
 
+/** How the current directory's entries are ordered. */
+enum class SortBy { NAME, DATE, SIZE, TYPE }
+
+/** List vs. grid presentation of the current directory. */
+enum class ViewMode { LIST, GRID }
+
+/** A home-screen shortcut that collects files of one kind from across storage. */
+enum class FileCategory { IMAGES, VIDEOS, AUDIO, DOCUMENTS, DOWNLOADS }
+
+/** Storage volume usage, for the home screen meter. */
+data class StorageInfo(val totalBytes: Long, val freeBytes: Long) {
+    val usedBytes: Long get() = (totalBytes - freeBytes).coerceAtLeast(0)
+}
+
 /** Everything the directory browser draws. */
 data class FilesUiState(
     val rootDirectory: File,
@@ -28,6 +42,27 @@ data class FilesUiState(
     val selectedPaths: Set<FileBrowserItem> = emptySet(),
     /** True while files shared into the app are waiting to be saved here. */
     val hasIncomingUris: Boolean = false,
+    val sortBy: SortBy = SortBy.NAME,
+    val sortAscending: Boolean = true,
+    val viewMode: ViewMode = ViewMode.LIST,
+    /** Non-empty while the search field filters the current listing by name. */
+    val searchQuery: String = "",
+    val isSearchActive: Boolean = false,
+    /** Number of files on the copy/cut clipboard (0 = nothing to paste). */
+    val clipboardCount: Int = 0,
+    /** True when the clipboard holds a cut (move on paste) rather than a copy. */
+    val clipboardIsCut: Boolean = false,
+    val showHidden: Boolean = false,
+    /** Non-null while showing a category result list (e.g. "Images"); [directories] is empty. */
+    val categoryTitle: String? = null,
+)
+
+/** The state the home screen draws (storage meter, shortcuts, recents, bookmarks). */
+data class HomeUiState(
+    val rootDisplayName: String,
+    val storage: StorageInfo? = null,
+    val recents: List<FileBrowserItem> = emptyList(),
+    val bookmarks: List<FileBrowserItem> = emptyList(),
 )
 
 /**
@@ -46,6 +81,7 @@ interface FilesActions {
     fun clearSelection() {}
     fun addToSelection(item: FileBrowserItem) {}
     fun toggleSelection(item: FileBrowserItem) {}
+    fun selectAll() {}
 
     fun rename(item: FileBrowserItem, newName: String) {}
     fun deleteSelection() {}
@@ -54,8 +90,39 @@ interface FilesActions {
 
     fun openZipFile(item: FileBrowserItem) {}
     fun openFile(item: FileBrowserItem) {}
+    fun openWith(item: FileBrowserItem) {}
+    fun shareSelection() {}
     fun archive(archiveName: String) {}
     fun saveIncomingUris() {}
+
+    // ---- Sort & view ----
+    fun setSortBy(sortBy: SortBy) {}
+    fun toggleSortDirection() {}
+    fun setSortAscending(ascending: Boolean) {}
+    fun toggleViewMode() {}
+    fun toggleHidden() {}
+
+    // ---- Search ----
+    fun setSearchActive(active: Boolean) {}
+    fun setSearchQuery(query: String) {}
+
+    // ---- Clipboard (copy/cut/paste) ----
+    fun copySelection() {}
+    fun cutSelection() {}
+    fun pasteHere() {}
+    fun clearClipboard() {}
+
+    // ---- Create ----
+    fun createFolder(name: String) {}
+    fun createFile(name: String) {}
+
+    // ---- Home / categories / bookmarks ----
+    fun goHome() {}
+    fun openInternalStorage() {}
+    fun openCategory(category: FileCategory) {}
+    fun openBookmark(path: File) {}
+    fun addBookmark(item: FileBrowserItem) {}
+    fun removeBookmark(path: File) {}
 
     companion object {
         val Noop: FilesActions = object : FilesActions {}

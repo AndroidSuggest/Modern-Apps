@@ -18,4 +18,6 @@ android {
 dependencies {
     // Zip/unzip workers now use java.io.File + java.util.zip – no okio needed
     implementation(libs.androidx.work.runtime.ktx)
+    // Image thumbnails for image files in the browser (AsyncImage).
+    implementation(project(":library:image"))
 }
