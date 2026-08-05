@@ -101,4 +101,8 @@
     <string name="are_you_sure_you_want_to_clear_all_watch">Kas sa oled kindel, et soovid kustutada kogu vaatamiste ajaloo?</string>
     <string name="downloads">Allalaadimised</string>
     <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> on valitud</string>
+    <string name="label_general">Üldised seadistused</string>
+    <string name="label_default_page">Ava ekraanil</string>
+    <string name="page_home">Avaleht</string>
+    <string name="page_downloads">Allalaadimised</string>
 </resources>
