@@ -24,9 +24,10 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 92] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 93] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (154, 2, 0, 0, 252, 1),   // iron            -> shears
+    (159, 3, 137, 2, 253, 1), // sticks + leather -> fishing rod
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
     (Block::Snow as u8, 1, 0, 0, 190, 4), // snow -> snowballs
@@ -134,7 +135,8 @@ pub struct Smelt {
 const fn smelt(in1: u8, n1: i32, in2: u8, n2: i32, out: u8, out_n: i32, secs: f32, blast: bool) -> Smelt {
     Smelt { in1, n1, in2, n2, out, out_n, secs, blast }
 }
-pub const SMELTING: [Smelt; 18] = [
+pub const SMELTING: [Smelt; 19] = [
+    smelt(254, 1, 0, 0, 132, 1, 6.0, false), // raw fish -> cooked fish
     smelt(Block::CoalOre as u8,     1, 0, 0, 157, 1,  6.0, false), // coal
     smelt(Block::IronOre as u8,     1, 0, 0, 154, 1,  8.0, false), // iron ingot
     smelt(Block::DiamondOre as u8,  1, 0, 0, 155, 1, 10.0, false),

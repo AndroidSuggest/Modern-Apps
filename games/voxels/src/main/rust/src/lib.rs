@@ -9,6 +9,7 @@ pub mod input;
 pub mod inventory;
 pub mod villager;
 pub mod ambience;
+pub mod fishing;
 pub mod engine;
 pub mod texture_atlas;
 pub mod vulkan;

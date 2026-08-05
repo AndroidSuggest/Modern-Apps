@@ -39,7 +39,7 @@ pub fn is_food(id: u8) -> bool { food_effects(id).is_some() }
 // Tools 163..170: {wood,stone,iron,diamond} x {pickaxe,sword}. Armor 171..178: {iron,diamond} x
 // {helmet,chestplate,leggings,boots}. Matcha's bronze sits between iron and diamond at 239..244,
 // and adamant tops the ladder at 197..202. Durability is stored in the inventory slot's `count`.
-pub fn is_tool(id: u8) -> bool { (163..=170).contains(&id) || matches!(id, 197 | 198 | 239 | 240 | 252) }
+pub fn is_tool(id: u8) -> bool { (163..=170).contains(&id) || matches!(id, 197 | 198 | 239 | 240 | 252 | 253) }
 /// Shears: used on a sheep rather than on terrain, so they're a tool that mines nothing.
 pub fn is_shears(id: u8) -> bool { id == 252 }
 pub fn is_pickaxe(id: u8) -> bool { matches!(id, 163 | 165 | 167 | 169 | 197 | 239) }
@@ -76,6 +76,7 @@ pub fn max_durability(id: u8) -> i32 {
         171..=174 => 240, 175..=178 => 528,                                       // iron/diamond armor
         186 => 64,                                                                // flint & steel
         252 => 238,                                                               // shears
+        253 => 64,                                                                // fishing rod
         188 => 432,                                                               // elytra
         197 | 198 => 2031,                                                        // adamant tools
         199..=202 => 666,                                                         // adamant armor
@@ -153,8 +154,8 @@ mod tests {
     fn tools_and_armor_do_not_overlap() {
         for id in 0..=255u8 {
             assert!(!(is_tool(id) && is_armor(id)), "{id} is both a tool and armor");
-            // Shears are the exception: a tool that neither mines nor fights.
-            if is_tool(id) && !is_shears(id) {
+            // Shears and the fishing rod are the exceptions: tools that neither mine nor fight.
+            if is_tool(id) && !is_shears(id) && id != crate::fishing::ROD {
                 assert!(is_pickaxe(id) ^ is_sword(id), "{id} must be exactly one tool kind");
             }
             if is_shears(id) { assert!(!is_pickaxe(id) && !is_sword(id), "shears are not a weapon"); }

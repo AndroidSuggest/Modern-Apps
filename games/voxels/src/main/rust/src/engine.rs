@@ -66,6 +66,7 @@ pub struct EngineState {
     // Footsteps, cave ambience and the eerie score; see ambience.rs.
     pub ambience: crate::ambience::Ambience,
     prev_walk: f32,
+    pub fishing: crate::fishing::Fishing,
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -255,6 +256,7 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         rain: rain_target(progress.weather),
         ambience: crate::ambience::Ambience::default(),
         prev_walk: 0.0,
+        fishing: crate::fishing::Fishing::default(),
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -678,6 +680,7 @@ pub fn tick_and_render() {
         tick_particles(&mut state.particles, dt);
         tick_weather(state, dt, player_pos);
         tick_ambience(state, dt, player_pos);
+        tick_fishing(state, dt, player_pos);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
@@ -802,6 +805,7 @@ fn publish_ui(state: &EngineState) {
     let ambience = serde_json::json!({
         "stepN": a.step_n, "stepMat": a.step_mat,
         "cueN": a.cue_n, "cueKind": a.cue_kind,
+        "cast": state.fishing.is_cast(), "bite": state.fishing.biting(),
         "eerie": a.eerie, "rain": state.rain,
     }).to_string();
     if let Ok(mut c) = cref(&AMBIENCE_CACHE, "{}").lock() { *c = ambience; }
@@ -1114,6 +1118,32 @@ fn tick_projectiles(state: &mut EngineState, dt: f32) {
     }
 }
 
+// Run the line: hold the float in place, count down to a bite, and give up if the player walks off.
+fn tick_fishing(state: &mut EngineState, dt: f32, player_pos: Vec3) {
+    let Some(b) = state.fishing.bobber else { return; };
+    let bob = vec3(b[0], b[1], b[2]);
+    // The rod has to stay in hand and the player within reach of the water.
+    if state.inventory.selected_block() != crate::fishing::ROD
+        || (bob - player_pos).length() > crate::fishing::LEASH
+        || state.chunks.get_block_world(b[0].floor() as i32, b[1].floor() as i32, b[2].floor() as i32) != 12
+    {
+        state.fishing.reel_in();
+        return;
+    }
+    if state.fishing.tick(dt) {
+        // A bite: splash, so the player knows to strike without needing to watch a HUD element.
+        spawn_particles(&mut state.spawn_rng, &mut state.particles, bob, 10, [0.60, 0.80, 0.95], 3.0, 0.5, 0.09);
+    }
+    // The float itself, redrawn each frame as a short-lived particle.
+    if state.particles.len() < 480 {
+        let color = if state.fishing.biting() { [1.0, 0.85, 0.35] } else { [0.90, 0.25, 0.20] };
+        state.particles.push(Particle {
+            pos: bob + vec3(0.0, 0.1, 0.0), vel: Vec3::ZERO,
+            life: 0.12, max_life: 0.12, size: 0.11, color, gravity: 0.0,
+        });
+    }
+}
+
 // Feed the atmosphere system: how far the player walked, what they're standing on, and how dark and
 // deep it is where they are.
 fn tick_ambience(state: &mut EngineState, dt: f32, player_pos: Vec3) {
@@ -1285,6 +1315,35 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             state.player.eat_cd = 0.4;
             return true;
         }
+    }
+    // Fishing: the first tap casts into water, the second strikes. Striking on a bite lands a catch;
+    // striking early just reels the line back in.
+    if sel == crate::fishing::ROD && state.player.eat_cd <= 0.0 {
+        state.player.eat_cd = 0.4;
+        if state.fishing.is_cast() {
+            if state.fishing.biting() {
+                let mut r = state.spawn_rng;
+                r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+                state.spawn_rng = r;
+                let roll = (r >> 8) as f32 / 16_777_216.0;
+                let id = crate::fishing::catch_of_the_day(roll, state.player.blessed(Passive::SeaLuck));
+                if state.inventory.has_room_for(id, 1) {
+                    state.inventory.add_block(id);
+                    damage_tool(state);
+                }
+            }
+            state.fishing.reel_in();
+            return true;
+        }
+        // Cast: find open water along the look direction and drop the float on its surface.
+        if let Some(at) = water_surface_along(state, origin, dir, player_reach(state) + 6.0) {
+            let mut r = state.spawn_rng;
+            r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+            state.spawn_rng = r;
+            state.fishing.cast(at, (r >> 8) as f32 / 16_777_216.0);
+            return true;
+        }
+        return false;
     }
     // Throwables: snowball (light damage/knock) and ender pearl (teleport to impact).
     if (sel == 190 || sel == 191) && state.player.eat_cd <= 0.0 {
@@ -1597,6 +1656,25 @@ fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
     if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
 }
+/// March along the aim direction looking for the top of a body of water to drop a float onto.
+fn water_surface_along(state: &EngineState, origin: Vec3, dir: Vec3, max_dist: f32) -> Option<[f32; 3]> {
+    let mut t = 1.0f32;
+    while t < max_dist {
+        let p = origin + dir * t;
+        let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+        let id = state.chunks.get_block_world(x, y, z);
+        if id == 12 {
+            // Float on the surface of this column, not wherever the ray happened to enter it.
+            let mut top = y;
+            while state.chunks.get_block_world(x, top + 1, z) == 12 { top += 1; }
+            return Some([x as f32 + 0.5, top as f32 + 0.9, z as f32 + 0.5]);
+        }
+        if id != 0 && Block::from_id(id).is_solid() { return None; } // the shore is in the way
+        t += 0.4;
+    }
+    None
+}
+
 /// Wool from one shearing. A sheep only carries one coat, so this is the whole yield.
 const WOOL_PER_SHEARING: i32 = 3;
 /// Anubis keeps the dead this far back.

@@ -135,6 +135,7 @@ COPY_ICONS = {
     "adamant_boots.png": ("item", "netherite_boots.png"),
     "silver_ingot.png": ("item", "prismarine_crystals.png"),
     "shears.png": ("item", "shears.png"),
+    "raw_fish.png": ("item", "catfish.png"),
     "quicksilver.png": ("item", "prismarine_shard.png"),
     # The blessing pantheon. Items only: a blessing is never placed as a block, so no atlas tile.
     **{f"blessing_{n}.png": ("item", f"blessing_{n}.png") for n in (
@@ -164,6 +165,8 @@ TINT_ICONS = {
     "blessing_camazotz.png": ("blessing_glaucus.png", (1.25, 0.45, 0.62)),
     "blessing_tangaroa.png": ("blessing_yamm.png", (0.55, 1.15, 1.10)),
     "blessing_anubis.png": ("blessing_prometheus.png", (1.20, 0.98, 0.42)),
+    # No fishing rod in the pack; a blaze rod browned down reads as a wooden one.
+    "fishing_rod.png": ("blaze_rod.png", (0.62, 0.46, 0.30)),
 }
 
 # Item-only icons with no atlas tile (items are never placed as blocks). filename -> base rgb.
