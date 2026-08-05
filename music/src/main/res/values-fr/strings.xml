@@ -4,10 +4,10 @@
     <string name="dialog_create_playlist">Créer une playlist</string>
     <string name="new_playlist">Nouvelle playlist</string>
     <string name="dialog_ok">OK</string>
-    <string name="artist_info_format">%1$d titres • %2$s</string>
+    <string name="artist_info_format">&lt;xliff:g id=\"song_count\" example=\"25\"&gt;%1$d&lt;/xliff:g&gt; titres • &lt;xliff:g id=\"duration\" example=\"1 h 42 min\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="content_desc_album_art_grid">Grille des pochettes d\'albums</string>
     <string name="nav_playlists">Playlists</string>
-    <string name="go_to_source">Aller à %1$s</string>
+    <string name="go_to_source">Aller à &lt;xliff:g id=\"source\" example=\"All Songs\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="dialog_add_to_playlist">Ajouter à la playlist</string>
     <string name="nav_home">Accueil</string>
     <string name="dialog_delete">Supprimer</string>
@@ -24,18 +24,20 @@
     <string name="grant_storage_permissions">Accorder des droits d\'accès au stockage</string>
     <string name="no_lyrics_available">Paroles indisponibles</string>
     <string name="page_title_playlists">Playlists</string>
-    <string name="dialog_delete_playlist_confirm">Supprimer \"%1$s\"? Cette action ne peut pas être annulée.</string>
+    <string name="dialog_delete_playlist_confirm">Supprimer « &lt;xliff:g id=\"playlist_name\" example=\"My Mix\"&gt;%1$s&lt;/xliff:g&gt; » ? Cette action est irréversible.</string>
     <string name="nav_albums">Albums</string>
     <string name="label_playlist">Playlist</string>
     <string name="label_songs">Morceaux</string>
-    <string name="album_info_format">%1$s\n%2$s • %3$d titres • %4$s</string>
+    <string name="album_info_format">&lt;xliff:g id=\"artist\" example=\"The Beatles\"&gt;%1$s&lt;/xliff:g&gt;\n&lt;xliff:g id=\"year\" example=\"1970\"&gt;%2$s&lt;/xliff:g&gt; • &lt;xliff:g id=\"song_count\" example=\"10\"&gt;%3$d&lt;/xliff:g&gt; titres • &lt;xliff:g id=\"duration\" example=\"42:30\"&gt;%4$s&lt;/xliff:g&gt;</string>
     <string name="dialog_cancel">Annuler</string>
     <string name="label_album">Album</string>
     <string name="nav_artists">Artistes</string>
     <string name="label_artist">Artiste</string>
     <string name="dialog_create">Créer</string>
     <plurals name="num_songs_format">
-        <item quantity="other">%1$d titres</item>
+        <item quantity="one">&lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; titre</item>
+        <item quantity="many">&lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; titres</item>
+        <item quantity="other">&lt;xliff:g id=\"count\" example=\"10\"&gt;%1$d&lt;/xliff:g&gt; titres</item>
     </plurals>
     <string name="page_title_music">Musique</string>
     <string name="unknown_artist">Artiste inconnu</string>
