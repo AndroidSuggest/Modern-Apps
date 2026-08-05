@@ -17,16 +17,18 @@ pub fn save_chunk(base: &str, chunk: &Chunk) -> std::io::Result<()> {
     fs::rename(&tmp, &path)?;
     Ok(())
 }
-// VOX2: "VOX2", section count, then per section: present u8; if 1 { 4096 block bytes; has_meta u8;
-// if 1 { 4096 meta bytes } }. The meta flag keeps cube-only sections exactly the size VOX1 wrote.
+// VOX3: "VOX3", section count, then per section: present u8; if 1 { 4096 block ids as u16
+// little-endian; has_meta u8; if 1 { 4096 meta bytes } }. Block ids are two bytes wide so ids above
+// 255 have somewhere to live; meta stays one byte. The meta flag keeps cube-only sections from
+// paying for an array they never filled.
 fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
-    let mut data = Vec::with_capacity(16*1024);
-    data.extend_from_slice(b"VOX2");
+    let mut data = Vec::with_capacity(32*1024);
+    data.extend_from_slice(b"VOX3");
     data.push(SECTIONS_PER_CHUNK as u8);
     for sec_opt in chunk.sections.iter() {
         let Some(sec) = sec_opt else { data.push(0); continue; };
         data.push(1);
-        data.extend_from_slice(&sec.blocks);
+        for &id in sec.blocks.iter() { data.extend_from_slice(&(id as u16).to_le_bytes()); }
         match sec.meta.as_ref().filter(|m| m.iter().any(|&v| v != 0)) {
             Some(meta) => { data.push(1); data.extend_from_slice(&meta[..]); }
             None => data.push(0),
@@ -38,27 +40,39 @@ pub fn load_chunk(base: &str, _pos: ChunkPos, chunk: &mut Chunk) -> std::io::Res
     let path = chunk_file(base, chunk.pos);
     decode_chunk(&fs::read(&path)?, chunk)
 }
-// Reads VOX1 and VOX2. A VOX1 chunk upgrades losslessly: every block it can contain is a full cube,
-// which is exactly what meta 0 means. Rejecting it instead would make `load_or_gen` treat the chunk
-// as ungenerated and regenerate it from the seed, erasing the player's build.
+// Reads VOX1, VOX2 and VOX3. Older chunks upgrade losslessly: a VOX1 chunk holds only full cubes,
+// which is exactly what meta 0 means, and narrow block bytes widen into the same numbers. Rejecting
+// an old file instead would make `load_or_gen` treat the chunk as ungenerated and regenerate it from
+// the seed, erasing the player's build.
 fn decode_chunk(bytes: &[u8], chunk: &mut Chunk) -> std::io::Result<()> {
     let bad = |m: &'static str| std::io::Error::new(std::io::ErrorKind::InvalidData, m);
     if bytes.len() < 5 { return Err(bad("too small")); }
-    let has_meta_flags = match &bytes[0..4] {
-        b"VOX1" => false,
-        b"VOX2" => true,
+    let (wide_ids, has_meta_flags) = match &bytes[0..4] {
+        b"VOX1" => (false, false),
+        b"VOX2" => (false, true),
+        b"VOX3" => (true, true),
         _ => return Err(bad("bad magic")),
     };
+    let block_bytes = if wide_ids { 8192 } else { 4096 };
     let sec_count = bytes[4] as usize;
     let mut off = 5usize;
     for sec_idx in 0..sec_count.min(SECTIONS_PER_CHUNK) {
         if off >= bytes.len() { break; }
         let flag = bytes[off]; off+=1;
         if flag != 1 { continue; }
-        if off + 4096 > bytes.len() { return Err(bad("section overflow")); }
+        if off + block_bytes > bytes.len() { return Err(bad("section overflow")); }
         let mut blocks = [0u8; 4096];
-        blocks.copy_from_slice(&bytes[off..off+4096]);
-        off+=4096;
+        if wide_ids {
+            for (i, cell) in blocks.iter_mut().enumerate() {
+                let raw = u16::from_le_bytes([bytes[off + i*2], bytes[off + i*2 + 1]]);
+                // Ids this build has no room for read back as air rather than as a wrapped-around
+                // block, which would be a wrong block rather than a missing one.
+                *cell = u8::try_from(raw).unwrap_or(0);
+            }
+        } else {
+            blocks.copy_from_slice(&bytes[off..off+4096]);
+        }
+        off+=block_bytes;
         let mut meta = None;
         if has_meta_flags {
             if off >= bytes.len() { return Err(bad("missing meta flag")); }
@@ -153,7 +167,7 @@ pub fn load_player(base: &str) -> Option<PlayerSave> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::chunk::{BlockSection, SECTIONS_PER_CHUNK};
+    use super::super::chunk::{BlockSection, CHUNK_HEIGHT, SECTIONS_PER_CHUNK};
 
     // Build a chunk file in the retired VOX1 layout: magic, section count, then per section a
     // present-flag followed by 4096 raw block bytes and nothing else.
@@ -164,6 +178,28 @@ mod tests {
         for sec in chunk.sections.iter() {
             match sec {
                 Some(s) => { data.push(1); data.extend_from_slice(&s.blocks); }
+                None => data.push(0),
+            }
+        }
+        data
+    }
+
+    // Build a chunk file in the retired VOX2 layout: VOX1 plus a has-meta flag and optional meta
+    // array per section.
+    fn encode_vox2(chunk: &Chunk) -> Vec<u8> {
+        let mut data = vec![];
+        data.extend_from_slice(b"VOX2");
+        data.push(SECTIONS_PER_CHUNK as u8);
+        for sec in chunk.sections.iter() {
+            match sec {
+                Some(s) => {
+                    data.push(1);
+                    data.extend_from_slice(&s.blocks);
+                    match s.meta.as_ref() {
+                        Some(m) => { data.push(1); data.extend_from_slice(&m[..]); }
+                        None => data.push(0),
+                    }
+                }
                 None => data.push(0),
             }
         }
@@ -194,6 +230,98 @@ mod tests {
                 _ => panic!("section presence changed across a VOX1 load"),
             }
         }
+    }
+
+    #[test]
+    fn legacy_vox2_chunks_still_load() {
+        let mut original = Chunk::new(ChunkPos(-9, 12));
+        original.set_block(2, 30, 4, 55);
+        original.set_block_meta(3, 30, 4, 103, 0b110);
+        original.set_block(15, 250, 15, 1);
+        let bytes = encode_vox2(&original);
+
+        let mut loaded = Chunk::new(ChunkPos(-9, 12));
+        decode_chunk(&bytes, &mut loaded).expect("a VOX2 chunk must still decode");
+
+        assert!(loaded.generated);
+        assert_eq!(loaded.get_block(2, 30, 4), 55);
+        assert_eq!(loaded.get_block(3, 30, 4), 103);
+        assert_eq!(loaded.get_meta(3, 30, 4), 0b110, "stair facing must survive the upgrade");
+        assert_eq!(loaded.get_block(15, 250, 15), 1);
+    }
+
+    #[test]
+    fn vox3_round_trips_blocks_and_meta() {
+        let mut original = Chunk::new(ChunkPos(7, 7));
+        original.set_block(0, 0, 0, 1);
+        original.set_block(15, 255, 15, 123);
+        original.set_block_meta(8, 64, 8, 102, 0b100);
+        original.set_block_meta(9, 64, 8, 103, 3);
+
+        let encoded = encode_chunk(&original);
+        assert_eq!(&encoded[0..4], b"VOX3");
+
+        let mut loaded = Chunk::new(ChunkPos(7, 7));
+        decode_chunk(&encoded, &mut loaded).expect("VOX3 must decode");
+        for (a, b) in original.sections.iter().zip(loaded.sections.iter()) {
+            match (a, b) {
+                (Some(a), Some(b)) => {
+                    assert_eq!(a.blocks, b.blocks, "every block id must survive");
+                    assert_eq!(a.meta.is_some(), b.meta.is_some());
+                    if let (Some(am), Some(bm)) = (&a.meta, &b.meta) { assert_eq!(&am[..], &bm[..]); }
+                }
+                (None, None) => {}
+                _ => panic!("section presence changed across a VOX3 round trip"),
+            }
+        }
+    }
+
+    // The upgrade is the dangerous moment: a world saved by the old build gets read as VOX2 and
+    // rewritten as VOX3 the first time it's touched. Not one cell may shift in the process.
+    #[test]
+    fn a_vox2_chunk_upgrades_without_losing_a_block() {
+        let mut original = Chunk::new(ChunkPos(1, -1));
+        // A spread of ids and metas across several sections, including the extremes.
+        for i in 0..64 {
+            let x = i % 16; let z = (i / 16) % 16;
+            original.set_block(x, i, z, (i as u8 % 123) + 1);
+        }
+        original.set_block_meta(4, 100, 4, 103, 2);
+        original.set_block_meta(5, 100, 4, 102, 0b100);
+        original.set_block(0, 255, 0, 123);
+
+        let mut once = Chunk::new(ChunkPos(1, -1));
+        decode_chunk(&encode_vox2(&original), &mut once).expect("VOX2 decodes");
+        let mut twice = Chunk::new(ChunkPos(1, -1));
+        decode_chunk(&encode_chunk(&once), &mut twice).expect("the VOX3 rewrite decodes");
+
+        for y in 0..CHUNK_HEIGHT { for x in 0..16 { for z in 0..16 {
+            assert_eq!(original.get_block(x, y, z), twice.get_block(x, y, z), "block at {x},{y},{z} changed");
+            assert_eq!(original.get_meta(x, y, z), twice.get_meta(x, y, z), "meta at {x},{y},{z} changed");
+        }}}
+    }
+
+    // A decode error makes ChunkMap regenerate the chunk from the seed, so `Err` has to mean "this
+    // really is not a chunk file" and nothing weaker.
+    #[test]
+    fn decode_errors_only_on_genuinely_corrupt_input() {
+        let mut chunk = Chunk::new(ChunkPos(0, 0));
+        chunk.set_block(1, 1, 1, 5);
+        let good = encode_chunk(&chunk);
+
+        let mut out = Chunk::new(ChunkPos(0, 0));
+        assert!(decode_chunk(&good, &mut out).is_ok());
+        assert!(decode_chunk(&[], &mut out).is_err(), "an empty file is not a chunk");
+        assert!(decode_chunk(b"NOPE\x10", &mut out).is_err(), "a foreign magic is not a chunk");
+        assert!(decode_chunk(&good[..good.len()/2], &mut out).is_err(), "a truncated section is corrupt");
+
+        // A file whose header promises more sections than it carries stops early rather than
+        // failing: the sections it did carry are real data worth keeping.
+        let mut short = good.clone();
+        short[4] = SECTIONS_PER_CHUNK as u8;
+        let mut partial = Chunk::new(ChunkPos(0, 0));
+        assert!(decode_chunk(&short[..6 + 8192 + 1], &mut partial).is_ok());
+        assert_eq!(partial.get_block(1, 1, 1), 5);
     }
 
     #[test]
@@ -230,7 +358,7 @@ mod tests {
         assert!(sec.meta.is_none(), "a cube-only section must not allocate a meta array");
 
         let encoded = encode_chunk(&chunk);
-        let one_section = 1 + 4096 + 1; // present flag, blocks, has-meta flag
+        let one_section = 1 + 8192 + 1; // present flag, blocks as u16, has-meta flag
         assert_eq!(encoded.len(), 5 + one_section + (SECTIONS_PER_CHUNK - 1), "no meta bytes should be written");
     }
 
