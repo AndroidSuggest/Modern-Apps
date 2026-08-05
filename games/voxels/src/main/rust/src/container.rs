@@ -99,7 +99,7 @@ fn container_file(base: &str) -> PathBuf {
 
 // Deterministic loot for a world-generated chest, from its position. The End's chests hold the
 // endgame reward pool; everywhere else draws from the general pool.
-pub fn roll_loot(x: i32, y: i32, z: i32, dim: u8) -> Vec<InvSlot> {
+pub fn roll_loot(x: i32, y: i32, z: i32, dim: u8, lucky: bool) -> Vec<InvSlot> {
     let mut r = ((x as u64).wrapping_mul(73856093) ^ (y as u64).wrapping_mul(19349663) ^ (z as u64).wrapping_mul(83492791)) | 1;
     let next = |r: &mut u64| { *r ^= *r << 13; *r ^= *r >> 7; *r ^= *r << 17; *r };
     // (item id, max stack from this chest).
@@ -109,7 +109,8 @@ pub fn roll_loot(x: i32, y: i32, z: i32, dim: u8) -> Vec<InvSlot> {
     let pool: &[(u8, i32)] = match dim { 2 => &end_pool, 1 => &nether_pool, _ => &over_pool };
 
     let mut slots = vec![InvSlot::default(); CONTAINER_SLOTS];
-    let n = 3 + (next(&mut r) % 4) as usize; // 3..6 stacks
+    // Glaucus turns up more in every chest.
+    let n = 3 + (next(&mut r) % 4) as usize + if lucky { 3 } else { 0 }; // 3..6 stacks, 6..9 when lucky
     for _ in 0..n {
         let (id, maxc) = pool[(next(&mut r) as usize) % pool.len()];
         let count = if crate::item::has_durability(id) {
@@ -137,7 +138,7 @@ mod tests {
     fn generated_chests_have_loot_and_player_chests_do_not() {
         let mut c = Containers::default();
         let key = (0u8, 12, 40, -7);
-        c.insert(key, roll_loot(12, 40, -7, 0));
+        c.insert(key, roll_loot(12, 40, -7, 0, false));
         let filled = c.get(key).unwrap().iter().filter(|s| s.id != 0).count();
         assert!((3..=6).contains(&filled), "expected 3..6 loot stacks, got {filled}");
 
@@ -152,7 +153,7 @@ mod tests {
     fn a_placed_chest_never_inherits_a_stale_entry() {
         let mut c = Containers::default();
         let key = (0u8, 4, 61, 4);
-        c.insert(key, roll_loot(4, 61, 4, 0));
+        c.insert(key, roll_loot(4, 61, 4, 0, false));
         assert!(c.get(key).unwrap().iter().any(|s| s.id != 0));
 
         c.insert_empty(key);
@@ -161,9 +162,9 @@ mod tests {
 
     #[test]
     fn loot_is_deterministic_per_position() {
-        let a = roll_loot(5, 30, 9, 0);
-        let b = roll_loot(5, 30, 9, 0);
-        let other = roll_loot(6, 30, 9, 0);
+        let a = roll_loot(5, 30, 9, 0, false);
+        let b = roll_loot(5, 30, 9, 0, false);
+        let other = roll_loot(6, 30, 9, 0, false);
         assert_eq!(a.iter().map(|s| (s.id, s.count)).collect::<Vec<_>>(),
                    b.iter().map(|s| (s.id, s.count)).collect::<Vec<_>>());
         assert_ne!(a.iter().map(|s| s.id).collect::<Vec<_>>(),

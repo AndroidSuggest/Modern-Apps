@@ -1,21 +1,110 @@
 [
-  {"id":"first_block","name":"Groundbreaker","description":"Break your first block"},
-  {"id":"first_place","name":"Builder","description":"Place your first block"},
-  {"id":"explorer_100","name":"Explorer","description":"Walk 100 blocks","targetProgress":100},
-  {"id":"builder_100","name":"Architect","description":"Place 100 blocks","targetProgress":100},
-  {"id":"miner_100","name":"Miner","description":"Break 100 blocks","targetProgress":100},
-  {"id":"night_survivor","name":"Night Owl","description":"Survive your first night"},
-  {"id":"deep_diver","name":"Deep Diver","description":"Mine down to bedrock depth"},
-  {"id":"silver_tongue","name":"Silver Tongue","description":"Smelt your first silver ingot"},
-  {"id":"steelworker","name":"Steelworker","description":"Forge steel in a blast furnace"},
-  {"id":"alchemist","name":"Alchemist","description":"Amalgamate an adamant ingot"},
-  {"id":"blessed","name":"Blessed","description":"Craft a quicksilver blessing"},
-  {"id":"fully_armed","name":"Fully Armed","description":"Wear a complete set of diamond or adamant armor"},
-  {"id":"nether_bound","name":"Nether Bound","description":"Step through a nether portal"},
-  {"id":"the_end","name":"The End","description":"Reach the End"},
-  {"id":"dragonslayer","name":"Dragonslayer","description":"Defeat the Ender Dragon"},
-  {"id":"withering","name":"Withering","description":"Defeat the Wither"},
-  {"id":"beacon_master","name":"Beacon Master","description":"Power a full four-tier beacon"},
-  {"id":"sky_bound","name":"Sky Bound","description":"Equip an elytra"},
-  {"id":"heart_of_gold","name":"Heart of Gold","description":"Reach the maximum heart count"}
+  {
+    "id": "first_block",
+    "name": "Groundbreaker",
+    "description": "Break your first block"
+  },
+  {
+    "id": "first_place",
+    "name": "Builder",
+    "description": "Place your first block"
+  },
+  {
+    "id": "explorer_100",
+    "name": "Explorer",
+    "description": "Walk 100 blocks",
+    "targetProgress": 100
+  },
+  {
+    "id": "builder_100",
+    "name": "Architect",
+    "description": "Place 100 blocks",
+    "targetProgress": 100
+  },
+  {
+    "id": "miner_100",
+    "name": "Miner",
+    "description": "Break 100 blocks",
+    "targetProgress": 100
+  },
+  {
+    "id": "night_survivor",
+    "name": "Night Owl",
+    "description": "Survive your first night"
+  },
+  {
+    "id": "deep_diver",
+    "name": "Deep Diver",
+    "description": "Mine down to bedrock depth"
+  },
+  {
+    "id": "silver_tongue",
+    "name": "Silver Tongue",
+    "description": "Smelt your first silver ingot"
+  },
+  {
+    "id": "steelworker",
+    "name": "Steelworker",
+    "description": "Forge steel in a blast furnace"
+  },
+  {
+    "id": "alchemist",
+    "name": "Alchemist",
+    "description": "Amalgamate an adamant ingot"
+  },
+  {
+    "id": "blessed",
+    "name": "Blessed",
+    "description": "Craft a quicksilver blessing"
+  },
+  {
+    "id": "fully_armed",
+    "name": "Fully Armed",
+    "description": "Wear a complete set of diamond or adamant armor"
+  },
+  {
+    "id": "nether_bound",
+    "name": "Nether Bound",
+    "description": "Step through a nether portal"
+  },
+  {
+    "id": "the_end",
+    "name": "The End",
+    "description": "Reach the End"
+  },
+  {
+    "id": "dragonslayer",
+    "name": "Dragonslayer",
+    "description": "Defeat the Ender Dragon"
+  },
+  {
+    "id": "withering",
+    "name": "Withering",
+    "description": "Defeat the Wither"
+  },
+  {
+    "id": "beacon_master",
+    "name": "Beacon Master",
+    "description": "Power a full four-tier beacon"
+  },
+  {
+    "id": "sky_bound",
+    "name": "Sky Bound",
+    "description": "Equip an elytra"
+  },
+  {
+    "id": "heart_of_gold",
+    "name": "Heart of Gold",
+    "description": "Reach the maximum heart count"
+  },
+  {
+    "id": "attuned",
+    "name": "Attuned",
+    "description": "Bind your first blessing"
+  },
+  {
+    "id": "pantheon",
+    "name": "Pantheon",
+    "description": "Fill every attunement slot"
+  }
 ]

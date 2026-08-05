@@ -127,6 +127,12 @@ COPY_ICONS = {
     "adamant_boots.png": ("item", "netherite_boots.png"),
     "silver_ingot.png": ("item", "prismarine_crystals.png"),
     "quicksilver.png": ("item", "prismarine_shard.png"),
+    # The blessing pantheon. Items only: a blessing is never placed as a block, so no atlas tile.
+    **{f"blessing_{n}.png": ("item", f"blessing_{n}.png") for n in (
+        "aeolus", "apollo", "arachnae", "ares", "artemis", "clement", "cronus", "daedalus",
+        "demeter", "eros", "glaucus", "god_king", "hyacinthus", "icarus", "lu_ban", "paris",
+        "prometheus", "talos", "warding", "will", "yama", "yamm",
+    )},
 }
 
 # Item-only icons with no atlas tile (items are never placed as blocks). filename -> base rgb.

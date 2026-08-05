@@ -39,4 +39,10 @@
     <string name="furnace_busy">Already smelting something else — stop it first.</string>
     <string name="busy">Busy</string>
     <string name="chest_tap_hint">Tap a chest slot to take it, an inventory slot to store it.</string>
+    <string name="blessings">Blessings</string>
+    <string name="attuned">Attuned</string>
+    <string name="empty_slot">Empty slot</string>
+    <string name="charms_held">Charms you carry</string>
+    <string name="no_charms">Craft a blessing charm from quicksilver to attune it.</string>
+    <string name="blessing_tap_hint">Tap a charm to attune it, an attuned slot to release it.</string>
 </resources>

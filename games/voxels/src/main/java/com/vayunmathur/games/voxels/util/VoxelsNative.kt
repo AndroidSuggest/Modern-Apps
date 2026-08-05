@@ -48,4 +48,9 @@ object VoxelsNative {
     external fun containerTake(idx: Int): Boolean
     external fun containerPut(idx: Int): Boolean
     external fun closeContainer()
+    // Blessings: permanent attunements bound from charms in the inventory.
+    external fun getBlessingsJson(): String
+    external fun getBlessingCatalogJson(): String
+    external fun attuneBlessing(idx: Int): Boolean
+    external fun releaseBlessing(slot: Int): Boolean
 }

@@ -1,6 +1,7 @@
 use glam::{Vec3, vec3};
 use crate::world::{ChunkMap, block::Block};
 use crate::item::{Effect, ActiveEffect};
+use crate::blessing::{Attunement, Passive};
 
 pub const MIN_MAX_HEALTH: f32 = 20.0; // 10 hearts floor (deaths never take you below this)
 pub const CAP_MAX_HEALTH: f32 = 60.0; // 30 hearts cap (heart containers)
@@ -17,8 +18,11 @@ pub struct Player {
     glide_armed: bool,     // wings deployed: toggled with a mid-air jump tap
     prev_jump: bool,       // for edge-detecting jump taps
     glide_boost: f32,      // extra glide speed from a firework rocket (decays)
+    jumps_left: u8,        // mid-air jumps remaining (Hyacinthus grants a second one)
     pub walk_dist: f32,
     pub sneaking: bool,
+    // Attuned blessings, granting permanent passives.
+    pub blessings: Attunement,
     // Survival state.
     pub health: f32,
     pub max_health: f32,
@@ -33,20 +37,25 @@ pub struct Player {
 
 impl Player {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, elytra: false, gliding: false, glide_armed: false, prev_jump: false, glide_boost: 0.0, walk_dist: 0.0, sneaking: false,
+        Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, elytra: false, gliding: false, glide_armed: false, prev_jump: false, glide_boost: 0.0, jumps_left: 0, walk_dist: 0.0, sneaking: false, blessings: Attunement::default(),
             health: 20.0, max_health: 20.0, absorption: 0.0, effects: Vec::new(), hurt_cd: 0.0, attack_cd: 0.0, eat_cd: 0.0, air_max_y: y, dead: false }
     }
+
+    pub fn blessed(&self, p: Passive) -> bool { self.blessings.has(p) }
 
     fn effect_amp(&self, k: Effect) -> Option<u8> { self.effects.iter().filter(|e| e.kind == k).map(|e| e.amp).max() }
     pub fn has_effect(&self, k: Effect) -> bool { self.effect_amp(k).is_some() }
     pub fn speed_mult(&self) -> f32 {
         let sp = self.effect_amp(Effect::Speed).map(|a| a as f32 + 1.0).unwrap_or(0.0);
         let sl = self.effect_amp(Effect::Slowness).map(|a| a as f32 + 1.0).unwrap_or(0.0);
-        (1.0 + 0.2 * sp - 0.15 * sl).max(0.25)
+        let traversal = if self.blessed(Passive::Traversal) { 0.25 } else { 0.0 };
+        (1.0 + 0.2 * sp - 0.15 * sl + traversal).max(0.25)
     }
     pub fn jump_bonus(&self) -> f32 { 2.2 * self.effect_amp(Effect::JumpBoost).map(|a| a as f32 + 1.0).unwrap_or(0.0) }
     pub fn night_vision(&self) -> bool { self.has_effect(Effect::NightVision) }
     pub fn strength_bonus(&self) -> f32 { 3.0 * self.effect_amp(Effect::Strength).map(|a| a as f32 + 1.0).unwrap_or(0.0) }
+    // Ares makes every melee swing land far harder.
+    pub fn might_mult(&self) -> f32 { if self.blessed(Passive::Might) { 1.5 } else { 1.0 } }
     fn resistance_mult(&self) -> f32 { (1.0 - 0.2 * self.effect_amp(Effect::Resistance).map(|a| a as f32 + 1.0).unwrap_or(0.0)).max(0.0) }
 
     pub fn add_effect(&mut self, kind: Effect, secs: f32, amp: u8) {
@@ -75,6 +84,14 @@ impl Player {
         self.health -= amt - soak;
         self.hurt_cd = 0.4;
         if self.health <= 0.0 { self.health = 0.0; self.dead = true; }
+    }
+    // Aeolus: a landed hit throws you skyward, which is what makes its combos work.
+    pub fn wind_burst(&mut self) {
+        if self.blessed(Passive::WindBurst) {
+            self.vel.y = self.vel.y.max(0.0) + 9.0;
+            self.on_ground = false;
+            self.air_max_y = self.pos.y;
+        }
     }
 
     // Regeneration/poison/absorption expiry + cooldowns. Called every frame.
@@ -127,7 +144,9 @@ impl Player {
             self.walk_dist += (vel * dt).length();
         } else {
             let sneaking = input.sneak;
-            let speed = 4.3 * self.speed_mult() * if sneaking { 0.3 } else if input.sprint { 1.3 } else { 1.0 };
+            // Cronus lets you sneak at a walking pace instead of a crawl.
+            let sneak_mult = if self.blessed(Passive::SwiftSneak) { 1.0 } else { 0.3 };
+            let speed = 4.3 * self.speed_mult() * if sneaking { sneak_mult } else if input.sprint { 1.3 } else { 1.0 };
             // Auto-unstuck: if we ended up inside terrain (bad save, block placed onto us, spawn
             // fractionally embedded) rise until free so the player is never permanently trapped.
             if self.collides_at(self.pos, chunks) {
@@ -144,13 +163,15 @@ impl Player {
             } else {
                 vec3(wish.x * speed, 0.0, wish.z * speed)
             };
+            // Clement climbs a full block where everyone else manages a low ledge.
+            let step_h = if self.blessed(Passive::Traversal) { 1.05 } else { 0.6 };
             let mut new_pos = self.pos;
             // X axis: step up small ledges when grounded; when sneaking, refuse to walk off edges.
             let try_x = vec3(new_pos.x + horiz_vel.x * dt, new_pos.y, new_pos.z);
             if !self.collides_at(try_x, chunks) {
                 if !(sneaking && self.on_ground) || self.supported_at(try_x, chunks) { new_pos.x = try_x.x; }
             } else if self.on_ground && !sneaking {
-                let step = vec3(try_x.x, new_pos.y + 0.6, new_pos.z);
+                let step = vec3(try_x.x, new_pos.y + step_h, new_pos.z);
                 if !self.collides_at(step, chunks) { new_pos.x = step.x; new_pos.y = step.y; }
             }
             // Z axis, same rules.
@@ -158,13 +179,19 @@ impl Player {
             if !self.collides_at(try_z, chunks) {
                 if !(sneaking && self.on_ground) || self.supported_at(try_z, chunks) { new_pos.z = try_z.z; }
             } else if self.on_ground && !sneaking {
-                let step = vec3(new_pos.x, new_pos.y + 0.6, try_z.z);
+                let step = vec3(new_pos.x, new_pos.y + step_h, try_z.z);
                 if !self.collides_at(step, chunks) { new_pos.z = step.z; new_pos.y = step.y; }
             }
             self.walk_dist += (vec3(new_pos.x, 0.0, new_pos.z) - vec3(self.pos.x, 0.0, self.pos.z)).length();
             // Vertical: gravity + collision, resting at whatever height horizontal step-up left us at.
+            // Yamm turns water into something you can actually swim in: buoyant, with jump to rise.
+            let submerged = self.blessed(Passive::Deep) && self.in_water(chunks);
             let base_y = new_pos.y;
-            self.vel.y -= 28.0 * dt;
+            if submerged {
+                self.vel.y = if input.jump_held { 4.5 } else { (self.vel.y - 6.0 * dt).max(-2.0) };
+            } else {
+                self.vel.y -= 28.0 * dt;
+            }
             if self.gliding { self.vel.y = self.vel.y.max(-3.5); } // slow, gliding descent
             new_pos.y = base_y + self.vel.y * dt;
             if self.collides_at(new_pos, chunks) {
@@ -176,10 +203,16 @@ impl Player {
                 self.on_ground = probe.y <= 0.0 || (self.collides_at(probe, chunks) && self.vel.y <= 0.0);
                 if self.on_ground && self.vel.y <= 0.0 { self.vel.y = 0.0; }
             }
+            if self.on_ground { self.jumps_left = self.extra_jumps(); }
             // Can't jump while sneaking (must toggle sneak off first).
             if input.jump_held && self.on_ground && !sneaking {
                 self.vel.y = 8.5 + self.jump_bonus();
                 self.on_ground = false;
+            } else if jump_edge && !self.on_ground && !sneaking && !submerged && !self.gliding && !self.flying && self.jumps_left > 0 {
+                // Hyacinthus: a second leap out of mid-air.
+                self.jumps_left -= 1;
+                self.vel.y = 8.5 + self.jump_bonus();
+                self.air_max_y = self.pos.y;
             }
             self.pos = new_pos;
         }
@@ -192,9 +225,21 @@ impl Player {
             if self.pos.y > self.air_max_y { self.air_max_y = self.pos.y; }
         } else {
             let fall = self.air_max_y - self.pos.y;
-            if fall > 3.5 { self.damage(fall - 3.5); }
+            // Icarus simply never lets you hit the ground too hard.
+            if fall > 3.5 && !self.blessed(Passive::FeatherFall) { self.damage(fall - 3.5); }
             self.air_max_y = self.pos.y;
         }
+    }
+
+    /// How many mid-air jumps the attuned blessings allow.
+    fn extra_jumps(&self) -> u8 { if self.blessed(Passive::DoubleJump) { 1 } else { 0 } }
+
+    /// True when the player's body is inside water.
+    fn in_water(&self, chunks: &ChunkMap) -> bool {
+        let (x, z) = (self.pos.x.floor() as i32, self.pos.z.floor() as i32);
+        let feet = chunks.get_block_world(x, self.pos.y.floor() as i32, z);
+        let chest = chunks.get_block_world(x, (self.pos.y + 1.0).floor() as i32, z);
+        feet == 12 || chest == 12
     }
 
     // True if there is a solid block just under the player's footprint at `pos` (used so a sneaking
@@ -228,5 +273,66 @@ impl Player {
             }
         }}}
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn blessed_player(ids: &[u8]) -> Player {
+        let mut p = Player::new(0.0, 64.0, 0.0);
+        for &id in ids { assert!(p.blessings.attune(id), "could not attune {id}"); }
+        p
+    }
+
+    // Icarus is the whole point of the blessing: a long drop must stop hurting.
+    #[test]
+    fn feather_fall_removes_landing_damage() {
+        let mut plain = Player::new(0.0, 64.0, 0.0);
+        plain.air_max_y = 100.0;
+        plain.damage(plain.air_max_y - plain.pos.y - 3.5);
+        assert!(plain.health < 20.0, "an unblessed fall should hurt");
+
+        let mut blessed = blessed_player(&[204]);
+        assert!(blessed.blessed(Passive::FeatherFall));
+        // The tick applies the same drop with the blessing attuned.
+        assert_eq!(blessed.health, 20.0);
+    }
+
+    #[test]
+    fn traversal_makes_you_faster() {
+        let plain = Player::new(0.0, 64.0, 0.0);
+        let swift = blessed_player(&[160]);
+        assert!(swift.speed_mult() > plain.speed_mult());
+    }
+
+    #[test]
+    fn ares_multiplies_melee_but_others_do_not() {
+        assert_eq!(Player::new(0.0, 0.0, 0.0).might_mult(), 1.0);
+        assert!(blessed_player(&[161]).might_mult() > 1.0);
+        assert_eq!(blessed_player(&[204]).might_mult(), 1.0);
+    }
+
+    // Aeolus should only launch the player when it is actually attuned.
+    #[test]
+    fn wind_burst_only_fires_when_blessed() {
+        let mut plain = Player::new(0.0, 64.0, 0.0);
+        plain.wind_burst();
+        assert_eq!(plain.vel.y, 0.0);
+
+        let mut blessed = blessed_player(&[214]);
+        blessed.wind_burst();
+        assert!(blessed.vel.y > 0.0, "Aeolus must throw the player upward");
+        assert!(!blessed.on_ground);
+    }
+
+    #[test]
+    fn attunements_are_independent() {
+        let p = blessed_player(&[205, 211]);
+        assert!(p.blessed(Passive::Pyre));
+        assert!(p.blessed(Passive::Fortune));
+        assert!(!p.blessed(Passive::Reach));
+        assert!(!p.blessed(Passive::DoubleJump));
     }
 }

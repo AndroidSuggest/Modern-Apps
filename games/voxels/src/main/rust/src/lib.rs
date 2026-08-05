@@ -1,4 +1,5 @@
 pub mod world;
+pub mod blessing;
 pub mod container;
 pub mod entity;
 pub mod item;
@@ -342,6 +343,36 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_close
     _env: JNIEnv<'l>, _class: JClass<'l>,
 ) {
     engine::close_container();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getBlessingsJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_blessings_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getBlessingCatalogJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_blessing_catalog_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_attuneBlessing<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+) -> jboolean {
+    engine::attune_blessing(idx.max(0) as usize) as jboolean
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_releaseBlessing<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, slot: jint,
+) -> jboolean {
+    engine::release_blessing(slot.max(0) as usize) as jboolean
 }
 
 #[cfg(test)]

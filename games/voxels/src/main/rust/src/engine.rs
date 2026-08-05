@@ -2,6 +2,7 @@ use crate::world::{ChunkMap, block::Block};
 use crate::player::Player;
 use crate::inventory::Inventory;
 use crate::entity::{Mob, MobKind, Particle, Projectile, ProjKind, build_entity_mesh, tick_particles, append_particles, append_projectiles};
+use crate::blessing::Passive;
 use crate::world::mesher;
 use crate::vulkan::context::{VulkanContext, ANativeWindow};
 use crate::vulkan::renderer::VulkanRenderer;
@@ -51,6 +52,8 @@ pub struct EngineState {
     // Milestone tracking for achievements.
     pub best_beacon: i32,
     pub deepest_y: i32,
+    // Throttle for the Lu Ban mending blessing.
+    pub mend_cd: f32,
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -117,6 +120,7 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     if had_save {
         player.max_health = progress.max_health.clamp(crate::player::MIN_MAX_HEALTH, crate::player::CAP_MAX_HEALTH);
         player.health = player.max_health;
+        player.blessings = progress.blessings;
     }
 
     let dim = if progress.dim < 3 { progress.dim } else { 0 };
@@ -179,6 +183,7 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         smelter: Smelter::default(),
         best_beacon: progress.best_beacon,
         deepest_y: if had_save { progress.deepest_y } else { py as i32 },
+        mend_cd: 0.0,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -233,6 +238,7 @@ pub fn destroy_engine() {
                 world_secs: state.start_time.elapsed().as_secs_f32(),
                 best_beacon: state.best_beacon,
                 deepest_y: state.deepest_y,
+                blessings: state.player.blessings,
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
@@ -349,6 +355,7 @@ pub fn tick_and_render() {
         state.was_night = night_now;
 
         tick_smelter(state, dt);
+        tick_blessings(state, dt);
         // Overworld-only depth record, so the Nether's low ceiling doesn't hand out the mining badge.
         if state.dim == 0 { state.deepest_y = state.deepest_y.min(state.player.pos.y as i32); }
 
@@ -361,7 +368,8 @@ pub fn tick_and_render() {
             let p = state.player.pos;
             let feet = state.chunks.get_block_world(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
             let head = state.chunks.get_block_world(p.x.floor() as i32, (p.y + 1.0).floor() as i32, p.z.floor() as i32);
-            if (feet == 84 || head == 84) && !state.player.has_effect(crate::item::Effect::FireResistance) {
+            if (feet == 84 || head == 84) && !state.player.has_effect(crate::item::Effect::FireResistance)
+                && !state.player.blessed(Passive::Pyre) {
                 state.player.health -= 6.0 * dt;
                 if state.player.health <= 0.0 { state.player.health = 0.0; state.player.dead = true; }
             }
@@ -496,10 +504,11 @@ pub fn tick_and_render() {
             state.nether_wither_dead = true;
             spawn_particles(&mut state.spawn_rng, &mut state.particles, wpos, 60, [0.15, 0.15, 0.2], 8.0, 1.4, 0.4);
         }
-        // Remove dead mobs and auto-collect their drops.
+        // Remove dead mobs and auto-collect their drops. Glaucus makes every kill pay double.
         let mut loot: Vec<u8> = Vec::new();
         state.mobs.retain(|m| if m.health <= 0.0 { loot.extend_from_slice(m.kind.loot()); false } else { true });
-        for id in loot { state.inventory.add_block(id); }
+        let drops = if state.player.blessed(Passive::SeaLuck) { 2 } else { 1 };
+        for id in loot { for _ in 0..drops { state.inventory.add_block(id); } }
         state.mobs.retain(|m| (m.pos - player_pos).length() < 96.0 && m.pos.y > -8.0);
         state.spawn_timer -= dt;
         if state.spawn_timer <= 0.0 {
@@ -664,6 +673,7 @@ fn publish_ui(state: &EngineState) {
         "silver": has(193), "steel": has(195), "adamant": has(196),
         "blessing": has(160) || has(161) || has(162),
         "depth": state.deepest_y,
+        "attuned": state.player.blessings.slots.iter().filter(|&&s| s != 0).count(),
     }).to_string();
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
@@ -868,19 +878,31 @@ fn light_portal(state: &mut EngineState, x: i32, y: i32, z: i32) -> bool {
 fn ensure_chest(state: &mut EngineState, x: i32, y: i32, z: i32) -> crate::container::ContainerKey {
     let key = (state.dim, x, y, z);
     if !state.containers.contains(key) {
-        state.containers.insert(key, crate::container::roll_loot(x, y, z, state.dim));
+        let lucky = state.player.blessed(Passive::SeaLuck);
+        state.containers.insert(key, crate::container::roll_loot(x, y, z, state.dim, lucky));
     }
     key
 }
 
 // Apply damage to the player through equipped armor (each defense point cuts ~4%, capped), wearing
-// the armor down when a hit actually lands.
+// the armor down when a hit actually lands. Warding reflects a share back at whatever is nearby.
 fn hurt_player(state: &mut EngineState, amt: f32) {
     let def = state.inventory.armor_defense();
     let reduced = amt * (1.0 - (def * 0.04)).max(0.2);
     let before = state.player.health;
     state.player.damage(reduced);
-    if state.player.health < before { state.inventory.damage_armor(); }
+    if state.player.health < before {
+        if !state.player.blessed(Passive::ArmorWard) { state.inventory.damage_armor(); }
+        if state.player.blessed(Passive::Thorns) { reflect_thorns(state, reduced * 0.5); }
+    }
+}
+
+// Warding: everything close enough to have hurt you shares in the pain.
+fn reflect_thorns(state: &mut EngineState, amt: f32) {
+    let p = state.player.pos;
+    for m in state.mobs.iter_mut() {
+        if (m.pos - p).length() < 4.0 { m.health -= amt; }
+    }
 }
 
 // Advance projectiles: move, home (shulker bullets), trail sparks, and resolve block/mob/player hits.
@@ -911,11 +933,13 @@ fn tick_projectiles(state: &mut EngineState, dt: f32) {
         let mut hit = p.life <= 0.0 || solid;
         // Player-thrown projectiles hit mobs.
         if !hit && p.from_player {
+            // Apollo doubles what a thrown weapon does on impact.
+            let marksman = if state.player.blessed(Passive::Marksman) { 2.0 } else { 1.0 };
             for m in state.mobs.iter_mut() {
                 let center = m.pos + vec3(0.0, m.kind.height() * 0.5, 0.0);
                 if (center - p.pos).length() < m.kind.hit_radius() + 0.4 {
                     let dmg = match p.kind { ProjKind::Fireball => 6.0, ProjKind::Snowball => 1.0, _ => 0.0 };
-                    if dmg > 0.0 { m.health -= dmg; }
+                    if dmg > 0.0 { m.health -= dmg * marksman; }
                     hit = true; break;
                 }
             }
@@ -1020,11 +1044,24 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     }
     // Throwables: snowball (light damage/knock) and ender pearl (teleport to impact).
     if (sel == 190 || sel == 191) && state.player.eat_cd <= 0.0 {
-        if state.inventory.consume_selected().is_some() {
+        // Paris never spends the charge; everyone else does.
+        let free = state.player.blessed(Passive::Infinity);
+        if free || state.inventory.consume_selected().is_some() {
             let f = state.player.forward();
             let origin = state.player.eye_pos() + f * 0.5;
             let (kind, spd) = if sel == 191 { (ProjKind::EnderPearl, 16.0) } else { (ProjKind::Snowball, 20.0) };
-            state.projectiles.push(Projectile { pos: origin, vel: f * spd, life: 5.0, kind, from_player: true, damage: 0.0, explosive: false });
+            // Artemis throws a spread of three; an ender pearl always flies alone so the
+            // teleport destination stays predictable.
+            let spread: &[f32] = if state.player.blessed(Passive::Multishot) && kind == ProjKind::Snowball {
+                &[-0.12, 0.0, 0.12]
+            } else {
+                &[0.0]
+            };
+            let right = state.player.right();
+            for &off in spread {
+                let dir = (f + right * off).normalize_or_zero();
+                state.projectiles.push(Projectile { pos: origin, vel: dir * spd, life: 5.0, kind, from_player: true, damage: 0.0, explosive: false });
+            }
             state.player.eat_cd = 0.4;
             return true;
         }
@@ -1074,22 +1111,27 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
         }
     }
     // Attack a mob if one is under the cursor within reach and nearer than any block.
-    let block_hit = crate::raycast::raycast(&state.chunks, origin, dir, 6.0);
+    let reach = player_reach(state);
+    let block_hit = crate::raycast::raycast(&state.chunks, origin, dir, reach);
     let block_dist = block_hit.as_ref().map(|h| (vec3(h.pos.0 as f32 + 0.5, h.pos.1 as f32 + 0.5, h.pos.2 as f32 + 0.5) - origin).length()).unwrap_or(f32::INFINITY);
     if state.player.attack_cd <= 0.0 {
-        if let Some(idx) = nearest_mob_hit(state, origin, dir, 4.5, block_dist) {
+        if let Some(idx) = nearest_mob_hit(state, origin, dir, reach - 1.5, block_dist) {
             state.player.attack_cd = 0.45;
-            let dmg = 4.0 + item::sword_damage(sel) + item::pick_damage(sel) + state.player.strength_bonus();
-            state.inventory.damage_selected();
+            let base = 4.0 + item::sword_damage(sel) + item::pick_damage(sel) + state.player.strength_bonus();
+            let dmg = base * state.player.might_mult() * slayer_mult(&state.player, state.mobs[idx].kind);
+            damage_tool(state);
             let ppos = state.player.pos;
+            // Talos turns every swing into a launch.
+            let (kb_h, kb_v) = if state.player.blessed(Passive::Impact) { (2.4, 12.0) } else { (0.45, 6.0) };
             let mpos;
             {
                 let m = &mut state.mobs[idx];
                 m.health -= dmg;
                 let kb = { let k = m.pos - ppos; vec3(k.x, 0.0, k.z).normalize_or_zero() };
-                m.pos += kb * 0.45; m.vel.y = 6.0;
+                m.pos += kb * kb_h; m.vel.y = kb_v;
                 mpos = m.pos + vec3(0.0, 0.5, 0.0);
             }
+            state.player.wind_burst();
             spawn_particles(&mut state.spawn_rng, &mut state.particles, mpos, 6, [0.85, 0.12, 0.12], 3.0, 0.4, 0.09);
             return true;
         }
@@ -1121,8 +1163,13 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             // Stone/ore only drops when mined with a pickaxe; soft blocks always drop.
             let drops = !Block::from_id(id).needs_pickaxe() || item::is_pickaxe(sel);
             state.chunks.set_block_world(x, y, z, 0);
-            if drops { state.inventory.add_block(id); state.inventory.broken += 1; }
-            state.inventory.damage_selected();
+            if drops {
+                // Eros doubles what an ore gives up.
+                let n = if state.player.blessed(Passive::Fortune) && is_ore(id) { 2 } else { 1 };
+                for _ in 0..n { state.inventory.add_block(id); }
+                state.inventory.broken += 1;
+            }
+            damage_tool(state);
             mark_neighbors_dirty(state, x, z);
             let c = vec3(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5);
             spawn_particles(&mut state.spawn_rng, &mut state.particles, c, 7, [0.55, 0.45, 0.35], 2.6, 0.5, 0.11);
@@ -1227,6 +1274,81 @@ pub fn container_put(inv_idx: usize) -> bool {
 }
 pub fn close_container() { with_engine(|s| s.open_chest = None); }
 
+// ---- Blessings ----
+// Bind the blessing held in an inventory slot, consuming the charm. Fails if the slot doesn't hold
+// a blessing, it's already bound, or every attunement slot is taken.
+pub fn attune_blessing(inv_idx: usize) -> bool {
+    with_engine(|state| {
+        if inv_idx >= crate::inventory::SLOTS { return false; }
+        let id = state.inventory.slots[inv_idx].id;
+        if !crate::blessing::is_blessing(id) { return false; }
+        if !state.player.blessings.attune(id) { return false; }
+        let slot = &mut state.inventory.slots[inv_idx];
+        slot.count -= 1;
+        if slot.count <= 0 { *slot = crate::inventory::InvSlot::default(); }
+        true
+    }).unwrap_or(false)
+}
+// Unbind an attunement, handing the charm back. Refuses if there's nowhere to put it.
+pub fn release_blessing(slot: usize) -> bool {
+    with_engine(|state| {
+        let Some(&id) = state.player.blessings.slots.get(slot) else { return false; };
+        if id == 0 { return false; }
+        if !state.inventory.has_room_for(id, 1) { return false; }
+        state.player.blessings.release(slot);
+        state.inventory.add_block(id);
+        true
+    }).unwrap_or(false)
+}
+pub fn get_blessings_json() -> String {
+    with_engine_try(|state| state.player.blessings.to_json())
+        .unwrap_or_else(|| crate::blessing::Attunement::default().to_json())
+}
+pub fn get_blessing_catalog_json() -> String { crate::blessing::catalog_json() }
+
+// Ore blocks, for the Fortune blessing.
+fn is_ore(id: u8) -> bool { matches!(id, 18..=22 | 90 | 91 | 92) }
+
+// Blessings that act over time rather than at a single event: Lu Ban repairs gear a point at a
+// time, Demeter freezes the water the player walks over.
+fn tick_blessings(state: &mut EngineState, dt: f32) {
+    if state.player.blessed(crate::blessing::Passive::Mending) {
+        state.mend_cd -= dt;
+        if state.mend_cd <= 0.0 {
+            state.mend_cd = 1.0;
+            state.inventory.mend_one();
+        }
+    }
+    if state.player.blessed(Passive::FrostWalker) {
+        let p = state.player.pos;
+        let y = (p.y - 0.4).floor() as i32;
+        let mut froze = Vec::new();
+        for dx in -1..=1 { for dz in -1..=1 {
+            let (x, z) = (p.x.floor() as i32 + dx, p.z.floor() as i32 + dz);
+            if state.chunks.get_block_world(x, y, z) == 12 {
+                state.chunks.set_block_world(x, y, z, 43); // ice
+                froze.push((x, z));
+            }
+        }}
+        for (x, z) in froze { mark_neighbors_dirty(state, x, z); }
+    }
+}
+
+// How far the player can reach; Will stretches it well past arm's length.
+fn player_reach(state: &EngineState) -> f32 {
+    if state.player.blessed(Passive::Reach) { 9.0 } else { 6.0 }
+}
+// Damage multiplier against a particular kind of foe, from the slayer blessings.
+fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
+    let undead = matches!(kind, MobKind::Zombie | MobKind::WitherSkeleton | MobKind::Wither);
+    let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
+    if (undead && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
+}
+// Wear the held tool, unless Daedalus is holding it together.
+fn damage_tool(state: &mut EngineState) {
+    if !state.player.blessed(Passive::ToolWard) { state.inventory.damage_selected(); }
+}
+
 // Destroy blocks in a sphere and hurt the player — creeper explosions.
 fn explode(state: &mut EngineState, center: Vec3, radius: f32) {
     let r = radius.ceil() as i32;
@@ -1261,7 +1383,7 @@ fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     // Items (food, estus, materials) are never placeable as blocks.
     let sel = state.inventory.selected_block();
     if sel == 0 || crate::item::is_item(sel) { return false; }
-    if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, 6.0) {
+    if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) {
         let (px,py,pz) = hit.prev;
         if state.chunks.get_block_world(px,py,pz) != 0 { return false; }
         let min_check = vec3(state.player.pos.x - 0.3, state.player.pos.y, state.player.pos.z - 0.3);
@@ -1295,9 +1417,10 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
         // Tapping a villager opens trade; tapping an interactive block opens its menu — unless
         // sneaking, which places instead.
         if !state.player.sneaking {
-            let block_hit = crate::raycast::raycast(&state.chunks, o, d, 6.0);
+            let reach = player_reach(state);
+            let block_hit = crate::raycast::raycast(&state.chunks, o, d, reach);
             let bdist = block_hit.as_ref().map(|h| (vec3(h.pos.0 as f32 + 0.5, h.pos.1 as f32 + 0.5, h.pos.2 as f32 + 0.5) - o).length()).unwrap_or(f32::INFINITY);
-            if let Some(idx) = nearest_mob_hit(state, o, d, 4.5, bdist) {
+            if let Some(idx) = nearest_mob_hit(state, o, d, reach - 1.5, bdist) {
                 if state.mobs[idx].kind == MobKind::Villager { return 20; }
             }
             if let Some(hit) = block_hit {

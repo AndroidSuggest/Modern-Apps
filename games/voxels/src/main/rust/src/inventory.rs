@@ -24,7 +24,7 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 43] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 62] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -63,10 +63,30 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 43] = [
     (196, 9, 0, 0, Block::AdamantBlock as u8, 1),
     // A steel-lined furnace: the only place the alloy recipes will smelt.
     (Block::Furnace as u8, 1, 195, 5, Block::BlastFurnace as u8, 1),
-    // Blessings: quicksilver charms. Previously unobtainable outside the creative catalog.
-    (194, 2, 193, 1, 160, 1), // quicksilver + silver -> Blessing of Swiftness
-    (194, 2, 154, 4, 161, 1), // quicksilver + iron   -> Blessing of the Warrior
-    (194, 2, 156, 2, 162, 1), // quicksilver + emerald-> Blessing of the Deep
+    // Blessings: quicksilver charms bound to a thematic offering. Attuning one grants a permanent
+    // passive (see blessing.rs), so the ingredient cost tracks roughly how strong the passive is.
+    (194, 2, 193, 1, 160, 1),  // silver          -> Clement, swift of foot
+    (194, 2, 154, 4, 161, 1),  // iron            -> Ares, might
+    (194, 2, 156, 2, 162, 1),  // emerald         -> Yamm, the deep
+    (194, 2, 195, 3, 203, 1),  // steel           -> Daedalus, tools never wear
+    (194, 2, 189, 4, 204, 1),  // fireworks       -> Icarus, no fall damage
+    (194, 2, 192, 6, 205, 1),  // sulfur          -> Yama, immune to fire
+    (194, 2, Block::Obsidian as u8, 4, 206, 1),   // Talos, crushing blows
+    (194, 2, 187, 1, 207, 1),  // nether star     -> the God King, smite the undead
+    (194, 2, 138, 8, 208, 1),  // gunpowder       -> Arachnae, bane of horrors
+    (194, 2, 196, 2, 209, 1),  // adamant         -> Prometheus, armor never wears
+    (194, 2, 155, 3, 210, 1),  // diamond         -> Lu Ban, mending
+    (194, 2, Block::EmeraldBlock as u8, 1, 211, 1), // Eros, fortune
+    (194, 2, 191, 3, 212, 1),  // ender pearls    -> Will, reach
+    (194, 2, Block::Glowstone as u8, 4, 213, 1),  // Hyacinthus, second jump
+    (194, 2, Block::Purpur as u8, 6, 214, 1),     // Aeolus, wind burst
+    (194, 2, Block::Sculk as u8, 8, 215, 1),      // Cronus, swift sneak
+    (194, 2, Block::BlueIce as u8, 4, 216, 1),    // Demeter, frost walker
+    (194, 2, Block::SeaLantern as u8, 4, 217, 1), // Glaucus, sea luck
+    (194, 2, Block::Amethyst as u8, 6, 218, 1),   // Apollo, marksman
+    (194, 2, 190, 16, 219, 1), // snowballs       -> Artemis, multishot
+    (194, 2, Block::WardingStone as u8, 2, 220, 1), // Warding, thorns
+    (194, 2, Block::DiamondBlock as u8, 1, 221, 1), // Paris, infinity
 ];
 
 // Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
@@ -302,6 +322,13 @@ impl Inventory {
     pub fn damage_armor(&mut self) {
         for s in self.armor.iter_mut() { if s.id != 0 { s.count -= 1; if s.count <= 0 { *s = InvSlot::default(); } } }
     }
+    // Lu Ban: restore a single point of durability to the most worn piece of gear carried or worn.
+    pub fn mend_one(&mut self) {
+        let worst = self.slots.iter_mut().chain(self.armor.iter_mut())
+            .filter(|s| s.id != 0 && crate::item::has_durability(s.id) && s.count < crate::item::max_durability(s.id))
+            .min_by_key(|s| s.count);
+        if let Some(s) = worst { s.count += 1; }
+    }
 
     pub fn to_json(&self) -> String { serde_json::to_string(self).unwrap_or_else(|_| r#"{"selected":0,"slots":[]}"#.to_string()) }
 }
@@ -348,8 +375,18 @@ mod tests {
         let steel = SMELTING.iter().find(|s| s.out == 195).expect("steel must be smeltable");
         let adamant = SMELTING.iter().find(|s| s.out == 196).expect("adamant must be smeltable");
         assert!(steel.blast && adamant.blast, "the alloy line must require a blast furnace");
-        for blessing in [160u8, 161, 162] {
-            assert!(RECIPES.iter().any(|r| r.4 == blessing), "blessing {blessing} has no recipe");
+        // Every blessing in the pantheon must be reachable in normal play, not creative-only.
+        for b in crate::blessing::PANTHEON.iter() {
+            assert!(RECIPES.iter().any(|r| r.4 == b.id), "{} has no recipe", b.name);
+        }
+    }
+
+    // Blessings are attuned, not eaten. If one ever regains a food entry it would be consumed for a
+    // short buff instead of being bound.
+    #[test]
+    fn blessings_are_not_edible() {
+        for b in crate::blessing::PANTHEON.iter() {
+            assert!(crate::item::food_effects(b.id).is_none(), "{} must not be food", b.name);
         }
     }
 

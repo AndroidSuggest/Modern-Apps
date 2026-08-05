@@ -36,12 +36,15 @@ import kotlin.math.roundToInt
 private data class DragState(val from: Int, val pos: Offset, val id: Int, val count: Int)
 
 @Composable
-fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> Unit, startTab: Int = 0) {
+fun InventoryOverlay(
+    inventoryJson: String, recipesJson: String, blessingsJson: String, blessingCatalogJson: String,
+    onClose: () -> Unit, startTab: Int = 0,
+) {
     val inv = remember(inventoryJson) {
         try { Json { ignoreUnknownKeys = true }.decodeFromString<InventoryState>(inventoryJson) } catch (_: Exception) { InventoryState() }
     }
     val slots = inv.slots
-    var leftTab by remember { mutableStateOf(startTab) }   // 0 Inventory, 1 Outfit, 2 Crafting
+    var leftTab by remember { mutableStateOf(startTab) }   // 0 Inventory, 1 Outfit, 2 Crafting, 3 Blessings
     var catTab by remember { mutableStateOf(0) }
     val bounds = remember { mutableStateMapOf<Int, Rect>() }
     var drag by remember { mutableStateOf<DragState?>(null) }
@@ -61,6 +64,7 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
             // Left tabs (top→bottom: Crafting, Outfit, Inventory).
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TabButton(stringResource(R.string.crafting), leftTab == 2) { leftTab = 2 }
+                TabButton(stringResource(R.string.blessings), leftTab == 3) { leftTab = 3 }
                 TabButton(stringResource(R.string.outfit), leftTab == 1) { leftTab = 1 }
                 TabButton(stringResource(R.string.inventory), leftTab == 0) { leftTab = 0 }
                 Spacer(Modifier.weight(1f))
@@ -82,6 +86,7 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
                             drag = null
                         }, onDragCancel = { drag = null })
                     1 -> OutfitView(inv.armor)
+                    3 -> BlessingsView(blessingsJson, blessingCatalogJson, slots)
                     else -> CraftingTable(recipesJson)
                 }
             }
@@ -94,11 +99,12 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
                     TabButton("Ocean", catTab == 3) { catTab = 3 }
                     TabButton("Items", catTab == 4) { catTab = 4 }
                     TabButton("Gear", catTab == 6) { catTab = 6 }
+                    TabButton(stringResource(R.string.blessings), catTab == 5) { catTab = 5 }
                     TabButton("Music", catTab == 7) { catTab = 7 }
                     TabButton("Build", catTab == 2) { catTab = 2 }
                 }
                 Spacer(Modifier.height(8.dp))
-                val cat = when (catTab) { 0 -> catalogNatural; 1 -> catalogOres; 3 -> catalogOcean; 4 -> catalogItems; 6 -> catalogGear; 7 -> catalogMusic; else -> catalogBuilding }
+                val cat = when (catTab) { 0 -> catalogNatural; 1 -> catalogOres; 3 -> catalogOcean; 4 -> catalogItems; 5 -> catalogBlessings; 6 -> catalogGear; 7 -> catalogMusic; else -> catalogBuilding }
                 CatalogGrid(cat) { id -> try { VoxelsNative.giveBlock(id) } catch (_: Exception) {} }
             }
         }
@@ -273,6 +279,89 @@ private fun CraftingTable(recipesJson: String) {
 }
 
 private data class Recipe(val inId: Int, val inN: Int, val in2Id: Int, val in2N: Int, val outId: Int, val outN: Int)
+
+private data class BlessingInfo(val id: Int, val name: String, val effect: String)
+
+private fun parseBlessings(json: String, key: String?): List<BlessingInfo> = try {
+    val arr = if (key != null) org.json.JSONObject(json).getJSONArray(key) else org.json.JSONArray(json)
+    (0 until arr.length()).map { i ->
+        val o = arr.getJSONObject(i)
+        BlessingInfo(o.getInt("id"), o.optString("name"), o.optString("effect"))
+    }
+} catch (_: Exception) { emptyList() }
+
+/**
+ * Blessings are permanent attunements rather than consumables: bind a charm from the inventory to
+ * one of the slots, or release a slot to get the charm back.
+ */
+@Composable
+private fun BlessingsView(blessingsJson: String, catalogJson: String, slots: List<InvSlot>) {
+    val attuned = remember(blessingsJson) { parseBlessings(blessingsJson, "slots") }
+    val catalog = remember(catalogJson) { parseBlessings(catalogJson, null) }
+    // Charms sitting in the inventory that aren't bound yet.
+    val held = remember(slots, attuned) {
+        val boundIds = attuned.map { it.id }.toSet()
+        slots.withIndex()
+            .filter { (_, s) -> s.id != 0 && catalog.any { it.id == s.id } && s.id !in boundIds }
+            .map { (i, s) -> i to s.id }
+    }
+
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.width(260.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.attuned), color = Color.White.copy(0.6f), fontSize = 12.sp)
+            attuned.forEachIndexed { i, b ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                        .background(if (b.id != 0) Color(0xFF3A5A6B) else Color.White.copy(0.06f))
+                        .clickable(enabled = b.id != 0) {
+                            try { VoxelsNative.releaseBlessing(i) } catch (_: Exception) {}
+                        }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val icon = if (b.id != 0) rememberBlockIcon(b.id) else null
+                    Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                        if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(30.dp), filterQuality = FilterQuality.None)
+                    }
+                    Column {
+                        Text(
+                            if (b.id != 0) b.name else stringResource(R.string.empty_slot),
+                            color = Color.White.copy(if (b.id != 0) 0.95f else 0.45f), fontSize = 12.sp
+                        )
+                        if (b.id != 0) Text(b.effect, color = Color.White.copy(0.6f), fontSize = 10.sp)
+                    }
+                }
+            }
+            Text(stringResource(R.string.blessing_tap_hint), color = Color.White.copy(0.5f), fontSize = 10.sp)
+        }
+
+        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.charms_held), color = Color.White.copy(0.6f), fontSize = 12.sp)
+            if (held.isEmpty()) {
+                Text(stringResource(R.string.no_charms), color = Color.White.copy(0.45f), fontSize = 11.sp)
+            }
+            held.forEach { (invIdx, id) ->
+                val info = catalog.firstOrNull { it.id == id } ?: return@forEach
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                        .background(Color.White.copy(0.08f))
+                        .clickable { try { VoxelsNative.attuneBlessing(invIdx) } catch (_: Exception) {} }
+                        .padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val icon = rememberBlockIcon(id)
+                    if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(26.dp), filterQuality = FilterQuality.None)
+                    Column {
+                        Text(info.name, color = Color.White.copy(0.95f), fontSize = 12.sp)
+                        Text(info.effect, color = Color.White.copy(0.6f), fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun OutfitView(armor: List<InvSlot>) {

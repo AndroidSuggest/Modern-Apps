@@ -93,11 +93,6 @@ pub fn food_effects(id: u8) -> Option<&'static [(Effect, f32, u8)]> {
         151 => &[(Regeneration, 4.0, 0), (Speed, 20.0, 0)],                // apple empanada
         152 => &[(Regeneration, 4.0, 0), (NightVision, 90.0, 0)],          // glow berry crumble
         153 => &[(Regeneration, 3.0, 0), (Haste, 60.0, 0)],                // chocolate chip cookie
-        // Blessings: charm consumables granting long multi-effect buffs (Matcha's enchant bundles,
-        // reimagined for a game without gear).
-        160 => &[(Speed, 300.0, 1), (JumpBoost, 300.0, 0)],                // Blessing of Swiftness
-        161 => &[(Strength, 300.0, 1), (Resistance, 300.0, 0)],            // Blessing of the Warrior
-        162 => &[(NightVision, 300.0, 0), (FireResistance, 300.0, 0)],     // Blessing of the Deep
         _ => return None,
     })
 }

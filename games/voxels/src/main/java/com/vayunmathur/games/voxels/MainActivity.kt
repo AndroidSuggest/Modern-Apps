@@ -53,6 +53,8 @@ class MainActivity : ComponentActivity() {
                 val activity = LocalContext.current as? android.app.Activity
                 var invStartTab by remember { mutableStateOf(0) }
                 var recipesJson by remember { mutableStateOf("[]") }
+                var blessingsJson by remember { mutableStateOf("""{"slots":[]}""") }
+                var blessingCatalogJson by remember { mutableStateOf("[]") }
                 var smeltingJson by remember { mutableStateOf("[]") }
                 var smeltJson by remember { mutableStateOf("{}") }
                 var containerJson by remember { mutableStateOf("""{"slots":[]}""") }
@@ -61,7 +63,7 @@ class MainActivity : ComponentActivity() {
                 var chestOpen by remember { mutableStateOf(false) }
                 var tradesJson by remember { mutableStateOf("[]") }
                 var tradeOpen by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson(); smeltingJson = VoxelsNative.getSmeltingJson() } catch (_: Exception) {} }
+                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson() } catch (_: Exception) {} }
                 var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
                 val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
                                 debugJson = VoxelsNative.getDebugJson()
                                 if (furnaceOpen) smeltJson = VoxelsNative.getSmeltJson()
                                 if (chestOpen) containerJson = VoxelsNative.getContainerJson()
+                                if (inventoryOpen) blessingsJson = VoxelsNative.getBlessingsJson()
                                 try {
                                     healthJson = VoxelsNative.getHealthJson()
                                     val hp = org.json.JSONObject(healthJson).optDouble("hp", prevHp.toDouble()).toFloat()
@@ -117,6 +120,8 @@ class MainActivity : ComponentActivity() {
                                         if (obj.optInt("beacon", 0) >= 4) mgr.onAchievementUnlocked("beacon_master")
                                         if (obj.optBoolean("elytra", false)) mgr.onAchievementUnlocked("sky_bound")
                                         if (obj.optBoolean("maxHearts", false)) mgr.onAchievementUnlocked("heart_of_gold")
+                                        if (obj.optInt("attuned", 0) > 0) mgr.onAchievementUnlocked("attuned")
+                                        if (obj.optInt("attuned", 0) >= 3) mgr.onAchievementUnlocked("pantheon")
                                     }
                                 } catch (_: Exception) {}
                             } catch (_: Exception) {}
@@ -256,7 +261,11 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (inventoryOpen && VoxelsNative.isAvailable) {
-                        InventoryOverlay(inventoryJson = inventoryJson, recipesJson = recipesJson, onClose = { inventoryOpen = false }, startTab = invStartTab)
+                        InventoryOverlay(
+                            inventoryJson = inventoryJson, recipesJson = recipesJson,
+                            blessingsJson = blessingsJson, blessingCatalogJson = blessingCatalogJson,
+                            onClose = { inventoryOpen = false }, startTab = invStartTab
+                        )
                     }
 
                     if (tradeOpen && VoxelsNative.isAvailable) {
