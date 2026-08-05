@@ -28,6 +28,17 @@ open class LevelStatsRepository(context: Context, prefsName: String = "level_sta
         }
     }
 
+    /**
+     * Drops every level not in [levelIds]. Used by stores that only ever hold one day's levels, so
+     * the map does not grow without bound.
+     */
+    fun retainOnly(levelIds: Set<String>) {
+        val allStats = getLevelStats()
+        val kept = allStats.filterKeys { it in levelIds }
+        if (kept.size == allStats.size) return
+        prefs.edit { putString(levelStatsKey, Json.encodeToString(kept)) }
+    }
+
     protected fun incrementCounter(key: String) {
         prefs.edit { putInt(key, prefs.getInt(key, 0) + 1) }
     }
