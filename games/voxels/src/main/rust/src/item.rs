@@ -93,9 +93,27 @@ pub fn food_effects(id: u8) -> Option<&'static [(Effect, f32, u8)]> {
         151 => &[(Regeneration, 4.0, 0), (Speed, 20.0, 0)],                // apple empanada
         152 => &[(Regeneration, 4.0, 0), (NightVision, 90.0, 0)],          // glow berry crumble
         153 => &[(Regeneration, 3.0, 0), (Haste, 60.0, 0)],                // chocolate chip cookie
+        // Matcha's kitchen: cooked meat is the survival staple, and each dish above it trades more
+        // ingredients for a longer, more specialised buff.
+        223 => &[(Regeneration, 6.0, 0)],                                   // cooked meat
+        224 => &[(Regeneration, 5.0, 0), (Speed, 60.0, 0)],                 // ramen
+        225 => &[(Regeneration, 6.0, 1), (Strength, 90.0, 0)],              // japanese curry
+        226 => &[(Regeneration, 5.0, 0), (Haste, 90.0, 0)],                 // green curry
+        227 => &[(Regeneration, 5.0, 0), (Resistance, 60.0, 0)],            // gnocchi
+        228 => &[(Regeneration, 6.0, 0)],                                   // naan
+        229 => &[(Regeneration, 5.0, 0), (Absorption, 120.0, 0)],           // pupusa
+        230 => &[(Regeneration, 5.0, 0), (FireResistance, 60.0, 0)],        // latke
+        231 => &[(Regeneration, 4.0, 0), (Speed, 45.0, 0)],                 // bruschetta
+        232 => &[(Regeneration, 5.0, 0), (JumpBoost, 60.0, 0)],             // french toast
+        233 => &[(Regeneration, 5.0, 0), (NightVision, 120.0, 0)],          // sweet berry danish
+        234 => &[(Regeneration, 4.0, 0), (Speed, 60.0, 0), (Haste, 60.0, 0)], // melon sorbet
+        235 => &[(Regeneration, 8.0, 2), (Strength, 120.0, 0), (Resistance, 60.0, 0)], // stroganoff
         _ => return None,
     })
 }
+
+/// Raw meat has to be cooked before it does anything; eating it is not an option.
+pub fn is_raw(id: u8) -> bool { id == 222 }
 
 #[cfg(test)]
 mod tests {
@@ -132,6 +150,36 @@ mod tests {
     }
 
     // Adamant is the top tier: it must beat diamond everywhere it competes.
+    // Every dish must be reachable: craftable, smeltable, dropped by a mob or found in a chest.
+    // A food with no source is dead content.
+    #[test]
+    fn every_food_is_obtainable() {
+        use crate::inventory::{RECIPES, SMELTING};
+        let mut missing = Vec::new();
+        for id in 0..=255u8 {
+            if food_effects(id).is_none() { continue; }
+            let crafted = RECIPES.iter().any(|r| r.4 == id);
+            let smelted = SMELTING.iter().any(|s| s.out == id);
+            let dropped = crate::entity::MobKind::ALL.iter().any(|k| k.loot().contains(&id));
+            let traded = crate::inventory::TRADES.iter().any(|t| t.2 == id);
+            let foraged = id == 130; // apples fall out of leaves
+            let looted = (0..40).any(|i| {
+                crate::container::roll_loot(i * 7, 40, i * 13, i as u8 % 3, false)
+                    .iter().any(|s| s.id == id)
+            });
+            if !(crafted || smelted || dropped || looted || traded || foraged) { missing.push(id); }
+        }
+        assert!(missing.is_empty(), "these foods have no source: {missing:?}");
+    }
+
+    // Raw meat is a cooking input, not a snack.
+    #[test]
+    fn raw_meat_is_not_edible() {
+        assert!(is_raw(222));
+        assert!(food_effects(222).is_none(), "raw meat must be cooked first");
+        assert!(food_effects(223).is_some(), "cooked meat must feed you");
+    }
+
     #[test]
     fn adamant_outclasses_diamond() {
         assert!(sword_damage(198) > sword_damage(170));

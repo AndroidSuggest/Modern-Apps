@@ -24,7 +24,7 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 62] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 76] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -87,6 +87,21 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 62] = [
     (194, 2, 190, 16, 219, 1), // snowballs       -> Artemis, multishot
     (194, 2, Block::WardingStone as u8, 2, 220, 1), // Warding, thorns
     (194, 2, Block::DiamondBlock as u8, 1, 221, 1), // Paris, infinity
+    // --- Matcha's kitchen. Cooked meat is the base ingredient; everything else builds on it. ---
+    (223, 1, 131, 1, 224, 1),  // cooked meat + bread          -> ramen
+    (223, 2, 135, 2, 225, 1),  // cooked meat + carrot         -> japanese curry
+    (132, 2, 135, 2, 226, 1),  // cooked fish + carrot         -> green curry
+    (146, 2, 131, 1, 227, 1),  // baked potato + bread         -> gnocchi
+    (131, 2, 0, 0, 228, 2),    // bread                        -> naan
+    (131, 1, 223, 2, 229, 1),  // bread + cooked meat          -> pupusa
+    (146, 3, 0, 0, 230, 1),    // baked potato                 -> latke
+    (131, 1, 130, 2, 231, 1),  // bread + apple                -> bruschetta
+    (131, 1, 149, 1, 232, 1),  // bread + fried egg            -> french toast
+    (131, 1, 152, 1, 233, 1),  // bread + glow berry crumble   -> sweet berry danish
+    (136, 2, Block::Snow as u8, 2, 234, 1), // melon + snow    -> melon sorbet
+    (223, 3, 131, 1, 235, 1),  // cooked meat + bread          -> stroganoff
+    (130, 2, 131, 1, 151, 1),  // apple + bread                -> apple empanada
+    (130, 1, Block::Glowstone as u8, 1, 152, 1), // apple + glowstone -> glow berry crumble
 ];
 
 // Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
@@ -102,7 +117,7 @@ pub struct Smelt {
 const fn smelt(in1: u8, n1: i32, in2: u8, n2: i32, out: u8, out_n: i32, secs: f32, blast: bool) -> Smelt {
     Smelt { in1, n1, in2, n2, out, out_n, secs, blast }
 }
-pub const SMELTING: [Smelt; 13] = [
+pub const SMELTING: [Smelt; 15] = [
     smelt(Block::CoalOre as u8,     1, 0, 0, 157, 1,  6.0, false), // coal
     smelt(Block::IronOre as u8,     1, 0, 0, 154, 1,  8.0, false), // iron ingot
     smelt(Block::DiamondOre as u8,  1, 0, 0, 155, 1, 10.0, false),
@@ -112,6 +127,8 @@ pub const SMELTING: [Smelt; 13] = [
     smelt(Block::Sand as u8,        2, 0, 0, Block::Glass as u8,  1, 5.0, false),
     smelt(Block::Cobble as u8,      4, 0, 0, Block::Stone as u8,  1, 5.0, false),
     smelt(Block::Clay as u8,        4, 0, 0, Block::Brick as u8,  1, 6.0, false),
+    smelt(222, 1, 0, 0, 223, 1, 6.0, false), // raw meat -> cooked meat
+    smelt(131, 1, 0, 0, 147, 3, 5.0, false), // bread -> cookies (baking)
     // Blast furnace only: the alloy line.
     smelt(Block::SulfurOre as u8,   1, 0, 0, 192, 2,  5.0, true),  // sulfur
     smelt(Block::CinnabarOre as u8, 1, 0, 0, 194, 1,  7.0, true),  // quicksilver
@@ -135,7 +152,7 @@ pub fn fuel_secs(id: u8) -> f32 {
 const DEDICATED_FUELS: [u8; 3] = [157, 84, 192];
 
 // Villager trades: (cost_id, cost_count, give_id, give_count). Emerald = item 156.
-pub const TRADES: [(u8, i32, u8, i32); 7] = [
+pub const TRADES: [(u8, i32, u8, i32); 16] = [
     (156, 3, 168, 1),  // 3 Emerald -> Iron Sword
     (156, 6, 172, 1),  // 6 Emerald -> Iron Chestplate
     (156, 2, 133, 1),  // 2 Emerald -> Golden Apple
@@ -143,6 +160,16 @@ pub const TRADES: [(u8, i32, u8, i32); 7] = [
     (156, 4, 128, 1),  // 4 Emerald -> Estus Flask
     (157, 12, 156, 1), // 12 Coal -> 1 Emerald
     (137, 6, 156, 2),  // 6 Leather -> 2 Emerald
+    // The village market: produce and prepared dishes the player can't grow or catch themselves.
+    (156, 1, 135, 4),  // 1 Emerald -> 4 Carrots
+    (156, 1, 146, 4),  // 1 Emerald -> 4 Baked Potatoes
+    (156, 1, 136, 3),  // 1 Emerald -> 3 Melon Slices
+    (156, 2, 132, 4),  // 2 Emerald -> 4 Cooked Fish
+    (156, 2, 148, 4),  // 2 Emerald -> 4 Cooked Salmon
+    (156, 2, 150, 3),  // 2 Emerald -> 3 Cooked Rabbit
+    (156, 2, 134, 3),  // 2 Emerald -> 3 Brownies
+    (156, 2, 153, 4),  // 2 Emerald -> 4 Chocolate Chip Cookies
+    (222, 8, 156, 1),  // 8 Raw Meat -> 1 Emerald (a butcher's price)
 ];
 
 impl Default for Inventory {

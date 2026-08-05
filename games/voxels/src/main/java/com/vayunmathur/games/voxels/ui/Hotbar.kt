@@ -89,6 +89,11 @@ val blockNames = mapOf(
     215 to "Blessing of Cronus", 216 to "Blessing of Demeter", 217 to "Blessing of Glaucus",
     218 to "Blessing of Apollo", 219 to "Blessing of Artemis", 220 to "Blessing of Warding",
     221 to "Blessing of Paris",
+    // Matcha's kitchen.
+    222 to "Raw Meat", 223 to "Cooked Meat", 224 to "Ramen", 225 to "Japanese Curry",
+    226 to "Green Curry", 227 to "Gnocchi", 228 to "Naan", 229 to "Pupusa", 230 to "Latke",
+    231 to "Bruschetta", 232 to "French Toast", 233 to "Sweet Berry Danish", 234 to "Melon Sorbet",
+    235 to "Stroganoff",
     163 to "Wood Pickaxe", 164 to "Wood Sword", 165 to "Stone Pickaxe", 166 to "Stone Sword",
     167 to "Iron Pickaxe", 168 to "Iron Sword", 169 to "Diamond Pickaxe", 170 to "Diamond Sword",
     171 to "Iron Helmet", 172 to "Iron Chestplate", 173 to "Iron Leggings", 174 to "Iron Boots",
@@ -145,6 +150,10 @@ val blockIconFile = mapOf(
     215 to "blessing_cronus.png", 216 to "blessing_demeter.png", 217 to "blessing_glaucus.png",
     218 to "blessing_apollo.png", 219 to "blessing_artemis.png", 220 to "blessing_warding.png",
     221 to "blessing_paris.png",
+    222 to "raw_meat.png", 223 to "cooked_meat.png", 224 to "ramen.png", 225 to "japanese_curry.png",
+    226 to "green_curry.png", 227 to "gnocchi.png", 228 to "naan.png", 229 to "pupusa.png",
+    230 to "latke.png", 231 to "bruschetta.png", 232 to "french_toast.png",
+    233 to "sweet_berry_danish.png", 234 to "melon_sorbet.png", 235 to "stroganoff.png",
     163 to "wood_pickaxe.png", 164 to "wood_sword.png", 165 to "stone_pickaxe.png", 166 to "stone_sword.png",
     167 to "iron_pickaxe.png", 168 to "iron_sword.png", 169 to "diamond_pickaxe.png", 170 to "diamond_sword.png",
     171 to "iron_helmet.png", 172 to "iron_chestplate.png", 173 to "iron_leggings.png", 174 to "iron_boots.png",
@@ -169,7 +178,8 @@ val catalogOcean = listOf(61, 62, 63, 64, 65, 66, 67, 68, 69)
 val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
     146, 147, 148, 149, 150, 151, 152, 153,
     154, 155, 156, 157, 158, 159, 187, 189, 190, 191,
-    192, 193, 194, 195, 196)
+    192, 193, 194, 195, 196,
+    222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235)
 val catalogBlessings = listOf(160, 161, 162, 203, 204, 205, 206, 207, 208, 209, 210, 211,
     212, 213, 214, 215, 216, 217, 218, 219, 220, 221)
 val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,

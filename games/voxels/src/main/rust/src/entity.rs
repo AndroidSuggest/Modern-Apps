@@ -11,6 +11,15 @@ const PX: f32 = 1.0 / 16.0; // one skin pixel in blocks
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MobKind { Pig, Cow, Sheep, Chicken, Creeper, Zombie, Villager, Dragon, Wither, Blaze, WitherSkeleton, Shulker, Ghast }
 
+impl MobKind {
+    /// Every kind, for exhaustive checks over loot and spawning.
+    pub const ALL: [MobKind; 13] = [
+        MobKind::Pig, MobKind::Cow, MobKind::Sheep, MobKind::Chicken, MobKind::Creeper,
+        MobKind::Zombie, MobKind::Villager, MobKind::Dragon, MobKind::Wither, MobKind::Blaze,
+        MobKind::WitherSkeleton, MobKind::Shulker, MobKind::Ghast,
+    ];
+}
+
 // A model part: an axis-aligned box textured from the skin.
 struct Part {
     size: [f32; 3], // pixels (w, h, d)
@@ -119,7 +128,8 @@ impl MobKind {
     // Item ids dropped on death (auto-collected into the inventory).
     pub fn loot(self) -> &'static [u8] {
         match self {
-            MobKind::Pig => &[132], MobKind::Cow => &[137, 132], MobKind::Sheep => &[130], MobKind::Chicken => &[135],
+            // Livestock give up raw meat (222); it has to be cooked in a furnace before it feeds you.
+            MobKind::Pig => &[222], MobKind::Cow => &[137, 222], MobKind::Sheep => &[222], MobKind::Chicken => &[222, 149],
             MobKind::Creeper => &[138], MobKind::Zombie => &[131], MobKind::Villager => &[], MobKind::Dragon => &[85, 25, 25],
             MobKind::Wither => &[187, 155, 155],
             MobKind::Blaze => &[157], MobKind::WitherSkeleton => &[157, 154], MobKind::Shulker => &[89, 191],

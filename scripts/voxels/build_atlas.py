@@ -133,12 +133,19 @@ COPY_ICONS = {
         "demeter", "eros", "glaucus", "god_king", "hyacinthus", "icarus", "lu_ban", "paris",
         "prometheus", "talos", "warding", "will", "yama", "yamm",
     )},
+    # Matcha's cooked dishes.
+    "cooked_meat.png": ("item", "porkchop_classic.png"),
+    **{f"{n}.png": ("item", f"{n}.png") for n in (
+        "ramen", "japanese_curry", "green_curry", "gnocchi", "naan", "pupusa", "latke",
+        "bruschetta", "french_toast", "sweet_berry_danish", "melon_sorbet", "stroganoff",
+    )},
 }
 
 # Item-only icons with no atlas tile (items are never placed as blocks). filename -> base rgb.
 PROC_ITEM_ICON = {
     "sulfur.png": (238, 214, 62),
     "steel_ingot.png": (118, 126, 140),
+    "raw_meat.png": (214, 108, 116),  # the pack leaves raw meat vanilla, so make our own
 }
 
 

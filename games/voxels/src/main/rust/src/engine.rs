@@ -1163,6 +1163,12 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             // Stone/ore only drops when mined with a pickaxe; soft blocks always drop.
             let drops = !Block::from_id(id).needs_pickaxe() || item::is_pickaxe(sel);
             state.chunks.set_block_world(x, y, z, 0);
+            // Leaves occasionally give up an apple, the one food you can forage for.
+            if is_leaves(id) {
+                let mut h = (x as u32).wrapping_mul(73856093) ^ (y as u32).wrapping_mul(19349663) ^ (z as u32).wrapping_mul(83492791);
+                h ^= h >> 13;
+                if h % 20 == 0 { state.inventory.add_block(130); }
+            }
             if drops {
                 // Eros doubles what an ore gives up.
                 let n = if state.player.blessed(Passive::Fortune) && is_ore(id) { 2 } else { 1 };
@@ -1308,6 +1314,8 @@ pub fn get_blessing_catalog_json() -> String { crate::blessing::catalog_json() }
 
 // Ore blocks, for the Fortune blessing.
 fn is_ore(id: u8) -> bool { matches!(id, 18..=22 | 90 | 91 | 92) }
+// Leaf blocks, which sometimes drop an apple.
+fn is_leaves(id: u8) -> bool { matches!(id, 5 | 28 | 31 | 48 | 80) }
 
 // Blessings that act over time rather than at a single event: Lu Ban repairs gear a point at a
 // time, Demeter freezes the water the player walks over.
