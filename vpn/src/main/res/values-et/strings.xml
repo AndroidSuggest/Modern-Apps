@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    </resources>
+    <string name="app_name">VPN</string>
+    <string name="vpn_wireguard_gotatun">VPN - WireGuard (gotatun)</string>
+    <string name="no_tunnels_yet">Ühtegi tunnelit veel pole</string>
+    <string name="add_a_connection_by_opening_a_conf_file">Ühenduse lisamiseks ava .conf fail</string>
+    <string name="open_conf_file">Ava .conf fail</string>
+    <string name="privatekey">Privaatvõti: %1$s…</string>
+    <string name="publickey">Avalik võti: %1$s</string>
+    <string name="peer_publickey">Otspunkti avalik võti: %1$s</string>
+    <string name="vpn_channel_name">VPN-tunnel</string>
+</resources>
