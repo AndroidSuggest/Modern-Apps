@@ -328,6 +328,35 @@ mod tests {
         assert_eq!(partial.get_block(1, 1, 1), 5);
     }
 
+    // The whole point of keeping VOX1 and VOX2 readable: `ChunkMap::load_or_gen` treats a decode
+    // failure as "never generated" and rebuilds the chunk from the seed, so a rejected file silently
+    // erases whatever the player built. This drives the real load path against a real file to prove
+    // an old-format world survives the upgrade.
+    #[test]
+    fn a_world_saved_by_the_old_build_still_loads_through_chunk_map() {
+        use super::super::ChunkMap;
+        let dir = std::env::temp_dir().join("voxels_vox2_world_test");
+        let _ = fs::remove_dir_all(&dir);
+        let base = dir.to_string_lossy().into_owned();
+
+        // Hand-build a chunk the way the previous build wrote it, well above sea level so the water
+        // pass can't touch it, and drop it exactly where the loader looks.
+        let pos = ChunkPos(5, -3);
+        let mut original = Chunk::new(pos);
+        original.set_block(2, 200, 3, 42);
+        original.set_block_meta(4, 200, 3, 103, 0b110);
+        fs::create_dir_all(region_dir(&base)).unwrap();
+        fs::write(chunk_file(&base, pos), encode_vox2(&original)).unwrap();
+
+        let mut map = ChunkMap::new(0xB10CCA, base.clone());
+        map.load_or_gen(pos);
+        assert_eq!(map.get_block_world(5 * 16 + 2, 200, -3 * 16 + 3), 42, "the build was regenerated away");
+        assert_eq!(map.get_block_world(5 * 16 + 4, 200, -3 * 16 + 3), 103);
+        assert_eq!(map.get_meta_world(5 * 16 + 4, 200, -3 * 16 + 3), 0b110, "stair facing was lost");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn slabs_and_stairs_survive_a_round_trip() {
         let mut original = Chunk::new(ChunkPos(0, 0));

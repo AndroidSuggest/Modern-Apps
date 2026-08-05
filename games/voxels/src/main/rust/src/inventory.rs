@@ -335,7 +335,9 @@ impl Inventory {
         let Some(&Recipe { in1, n1, in2, n2, out, out_n, .. }) = RECIPES.get(recipe) else { return false; };
         if self.count_of(in1) < n1 { return false; }
         if in2 != 0 && self.count_of(in2) < n2 { return false; }
-        if !crate::item::has_durability(out) && !self.has_room_for(out, out_n) { return false; }
+        // `has_room_for` already knows a tool needs a whole empty slot, so this covers both cases.
+        // Skipping it for durable output would craft a tool into a full inventory and drop it.
+        if !self.has_room_for(out, out_n) { return false; }
         self.remove_count(in1, n1);
         if in2 != 0 { self.remove_count(in2, n2); }
         if crate::item::has_durability(out) { self.add_item_with_count(out, crate::item::max_durability(out)); }
@@ -375,7 +377,7 @@ impl Inventory {
         let give_n = crate::villager::give_count(o);
         if self.count_of(o.cost) < o.cost_n { return false; }
         if o.cost2 != 0 && self.count_of(o.cost2) < o.cost2_n { return false; }
-        if !crate::item::has_durability(o.give) && !self.has_room_for(o.give, give_n) { return false; }
+        if !self.has_room_for(o.give, give_n) { return false; }
         self.remove_count(o.cost, o.cost_n);
         if o.cost2 != 0 { self.remove_count(o.cost2, o.cost2_n); }
         if crate::item::has_durability(o.give) { self.add_item_with_count(o.give, give_n); }
@@ -610,6 +612,44 @@ mod tests {
 
         assert!(!inv.craft(planks, &none), "nowhere to put the planks");
         assert_eq!(inv.count_of(Block::Wood as Id), STACK, "the logs must survive");
+    }
+
+    // A tool needs a whole empty slot. Crafting one into a full inventory used to consume the
+    // ingredients and drop the tool on the floor, because the room check skipped durable output.
+    #[test]
+    fn crafting_a_tool_with_no_empty_slot_is_refused() {
+        let idx = RECIPES.iter().position(|r| r.out == 163).expect("wood pickaxe");
+        let none = vec![false; RECIPES.len()];
+        let mut inv = Inventory::default();
+        // Every slot occupied, but the two ingredients are present in the stacks that fill it.
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as Id, count: STACK }; }
+        inv.slots[0] = InvSlot { id: Block::Planks as Id, count: STACK };
+        inv.slots[1] = InvSlot { id: 159, count: STACK };
+
+        assert!(!inv.craft(idx, &none), "there is nowhere to put a pickaxe");
+        assert_eq!(inv.count_of(Block::Planks as Id), STACK, "the planks must survive");
+        assert_eq!(inv.count_of(159), STACK, "the sticks must survive");
+        assert_eq!(inv.count_of(163), 0);
+
+        // Free one slot and it goes through.
+        inv.slots[5] = InvSlot::default();
+        assert!(inv.craft(idx, &none));
+        assert!(inv.count_of(163) > 0);
+    }
+
+    // Same hazard on the trade path: a forged tool with nowhere to go must not eat the payment.
+    #[test]
+    fn trading_for_a_tool_with_no_empty_slot_is_refused() {
+        use crate::villager::{Offer, EMERALD};
+        let forge = Offer { cost: EMERALD, cost_n: 4, cost2: 154, cost2_n: 2, give: 167, give_n: 1 };
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as Id, count: STACK }; }
+        inv.slots[0] = InvSlot { id: EMERALD, count: STACK };
+        inv.slots[1] = InvSlot { id: 154, count: STACK };
+
+        assert!(!inv.trade_offer(&forge), "nowhere to put the pickaxe");
+        assert_eq!(inv.count_of(EMERALD), STACK, "the emeralds must survive");
+        assert_eq!(inv.count_of(154), STACK);
     }
 
     #[test]
