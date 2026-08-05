@@ -2,6 +2,9 @@ package com.vayunmathur.library.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.Medication
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.DeliveryDining
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Restaurant
@@ -1237,3 +1240,18 @@ fun IconRuler(modifier: Modifier = Modifier, tint: Color = LocalContentColor.cur
 @Composable
 fun IconArea(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.SquareFoot, "Area", modifier, tint)
+
+/** Shield with a cross — health and medical apps. */
+@Composable
+fun IconHealth(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.HealthAndSafety, "Health", modifier, tint)
+
+/** Pill bottle — prescriptions and pharmacy. */
+@Composable
+fun IconMedication(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Medication, "Medication", modifier, tint)
+
+/** Heart on a monitor trace — medical records and vitals. */
+@Composable
+fun IconMonitorHeart(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.MonitorHeart, "Medical records", modifier, tint)
