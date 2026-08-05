@@ -5,6 +5,8 @@
 // of a few permanent slots and grants a passive for the rest of the run. Attunements persist across
 // sessions and can be unbound at any time, which returns the charm.
 
+use crate::world::block::Id;
+
 use serde::{Deserialize, Serialize};
 
 /// How many blessings can be attuned at once.
@@ -43,7 +45,7 @@ pub enum Passive {
 }
 
 pub struct Blessing {
-    pub id: u8,
+    pub id: Id,
     pub passive: Passive,
     /// Icon file in assets/block/, and the name shown in the UI.
     pub icon: &'static str,
@@ -51,7 +53,7 @@ pub struct Blessing {
     pub effect: &'static str,
 }
 
-const fn b(id: u8, passive: Passive, icon: &'static str, name: &'static str, effect: &'static str) -> Blessing {
+const fn b(id: Id, passive: Passive, icon: &'static str, name: &'static str, effect: &'static str) -> Blessing {
     Blessing { id, passive, icon, name, effect }
 }
 
@@ -88,22 +90,22 @@ pub const PANTHEON: [Blessing; 27] = [
     b(249, Passive::WardUndead,    "blessing_anubis.png",      "Blessing of Anubis",       "The undead will not come near you"),
 ];
 
-pub fn is_blessing(id: u8) -> bool { PANTHEON.iter().any(|b| b.id == id) }
-pub fn find(id: u8) -> Option<&'static Blessing> { PANTHEON.iter().find(|b| b.id == id) }
+pub fn is_blessing(id: Id) -> bool { PANTHEON.iter().any(|b| b.id == id) }
+pub fn find(id: Id) -> Option<&'static Blessing> { PANTHEON.iter().find(|b| b.id == id) }
 
 /// The blessings currently bound to the player. Empty slots hold 0.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Attunement {
-    pub slots: [u8; SLOTS],
+    pub slots: [Id; SLOTS],
 }
 
 impl Attunement {
     pub fn has(&self, passive: Passive) -> bool {
         self.slots.iter().any(|&id| find(id).is_some_and(|b| b.passive == passive))
     }
-    pub fn contains(&self, id: u8) -> bool { self.slots.contains(&id) }
+    pub fn contains(&self, id: Id) -> bool { self.slots.contains(&id) }
     /// Bind a charm to the first free slot. Fails if it's already bound or there's no room.
-    pub fn attune(&mut self, id: u8) -> bool {
+    pub fn attune(&mut self, id: Id) -> bool {
         if !is_blessing(id) || self.contains(id) { return false; }
         match self.slots.iter_mut().find(|s| **s == 0) {
             Some(slot) => { *slot = id; true }
@@ -111,7 +113,7 @@ impl Attunement {
         }
     }
     /// Unbind the charm in `slot`, returning it so the caller can hand it back to the player.
-    pub fn release(&mut self, slot: usize) -> Option<u8> {
+    pub fn release(&mut self, slot: usize) -> Option<Id> {
         let id = *self.slots.get(slot)?;
         if id == 0 { return None; }
         self.slots[slot] = 0;

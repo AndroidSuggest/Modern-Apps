@@ -3,6 +3,7 @@
 use glam::Vec3;
 use crate::vulkan::buffers::Vertex;
 use crate::texture_atlas::{ENTITY_ATLAS_W, ENTITY_CELL};
+use crate::world::block::Id;
 
 const ATLAS: f32 = ENTITY_ATLAS_W as f32;
 const CELL: f32 = ENTITY_CELL as f32;
@@ -135,7 +136,7 @@ impl MobKind {
     pub fn hit_radius(self) -> f32 { match self { MobKind::Dragon => 2.2, MobKind::Ghast => 2.0, MobKind::Wither => 1.3, MobKind::Shulker => 0.55, _ => 0.45 } }
     pub fn contact_damage(self) -> f32 { match self { MobKind::Zombie => 4.0, MobKind::Dragon => 7.0, MobKind::Wither => 6.0, MobKind::Blaze | MobKind::WitherSkeleton => 5.0, MobKind::Shulker => 4.0, _ => 0.0 } }
     // Item ids dropped on death (auto-collected into the inventory).
-    pub fn loot(self) -> &'static [u8] {
+    pub fn loot(self) -> &'static [Id] {
         match self {
             // Livestock give up raw meat (222); it has to be cooked in a furnace before it feeds you.
             MobKind::Pig => &[222], MobKind::Cow => &[137, 222], MobKind::Sheep => &[222], MobKind::Chicken => &[222, 149],
@@ -543,7 +544,7 @@ mod tests {
     }
 
     /// A wide platform so a wandering mob can't stroll off it during the test.
-    fn platform(w: &mut ChunkMap, id: u8, meta: u8) {
+    fn platform(w: &mut ChunkMap, id: Id, meta: u8) {
         for x in -6..=6 { for z in -6..=6 { w.set_block_meta_world(x, SKY, z, id, meta); } }
     }
 
@@ -563,7 +564,7 @@ mod tests {
     #[test]
     fn a_mob_rests_on_a_slabs_surface() {
         let mut w = world();
-        platform(&mut w, Block::StoneSlab as u8, 0);
+        platform(&mut w, Block::StoneSlab as Id, 0);
         let m = settle(&w, MobKind::Pig, SKY as f32 + 3.0);
         assert!(m.on_ground, "the pig should have landed");
         assert!((m.pos.y - (SKY as f32 + 0.5)).abs() < 1e-3,
@@ -574,7 +575,7 @@ mod tests {
     #[test]
     fn a_mob_rests_a_whole_block_up_on_cubes() {
         let mut w = world();
-        platform(&mut w, Block::Stone as u8, 0);
+        platform(&mut w, Block::Stone as Id, 0);
         let m = settle(&w, MobKind::Pig, SKY as f32 + 3.0);
         assert!((m.pos.y - (SKY as f32 + 1.0)).abs() < 1e-3, "got {}", m.pos.y);
     }
@@ -583,7 +584,7 @@ mod tests {
     #[test]
     fn a_mob_stands_on_top_of_a_top_slab() {
         let mut w = world();
-        platform(&mut w, Block::StoneSlab as u8, crate::world::block::META_TOP);
+        platform(&mut w, Block::StoneSlab as Id, crate::world::block::META_TOP);
         let m = settle(&w, MobKind::Pig, SKY as f32 + 3.0);
         assert!((m.pos.y - (SKY as f32 + 1.0)).abs() < 1e-3, "got {}", m.pos.y);
     }
@@ -593,8 +594,8 @@ mod tests {
     fn a_mob_steps_up_onto_a_slab() {
         let mut w = world();
         // A long floor so the chase never runs off the end, with a slab ledge across the path.
-        for x in -3..=3 { for z in -20..=3 { w.set_block_world(x, SKY, z, Block::Stone as u8); } }
-        for x in -3..=3 { w.set_block_meta_world(x, SKY + 1, -3, Block::StoneSlab as u8, 0); }
+        for x in -3..=3 { for z in -20..=3 { w.set_block_world(x, SKY, z, Block::Stone as Id); } }
+        for x in -3..=3 { w.set_block_meta_world(x, SKY + 1, -3, Block::StoneSlab as Id, 0); }
 
         let terrain = Terrain {
             solid: &|x, y, z| w.solid_at(x, y, z),
@@ -675,7 +676,7 @@ mod tests {
     #[test]
     fn a_warded_mob_backs_off() {
         let mut w = world();
-        for x in -6..=6 { for z in -6..=20 { w.set_block_world(x, SKY, z, Block::Stone as u8); } }
+        for x in -6..=6 { for z in -6..=20 { w.set_block_world(x, SKY, z, Block::Stone as Id); } }
         let terrain = Terrain {
             solid: &|x, y, z| w.solid_at(x, y, z),
             surface: &|x, z, ceiling| w.surface_below(x, z, ceiling, 2),

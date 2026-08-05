@@ -356,8 +356,9 @@ impl Player {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::block::Id;
 
-    fn blessed_player(ids: &[u8]) -> Player {
+    fn blessed_player(ids: &[Id]) -> Player {
         let mut p = Player::new(0.0, 64.0, 0.0);
         for &id in ids { assert!(p.blessings.attune(id), "could not attune {id}"); }
         p
@@ -429,7 +430,7 @@ mod tests {
     #[test]
     fn a_bottom_slab_only_fills_the_lower_half() {
         let mut w = world();
-        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as u8, 0);
+        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as Id, 0);
         let p = Player::new(0.5, 0.0, 0.5);
 
         assert!(!p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.5), &w), "resting on the slab's surface is clear");
@@ -443,12 +444,12 @@ mod tests {
         let feet = vec3(0.5, SKY as f32 - 0.3, 0.5); // head lands exactly at the slab's underside
 
         let mut with_slab = world();
-        with_slab.set_block_meta_world(0, SKY + 1, 0, Block::StoneSlab as u8, crate::world::block::META_TOP);
+        with_slab.set_block_meta_world(0, SKY + 1, 0, Block::StoneSlab as Id, crate::world::block::META_TOP);
         let p = Player::new(0.5, 0.0, 0.5);
         assert!(!p.collides_at(feet, &with_slab), "a top slab leaves its lower half open");
 
         let mut with_cube = world();
-        with_cube.set_block_world(0, SKY + 1, 0, Block::Stone as u8);
+        with_cube.set_block_world(0, SKY + 1, 0, Block::Stone as Id);
         assert!(p.collides_at(feet, &with_cube), "a full cube in the same cell would block");
     }
 
@@ -456,7 +457,7 @@ mod tests {
     #[test]
     fn stairs_are_open_over_their_low_half() {
         let mut w = world();
-        w.set_block_meta_world(0, SKY, 0, Block::StoneStairs as u8, crate::world::block::FACE_NORTH);
+        w.set_block_meta_world(0, SKY, 0, Block::StoneStairs as Id, crate::world::block::FACE_NORTH);
         let p = Player::new(0.0, 0.0, 0.0);
         // The low half is -Z. The player is 0.6 wide, so their box has to sit well into it.
         assert!(!p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.2), &w), "standing on the tread is clear");
@@ -474,7 +475,7 @@ mod tests {
     #[test]
     fn you_come_to_rest_on_a_slabs_surface() {
         let mut w = world();
-        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as u8, 0);
+        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as Id, 0);
         let mut p = Player::new(0.5, SKY as f32 + 3.0, 0.5);
         let input = crate::input::InputState::default();
         for _ in 0..120 { p.tick(1.0 / 60.0, &input, &w); }
@@ -489,7 +490,7 @@ mod tests {
     #[test]
     fn a_full_block_still_holds_you_a_whole_block_up() {
         let mut w = world();
-        w.set_block_world(0, SKY, 0, Block::Stone as u8);
+        w.set_block_world(0, SKY, 0, Block::Stone as Id);
         let mut p = Player::new(0.5, SKY as f32 + 3.0, 0.5);
         let input = crate::input::InputState::default();
         for _ in 0..120 { p.tick(1.0 / 60.0, &input, &w); }
@@ -498,7 +499,7 @@ mod tests {
 
     /// A long floor to walk along, so a test never runs off the end of the world.
     fn floor(w: &mut ChunkMap, from_z: i32, to_z: i32, cell_y: i32) {
-        for z in from_z..=to_z { w.set_block_world(0, cell_y, z, Block::Stone as u8); }
+        for z in from_z..=to_z { w.set_block_world(0, cell_y, z, Block::Stone as Id); }
     }
 
     // Walking into a slab should climb it, and land on its surface rather than the step allowance.
@@ -506,7 +507,7 @@ mod tests {
     fn you_walk_up_onto_a_slab() {
         let mut w = world();
         floor(&mut w, -20, 1, SKY);
-        for z in -20..=-2 { w.set_block_meta_world(0, SKY + 1, z, Block::StoneSlab as u8, 0); }
+        for z in -20..=-2 { w.set_block_meta_world(0, SKY + 1, z, Block::StoneSlab as Id, 0); }
 
         let mut p = Player::new(0.5, SKY as f32 + 1.0, 0.5);
         p.yaw = 0.0; // facing -Z
@@ -528,12 +529,12 @@ mod tests {
         const STEPS: i32 = 6;
         for i in 0..STEPS {
             let z = -2 - i;
-            for c in 1..=i { w.set_block_world(0, SKY + c, z, Block::Stone as u8); }
-            w.set_block_meta_world(0, SKY + 1 + i, z, Block::StoneStairs as u8, FACE_SOUTH);
+            for c in 1..=i { w.set_block_world(0, SKY + c, z, Block::Stone as Id); }
+            w.set_block_meta_world(0, SKY + 1 + i, z, Block::StoneStairs as Id, FACE_SOUTH);
         }
         // A landing at the top so the climb has somewhere to finish.
         for z in -20..=-(2 + STEPS) {
-            for c in 1..=STEPS { w.set_block_world(0, SKY + c, z, Block::Stone as u8); }
+            for c in 1..=STEPS { w.set_block_world(0, SKY + c, z, Block::Stone as Id); }
         }
 
         let mut p = Player::new(0.5, SKY as f32 + 1.0, 0.5);
@@ -549,7 +550,7 @@ mod tests {
     fn a_full_block_still_blocks_you() {
         let mut w = world();
         floor(&mut w, -20, 1, SKY);
-        w.set_block_world(0, SKY + 1, -2, Block::Stone as u8);
+        w.set_block_world(0, SKY + 1, -2, Block::Stone as Id);
 
         let mut p = Player::new(0.5, SKY as f32 + 1.0, 0.5);
         p.yaw = 0.0;
@@ -562,7 +563,7 @@ mod tests {
     #[test]
     fn sneaking_wont_walk_off_a_slab_ledge() {
         let mut w = world();
-        for z in -20..=1 { w.set_block_meta_world(0, SKY, z, Block::StoneSlab as u8, 0); }
+        for z in -20..=1 { w.set_block_meta_world(0, SKY, z, Block::StoneSlab as Id, 0); }
         let p = Player::new(0.5, SKY as f32 + 0.5, 0.5);
 
         // Over the slab: supported.

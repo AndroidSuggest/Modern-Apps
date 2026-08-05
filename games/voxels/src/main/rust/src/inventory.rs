@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
-use crate::world::block::Block;
+use crate::world::block::{Block, Id};
 
 pub const SLOTS: usize = 36;   // 0..9 = hotbar, 9..36 = main inventory
 pub const HOTBAR: usize = 9;
 pub const STACK: i32 = 64;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct InvSlot { pub id: u8, pub count: i32 }
+pub struct InvSlot { pub id: Id, pub count: i32 }
 impl Default for InvSlot { fn default() -> Self { Self { id: 0, count: 0 } } }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,32 +24,32 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 96] = [
+pub const RECIPES: [(Id, i32, Id, i32, Id, i32); 96] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (154, 2, 0, 0, 252, 1),   // iron            -> shears
     (159, 3, 137, 2, 253, 1), // sticks + leather -> fishing rod
     (159, 1, 236, 1, 255, 1), // stick + copper   -> archaeologist's brush
     (251, 3, 0, 0, 131, 1),   // wheat            -> bread
-    (Block::HayBlock as u8, 1, 0, 0, 250, 4), // hay bale -> wheat seeds
-    (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
+    (Block::HayBlock as Id, 1, 0, 0, 250, 4), // hay bale -> wheat seeds
+    (187, 1, Block::Glass as Id, 5, Block::Beacon as Id, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
-    (Block::Snow as u8, 1, 0, 0, 190, 4), // snow -> snowballs
-    (Block::Wood as u8,      1, 0, 0, Block::Planks as u8,      4),
-    (Block::BirchLog as u8,  1, 0, 0, Block::BirchPlanks as u8, 4),
-    (Block::SpruceLog as u8, 1, 0, 0, Block::SprucePlanks as u8,4),
-    (Block::Planks as u8,    4, 0, 0, Block::CraftingTable as u8, 1),
-    (Block::Cobble as u8,    8, 0, 0, Block::Furnace as u8,     1),
-    (Block::Diorite as u8,   4, 0, 0, Block::PolishedDiorite as u8, 4),
-    (Block::Planks as u8,    2, 0, 0, 159 /*Stick*/,            4),
+    (Block::Snow as Id, 1, 0, 0, 190, 4), // snow -> snowballs
+    (Block::Wood as Id,      1, 0, 0, Block::Planks as Id,      4),
+    (Block::BirchLog as Id,  1, 0, 0, Block::BirchPlanks as Id, 4),
+    (Block::SpruceLog as Id, 1, 0, 0, Block::SprucePlanks as Id,4),
+    (Block::Planks as Id,    4, 0, 0, Block::CraftingTable as Id, 1),
+    (Block::Cobble as Id,    8, 0, 0, Block::Furnace as Id,     1),
+    (Block::Diorite as Id,   4, 0, 0, Block::PolishedDiorite as Id, 4),
+    (Block::Planks as Id,    2, 0, 0, 159 /*Stick*/,            4),
     // Material -> block.
-    (154, 9, 0, 0, Block::IronBlock as u8,    1),
-    (155, 9, 0, 0, Block::DiamondBlock as u8, 1),
-    (156, 9, 0, 0, Block::EmeraldBlock as u8, 1),
+    (154, 9, 0, 0, Block::IronBlock as Id,    1),
+    (155, 9, 0, 0, Block::DiamondBlock as Id, 1),
+    (156, 9, 0, 0, Block::EmeraldBlock as Id, 1),
     // Tools: material + stick(159).
-    (Block::Planks as u8, 3, 159, 2, 163, 1), // wood pickaxe
-    (Block::Planks as u8, 2, 159, 1, 164, 1), // wood sword
-    (Block::Cobble as u8, 3, 159, 2, 165, 1), // stone pickaxe
-    (Block::Cobble as u8, 2, 159, 1, 166, 1), // stone sword
+    (Block::Planks as Id, 3, 159, 2, 163, 1), // wood pickaxe
+    (Block::Planks as Id, 2, 159, 1, 164, 1), // wood sword
+    (Block::Cobble as Id, 3, 159, 2, 165, 1), // stone pickaxe
+    (Block::Cobble as Id, 2, 159, 1, 166, 1), // stone sword
     (154, 3, 159, 2, 167, 1),                 // iron pickaxe
     (154, 2, 159, 1, 168, 1),                 // iron sword
     (155, 3, 159, 2, 169, 1),                 // diamond pickaxe
@@ -63,11 +63,11 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 96] = [
     (196, 2, 159, 1, 198, 1), // adamant sword
     (196, 5, 0, 0, 199, 1), (196, 8, 0, 0, 200, 1), (196, 7, 0, 0, 201, 1), (196, 4, 0, 0, 202, 1),
     // Metal storage blocks (silver/steel/adamant also power beacons).
-    (193, 9, 0, 0, Block::SilverBlock as u8,  1),
-    (195, 9, 0, 0, Block::SteelBlock as u8,   1),
-    (196, 9, 0, 0, Block::AdamantBlock as u8, 1),
+    (193, 9, 0, 0, Block::SilverBlock as Id,  1),
+    (195, 9, 0, 0, Block::SteelBlock as Id,   1),
+    (196, 9, 0, 0, Block::AdamantBlock as Id, 1),
     // A steel-lined furnace: the only place the alloy recipes will smelt.
-    (Block::Furnace as u8, 1, 195, 5, Block::BlastFurnace as u8, 1),
+    (Block::Furnace as Id, 1, 195, 5, Block::BlastFurnace as Id, 1),
     // Blessings: quicksilver charms bound to a thematic offering. Attuning one grants a permanent
     // passive (see blessing.rs), so the ingredient cost tracks roughly how strong the passive is.
     (194, 2, 193, 1, 160, 1),  // silver          -> Clement, swift of foot
@@ -76,28 +76,28 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 96] = [
     (194, 2, 195, 3, 203, 1),  // steel           -> Daedalus, tools never wear
     (194, 2, 189, 4, 204, 1),  // fireworks       -> Icarus, no fall damage
     (194, 2, 192, 6, 205, 1),  // sulfur          -> Yama, immune to fire
-    (194, 2, Block::Obsidian as u8, 4, 206, 1),   // Talos, crushing blows
+    (194, 2, Block::Obsidian as Id, 4, 206, 1),   // Talos, crushing blows
     (194, 2, 187, 1, 207, 1),  // nether star     -> the God King, smite the undead
     (194, 2, 138, 8, 208, 1),  // gunpowder       -> Arachnae, bane of horrors
     (194, 2, 196, 2, 209, 1),  // adamant         -> Prometheus, armor never wears
     (194, 2, 155, 3, 210, 1),  // diamond         -> Lu Ban, mending
-    (194, 2, Block::EmeraldBlock as u8, 1, 211, 1), // Eros, fortune
+    (194, 2, Block::EmeraldBlock as Id, 1, 211, 1), // Eros, fortune
     (194, 2, 191, 3, 212, 1),  // ender pearls    -> Will, reach
-    (194, 2, Block::Glowstone as u8, 4, 213, 1),  // Hyacinthus, second jump
-    (194, 2, Block::Purpur as u8, 6, 214, 1),     // Aeolus, wind burst
-    (194, 2, Block::Sculk as u8, 8, 215, 1),      // Cronus, swift sneak
-    (194, 2, Block::BlueIce as u8, 4, 216, 1),    // Demeter, frost walker
-    (194, 2, Block::SeaLantern as u8, 4, 217, 1), // Glaucus, sea luck
-    (194, 2, Block::Amethyst as u8, 6, 218, 1),   // Apollo, marksman
+    (194, 2, Block::Glowstone as Id, 4, 213, 1),  // Hyacinthus, second jump
+    (194, 2, Block::Purpur as Id, 6, 214, 1),     // Aeolus, wind burst
+    (194, 2, Block::Sculk as Id, 8, 215, 1),      // Cronus, swift sneak
+    (194, 2, Block::BlueIce as Id, 4, 216, 1),    // Demeter, frost walker
+    (194, 2, Block::SeaLantern as Id, 4, 217, 1), // Glaucus, sea luck
+    (194, 2, Block::Amethyst as Id, 6, 218, 1),   // Apollo, marksman
     (194, 2, 190, 16, 219, 1), // snowballs       -> Artemis, multishot
-    (194, 2, Block::WardingStone as u8, 2, 220, 1), // Warding, thorns
-    (194, 2, Block::DiamondBlock as u8, 1, 221, 1), // Paris, infinity
+    (194, 2, Block::WardingStone as Id, 2, 220, 1), // Warding, thorns
+    (194, 2, Block::DiamondBlock as Id, 1, 221, 1), // Paris, infinity
     // The five late additions cost the alloy tier, so they arrive after the Blast Furnace does.
-    (194, 2, Block::IronBlock as u8, 2, 245, 1),    // Athena, absorption shield
-    (194, 2, Block::Magma as u8, 4, 246, 1),        // Sekhmet, bloodrage
+    (194, 2, Block::IronBlock as Id, 2, 245, 1),    // Athena, absorption shield
+    (194, 2, Block::Magma as Id, 4, 246, 1),        // Sekhmet, bloodrage
     (194, 2, 222, 12, 247, 1), // raw meat        -> Camazotz, lifesteal
-    (194, 2, Block::Prismarine as u8, 8, 248, 1),   // Tangaroa, conduit
-    (194, 2, Block::Sculk as u8, 4, 249, 1),        // Anubis, ward undead
+    (194, 2, Block::Prismarine as Id, 8, 248, 1),   // Tangaroa, conduit
+    (194, 2, Block::Sculk as Id, 4, 249, 1),        // Anubis, ward undead
     // --- Matcha's kitchen. Cooked meat is the base ingredient; everything else builds on it. ---
     (223, 1, 131, 1, 224, 1),  // cooked meat + bread          -> ramen
     (223, 2, 135, 2, 225, 1),  // cooked meat + carrot         -> japanese curry
@@ -109,60 +109,60 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 96] = [
     (131, 1, 130, 2, 231, 1),  // bread + apple                -> bruschetta
     (131, 1, 149, 1, 232, 1),  // bread + fried egg            -> french toast
     (131, 1, 152, 1, 233, 1),  // bread + glow berry crumble   -> sweet berry danish
-    (136, 2, Block::Snow as u8, 2, 234, 1), // melon + snow    -> melon sorbet
+    (136, 2, Block::Snow as Id, 2, 234, 1), // melon + snow    -> melon sorbet
     (223, 3, 131, 1, 235, 1),  // cooked meat + bread          -> stroganoff
     (130, 2, 131, 1, 151, 1),  // apple + bread                -> apple empanada
-    (130, 1, Block::Glowstone as u8, 1, 152, 1), // apple + glowstone -> glow berry crumble
+    (130, 1, Block::Glowstone as Id, 1, 152, 1), // apple + glowstone -> glow berry crumble
     // --- Bronze: Matcha alloys copper with gold, landing between iron and diamond. ---
     // 236 copper ingot, 237 gold ingot, 238 bronze ingot.
     (238, 3, 159, 2, 239, 1), // bronze pickaxe
     (238, 2, 159, 1, 240, 1), // bronze sword
     (238, 5, 0, 0, 241, 1), (238, 8, 0, 0, 242, 1), (238, 7, 0, 0, 243, 1), (238, 4, 0, 0, 244, 1),
-    (236, 9, 0, 0, Block::CopperBlock as u8, 1),
-    (237, 9, 0, 0, Block::GoldBlock as u8,   1),
-    (238, 9, 0, 0, Block::BronzeBlock as u8, 1),
+    (236, 9, 0, 0, Block::CopperBlock as Id, 1),
+    (237, 9, 0, 0, Block::GoldBlock as Id,   1),
+    (238, 9, 0, 0, Block::BronzeBlock as Id, 1),
     // The stonecutter itself: an iron blade on a stone bed.
-    (Block::Stone as u8, 3, 154, 1, Block::Stonecutter as u8, 1),
+    (Block::Stone as Id, 3, 154, 1, Block::Stonecutter as Id, 1),
 ];
 
 // Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
 // `blast` only run in a Blast Furnace — that gate is what makes the steel/adamant line an unlock
 // rather than just another recipe.
 pub struct Smelt {
-    pub in1: u8, pub n1: i32,
-    pub in2: u8, pub n2: i32,
-    pub out: u8, pub out_n: i32,
+    pub in1: Id, pub n1: i32,
+    pub in2: Id, pub n2: i32,
+    pub out: Id, pub out_n: i32,
     pub secs: f32,
     pub blast: bool,
 }
-const fn smelt(in1: u8, n1: i32, in2: u8, n2: i32, out: u8, out_n: i32, secs: f32, blast: bool) -> Smelt {
+const fn smelt(in1: Id, n1: i32, in2: Id, n2: i32, out: Id, out_n: i32, secs: f32, blast: bool) -> Smelt {
     Smelt { in1, n1, in2, n2, out, out_n, secs, blast }
 }
 pub const SMELTING: [Smelt; 19] = [
     smelt(254, 1, 0, 0, 132, 1, 6.0, false), // raw fish -> cooked fish
-    smelt(Block::CoalOre as u8,     1, 0, 0, 157, 1,  6.0, false), // coal
-    smelt(Block::IronOre as u8,     1, 0, 0, 154, 1,  8.0, false), // iron ingot
-    smelt(Block::DiamondOre as u8,  1, 0, 0, 155, 1, 10.0, false),
-    smelt(Block::EmeraldOre as u8,  1, 0, 0, 156, 1, 10.0, false),
-    smelt(Block::RedstoneOre as u8, 1, 0, 0, 158, 1,  6.0, false),
-    smelt(Block::SilverOre as u8,   1, 0, 0, 193, 1,  9.0, false), // silver ingot
-    smelt(Block::Sand as u8,        2, 0, 0, Block::Glass as u8,  1, 5.0, false),
-    smelt(Block::Cobble as u8,      4, 0, 0, Block::Stone as u8,  1, 5.0, false),
-    smelt(Block::Clay as u8,        4, 0, 0, Block::Brick as u8,  1, 6.0, false),
+    smelt(Block::CoalOre as Id,     1, 0, 0, 157, 1,  6.0, false), // coal
+    smelt(Block::IronOre as Id,     1, 0, 0, 154, 1,  8.0, false), // iron ingot
+    smelt(Block::DiamondOre as Id,  1, 0, 0, 155, 1, 10.0, false),
+    smelt(Block::EmeraldOre as Id,  1, 0, 0, 156, 1, 10.0, false),
+    smelt(Block::RedstoneOre as Id, 1, 0, 0, 158, 1,  6.0, false),
+    smelt(Block::SilverOre as Id,   1, 0, 0, 193, 1,  9.0, false), // silver ingot
+    smelt(Block::Sand as Id,        2, 0, 0, Block::Glass as Id,  1, 5.0, false),
+    smelt(Block::Cobble as Id,      4, 0, 0, Block::Stone as Id,  1, 5.0, false),
+    smelt(Block::Clay as Id,        4, 0, 0, Block::Brick as Id,  1, 6.0, false),
     smelt(222, 1, 0, 0, 223, 1, 6.0, false), // raw meat -> cooked meat
     smelt(131, 1, 0, 0, 147, 3, 5.0, false), // bread -> cookies (baking)
-    smelt(Block::CopperOre as u8, 1, 0, 0, 236, 1, 6.0, false), // copper ingot
-    smelt(Block::GoldOre as u8,   1, 0, 0, 237, 1, 8.0, false), // gold ingot
+    smelt(Block::CopperOre as Id, 1, 0, 0, 236, 1, 6.0, false), // copper ingot
+    smelt(Block::GoldOre as Id,   1, 0, 0, 237, 1, 8.0, false), // gold ingot
     smelt(236, 6, 237, 1, 238, 1, 14.0, true),                  // copper + gold -> bronze
     // Blast furnace only: the alloy line.
-    smelt(Block::SulfurOre as u8,   1, 0, 0, 192, 2,  5.0, true),  // sulfur
-    smelt(Block::CinnabarOre as u8, 1, 0, 0, 194, 1,  7.0, true),  // quicksilver
+    smelt(Block::SulfurOre as Id,   1, 0, 0, 192, 2,  5.0, true),  // sulfur
+    smelt(Block::CinnabarOre as Id, 1, 0, 0, 194, 1,  7.0, true),  // quicksilver
     smelt(154, 1, 192, 1, 195, 1, 12.0, true),                     // iron + sulfur -> steel
     smelt(195, 4, 194, 2, 196, 1, 20.0, true),                     // steel + quicksilver -> adamant
 ];
 
 // Seconds of furnace burn a stack item is worth. Anything not listed can't be used as fuel.
-pub fn fuel_secs(id: u8) -> f32 {
+pub fn fuel_secs(id: Id) -> f32 {
     match id {
         157 => 80.0,                                        // coal
         84 => 200.0,                                        // a lava block
@@ -174,13 +174,13 @@ pub fn fuel_secs(id: u8) -> f32 {
     }
 }
 // Fuels with no use other than burning, tried before anything a player might be saving.
-const DEDICATED_FUELS: [u8; 3] = [157, 84, 192];
+const DEDICATED_FUELS: [Id; 3] = [157, 84, 192];
 
 // Villager trades live in `villager.rs`, tiered per profession. Emerald = item 156.
 
 // Which shelf of the crafting menu a recipe belongs on. Purely for the UI — the recipe table itself
 // stays a flat list so indices remain stable.
-pub fn recipe_category(out: u8) -> &'static str {
+pub fn recipe_category(out: Id) -> &'static str {
     if crate::blessing::is_blessing(out) { return "blessing"; }
     if crate::item::food_effects(out).is_some() { return "food"; }
     if crate::item::is_tool(out) { return "tool"; }
@@ -192,7 +192,7 @@ pub fn recipe_category(out: u8) -> &'static str {
 // The stonecutter: one block in, one shape out, no fuel and no waiting. This is Matcha's stonecutting
 // book condensed — the pack's hundreds of recipes are almost all "material -> slab/stairs/variant",
 // which is exactly what `cut_variants` enumerates.
-pub struct Cut { pub input: u8, pub output: u8, pub count: i32 }
+pub struct Cut { pub input: Id, pub output: Id, pub count: i32 }
 
 /// Every stonecutter conversion, derived from the block table so a new slab family is picked up for
 /// free. A cube yields two slabs or one stair, and either shape converts back to the other.
@@ -200,7 +200,7 @@ pub fn cut_variants() -> Vec<Cut> {
     let mut out = Vec::new();
     for material in CUTTABLE {
         let (Some(slab), Some(stairs)) = (material.slab_of(), material.stairs_of()) else { continue; };
-        let (m, s, st) = (material as u8, slab as u8, stairs as u8);
+        let (m, s, st) = (material as Id, slab as Id, stairs as Id);
         out.push(Cut { input: m, output: s, count: 2 });
         out.push(Cut { input: m, output: st, count: 1 });
         out.push(Cut { input: s, output: st, count: 1 });
@@ -208,7 +208,7 @@ pub fn cut_variants() -> Vec<Cut> {
     }
     // Decorative conversions between whole blocks of the same family.
     for &(input, output) in DECOR_CUTS {
-        out.push(Cut { input: input as u8, output: output as u8, count: 1 });
+        out.push(Cut { input: input as Id, output: output as Id, count: 1 });
     }
     out
 }
@@ -237,16 +237,16 @@ impl Default for Inventory {
             (Block::Grass, 64), (Block::Dirt, 64), (Block::Stone, 64), (Block::Wood, 16),
             (Block::Planks, 32), (Block::Sand, 32), (Block::Glass, 16), (Block::Cobble, 16), (Block::Brick, 16),
         ];
-        for (i, (b, c)) in start.iter().enumerate() { slots[i] = InvSlot { id: *b as u8, count: *c }; }
+        for (i, (b, c)) in start.iter().enumerate() { slots[i] = InvSlot { id: *b as Id, count: *c }; }
         Self { selected: 0, slots, placed: 0, broken: 0, armor: [InvSlot::default(); 4] }
     }
 }
 
 impl Inventory {
-    pub fn selected_block(&self) -> u8 {
+    pub fn selected_block(&self) -> Id {
         if self.selected < HOTBAR { let s = &self.slots[self.selected]; if s.count > 0 { s.id } else { 0 } } else { 0 }
     }
-    pub fn consume_selected(&mut self) -> Option<u8> {
+    pub fn consume_selected(&mut self) -> Option<Id> {
         if self.selected >= HOTBAR { return None; }
         let slot = &mut self.slots[self.selected];
         if slot.count <= 0 || slot.id == 0 { return None; }
@@ -256,9 +256,9 @@ impl Inventory {
         self.placed += 1;
         Some(id)
     }
-    pub fn add_block(&mut self, id: u8) { self.try_add_block(id); }
+    pub fn add_block(&mut self, id: Id) { self.try_add_block(id); }
     // Add one unit, reporting whether it actually fit anywhere.
-    pub fn try_add_block(&mut self, id: u8) -> bool {
+    pub fn try_add_block(&mut self, id: Id) -> bool {
         if id == 0 { return false; }
         for slot in self.slots.iter_mut() { if slot.id == id && slot.count < STACK { slot.count += 1; return true; } }
         for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = 1; return true; } }
@@ -286,14 +286,14 @@ impl Inventory {
     }
 
     // Creative catalog: put a full stack of `id` into the first empty (or matching) slot.
-    pub fn give(&mut self, id: u8) {
+    pub fn give(&mut self, id: Id) {
         if id == 0 { return; }
         for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = STACK; return; } }
         for slot in self.slots.iter_mut() { if slot.id == id { slot.count = STACK; return; } }
     }
 
-    pub fn count_of(&self, id: u8) -> i32 { self.slots.iter().filter(|s| s.id == id).map(|s| s.count).sum() }
-    fn remove_count(&mut self, id: u8, mut n: i32) {
+    pub fn count_of(&self, id: Id) -> i32 { self.slots.iter().filter(|s| s.id == id).map(|s| s.count).sum() }
+    fn remove_count(&mut self, id: Id, mut n: i32) {
         for slot in self.slots.iter_mut() {
             if slot.id == id && n > 0 {
                 let take = slot.count.min(n);
@@ -313,13 +313,13 @@ impl Inventory {
         true
     }
     // Place a non-stacking item (tool/armor) into the first empty slot with a given count (durability).
-    pub fn add_item_with_count(&mut self, id: u8, count: i32) -> bool {
+    pub fn add_item_with_count(&mut self, id: Id, count: i32) -> bool {
         for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = count; return true; } }
         false
     }
     pub fn selected_count(&self) -> i32 { if self.selected < HOTBAR { self.slots[self.selected].count } else { 0 } }
     // Remove the whole selected stack, returning (id, count). Used to equip armor without losing durability.
-    pub fn take_selected(&mut self) -> Option<(u8, i32)> {
+    pub fn take_selected(&mut self) -> Option<(Id, i32)> {
         if self.selected >= HOTBAR { return None; }
         let s = self.slots[self.selected];
         if s.id == 0 { return None; }
@@ -333,7 +333,7 @@ impl Inventory {
         if s.id != 0 && crate::item::has_durability(s.id) { s.count -= 1; if s.count <= 0 { *s = InvSlot::default(); } }
     }
     // Equip an armor item (with its durability) into its slot; returns any displaced piece.
-    pub fn equip_armor(&mut self, id: u8, dur: i32) -> Option<InvSlot> {
+    pub fn equip_armor(&mut self, id: Id, dur: i32) -> Option<InvSlot> {
         let slot = crate::item::armor_slot(id);
         let old = self.armor[slot];
         self.armor[slot] = InvSlot { id, count: dur };
@@ -379,7 +379,7 @@ impl Inventory {
     }
     // Whether `n` of `id` would actually fit. Used to pause a furnace rather than smelt into a full
     // inventory and drop the result on the floor.
-    pub fn has_room_for(&self, id: u8, n: i32) -> bool {
+    pub fn has_room_for(&self, id: Id, n: i32) -> bool {
         if crate::item::has_durability(id) { return self.slots.iter().any(|s| s.id == 0); }
         let mut need = n;
         for s in self.slots.iter() {
@@ -392,7 +392,7 @@ impl Inventory {
     // active recipe needs as ingredients so the furnace never eats its own input (sulfur is both a
     // fuel and the second half of the steel recipe). Dedicated fuels are preferred over logs and
     // planks so a smelt doesn't quietly consume the player's building stock.
-    pub fn consume_fuel(&mut self, spare: &[u8]) -> Option<f32> {
+    pub fn consume_fuel(&mut self, spare: &[Id]) -> Option<f32> {
         let usable = |s: &InvSlot| s.count > 0 && fuel_secs(s.id) > 0.0 && !spare.contains(&s.id);
         let idx = self.slots.iter().position(|s| usable(s) && DEDICATED_FUELS.contains(&s.id))
             .or_else(|| self.slots.iter().position(usable))?;
@@ -465,6 +465,30 @@ mod tests {
         for shelf in SHELVES {
             assert!(RECIPES.iter().any(|r| recipe_category(r.4) == shelf), "shelf {shelf} is empty");
         }
+    }
+
+    // Widening the id space means a stray number in a table no longer lands on a block by
+    // accident — it lands on nothing at all. Every id in every table has to name something real.
+    #[test]
+    fn every_id_in_the_tables_names_something_real() {
+        use crate::world::block::is_real_id;
+        for (i, &(in1, _, in2, _, out, _)) in RECIPES.iter().enumerate() {
+            assert!(is_real_id(in1), "recipe {i} takes {in1}, which is nothing");
+            assert!(in2 == 0 || is_real_id(in2), "recipe {i} takes {in2}, which is nothing");
+            assert!(is_real_id(out), "recipe {i} yields {out}, which is nothing");
+        }
+        for (i, s) in SMELTING.iter().enumerate() {
+            assert!(is_real_id(s.in1), "smelt {i} takes {}, which is nothing", s.in1);
+            assert!(s.in2 == 0 || is_real_id(s.in2), "smelt {i} takes {}, which is nothing", s.in2);
+            assert!(is_real_id(s.out), "smelt {i} yields {}, which is nothing", s.out);
+        }
+        for c in cut_variants() {
+            assert!(is_real_id(c.input) && is_real_id(c.output), "a cut moves an id that is nothing");
+        }
+        for b in crate::blessing::PANTHEON.iter() {
+            assert!(is_real_id(b.id), "{} has an id that is nothing", b.name);
+        }
+        for id in DEDICATED_FUELS { assert!(is_real_id(id), "fuel {id} is nothing"); }
     }
 
     #[test]
@@ -577,10 +601,10 @@ mod tests {
     fn the_stonecutter_reaches_every_shape() {
         let cuts = cut_variants();
         for m in CUTTABLE {
-            let slab = m.slab_of().unwrap() as u8;
-            let stairs = m.stairs_of().unwrap() as u8;
-            assert!(cuts.iter().any(|c| c.input == m as u8 && c.output == slab), "{m:?} -> slab missing");
-            assert!(cuts.iter().any(|c| c.input == m as u8 && c.output == stairs), "{m:?} -> stairs missing");
+            let slab = m.slab_of().unwrap() as Id;
+            let stairs = m.stairs_of().unwrap() as Id;
+            assert!(cuts.iter().any(|c| c.input == m as Id && c.output == slab), "{m:?} -> slab missing");
+            assert!(cuts.iter().any(|c| c.input == m as Id && c.output == stairs), "{m:?} -> stairs missing");
             assert!(cuts.iter().any(|c| c.input == slab && c.output == stairs), "slab -> stairs missing");
             assert!(cuts.iter().any(|c| c.input == stairs && c.output == slab), "stairs -> slab missing");
         }
@@ -594,32 +618,32 @@ mod tests {
     #[test]
     fn cutting_consumes_one_block_and_yields_the_shape() {
         let cuts = cut_variants();
-        let idx = cuts.iter().position(|c| c.input == Block::Stone as u8 && c.output == Block::StoneSlab as u8).unwrap();
+        let idx = cuts.iter().position(|c| c.input == Block::Stone as Id && c.output == Block::StoneSlab as Id).unwrap();
         let mut inv = Inventory::default();
         for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
-        inv.slots[0] = InvSlot { id: Block::Stone as u8, count: 3 };
+        inv.slots[0] = InvSlot { id: Block::Stone as Id, count: 3 };
 
         assert!(inv.cut(idx));
-        assert_eq!(inv.count_of(Block::Stone as u8), 2, "one stone consumed");
-        assert_eq!(inv.count_of(Block::StoneSlab as u8), 2, "a stone block yields two slabs");
+        assert_eq!(inv.count_of(Block::Stone as Id), 2, "one stone consumed");
+        assert_eq!(inv.count_of(Block::StoneSlab as Id), 2, "a stone block yields two slabs");
 
         // With no input left the cut must refuse rather than conjure slabs.
-        inv.remove_count(Block::Stone as u8, 99);
+        inv.remove_count(Block::Stone as Id, 99);
         assert!(!inv.cut(idx));
-        assert_eq!(inv.count_of(Block::StoneSlab as u8), 2);
+        assert_eq!(inv.count_of(Block::StoneSlab as Id), 2);
     }
 
     // A full inventory must not let the stonecutter eat the input and drop the result.
     #[test]
     fn cutting_into_a_full_inventory_is_refused() {
         let cuts = cut_variants();
-        let idx = cuts.iter().position(|c| c.input == Block::Stone as u8 && c.output == Block::StoneSlab as u8).unwrap();
+        let idx = cuts.iter().position(|c| c.input == Block::Stone as Id && c.output == Block::StoneSlab as Id).unwrap();
         let mut inv = Inventory::default();
-        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as u8, count: STACK }; }
-        inv.slots[0] = InvSlot { id: Block::Stone as u8, count: STACK };
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as Id, count: STACK }; }
+        inv.slots[0] = InvSlot { id: Block::Stone as Id, count: STACK };
 
         assert!(!inv.cut(idx), "nowhere to put the slabs");
-        assert_eq!(inv.count_of(Block::Stone as u8), STACK, "the input must survive a refused cut");
+        assert_eq!(inv.count_of(Block::Stone as Id), STACK, "the input must survive a refused cut");
     }
 
     #[test]
@@ -654,9 +678,9 @@ mod tests {
     #[test]
     fn trading_into_a_full_inventory_is_refused() {
         use crate::villager::{Offer, EMERALD};
-        let bulk = Offer { cost: EMERALD, cost_n: 1, cost2: 0, cost2_n: 0, give: Block::Stone as u8, give_n: 8 };
+        let bulk = Offer { cost: EMERALD, cost_n: 1, cost2: 0, cost2_n: 0, give: Block::Stone as Id, give_n: 8 };
         let mut inv = Inventory::default();
-        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as u8, count: STACK }; }
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as Id, count: STACK }; }
         inv.slots[0] = InvSlot { id: EMERALD, count: 4 };
 
         assert!(!inv.trade_offer(&bulk), "nowhere to put the stone");

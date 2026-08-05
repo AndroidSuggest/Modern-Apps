@@ -205,7 +205,9 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_moveI
 pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_giveBlock<'l>(
     _env: JNIEnv<'l>, _class: JClass<'l>, id: jint,
 ) {
-    if id > 0 { engine::inventory_give(id as u8); }
+    // The only id that crosses JNI as a number rather than as JSON. `as` would wrap a jint that
+    // doesn't fit into a different, real block, so refuse it instead.
+    if let Ok(id) = crate::world::block::Id::try_from(id) { if id > 0 { engine::inventory_give(id); } }
 }
 
 #[no_mangle]

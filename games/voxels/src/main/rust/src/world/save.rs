@@ -28,7 +28,7 @@ fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
     for sec_opt in chunk.sections.iter() {
         let Some(sec) = sec_opt else { data.push(0); continue; };
         data.push(1);
-        for &id in sec.blocks.iter() { data.extend_from_slice(&(id as u16).to_le_bytes()); }
+        for &id in sec.blocks.iter() { data.extend_from_slice(&id.to_le_bytes()); }
         match sec.meta.as_ref().filter(|m| m.iter().any(|&v| v != 0)) {
             Some(meta) => { data.push(1); data.extend_from_slice(&meta[..]); }
             None => data.push(0),
@@ -61,16 +61,13 @@ fn decode_chunk(bytes: &[u8], chunk: &mut Chunk) -> std::io::Result<()> {
         let flag = bytes[off]; off+=1;
         if flag != 1 { continue; }
         if off + block_bytes > bytes.len() { return Err(bad("section overflow")); }
-        let mut blocks = [0u8; 4096];
+        let mut blocks = [0 as crate::world::block::Id; 4096];
         if wide_ids {
             for (i, cell) in blocks.iter_mut().enumerate() {
-                let raw = u16::from_le_bytes([bytes[off + i*2], bytes[off + i*2 + 1]]);
-                // Ids this build has no room for read back as air rather than as a wrapped-around
-                // block, which would be a wrong block rather than a missing one.
-                *cell = u8::try_from(raw).unwrap_or(0);
+                *cell = u16::from_le_bytes([bytes[off + i*2], bytes[off + i*2 + 1]]);
             }
         } else {
-            blocks.copy_from_slice(&bytes[off..off+4096]);
+            for (i, cell) in blocks.iter_mut().enumerate() { *cell = bytes[off + i] as u16; }
         }
         off+=block_bytes;
         let mut meta = None;
@@ -142,7 +139,7 @@ impl Default for ProgressSave {
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone)]
 pub struct InventorySave { pub selected: usize, pub slots: Vec<InvSlotSave> }
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone)]
-pub struct InvSlotSave { pub id: u8, pub count: i32 }
+pub struct InvSlotSave { pub id: crate::world::block::Id, pub count: i32 }
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone)]
 pub struct StatsSave { pub placed: i32, pub broken: i32, pub walked: i32, pub night_seen: bool }
 
@@ -177,7 +174,7 @@ mod tests {
         data.push(SECTIONS_PER_CHUNK as u8);
         for sec in chunk.sections.iter() {
             match sec {
-                Some(s) => { data.push(1); data.extend_from_slice(&s.blocks); }
+                Some(s) => { data.push(1); data.extend(s.blocks.iter().map(|&b| b as u8)); }
                 None => data.push(0),
             }
         }
@@ -194,7 +191,7 @@ mod tests {
             match sec {
                 Some(s) => {
                     data.push(1);
-                    data.extend_from_slice(&s.blocks);
+                    data.extend(s.blocks.iter().map(|&b| b as u8));
                     match s.meta.as_ref() {
                         Some(m) => { data.push(1); data.extend_from_slice(&m[..]); }
                         None => data.push(0),
@@ -256,13 +253,17 @@ mod tests {
         original.set_block(0, 0, 0, 1);
         original.set_block(15, 255, 15, 123);
         original.set_block_meta(8, 64, 8, 102, 0b100);
-        original.set_block_meta(9, 64, 8, 103, 3);
+        original.set_block(0, 255, 0, 123);
+        // An id from the high block window, which only VOX3 is wide enough to carry.
+        original.set_block(1, 255, 0, crate::world::block::BLOCK_HIGH_BASE);
 
         let encoded = encode_chunk(&original);
         assert_eq!(&encoded[0..4], b"VOX3");
 
         let mut loaded = Chunk::new(ChunkPos(7, 7));
         decode_chunk(&encoded, &mut loaded).expect("VOX3 must decode");
+        assert_eq!(loaded.get_block(1, 255, 0), crate::world::block::BLOCK_HIGH_BASE,
+            "a wide id must survive the round trip intact");
         for (a, b) in original.sections.iter().zip(loaded.sections.iter()) {
             match (a, b) {
                 (Some(a), Some(b)) => {
@@ -284,7 +285,7 @@ mod tests {
         // A spread of ids and metas across several sections, including the extremes.
         for i in 0..64 {
             let x = i % 16; let z = (i / 16) % 16;
-            original.set_block(x, i, z, (i as u8 % 123) + 1);
+            original.set_block(x, i, z, (i as crate::world::block::Id % 123) + 1);
         }
         original.set_block_meta(4, 100, 4, 103, 2);
         original.set_block_meta(5, 100, 4, 102, 0b100);

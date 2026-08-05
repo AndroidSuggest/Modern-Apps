@@ -1,3 +1,5 @@
+use super::block::Id;
+
 pub const CHUNK_SIZE: usize = 16;
 pub const SECTION_SIZE: usize = 16;
 pub const SECTIONS_PER_CHUNK: usize = 16;
@@ -9,15 +11,16 @@ impl ChunkPos {
     pub fn world_origin(self) -> (i32, i32) { (self.0 * CHUNK_SIZE as i32, self.1 * CHUNK_SIZE as i32) }
 }
 // `meta` carries the per-voxel state that doesn't fit in the block id (slab half, stair facing). It
-// is allocated only once a section actually stores a non-zero value: generated terrain is all plain
-// cubes, so the vast majority of resident sections stay at 8 bytes instead of 4 KB.
+// stays one byte wide while ids are two. It is allocated only once a section actually stores a
+// non-zero value: generated terrain is all plain cubes, so the vast majority of resident sections
+// stay at 8 bytes instead of 4 KB.
 #[derive(Clone)]
-pub struct BlockSection { pub blocks: [u8; 4096], pub meta: Option<Box<[u8; 4096]>>, pub non_air: usize, }
+pub struct BlockSection { pub blocks: [Id; 4096], pub meta: Option<Box<[u8; 4096]>>, pub non_air: usize, }
 impl BlockSection {
     pub fn empty() -> Self { Self { blocks: [0;4096], meta: None, non_air:0 } }
     fn idx(x: usize, y: usize, z: usize) -> usize { y*256+z*16+x }
-    pub fn get(&self, x: usize, y: usize, z: usize) -> u8 { self.blocks[Self::idx(x,y,z)] }
-    pub fn set(&mut self, x: usize, y: usize, z: usize, id: u8) {
+    pub fn get(&self, x: usize, y: usize, z: usize) -> Id { self.blocks[Self::idx(x,y,z)] }
+    pub fn set(&mut self, x: usize, y: usize, z: usize, id: Id) {
         let i=Self::idx(x,y,z); let prev=self.blocks[i];
         if prev!=0 && id==0 { self.non_air=self.non_air.saturating_sub(1); } else if prev==0 && id!=0 { self.non_air+=1; }
         self.blocks[i]=id;
@@ -40,7 +43,7 @@ pub struct Chunk {
 }
 impl Chunk {
     pub fn new(pos: ChunkPos) -> Self { Self { pos, sections: std::array::from_fn(|_| None), generated:false, dirty:false, mesh_dirty:true } }
-    pub fn get_block(&self, x: usize, y: usize, z: usize) -> u8 {
+    pub fn get_block(&self, x: usize, y: usize, z: usize) -> Id {
         if y>=CHUNK_HEIGHT { return 0; } let sec=y/SECTION_SIZE; let ly=y%SECTION_SIZE;
         if let Some(s)=&self.sections[sec] { s.get(x,ly,z) } else { 0 }
     }
@@ -48,8 +51,8 @@ impl Chunk {
         if y>=CHUNK_HEIGHT { return 0; } let sec=y/SECTION_SIZE; let ly=y%SECTION_SIZE;
         if let Some(s)=&self.sections[sec] { s.get_meta(x,ly,z) } else { 0 }
     }
-    pub fn set_block(&mut self, x: usize, y: usize, z: usize, id: u8) { self.set_block_meta(x, y, z, id, 0); }
-    pub fn set_block_meta(&mut self, x: usize, y: usize, z: usize, id: u8, meta: u8) {
+    pub fn set_block(&mut self, x: usize, y: usize, z: usize, id: Id) { self.set_block_meta(x, y, z, id, 0); }
+    pub fn set_block_meta(&mut self, x: usize, y: usize, z: usize, id: Id, meta: u8) {
         if y>=CHUNK_HEIGHT { return; } let sec=y/SECTION_SIZE; let ly=y%SECTION_SIZE;
         if self.sections[sec].is_none() { if id==0 { return; } self.sections[sec]=Some(BlockSection::empty()); }
         if let Some(s)=self.sections[sec].as_mut() {

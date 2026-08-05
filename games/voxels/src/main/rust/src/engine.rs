@@ -1,4 +1,4 @@
-use crate::world::{ChunkMap, block::{Block, Shape}};
+use crate::world::{ChunkMap, block::{Block, Id, Shape}};
 use crate::player::Player;
 use crate::inventory::Inventory;
 use crate::entity::{Mob, MobKind, Particle, Projectile, ProjKind, build_entity_mesh, tick_particles, append_particles, append_projectiles};
@@ -403,7 +403,7 @@ pub fn rebuild_chunk_meshes(state: &mut EngineState, chunk_pos: crate::world::ch
     let meshes = {
         let chunk = state.chunks.get(chunk_pos).unwrap();
         let map_ptr = &state.chunks as *const ChunkMap;
-        let closure = move |wx: i32, wy: i32, wz: i32| -> (u8, u8) {
+        let closure = move |wx: i32, wy: i32, wz: i32| -> (Id, u8) {
             unsafe { ((*map_ptr).get_block_world(wx, wy, wz), (*map_ptr).get_meta_world(wx, wy, wz)) }
         };
         let tint = move |wx: i32, wz: i32| -> [f32;3] {
@@ -629,7 +629,7 @@ pub fn tick_and_render() {
         }
         // Remove dead mobs and auto-collect their drops. Glaucus makes ordinary kills pay double,
         // but not bosses — a second Nether Star would hand out a free extra beacon.
-        let mut loot: Vec<(u8, bool)> = Vec::new();
+        let mut loot: Vec<(Id, bool)> = Vec::new();
         state.mobs.retain(|m| if m.health <= 0.0 {
             // An elite was twice the fight, so it pays twice.
             let times = if m.elite { 2 } else { 1 };
@@ -799,8 +799,8 @@ fn publish_ui(state: &EngineState) {
             format!("sh{:.1} main{:.1} bloom{:.1} comp{:.1}", p[0], p[1], p[2], p[3])
         }).unwrap_or_default(),
     }).to_string();
-    let has = |id: u8| state.inventory.slots.iter().any(|s| s.id == id && s.count > 0);
-    let armor_at_least = |lo: u8, hi: u8| state.inventory.armor.iter().all(|s| s.id >= lo && s.id <= hi);
+    let has = |id: Id| state.inventory.slots.iter().any(|s| s.id == id && s.count > 0);
+    let armor_at_least = |lo: Id, hi: Id| state.inventory.armor.iter().all(|s| s.id >= lo && s.id <= hi);
     let stats = serde_json::json!({
         "placed": state.inventory.placed, "broken": state.inventory.broken,
         "walked": state.player.walk_dist as i32, "night": state.night_survived,
@@ -865,7 +865,7 @@ pub fn get_smelt_json() -> String { cref(&SMELT_CACHE, "{}").lock().map(|c| c.cl
 pub fn get_ambience_json() -> String { cref(&AMBIENCE_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 
 pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
-pub fn inventory_give(id: u8) { with_engine(|s| s.inventory.give(id)); }
+pub fn inventory_give(id: Id) { with_engine(|s| s.inventory.give(id)); }
 pub fn inventory_craft(recipe: usize) -> bool { with_engine(|s| s.inventory.craft(recipe)).unwrap_or(false) }
 pub fn do_trade(idx: usize) -> bool {
     with_engine(|s| {
@@ -946,7 +946,7 @@ fn dim_dir(base: &str, dim: u8) -> String {
 // Layer k (k=1..4) at depth k must be a full (2k+1)x(2k+1) square of iron/diamond/emerald blocks
 // centred under the beacon. Tier stops at the first incomplete layer.
 fn beacon_tier(chunks: &ChunkMap, x: i32, y: i32, z: i32) -> i32 {
-    let is_mineral = |id: u8| matches!(id, 23 | 24 | 25 | 93 | 94 | 95);
+    let is_mineral = |id: Id| matches!(id, 23 | 24 | 25 | 93 | 94 | 95);
     let mut tier = 0;
     for k in 1..=4i32 {
         let mut full = true;
@@ -1369,7 +1369,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     if sel == crate::item::BRUSH {
         if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) {
             let (x, y, z) = hit.pos;
-            if state.chunks.get_block_world(x, y, z) == Block::SuspiciousSand as u8 {
+            if state.chunks.get_block_world(x, y, z) == Block::SuspiciousSand as Id {
                 let mut r = state.spawn_rng;
                 r ^= r << 13; r ^= r >> 17; r ^= r << 5;
                 state.spawn_rng = r;
@@ -1377,7 +1377,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
                 if !state.inventory.has_room_for(id, 1) { return false; }
                 state.inventory.add_block(id);
                 state.did_brush = true;
-                state.chunks.set_block_world(x, y, z, Block::Sand as u8);
+                state.chunks.set_block_world(x, y, z, Block::Sand as Id);
                 mark_neighbors_dirty(state, x, z);
                 damage_tool(state);
                 let c = vec3(x as f32 + 0.5, y as f32 + 1.0, z as f32 + 0.5);
@@ -1695,9 +1695,9 @@ pub fn get_blessings_json() -> String {
 pub fn get_blessing_catalog_json() -> String { crate::blessing::catalog_json() }
 
 // Ore blocks, for the Fortune blessing.
-fn is_ore(id: u8) -> bool { matches!(id, 18..=22 | 90 | 91 | 92) }
+fn is_ore(id: Id) -> bool { matches!(id, 18..=22 | 90 | 91 | 92) }
 // Leaf blocks, which sometimes drop an apple.
-fn is_leaves(id: u8) -> bool { matches!(id, 5 | 28 | 31 | 48 | 80) }
+fn is_leaves(id: Id) -> bool { matches!(id, 5 | 28 | 31 | 48 | 80) }
 
 // Blessings that act over time rather than at a single event: Lu Ban repairs gear a point at a
 // time, Demeter freezes the water the player walks over.
@@ -1778,7 +1778,7 @@ fn tick_farmland(state: &mut EngineState, dt: f32, player_pos: Vec3) {
         let stage = crate::world::block::crop_stage(meta);
         if stage >= crate::world::block::CROP_RIPE { continue; }
         // Crops only grow on tended ground; break the farmland and the field stalls.
-        if state.chunks.get_block_world(x, y - 1, z) != Block::Farmland as u8 { continue; }
+        if state.chunks.get_block_world(x, y - 1, z) != Block::Farmland as Id { continue; }
         state.chunks.set_block_meta_world(x, y, z, id, crate::world::block::crop_meta(stage + 1));
         grown.push((x, z));
     }
@@ -1804,11 +1804,11 @@ fn harvest_crop(state: &mut EngineState, crop: Block, meta: u8) {
 
 /// What a dig site gives up. Matcha's archaeology yields pottery sherds, which this game doesn't
 /// model, so the pool is the small treasures a buried cache would plausibly hold.
-pub fn buried_find(roll: f32) -> u8 {
+pub fn buried_find(roll: f32) -> Id {
     match (roll.clamp(0.0, 0.999) * 100.0) as u32 {
         0..=29 => 137,                                  // leather scraps
         30..=54 => 236,                                 // copper ingot
-        55..=74 => Block::Amethyst as u8,
+        55..=74 => Block::Amethyst as Id,
         75..=89 => 237,                                 // gold ingot
         90..=96 => 156,                                 // emerald
         _ => 155,                                       // diamond
@@ -1915,10 +1915,10 @@ fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
         if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) {
             let (x, y, z) = hit.pos;
             let (tx, ty, tz) = (x + hit.normal.0, y + hit.normal.1, z + hit.normal.2);
-            let on_farmland = state.chunks.get_block_world(x, y, z) == Block::Farmland as u8 && hit.normal.1 == 1;
+            let on_farmland = state.chunks.get_block_world(x, y, z) == Block::Farmland as Id && hit.normal.1 == 1;
             // Plant only once the write is known to have landed, so an unloaded chunk can't eat the seed.
             if on_farmland && state.chunks.get_block_world(tx, ty, tz) == 0
-                && state.chunks.set_block_meta_world(tx, ty, tz, crop as u8, crate::world::block::crop_meta(0))
+                && state.chunks.set_block_meta_world(tx, ty, tz, crop as Id, crate::world::block::crop_meta(0))
             {
                 if state.inventory.consume_selected().is_none() {
                     state.chunks.set_block_world(tx, ty, tz, 0);
@@ -1943,7 +1943,7 @@ fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             // Only the face on the cell's empty side can complete it.
             if (existing_top && hit.normal.1 == -1) || (!existing_top && hit.normal.1 == 1) {
                 if state.inventory.consume_selected().is_some() {
-                    state.chunks.set_block_world(tx, ty, tz, block.parent() as u8);
+                    state.chunks.set_block_world(tx, ty, tz, block.parent() as Id);
                     mark_neighbors_dirty(state, tx, tz);
                     return true;
                 }
@@ -1996,10 +1996,10 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
                 // Shearing a sheep: wool now, and the sheep walks away unharmed to regrow it.
                 let held = state.inventory.selected_block();
                 if crate::item::is_shears(held) && state.mobs[idx].kind == MobKind::Sheep && !state.mobs[idx].sheared {
-                    if !state.inventory.has_room_for(Block::Wool as u8, WOOL_PER_SHEARING) { return 0; }
+                    if !state.inventory.has_room_for(Block::Wool as Id, WOOL_PER_SHEARING) { return 0; }
                     state.mobs[idx].sheared = true;
                     state.did_shear = true;
-                    for _ in 0..WOOL_PER_SHEARING { state.inventory.add_block(Block::Wool as u8); }
+                    for _ in 0..WOOL_PER_SHEARING { state.inventory.add_block(Block::Wool as Id); }
                     damage_tool(state);
                     return 1;
                 }
@@ -2116,7 +2116,7 @@ mod tests {
         for i in 0..n {
             let id = buried_find(i as f32 / n as f32);
             assert!(id != 0, "an empty dig site");
-            assert!(id <= crate::world::block::MAX_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
+            assert!(id <= crate::world::block::MAX_LOW_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
             if id == 155 { diamonds += 1; }
         }
         let rate = diamonds as f32 / n as f32;

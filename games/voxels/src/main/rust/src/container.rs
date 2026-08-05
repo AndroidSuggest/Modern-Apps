@@ -4,6 +4,7 @@
 // flat byte per block — so they get their own JSON file next to player.json.
 
 use crate::inventory::InvSlot;
+use crate::world::block::Id;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -36,7 +37,7 @@ impl Containers {
         self.map.get_mut(&key)?.get_mut(idx)
     }
     // Merge a stack into the container, returning what wouldn't fit.
-    pub fn add(&mut self, key: ContainerKey, id: u8, mut count: i32) -> i32 {
+    pub fn add(&mut self, key: ContainerKey, id: Id, mut count: i32) -> i32 {
         let Some(slots) = self.map.get_mut(&key) else { return count; };
         if crate::item::has_durability(id) {
             // Tools and armor never stack: they need a slot of their own to keep their durability.
@@ -103,10 +104,10 @@ pub fn roll_loot(x: i32, y: i32, z: i32, dim: u8, lucky: bool) -> Vec<InvSlot> {
     let mut r = ((x as u64).wrapping_mul(73856093) ^ (y as u64).wrapping_mul(19349663) ^ (z as u64).wrapping_mul(83492791)) | 1;
     let next = |r: &mut u64| { *r ^= *r << 13; *r ^= *r >> 7; *r ^= *r << 17; *r };
     // (item id, max stack from this chest).
-    let end_pool: [(u8, i32); 9] = [(188, 1), (176, 1), (175, 1), (170, 1), (129, 1), (155, 3), (156, 4), (133, 2), (24, 2)];
-    let nether_pool: [(u8, i32); 7] = [(192, 6), (194, 2), (195, 2), (157, 8), (154, 4), (133, 1), (138, 3)];
-    let over_pool: [(u8, i32); 12] = [(157, 8), (154, 4), (155, 1), (156, 2), (131, 4), (133, 1), (168, 1), (128, 1), (138, 3), (137, 2), (193, 2), (223, 3)];
-    let pool: &[(u8, i32)] = match dim { 2 => &end_pool, 1 => &nether_pool, _ => &over_pool };
+    let end_pool: [(Id, i32); 9] = [(188, 1), (176, 1), (175, 1), (170, 1), (129, 1), (155, 3), (156, 4), (133, 2), (24, 2)];
+    let nether_pool: [(Id, i32); 7] = [(192, 6), (194, 2), (195, 2), (157, 8), (154, 4), (133, 1), (138, 3)];
+    let over_pool: [(Id, i32); 12] = [(157, 8), (154, 4), (155, 1), (156, 2), (131, 4), (133, 1), (168, 1), (128, 1), (138, 3), (137, 2), (193, 2), (223, 3)];
+    let pool: &[(Id, i32)] = match dim { 2 => &end_pool, 1 => &nether_pool, _ => &over_pool };
 
     let mut slots = vec![InvSlot::default(); CONTAINER_SLOTS];
     // Glaucus turns up more in every chest.
@@ -158,6 +159,20 @@ mod tests {
 
         c.insert_empty(key);
         assert!(c.get(key).unwrap().iter().all(|s| s.id == 0), "a new chest must start empty");
+    }
+
+    #[test]
+    fn every_loot_pool_id_names_something_real() {
+        use crate::world::block::is_real_id;
+        // Every dimension's pool, sampled across enough positions to hit each entry.
+        for dim in 0..3u8 {
+            for i in 0..80i32 {
+                for s in roll_loot(i * 11, 40, i * 17, dim, i % 2 == 0) {
+                    if s.id == 0 { continue; }
+                    assert!(is_real_id(s.id), "dim {dim} loot contains {}, which is nothing", s.id);
+                }
+            }
+        }
     }
 
     #[test]

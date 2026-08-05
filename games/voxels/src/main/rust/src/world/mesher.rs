@@ -1,8 +1,8 @@
-use super::block::{Aabb, Block, Shape, GRASS_SIDE_TILE};
+use super::block::{Aabb, Block, Id, Shape, GRASS_SIDE_TILE};
 use super::chunk::{Chunk, SECTION_SIZE, SECTIONS_PER_CHUNK, CHUNK_HEIGHT};
 
 /// A neighbour lookup: block id plus its meta byte, since occlusion now depends on both.
-pub type Neighbor<'a> = dyn Fn(i32, i32, i32) -> (u8, u8) + 'a;
+pub type Neighbor<'a> = dyn Fn(i32, i32, i32) -> (Id, u8) + 'a;
 
 // Per-chunk lighting: skylight column tops (highest opaque block per column) and a block-light grid
 // (BFS flood from emitters, decreasing by 1 per open cell). Cross-chunk bleed is limited to this
@@ -181,10 +181,10 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
             match axis {
                 0 => {
                     for x in 0..SECTION_SIZE {
-                        let mut mask = [[None::<(u8,u32,[u8;4],u8)>; 16]; 16];
+                        let mut mask = [[None::<(Id,u32,[u8;4],u8)>; 16]; 16];
                         for y in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
                             let id = section.get(x,y,z);
-                            if id == 0 || id == Block::Water as u8 { continue; }
+                            if id == 0 || id == Block::Water as Id { continue; }
                             if Block::from_id(id).shape() != Shape::Cube { continue; } // emitted as boxes below
                             let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                             if !hidden(wx, wy, wz, dx, dy, dz) {
@@ -212,7 +212,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
                             let y0 = y as f32; let z0 = z as f32; let ww = w as f32; let hh = h as f32;
                             let (u0,v0,u1,v1) = (0.0f32, 0.0f32, ww, hh);
                             // Grass side: sentinel tile so the shader composites dirt + tinted overlay in one quad.
-                            let is_grass = bid == Block::Grass as u8;
+                            let is_grass = bid == Block::Grass as Id;
                             let color = if is_grass { grass_tint(ox + x as i32, oz + z as i32) } else { Block::from_id(bid).color() };
                             let etile = if is_grass { GRASS_SIDE_TILE as f32 } else { tile_idx as f32 };
                             let quad = if dx==1 {
@@ -231,10 +231,10 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
                 }
                 1 => {
                     for y in 0..SECTION_SIZE {
-                        let mut mask = [[None::<(u8,u32,[u8;4],u8)>; 16]; 16];
+                        let mut mask = [[None::<(Id,u32,[u8;4],u8)>; 16]; 16];
                         for x in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
                             let id = section.get(x,y,z);
-                            if id==0 || id==Block::Water as u8 { continue; }
+                            if id==0 || id==Block::Water as Id { continue; }
                             if Block::from_id(id).shape() != Shape::Cube { continue; }
                             let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                             if !hidden(wx, wy, wz, dx, dy, dz) {
@@ -263,7 +263,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
                             let y0 = y as f32 + if dy==1 { 1.0 } else { 0.0 };
                             let x0 = x as f32; let z0 = z as f32; let ww = w as f32; let hh = h as f32;
                             let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww);
-                            let color = if bid == Block::Grass as u8 && dy == 1 {
+                            let color = if bid == Block::Grass as Id && dy == 1 {
                                 grass_tint(ox + x as i32, oz + z as i32)
                             } else { Block::from_id(bid).color() };
                             let wx0 = ox as f32; let wz0 = oz as f32; let by = base_y as f32;
@@ -282,10 +282,10 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
                 }
                 2 => {
                     for z in 0..SECTION_SIZE {
-                        let mut mask = [[None::<(u8,u32,[u8;4],u8)>; 16]; 16];
+                        let mut mask = [[None::<(Id,u32,[u8;4],u8)>; 16]; 16];
                         for x in 0..SECTION_SIZE { for y in 0..SECTION_SIZE {
                             let id = section.get(x,y,z);
-                            if id==0 || id==Block::Water as u8 { continue; }
+                            if id==0 || id==Block::Water as Id { continue; }
                             if Block::from_id(id).shape() != Shape::Cube { continue; }
                             let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                             if !hidden(wx, wy, wz, dx, dy, dz) {
@@ -312,7 +312,7 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
                             let z0 = z as f32 + if dz==1 { 1.0 } else { 0.0 };
                             let x0 = x as f32; let y0 = y as f32; let ww = w as f32; let hh = h as f32;
                             let (u0,v0,u1,v1) = (0.0f32, 0.0f32, hh, ww);
-                            let is_grass = bid == Block::Grass as u8;
+                            let is_grass = bid == Block::Grass as Id;
                             let color = if is_grass { grass_tint(ox + x as i32, oz + z as i32) } else { Block::from_id(bid).color() };
                             let etile = if is_grass { GRASS_SIDE_TILE as f32 } else { tile_idx as f32 };
                             let wx0 = ox as f32; let wz0 = oz as f32; let by = base_y as f32;
@@ -338,10 +338,10 @@ pub fn mesh_chunk(chunk: &Chunk, get_neighbor: &Neighbor, grass_tint: &dyn Fn(i3
         for y in 0..SECTION_SIZE {
             let mut wmask = [[false; 16]; 16];
             for x in 0..SECTION_SIZE { for z in 0..SECTION_SIZE {
-                if section.get(x,y,z) != Block::Water as u8 { continue; }
+                if section.get(x,y,z) != Block::Water as Id { continue; }
                 let wx = ox + x as i32; let wy = base_y + y as i32; let wz = oz + z as i32;
                 let above = get_neighbor(wx, wy+1, wz).0;
-                if above != Block::Water as u8 && !(above != 0 && Block::from_id(above).is_opaque()) {
+                if above != Block::Water as Id && !(above != 0 && Block::from_id(above).is_opaque()) {
                     wmask[x][z] = true;
                 }
             }}
@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn a_lone_slab_is_meshed() {
         let mut c = Chunk::new(ChunkPos(0,0));
-        c.set_block_meta(2, 10, 2, Block::StoneSlab as u8, 0);
+        c.set_block_meta(2, 10, 2, Block::StoneSlab as Id, 0);
         let m = mesh_alone(&c);
         assert_eq!(vert_count(&m), 24, "a free-standing slab shows all six faces");
 
@@ -437,12 +437,12 @@ mod tests {
     #[test]
     fn a_cube_next_to_a_slab_keeps_its_face() {
         let mut with_slab = Chunk::new(ChunkPos(0,0));
-        with_slab.set_block(5, 10, 5, Block::Stone as u8);
-        with_slab.set_block_meta(6, 10, 5, Block::StoneSlab as u8, 0);
+        with_slab.set_block(5, 10, 5, Block::Stone as Id);
+        with_slab.set_block_meta(6, 10, 5, Block::StoneSlab as Id, 0);
 
         let mut with_cube = Chunk::new(ChunkPos(0,0));
-        with_cube.set_block(5, 10, 5, Block::Stone as u8);
-        with_cube.set_block(6, 10, 5, Block::Stone as u8);
+        with_cube.set_block(5, 10, 5, Block::Stone as Id);
+        with_cube.set_block(6, 10, 5, Block::Stone as Id);
 
         let slab_faces = count_faces_at(&mesh_alone(&with_slab), 6.0, [1.0, 0.0, 0.0]);
         let cube_faces = count_faces_at(&mesh_alone(&with_cube), 6.0, [1.0, 0.0, 0.0]);
@@ -462,9 +462,9 @@ mod tests {
     #[test]
     fn a_slab_roof_casts_shadow() {
         // The light packed into the floor block's up-facing quad, under an optional roof.
-        let floor_light = |roof: Option<u8>| -> f32 {
+        let floor_light = |roof: Option<Id>| -> f32 {
             let mut c = Chunk::new(ChunkPos(0, 0));
-            c.set_block(8, 10, 8, Block::Stone as u8);
+            c.set_block(8, 10, 8, Block::Stone as Id);
             if let Some(r) = roof { c.set_block_meta(8, 14, 8, r, 0); }
             let m = mesh_alone(&c);
             m.iter().flatten()
@@ -474,9 +474,9 @@ mod tests {
                 .light
         };
         let open_sky = floor_light(None);
-        let under_slab = floor_light(Some(Block::StoneSlab as u8));
-        let under_stairs = floor_light(Some(Block::StoneStairs as u8));
-        let under_glass = floor_light(Some(Block::Glass as u8));
+        let under_slab = floor_light(Some(Block::StoneSlab as Id));
+        let under_stairs = floor_light(Some(Block::StoneStairs as Id));
+        let under_glass = floor_light(Some(Block::Glass as Id));
 
         assert!(under_slab < open_sky, "a slab roof must dim the floor ({under_slab} vs {open_sky})");
         assert!(under_stairs < open_sky, "so must a stair roof ({under_stairs} vs {open_sky})");
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn stairs_drop_only_the_sealed_internal_face() {
         let mut c = Chunk::new(ChunkPos(0,0));
-        c.set_block_meta(3, 10, 3, Block::StoneStairs as u8, crate::world::block::FACE_NORTH);
+        c.set_block_meta(3, 10, 3, Block::StoneStairs as Id, crate::world::block::FACE_NORTH);
         let m = mesh_alone(&c);
         let md = m.iter().flatten().next().expect("stairs must mesh");
 

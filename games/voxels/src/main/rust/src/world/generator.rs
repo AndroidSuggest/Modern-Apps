@@ -1,4 +1,5 @@
 use super::chunk::{Chunk, CHUNK_SIZE, CHUNK_HEIGHT};
+use super::block::Id;
 use crate::world::perlin::NoiseFn;
 use crate::world::perlin::Perlin;
 use std::collections::hash_map::DefaultHasher;
@@ -29,7 +30,7 @@ const B_BLACKSMITH: u8 = 5;
 const B_CHURCH: u8 = 6;
 
 // Level a village column: dirt foundation down a few blocks, clear terrain above up to `clear_to`.
-fn level_column(chunk: &mut Chunk, lx: usize, lz: usize, base: usize, clear_to: usize, floor: u8) {
+fn level_column(chunk: &mut Chunk, lx: usize, lz: usize, base: usize, clear_to: usize, floor: Id) {
     for dyb in 1..=3 { if base >= dyb { chunk.set_block(lx, base - dyb, lz, 2); } } // dirt foundation
     chunk.set_block(lx, base, lz, floor);
     for dy in 1..=clear_to { if base + dy < CHUNK_HEIGHT { chunk.set_block(lx, base + dy, lz, 0); } }
@@ -101,7 +102,7 @@ fn render_building(chunk: &mut Chunk, ox: i32, oz: i32, bx: i32, bz: i32, w: i32
             }
             // Blacksmith forge: furnace + magma fire + iron-block anvil inside.
             if kind == B_BLACKSMITH {
-                for &(dx, dz, dy, id) in &[(1i32, 1i32, 1usize, 35u8), (2, 1, 0, 76), (3, 1, 1, 23)] {
+                for &(dx, dz, dy, id) in &[(1i32, 1i32, 1usize, 35 as Id), (2, 1, 0, 76), (3, 1, 1, 23)] {
                     let (wx, wz) = (bx + dx, bz + dz);
                     if in_chunk(wx, wz, ox, oz) { chunk.set_block((wx - ox) as usize, base + dy, (wz - oz) as usize, id); }
                 }
@@ -285,7 +286,7 @@ pub struct TerrainGen {
 
 // Ore/stone-variant veins, richest first so a rare vein wins where two overlap.
 // (block id, noise offset, noise scale, threshold, min y, max y)
-type Vein = (u8, f64, f64, f64, i32, i32);
+type Vein = (Id, f64, f64, f64, i32, i32);
 const OVERWORLD_VEINS: [Vein; 11] = [
     (22, 947.0, 0.115, 0.80, 62, 118), // emerald — mountains only, the rarest surface find
     (20, 823.0, 0.105, 0.78,  5,  20), // diamond — deepest
@@ -385,7 +386,7 @@ impl TerrainGen {
         }
     }
     // Surface + subsurface block for a biome at surface height `h` (before the sea/beach override).
-    fn surface_blocks(&self, biome: Biome, h: usize, wx: f64, wz: f64) -> (u8, u8) {
+    fn surface_blocks(&self, biome: Biome, h: usize, wx: f64, wz: f64) -> (Id, Id) {
         use Biome::*;
         match biome {
             Desert => (6, 38),                       // sand / sandstone
@@ -408,7 +409,7 @@ impl TerrainGen {
         }
     }
     // Plant a simple tree: a trunk of `log` topped with a `leaf` canopy. Shared by all wooded biomes.
-    fn plant_tree(&self, chunk: &mut Chunk, dx: usize, dz: usize, h: usize, log: u8, leaf: u8, trunk_h: usize) {
+    fn plant_tree(&self, chunk: &mut Chunk, dx: usize, dz: usize, h: usize, log: Id, leaf: Id, trunk_h: usize) {
         for ty in 1..=trunk_h {
             let y = h + ty;
             if y < CHUNK_HEIGHT { chunk.set_block(dx, y, dz, log); }
@@ -455,7 +456,7 @@ impl TerrainGen {
     }
     // The block that fills a solid underground cell: an ore/variant vein if one passes here,
     // otherwise deepslate at depth or plain stone.
-    fn stone_at(&self, veins: &[Vein], wx: f64, y: i32, wz: f64, base: u8) -> u8 {
+    fn stone_at(&self, veins: &[Vein], wx: f64, y: i32, wz: f64, base: Id) -> Id {
         for &(id, off, scale, thresh, y0, y1) in veins {
             if y < y0 || y > y1 { continue; }
             if self.perlin_ore.get([wx * scale + off, y as f64 * scale, wz * scale - off]) > thresh { return id; }
@@ -463,7 +464,7 @@ impl TerrainGen {
         base
     }
     // Deepslate replaces stone below DEEPSLATE_Y, with a noisy band so the boundary isn't a flat line.
-    fn deep_base(&self, wx: f64, y: i32, wz: f64) -> u8 {
+    fn deep_base(&self, wx: f64, y: i32, wz: f64) -> Id {
         let jitter = self.perlin_detail.get([wx * 0.06, wz * 0.06]) * 5.0;
         if (y as f64) < DEEPSLATE_Y as f64 + jitter { 57 } else { 1 }
     }
@@ -594,12 +595,12 @@ impl TerrainGen {
             }
             if h > 0 && !self.cave_at(wx, h as f64, wz) {
                 // Beaches: sand where the ground meets the sea (snowy biomes get snowy beaches).
-                let surface: u8 = if h < 62 {
+                let surface: Id = if h < 62 {
                     match biome { Biome::Badlands => 36, Biome::SnowyPlains | Biome::SnowyTaiga | Biome::IceSpikes | Biome::FrozenPeaks | Biome::SnowySlopes => 11, _ => 6 }
                 } else { surface_top };
                 // Buried finds hide in sand, wherever sand happens to be the surface.
                 let surface = if matches!(surface, 6 | 36) && hash3(wx as i32, wz as i32, 0x5A9D) % 900 == 0 {
-                    crate::world::block::Block::SuspiciousSand as u8
+                    crate::world::block::Block::SuspiciousSand as Id
                 } else { surface };
                 chunk.set_block(dx, h, dz, surface);
                 if h > 1 && !self.cave_at(wx, (h-1) as f64, wz) { chunk.set_block(dx, h - 1, dz, sub); }
@@ -702,7 +703,7 @@ impl TerrainGen {
             match kind {
                 3 => { // warm: coral reef
                     if r < 90 {
-                        let coral = 61 + ((hasher.finish() >> 8) % 5) as u8;
+                        let coral = 61 + ((hasher.finish() >> 8) % 5) as Id;
                         chunk.set_block(dx, y, dz, coral);
                         if r < 20 && y + 1 < Self::SEA_LEVEL { chunk.set_block(dx, y + 1, dz, coral); }
                     } else if r < 96 { chunk.set_block(dx, y, dz, 67); } // sea lantern
@@ -944,16 +945,16 @@ mod tests {
                 }
             }
         }
-        let pct = |id: u8| counts.get(&id).copied().unwrap_or(0) as f64 * 100.0 / total as f64;
+        let pct = |id: Id| counts.get(&id).copied().unwrap_or(0) as f64 * 100.0 / total as f64;
         for (id, name, lo, hi) in [
-            (18u8, "coal", 0.5, 4.0),
-            (19u8, "iron", 0.2, 2.5),
-            (21u8, "redstone", 0.02, 0.6),
-            (20u8, "diamond", 0.005, 0.3),
-            (22u8, "emerald", 0.002, 0.3),
-            (90u8, "silver", 0.02, 0.8),
-            (97u8, "copper", 0.3, 3.0),
-            (98u8, "gold", 0.01, 0.5),
+            (18 as Id, "coal", 0.5, 4.0),
+            (19 as Id, "iron", 0.2, 2.5),
+            (21 as Id, "redstone", 0.02, 0.6),
+            (20 as Id, "diamond", 0.005, 0.3),
+            (22 as Id, "emerald", 0.002, 0.3),
+            (90 as Id, "silver", 0.02, 0.8),
+            (97 as Id, "copper", 0.3, 3.0),
+            (98 as Id, "gold", 0.01, 0.5),
         ] {
             let p = pct(id);
             println!("{name}: {p:.4}%");

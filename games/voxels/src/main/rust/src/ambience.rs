@@ -9,6 +9,8 @@
 // and doesn't need any).
 
 /// Surface classes a footstep can land on. The Kotlin synthesiser picks a timbre per class.
+use crate::world::block::Id;
+
 pub const STEP_STONE: u8 = 0;
 pub const STEP_WOOD: u8 = 1;
 pub const STEP_GRASS: u8 = 2;
@@ -33,7 +35,7 @@ const CUE_GAP_CALM: f32 = 46.0;
 const CUE_GAP_TENSE: f32 = 13.0;
 
 /// What a footstep on this block should sound like.
-pub fn step_material(id: u8) -> u8 {
+pub fn step_material(id: Id) -> u8 {
     match id {
         12 => STEP_WATER,
         11 | 42 | 43 | 44 => STEP_SNOW,
@@ -77,7 +79,7 @@ pub struct Ambience {
 impl Ambience {
     /// `walked` is the distance covered this tick, `under` the block being stood on.
     #[allow(clippy::too_many_arguments)]
-    pub fn tick(&mut self, dt: f32, walked: f32, on_ground: bool, under: u8, dark: bool, deep: bool, roll: f32) {
+    pub fn tick(&mut self, dt: f32, walked: f32, on_ground: bool, under: Id, dark: bool, deep: bool, roll: f32) {
         if on_ground && under != 0 {
             self.step_dist += walked;
             if self.step_dist >= STRIDE {

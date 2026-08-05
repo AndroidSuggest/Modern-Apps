@@ -1,5 +1,6 @@
 // Non-block inventory items (food, consumables, materials) and the status-effect model.
-// Inventory ids < ITEM_BASE are blocks; ids >= ITEM_BASE are items and are never placeable.
+// Inventory ids outside ITEM_BASE..=ITEM_MAX are blocks; ids inside it are items and are never
+// placeable.
 // Design follows the Matcha/Raspberry survival overhaul: no hunger — food applies Regeneration
 // (the heal) plus a themed buff; Estus is a fast multi-charge heal; Heart Containers raise max HP.
 
@@ -27,42 +28,47 @@ impl Effect {
 #[derive(Clone, Copy)]
 pub struct ActiveEffect { pub kind: Effect, pub secs: f32, pub amp: u8 }
 
-pub const ITEM_BASE: u8 = 128;
+use crate::world::block::Id;
+
+pub const ITEM_BASE: Id = 128;
+/// The item window's upper bound. Blocks resume at `BLOCK_HIGH_BASE` one past it, so the numbers
+/// already written into saves keep their meaning and both kinds have room to grow.
+pub const ITEM_MAX: Id = 1023;
 // Matcha alloy line: 192 Sulfur, 193 Silver Ingot, 194 Quicksilver, 195 Steel Ingot,
 // 196 Adamant Ingot, 197/198 adamant pickaxe/sword, 199..202 adamant armor.
-pub fn is_item(id: u8) -> bool { id >= ITEM_BASE }
-pub fn is_estus(id: u8) -> bool { id == 128 }
-pub fn is_heart_container(id: u8) -> bool { id == 129 }
-pub fn is_food(id: u8) -> bool { food_effects(id).is_some() }
+pub fn is_item(id: Id) -> bool { (ITEM_BASE..=ITEM_MAX).contains(&id) }
+pub fn is_estus(id: Id) -> bool { id == 128 }
+pub fn is_heart_container(id: Id) -> bool { id == 129 }
+pub fn is_food(id: Id) -> bool { food_effects(id).is_some() }
 
 // ---- Tools & armor ----
 // Tools 163..170: {wood,stone,iron,diamond} x {pickaxe,sword}. Armor 171..178: {iron,diamond} x
 // {helmet,chestplate,leggings,boots}. Matcha's bronze sits between iron and diamond at 239..244,
 // and adamant tops the ladder at 197..202. Durability is stored in the inventory slot's `count`.
-pub fn is_tool(id: u8) -> bool { (163..=170).contains(&id) || matches!(id, 197 | 198 | 239 | 240 | 252 | 253 | 255) }
+pub fn is_tool(id: Id) -> bool { (163..=170).contains(&id) || matches!(id, 197 | 198 | 239 | 240 | 252 | 253 | 255) }
 /// Item 255. Brushing suspicious sand is the only thing it does.
-pub const BRUSH: u8 = 255;
+pub const BRUSH: Id = 255;
 /// Shears: used on a sheep rather than on terrain, so they're a tool that mines nothing.
-pub fn is_shears(id: u8) -> bool { id == 252 }
-pub fn is_pickaxe(id: u8) -> bool { matches!(id, 163 | 165 | 167 | 169 | 197 | 239) }
-pub fn is_sword(id: u8) -> bool { matches!(id, 164 | 166 | 168 | 170 | 198 | 240) }
-pub fn is_elytra(id: u8) -> bool { id == 188 }
-pub fn is_armor(id: u8) -> bool {
+pub fn is_shears(id: Id) -> bool { id == 252 }
+pub fn is_pickaxe(id: Id) -> bool { matches!(id, 163 | 165 | 167 | 169 | 197 | 239) }
+pub fn is_sword(id: Id) -> bool { matches!(id, 164 | 166 | 168 | 170 | 198 | 240) }
+pub fn is_elytra(id: Id) -> bool { id == 188 }
+pub fn is_armor(id: Id) -> bool {
     (171..=178).contains(&id) || (199..=202).contains(&id) || (241..=244).contains(&id) || id == 188
 } // elytra occupies the chest slot
-pub fn armor_slot(id: u8) -> usize {
+pub fn armor_slot(id: Id) -> usize {
     if id == 188 { 1 }
     else if id >= 241 { (id - 241) as usize }
     else if id >= 199 { (id - 199) as usize }
     else { ((id - 171) % 4) as usize }
 } // 0 helm, 1 chest, 2 legs, 3 boots
-pub fn is_flint_steel(id: u8) -> bool { id == 186 }
-pub fn is_firework(id: u8) -> bool { id == 189 }
-pub fn has_durability(id: u8) -> bool { is_tool(id) || is_armor(id) || id == 186 }
+pub fn is_flint_steel(id: Id) -> bool { id == 186 }
+pub fn is_firework(id: Id) -> bool { id == 189 }
+pub fn has_durability(id: Id) -> bool { is_tool(id) || is_armor(id) || id == 186 }
 
-pub fn sword_damage(id: u8) -> f32 { match id { 164 => 5.0, 166 => 6.0, 168 => 7.0, 240 => 8.0, 170 => 9.0, 198 => 11.0, _ => 0.0 } }
-pub fn pick_damage(id: u8) -> f32 { match id { 163 => 2.0, 165 => 3.0, 167 => 4.0, 239 => 4.5, 169 => 5.0, 197 => 6.0, _ => 0.0 } }
-pub fn armor_defense(id: u8) -> f32 {
+pub fn sword_damage(id: Id) -> f32 { match id { 164 => 5.0, 166 => 6.0, 168 => 7.0, 240 => 8.0, 170 => 9.0, 198 => 11.0, _ => 0.0 } }
+pub fn pick_damage(id: Id) -> f32 { match id { 163 => 2.0, 165 => 3.0, 167 => 4.0, 239 => 4.5, 169 => 5.0, 197 => 6.0, _ => 0.0 } }
+pub fn armor_defense(id: Id) -> f32 {
     match id {
         171 => 2.0, 172 => 6.0, 173 => 5.0, 174 => 2.0, // iron helm/chest/legs/boots
         241 => 2.0, 242 => 7.0, 243 => 5.0, 244 => 3.0, // bronze
@@ -72,7 +78,7 @@ pub fn armor_defense(id: u8) -> f32 {
         _ => 0.0,
     }
 }
-pub fn max_durability(id: u8) -> i32 {
+pub fn max_durability(id: Id) -> i32 {
     match id {
         163 | 164 => 60, 165 | 166 => 132, 167 | 168 => 250, 169 | 170 => 1562, // wood/stone/iron/diamond tools
         171..=174 => 240, 175..=178 => 528,                                       // iron/diamond armor
@@ -90,7 +96,7 @@ pub fn max_durability(id: u8) -> i32 {
 }
 
 // Effects applied when a food item is eaten. First entry is the healing Regeneration.
-pub fn food_effects(id: u8) -> Option<&'static [(Effect, f32, u8)]> {
+pub fn food_effects(id: Id) -> Option<&'static [(Effect, f32, u8)]> {
     use Effect::*;
     Some(match id {
         130 => &[(Regeneration, 4.0, 0)],                                   // apple
@@ -132,19 +138,20 @@ pub fn food_effects(id: u8) -> Option<&'static [(Effect, f32, u8)]> {
 mod tests {
     use super::*;
 
-    // Blocks and items share one u8 id space split at ITEM_BASE. If a new block ever crosses that
-    // line it would silently become unplaceable, so pin the invariant down.
+    // Blocks and items share one id space, split by range at ITEM_BASE..=ITEM_MAX. If a new block
+    // ever crossed that line it would silently become unplaceable, so pin the invariant down.
     #[test]
     fn block_ids_stay_below_the_item_base() {
-        assert!(crate::world::block::MAX_BLOCK_ID < ITEM_BASE);
-        assert!(!is_item(crate::world::block::MAX_BLOCK_ID));
+        assert!(crate::world::block::MAX_LOW_BLOCK_ID < ITEM_BASE);
+        assert!(!is_item(crate::world::block::MAX_LOW_BLOCK_ID));
+        assert!(!is_item(crate::world::block::BLOCK_HIGH_BASE), "the high block window is not items");
     }
 
     // armor_slot() does range arithmetic over three disjoint id blocks; a wrong mapping would let
     // a helmet occupy the boots slot.
     #[test]
     fn armor_maps_to_the_right_slot() {
-        for (id, slot) in [(171u8, 0usize), (172, 1), (173, 2), (174, 3),   // iron
+        for (id, slot) in [(171 as Id, 0usize), (172, 1), (173, 2), (174, 3),   // iron
                            (175, 0), (176, 1), (177, 2), (178, 3),          // diamond
                            (199, 0), (200, 1), (201, 2), (202, 3),          // adamant
                            (188, 1)] {                                      // elytra -> chest
@@ -155,7 +162,9 @@ mod tests {
 
     #[test]
     fn tools_and_armor_do_not_overlap() {
-        for id in 0..=255u8 {
+        // Every tool and every piece of armor lives in the legacy 0..=255 window; sweeping the
+        // whole u16 range would cost 256x for nothing.
+        for id in 0..=255 as Id {
             assert!(!(is_tool(id) && is_armor(id)), "{id} is both a tool and armor");
             // Shears and the fishing rod are the exceptions: tools that neither mine nor fight.
             if is_tool(id) && !is_shears(id) && id != crate::fishing::ROD && id != BRUSH {
@@ -173,7 +182,7 @@ mod tests {
     fn every_food_is_obtainable() {
         use crate::inventory::{RECIPES, SMELTING};
         let mut missing = Vec::new();
-        for id in 0..=255u8 {
+        for id in 0..=255 as Id {
             if food_effects(id).is_none() { continue; }
             let crafted = RECIPES.iter().any(|r| r.4 == id);
             let smelted = SMELTING.iter().any(|s| s.out == id);
@@ -201,7 +210,7 @@ mod tests {
     fn adamant_outclasses_diamond() {
         assert!(sword_damage(198) > sword_damage(170));
         assert!(pick_damage(197) > pick_damage(169));
-        for (adamant, diamond) in [(199u8, 175u8), (200, 176), (201, 177), (202, 178)] {
+        for (adamant, diamond) in [(199 as Id, 175 as Id), (200, 176), (201, 177), (202, 178)] {
             assert!(armor_defense(adamant) > armor_defense(diamond), "{adamant} must beat {diamond}");
         }
         assert!(max_durability(197) > max_durability(169));

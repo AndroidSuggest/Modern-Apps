@@ -10,30 +10,32 @@
 // player could never find "their" librarian again. A shared counter in `ProgressSave` keeps the
 // progression real.
 
+use crate::world::block::Id;
+
 use crate::item::{has_durability, max_durability};
 
-pub const EMERALD: u8 = 156;
+pub const EMERALD: Id = 156;
 
 /// One line on a villager's trade list. `cost2` of 0 means a single-ingredient trade.
 #[derive(Clone, Copy)]
 pub struct Offer {
-    pub cost: u8,
+    pub cost: Id,
     pub cost_n: i32,
-    pub cost2: u8,
+    pub cost2: Id,
     pub cost2_n: i32,
-    pub give: u8,
+    pub give: Id,
     pub give_n: i32,
 }
 
 // Constructors, so the tables below read as sentences and can't transpose a cost for a give.
-const fn buy(emeralds: i32, give: u8, give_n: i32) -> Offer {
+const fn buy(emeralds: i32, give: Id, give_n: i32) -> Offer {
     Offer { cost: EMERALD, cost_n: emeralds, cost2: 0, cost2_n: 0, give, give_n }
 }
-const fn sell(cost: u8, cost_n: i32, emeralds: i32) -> Offer {
+const fn sell(cost: Id, cost_n: i32, emeralds: i32) -> Offer {
     Offer { cost, cost_n, cost2: 0, cost2_n: 0, give: EMERALD, give_n: emeralds }
 }
 /// Emeralds plus raw material for one finished piece — the smiths' signature trade.
-const fn forge(emeralds: i32, mat: u8, mat_n: i32, give: u8) -> Offer {
+const fn forge(emeralds: i32, mat: Id, mat_n: i32, give: Id) -> Offer {
     Offer { cost: EMERALD, cost_n: emeralds, cost2: mat, cost2_n: mat_n, give, give_n: 1 }
 }
 
@@ -254,11 +256,7 @@ pub fn give_count(offer: &Offer) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::block::MAX_BLOCK_ID;
-
-    fn is_real_id(id: u8) -> bool {
-        id != 0 && (id <= MAX_BLOCK_ID || crate::item::is_item(id))
-    }
+    use crate::world::block::{is_real_id, MAX_LOW_BLOCK_ID};
 
     // A typo in a trade table is invisible until a player taps it and receives Air, so every id in
     // every tier of every profession gets checked.

@@ -1,4 +1,4 @@
-use super::block::Block;
+use super::block::{Block, Id};
 use super::chunk::{Chunk, ChunkPos, CHUNK_SIZE, CHUNK_HEIGHT};
 use super::generator::TerrainGen;
 use super::save;
@@ -17,7 +17,7 @@ impl ChunkMap {
         Self { chunks: HashMap::new(), gen: TerrainGen::new_dim(seed, dim), save_dir, render_distance: 12 }
     }
     pub fn dim(&self) -> u8 { self.gen.dim }
-    pub fn get_block_world(&self, wx: i32, wy: i32, wz: i32) -> u8 {
+    pub fn get_block_world(&self, wx: i32, wy: i32, wz: i32) -> Id {
         if wy < 0 || wy >= CHUNK_HEIGHT as i32 { return 0; }
         let cp = ChunkPos::from_world(wx, wz);
         if let Some(chunk) = self.chunks.get(&cp) {
@@ -35,10 +35,10 @@ impl ChunkMap {
             chunk.get_meta(lx, wy as usize, lz)
         } else { 0 }
     }
-    pub fn set_block_world(&mut self, wx: i32, wy: i32, wz: i32, id: u8) -> bool {
+    pub fn set_block_world(&mut self, wx: i32, wy: i32, wz: i32, id: Id) -> bool {
         self.set_block_meta_world(wx, wy, wz, id, 0)
     }
-    pub fn set_block_meta_world(&mut self, wx: i32, wy: i32, wz: i32, id: u8, meta: u8) -> bool {
+    pub fn set_block_meta_world(&mut self, wx: i32, wy: i32, wz: i32, id: Id, meta: u8) -> bool {
         if wy < 0 || wy >= CHUNK_HEIGHT as i32 { return false; }
         let cp = ChunkPos::from_world(wx, wz);
         if !self.chunks.contains_key(&cp) { self.load_or_gen(cp); }

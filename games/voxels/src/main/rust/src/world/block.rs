@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-pub type BlockId = u8;
+/// One id space for blocks and items, 16 bits wide. The split is by range, not by width:
+/// `ITEM_BASE..=ITEM_MAX` is items and everything else is a block. See `item.rs`.
+pub type Id = u16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum Block {
     Air = 0,
     Stone = 1,
@@ -140,7 +142,19 @@ pub enum Block {
     MelonCrop = 123,
 }
 
-pub const MAX_BLOCK_ID: u8 = 123;
+/// Blocks live in two windows either side of the item range. The low window is the original
+/// `u8` numbering, frozen so no saved chunk needs remapping; new blocks go in the high window.
+pub const MAX_LOW_BLOCK_ID: Id = 123;
+pub const BLOCK_HIGH_BASE: Id = 1024;
+/// One below `BLOCK_HIGH_BASE` while the high window is empty, which makes the range check below
+/// match nothing rather than matching `Air`.
+pub const MAX_HIGH_BLOCK_ID: Id = BLOCK_HIGH_BASE - 1;
+
+/// Every id that names a real block, low window then high. The plain `0..=MAX` loop that used to
+/// work would now walk the item window and half of nothing.
+pub fn all_block_ids() -> impl Iterator<Item = Id> {
+    (0..=MAX_LOW_BLOCK_ID).chain(BLOCK_HIGH_BASE..=MAX_HIGH_BLOCK_ID)
+}
 
 /// Growth stage occupies meta bits 3-4 (bits 0-2 are facing and top-half, used by slabs and stairs).
 pub const CROP_STAGE_SHIFT: u8 = 3;
@@ -148,6 +162,13 @@ pub const CROP_STAGE_MASK: u8 = 0b1_1000;
 pub const CROP_RIPE: u8 = 3;
 pub fn crop_stage(meta: u8) -> u8 { (meta & CROP_STAGE_MASK) >> CROP_STAGE_SHIFT }
 pub fn crop_meta(stage: u8) -> u8 { (stage.min(CROP_RIPE) << CROP_STAGE_SHIFT) & CROP_STAGE_MASK }
+
+/// Does an id name something a player can actually hold — a real block, or an id in the item
+/// window? The data tables are full of bare numbers, and a typo there yields Air in silence.
+#[cfg(test)]
+pub fn is_real_id(id: Id) -> bool {
+    id != 0 && (Block::from_id(id) != Block::Air || crate::item::is_item(id))
+}
 
 /// The geometry a block occupies within its cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,10 +208,12 @@ impl Boxes {
 }
 
 impl Block {
-    pub fn from_id(id: u8) -> Self {
-        if id <= MAX_BLOCK_ID { unsafe { std::mem::transmute(id) } } else { Self::Air }
+    pub fn from_id(id: Id) -> Self {
+        let known = id <= MAX_LOW_BLOCK_ID
+            || (BLOCK_HIGH_BASE..=MAX_HIGH_BLOCK_ID).contains(&id);
+        if known { unsafe { std::mem::transmute(id) } } else { Self::Air }
     }
-    pub fn id(self) -> u8 { self as u8 }
+    pub fn id(self) -> Id { self as Id }
     pub fn is_air(self) -> bool { matches!(self, Self::Air) }
     pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass | Self::Lava | Self::NetherPortal | Self::EndPortal) && !self.is_crop() }
     pub fn is_transparent(self) -> bool {
@@ -204,14 +227,14 @@ impl Block {
     /// Crops grow on farmland and are harvested rather than mined.
     pub fn is_crop(self) -> bool { matches!(self, Self::WheatCrop | Self::CarrotCrop | Self::MelonCrop) }
     /// The seed that plants this crop, and what a ripe one yields.
-    pub fn crop_seed(self) -> u8 {
+    pub fn crop_seed(self) -> Id {
         match self { Self::WheatCrop => 250, Self::CarrotCrop => 135, Self::MelonCrop => 136, _ => 0 }
     }
-    pub fn crop_yield(self) -> u8 {
+    pub fn crop_yield(self) -> Id {
         match self { Self::WheatCrop => 251, Self::CarrotCrop => 135, Self::MelonCrop => 136, _ => 0 }
     }
     /// The crop a given seed plants, if any.
-    pub fn crop_from_seed(seed: u8) -> Option<Self> {
+    pub fn crop_from_seed(seed: Id) -> Option<Self> {
         match seed { 250 => Some(Self::WheatCrop), 135 => Some(Self::CarrotCrop), 136 => Some(Self::MelonCrop), _ => None }
     }
 
@@ -567,13 +590,27 @@ mod tests {
 
     #[test]
     fn every_id_up_to_the_max_maps_to_a_distinct_block() {
-        for id in 0..=MAX_BLOCK_ID {
+        for id in all_block_ids() {
             assert_eq!(Block::from_id(id).id(), id, "id {id} did not round-trip");
         }
-        // Ids above the max must not be mistaken for real blocks.
-        assert_eq!(Block::from_id(MAX_BLOCK_ID + 1), Block::Air);
-        // Blocks and items share one u8 space; crossing ITEM_BASE would make a block unplaceable.
-        assert!(MAX_BLOCK_ID < crate::item::ITEM_BASE);
+        // Ids in the gap between the windows must not be mistaken for real blocks.
+        assert_eq!(Block::from_id(MAX_LOW_BLOCK_ID + 1), Block::Air);
+        assert_eq!(Block::from_id(BLOCK_HIGH_BASE - 1), Block::Air);
+        assert_eq!(Block::from_id(Id::MAX), Block::Air);
+        // The whole item window has to read back as air, or a stray item id in a chunk would
+        // transmute into a block that doesn't exist.
+        for id in crate::item::ITEM_BASE..=crate::item::ITEM_MAX {
+            assert_eq!(Block::from_id(id), Block::Air, "item id {id} decoded as a block");
+        }
+    }
+
+    // The three windows must stay disjoint and in order, or an id would mean two things at once.
+    #[test]
+    fn the_id_windows_do_not_overlap() {
+        assert!(MAX_LOW_BLOCK_ID < crate::item::ITEM_BASE);
+        assert!(crate::item::ITEM_BASE <= crate::item::ITEM_MAX);
+        assert!(crate::item::ITEM_MAX < BLOCK_HIGH_BASE);
+        for id in all_block_ids() { assert!(!crate::item::is_item(id), "block {id} sits in the item window"); }
     }
 
     #[test]
@@ -679,7 +716,7 @@ mod tests {
     #[test]
     fn crops_are_walkable_and_plantable() {
         let mut seen = 0;
-        for id in 0..=MAX_BLOCK_ID {
+        for id in all_block_ids() {
             let b = Block::from_id(id);
             if !b.is_crop() { continue; }
             seen += 1;
@@ -692,7 +729,7 @@ mod tests {
         }
         assert_eq!(seen, 3, "expected three crops");
         assert_eq!(Block::crop_from_seed(0), None);
-        assert_eq!(Block::crop_from_seed(Block::Stone as u8), None);
+        assert_eq!(Block::crop_from_seed(Block::Stone as Id), None);
 
         // Glass is the mirror image: it fills the cell but lets light straight through.
         assert!(!Block::Glass.blocks_light());

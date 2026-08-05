@@ -128,6 +128,7 @@ pub fn raycast(chunks: &ChunkMap, origin: Vec3, dir: Vec3, max_dist: f32) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::block::Id;
     use crate::world::block::{Block, FACE_NORTH, META_TOP};
     use glam::vec3;
 
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn a_ray_passes_through_a_slabs_empty_half() {
         let mut w = world();
-        w.set_block_meta_world(4, SKY, 0, Block::StoneSlab as u8, 0);
+        w.set_block_meta_world(4, SKY, 0, Block::StoneSlab as Id, 0);
 
         // Aim along +X at 0.75 up the cell, above the slab's solid half.
         let high = raycast(&w, vec3(0.0, SKY as f32 + 0.75, 0.5), vec3(1.0, 0.0, 0.0), 20.0);
@@ -160,7 +161,7 @@ mod tests {
     #[test]
     fn looking_down_hits_the_slabs_top_surface() {
         let mut w = world();
-        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as u8, 0);
+        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as Id, 0);
         let hit = raycast(&w, vec3(0.5, SKY as f32 + 5.0, 0.5), vec3(0.0, -1.0, 0.0), 20.0).expect("must hit");
         assert_eq!(hit.pos, (0, SKY, 0));
         assert_eq!(hit.normal, (0, 1, 0));
@@ -171,7 +172,7 @@ mod tests {
     #[test]
     fn a_top_slab_is_hit_from_above_at_the_cell_ceiling() {
         let mut w = world();
-        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as u8, META_TOP);
+        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as Id, META_TOP);
         let hit = raycast(&w, vec3(0.5, SKY as f32 + 5.0, 0.5), vec3(0.0, -1.0, 0.0), 20.0).expect("must hit");
         assert!((hit.dist - 4.0).abs() < 1e-3, "a top slab's surface is the cell ceiling");
     }
@@ -180,7 +181,7 @@ mod tests {
     #[test]
     fn cubes_still_hit_at_the_cell_boundary() {
         let mut w = world();
-        w.set_block_world(4, SKY, 0, Block::Stone as u8);
+        w.set_block_world(4, SKY, 0, Block::Stone as Id);
         let hit = raycast(&w, vec3(0.0, SKY as f32 + 0.5, 0.5), vec3(1.0, 0.0, 0.0), 20.0).expect("must hit");
         assert_eq!(hit.pos, (4, SKY, 0));
         assert_eq!(hit.normal, (-1, 0, 0));
@@ -193,7 +194,7 @@ mod tests {
     #[test]
     fn stairs_are_open_above_their_low_half() {
         let mut w = world();
-        w.set_block_meta_world(4, SKY, 0, Block::StoneStairs as u8, FACE_NORTH);
+        w.set_block_meta_world(4, SKY, 0, Block::StoneStairs as Id, FACE_NORTH);
         // z = 0.25 is the low (north) half, 0.75 up the cell is above the tread.
         assert!(raycast(&w, vec3(0.0, SKY as f32 + 0.75, 0.25), vec3(1.0, 0.0, 0.0), 20.0).is_none());
         // z = 0.75 is under the tall step, so the same height is solid.
