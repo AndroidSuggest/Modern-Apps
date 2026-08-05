@@ -59,7 +59,9 @@
     <string name="delete_contact_name_confirm">Voulez-vous vraiment supprimer \"<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>\" ? Cette action est irréversible.</string>
     <string name="grant_contacts_permission">Veuillez autoriser l\'accès aux contacts</string>
     <plurals name="delete_selected_contacts_confirm">
-        <item quantity="other">Voulez-vous vraiment supprimer les <xliff:g id="count" example="5">%1$d</xliff:g> contacts sélectionnés ? Cette action est irréversible.</item>
+        <item quantity="one">Voulez-vous vraiment supprimer le <xliff:g id="count" example="5">%1$d</xliff:g> contact sélectionné ? Cette action est irréversible.</item>
+        <item quantity="many">Voulez-vous vraiment supprimer les <xliff:g id="count" example="5">%1$d</xliff:g> contacts sélectionnés ? Cette action est irréversible.</item>
+        <item quantity="other">Voulez-vous vraiment supprimer les <xliff:g id="count" example="5">%1$d</xliff:g> contacts sélectionnés ? Cette action est irréversible.</item>
     </plurals>
     <string name="search_contacts">Rechercher un contact</string>
     <string name="include_year">Inclure l\'année</string>
@@ -78,6 +80,8 @@
     <string name="delete_group_confirm">Voulez-vous vraiment supprimer ce groupe ? Les contacts du groupe ne seront pas supprimés.</string>
     <string name="no_groups_found">Aucun groupe trouvé. Créez-en un dans l\'onglet Groupes.</string>
     <plurals name="contacts_count">
+        <item quantity="one"><xliff:g id="count" example="42">%1$d</xliff:g> contact</item>
+        <item quantity="many"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</item>
         <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> contacts</item>
     </plurals>
     <string name="select_account">Sélectionner un compte</string>
@@ -86,6 +90,8 @@
     <string name="create_new_account_option">Créer un nouveau compte</string>
     <string name="no_contacts_found">Aucun contact trouvé</string>
     <plurals name="import_summary_contacts">
+        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> contact prêt à être importé</item>
+        <item quantity="many"><xliff:g id="count" example="10">%1$d</xliff:g> contacts prêts à être importés</item>
         <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> contacts prêts à être importés</item>
     </plurals>
     <string name="add_number_to_contact">Ajouter un numéro à un contact</string>
