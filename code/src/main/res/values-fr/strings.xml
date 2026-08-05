@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Code</string>
+    <string name="open_folder">Ouvrir un dossier</string>
+    <string name="no_file_open">Aucun fichier ouvert</string>
+    <string name="open_file">Ouvrir un fichier</string>
+    <string name="find">Rechercher</string>
+    <string name="replace">Remplacer</string>
+    <string name="all">Tout</string>
+    <string name="no_folder_opened">Aucun dossier ouvert</string>
+    <string name="open_a_folder_to_browse_your_project_or">Ouvrez un dossier pour parcourir votre projet, ou ouvrez un fichier individuel.</string>
+</resources>
