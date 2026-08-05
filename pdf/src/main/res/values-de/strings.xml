@@ -12,4 +12,5 @@
     <string name="share_pdf">PDF teilen</string>
     <string name="crop_image">Bild zuschneiden</string>
     <string name="continue_label">Weiter</string>
+    <string name="open">Öffnen</string>
 </resources>
