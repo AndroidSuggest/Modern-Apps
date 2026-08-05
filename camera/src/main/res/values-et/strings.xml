@@ -1,3 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    </resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Kaamera</string>
+    <string name="night">Öö</string>
+    <string name="open_gallery">Galerii</string>
+    <string name="grant_camera_permission">Luba kaamera kasutamise õigused</string>
+    <string name="settings_aspect_ratio">Kuvasuhe</string>
+    <string name="settings_location">Asukoht</string>
+    <string name="settings_location_description">Salvesta asukoha koordinaadid foto metateabesse</string>
+    <string name="settings_video_codec">Videokoodek</string>
+    <string name="settings_video_codec_label">Videokoodek</string>
+    <string name="codec_avc_label">H.264 / AVC</string>
+    <string name="codec_avc_description">Parima ühilduvusega</string>
+    <string name="codec_hevc_label">H.265 / HEVC</string>
+    <string name="codec_hevc_description">Kõige tõhusam</string>
+    <string name="codec_av1_label">AV1</string>
+    <string name="codec_av1_description">Kõige tõhusam</string>
+    <string name="qr_result">QR-kood</string>
+    <string name="open_url">Ava võrguaadress</string>
+    <string name="no_app_to_open_url">Ükski rakendus ei oska seda linki avada</string>
+    <string name="copy_text">Kopeeri</string>
+    <string name="blur">Hägusta</string>
+    <string name="not_available">pole saadaval</string>
+    <string name="burst_count">Sarivõte: <xliff:g id="count" example="12">%1$d</xliff:g></string>
+    <string name="ae_af_lock">AE/AF LUKUSTUS</string>
+    <string name="processing_panorama_u2026">Töötlen panoraamfotot…</string>
+    <string name="auto">Automaatne</string>
+    <string name="night_2">Öö %1$s%%</string>
+    <string name="brightness">Eredus</string>
+    <string name="shadows">Varjud</string>
+    <string name="warmth">Värvi soojus</string>
+</resources>
