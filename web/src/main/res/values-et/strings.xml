@@ -1,3 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="all">Kõik</string>
+    <string name="history">Ajalugu</string>
+    <string name="app_name">Veeb</string>
+    <string name="search_or_enter_address">Otsi või sisesta aadress</string>
+    <string name="reload">Laadi uuesti</string>
+    <string name="bookmarks">Järjehoidjad</string>
+    <string name="new_tab">Uus vahekaart</string>
+    <string name="new_private_tab">Uus privaatne vahekaart</string>
+    <string name="downloads">Allalaadimised</string>
+    <string name="installed_apps">Paigaldatud rakendused</string>
+    <string name="site_data">Saidi andmed</string>
+    <string name="app_name_2">Rakenduse nimi</string>
+    <string name="recent">Hiljutine</string>
+    <string name="private_prefix">Privaatne •</string>
+    <string name="private_tab">Privaatne vahekaart</string>
+    <string name="no_downloads">Allalaadimisi pole</string>
+    <string name="general">Üldist</string>
+    <string name="search_engine">Otsingumootor</string>
+    <string name="duckduckgo_locked">DuckDuckGo (lukustatud)</string>
+    <string name="cache_mode">Puhverduse viis</string>
+    <string name="javascript">JavaScript</string>
+    <string name="required_by_most_sites">Enamus saite eeldavad selle lubamist</string>
+    <string name="block_third_party_cookies">Blokeeri kolmandate osapoolet küpsised</string>
+    <string name="may_break_logins">Võib teenused ja sisselogimised muuta mittetoimivaks</string>
+    <string name="desktop_mode">Lauaarvutivaade</string>
+    <string name="request_desktop_site">Kuva sait tavaarvutivaates</string>
+    <string name="ad_tracker_blocking">Reklaamide ja jälitajate blokeerimine</string>
+    <string name="privacy_data">Privaatsus ja andmed</string>
+    <string name="blocks_doubleclick_googletagmanager_anal">Blokeerib teenused: doubleclick, googletagmanager, analytics</string>
+    <string name="clear_browsing_data">Kustuta veebisirvimise andmed</string>
+    <string name="cookies_cache_history_storage_permission">Küpsised, puhverdamine, ajalugu, andmeruum, õigused</string>
+    <string name="allow">Luba</string>
+    <string name="block">Blokeeri</string>
+    <string name="allow_location">Kas lubad asukohta tuvastada?</string>
+    <string name="uses_system_location_services_private_ta">Kasutab süsteemi asukohateenuseid. Iialgi ei toimi privaatses vahekaardis.</string>
+    <string name="choose_files">Vali failid</string>
+    <string name="select_files_to_upload">Vali üleslaaditavad failid.</string>
+    <string name="pick_files">Nopi failid</string>
+    <string name="storage">Andmeruum</string>
+    <string name="permissions">Õigused</string>
+    <string name="no_permissions_set">Ühtegi õigust pole seadistatud</string>
+    <string name="no_installed_apps">Paigaldatud rakendusi pole</string>
+    <string name="delete_folder">Kustuta kaust</string>
+    <string name="no_bookmarks_yet">Järjehoidjaid veel pole</string>
+    <string name="no_bookmarks_in_this_folder">Selles kaustas pole veel järjehoidjaid</string>
+    <string name="new_folder">Uus kaust</string>
+    <string name="folder_name">Kausta nimi</string>
+    <string name="create">Loo</string>
+    <string name="delete_bookmark">Kas kustutad järjehoidja?</string>
+    <string name="delete_folder_2">Kas kustutad kausta?</string>
+    <string name="no_history_yet">Ajalugu veel pole logitud</string>
+    <string name="clear_history">Kas kustutad ajalookirjed?</string>
+    <string name="this_will_permanently_delete_your_browsi">Järgnevaga kustutad kogu oma veebisirvimise ajaloo.</string>
+    <string name="icon">ikoon: %1$s</string>
+    <string name="theme">kujundus: %1$s</string>
+    <plurals name="tabs">
+        <item quantity="one">%1$s vahekaart</item>
+        <item quantity="other">%1$s vahekaarti</item>
+    </plurals>
+    <string name="sites_permission_grants">%1$s saiti • %2$s lubatud õigust</string>
+    <plurals name="entries">
+        <item quantity="one">%1$s kirje</item>
+        <item quantity="other">%1$s kirjet</item>
+    </plurals>
+    <plurals name="files">
+        <item quantity="one">%1$s fail</item>
+        <item quantity="other">%1$s faili</item>
+    </plurals>
+    <string name="engine">Renderdusmootor: %1$s</string>
+    <string name="wants_to_know_your_location">%1$s soovib teada sinu asukohta.</string>
+    <string name="share_link">Jaga linki</string>
+</resources>
