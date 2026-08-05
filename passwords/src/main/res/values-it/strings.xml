@@ -1,3 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    </resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Password</string>
+    <string name="label_name">Nome</string>
+    <string name="label_user_id_email">ID utente / Email</string>
+    <string name="label_password">Password</string>
+    <string name="label_totp_secret">Chiave segreta TOTP</string>
+    <string name="label_add_website">Aggiungi sito web</string>
+    <string name="add_password">Aggiungi password</string>
+    <string name="edit_password">Modifica password</string>
+    <string name="hide">Nascondi</string>
+    <string name="show">Mostra</string>
+    <string name="section_password">Password</string>
+    <string name="section_totp">TOTP</string>
+    <string name="totp_not_configured">(non confogurata)</string>
+    <string name="totp_refreshes_in">Aggiornamento tra <xliff:g id="seconds" example="15">%1$d</xliff:g> s</string>
+    <string name="section_websites">Siti web</string>
+    <string name="websites_none">(nessuno)</string>
+    <string name="no_name">(nessun nome)</string>
+    <string name="no_user">(nessun utente)</string>
+    <string name="passkey_detail_title">Passkey</string>
+    <string name="passkey_rp_id">ID del servizio</string>
+    <string name="passkey_rp_name">Servizio web</string>
+    <string name="passkey_user_name">Nome utente</string>
+    <string name="passkey_user_display_name">Nome visualizzato</string>
+    <string name="passkey_credential_id">ID credenziale</string>
+    <string name="passkey_created">Creazione</string>
+    <string name="passkey_last_used">Ultimo utilizzo</string>
+    <string name="unlock_database">Sblocca Password</string>
+    <string name="title_settings">Impostazioni</string>
+    <string name="import_csv_warning">L\'importazione di un file CSV caricherà le credenziali in testo chiaro in questa app. Elimina il file esportato dopo aver completato l\'importazione.</string>
+    <string name="import_passwords">Importa password</string>
+    <string name="import_source_bitwarden">Bitwarden</string>
+    <string name="import_source_chrome">Google Chrome</string>
+    <string name="import_source_firefox">Firefox</string>
+    <string name="import_source_lastpass">LastPass</string>
+    <string name="import_source_one_password">1Password</string>
+    <string name="import_source_dashlane">Dashlane</string>
+    <string name="import_source_apple">Apple Passwords</string>
+    <string name="cable_channel_name">Accesso tra dispositivi</string>
+    <string name="cable_starting">Avvio accesso tra dispositivi</string>
+    <string name="cable_prompt_title">Vuoi accedere sull\'altro dispositivo?</string>
+    <string name="cable_prompt_subtitle">Verifica per approvare questo accesso con passkey</string>
+    <string name="name_and_user_id_required">Il nome e l\'ID utente non possono essere vuoti</string>
+</resources>
