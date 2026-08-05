@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.net.toUri
 import com.vayunmathur.email.accountColor
 import com.vayunmathur.email.senderDisplayName
@@ -147,7 +148,9 @@ fun EmlViewerScreen(
                     Spacer(Modifier.height(12.dp))
 
                     if (msg.isHtml && msg.body != null) {
-                        var loadImages by remember(uriString) { mutableStateOf(false) }
+                        val settings = remember(context) { com.vayunmathur.email.data.EmailSettings.get(context) }
+                        val loadRemoteByDefault by settings.loadRemoteImages.collectAsStateWithLifecycle()
+                        var loadImages by remember(uriString, loadRemoteByDefault) { mutableStateOf(loadRemoteByDefault) }
                         if (!loadImages && cidMap.isEmpty()) {
                             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(stringResource(R.string.remote_images_blocked), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

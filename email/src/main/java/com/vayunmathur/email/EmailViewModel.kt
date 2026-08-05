@@ -221,7 +221,7 @@ class EmailViewModel(application: Application) :
         _aiSummary.value = null
 
         val emailSnippets = messages.take(5).joinToString("\n---\n") { msg ->
-            val plainBody = msg.plainTextBody()?.take(150) ?: ""
+            val plainBody = msg.previewText(150)
             "Subject: ${msg.subject}\nFrom: ${senderDisplayName(msg.from)}\n$plainBody"
         }
         val prompt = "Summarize these emails in 1-2 sentences:\n\n$emailSnippets"

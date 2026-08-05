@@ -170,9 +170,67 @@ fun accountColor(email: String): Long {
     return ACCOUNT_COLORS[(hash and Int.MAX_VALUE) % ACCOUNT_COLORS.size]
 }
 
-/** Plain-text rendering of this message's body (strips HTML when [isHtml]). */
-fun EmailMessage.plainTextBody(): String? =
-    body?.let { if (isHtml) HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString() else it }
+/**
+ * Content of `<script>`, `<style>`, `<head>` and `<title>` elements.
+ *
+ * [HtmlCompat.fromHtml] emits the *text* inside these rather than dropping
+ * them, so a message whose body is a full HTML document renders its stylesheet
+ * as the first hundred characters of the preview.
+ */
+private val HTML_NON_CONTENT = Regex("""<(script|style|head|title)\b[^>]*>.*?</\1\s*>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val HTML_COMMENT = Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL)
+private val HTML_DECLARATION = Regex("""<[!?][^>]*>""")
+/** Tags common enough that their presence means the body is HTML whatever the flag says. */
+private val LOOKS_LIKE_HTML = Regex("""<(html|body|head|div|table|p|br|span|a|img|font)\b[^>]*>""", RegexOption.IGNORE_CASE)
+/**
+ * Includes the non-breaking space `fromHtml` produces from `&nbsp;` and the
+ * Unicode line/paragraph separators, none of which `\s` matches.
+ */
+private val WHITESPACE_RUN = Regex("""[\s\u00A0\u2028\u2029]+""")
+
+/**
+ * Characters that draw as an empty box, or as nothing at all.
+ *
+ * `fromHtml` returns a `Spanned` in which every `<img>` is a U+FFFC anchored to
+ * an `ImageSpan`; `toString()` discards the span and leaves the placeholder
+ * behind with nothing to stand for. U+FFFD is the decoder's marker for bytes it
+ * could not make sense of. The zero-width characters are the invisible padding
+ * marketing mail uses to pull its preheader around, and the C0/C1 controls come
+ * through from mail that was never really text.
+ *
+ * Deliberately excludes tab, newline and the vertical whitespace controls -
+ * those separate words, so deleting them would run the words together where
+ * collapsing them to a space does not.
+ */
+private val UNRENDERABLE = Regex("[\\uFFFC\\uFFFD\\u200B-\\u200F\\uFEFF\\u0000-\\u0008\\u000E-\\u001F\\u007F]")
+
+/**
+ * Plain-text rendering of this message's body.
+ *
+ * Falls back to sniffing the markup when [EmailMessage.isHtml] is false, because
+ * plenty of senders set `text/plain` on a body that is anything but.
+ */
+fun EmailMessage.plainTextBody(): String? {
+    val raw = body ?: return null
+    if (!isHtml && !LOOKS_LIKE_HTML.containsMatchIn(raw)) return raw.replace(UNRENDERABLE, "")
+    val stripped = raw
+        .replace(HTML_COMMENT, " ")
+        .replace(HTML_NON_CONTENT, " ")
+        .replace(HTML_DECLARATION, " ")
+    return HtmlCompat.fromHtml(stripped, HtmlCompat.FROM_HTML_MODE_LEGACY)
+        .toString()
+        .replace(UNRENDERABLE, "")
+}
+
+/**
+ * A single-line snippet of the body for list rows, widgets and notifications.
+ *
+ * Collapses whitespace before truncating: the block structure of an HTML mail
+ * turns into leading blank lines, so [plainTextBody] truncated as-is is often
+ * entirely empty.
+ */
+fun EmailMessage.previewText(maxChars: Int): String =
+    (plainTextBody() ?: "").replace(WHITESPACE_RUN, " ").trim().take(maxChars)
 
 /** Display name for a "Name <addr>" sender header, falling back to the address.
  * Implemented via own RFC2047 decode + simple parse to remove Jakarta dependency. */

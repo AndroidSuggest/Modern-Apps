@@ -1,5 +1,6 @@
 package com.vayunmathur.library.ui
 
+import android.content.Intent
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -14,6 +15,16 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.File
 
+/**
+ * Renders an HTML fragment (an email body, typically) in an inline, wrap-content
+ * [WebView].
+ *
+ * @param openLinksExternally hands tapped links to the system browser rather than
+ *   letting them navigate inside this view. The view is sized to its content and
+ *   embedded in a scrolling column, so in-place navigation would strand the user
+ *   on a full web page inside a message. Only turn this off for content that is
+ *   genuinely meant to be browsed in place.
+ */
 @Composable
 fun HtmlText(
     html: String,
@@ -21,6 +32,7 @@ fun HtmlText(
     blockRemoteImages: Boolean = true,
     hideQuotes: Boolean = false,
     cidMap: Map<String, File> = emptyMap(),
+    openLinksExternally: Boolean = true,
 ) {
     val backgroundColor = MaterialTheme.colorScheme.surface
     val onSurfaceColor = MaterialTheme.colorScheme.onSurface
@@ -42,7 +54,12 @@ fun HtmlText(
             h
         }
     }
-    val cidMapState = remember(cidMap) { cidMap }
+    // One client instance for the life of the view, mutated in place. Swapping in a
+    // new WebViewClient on every recomposition used to be how the cid map was
+    // refreshed, and the guard that did it could never fire.
+    val webClient = remember { HtmlTextWebViewClient() }
+    webClient.cidMap = cidMap
+    webClient.openLinksExternally = openLinksExternally
 
     AndroidView(
         modifier = modifier,
@@ -61,58 +78,11 @@ fun HtmlText(
                 settings.blockNetworkImage = blockRemoteImages
                 setBackgroundColor(backgroundColor.toArgb())
 
-                webViewClient = object : WebViewClient() {
-                    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                        val url = request?.url?.toString() ?: return null
-                        // Intercept our synthetic cid:// host
-                        if (url.contains("cid.local")) {
-                            val cid = request.url?.lastPathSegment
-                                ?: request.url?.path?.removePrefix("/")?.substringAfterLast("/")
-                                ?: return null
-                            // CID may be url-encoded
-                            val decodedCid = try { java.net.URLDecoder.decode(cid, "UTF-8") } catch (_: Exception) { cid }
-                            // Try exact match, then stripped angle brackets variant
-                            val file = cidMapState[decodedCid]
-                                ?: cidMapState[decodedCid.removePrefix("<").removeSuffix(">")]
-                                ?: cidMapState.entries.firstOrNull { it.key.equals(decodedCid, ignoreCase = true) }?.value
-                                ?: return null
-                            if (!file.exists()) return null
-                            val mime = guessMimeType(file)
-                            return try {
-                                WebResourceResponse(mime, "utf-8", file.inputStream())
-                            } catch (_: Exception) { null }
-                        }
-                        // Block remote if requested but allow cid interception already handled
-                        return null
-                    }
-                }
+                webViewClient = webClient
             }
         },
         update = { webView ->
             webView.settings.blockNetworkImage = blockRemoteImages
-            // Update client map when cidMap changes
-            if (cidMapState !== cidMap) {
-                // State already captured via remember; re-create client to capture new map
-                webView.webViewClient = object : WebViewClient() {
-                    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                        val url = request?.url?.toString() ?: return null
-                        if (url.contains("cid.local")) {
-                            val cid = request.url?.lastPathSegment ?: return null
-                            val decodedCid = try { java.net.URLDecoder.decode(cid, "UTF-8") } catch (_: Exception) { cid }
-                            val file = cidMap[decodedCid]
-                                ?: cidMap[decodedCid.removePrefix("<").removeSuffix(">")]
-                                ?: cidMap.entries.firstOrNull { it.key.equals(decodedCid, ignoreCase = true) }?.value
-                                ?: return null
-                            if (!file.exists()) return null
-                            val mime = guessMimeType(file)
-                            return try {
-                                WebResourceResponse(mime, null, file.inputStream())
-                            } catch (_: Exception) { null }
-                        }
-                        return null
-                    }
-                }
-            }
             val htmlToLoad = if (cidMap.isEmpty()) html else rewrittenHtml
             val richCss = """
                 h1,h2,h3 { margin:0.5em 0; font-weight:600; line-height:1.25; }
@@ -195,6 +165,67 @@ fun HtmlText(
             }
         },
     )
+}
+
+/**
+ * Serves `cid:` inline attachments from local files and keeps navigation out of
+ * the view.
+ *
+ * Both fields are `var` because the composable owns a single instance for the
+ * life of the [WebView] and updates it in place; replacing the client on
+ * recomposition resets state the WebView keeps per-client.
+ */
+private class HtmlTextWebViewClient : WebViewClient() {
+
+    var cidMap: Map<String, File> = emptyMap()
+    var openLinksExternally: Boolean = true
+
+    override fun shouldInterceptRequest(
+        view: WebView?,
+        request: WebResourceRequest?,
+    ): WebResourceResponse? {
+        val uri = request?.url ?: return null
+        if (uri.host != CID_HOST) return null
+
+        val cid = uri.lastPathSegment
+            ?: uri.path?.removePrefix("/")?.substringAfterLast("/")
+            ?: return null
+        // A Content-ID can legitimately contain characters the URL had to encode.
+        val decoded = try { java.net.URLDecoder.decode(cid, "UTF-8") } catch (_: Exception) { cid }
+        val file = cidMap[decoded]
+            ?: cidMap[decoded.removePrefix("<").removeSuffix(">")]
+            ?: cidMap.entries.firstOrNull { it.key.equals(decoded, ignoreCase = true) }?.value
+            ?: return null
+        if (!file.exists()) return null
+
+        return try {
+            WebResourceResponse(guessMimeType(file), "utf-8", file.inputStream())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+        if (!openLinksExternally) return false
+        val uri = request?.url ?: return false
+        // Our own inline-image host, and the synthetic document itself, are not links.
+        if (uri.host == CID_HOST && uri.path.isNullOrEmpty()) return false
+        if (uri.scheme?.lowercase() in IN_PLACE_SCHEMES) return false
+        val context = view?.context ?: return false
+
+        ExternalIntents.launch(
+            context,
+            Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        // Consumed either way: this view is sized to its content, so falling back to
+        // in-place navigation when no app handles the link is worse than doing nothing.
+        return true
+    }
+
+    private companion object {
+        const val CID_HOST = "cid.local"
+        val IN_PLACE_SCHEMES = setOf("data", "about", "javascript", "blob")
+    }
 }
 
 private fun guessMimeType(file: File): String {

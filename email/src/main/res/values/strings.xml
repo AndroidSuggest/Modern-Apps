@@ -78,6 +78,9 @@
     <string name="unsubscribing">Unsubscribing…</string>
     <string name="accounts">Accounts</string>
     <string name="remote_images_blocked">Remote images blocked</string>
+    <string name="reading">Reading</string>
+    <string name="load_remote_images">Load remote images</string>
+    <string name="load_remote_images_summary">Show images hosted on the web without asking. Senders can use these to tell when you opened a message.</string>
     <string name="cc_bcc">Cc/Bcc</string>
     <string name="blocked_senders">Blocked senders</string>
     <string name="inline_images">Inline images (<xliff:g id="count" example="2">%1$s</xliff:g> - <xliff:g id="size" example="1.2 MB">%2$s</xliff:g>)</string>

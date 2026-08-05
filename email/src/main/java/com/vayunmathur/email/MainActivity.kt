@@ -809,7 +809,7 @@ fun MessageListScreen(
                                             text = senderDisplayName(message.from),
                                             style = MaterialTheme.typography.titleSmall
                                         )
-                                        val preview = remember(message.body, message.isHtml) { (message.plainTextBody() ?: "").take(100) }
+                                        val preview = remember(message.body, message.isHtml) { message.previewText(100) }
                                         Text(
                                             text = preview,
                                             style = MaterialTheme.typography.bodySmall,
@@ -1062,7 +1062,9 @@ fun MessageItem(
         }
 
         if (msg.isHtml && msg.body != null) {
-            var loadImages by remember(msg.id) { mutableStateOf(false) }
+            val settings = remember(context) { com.vayunmathur.email.data.EmailSettings.get(context) }
+            val loadRemoteByDefault by settings.loadRemoteImages.collectAsStateWithLifecycle()
+            var loadImages by remember(msg.id, loadRemoteByDefault) { mutableStateOf(loadRemoteByDefault) }
             var showQuotes by remember(msg.id) { mutableStateOf(false) }
             var cidMap by remember(msg.id) { mutableStateOf<Map<String, java.io.File>>(emptyMap()) }
             val bodyHasCid = remember(msg.body) { msg.body.contains("cid:", ignoreCase = true) }
@@ -2027,6 +2029,17 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            val settings = remember(context) { com.vayunmathur.email.data.EmailSettings.get(context) }
+            val loadRemoteImages by settings.loadRemoteImages.collectAsStateWithLifecycle()
+            Text(stringResource(R.string.reading), style = MaterialTheme.typography.titleMedium)
+            com.vayunmathur.library.ui.SettingsSwitchRow(
+                title = stringResource(R.string.load_remote_images),
+                supportingText = stringResource(R.string.load_remote_images_summary),
+                checked = loadRemoteImages,
+                onCheckedChange = { settings.setLoadRemoteImages(it) },
+            )
+            HorizontalDivider()
+
             Text(stringResource(R.string.signatures), style = MaterialTheme.typography.titleMedium)
             if (accounts.isEmpty()) {
                 Text(stringResource(R.string.select_account))

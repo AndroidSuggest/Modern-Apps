@@ -25,7 +25,7 @@ import androidx.glance.unit.ColorProvider
 import com.vayunmathur.email.MainActivity
 import com.vayunmathur.email.EmailMessage
 import com.vayunmathur.email.accountColor
-import com.vayunmathur.email.plainTextBody
+import com.vayunmathur.email.previewText
 import com.vayunmathur.email.senderDisplayName
 import com.vayunmathur.email.data.EmailDatabase
 import com.vayunmathur.library.widgets.DynamicThemeGlance
@@ -193,7 +193,7 @@ class EmailWidget : GlanceAppWidget() {
                     maxLines = 1
                 )
                 Text(
-                    text = (msg.plainTextBody() ?: "").take(50),
+                    text = msg.previewText(50),
                     style = TextStyle(
                         fontSize = 12.sp,
                         color = GlanceTheme.colors.onSurfaceVariant
