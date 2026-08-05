@@ -19,7 +19,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import org.jsoup.nodes.Entities
 import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.AccountTerminatedException
@@ -51,6 +50,7 @@ import org.schabi.newpipe.extractor.utils.RandomStringFromAlphabetGenerator
 import org.schabi.newpipe.extractor.utils.Utils
 import org.schabi.newpipe.extractor.utils.Utils.HTTP
 import org.schabi.newpipe.extractor.utils.Utils.HTTPS
+import org.schabi.newpipe.extractor.utils.Utils.escapeHtml
 import org.schabi.newpipe.extractor.utils.Utils.getStringResultFromRegexArray
 import org.schabi.newpipe.extractor.utils.Utils.isNullOrEmpty
 import org.schabi.newpipe.extractor.utils.getArray
@@ -755,8 +755,8 @@ object YoutubeParsingHelper {
                     if (nav != null) {
                         val url = getUrlFromNavigationEndpoint(nav)
                         if (!isNullOrEmpty(url)) {
-                            text = "<a href=\"" + Entities.escape(url!!) + "\">" +
-                                    Entities.escape(text) + "</a>"
+                            text = "<a href=\"" + escapeHtml(url!!) + "\">" +
+                                    escapeHtml(text) + "</a>"
                         }
                     }
                 }

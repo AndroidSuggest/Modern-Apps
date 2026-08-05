@@ -5,7 +5,6 @@ import org.schabi.newpipe.extractor.channel.ChannelExtractor
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor
 import org.schabi.newpipe.extractor.comments.CommentsExtractor
 import org.schabi.newpipe.extractor.exceptions.ExtractionException
-import org.schabi.newpipe.extractor.feed.FeedExtractor
 import org.schabi.newpipe.extractor.kiosk.KioskList
 import org.schabi.newpipe.extractor.linkhandler.LinkHandler
 import org.schabi.newpipe.extractor.linkhandler.LinkHandlerFactory
@@ -21,7 +20,6 @@ import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeChannelExtractor
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeChannelTabExtractor
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeCommentsExtractor
-import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeFeedExtractor
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMixPlaylistExtractor
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMusicSearchExtractor
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubePlaylistExtractor
@@ -204,11 +202,6 @@ class YoutubeService(id: Int) : StreamingService(
 
     override fun getSubscriptionExtractor(): SubscriptionExtractor =
         YoutubeSubscriptionExtractor(this)
-
-    @Throws(ExtractionException::class)
-    override fun getFeedExtractor(channelUrl: String): FeedExtractor {
-        return YoutubeFeedExtractor(this, getChannelLHFactory().fromUrl(channelUrl))
-    }
 
     override fun getCommentsLHFactory(): ListLinkHandlerFactory =
         YoutubeCommentsLinkHandlerFactory.getInstance()

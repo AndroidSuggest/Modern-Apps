@@ -5,7 +5,6 @@ import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor
 import org.schabi.newpipe.extractor.comments.CommentsExtractor
 import org.schabi.newpipe.extractor.exceptions.ExtractionException
 import org.schabi.newpipe.extractor.exceptions.ParsingException
-import org.schabi.newpipe.extractor.feed.FeedExtractor
 import org.schabi.newpipe.extractor.kiosk.KioskList
 import org.schabi.newpipe.extractor.linkhandler.LinkHandler
 import org.schabi.newpipe.extractor.linkhandler.LinkHandlerFactory
@@ -23,7 +22,6 @@ import org.schabi.newpipe.extractor.stream.StreamExtractor
 import org.schabi.newpipe.extractor.subscription.SubscriptionExtractor
 import org.schabi.newpipe.extractor.suggestion.SuggestionExtractor
 import org.schabi.newpipe.extractor.utils.Utils
-import javax.annotation.Nullable
 
 abstract class StreamingService(
     @get:JvmName("getServiceId") val serviceId: Int,
@@ -48,10 +46,6 @@ abstract class StreamingService(
     abstract fun getSearchExtractor(queryHandler: SearchQueryHandler): SearchExtractor
     abstract fun getSuggestionExtractor(): SuggestionExtractor
     abstract fun getSubscriptionExtractor(): SubscriptionExtractor?
-
-    @Nullable
-    @Throws(ExtractionException::class)
-    open fun getFeedExtractor(url: String): FeedExtractor? = null
 
     @Throws(ExtractionException::class)
     abstract fun getKioskList(): KioskList

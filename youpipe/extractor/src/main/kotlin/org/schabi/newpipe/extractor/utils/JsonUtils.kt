@@ -12,7 +12,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import org.jsoup.Jsoup
 import org.schabi.newpipe.extractor.exceptions.ParsingException
 import javax.annotation.Nonnull
 import javax.annotation.Nullable
@@ -146,45 +145,6 @@ object JsonUtils {
             return jsonParser.parseToJsonElement(responseBody).jsonObject
         } catch (e: Exception) {
             throw ParsingException("Could not parse JSON", e)
-        }
-    }
-
-    /**
-     * Get an attribute of a web page as JSON.
-     *
-     * Originally a part of bandcampDirect.
-     *
-     * Example HTML:
-     * ```
-     * <p data-town="{"name":"Mycenae","country":"Greece"}">
-     * This is Sparta!</p>
-     * ```
-     * Calling this function to get the attribute `data-town` returns the JsonObject for
-     * ```
-     * {
-     *   "name": "Mycenae",
-     *   "country": "Greece"
-     * }
-     * ```
-     *
-     * @param html     The HTML where the JSON we're looking for is stored
-     * @param variable Name of the variable / attribute
-     * @return The JsonObject stored in the variable with this name
-     */
-    @JvmStatic
-    @Throws(ParsingException::class)
-    fun getJsonData(html: String, variable: String): JsonObject {
-        try {
-            val document = Jsoup.parse(html)
-            val json = document.getElementsByAttribute(variable).attr(variable)
-            if (json.isBlank()) {
-                throw ParsingException("Unable to get JSON data for variable $variable")
-            }
-            return jsonParser.parseToJsonElement(json).jsonObject
-        } catch (e: ParsingException) {
-            throw e
-        } catch (e: Exception) {
-            throw ParsingException("Could not parse JSON data for variable $variable", e)
         }
     }
 

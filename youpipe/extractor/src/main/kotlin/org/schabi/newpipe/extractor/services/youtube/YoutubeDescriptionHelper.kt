@@ -2,10 +2,10 @@ package org.schabi.newpipe.extractor.services.youtube
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import org.jsoup.nodes.Entities
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getUrlFromNavigationEndpoint
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isYoutubeServiceURL
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isYoutubeURL
+import org.schabi.newpipe.extractor.utils.Utils.escapeHtml
 import org.schabi.newpipe.extractor.utils.getArray
 import org.schabi.newpipe.extractor.utils.getBoolean
 import org.schabi.newpipe.extractor.utils.getObject
@@ -83,7 +83,7 @@ object YoutubeDescriptionHelper {
                 closers[closersIndex].pos
             }
 
-            textBuilder.append(Entities.escape(content.substring(currentTextPos, minPos)))
+            textBuilder.append(escapeHtml(content.substring(currentTextPos, minPos)))
             currentTextPos = minPos
 
             if (closers[closersIndex].pos == minPos) {
@@ -121,7 +121,7 @@ object YoutubeDescriptionHelper {
             }
         }
 
-        textBuilder.append(Entities.escape(content.substring(currentTextPos)))
+        textBuilder.append(escapeHtml(content.substring(currentTextPos)))
 
         return textBuilder.toString()
             .replace("\n", "<br>")
@@ -152,7 +152,7 @@ object YoutubeDescriptionHelper {
                 false
             }
 
-            val open = "<a href=\"${Entities.escape(url)}\">"
+            val open = "<a href=\"${escapeHtml(url)}\">"
             val transformContent = getTransformContentFun(run, isYoutubeUrl)
 
             openers.add(Run(open, LINK_CLOSE, startIndex, transformContent))

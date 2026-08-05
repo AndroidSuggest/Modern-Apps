@@ -4,8 +4,7 @@ plugins {
 }
 
 dependencies {
-    // nanojson removed — replaced by kotlinx.serialization-json via common-conventions-jvm
-    implementation(libs.jsoup)
+    // nanojson removed — replaced by kotlinx.serialization.json via common-conventions-jvm
     implementation(libs.google.jsr305)
     implementation(libs.protobuf.javalite)
     implementation(libs.brotli.dec)

@@ -35,6 +35,27 @@ object Utils {
     fun decodeUrlUtf8(url: String): String = URLDecoder.decode(url, Charsets.UTF_8)
 
     /**
+     * Escape text for embedding in HTML, as element content or inside a double-quoted
+     * attribute value.
+     */
+    @JvmStatic
+    fun escapeHtml(text: String): String {
+        val out = StringBuilder(text.length)
+        for (c in text) {
+            when (c) {
+                '&' -> out.append("&amp;")
+                '<' -> out.append("&lt;")
+                '>' -> out.append("&gt;")
+                '"' -> out.append("&quot;")
+                '\'' -> out.append("&#39;")
+                '\u00a0' -> out.append("&nbsp;")
+                else -> out.append(c)
+            }
+        }
+        return out.toString()
+    }
+
+    /**
      * Remove all non-digit characters from a string.
      *
      * Examples:
