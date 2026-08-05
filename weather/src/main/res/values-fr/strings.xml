@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="confirm_delete">Confirmer la suppression</string>
     <string name="weather_title">Météo</string>
     <string name="add_location">Ajouter un lieu</string>
@@ -18,7 +18,7 @@
     <string name="summary_expect_conditions">Attendez-vous à %1$s tout au long de la journée.</string>
     <string name="metric_pressure">Pression</string>
     <string name="summary_showers_possible">Des averses sont possibles plus tard.</string>
-    <string name="max_min">Max %1$s Min %2$s</string>
+    <string name="max_min">Max &lt;xliff:g id=\"max\" example=\"28°C\"&gt;%1$s&lt;/xliff:g&gt; Min &lt;xliff:g id=\"min\" example=\"14°C\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="condition_unknown">Inconnu</string>
     <string name="metric_humidity">Humidité</string>
     <string name="summary_mixed_conditions">des conditions variables</string>
@@ -28,7 +28,7 @@
     <string name="summary_slight_chance_rain">Faible risque de pluie.</string>
     <string name="metric_visibility">Visibilité</string>
     <string name="metric_temperature">Température</string>
-    <string name="from_gusts">Vent de %1$s · Rafales à %2$s</string>
+    <string name="from_gusts">Vent de &lt;xliff:g id=\"direction\" example=\"NW\"&gt;%1$s&lt;/xliff:g&gt; · Rafales à &lt;xliff:g id=\"gusts\" example=\"18 km/h\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="condition_clear">Dégagé</string>
     <string name="metric_feels_like">Ressenti</string>
     <string name="feels_like">Ressenti : %1$s</string>
@@ -50,4 +50,40 @@
     <string name="summary_title">Résumé</string>
     <string name="location_permission_denied">Autorisation d’accès à la position refusée</string>
     <string name="locating">Localisation en cours…</string>
+    <string name="current_location">Position actuelle</string>
+    <string name="condition_mostly_clear">Peu nuageux</string>
+    <string name="block_sun">Soleil</string>
+    <string name="block_pollen">Pollen</string>
+    <string name="block_wind">Vent</string>
+    <string name="block_air_quality">Qualité de l’air</string>
+    <string name="hourly_forecast">Prévisions heure par heure</string>
+    <string name="daily_forecast">Prévisions quotidiennes</string>
+    <string name="now">Maintenant</string>
+    <string name="today">Aujourd’hui</string>
+    <string name="today_short">AUJ</string>
+    <string name="tomorrow_short">DEM</string>
+    <string name="level_none">Aucun</string>
+    <string name="level_low">Faible</string>
+    <string name="level_medium">Moyen</string>
+    <string name="level_moderate">Modéré</string>
+    <string name="level_high">Élevé</string>
+    <string name="level_very_high">Très élevé</string>
+    <string name="level_extreme">Extrême</string>
+    <string name="level_severe">Sévère</string>
+    <string name="cloud_clear">Dégagé</string>
+    <string name="cloud_mostly_clear">Peu nuageux</string>
+    <string name="cloud_partly_cloudy">Partiellement nuageux</string>
+    <string name="cloud_mostly_cloudy">Très nuageux</string>
+    <string name="cloud_overcast">Couvert</string>
+    <string name="aqi_good">Bon</string>
+    <string name="aqi_moderate">Modéré</string>
+    <string name="aqi_unhealthy">Mauvais</string>
+    <string name="aqi_very_unhealthy">Très mauvais</string>
+    <string name="aqi_hazardous">Dangereux</string>
+    <string name="precip_raining_now">Il pleut actuellement</string>
+    <string name="precip_no_rain_next_2h">Pas de pluie dans les 2 prochaines heures</string>
+    <string name="precip_rain_starting_now">La pluie commence</string>
+    <string name="precip_rain_in_min">Pluie dans environ <xliff:g id="minutes" example="15">%1$d</xliff:g> min</string>
+    <string name="last_updated">Dernière mise à jour <xliff:g id="time_ago" example="il y a 2 h">%1$s</xliff:g></string>
+    <string name="no_data_yet">Aucune donnée pour le moment</string>
 </resources>
