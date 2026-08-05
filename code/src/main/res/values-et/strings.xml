@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Kood</string>
+    <string name="open_folder">Ava kaust</string>
+    <string name="no_file_open">Ühtegi faili pole avatud</string>
+    <string name="open_file">Ava fail</string>
+    <string name="find">Otsi</string>
+    <string name="replace">Asenda</string>
+    <string name="all">Kõik</string>
+    <string name="no_folder_opened">Ükski kaust pole avatud</string>
+    <string name="open_a_folder_to_browse_your_project_or">Oma projekti sirvimiseks ava kaust või mõni üksik fail.</string>
+</resources>
