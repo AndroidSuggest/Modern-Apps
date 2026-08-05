@@ -464,8 +464,10 @@ pub fn tick_and_render() {
         let mut incoming = 0.0f32;
         let mut explosions: Vec<Vec3> = Vec::new();
         let mut new_shots: Vec<Projectile> = Vec::new();
+        // Who actually landed a melee blow this tick, so Warding strikes back at them alone.
+        let mut melee: Vec<usize> = Vec::new();
         let eye = player_pos + vec3(0.0, 1.2, 0.0);
-        for m in state.mobs.iter_mut() {
+        for (mi, m) in state.mobs.iter_mut().enumerate() {
             m.attack_cd = (m.attack_cd - dt).max(0.0);
             let d = (m.pos - player_pos).length();
             let ranged = matches!(m.kind, MobKind::Blaze | MobKind::Shulker | MobKind::Ghast);
@@ -485,14 +487,14 @@ pub fn tick_and_render() {
                 };
                 new_shots.push(Projectile { pos: origin, vel: dir * spd, life: 5.0, kind, from_player: false, damage: dmg, explosive });
             } else if m.kind.is_boss() && d < 5.0 && m.attack_cd <= 0.0 {
-                m.attack_cd = 1.0; incoming += m.kind.contact_damage();
+                m.attack_cd = 1.0; incoming += m.kind.contact_damage(); melee.push(mi);
             } else if m.kind.hostile() && !m.kind.is_boss() && !ranged && d < 1.7 && m.attack_cd <= 0.0 {
-                m.attack_cd = 0.8; incoming += m.kind.contact_damage();
+                m.attack_cd = 0.8; incoming += m.kind.contact_damage(); melee.push(mi);
             }
         }
         state.projectiles.extend(new_shots);
         tick_projectiles(state, dt);
-        if incoming > 0.0 { hurt_player(state, incoming); }
+        if incoming > 0.0 { hurt_player_from(state, incoming, &melee); }
         for c in explosions { explode(state, c, 3.0); }
         // Slain Ender Dragon: mark defeated + a victory burst of particles.
         if let Some(dpos) = state.mobs.iter().find(|m| m.kind == MobKind::Dragon && m.health <= 0.0).map(|m| m.pos) {
@@ -504,11 +506,18 @@ pub fn tick_and_render() {
             state.nether_wither_dead = true;
             spawn_particles(&mut state.spawn_rng, &mut state.particles, wpos, 60, [0.15, 0.15, 0.2], 8.0, 1.4, 0.4);
         }
-        // Remove dead mobs and auto-collect their drops. Glaucus makes every kill pay double.
-        let mut loot: Vec<u8> = Vec::new();
-        state.mobs.retain(|m| if m.health <= 0.0 { loot.extend_from_slice(m.kind.loot()); false } else { true });
-        let drops = if state.player.blessed(Passive::SeaLuck) { 2 } else { 1 };
-        for id in loot { for _ in 0..drops { state.inventory.add_block(id); } }
+        // Remove dead mobs and auto-collect their drops. Glaucus makes ordinary kills pay double,
+        // but not bosses — a second Nether Star would hand out a free extra beacon.
+        let mut loot: Vec<(u8, bool)> = Vec::new();
+        state.mobs.retain(|m| if m.health <= 0.0 {
+            loot.extend(m.kind.loot().iter().map(|&id| (id, m.kind.is_boss())));
+            false
+        } else { true });
+        let lucky = state.player.blessed(Passive::SeaLuck);
+        for (id, boss) in loot {
+            let n = if lucky && !boss { 2 } else { 1 };
+            for _ in 0..n { state.inventory.add_block(id); }
+        }
         state.mobs.retain(|m| (m.pos - player_pos).length() < 96.0 && m.pos.y > -8.0);
         state.spawn_timer -= dt;
         if state.spawn_timer <= 0.0 {
@@ -671,7 +680,8 @@ fn publish_ui(state: &EngineState) {
         // Full diamond (175..178) or full adamant (199..202) counts as end-tier armor.
         "fullArmor": armor_at_least(175, 178) || armor_at_least(199, 202),
         "silver": has(193), "steel": has(195), "adamant": has(196),
-        "blessing": has(160) || has(161) || has(162),
+        "blessing": state.inventory.slots.iter().any(|s| s.count > 0 && crate::blessing::is_blessing(s.id))
+            || state.player.blessings.slots.iter().any(|&id| id != 0),
         "depth": state.deepest_y,
         "attuned": state.player.blessings.slots.iter().filter(|&&s| s != 0).count(),
     }).to_string();
@@ -885,23 +895,22 @@ fn ensure_chest(state: &mut EngineState, x: i32, y: i32, z: i32) -> crate::conta
 }
 
 // Apply damage to the player through equipped armor (each defense point cuts ~4%, capped), wearing
-// the armor down when a hit actually lands. Warding reflects a share back at whatever is nearby.
-fn hurt_player(state: &mut EngineState, amt: f32) {
+// the armor down when a hit actually lands. Warding reflects a share back at whoever landed the
+// blow, which is only known for melee — ranged and explosive hits pass None and reflect nothing.
+fn hurt_player(state: &mut EngineState, amt: f32) { hurt_player_from(state, amt, &[]) }
+
+fn hurt_player_from(state: &mut EngineState, amt: f32, attackers: &[usize]) {
     let def = state.inventory.armor_defense();
     let reduced = amt * (1.0 - (def * 0.04)).max(0.2);
     let before = state.player.health;
     state.player.damage(reduced);
     if state.player.health < before {
         if !state.player.blessed(Passive::ArmorWard) { state.inventory.damage_armor(); }
-        if state.player.blessed(Passive::Thorns) { reflect_thorns(state, reduced * 0.5); }
-    }
-}
-
-// Warding: everything close enough to have hurt you shares in the pain.
-fn reflect_thorns(state: &mut EngineState, amt: f32) {
-    let p = state.player.pos;
-    for m in state.mobs.iter_mut() {
-        if (m.pos - p).length() < 4.0 { m.health -= amt; }
+        if state.player.blessed(Passive::Thorns) {
+            for &i in attackers {
+                if let Some(m) = state.mobs.get_mut(i) { m.health -= reduced * 0.5; }
+            }
+        }
     }
 }
 
@@ -1163,11 +1172,12 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             // Stone/ore only drops when mined with a pickaxe; soft blocks always drop.
             let drops = !Block::from_id(id).needs_pickaxe() || item::is_pickaxe(sel);
             state.chunks.set_block_world(x, y, z, 0);
-            // Leaves occasionally give up an apple, the one food you can forage for.
+            // Leaves occasionally give up an apple. Rolled against the world RNG rather than the
+            // block position, so one lucky coordinate can't be replanted into an apple farm.
             if is_leaves(id) {
-                let mut h = (x as u32).wrapping_mul(73856093) ^ (y as u32).wrapping_mul(19349663) ^ (z as u32).wrapping_mul(83492791);
-                h ^= h >> 13;
-                if h % 20 == 0 { state.inventory.add_block(130); }
+                let r = &mut state.spawn_rng;
+                *r ^= *r << 13; *r ^= *r >> 17; *r ^= *r << 5;
+                if *r % 20 == 0 { state.inventory.add_block(130); }
             }
             if drops {
                 // Eros doubles what an ore gives up.

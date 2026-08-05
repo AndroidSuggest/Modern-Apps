@@ -112,8 +112,6 @@ pub fn food_effects(id: u8) -> Option<&'static [(Effect, f32, u8)]> {
     })
 }
 
-/// Raw meat has to be cooked before it does anything; eating it is not an option.
-pub fn is_raw(id: u8) -> bool { id == 222 }
 
 #[cfg(test)]
 mod tests {
@@ -175,7 +173,6 @@ mod tests {
     // Raw meat is a cooking input, not a snack.
     #[test]
     fn raw_meat_is_not_edible() {
-        assert!(is_raw(222));
         assert!(food_effects(222).is_none(), "raw meat must be cooked first");
         assert!(food_effects(223).is_some(), "cooked meat must feed you");
     }

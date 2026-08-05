@@ -35,6 +35,15 @@ pub struct Player {
     pub dead: bool,
 }
 
+/// Damage taken on landing after falling from `peak` to `y`. Drops under the safe margin are free,
+/// and Icarus removes it entirely. Swimming keeps `peak` pinned to the current height, which is how
+/// a controlled descent avoids being treated as a fall.
+fn landing_damage(peak: f32, y: f32, feather_fall: bool) -> f32 {
+    if feather_fall { return 0.0; }
+    let fall = peak - y;
+    if fall > 3.5 { fall - 3.5 } else { 0.0 }
+}
+
 impl Player {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, elytra: false, gliding: false, glide_armed: false, prev_jump: false, glide_boost: 0.0, jumps_left: 0, walk_dist: 0.0, sneaking: false, blessings: Attunement::default(),
@@ -204,6 +213,8 @@ impl Player {
                 if self.on_ground && self.vel.y <= 0.0 { self.vel.y = 0.0; }
             }
             if self.on_ground { self.jumps_left = self.extra_jumps(); }
+            // Swimming is controlled descent, not a fall — don't let a dive bank landing damage.
+            if submerged { self.air_max_y = new_pos.y; }
             // Can't jump while sneaking (must toggle sneak off first).
             if input.jump_held && self.on_ground && !sneaking {
                 self.vel.y = 8.5 + self.jump_bonus();
@@ -224,9 +235,8 @@ impl Player {
         } else if !self.on_ground {
             if self.pos.y > self.air_max_y { self.air_max_y = self.pos.y; }
         } else {
-            let fall = self.air_max_y - self.pos.y;
-            // Icarus simply never lets you hit the ground too hard.
-            if fall > 3.5 && !self.blessed(Passive::FeatherFall) { self.damage(fall - 3.5); }
+            let dmg = landing_damage(self.air_max_y, self.pos.y, self.blessed(Passive::FeatherFall));
+            if dmg > 0.0 { self.damage(dmg); }
             self.air_max_y = self.pos.y;
         }
     }
@@ -325,6 +335,20 @@ mod tests {
         blessed.wind_burst();
         assert!(blessed.vel.y > 0.0, "Aeolus must throw the player upward");
         assert!(!blessed.on_ground);
+    }
+
+    // Yamm clamps descent and lets you rise. The peak-height tracker that drives fall damage has to
+    // be reset while submerged, or surfacing and diving again would hurt you on touchdown.
+    #[test]
+    fn landing_damage_respects_swimming_and_feather_fall() {
+        // A 30-block drop hurts normally.
+        assert!(landing_damage(94.0, 64.0, false) > 0.0);
+        // Icarus removes it entirely.
+        assert_eq!(landing_damage(94.0, 64.0, true), 0.0);
+        // Swimming keeps air_max_y pinned to the current height, so the same descent is harmless.
+        assert_eq!(landing_damage(64.0, 64.0, false), 0.0);
+        // Short hops were always free.
+        assert_eq!(landing_damage(66.0, 64.0, false), 0.0);
     }
 
     #[test]
