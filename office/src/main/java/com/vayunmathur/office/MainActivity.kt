@@ -195,6 +195,7 @@ class MainActivity : ComponentActivity() {
 
             val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 uri?.let {
+                    persistUriGrant(it)
                     documentUri = it
                     viewModel.loadDocument(it, resolveDisplayName(this@MainActivity, it))
                     backStack.add(OfficeRoute.OfflineEditor(it.toString()))
@@ -258,6 +259,17 @@ class MainActivity : ComponentActivity() {
                     entry<OfficeRoute.OnlineEditor> { editorContent() }
                 }
             }
+        }
+    }
+
+    /**
+     * Holds on to the picker's grant so Save can still write back to the chosen document after the
+     * transient grant expires. Falls back to a read-only grant for providers that refuse write.
+     */
+    private fun persistUriGrant(uri: Uri) {
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        if (runCatching { contentResolver.takePersistableUriPermission(uri, readWrite) }.isFailure) {
+            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         }
     }
 }
@@ -817,7 +829,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                     }
                                     DropdownMenuItem(text = { Text(stringResource(R.string.share_online_1)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; if (onlineEnabled) showShareDialog = true else showEnableOnlineDialog = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.print_doc)) }, onClick = { fileMenu = false; printDocument(activity, document) })
-                                    viewModel.documentUri?.let { uri ->
+                                    viewModel.originalUri?.let { uri ->
                                         DropdownMenuItem(text = { Text(stringResource(UiR.string.share)) }, leadingIcon = { IconShare() }, onClick = { fileMenu = false; context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "*/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, null)) })
                                     }
                                     DropdownMenuItem(text = { Text(stringResource(R.string.export)) }, leadingIcon = { IconDownload() }, onClick = { fileMenu = false; exportMenu = true })

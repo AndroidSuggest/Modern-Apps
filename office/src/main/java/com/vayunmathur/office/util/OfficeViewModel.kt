@@ -2,6 +2,8 @@ package com.vayunmathur.office.util
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -140,7 +142,12 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectionInvalidation = MutableStateFlow(0)
     val selectionInvalidation: StateFlow<Int> = _selectionInvalidation
 
+    /** App-private read cache of the open document; used as the source package when re-writing. */
     var documentUri: Uri? = null
+        private set
+
+    /** The document the user actually opened. Save writes back here, never to [documentUri]. */
+    var originalUri: Uri? = null
         private set
 
     // --- Auto-save ---
@@ -157,7 +164,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
             autoSaveJob = viewModelScope.launch {
                 while (true) {
                     delay(autoSaveIntervalMs)
-                    if (_hasUnsavedChanges.value && documentUri != null) save()
+                    if (_hasUnsavedChanges.value && !needsSaveAs()) save()
                 }
             }
         }
@@ -304,6 +311,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         undoStack.clear(); redoStack.clear()
         _canUndo.value = false; _canRedo.value = false
         documentUri = uri
+        originalUri = uri
         // Track (or clear) the online identity of the document now open.
         currentDocId = onlineDocId
         currentDocKey = onlineDocKey
@@ -319,13 +327,14 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Copy the source into app-owned storage immediately: SAF often grants only a
-                // one-time read permission, so the original Uri may be unreadable on a later open.
+                // Copy the source into app-owned storage so a revoked SAF grant can't leave us
+                // unable to re-read the untouched package parts at save time. This is only a read
+                // cache -- [originalUri] stays the save target.
                 val localUri = persistToAppStorage(uri, fileName)
                 documentUri = localUri
                 val doc = DocumentImporter.open(getApplication(), localUri, fileName)
                 _state.value = ViewState.Loaded(doc)
-                addToRecent(getApplication(), localUri, fileName)
+                addToRecent(getApplication(), uri, fileName)
             } catch (e: Exception) {
                 _state.value = ViewState.Error(e.message ?: "Unknown error")
             }
@@ -356,6 +365,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         undoStack.clear(); redoStack.clear()
         _canUndo.value = false; _canRedo.value = false
         documentUri = null
+        originalUri = null
         currentDocId = null
         currentDocKey = null
         currentTree?.close(); currentTree = null
@@ -385,6 +395,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         _isEditMode.value = true
         _hasUnsavedChanges.value = true
         documentUri = null
+        originalUri = null
     }
 
     fun createNewSpreadsheet() {
@@ -401,6 +412,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         _isEditMode.value = true
         _hasUnsavedChanges.value = true
         documentUri = null
+        originalUri = null
     }
 
     fun createNewPresentation() {
@@ -427,6 +439,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         _isEditMode.value = true
         _hasUnsavedChanges.value = true
         documentUri = null
+        originalUri = null
     }
 
     // --- Text document editing ---
@@ -2798,13 +2811,15 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         val doc = (_state.value as? ViewState.Loaded)?.document ?: return
         // Source may be null for a brand-new document; the writer then builds the package from scratch.
         val source = documentUri
-        val target = targetUri ?: source ?: return
+        // Write back to the document the user opened, not to the app-private read cache.
+        val target = targetUri ?: originalUri ?: return
         _isSaving.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 OdfWriter.save(getApplication(), source, doc, target)
                 _hasUnsavedChanges.value = false
-                documentUri = target
+                originalUri = target
+                if (documentUri == null) documentUri = target
                 // If this document lives online, push local edits + merge remote ones.
                 if (currentDocId != null && currentDocKey != null) {
                     runCatching {
@@ -2821,8 +2836,23 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** True when there's no backing file yet, so the UI should route Save to Save As. (Priority 1) */
-    fun needsSaveAs(): Boolean = documentUri == null
+    /** True when there's no writable backing file, so the UI should route Save to Save As. (Priority 1) */
+    fun needsSaveAs(): Boolean {
+        val target = originalUri ?: return true
+        return !isWritable(target)
+    }
+
+    /**
+     * Whether we may write to [uri]. A SAF document opened read-only (commonly via ACTION_VIEW)
+     * has no write grant, and silently writing elsewhere would lose the user's edits.
+     */
+    private fun isWritable(uri: Uri): Boolean = when (uri.scheme) {
+        "file" -> uri.path?.let { java.io.File(it).canWrite() } == true
+        else -> getApplication<Application>().checkCallingOrSelfUriPermission(
+            uri,
+            Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     sealed class ViewState {
         data object Empty : ViewState()
