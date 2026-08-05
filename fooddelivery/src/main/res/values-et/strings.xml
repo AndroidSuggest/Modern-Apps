@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Toidu kojukanne</string>
+    <string name="order_confirmed">Tellimus on kinnitatud</string>
+    <string name="order_placed">Tellimus on tehtud!</string>
+    <string name="your_order_is_being_prepared">Sinu tellimus on ettevalmistamisel.</string>
+</resources>
