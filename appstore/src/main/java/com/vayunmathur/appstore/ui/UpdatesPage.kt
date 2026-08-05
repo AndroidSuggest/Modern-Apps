@@ -62,7 +62,6 @@ fun UpdatesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.updates)) },
                 actions = {
                     if (state.isChecking) {
                         CircularProgressIndicator(Modifier.size(18.dp).padding(end = 4.dp))

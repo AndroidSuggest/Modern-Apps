@@ -78,9 +78,7 @@ fun ClockPage(backStack: NavBackStack<Route>, ds: DataStoreUtils, clockViewModel
 @Composable
 fun ClockScreen(backStack: NavBackStack<Route>, state: ClockUiState) {
     val time = state.now.toLocalDateTime(state.zone)
-    Scaffold(topBar = {
-        TopAppBar({Text(stringResource(R.string.label_clock))})
-    }, bottomBar = {
+    Scaffold(bottomBar = {
         BottomNavBar(backStack, mainPages(), Route.Clock)
     }, floatingActionButton = {
         FloatingActionButton({

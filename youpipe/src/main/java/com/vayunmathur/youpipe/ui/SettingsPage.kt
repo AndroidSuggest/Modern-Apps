@@ -146,7 +146,6 @@ fun SettingsPage(
     }
 
     Scaffold(
-        topBar = { TopAppBar({ Text(stringResource(R.string.title_settings)) }) },
         bottomBar = { BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.Settings) }
     ) { paddingValues ->
         if (!isLoading) {

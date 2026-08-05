@@ -159,9 +159,6 @@ fun NutritionScreen(state: NutritionUiState, actions: NutritionActions) {
     var fabExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.label_nutrition_details)) })
-        },
         floatingActionButton = {
             FloatingActionButtonMenu(
                 expanded = fabExpanded,

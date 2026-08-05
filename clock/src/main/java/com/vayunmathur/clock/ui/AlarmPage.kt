@@ -164,7 +164,6 @@ fun AlarmScreen(
     val alarms = state.alarms
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text(stringResource(R.string.label_alarm)) },
             actions = {
                 IconButton(onClick = { backStack.add(Route.AlarmSettings) }) { IconSettings() }
             },

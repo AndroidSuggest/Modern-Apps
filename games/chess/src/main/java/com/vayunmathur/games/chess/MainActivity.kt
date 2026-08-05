@@ -684,9 +684,7 @@ fun LearnHomeScreen(onOpenStage: (String, String) -> Unit) {
             com.vayunmathur.games.chess.data.LearnRepository.categories
         }
     }
-    Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.tab_learn)) }) }
-    ) { pad ->
+    Scaffold { pad ->
         val cats = categories
         if (cats == null) {
             Box(Modifier.fillMaxSize().padding(pad), Alignment.Center) { CircularProgressIndicator() }
@@ -1102,9 +1100,7 @@ fun PuzzleBoardScreen(state: PuzzleUiState, actions: PuzzleActions) {
         PawnPromotionDialog(state.playerColor, onPromote = actions::onPromote)
     }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.tab_puzzles)) }) }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
         Column(
             Modifier
                 .fillMaxSize()

@@ -70,11 +70,7 @@ fun ActivityPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
         viewModel.sumInRange(RecordType.Exercise, dayStart, dayEnd).map { it.toLong() }
     }.collectAsState(0L)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.nav_activity)) })
-        }
-    ) { paddingValues ->
+    Scaffold { paddingValues ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(

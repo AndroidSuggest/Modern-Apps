@@ -85,7 +85,6 @@ fun GraphScreen(state: GraphUiState, actions: GraphActions) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.graph)) },
                 actions = {
                     AssistChip(
                         onClick = { actions.toggleAngleMode() },

@@ -76,11 +76,6 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(UiR.string.settings)) },
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(onClick = { backStack.add(Route.AddAccountDialog) }) {
                 IconAdd()

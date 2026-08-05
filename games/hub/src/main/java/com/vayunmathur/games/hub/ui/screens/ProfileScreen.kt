@@ -93,7 +93,6 @@ fun ProfileScreen(
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text(stringResource(R.string.profile_title)) },
             actions = {
                 androidx.compose.material3.IconButton(onClick = {
                     editName = state.playerName ?: ""

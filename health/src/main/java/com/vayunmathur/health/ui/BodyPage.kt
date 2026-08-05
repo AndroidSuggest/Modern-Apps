@@ -67,9 +67,6 @@ fun BodyPage(backStack: NavBackStack<Route>, viewModel: HealthViewModel) {
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.nav_body)) })
-        },
         floatingActionButton = {
             FloatingActionButtonMenu(
                 expanded = fabExpanded,

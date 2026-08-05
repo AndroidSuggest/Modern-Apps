@@ -290,7 +290,7 @@ fun Scaffold(
 // --- Top app bars ---
 @Composable
 fun TopAppBar(
-    title: @Composable () -> Unit,
+    title: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
@@ -304,7 +304,7 @@ fun TopAppBar(
 
 @Composable
 fun CenterAlignedTopAppBar(
-    title: @Composable () -> Unit,
+    title: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},

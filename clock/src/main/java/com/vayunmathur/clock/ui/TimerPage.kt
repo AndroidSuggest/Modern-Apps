@@ -183,9 +183,6 @@ fun TimerScreen(
     val showKeypad = timers.isEmpty() || isAddingTimer
 
     Scaffold(
-        topBar = {
-            TopAppBar({ Text(stringResource(R.string.label_timer)) })
-        },
         bottomBar = {
             BottomNavBar(backStack, mainPages(), Route.Timer)
         },

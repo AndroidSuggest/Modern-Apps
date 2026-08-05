@@ -106,7 +106,6 @@ fun GamesListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.tab_games)) },
                 actions = {
                     IconButton(onClick = { showSortMenu = true }) { IconMoreVert() }
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {

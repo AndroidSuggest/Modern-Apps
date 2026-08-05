@@ -80,11 +80,6 @@ fun GroupsScreen(state: GroupsUiState, actions: ContactsActions, expandGroupId: 
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.groups)) }
-            )
-        },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
                 IconAdd()

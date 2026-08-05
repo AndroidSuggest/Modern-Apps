@@ -61,8 +61,10 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
         topBar = {
             TopAppBar(
                 title = { 
-                    val totalSelected = selectedIds.size + selectedActiveIds.size
-                    Text(if (isSelectionMode) stringResource(R.string.selected_1, totalSelected) else stringResource(R.string.downloads)) 
+                    if (isSelectionMode) {
+                        val totalSelected = selectedIds.size + selectedActiveIds.size
+                        Text(stringResource(R.string.selected_1, totalSelected))
+                    }
                 },
                 actions = {
                     if (isSelectionMode) {

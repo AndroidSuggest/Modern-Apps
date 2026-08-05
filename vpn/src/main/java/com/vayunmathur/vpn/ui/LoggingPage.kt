@@ -89,7 +89,6 @@ fun LoggingContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.logging)) },
                 actions = {
                     IconButton(onClick = { showDeleteDialog = true }) {
                         IconDelete()

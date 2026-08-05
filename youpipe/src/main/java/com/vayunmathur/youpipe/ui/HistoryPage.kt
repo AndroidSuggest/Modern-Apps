@@ -45,7 +45,6 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
         TopAppBar(
             title = {
                 if (inSelectionMode) Text(stringResource(R.string.selected, selectedIds.size))
-                else Text(stringResource(R.string.title_history))
             },
             navigationIcon = {
                 if (inSelectionMode) {

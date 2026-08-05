@@ -88,9 +88,7 @@ fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, act
         }
     }
 
-    Scaffold(topBar = {
-        TopAppBar({Text(stringResource(R.string.label_stopwatch))})
-    }, bottomBar = {
+    Scaffold(bottomBar = {
         BottomNavBar(backStack, mainPages(), Route.Stopwatch)
     }, floatingActionButton = {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

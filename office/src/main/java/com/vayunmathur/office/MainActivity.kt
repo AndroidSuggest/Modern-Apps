@@ -339,7 +339,7 @@ private fun OnlineInit(viewModel: OfficeViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OnlineDisabledScreen(onEnable: () -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.online)) }) }) { pad ->
+    Scaffold { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally

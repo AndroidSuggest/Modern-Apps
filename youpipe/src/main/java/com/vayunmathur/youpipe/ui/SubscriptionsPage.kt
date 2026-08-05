@@ -44,9 +44,7 @@ fun SubscriptionsPage(
     val fetchProgress by youPipeViewModel.fetchProgress.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    Scaffold(topBar = {
-        TopAppBar({ Text(stringResource(R.string.title_subscriptions)) })
-    }, bottomBar = { BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.SubscriptionsPage) }) { paddingValues ->
+    Scaffold(bottomBar = { BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.SubscriptionsPage) }) { paddingValues ->
         LazyColumn(Modifier.padding(paddingValues)) {
             if (fetchProgress in 0f..1f) {
                 item {

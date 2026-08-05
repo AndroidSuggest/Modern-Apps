@@ -184,7 +184,6 @@ fun CalculatorScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
                 actions = { IconButton({ showHistory = true }) { IconHistory() } },
             )
         },
