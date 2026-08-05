@@ -1,3 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="normal">Normal</string>
+    <string name="heading_1">Titre 1</string>
+    <string name="heading_2">Titre 2</string>
+    <string name="heading_3">Titre 3</string>
+    <string name="left">Gauche</string>
+    <string name="center">Centré</string>
+    <string name="right">Droite</string>
+    <string name="justify">Justifié</string>
+    <string name="clear_formatting">Effacer la mise en forme</string>
+    <string name="all">Tout</string>
+    <string name="copy">Copier</string>
+    <string name="reset">Réinitialiser</string>
+    <string name="apply">Appliquer</string>
+</resources>
