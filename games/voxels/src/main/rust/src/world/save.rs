@@ -13,37 +13,66 @@ pub fn save_chunk(base: &str, chunk: &Chunk) -> std::io::Result<()> {
     fs::create_dir_all(&dir)?;
     let path = chunk_file(base, chunk.pos);
     let tmp = path.with_extension("tmp");
-    let mut data = Vec::with_capacity(16*1024);
-    data.extend_from_slice(b"VOX1");
-    data.push(SECTIONS_PER_CHUNK as u8);
-    for sec_opt in chunk.sections.iter() {
-        if let Some(sec) = sec_opt {
-            data.push(1);
-            data.extend_from_slice(&sec.blocks);
-        } else { data.push(0); }
-    }
-    fs::write(&tmp, &data)?;
+    fs::write(&tmp, &encode_chunk(chunk))?;
     fs::rename(&tmp, &path)?;
     Ok(())
 }
+// VOX2: "VOX2", section count, then per section: present u8; if 1 { 4096 block bytes; has_meta u8;
+// if 1 { 4096 meta bytes } }. The meta flag keeps cube-only sections exactly the size VOX1 wrote.
+fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
+    let mut data = Vec::with_capacity(16*1024);
+    data.extend_from_slice(b"VOX2");
+    data.push(SECTIONS_PER_CHUNK as u8);
+    for sec_opt in chunk.sections.iter() {
+        let Some(sec) = sec_opt else { data.push(0); continue; };
+        data.push(1);
+        data.extend_from_slice(&sec.blocks);
+        match sec.meta.as_ref().filter(|m| m.iter().any(|&v| v != 0)) {
+            Some(meta) => { data.push(1); data.extend_from_slice(&meta[..]); }
+            None => data.push(0),
+        }
+    }
+    data
+}
 pub fn load_chunk(base: &str, _pos: ChunkPos, chunk: &mut Chunk) -> std::io::Result<()> {
     let path = chunk_file(base, chunk.pos);
-    let bytes = fs::read(&path)?;
-    if bytes.len() < 5 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "too small")); }
-    if &bytes[0..4] != b"VOX1" { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "bad magic")); }
+    decode_chunk(&fs::read(&path)?, chunk)
+}
+// Reads VOX1 and VOX2. A VOX1 chunk upgrades losslessly: every block it can contain is a full cube,
+// which is exactly what meta 0 means. Rejecting it instead would make `load_or_gen` treat the chunk
+// as ungenerated and regenerate it from the seed, erasing the player's build.
+fn decode_chunk(bytes: &[u8], chunk: &mut Chunk) -> std::io::Result<()> {
+    let bad = |m: &'static str| std::io::Error::new(std::io::ErrorKind::InvalidData, m);
+    if bytes.len() < 5 { return Err(bad("too small")); }
+    let has_meta_flags = match &bytes[0..4] {
+        b"VOX1" => false,
+        b"VOX2" => true,
+        _ => return Err(bad("bad magic")),
+    };
     let sec_count = bytes[4] as usize;
     let mut off = 5usize;
     for sec_idx in 0..sec_count.min(SECTIONS_PER_CHUNK) {
         if off >= bytes.len() { break; }
         let flag = bytes[off]; off+=1;
-        if flag==1 {
-            if off + 4096 > bytes.len() { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "section overflow")); }
-            let mut blocks = [0u8; 4096];
-            blocks.copy_from_slice(&bytes[off..off+4096]);
-            off+=4096;
-            let non_air = blocks.iter().filter(|&&b| b!=0).count();
-            if non_air>0 { chunk.sections[sec_idx] = Some(super::chunk::BlockSection{ blocks, non_air }); }
+        if flag != 1 { continue; }
+        if off + 4096 > bytes.len() { return Err(bad("section overflow")); }
+        let mut blocks = [0u8; 4096];
+        blocks.copy_from_slice(&bytes[off..off+4096]);
+        off+=4096;
+        let mut meta = None;
+        if has_meta_flags {
+            if off >= bytes.len() { return Err(bad("missing meta flag")); }
+            let has_meta = bytes[off]; off+=1;
+            if has_meta == 1 {
+                if off + 4096 > bytes.len() { return Err(bad("meta overflow")); }
+                let mut m = Box::new([0u8; 4096]);
+                m.copy_from_slice(&bytes[off..off+4096]);
+                off+=4096;
+                meta = Some(m);
+            }
         }
+        let non_air = blocks.iter().filter(|&&b| b!=0).count();
+        if non_air>0 { chunk.sections[sec_idx] = Some(super::chunk::BlockSection{ blocks, meta, non_air }); }
     }
     chunk.generated = true; chunk.dirty = false; chunk.mesh_dirty = true;
     Ok(())
@@ -114,6 +143,98 @@ pub fn load_player(base: &str) -> Option<PlayerSave> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::chunk::{BlockSection, SECTIONS_PER_CHUNK};
+
+    // Build a chunk file in the retired VOX1 layout: magic, section count, then per section a
+    // present-flag followed by 4096 raw block bytes and nothing else.
+    fn encode_vox1(chunk: &Chunk) -> Vec<u8> {
+        let mut data = vec![];
+        data.extend_from_slice(b"VOX1");
+        data.push(SECTIONS_PER_CHUNK as u8);
+        for sec in chunk.sections.iter() {
+            match sec {
+                Some(s) => { data.push(1); data.extend_from_slice(&s.blocks); }
+                None => data.push(0),
+            }
+        }
+        data
+    }
+
+    // The load path treats a decode failure as "not generated", which makes ChunkMap regenerate the
+    // chunk from the seed and silently destroy whatever the player built there. A VOX1 file must
+    // therefore keep loading, byte-for-byte, with meta defaulting to plain cubes.
+    #[test]
+    fn legacy_vox1_chunks_still_load() {
+        let mut original = Chunk::new(ChunkPos(3, -4));
+        original.set_block(1, 5, 2, 42);
+        original.set_block(15, 200, 15, 7);
+        let bytes = encode_vox1(&original);
+
+        let mut loaded = Chunk::new(ChunkPos(3, -4));
+        decode_chunk(&bytes, &mut loaded).expect("a VOX1 chunk must still decode");
+
+        assert!(loaded.generated, "a decoded chunk must count as generated or it gets regenerated");
+        assert_eq!(loaded.get_block(1, 5, 2), 42);
+        assert_eq!(loaded.get_block(15, 200, 15), 7);
+        assert_eq!(loaded.get_meta(1, 5, 2), 0, "legacy blocks are all full cubes");
+        for (a, b) in original.sections.iter().zip(loaded.sections.iter()) {
+            match (a, b) {
+                (Some(a), Some(b)) => assert_eq!(a.blocks, b.blocks, "block bytes must survive verbatim"),
+                (None, None) => {}
+                _ => panic!("section presence changed across a VOX1 load"),
+            }
+        }
+    }
+
+    #[test]
+    fn slabs_and_stairs_survive_a_round_trip() {
+        let mut original = Chunk::new(ChunkPos(0, 0));
+        // A slab, and stairs facing each of the four compass directions.
+        original.set_block_meta(0, 64, 0, 102, 0b100);       // top-half slab
+        original.set_block_meta(1, 64, 0, 103, 0);           // stairs facing north, bottom
+        original.set_block_meta(2, 64, 0, 103, 1);           // east
+        original.set_block_meta(3, 64, 0, 103, 0b110);       // south, top-half
+        original.set_block_meta(4, 64, 0, 103, 3);           // west
+        original.set_block(5, 64, 0, 1);                     // a plain cube alongside
+
+        let mut loaded = Chunk::new(ChunkPos(0, 0));
+        decode_chunk(&encode_chunk(&original), &mut loaded).expect("VOX2 must decode");
+
+        assert_eq!(loaded.get_meta(0, 64, 0), 0b100);
+        assert_eq!(loaded.get_meta(1, 64, 0), 0);
+        assert_eq!(loaded.get_meta(2, 64, 0), 1);
+        assert_eq!(loaded.get_meta(3, 64, 0), 0b110);
+        assert_eq!(loaded.get_meta(4, 64, 0), 3);
+        assert_eq!(loaded.get_block(3, 64, 0), 103);
+        assert_eq!(loaded.get_block(5, 64, 0), 1);
+        assert_eq!(loaded.get_meta(5, 64, 0), 0);
+    }
+
+    // Terrain is all cubes, so a chunk that never stored a meta value must not pay for one — on
+    // disk or in memory.
+    #[test]
+    fn cube_only_chunks_carry_no_meta() {
+        let mut chunk = Chunk::new(ChunkPos(0, 0));
+        for x in 0..16 { for z in 0..16 { chunk.set_block(x, 10, z, 1); } }
+        let sec = chunk.sections[0].as_ref().expect("section 0 holds the stone");
+        assert!(sec.meta.is_none(), "a cube-only section must not allocate a meta array");
+
+        let encoded = encode_chunk(&chunk);
+        let one_section = 1 + 4096 + 1; // present flag, blocks, has-meta flag
+        assert_eq!(encoded.len(), 5 + one_section + (SECTIONS_PER_CHUNK - 1), "no meta bytes should be written");
+    }
+
+    // Clearing a block must clear its meta too, or a later slab placed in the same cell would
+    // inherit a stale facing.
+    #[test]
+    fn replacing_a_block_clears_its_meta() {
+        let mut s = BlockSection::empty();
+        s.set(1, 2, 3, 103);
+        s.set_meta(1, 2, 3, 0b110);
+        assert_eq!(s.get_meta(1, 2, 3), 0b110);
+        s.set(1, 2, 3, 1);
+        assert_eq!(s.get_meta(1, 2, 3), 0, "a fresh block starts with default meta");
+    }
 
     // A player.json written before ProgressSave existed must still load, defaulting to a fresh
     // progression rather than failing and wiping the world.

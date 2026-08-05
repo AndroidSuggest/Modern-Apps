@@ -107,6 +107,8 @@ PROC_TILES = {
     138: (204, 118, 66),   # copper block
     139: (246, 208, 62),   # gold block
     140: (176, 141, 87),   # bronze block
+    141: (188, 192, 198),  # stonecutter top (saw blade steel)
+    142: (112, 110, 106),  # stonecutter side (stone body)
 }
 
 # Ore tiles: a stone/netherrack base with deterministic mineral blobs speckled over it, so new ores
@@ -173,6 +175,7 @@ PROC_ICON = {
     131: "silver_block.png", 132: "steel_block.png", 134: "blast_furnace.png",
     136: "copper_ore.png", 137: "gold_ore.png",
     138: "copper_block.png", 139: "gold_block.png", 140: "bronze_block.png",
+    141: "stonecutter.png",
 }
 
 

@@ -31,6 +31,9 @@ object VoxelsNative {
     external fun moveItem(from: Int, to: Int)
     external fun giveBlock(id: Int)
     external fun craft(recipe: Int): Boolean
+    // Stonecutter: one block in, one shape out.
+    external fun cut(idx: Int): Boolean
+    external fun getCutsJson(): String
     external fun trade(index: Int): Boolean
     external fun getRecipesJson(): String
     external fun getTradesJson(): String

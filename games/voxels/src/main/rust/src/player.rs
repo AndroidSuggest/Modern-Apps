@@ -252,17 +252,27 @@ impl Player {
         feet == 12 || chest == 12
     }
 
-    // True if there is a solid block just under the player's footprint at `pos` (used so a sneaking
-    // player won't walk off ledges).
+    // True if there is something solid to stand on just under the player's footprint at `pos` (used
+    // so a sneaking player won't walk off ledges). A slab counts only where its solid half reaches.
     fn supported_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {
         let hw = 0.3;
-        let y = (pos.y - 0.05).floor() as i32;
+        let foot = pos.y - 0.05;
+        let y = foot.floor() as i32;
         for &dx in &[-hw, hw] {
             for &dz in &[-hw, hw] {
                 let x = (pos.x + dx).floor() as i32;
                 let z = (pos.z + dz).floor() as i32;
                 let id = chunks.get_block_world(x, y, z);
-                if id != 0 && Block::from_id(id).is_solid() { return true; }
+                if id == 0 { continue; }
+                let meta = chunks.get_meta_world(x, y, z);
+                // The probe point sits `foot` above the cell floor; something must fill it.
+                let local = foot - y as f32;
+                let (lx, lz) = (pos.x + dx - x as f32, pos.z + dz - z as f32);
+                for b in Block::from_id(id).collision_boxes(meta).as_slice() {
+                    if local >= b.min[1] && local <= b.max[1]
+                        && lx >= b.min[0] && lx <= b.max[0]
+                        && lz >= b.min[2] && lz <= b.max[2] { return true; }
+                }
             }
         }
         false
@@ -270,16 +280,17 @@ impl Player {
 
     fn collides_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {
         let hw = 0.3;
-        let min = vec3(pos.x - hw, pos.y, pos.z - hw);
-        let max = vec3(pos.x + hw, pos.y + 1.8, pos.z + hw);
-        let x0 = min.x.floor() as i32; let y0 = min.y.floor() as i32; let z0 = min.z.floor() as i32;
-        let x1 = max.x.ceil() as i32; let y1 = max.y.ceil() as i32; let z1 = max.z.ceil() as i32;
+        let min = [pos.x - hw, pos.y, pos.z - hw];
+        let max = [pos.x + hw, pos.y + 1.8, pos.z + hw];
+        let x0 = min[0].floor() as i32; let y0 = min[1].floor() as i32; let z0 = min[2].floor() as i32;
+        let x1 = max[0].ceil() as i32; let y1 = max[1].ceil() as i32; let z1 = max[2].ceil() as i32;
         for x in x0..=x1 { for y in y0..=y1 { for z in z0..=z1 {
             let id = chunks.get_block_world(x, y, z);
-            if id != 0 && Block::from_id(id).is_solid() {
-                if (x as f32 + 1.0) > min.x && (x as f32) < max.x && (y as f32 + 1.0) > min.y && (y as f32) < max.y && (z as f32 + 1.0) > min.z && (z as f32) < max.z {
-                    return true;
-                }
+            if id == 0 || !Block::from_id(id).is_solid() { continue; }
+            let meta = chunks.get_meta_world(x, y, z);
+            let cell = [x as f32, y as f32, z as f32];
+            for b in Block::from_id(id).collision_boxes(meta).as_slice() {
+                if b.overlaps_at(cell, min, max) { return true; }
             }
         }}}
         false
@@ -349,6 +360,52 @@ mod tests {
         assert_eq!(landing_damage(64.0, 64.0, false), 0.0);
         // Short hops were always free.
         assert_eq!(landing_damage(66.0, 64.0, false), 0.0);
+    }
+
+    // Terrain never reaches this high, so surrounding cells are guaranteed air.
+    const SKY: i32 = 200;
+    fn world() -> ChunkMap {
+        let dir = std::env::temp_dir().join("voxels_collide_test").to_string_lossy().into_owned();
+        ChunkMap::new(2, dir)
+    }
+
+    // You stand on a bottom slab half a block up, not a whole one.
+    #[test]
+    fn a_bottom_slab_only_fills_the_lower_half() {
+        let mut w = world();
+        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as u8, 0);
+        let p = Player::new(0.5, 0.0, 0.5);
+
+        assert!(!p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.5), &w), "resting on the slab's surface is clear");
+        assert!(p.collides_at(vec3(0.5, SKY as f32 + 0.4, 0.5), &w), "any lower and you are inside it");
+        assert!(p.supported_at(vec3(0.5, SKY as f32 + 0.5, 0.5), &w), "the slab holds you up");
+    }
+
+    // The empty half of a top slab is real headroom — a full cube in the same cell would not fit.
+    #[test]
+    fn you_can_walk_under_a_top_slab() {
+        let feet = vec3(0.5, SKY as f32 - 0.3, 0.5); // head lands exactly at the slab's underside
+
+        let mut with_slab = world();
+        with_slab.set_block_meta_world(0, SKY + 1, 0, Block::StoneSlab as u8, crate::world::block::META_TOP);
+        let p = Player::new(0.5, 0.0, 0.5);
+        assert!(!p.collides_at(feet, &with_slab), "a top slab leaves its lower half open");
+
+        let mut with_cube = world();
+        with_cube.set_block_world(0, SKY + 1, 0, Block::Stone as u8);
+        assert!(p.collides_at(feet, &with_cube), "a full cube in the same cell would block");
+    }
+
+    // Stairs are open above their low half, which is what makes them climbable.
+    #[test]
+    fn stairs_are_open_over_their_low_half() {
+        let mut w = world();
+        w.set_block_meta_world(0, SKY, 0, Block::StoneStairs as u8, crate::world::block::FACE_NORTH);
+        let p = Player::new(0.0, 0.0, 0.0);
+        // The low half is -Z. The player is 0.6 wide, so their box has to sit well into it.
+        assert!(!p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.2), &w), "standing on the tread is clear");
+        // The tall half is +Z and reaches the cell ceiling.
+        assert!(p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.75), &w), "the step fills the far half");
     }
 
     #[test]

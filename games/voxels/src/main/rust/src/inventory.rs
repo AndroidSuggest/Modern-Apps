@@ -24,7 +24,7 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 85] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 86] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -110,6 +110,8 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 85] = [
     (236, 9, 0, 0, Block::CopperBlock as u8, 1),
     (237, 9, 0, 0, Block::GoldBlock as u8,   1),
     (238, 9, 0, 0, Block::BronzeBlock as u8, 1),
+    // The stonecutter itself: an iron blade on a stone bed.
+    (Block::Stone as u8, 3, 154, 1, Block::Stonecutter as u8, 1),
 ];
 
 // Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
@@ -193,6 +195,47 @@ pub fn recipe_category(out: u8) -> &'static str {
     if crate::item::is_item(out) { return "material"; }
     "block"
 }
+
+// The stonecutter: one block in, one shape out, no fuel and no waiting. This is Matcha's stonecutting
+// book condensed — the pack's hundreds of recipes are almost all "material -> slab/stairs/variant",
+// which is exactly what `cut_variants` enumerates.
+pub struct Cut { pub input: u8, pub output: u8, pub count: i32 }
+
+/// Every stonecutter conversion, derived from the block table so a new slab family is picked up for
+/// free. A cube yields two slabs or one stair, and either shape converts back to the other.
+pub fn cut_variants() -> Vec<Cut> {
+    let mut out = Vec::new();
+    for material in CUTTABLE {
+        let (Some(slab), Some(stairs)) = (material.slab_of(), material.stairs_of()) else { continue; };
+        let (m, s, st) = (material as u8, slab as u8, stairs as u8);
+        out.push(Cut { input: m, output: s, count: 2 });
+        out.push(Cut { input: m, output: st, count: 1 });
+        out.push(Cut { input: s, output: st, count: 1 });
+        out.push(Cut { input: st, output: s, count: 1 });
+    }
+    // Decorative conversions between whole blocks of the same family.
+    for &(input, output) in DECOR_CUTS {
+        out.push(Cut { input: input as u8, output: output as u8, count: 1 });
+    }
+    out
+}
+
+// Materials that have a slab and a stair shape.
+const CUTTABLE: [Block; 8] = [
+    Block::Stone, Block::Cobble, Block::Planks, Block::Brick,
+    Block::Sandstone, Block::DeepslateBricks, Block::NetherBricks, Block::Purpur,
+];
+// Whole-block decorative swaps the stonecutter also offers.
+const DECOR_CUTS: &[(Block, Block)] = &[
+    (Block::Stone, Block::Cobble),
+    (Block::Stone, Block::Brick),
+    (Block::Cobble, Block::MossyCobble),
+    (Block::Diorite, Block::PolishedDiorite),
+    (Block::CobbledDeepslate, Block::DeepslateBricks),
+    (Block::Sandstone, Block::RedSandstone),
+    (Block::EndStone, Block::EndStoneBricks),
+    (Block::Netherrack, Block::NetherBricks),
+];
 
 impl Default for Inventory {
     fn default() -> Self {
@@ -310,6 +353,16 @@ impl Inventory {
         self.remove_count(c, cn);
         if crate::item::has_durability(g) { self.add_item_with_count(g, crate::item::max_durability(g)); }
         else { for _ in 0..gn { self.add_block(g); } }
+        true
+    }
+    // Execute a stonecutter conversion if the player has the input and room for the output.
+    pub fn cut(&mut self, idx: usize) -> bool {
+        let cuts = cut_variants();
+        let Some(c) = cuts.get(idx) else { return false; };
+        if self.count_of(c.input) < 1 { return false; }
+        if !self.has_room_for(c.output, c.count) { return false; }
+        self.remove_count(c.input, 1);
+        for _ in 0..c.count { self.add_block(c.output); }
         true
     }
     pub fn armor_defense(&self) -> f32 { self.armor.iter().map(|s| if s.id != 0 { crate::item::armor_defense(s.id) } else { 0.0 }).sum() }
@@ -519,6 +572,57 @@ mod tests {
         inv.slots[4] = InvSlot::default();
         assert!(inv.has_room_for(154, 3));
         assert!(inv.has_room_for(169, 1), "an empty slot can hold a tool");
+    }
+
+    // The stonecutter is the only route to slabs and stairs, so every shape must be reachable and
+    // no cut may create something from nothing.
+    #[test]
+    fn the_stonecutter_reaches_every_shape() {
+        let cuts = cut_variants();
+        for m in CUTTABLE {
+            let slab = m.slab_of().unwrap() as u8;
+            let stairs = m.stairs_of().unwrap() as u8;
+            assert!(cuts.iter().any(|c| c.input == m as u8 && c.output == slab), "{m:?} -> slab missing");
+            assert!(cuts.iter().any(|c| c.input == m as u8 && c.output == stairs), "{m:?} -> stairs missing");
+            assert!(cuts.iter().any(|c| c.input == slab && c.output == stairs), "slab -> stairs missing");
+            assert!(cuts.iter().any(|c| c.input == stairs && c.output == slab), "stairs -> slab missing");
+        }
+        for c in &cuts {
+            assert!(c.input != 0 && c.output != 0, "a cut with no input or output");
+            assert_ne!(c.input, c.output, "a cut must actually change the block");
+            assert!(c.count >= 1 && c.count <= 2, "cut yields should stay modest, got {}", c.count);
+        }
+    }
+
+    #[test]
+    fn cutting_consumes_one_block_and_yields_the_shape() {
+        let cuts = cut_variants();
+        let idx = cuts.iter().position(|c| c.input == Block::Stone as u8 && c.output == Block::StoneSlab as u8).unwrap();
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
+        inv.slots[0] = InvSlot { id: Block::Stone as u8, count: 3 };
+
+        assert!(inv.cut(idx));
+        assert_eq!(inv.count_of(Block::Stone as u8), 2, "one stone consumed");
+        assert_eq!(inv.count_of(Block::StoneSlab as u8), 2, "a stone block yields two slabs");
+
+        // With no input left the cut must refuse rather than conjure slabs.
+        inv.remove_count(Block::Stone as u8, 99);
+        assert!(!inv.cut(idx));
+        assert_eq!(inv.count_of(Block::StoneSlab as u8), 2);
+    }
+
+    // A full inventory must not let the stonecutter eat the input and drop the result.
+    #[test]
+    fn cutting_into_a_full_inventory_is_refused() {
+        let cuts = cut_variants();
+        let idx = cuts.iter().position(|c| c.input == Block::Stone as u8 && c.output == Block::StoneSlab as u8).unwrap();
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as u8, count: STACK }; }
+        inv.slots[0] = InvSlot { id: Block::Stone as u8, count: STACK };
+
+        assert!(!inv.cut(idx), "nowhere to put the slabs");
+        assert_eq!(inv.count_of(Block::Stone as u8), STACK, "the input must survive a refused cut");
     }
 
     #[test]

@@ -375,6 +375,21 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_relea
     engine::release_blessing(slot.max(0) as usize) as jboolean
 }
 
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getCutsJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_cuts_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_cut<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+) -> jboolean {
+    if idx >= 0 && engine::do_cut(idx as usize) { 1 } else { 0 }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::world::chunk::{Chunk, ChunkPos};
@@ -388,7 +403,7 @@ mod tests {
         let mut c = Chunk::new(ChunkPos(0, 0));
         gen.fill_chunk(&mut c);
         assert!(c.generated);
-        let mesh = mesh_chunk(&c, &|_, _, _| 0, &|_, _| [0.4, 0.7, 0.3]);
+        let mesh = mesh_chunk(&c, &|_, _, _| (0, 0), &|_, _| [0.4, 0.7, 0.3]);
         let total: usize = mesh.iter().filter_map(|o| o.as_ref()).map(|m| m.vertices.len()).sum();
         assert!(total > 0 || c.sections.iter().all(|s| s.is_none() || s.as_ref().unwrap().is_empty()));
     }

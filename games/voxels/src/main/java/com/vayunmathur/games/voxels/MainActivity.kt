@@ -61,9 +61,11 @@ class MainActivity : ComponentActivity() {
                 var furnaceOpen by remember { mutableStateOf(false) }
                 var furnaceIsBlast by remember { mutableStateOf(false) }
                 var chestOpen by remember { mutableStateOf(false) }
+                var cutsJson by remember { mutableStateOf("[]") }
+                var stonecutterOpen by remember { mutableStateOf(false) }
                 var tradesJson by remember { mutableStateOf("[]") }
                 var tradeOpen by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson() } catch (_: Exception) {} }
+                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson(); cutsJson = VoxelsNative.getCutsJson() } catch (_: Exception) {} }
                 var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
                 val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
@@ -166,6 +168,7 @@ class MainActivity : ComponentActivity() {
                                         val held = inv?.slots?.getOrNull(inv.selected)?.id ?: 0
                                         com.vayunmathur.games.voxels.util.MusicFx.toggle(this@MainActivity, com.vayunmathur.games.voxels.ui.discTrack[held])
                                     }
+                                    15 -> stonecutterOpen = true // stonecutter
                                     20 -> tradeOpen = true // villager
                                     30 -> { // chest
                                         containerJson = try { VoxelsNative.getContainerJson() } catch (_: Exception) { """{"slots":[]}""" }
@@ -284,6 +287,11 @@ class MainActivity : ComponentActivity() {
                             chestOpen = false
                             try { VoxelsNative.closeContainer() } catch (_: Exception) {}
                         })
+                    }
+
+                    if (stonecutterOpen && VoxelsNative.isAvailable) {
+                        StonecutterOverlay(cutsJson = cutsJson, inventoryJson = inventoryJson,
+                            onClose = { stonecutterOpen = false })
                     }
 
                     if (paused) {

@@ -114,7 +114,14 @@ val blockNames = mapOf(
     93 to "Silver Block", 94 to "Steel Block", 95 to "Adamant Block", 96 to "Blast Furnace",
     192 to "Sulfur", 193 to "Silver Ingot", 194 to "Quicksilver", 195 to "Steel Ingot", 196 to "Adamant Ingot",
     197 to "Adamant Pickaxe", 198 to "Adamant Sword",
-    199 to "Adamant Helmet", 200 to "Adamant Chestplate", 201 to "Adamant Leggings", 202 to "Adamant Boots"
+    199 to "Adamant Helmet", 200 to "Adamant Chestplate", 201 to "Adamant Leggings", 202 to "Adamant Boots",
+    // Matcha's building set: slabs and stairs, cut on a stonecutter.
+    102 to "Stone Slab", 103 to "Stone Stairs", 104 to "Cobble Slab", 105 to "Cobble Stairs",
+    106 to "Plank Slab", 107 to "Plank Stairs", 108 to "Brick Slab", 109 to "Brick Stairs",
+    110 to "Sandstone Slab", 111 to "Sandstone Stairs",
+    112 to "Deepslate Brick Slab", 113 to "Deepslate Brick Stairs",
+    114 to "Nether Brick Slab", 115 to "Nether Brick Stairs",
+    116 to "Purpur Slab", 117 to "Purpur Stairs", 118 to "Stonecutter"
 )
 
 // Music disc item id -> track asset in assets/music/.
@@ -178,7 +185,17 @@ val blockIconFile = mapOf(
     93 to "silver_block.png", 94 to "steel_block.png", 95 to "adamant_block.png", 96 to "blast_furnace.png",
     192 to "sulfur.png", 193 to "silver_ingot.png", 194 to "quicksilver.png", 195 to "steel_ingot.png",
     196 to "adamant_ingot.png", 197 to "adamant_pickaxe.png", 198 to "adamant_sword.png",
-    199 to "adamant_helmet.png", 200 to "adamant_chestplate.png", 201 to "adamant_leggings.png", 202 to "adamant_boots.png"
+    199 to "adamant_helmet.png", 200 to "adamant_chestplate.png", 201 to "adamant_leggings.png", 202 to "adamant_boots.png",
+    // Slabs and stairs reuse their parent material's icon; the name tells them apart.
+    102 to "deepslate.png", 103 to "deepslate.png",
+    104 to "cobblestone.png", 105 to "cobblestone.png",
+    106 to "oak_planks.png", 107 to "oak_planks.png",
+    108 to "bricks.png", 109 to "bricks.png",
+    110 to "sandstone.png", 111 to "sandstone.png",
+    112 to "deepslate_bricks.png", 113 to "deepslate_bricks.png",
+    114 to "nether_bricks.png", 115 to "nether_bricks.png",
+    116 to "purpur_block.png", 117 to "purpur_block.png",
+    118 to "stonecutter.png"
 )
 
 // Creative catalog, split into tabs.
@@ -199,7 +216,8 @@ val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,
     239, 240, 241, 242, 243, 244,
     197, 198, 199, 200, 201, 202)
 val catalogMusic = listOf(82, 179, 180, 181, 182, 183, 184, 185)
-val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 96, 88, 89)
+val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 96, 118, 88, 89,
+    102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117)
 
 @Composable
 fun rememberBlockIcon(id: Int): androidx.compose.ui.graphics.ImageBitmap? {

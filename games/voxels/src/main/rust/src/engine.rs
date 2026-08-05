@@ -1,4 +1,4 @@
-use crate::world::{ChunkMap, block::Block};
+use crate::world::{ChunkMap, block::{Block, Shape}};
 use crate::player::Player;
 use crate::inventory::Inventory;
 use crate::entity::{Mob, MobKind, Particle, Projectile, ProjKind, build_entity_mesh, tick_particles, append_particles, append_projectiles};
@@ -289,8 +289,8 @@ pub fn rebuild_chunk_meshes(state: &mut EngineState, chunk_pos: crate::world::ch
     let meshes = {
         let chunk = state.chunks.get(chunk_pos).unwrap();
         let map_ptr = &state.chunks as *const ChunkMap;
-        let closure = move |wx: i32, wy: i32, wz: i32| -> u8 {
-            unsafe { (*map_ptr).get_block_world(wx, wy, wz) }
+        let closure = move |wx: i32, wy: i32, wz: i32| -> (u8, u8) {
+            unsafe { ((*map_ptr).get_block_world(wx, wy, wz), (*map_ptr).get_meta_world(wx, wy, wz)) }
         };
         let tint = move |wx: i32, wz: i32| -> [f32;3] {
             unsafe { (*map_ptr).grass_tint(wx, wz) }
@@ -727,6 +727,15 @@ pub fn get_trades_json() -> String {
         .collect();
     serde_json::json!(items).to_string()
 }
+
+// The stonecutter's whole catalog; the UI filters it down to what the player is carrying.
+pub fn get_cuts_json() -> String {
+    let items: Vec<_> = crate::inventory::cut_variants().iter()
+        .map(|c| serde_json::json!({ "in": c.input, "out": c.output, "outN": c.count }))
+        .collect();
+    serde_json::json!(items).to_string()
+}
+pub fn do_cut(idx: usize) -> bool { with_engine(|s| s.inventory.cut(idx)).unwrap_or(false) }
 pub fn get_recipes_json() -> String {
     let items: Vec<_> = crate::inventory::RECIPES.iter()
         .map(|(i1, c1, i2, c2, oid, oc)| serde_json::json!({
@@ -1400,26 +1409,77 @@ fn explode(state: &mut EngineState, center: Vec3, radius: f32) {
     spawn_particles(&mut state.spawn_rng, &mut state.particles, center, 12, [1.0, 0.55, 0.15], 5.0, 0.5, 0.22);
 }
 
+/// Which way a stair placed now should face. Its low side looks back at the player so that walking
+/// forward climbs it. Yaw 0 looks north (-Z).
+fn stair_facing(yaw: f32) -> u8 {
+    use crate::world::block::{FACE_EAST, FACE_NORTH, FACE_SOUTH, FACE_WEST};
+    let turns = (yaw / std::f32::consts::FRAC_PI_2).round() as i32;
+    match turns.rem_euclid(4) {
+        0 => FACE_SOUTH, // looking north, so approach from the south
+        1 => FACE_EAST,
+        2 => FACE_NORTH,
+        _ => FACE_WEST,
+    }
+}
+
+/// The meta byte for placing `block` against `hit`. Cubes get 0; slabs and stairs pick their half
+/// from the face that was clicked, falling back to which half of a side face was hit.
+fn placement_meta(block: Block, hit: &crate::raycast::HitResult, origin: Vec3, dir: Vec3, yaw: f32) -> u8 {
+    use crate::world::block::META_TOP;
+    if block.shape() == Shape::Cube { return 0; }
+    let top = match hit.normal.1 {
+        1 => false,  // placed on a surface: rests on the floor of its cell
+        -1 => true,  // placed under a ceiling: hangs from the top
+        _ => {
+            // A side face: the half of the face that was clicked decides.
+            let point = origin + dir.normalize_or_zero() * hit.dist;
+            point.y - point.y.floor() > 0.5
+        }
+    };
+    let mut meta = if top { META_TOP } else { 0 };
+    if block.shape() == Shape::Stairs { meta |= stair_facing(yaw); }
+    meta
+}
+
 fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     // Items (food, estus, materials) are never placeable as blocks.
     let sel = state.inventory.selected_block();
     if sel == 0 || crate::item::is_item(sel) { return false; }
-    if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) {
-        let (px,py,pz) = hit.prev;
-        if state.chunks.get_block_world(px,py,pz) != 0 { return false; }
-        let min_check = vec3(state.player.pos.x - 0.3, state.player.pos.y, state.player.pos.z - 0.3);
-        let max_check = vec3(state.player.pos.x + 0.3, state.player.pos.y + 1.8, state.player.pos.z + 0.3);
-        let inside_x = (px as f32 + 1.0) > min_check.x && (px as f32) < max_check.x;
-        let inside_y = (py as f32 + 1.0) > min_check.y && (py as f32) < max_check.y;
-        let inside_z = (pz as f32 + 1.0) > min_check.z && (pz as f32) < max_check.z;
-        if inside_x && inside_y && inside_z { return false; }
-        if let Some(id) = state.inventory.consume_selected() {
-            state.chunks.set_block_world(px,py,pz, id);
-            // A chest the player places starts empty; only chests already in the world roll loot.
-            if id == 83 { state.containers.insert_empty((state.dim, px, py, pz)); }
-            mark_neighbors_dirty(state, px, pz);
-            return true;
+    let block = Block::from_id(sel);
+    let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) else { return false; };
+
+    // Two matching slabs in one cell make the full block again.
+    if block.shape() == Shape::Slab {
+        let (tx, ty, tz) = hit.pos;
+        if state.chunks.get_block_world(tx, ty, tz) == sel {
+            let existing_top = state.chunks.get_meta_world(tx, ty, tz) & crate::world::block::META_TOP != 0;
+            // Only the face on the cell's empty side can complete it.
+            if (existing_top && hit.normal.1 == -1) || (!existing_top && hit.normal.1 == 1) {
+                if state.inventory.consume_selected().is_some() {
+                    state.chunks.set_block_world(tx, ty, tz, block.parent() as u8);
+                    mark_neighbors_dirty(state, tx, tz);
+                    return true;
+                }
+            }
         }
+    }
+
+    let (px, py, pz) = hit.prev;
+    if state.chunks.get_block_world(px, py, pz) != 0 { return false; }
+    let meta = placement_meta(block, &hit, origin, dir, state.player.yaw);
+    // Refuse only if the block's actual geometry would intersect the player — a slab at their feet
+    // is fine even though a full cube there would not be.
+    let pmin = [state.player.pos.x - 0.3, state.player.pos.y, state.player.pos.z - 0.3];
+    let pmax = [state.player.pos.x + 0.3, state.player.pos.y + 1.8, state.player.pos.z + 0.3];
+    let cell = [px as f32, py as f32, pz as f32];
+    if block.collision_boxes(meta).as_slice().iter().any(|b| b.overlaps_at(cell, pmin, pmax)) { return false; }
+
+    if let Some(id) = state.inventory.consume_selected() {
+        state.chunks.set_block_meta_world(px, py, pz, id, meta);
+        // A chest the player places starts empty; only chests already in the world roll loot.
+        if id == 83 { state.containers.insert_empty((state.dim, px, py, pz)); }
+        mark_neighbors_dirty(state, px, pz);
+        return true;
     }
     false
 }
@@ -1462,4 +1522,25 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
         }
         if do_place(state, o, d) { 1 } else { 0 }
     }).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::block::{FACE_EAST, FACE_NORTH, FACE_SOUTH, FACE_WEST};
+
+    // Yaw 0 looks north, and yaw grows counter-clockwise (see Player::forward). A stair's low side
+    // must end up facing the player so that walking forward climbs it.
+    #[test]
+    fn stairs_face_back_toward_the_player() {
+        use std::f32::consts::FRAC_PI_2;
+        assert_eq!(stair_facing(0.0), FACE_SOUTH, "looking north, approach from the south");
+        assert_eq!(stair_facing(FRAC_PI_2), FACE_EAST, "looking west, approach from the east");
+        assert_eq!(stair_facing(FRAC_PI_2 * 2.0), FACE_NORTH);
+        assert_eq!(stair_facing(FRAC_PI_2 * 3.0), FACE_WEST);
+        // Wraps cleanly, and snaps from in-between angles.
+        assert_eq!(stair_facing(FRAC_PI_2 * 4.0), FACE_SOUTH);
+        assert_eq!(stair_facing(-FRAC_PI_2), FACE_WEST);
+        assert_eq!(stair_facing(0.3), FACE_SOUTH, "a small tilt still reads as north");
+    }
 }

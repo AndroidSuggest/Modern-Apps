@@ -110,9 +110,65 @@ pub enum Block {
     CopperBlock = 99,
     GoldBlock = 100,
     BronzeBlock = 101,
+    // Matcha's building set. Each slab/stair pair borrows its parent material's atlas tiles; the
+    // top/bottom half and the stair's facing live in the per-voxel meta byte, not in the id.
+    StoneSlab = 102,
+    StoneStairs = 103,
+    CobbleSlab = 104,
+    CobbleStairs = 105,
+    PlankSlab = 106,
+    PlankStairs = 107,
+    BrickSlab = 108,
+    BrickStairs = 109,
+    SandstoneSlab = 110,
+    SandstoneStairs = 111,
+    DeepslateBrickSlab = 112,
+    DeepslateBrickStairs = 113,
+    NetherBrickSlab = 114,
+    NetherBrickStairs = 115,
+    PurpurSlab = 116,
+    PurpurStairs = 117,
+    Stonecutter = 118,
 }
 
-pub const MAX_BLOCK_ID: u8 = 101;
+pub const MAX_BLOCK_ID: u8 = 118;
+
+/// The geometry a block occupies within its cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape { Cube, Slab, Stairs }
+
+/// Meta bit layout for non-cube blocks: bits 0-1 facing, bit 2 half. Four bits are spare for
+/// future shapes (corner stairs).
+pub const META_FACING: u8 = 0b11;
+pub const META_TOP: u8 = 0b100;
+/// Facing values, named for the direction the stair's *low* side looks toward.
+pub const FACE_NORTH: u8 = 0; // -Z
+pub const FACE_EAST: u8 = 1;  // +X
+pub const FACE_SOUTH: u8 = 2; // +Z
+pub const FACE_WEST: u8 = 3;  // -X
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Aabb { pub min: [f32; 3], pub max: [f32; 3] }
+
+impl Aabb {
+    pub const fn new(min: [f32; 3], max: [f32; 3]) -> Self { Self { min, max } }
+    /// Does this box, placed in the cell at `cell`, overlap the world-space box `min`..`max`?
+    pub fn overlaps_at(&self, cell: [f32; 3], min: [f32; 3], max: [f32; 3]) -> bool {
+        (0..3).all(|i| cell[i] + self.max[i] > min[i] && cell[i] + self.min[i] < max[i])
+    }
+}
+
+pub const FULL_CUBE: Aabb = Aabb::new([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+
+/// The one or two boxes a block occupies. Returned by value to keep collision allocation-free.
+#[derive(Clone, Copy, Debug)]
+pub struct Boxes { len: usize, boxes: [Aabb; 2] }
+impl Boxes {
+    const fn one(a: Aabb) -> Self { Self { len: 1, boxes: [a, a] } }
+    const fn two(a: Aabb, b: Aabb) -> Self { Self { len: 2, boxes: [a, b] } }
+    const fn none() -> Self { Self { len: 0, boxes: [FULL_CUBE, FULL_CUBE] } }
+    pub fn as_slice(&self) -> &[Aabb] { &self.boxes[..self.len] }
+}
 
 impl Block {
     pub fn from_id(id: u8) -> Self {
@@ -122,13 +178,123 @@ impl Block {
     pub fn is_air(self) -> bool { matches!(self, Self::Air) }
     pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass | Self::Lava | Self::NetherPortal | Self::EndPortal) }
     pub fn is_transparent(self) -> bool {
-        matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves | Self::DarkOakLeaves | Self::AzaleaLeaves | Self::Lava | Self::NetherPortal | Self::EndPortal)
+        // Slabs and stairs leave part of their cell empty, so they can never hide a neighbour's
+        // face wholesale. `occludes_face` decides the per-direction cases.
+        self.shape() != Shape::Cube
+            || matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves | Self::DarkOakLeaves | Self::AzaleaLeaves | Self::Lava | Self::NetherPortal | Self::EndPortal)
     }
     pub fn is_opaque(self) -> bool { !self.is_transparent() }
 
-    // Interactive block menu: 0 = none, 1 = crafting, 2 = furnace, 3 = jukebox, 4 = blast furnace.
+    pub fn shape(self) -> Shape {
+        match self {
+            Self::StoneSlab | Self::CobbleSlab | Self::PlankSlab | Self::BrickSlab
+            | Self::SandstoneSlab | Self::DeepslateBrickSlab | Self::NetherBrickSlab | Self::PurpurSlab => Shape::Slab,
+            Self::StoneStairs | Self::CobbleStairs | Self::PlankStairs | Self::BrickStairs
+            | Self::SandstoneStairs | Self::DeepslateBrickStairs | Self::NetherBrickStairs | Self::PurpurStairs => Shape::Stairs,
+            _ => Shape::Cube,
+        }
+    }
+
+    /// The full-cube material a slab or stair is cut from; its textures are reused verbatim.
+    pub fn parent(self) -> Self {
+        match self {
+            Self::StoneSlab | Self::StoneStairs => Self::Stone,
+            Self::CobbleSlab | Self::CobbleStairs => Self::Cobble,
+            Self::PlankSlab | Self::PlankStairs => Self::Planks,
+            Self::BrickSlab | Self::BrickStairs => Self::Brick,
+            Self::SandstoneSlab | Self::SandstoneStairs => Self::Sandstone,
+            Self::DeepslateBrickSlab | Self::DeepslateBrickStairs => Self::DeepslateBricks,
+            Self::NetherBrickSlab | Self::NetherBrickStairs => Self::NetherBricks,
+            Self::PurpurSlab | Self::PurpurStairs => Self::Purpur,
+            other => other,
+        }
+    }
+
+    /// The slab shape for a material, and the stair shape. Used by the stonecutter and by the
+    /// "two slabs make a cube" merge at placement.
+    pub fn slab_of(self) -> Option<Self> {
+        Some(match self {
+            Self::Stone => Self::StoneSlab,
+            Self::Cobble => Self::CobbleSlab,
+            Self::Planks => Self::PlankSlab,
+            Self::Brick => Self::BrickSlab,
+            Self::Sandstone => Self::SandstoneSlab,
+            Self::DeepslateBricks => Self::DeepslateBrickSlab,
+            Self::NetherBricks => Self::NetherBrickSlab,
+            Self::Purpur => Self::PurpurSlab,
+            _ => return None,
+        })
+    }
+    pub fn stairs_of(self) -> Option<Self> {
+        Some(match self {
+            Self::Stone => Self::StoneStairs,
+            Self::Cobble => Self::CobbleStairs,
+            Self::Planks => Self::PlankStairs,
+            Self::Brick => Self::BrickStairs,
+            Self::Sandstone => Self::SandstoneStairs,
+            Self::DeepslateBricks => Self::DeepslateBrickStairs,
+            Self::NetherBricks => Self::NetherBrickStairs,
+            Self::Purpur => Self::PurpurStairs,
+            _ => return None,
+        })
+    }
+
+    /// The boxes this block fills, in cell-local 0..1 coordinates.
+    pub fn collision_boxes(self, meta: u8) -> Boxes {
+        if !self.is_solid() { return Boxes::none(); }
+        let top = meta & META_TOP != 0;
+        match self.shape() {
+            Shape::Cube => Boxes::one(FULL_CUBE),
+            Shape::Slab => Boxes::one(if top {
+                Aabb::new([0.0, 0.5, 0.0], [1.0, 1.0, 1.0])
+            } else {
+                Aabb::new([0.0, 0.0, 0.0], [1.0, 0.5, 1.0])
+            }),
+            Shape::Stairs => {
+                // A stair is a half-height slab plus a quarter block on the side opposite `facing`,
+                // so you climb it walking against the way it faces.
+                let (base, step_y) = if top {
+                    (Aabb::new([0.0, 0.5, 0.0], [1.0, 1.0, 1.0]), [0.0, 0.5])
+                } else {
+                    (Aabb::new([0.0, 0.0, 0.0], [1.0, 0.5, 1.0]), [0.5, 1.0])
+                };
+                let step = match meta & META_FACING {
+                    FACE_NORTH => Aabb::new([0.0, step_y[0], 0.5], [1.0, step_y[1], 1.0]),
+                    FACE_EAST => Aabb::new([0.0, step_y[0], 0.0], [0.5, step_y[1], 1.0]),
+                    FACE_SOUTH => Aabb::new([0.0, step_y[0], 0.0], [1.0, step_y[1], 0.5]),
+                    _ => Aabb::new([0.5, step_y[0], 0.0], [1.0, step_y[1], 1.0]),
+                };
+                Boxes::two(base, step)
+            }
+        }
+    }
+
+    /// Whether this block completely hides a neighbour's face in direction (dx, dy, dz), pointing
+    /// out of this block. Only a fully covered face may be culled; a half-covered one would leave
+    /// a hole in the world.
+    pub fn occludes_face(self, meta: u8, dx: i32, dy: i32, dz: i32) -> bool {
+        let top = meta & META_TOP != 0;
+        match self.shape() {
+            Shape::Cube => self.is_opaque(),
+            // A slab seals only the face its solid half rests against.
+            Shape::Slab => if top { dy == 1 } else { dy == -1 },
+            Shape::Stairs => {
+                if if top { dy == 1 } else { dy == -1 } { return true; }
+                // The tall side is opposite `facing`, and there the block spans the full face.
+                match meta & META_FACING {
+                    FACE_NORTH => dz == 1,
+                    FACE_EAST => dx == -1,
+                    FACE_SOUTH => dz == -1,
+                    _ => dx == 1,
+                }
+            }
+        }
+    }
+
+    // Interactive block menu: 0 = none, 1 = crafting, 2 = furnace, 3 = jukebox, 4 = blast furnace,
+    // 5 = stonecutter.
     pub fn menu(self) -> i32 {
-        match self { Self::CraftingTable => 1, Self::Furnace => 2, Self::Jukebox => 3, Self::BlastFurnace => 4, _ => 0 }
+        match self { Self::CraftingTable => 1, Self::Furnace => 2, Self::Jukebox => 3, Self::BlastFurnace => 4, Self::Stonecutter => 5, _ => 0 }
     }
 
     // Atlas tile indices (8x8 atlas). See the atlas generator's TILES order.
@@ -236,6 +402,16 @@ impl Block {
             Self::CopperBlock => 138,
             Self::GoldBlock => 139,
             Self::BronzeBlock => 140,
+            Self::Stonecutter => 141,
+            // Slabs and stairs are textured entirely from their parent material.
+            Self::StoneSlab | Self::StoneStairs => Self::Stone.tile_top(),
+            Self::CobbleSlab | Self::CobbleStairs => Self::Cobble.tile_top(),
+            Self::PlankSlab | Self::PlankStairs => Self::Planks.tile_top(),
+            Self::BrickSlab | Self::BrickStairs => Self::Brick.tile_top(),
+            Self::SandstoneSlab | Self::SandstoneStairs => Self::Sandstone.tile_top(),
+            Self::DeepslateBrickSlab | Self::DeepslateBrickStairs => Self::DeepslateBricks.tile_top(),
+            Self::NetherBrickSlab | Self::NetherBrickStairs => Self::NetherBricks.tile_top(),
+            Self::PurpurSlab | Self::PurpurStairs => Self::Purpur.tile_top(),
         }
     }
     pub fn tile_bottom(self) -> u32 {
@@ -273,8 +449,15 @@ impl Block {
             Self::HayBlock => 93,
             Self::Farmland => 1,
             Self::BlastFurnace => 135,
+            Self::Stonecutter => 142,
             _ => self.tile_top(),
         }
+    }
+    // Slabs and stairs draw with their parent's faces; the geometry, not the texture, is what makes
+    // them a different block.
+    pub fn tile_for_dir(self, _dx: i32, dy: i32, _dz: i32) -> u32 {
+        let m = self.parent();
+        if dy == 1 { m.tile_top() } else if dy == -1 { m.tile_bottom() } else { m.tile_side() }
     }
     pub fn color(self) -> [f32; 3] {
         match self {
@@ -296,7 +479,12 @@ impl Block {
             | Self::EndStoneBricks | Self::CobbledDeepslate | Self::Prismarine | Self::DarkPrismarine | Self::Dripstone
             | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce | Self::Purpur
             | Self::SilverOre | Self::SulfurOre | Self::CinnabarOre | Self::SilverBlock | Self::SteelBlock | Self::AdamantBlock | Self::BlastFurnace
-            | Self::CopperOre | Self::GoldOre | Self::CopperBlock | Self::GoldBlock | Self::BronzeBlock)
+            | Self::CopperOre | Self::GoldOre | Self::CopperBlock | Self::GoldBlock | Self::BronzeBlock
+            | Self::Stonecutter
+            | Self::StoneSlab | Self::StoneStairs | Self::CobbleSlab | Self::CobbleStairs
+            | Self::BrickSlab | Self::BrickStairs | Self::SandstoneSlab | Self::SandstoneStairs
+            | Self::DeepslateBrickSlab | Self::DeepslateBrickStairs
+            | Self::NetherBrickSlab | Self::NetherBrickStairs | Self::PurpurSlab | Self::PurpurStairs)
     }
     // Block light emitted (0..15) for dynamic lighting.
     pub fn light_emission(self) -> u8 {
@@ -307,9 +495,6 @@ impl Block {
             Self::Magma => 11,
             _ => 0,
         }
-    }
-    pub fn tile_for_dir(self, _dx: i32, dy: i32, _dz: i32) -> u32 {
-        if dy == 1 { self.tile_top() } else if dy == -1 { self.tile_bottom() } else { self.tile_side() }
     }
 }
 
@@ -328,4 +513,100 @@ pub fn tile_uv(tile_index: u32) -> (f32,f32,f32,f32) {
     let sx = 1.0 / ATLAS_COLS;
     let sy = 1.0 / ATLAS_ROWS;
     (tx*sx, ty*sy, (tx+1.0)*sx, (ty+1.0)*sy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_id_up_to_the_max_maps_to_a_distinct_block() {
+        for id in 0..=MAX_BLOCK_ID {
+            assert_eq!(Block::from_id(id).id(), id, "id {id} did not round-trip");
+        }
+        // Ids above the max must not be mistaken for real blocks.
+        assert_eq!(Block::from_id(MAX_BLOCK_ID + 1), Block::Air);
+        // Blocks and items share one u8 space; crossing ITEM_BASE would make a block unplaceable.
+        assert!(MAX_BLOCK_ID < crate::item::ITEM_BASE);
+    }
+
+    #[test]
+    fn slabs_and_stairs_know_their_material() {
+        for m in [Block::Stone, Block::Cobble, Block::Planks, Block::Brick,
+                  Block::Sandstone, Block::DeepslateBricks, Block::NetherBricks, Block::Purpur] {
+            let slab = m.slab_of().unwrap_or_else(|| panic!("{m:?} needs a slab"));
+            let stairs = m.stairs_of().unwrap_or_else(|| panic!("{m:?} needs stairs"));
+            assert_eq!(slab.shape(), Shape::Slab);
+            assert_eq!(stairs.shape(), Shape::Stairs);
+            assert_eq!(slab.parent(), m);
+            assert_eq!(stairs.parent(), m);
+            // They borrow the parent's faces, so no new atlas art is needed.
+            for (dx, dy, dz) in [(1, 0, 0), (0, 1, 0), (0, -1, 0)] {
+                assert_eq!(slab.tile_for_dir(dx, dy, dz), m.tile_for_dir(dx, dy, dz));
+                assert_eq!(stairs.tile_for_dir(dx, dy, dz), m.tile_for_dir(dx, dy, dz));
+            }
+            // A partial block can never be treated as a solid occluder wholesale.
+            assert!(!slab.is_opaque());
+            assert!(!stairs.is_opaque());
+            assert!(slab.is_solid() && stairs.is_solid());
+        }
+        assert_eq!(Block::Stone.shape(), Shape::Cube);
+        assert_eq!(Block::Stone.parent(), Block::Stone);
+        assert_eq!(Block::Dirt.slab_of(), None);
+    }
+
+    #[test]
+    fn a_slab_fills_the_half_its_meta_says() {
+        let bottom = Block::StoneSlab.collision_boxes(0);
+        assert_eq!(bottom.as_slice(), &[Aabb::new([0.0, 0.0, 0.0], [1.0, 0.5, 1.0])]);
+        let top = Block::StoneSlab.collision_boxes(META_TOP);
+        assert_eq!(top.as_slice(), &[Aabb::new([0.0, 0.5, 0.0], [1.0, 1.0, 1.0])]);
+
+        // A bottom slab seals only the floor; a top slab only the ceiling.
+        assert!(Block::StoneSlab.occludes_face(0, 0, -1, 0));
+        assert!(!Block::StoneSlab.occludes_face(0, 0, 1, 0));
+        assert!(!Block::StoneSlab.occludes_face(0, 1, 0, 0));
+        assert!(Block::StoneSlab.occludes_face(META_TOP, 0, 1, 0));
+        assert!(!Block::StoneSlab.occludes_face(META_TOP, 0, -1, 0));
+    }
+
+    #[test]
+    fn a_stair_is_a_slab_plus_a_step_opposite_its_facing() {
+        let boxes = Block::StoneStairs.collision_boxes(FACE_NORTH);
+        let s = boxes.as_slice();
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0], Aabb::new([0.0, 0.0, 0.0], [1.0, 0.5, 1.0]), "base half-slab");
+        assert_eq!(s[1], Aabb::new([0.0, 0.5, 0.5], [1.0, 1.0, 1.0]), "step on the far side of north");
+
+        // The tall side is fully covered, so it may hide a neighbour; the low side may not.
+        assert!(Block::StoneStairs.occludes_face(FACE_NORTH, 0, 0, 1), "tall side seals");
+        assert!(!Block::StoneStairs.occludes_face(FACE_NORTH, 0, 0, -1), "low side is only half filled");
+        assert!(Block::StoneStairs.occludes_face(FACE_NORTH, 0, -1, 0), "the base covers the floor");
+        assert!(!Block::StoneStairs.occludes_face(FACE_NORTH, 0, 1, 0));
+
+        // Flipping to the top half mirrors the geometry vertically.
+        let flipped = Block::StoneStairs.collision_boxes(FACE_NORTH | META_TOP);
+        let f = flipped.as_slice();
+        assert_eq!(f[0], Aabb::new([0.0, 0.5, 0.0], [1.0, 1.0, 1.0]));
+        assert_eq!(f[1], Aabb::new([0.0, 0.0, 0.5], [1.0, 0.5, 1.0]));
+        assert!(Block::StoneStairs.occludes_face(FACE_NORTH | META_TOP, 0, 1, 0));
+    }
+
+    #[test]
+    fn each_facing_puts_the_step_on_the_opposite_side() {
+        let step = |facing: u8| Block::StoneStairs.collision_boxes(facing).as_slice()[1];
+        assert_eq!(step(FACE_NORTH).min[2], 0.5, "north-facing steps sit on +Z");
+        assert_eq!(step(FACE_SOUTH).max[2], 0.5, "south-facing steps sit on -Z");
+        assert_eq!(step(FACE_EAST).max[0], 0.5, "east-facing steps sit on -X");
+        assert_eq!(step(FACE_WEST).min[0], 0.5, "west-facing steps sit on +X");
+    }
+
+    #[test]
+    fn cubes_are_unchanged() {
+        assert_eq!(Block::Stone.collision_boxes(0).as_slice(), &[FULL_CUBE]);
+        assert!(Block::Stone.occludes_face(0, 1, 0, 0));
+        assert!(!Block::Glass.occludes_face(0, 1, 0, 0), "glass never hid faces");
+        assert!(Block::Air.collision_boxes(0).as_slice().is_empty(), "air has no collision");
+        assert!(Block::Water.collision_boxes(0).as_slice().is_empty());
+    }
 }

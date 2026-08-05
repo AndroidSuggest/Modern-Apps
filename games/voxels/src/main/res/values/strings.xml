@@ -37,6 +37,11 @@
     <string name="fuel">Fuel</string>
     <string name="furnace_fuel_hint">Burns coal, logs, planks or sulfur from your inventory.</string>
     <string name="furnace_busy">Already smelting something else — stop it first.</string>
+    <string name="stonecutter">Stonecutter</string>
+    <string name="material">Material</string>
+    <string name="cut_into">Cut into</string>
+    <string name="stonecutter_empty">Carry a stone or wood block to cut it into slabs and stairs.</string>
+    <string name="stonecutter_hint">Cutting is instant and needs no fuel — slabs and stairs only.</string>
     <string name="busy">Busy</string>
     <string name="chest_tap_hint">Tap a chest slot to take it, an inventory slot to store it.</string>
     <string name="blessings">Blessings</string>
