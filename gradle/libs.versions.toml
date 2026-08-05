@@ -90,7 +90,6 @@ flatgeobuf = "3.29.0"
 
 # JavaScript engines & HTML
 quickjs = "1.0.5"
-jsoup = "1.22.2"
 
 # On-device AI
 onnxruntimeAndroid = "1.27.0"
@@ -245,7 +244,6 @@ flatgeobuf = { module = "org.wololo:flatgeobuf", version.ref = "flatgeobuf" }
 
 # JavaScript engines & HTML
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
-jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 
 # On-device AI
 onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }

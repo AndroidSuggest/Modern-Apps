@@ -118,7 +118,6 @@ Summed old per-crate locks (before workspace) = 712 total (641 excluding voxels)
 
 | Library | Version | Used By | Notes | File |
 |---|---|---|---|---|
-| `org.jsoup:jsoup` | `1.22.2` | `youpipe/extractor` | Single but very active, critical for HTML parsing | `libs.versions.toml:54` |
 | `org.brotli:dec` | `0.1.2` | `extractor` | Google JVM port, low activity | `libs.versions.toml:9` |
 | `org.maplibre.compose:maplibre-compose` | `0.13.0` → `libmaplibre.so` native | `maps`, `weather`, `findfamily`, `photos` | Community-maintained FOSS renderer, better than Mapbox but smaller than Google Maps | `libs.versions.toml:78` |
 | `com.google.mediapipe:tasks-vision` | `0.10.35` (unified) | `camera` (face), vision segmentation | Native lib size; inline `0.10.14` drift resolved | `camera/build.gradle.kts:124`, `libs.versions.toml` |
