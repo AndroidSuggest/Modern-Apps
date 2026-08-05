@@ -1,24 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Photos</string>
-    <string name="month_year_format">%1$s %2$d</string>
+    <string name="month_year_format"><xliff:g id="month" example="janvier">%1$s</xliff:g> <xliff:g id="year" example="2024">%2$d</xliff:g></string>
     <string name="search_placeholder">Rechercher des photos…</string>
     <string name="label_people">Personnes</string>
-    <string name="face_indexing_progress">Indexation %1$d / %2$d</string>
+    <string name="face_indexing_progress">Indexation <xliff:g id="processed" example="20">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="action_save_as_copy">Enregistrer en tant que copie</string>
     <string name="label_map">Carte</string>
     <string name="title_edit_photo">Modifier la photo</string>
     <string name="people_scanning">Regroupement des visages… Les personnes apparaîtront ici au fur et à mesure qu’elles seront identifiées.</string>
-    <string name="taken_on">Date de prise de vue : %1$s</string>
+    <string name="taken_on">Date de prise de vue : <xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
     <string name="grant_image_video_permissions">Accorder les autorisations aux images et aux vidéos</string>
     <string name="detecting">Détection en cours…</string>
     <string name="people_model_missing">Le regroupement de visages nécessite un modèle MobileFaceNet. Ajoutez le fichier mobilefacenet.tflite, sous licence permissive, dans le répertoire photos/src/main/assets (voir FaceRecognizer).</string>
-    <string name="location">Lieu : %1$s</string>
+    <string name="location">Lieu : <xliff:g id="place" example="Paris, France">%1$s</xliff:g></string>
     <string name="openassistant_not_found">L\'application OpenAssistant n\'est pas installée. Veuillez l\'installer pour activer cette fonctionnalité.</string>
     <string name="people_empty">Aucune personne n\'a encore été détectée. L\'analyse s\'effectue en arrière-plan : revenez vérifier une fois que vos photos auront été indexées.</string>
     <string name="label_gallery">Galerie</string>
     <string name="label_trash">Corbeille</string>
-    <string name="items_selected">%1$d sélectionné</string>
+    <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> sélectionné</string>
     <string name="photo_widget_description">Une photo en rotation issue de votre galerie — appuyez pour passer à la suivante</string>
     <string name="label_secure_folder">Dossier sécurisé</string>
     <string name="action_save">Enregistrer</string>
@@ -30,9 +30,9 @@
     </plurals>
     <string name="view_360">Vue à 360°</string>
     <plurals name="people_in_photo">
-        <item quantity="one">%1$d personne</item>
-        <item quantity="many">%1$d personnes</item>
-        <item quantity="other">%1$d personnes</item>
+        <item quantity="one">xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; personne</item>
+        <item quantity="many"><xliff:g id="count" example="3">%1$d</xliff:g> personnes</item>
+        <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> personnes</item>
     </plurals>
     <string name="grant_storage_permission">Accorder l\'autorisation d\'accès au stockage</string>
     <string name="view_panorama">Voir le panorama</string>
@@ -45,7 +45,7 @@
     <string name="in_white">Blanc d’entrée</string>
     <string name="tool_threshold">Seuil</string>
     <string name="color_blue">Bleu</string>
-    <string name="photos_indexed_for_text_search">%1$d / %2$d photos indexées pour la recherche textuelle</string>
+    <string name="photos_indexed_for_text_search"><xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> photos indexées pour la recherche textuelle</string>
     <string name="reset">Réinitialiser</string>
     <string name="magentas">Magentas</string>
     <string name="tool_cat_retouch">Retouche</string>
@@ -62,7 +62,7 @@
     <string name="editor_desc_selective_color">Ajuster précisément les composantes cyan, magenta et jaune d’une plage de couleurs.</string>
     <string name="sel_tool_wand">Baguette magique</string>
     <string name="blend_color_burn">Densité couleur +</string>
-    <string name="tool_cat_adjust">Réglages</string>
+    <string name="tool_cat_adjust">Ajuster</string>
     <string name="editor_desc_channel_mixer">Mélanger les canaux rouge, vert et bleu.</string>
     <string name="tool_lens_blur">Flou d’objectif</string>
     <string name="reset_all">Tout réinitialiser</string>
@@ -76,7 +76,7 @@
     <string name="sel_tool_rectangle">Rectangle</string>
     <string name="editor_desc_smudge">Faites glisser pour étaler les pixels comme de la peinture fraîche.</string>
     <string name="tool_gradient">Dégradé</string>
-    <string name="blend_multiply">Produit</string>
+    <string name="blend_multiply">Multiplier</string>
     <string name="color_green">Vert</string>
     <string name="secure_folder_is_empty">Le dossier sécurisé est vide</string>
     <string name="adj_contrast">Contraste</string>
@@ -104,9 +104,9 @@
     <string name="tap_the_image_to_pick_a_color">Appuyez sur l’image pour sélectionner une couleur.</string>
     <string name="red_cyan">Rouge-Cyan</string>
     <string name="tool_red_eye">Yeux rouges</string>
-    <string name="of_photos_processed">%1$d %% des photos traitées</string>
+    <string name="of_photos_processed"><xliff:g id="percent" example="45">%1$d</xliff:g>%% des photos traitées</string>
     <string name="blend_luminosity">Luminosité</string>
-    <string name="blend_screen">Superposition</string>
+    <string name="blend_screen">Écran</string>
     <string name="editor_desc_curves">Ajuster la luminosité et le contraste à l’aide d’une courbe.</string>
     <string name="fills_the_selected_area_from_surrounding">Remplit la zone sélectionnée à partir des pixels environnants afin de supprimer un objet. Fonctionne mieux sur les arrière-plans simples.</string>
     <string name="sel_tool_ellipse">Ellipse</string>
@@ -132,7 +132,7 @@
     <string name="editor_desc_levels">Régler le point noir, le point blanc et les tons moyens.</string>
     <string name="editor_desc_crop">Recadrer, redresser et faire pivoter la photo.</string>
     <string name="export_as_webp">Exporter au format WebP</string>
-    <string name="photos_indexed_for_visual_search">%1$d / %2$d photos indexées pour la recherche visuelle</string>
+    <string name="photos_indexed_for_visual_search"><xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> photos indexées pour la recherche visuelle</string>
     <string name="tool_curves">Courbes</string>
     <string name="out_black">Noir de sortie</string>
     <string name="editor_desc_liquify">Déplacer et déformer les pixels.</string>
@@ -192,7 +192,7 @@
     <string name="this_app_needs_permission_to_manage_medi">Cette application a besoin de l’autorisation de gérer les fichiers multimédias pour fonctionner correctement. Veuillez accorder l’autorisation « Autoriser la gestion des médias » dans les paramètres.</string>
     <string name="font">Police</string>
     <string name="tool_posterize">Postérisation</string>
-    <string name="tap_to_add_points">Appuyez pour ajouter des points (%1$s)</string>
+    <string name="tap_to_add_points">Appuyez pour ajouter des points (<xliff:g id="mode" example="New">%1$s</xliff:g>)</string>
     <string name="blend_saturation">Saturation</string>
     <string name="levels">Niveaux</string>
     <string name="editor_desc_hsl">Ajuster la teinte, la saturation et la luminosité de chaque couleur.</string>
@@ -233,4 +233,6 @@
     <string name="wallpaper_set_success">Fond d’écran appliqué !</string>
     <string name="wallpaper_set_failed">Échec de l’application du fond d’écran : <xliff id="error" example="IO error">%1$s</xliff></string>
     <string name="wallpaper_load_failed">Impossible de charger l’image</string>
+    <string name="file_size">Taille : <xliff:g id="size" example="2,5 Mo">%1$s</xliff:g></string>
+    <string name="edit_with_label">Modifier avec My App</string>
 </resources>
