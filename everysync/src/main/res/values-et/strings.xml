@@ -1,3 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="dav_password">Salasõna (rakendusekohane)</string>
+    <string name="icloud_create_password">Loo rakendusekohane salasõna</string>
+    <string name="app_specific_password">Rakendusekohane salasõna</string>
+    <string name="sync_now">Sünkrooni kohe</string>
+    <string name="syncing">Sünkroonin…</string>
+    <string name="never_synced">Pole kunagi sünkroonitud</string>
+    <string name="add_account_title">Lisa kasutajakonto</string>
+    <string name="dav_username">Kasutajanimi või e-posti aadress</string>
+    <string name="login">Logi sisse</string>
+    <string name="remove_account">Eemalda kasutajakonto</string>
+    <string name="settings_title">Seadistused</string>
+</resources>
