@@ -99,3 +99,6 @@ if (file("personal/dooraccess").exists()) {
 if (file("personal/amazon").exists()) {
     include(":personal:amazon")
 }
+if (file("personal/kaiser").exists()) {
+    include(":personal:kaiser")
+}
