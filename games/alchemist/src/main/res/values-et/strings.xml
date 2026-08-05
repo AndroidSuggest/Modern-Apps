@@ -8,6 +8,7 @@
     <string name="recipes">Retseptid (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
     <string name="used_in">Kasutusel (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
     <plurals name="locked_recipes">
+        <item quantity="one">+ <xliff:g id="locked_count" example="1">%1$d</xliff:g> lukustatud retsept.</item>
         <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> lukustatud retsepti.</item>
     </plurals>
     <string name="locked_description">Ava kõik nende retseptide väljundist, et neid näha.</string>
@@ -17,6 +18,7 @@
     <string name="id">Tunnus: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
     <string name="item_discovered">Tuvastasin objekti!</string>
     <plurals name="items_discovered">
+        <item quantity="one"><xliff:g id="count" example="1">%1$s</xliff:g> objekt on tuvastatud!</item>
         <item quantity="other"><xliff:g id="count" example="3">%1$s</xliff:g> objekti on tuvastatud!</item>
     </plurals>
     <string name="cd_final_item">Viimane objekt</string>
