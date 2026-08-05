@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Klahvistik</string>
+    <string name="subtype_en">inglise</string>
+    <string name="abc">ABC</string>
+    <string name="enable_keyboard">Võta klahvistik kasutusele</string>
+    <string name="choose_keyboard">Vali klahvistik</string>
+    <string name="key_height">Klahvi kõrgus</string>
+    <string name="theme">Kujundus</string>
+    <string name="follows_the_system_light_dark_theme_and">Järgib süsteemi heledat/tumedast kujundust ja Material You kujunduskeele värve</string>
+    <string name="try_the_keyboard_here">Proovi klahvistikku siin</string>
+</resources>
