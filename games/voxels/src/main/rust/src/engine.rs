@@ -471,7 +471,7 @@ pub fn tick_and_render() {
         if state.dim == 0 { state.deepest_y = state.deepest_y.min(state.player.pos.y as i32); }
 
         // Elytra equipped in the chest slot enables gliding.
-        state.player.elytra = state.inventory.armor[1].id == 188;
+        state.player.elytra = state.inventory.armor[1].id == 1084;
         state.player.tick(dt, &input_mut, &state.chunks);
         state.player.tick_status(dt);
         // Lava burns (Fire Resistance negates it).
@@ -517,8 +517,8 @@ pub fn tick_and_render() {
                 state.respawn = Some(cp);
                 if state.checkpoint_cd <= 0.0 {
                     state.checkpoint_cd = 2.0;
-                    let have: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();
-                    if have < 4 { state.inventory.add_block(128); }
+                    let have: i32 = state.inventory.slots.iter().filter(|s| s.id == 1024).map(|s| s.count).sum();
+                    if have < 4 { state.inventory.add_block(1024); }
                     state.player.add_effect(crate::item::Effect::Regeneration, 2.5, 0);
                 }
             }
@@ -806,8 +806,8 @@ fn publish_ui(state: &EngineState) {
         "elytra": state.player.elytra,
         "maxHearts": state.player.max_health >= crate::player::CAP_MAX_HEALTH,
         // Full diamond (175..178) or full adamant (199..202) counts as end-tier armor.
-        "fullArmor": armor_at_least(175, 178) || armor_at_least(199, 202),
-        "silver": has(193), "steel": has(195), "adamant": has(196),
+        "fullArmor": armor_at_least(1071, 1074) || armor_at_least(1095, 1098),
+        "silver": has(1089), "steel": has(1091), "adamant": has(1092),
         "blessing": state.inventory.slots.iter().any(|s| s.count > 0 && crate::blessing::is_blessing(s.id))
             || state.player.blessings.slots.iter().any(|&id| id != 0),
         "depth": state.deepest_y,
@@ -822,7 +822,7 @@ fn publish_ui(state: &EngineState) {
     }).to_string();
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
-    let estus: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();
+    let estus: i32 = state.inventory.slots.iter().filter(|s| s.id == 1024).map(|s| s.count).sum();
     let boss_mob = state.mobs.iter().find(|m| m.kind.is_boss());
     let boss: f32 = boss_mob.map(|m| (m.health / m.max_health).clamp(0.0, 1.0)).unwrap_or(-1.0);
     let boss_name = match boss_mob.map(|m| m.kind) { Some(MobKind::Dragon) => "Ender Dragon", Some(MobKind::Wither) => "The Wither", _ => "" };
@@ -1552,7 +1552,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             if is_leaves(id) {
                 let r = &mut state.spawn_rng;
                 *r ^= *r << 13; *r ^= *r >> 17; *r ^= *r << 5;
-                if *r % 20 == 0 { state.inventory.add_block(130); }
+                if *r % 20 == 0 { state.inventory.add_block(1026); }
             }
             let crop = Block::from_id(id);
             if crop.is_crop() {
@@ -1799,12 +1799,12 @@ fn harvest_crop(state: &mut EngineState, crop: Block, meta: u8) {
 /// model, so the pool is the small treasures a buried cache would plausibly hold.
 pub fn buried_find(roll: f32) -> Id {
     match (roll.clamp(0.0, 0.999) * 100.0) as u32 {
-        0..=29 => 137,                                  // leather scraps
-        30..=54 => 236,                                 // copper ingot
+        0..=29 => 1033,                                 // leather scraps
+        30..=54 => 1132,                                // copper ingot
         55..=74 => Block::Amethyst as Id,
-        75..=89 => 237,                                 // gold ingot
-        90..=96 => 156,                                 // emerald
-        _ => 155,                                       // diamond
+        75..=89 => 1133,                                // gold ingot
+        90..=96 => 1052,                                // emerald
+        _ => 1051,                                      // diamond
     }
 }
 
@@ -2109,8 +2109,8 @@ mod tests {
         for i in 0..n {
             let id = buried_find(i as f32 / n as f32);
             assert!(id != 0, "an empty dig site");
-            assert!(id <= crate::world::block::MAX_LOW_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
-            if id == 155 { diamonds += 1; }
+            assert!(id <= crate::world::block::MAX_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
+            if id == 1051 { diamonds += 1; }
         }
         let rate = diamonds as f32 / n as f32;
         assert!(rate > 0.0 && rate < 0.06, "diamonds turn up {rate} of the time, which is not a treasure");

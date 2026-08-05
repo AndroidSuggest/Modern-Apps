@@ -138,12 +138,12 @@ impl MobKind {
     // Item ids dropped on death (auto-collected into the inventory).
     pub fn loot(self) -> &'static [Id] {
         match self {
-            // Livestock give up raw meat (222); it has to be cooked in a furnace before it feeds you.
-            MobKind::Pig => &[222], MobKind::Cow => &[137, 222], MobKind::Sheep => &[222], MobKind::Chicken => &[222, 149],
-            MobKind::Creeper => &[138], MobKind::Zombie => &[131], MobKind::Villager => &[], MobKind::Dragon => &[85, 25, 25],
-            MobKind::Wither => &[187, 155, 155],
-            MobKind::Blaze => &[157], MobKind::WitherSkeleton => &[157, 154], MobKind::Shulker => &[89, 191],
-            MobKind::Ghast => &[138, 138],
+            // Livestock give up raw meat (1118); it has to be cooked in a furnace before it feeds you.
+            MobKind::Pig => &[1118], MobKind::Cow => &[1033, 1118], MobKind::Sheep => &[1118], MobKind::Chicken => &[1118, 1045],
+            MobKind::Creeper => &[1034], MobKind::Zombie => &[1027], MobKind::Villager => &[], MobKind::Dragon => &[85, 25, 25],
+            MobKind::Wither => &[1083, 1051, 1051],
+            MobKind::Blaze => &[1053], MobKind::WitherSkeleton => &[1053, 1050], MobKind::Shulker => &[89, 1087],
+            MobKind::Ghast => &[1034, 1034],
         }
     }
     // Matcha makes zombies notably fast; they're the pressure mob, so they out-run a walking player.

@@ -1,6 +1,5 @@
 // Non-block inventory items (food, consumables, materials) and the status-effect model.
-// Inventory ids outside ITEM_BASE..=ITEM_MAX are blocks; ids inside it are items and are never
-// placeable.
+// Inventory ids below ITEM_BASE are blocks; ids at or above it are items and are never placeable.
 // Design follows the Matcha/Raspberry survival overhaul: no hunger — food applies Regeneration
 // (the heal) plus a themed buff; Estus is a fast multi-charge heal; Heart Containers raise max HP.
 
@@ -30,67 +29,67 @@ pub struct ActiveEffect { pub kind: Effect, pub secs: f32, pub amp: u8 }
 
 use crate::world::block::Id;
 
-pub const ITEM_BASE: Id = 128;
-/// The item window's upper bound. Blocks resume at `BLOCK_HIGH_BASE` one past it, so the numbers
-/// already written into saves keep their meaning and both kinds have room to grow.
-pub const ITEM_MAX: Id = 1023;
-// Matcha alloy line: 192 Sulfur, 193 Silver Ingot, 194 Quicksilver, 195 Steel Ingot,
-// 196 Adamant Ingot, 197/198 adamant pickaxe/sword, 199..202 adamant armor.
-pub fn is_item(id: Id) -> bool { (ITEM_BASE..=ITEM_MAX).contains(&id) }
-pub fn is_estus(id: Id) -> bool { id == 128 }
-pub fn is_heart_container(id: Id) -> bool { id == 129 }
+/// Blocks own ids below this; items own it and everything above. One boundary, 16 bits wide, with
+/// room on both sides: blocks have 900 spare, items have 64512.
+pub const ITEM_BASE: Id = 1024;
+// The item block, in order: 1024 Estus .. 1151 Brush. Matcha alloy line: 1088 Sulfur,
+// 1089 Silver Ingot, 1090 Quicksilver, 1091 Steel Ingot, 1092 Adamant Ingot, 1093/1094 adamant
+// pickaxe/sword, 1095..1098 adamant armor.
+pub fn is_item(id: Id) -> bool { id >= ITEM_BASE }
+pub fn is_estus(id: Id) -> bool { id == 1024 }
+pub fn is_heart_container(id: Id) -> bool { id == 1025 }
 pub fn is_food(id: Id) -> bool { food_effects(id).is_some() }
 
 // ---- Tools & armor ----
-// Tools 163..170: {wood,stone,iron,diamond} x {pickaxe,sword}. Armor 171..178: {iron,diamond} x
-// {helmet,chestplate,leggings,boots}. Matcha's bronze sits between iron and diamond at 239..244,
-// and adamant tops the ladder at 197..202. Durability is stored in the inventory slot's `count`.
-pub fn is_tool(id: Id) -> bool { (163..=170).contains(&id) || matches!(id, 197 | 198 | 239 | 240 | 252 | 253 | 255) }
-/// Item 255. Brushing suspicious sand is the only thing it does.
-pub const BRUSH: Id = 255;
+// Tools 1059..1066: {wood,stone,iron,diamond} x {pickaxe,sword}. Armor 1067..1074: {iron,diamond} x
+// {helmet,chestplate,leggings,boots}. Matcha's bronze sits between iron and diamond at 1135..1140,
+// and adamant tops the ladder at 1093..1098. Durability is stored in the inventory slot's `count`.
+pub fn is_tool(id: Id) -> bool { (1059..=1066).contains(&id) || matches!(id, 1093 | 1094 | 1135 | 1136 | 1148 | 1149 | 1151) }
+/// Brushing suspicious sand is the only thing it does.
+pub const BRUSH: Id = 1151;
 /// Shears: used on a sheep rather than on terrain, so they're a tool that mines nothing.
-pub fn is_shears(id: Id) -> bool { id == 252 }
-pub fn is_pickaxe(id: Id) -> bool { matches!(id, 163 | 165 | 167 | 169 | 197 | 239) }
-pub fn is_sword(id: Id) -> bool { matches!(id, 164 | 166 | 168 | 170 | 198 | 240) }
-pub fn is_elytra(id: Id) -> bool { id == 188 }
+pub fn is_shears(id: Id) -> bool { id == 1148 }
+pub fn is_pickaxe(id: Id) -> bool { matches!(id, 1059 | 1061 | 1063 | 1065 | 1093 | 1135) }
+pub fn is_sword(id: Id) -> bool { matches!(id, 1060 | 1062 | 1064 | 1066 | 1094 | 1136) }
+pub fn is_elytra(id: Id) -> bool { id == 1084 }
 pub fn is_armor(id: Id) -> bool {
-    (171..=178).contains(&id) || (199..=202).contains(&id) || (241..=244).contains(&id) || id == 188
+    (1067..=1074).contains(&id) || (1095..=1098).contains(&id) || (1137..=1140).contains(&id) || id == 1084
 } // elytra occupies the chest slot
 pub fn armor_slot(id: Id) -> usize {
-    if id == 188 { 1 }
-    else if id >= 241 { (id - 241) as usize }
-    else if id >= 199 { (id - 199) as usize }
-    else { ((id - 171) % 4) as usize }
+    if id == 1084 { 1 }
+    else if id >= 1137 { (id - 1137) as usize }
+    else if id >= 1095 { (id - 1095) as usize }
+    else { ((id - 1067) % 4) as usize }
 } // 0 helm, 1 chest, 2 legs, 3 boots
-pub fn is_flint_steel(id: Id) -> bool { id == 186 }
-pub fn is_firework(id: Id) -> bool { id == 189 }
-pub fn has_durability(id: Id) -> bool { is_tool(id) || is_armor(id) || id == 186 }
+pub fn is_flint_steel(id: Id) -> bool { id == 1082 }
+pub fn is_firework(id: Id) -> bool { id == 1085 }
+pub fn has_durability(id: Id) -> bool { is_tool(id) || is_armor(id) || id == 1082 }
 
-pub fn sword_damage(id: Id) -> f32 { match id { 164 => 5.0, 166 => 6.0, 168 => 7.0, 240 => 8.0, 170 => 9.0, 198 => 11.0, _ => 0.0 } }
-pub fn pick_damage(id: Id) -> f32 { match id { 163 => 2.0, 165 => 3.0, 167 => 4.0, 239 => 4.5, 169 => 5.0, 197 => 6.0, _ => 0.0 } }
+pub fn sword_damage(id: Id) -> f32 { match id { 1060 => 5.0, 1062 => 6.0, 1064 => 7.0, 1136 => 8.0, 1066 => 9.0, 1094 => 11.0, _ => 0.0 } }
+pub fn pick_damage(id: Id) -> f32 { match id { 1059 => 2.0, 1061 => 3.0, 1063 => 4.0, 1135 => 4.5, 1065 => 5.0, 1093 => 6.0, _ => 0.0 } }
 pub fn armor_defense(id: Id) -> f32 {
     match id {
-        171 => 2.0, 172 => 6.0, 173 => 5.0, 174 => 2.0, // iron helm/chest/legs/boots
-        241 => 2.0, 242 => 7.0, 243 => 5.0, 244 => 3.0, // bronze
-        175 => 3.0, 176 => 8.0, 177 => 6.0, 178 => 3.0, // diamond
-        199 => 4.0, 200 => 9.0, 201 => 7.0, 202 => 4.0, // adamant
-        188 => 1.0,                                     // elytra (mostly for mobility, minor defense)
+        1067 => 2.0, 1068 => 6.0, 1069 => 5.0, 1070 => 2.0, // iron helm/chest/legs/boots
+        1137 => 2.0, 1138 => 7.0, 1139 => 5.0, 1140 => 3.0, // bronze
+        1071 => 3.0, 1072 => 8.0, 1073 => 6.0, 1074 => 3.0, // diamond
+        1095 => 4.0, 1096 => 9.0, 1097 => 7.0, 1098 => 4.0, // adamant
+        1084 => 1.0,                                        // elytra (mobility, minor defense)
         _ => 0.0,
     }
 }
 pub fn max_durability(id: Id) -> i32 {
     match id {
-        163 | 164 => 60, 165 | 166 => 132, 167 | 168 => 250, 169 | 170 => 1562, // wood/stone/iron/diamond tools
-        171..=174 => 240, 175..=178 => 528,                                       // iron/diamond armor
-        186 => 64,                                                                // flint & steel
-        252 => 238,                                                               // shears
-        253 => 64,                                                                // fishing rod
-        255 => 64,                                                                // brush
-        188 => 432,                                                               // elytra
-        197 | 198 => 2031,                                                        // adamant tools
-        199..=202 => 666,                                                         // adamant armor
-        239 | 240 => 700,                                                         // bronze tools
-        241..=244 => 380,                                                         // bronze armor
+        1059 | 1060 => 60, 1061 | 1062 => 132, 1063 | 1064 => 250, 1065 | 1066 => 1562, // wood/stone/iron/diamond tools
+        1067..=1070 => 240, 1071..=1074 => 528,                                          // iron/diamond armor
+        1082 => 64,                                                                      // flint & steel
+        1148 => 238,                                                                     // shears
+        1149 => 64,                                                                      // fishing rod
+        1151 => 64,                                                                      // brush
+        1084 => 432,                                                                     // elytra
+        1093 | 1094 => 2031,                                                             // adamant tools
+        1095..=1098 => 666,                                                              // adamant armor
+        1135 | 1136 => 700,                                                              // bronze tools
+        1137..=1140 => 380,                                                              // bronze armor
         _ => 0,
     }
 }
@@ -99,36 +98,36 @@ pub fn max_durability(id: Id) -> i32 {
 pub fn food_effects(id: Id) -> Option<&'static [(Effect, f32, u8)]> {
     use Effect::*;
     Some(match id {
-        130 => &[(Regeneration, 4.0, 0)],                                   // apple
-        131 => &[(Regeneration, 6.0, 0)],                                   // bread
-        132 => &[(Regeneration, 5.0, 1)],                                   // cooked fish
-        133 => &[(Regeneration, 5.0, 1), (Absorption, 120.0, 0), (Resistance, 30.0, 0), (Strength, 60.0, 0)], // golden apple
-        134 => &[(Regeneration, 3.6, 2), (Haste, 150.0, 1)],               // brownie
-        135 => &[(Regeneration, 4.0, 0), (NightVision, 30.0, 0)],          // carrot (good for your eyes)
-        136 => &[(Regeneration, 4.0, 1), (Speed, 30.0, 0)],                // glistering melon slice
-        146 => &[(Regeneration, 5.0, 0), (FireResistance, 30.0, 0)],       // baked potato (hot!)
-        147 => &[(Regeneration, 2.0, 0)],                                   // cookie
-        148 => &[(Regeneration, 5.0, 1)],                                   // cooked salmon
-        149 => &[(Regeneration, 4.0, 0)],                                   // fried egg
-        150 => &[(Regeneration, 5.0, 1), (JumpBoost, 45.0, 0)],            // cooked rabbit (leaping)
-        151 => &[(Regeneration, 4.0, 0), (Speed, 20.0, 0)],                // apple empanada
-        152 => &[(Regeneration, 4.0, 0), (NightVision, 90.0, 0)],          // glow berry crumble
-        153 => &[(Regeneration, 3.0, 0), (Haste, 60.0, 0)],                // chocolate chip cookie
+        1026 => &[(Regeneration, 4.0, 0)],                                   // apple
+        1027 => &[(Regeneration, 6.0, 0)],                                   // bread
+        1028 => &[(Regeneration, 5.0, 1)],                                   // cooked fish
+        1029 => &[(Regeneration, 5.0, 1), (Absorption, 120.0, 0), (Resistance, 30.0, 0), (Strength, 60.0, 0)], // golden apple
+        1030 => &[(Regeneration, 3.6, 2), (Haste, 150.0, 1)],               // brownie
+        1031 => &[(Regeneration, 4.0, 0), (NightVision, 30.0, 0)],          // carrot (good for your eyes)
+        1032 => &[(Regeneration, 4.0, 1), (Speed, 30.0, 0)],                // glistering melon slice
+        1042 => &[(Regeneration, 5.0, 0), (FireResistance, 30.0, 0)],       // baked potato (hot!)
+        1043 => &[(Regeneration, 2.0, 0)],                                   // cookie
+        1044 => &[(Regeneration, 5.0, 1)],                                   // cooked salmon
+        1045 => &[(Regeneration, 4.0, 0)],                                   // fried egg
+        1046 => &[(Regeneration, 5.0, 1), (JumpBoost, 45.0, 0)],            // cooked rabbit (leaping)
+        1047 => &[(Regeneration, 4.0, 0), (Speed, 20.0, 0)],                // apple empanada
+        1048 => &[(Regeneration, 4.0, 0), (NightVision, 90.0, 0)],          // glow berry crumble
+        1049 => &[(Regeneration, 3.0, 0), (Haste, 60.0, 0)],                // chocolate chip cookie
         // Matcha's kitchen: cooked meat is the survival staple, and each dish above it trades more
         // ingredients for a longer, more specialised buff.
-        223 => &[(Regeneration, 6.0, 0)],                                   // cooked meat
-        224 => &[(Regeneration, 5.0, 0), (Speed, 60.0, 0)],                 // ramen
-        225 => &[(Regeneration, 6.0, 1), (Strength, 90.0, 0)],              // japanese curry
-        226 => &[(Regeneration, 5.0, 0), (Haste, 90.0, 0)],                 // green curry
-        227 => &[(Regeneration, 5.0, 0), (Resistance, 60.0, 0)],            // gnocchi
-        228 => &[(Regeneration, 6.0, 0)],                                   // naan
-        229 => &[(Regeneration, 5.0, 0), (Absorption, 120.0, 0)],           // pupusa
-        230 => &[(Regeneration, 5.0, 0), (FireResistance, 60.0, 0)],        // latke
-        231 => &[(Regeneration, 4.0, 0), (Speed, 45.0, 0)],                 // bruschetta
-        232 => &[(Regeneration, 5.0, 0), (JumpBoost, 60.0, 0)],             // french toast
-        233 => &[(Regeneration, 5.0, 0), (NightVision, 120.0, 0)],          // sweet berry danish
-        234 => &[(Regeneration, 4.0, 0), (Speed, 60.0, 0), (Haste, 60.0, 0)], // melon sorbet
-        235 => &[(Regeneration, 8.0, 2), (Strength, 120.0, 0), (Resistance, 60.0, 0)], // stroganoff
+        1119 => &[(Regeneration, 6.0, 0)],                                   // cooked meat
+        1120 => &[(Regeneration, 5.0, 0), (Speed, 60.0, 0)],                 // ramen
+        1121 => &[(Regeneration, 6.0, 1), (Strength, 90.0, 0)],              // japanese curry
+        1122 => &[(Regeneration, 5.0, 0), (Haste, 90.0, 0)],                 // green curry
+        1123 => &[(Regeneration, 5.0, 0), (Resistance, 60.0, 0)],            // gnocchi
+        1124 => &[(Regeneration, 6.0, 0)],                                   // naan
+        1125 => &[(Regeneration, 5.0, 0), (Absorption, 120.0, 0)],           // pupusa
+        1126 => &[(Regeneration, 5.0, 0), (FireResistance, 60.0, 0)],        // latke
+        1127 => &[(Regeneration, 4.0, 0), (Speed, 45.0, 0)],                 // bruschetta
+        1128 => &[(Regeneration, 5.0, 0), (JumpBoost, 60.0, 0)],             // french toast
+        1129 => &[(Regeneration, 5.0, 0), (NightVision, 120.0, 0)],          // sweet berry danish
+        1130 => &[(Regeneration, 4.0, 0), (Speed, 60.0, 0), (Haste, 60.0, 0)], // melon sorbet
+        1131 => &[(Regeneration, 8.0, 2), (Strength, 120.0, 0), (Resistance, 60.0, 0)], // stroganoff
         _ => return None,
     })
 }
@@ -138,33 +137,64 @@ pub fn food_effects(id: Id) -> Option<&'static [(Effect, f32, u8)]> {
 mod tests {
     use super::*;
 
-    // Blocks and items share one id space, split by range at ITEM_BASE..=ITEM_MAX. If a new block
-    // ever crossed that line it would silently become unplaceable, so pin the invariant down.
+    // Blocks and items share one id space, split at ITEM_BASE. If a new block ever crossed that
+    // line it would silently become unplaceable, so pin the invariant down.
     #[test]
     fn block_ids_stay_below_the_item_base() {
-        assert!(crate::world::block::MAX_LOW_BLOCK_ID < ITEM_BASE);
-        assert!(!is_item(crate::world::block::MAX_LOW_BLOCK_ID));
-        assert!(!is_item(crate::world::block::BLOCK_HIGH_BASE), "the high block window is not items");
+        assert!(crate::world::block::MAX_BLOCK_ID < ITEM_BASE);
+        assert!(!is_item(crate::world::block::MAX_BLOCK_ID));
+        assert!(is_item(ITEM_BASE), "the boundary itself belongs to items");
     }
 
     // armor_slot() does range arithmetic over three disjoint id blocks; a wrong mapping would let
     // a helmet occupy the boots slot.
     #[test]
     fn armor_maps_to_the_right_slot() {
-        for (id, slot) in [(171 as Id, 0usize), (172, 1), (173, 2), (174, 3),   // iron
-                           (175, 0), (176, 1), (177, 2), (178, 3),          // diamond
-                           (199, 0), (200, 1), (201, 2), (202, 3),          // adamant
-                           (188, 1)] {                                      // elytra -> chest
+        for (id, slot) in [(1067 as Id, 0usize), (1068, 1), (1069, 2), (1070, 3),   // iron
+                           (1071, 0), (1072, 1), (1073, 2), (1074, 3),          // diamond
+                           (1095, 0), (1096, 1), (1097, 2), (1098, 3),          // adamant
+                           (1084, 1)] {                                      // elytra -> chest
             assert!(is_armor(id), "{id} should be armor");
             assert_eq!(armor_slot(id), slot, "{id} mapped to the wrong slot");
         }
     }
 
+    // Every predicate in this file is a hand-written list of ids. If one is ever left behind after a
+    // renumbering it would silently classify a block as a tool, so pin the whole population down.
+    #[test]
+    fn every_classified_id_is_really_an_item() {
+        use crate::world::block::MAX_BLOCK_ID;
+        let mut tools = 0;
+        let mut armor = 0;
+        let mut foods = 0;
+        for id in 0..=ITEM_BASE + 512 {
+            for (what, holds) in [
+                ("tool", is_tool(id)), ("armor", is_armor(id)), ("food", is_food(id)),
+                ("estus", is_estus(id)), ("heart container", is_heart_container(id)),
+                ("elytra", is_elytra(id)), ("shears", is_shears(id)),
+                ("flint and steel", is_flint_steel(id)), ("firework", is_firework(id)),
+            ] {
+                if holds {
+                    assert!(is_item(id), "{id} is classified as a {what} but is not an item id");
+                    assert!(id > MAX_BLOCK_ID, "{id} is classified as a {what} but is a block");
+                }
+            }
+            if is_tool(id) { tools += 1; }
+            if is_armor(id) { armor += 1; }
+            if is_food(id) { foods += 1; }
+        }
+        // Counts, so a range that collapses to nothing fails loudly rather than passing vacuously.
+        assert_eq!(tools, 15, "expected 15 tools");
+        assert_eq!(armor, 17, "expected 16 armour pieces plus the elytra");
+        assert!(foods >= 25, "only {foods} foods found");
+        assert_eq!(BRUSH, 1151);
+    }
+
     #[test]
     fn tools_and_armor_do_not_overlap() {
-        // Every tool and every piece of armor lives in the legacy 0..=255 window; sweeping the
-        // whole u16 range would cost 256x for nothing.
-        for id in 0..=255 as Id {
+        // Tools and armour all sit in one contiguous stretch of the item range; sweeping the whole
+        // 16-bit space would cost 256x for nothing.
+        for id in 0..=ITEM_BASE + 255 {
             assert!(!(is_tool(id) && is_armor(id)), "{id} is both a tool and armor");
             // Shears and the fishing rod are the exceptions: tools that neither mine nor fight.
             if is_tool(id) && !is_shears(id) && id != crate::fishing::ROD && id != BRUSH {
@@ -182,14 +212,14 @@ mod tests {
     fn every_food_is_obtainable() {
         use crate::inventory::{RECIPES, SMELTING};
         let mut missing = Vec::new();
-        for id in 0..=255 as Id {
+        for id in 0..=ITEM_BASE + 255 {
             if food_effects(id).is_none() { continue; }
             let crafted = RECIPES.iter().any(|r| r.out == id);
             let smelted = SMELTING.iter().any(|s| s.out == id);
             let dropped = crate::entity::MobKind::ALL.iter().any(|k| k.loot().contains(&id));
             let traded = crate::villager::ALL.iter()
                 .any(|&p| crate::villager::offers(p, crate::villager::MAX_LEVEL).iter().any(|o| o.give == id));
-            let foraged = id == 130; // apples fall out of leaves
+            let foraged = id == 1026; // apples fall out of leaves
             let looted = (0..40).any(|i| {
                 crate::container::roll_loot(i * 7, 40, i * 13, i as u8 % 3, false)
                     .iter().any(|s| s.id == id)
@@ -202,17 +232,17 @@ mod tests {
     // Raw meat is a cooking input, not a snack.
     #[test]
     fn raw_meat_is_not_edible() {
-        assert!(food_effects(222).is_none(), "raw meat must be cooked first");
-        assert!(food_effects(223).is_some(), "cooked meat must feed you");
+        assert!(food_effects(1118).is_none(), "raw meat must be cooked first");
+        assert!(food_effects(1119).is_some(), "cooked meat must feed you");
     }
 
     #[test]
     fn adamant_outclasses_diamond() {
-        assert!(sword_damage(198) > sword_damage(170));
-        assert!(pick_damage(197) > pick_damage(169));
-        for (adamant, diamond) in [(199 as Id, 175 as Id), (200, 176), (201, 177), (202, 178)] {
+        assert!(sword_damage(1094) > sword_damage(1066));
+        assert!(pick_damage(1093) > pick_damage(1065));
+        for (adamant, diamond) in [(1095 as Id, 1071 as Id), (1096, 1072), (1097, 1073), (1098, 1074)] {
             assert!(armor_defense(adamant) > armor_defense(diamond), "{adamant} must beat {diamond}");
         }
-        assert!(max_durability(197) > max_durability(169));
+        assert!(max_durability(1093) > max_durability(1065));
     }
 }

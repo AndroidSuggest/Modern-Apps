@@ -104,9 +104,9 @@ pub fn roll_loot(x: i32, y: i32, z: i32, dim: u8, lucky: bool) -> Vec<InvSlot> {
     let mut r = ((x as u64).wrapping_mul(73856093) ^ (y as u64).wrapping_mul(19349663) ^ (z as u64).wrapping_mul(83492791)) | 1;
     let next = |r: &mut u64| { *r ^= *r << 13; *r ^= *r >> 7; *r ^= *r << 17; *r };
     // (item id, max stack from this chest).
-    let end_pool: [(Id, i32); 9] = [(188, 1), (176, 1), (175, 1), (170, 1), (129, 1), (155, 3), (156, 4), (133, 2), (24, 2)];
-    let nether_pool: [(Id, i32); 7] = [(192, 6), (194, 2), (195, 2), (157, 8), (154, 4), (133, 1), (138, 3)];
-    let over_pool: [(Id, i32); 12] = [(157, 8), (154, 4), (155, 1), (156, 2), (131, 4), (133, 1), (168, 1), (128, 1), (138, 3), (137, 2), (193, 2), (223, 3)];
+    let end_pool: [(Id, i32); 9] = [(1084, 1), (1072, 1), (1071, 1), (1066, 1), (1025, 1), (1051, 3), (1052, 4), (1029, 2), (24, 2)];
+    let nether_pool: [(Id, i32); 7] = [(1088, 6), (1090, 2), (1091, 2), (1053, 8), (1050, 4), (1029, 1), (1034, 3)];
+    let over_pool: [(Id, i32); 12] = [(1053, 8), (1050, 4), (1051, 1), (1052, 2), (1027, 4), (1029, 1), (1064, 1), (1024, 1), (1034, 3), (1033, 2), (1089, 2), (1119, 3)];
     let pool: &[(Id, i32)] = match dim { 2 => &end_pool, 1 => &nether_pool, _ => &over_pool };
 
     let mut slots = vec![InvSlot::default(); CONTAINER_SLOTS];
@@ -203,18 +203,18 @@ mod tests {
     fn take_from_leaves_the_remainder_when_inventory_is_full() {
         let mut inv = Inventory::default();
         for s in inv.slots.iter_mut() { *s = InvSlot { id: 2, count: STACK }; } // all dirt, no room
-        let mut slot = InvSlot { id: 155, count: 7 }; // 7 diamonds in the chest
+        let mut slot = InvSlot { id: 1051, count: 7 }; // 7 diamonds in the chest
         inv.take_from(&mut slot);
         assert_eq!(slot.count, 7, "nothing fit, so nothing should have left the chest");
-        assert_eq!(slot.id, 155);
+        assert_eq!(slot.id, 1051);
     }
 
     #[test]
     fn take_from_moves_what_fits() {
         let mut inv = Inventory::default();
         for s in inv.slots.iter_mut() { *s = InvSlot { id: 2, count: STACK }; }
-        inv.slots[5] = InvSlot { id: 155, count: STACK - 3 }; // room for exactly 3 diamonds
-        let mut slot = InvSlot { id: 155, count: 10 };
+        inv.slots[5] = InvSlot { id: 1051, count: STACK - 3 }; // room for exactly 3 diamonds
+        let mut slot = InvSlot { id: 1051, count: 10 };
         inv.take_from(&mut slot);
         assert_eq!(slot.count, 7, "only 3 of 10 should have moved");
         assert_eq!(inv.slots[5].count, STACK);

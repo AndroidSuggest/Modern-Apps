@@ -372,7 +372,7 @@ mod tests {
         plain.damage(plain.air_max_y - plain.pos.y - 3.5);
         assert!(plain.health < 20.0, "an unblessed fall should hurt");
 
-        let mut blessed = blessed_player(&[204]);
+        let mut blessed = blessed_player(&[1100]);
         assert!(blessed.blessed(Passive::FeatherFall));
         // The tick applies the same drop with the blessing attuned.
         assert_eq!(blessed.health, 20.0);
@@ -381,15 +381,15 @@ mod tests {
     #[test]
     fn traversal_makes_you_faster() {
         let plain = Player::new(0.0, 64.0, 0.0);
-        let swift = blessed_player(&[160]);
+        let swift = blessed_player(&[1056]);
         assert!(swift.speed_mult() > plain.speed_mult());
     }
 
     #[test]
     fn ares_multiplies_melee_but_others_do_not() {
         assert_eq!(Player::new(0.0, 0.0, 0.0).might_mult(), 1.0);
-        assert!(blessed_player(&[161]).might_mult() > 1.0);
-        assert_eq!(blessed_player(&[204]).might_mult(), 1.0);
+        assert!(blessed_player(&[1057]).might_mult() > 1.0);
+        assert_eq!(blessed_player(&[1100]).might_mult(), 1.0);
     }
 
     // Aeolus should only launch the player when it is actually attuned.
@@ -399,7 +399,7 @@ mod tests {
         plain.wind_burst();
         assert_eq!(plain.vel.y, 0.0);
 
-        let mut blessed = blessed_player(&[214]);
+        let mut blessed = blessed_player(&[1110]);
         blessed.wind_burst();
         assert!(blessed.vel.y > 0.0, "Aeolus must throw the player upward");
         assert!(!blessed.on_ground);
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn attunements_are_independent() {
-        let p = blessed_player(&[205, 211]);
+        let p = blessed_player(&[1101, 1107]);
         assert!(p.blessed(Passive::Pyre));
         assert!(p.blessed(Passive::Fortune));
         assert!(!p.blessed(Passive::Reach));
@@ -587,7 +587,7 @@ mod tests {
     // unkillable while a mob is still swinging.
     #[test]
     fn athenas_shield_reforms_only_out_of_combat() {
-        let mut p = blessed_player(&[245]);
+        let mut p = blessed_player(&[1141]);
         p.tick_status(10.0);
         assert!(p.absorption > 0.0, "the shield should form when nothing is attacking");
         let full = p.absorption;
@@ -609,7 +609,7 @@ mod tests {
     // Sekhmet is a comeback mechanic: it must be off at full health and on when nearly dead.
     #[test]
     fn sekhmet_only_rages_when_bloodied() {
-        let mut p = blessed_player(&[246]);
+        let mut p = blessed_player(&[1142]);
         assert!(!p.bloodraging(), "a healthy player is not enraged");
         let calm_hit = p.might_mult();
 
@@ -618,7 +618,7 @@ mod tests {
         assert!(p.might_mult() > calm_hit, "rage has to hit harder");
 
         // And it soaks more: the same blow costs less health.
-        let mut raging = blessed_player(&[246]);
+        let mut raging = blessed_player(&[1142]);
         raging.health = raging.max_health * (BLOODRAGE_AT - 0.05);
         let before = raging.health;
         raging.damage(4.0);
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn camazotz_heals_a_share_of_the_damage_dealt() {
-        let mut p = blessed_player(&[247]);
+        let mut p = blessed_player(&[1143]);
         p.health = 10.0;
         p.lifesteal(20.0);
         assert!((p.health - (10.0 + 20.0 * LIFESTEAL_SHARE)).abs() < 1e-4);

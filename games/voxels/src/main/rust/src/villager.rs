@@ -14,7 +14,7 @@ use crate::world::block::Id;
 
 use crate::item::{has_durability, max_durability};
 
-pub const EMERALD: Id = 156;
+pub const EMERALD: Id = 1052;
 
 /// One line on a villager's trade list. `cost2` of 0 means a single-ingredient trade.
 #[derive(Clone, Copy)]
@@ -78,42 +78,42 @@ pub const ALL: [Profession; 11] = [
 
 // Produce: the things a player can't grow, since there's no farming yet.
 const FARMER: &[Level] = &[
-    &[buy(1, 135, 4), buy(1, 146, 4), sell(130, 8, 1)],
-    &[buy(1, 136, 3), buy(1, 131, 6), buy(1, 58, 2)],
-    &[buy(2, 152, 4), buy(3, 133, 1)],
+    &[buy(1, 1031, 4), buy(1, 1042, 4), sell(1026, 8, 1)],
+    &[buy(1, 1032, 3), buy(1, 1027, 6), buy(1, 58, 2)],
+    &[buy(2, 1048, 4), buy(3, 1029, 1)],
 ];
 
 // Matcha's fisherman lists 49 species; the game has two fish and the reef they came from.
 const FISHERMAN: &[Level] = &[
-    &[buy(2, 132, 4), buy(1, 66, 3)],
-    &[buy(2, 148, 4), sell(132, 8, 2)],
+    &[buy(2, 1028, 4), buy(1, 66, 3)],
+    &[buy(2, 1044, 4), sell(1028, 8, 2)],
     &[buy(3, 67, 2), buy(2, 68, 4)],
 ];
 
 // The butcher sells prepared dishes, and will cook yours if you bring the meat. The counter also
 // carries the baking Matcha's butcher does — brownies and cookies have no other source.
 const BUTCHER: &[Level] = &[
-    &[sell(222, 8, 1), buy(2, 223, 3), buy(2, 134, 3), buy(2, 153, 4)],
-    &[buy(2, 150, 3), forge(3, 223, 2, 224)],
-    &[forge(4, 223, 2, 235), buy(3, 225, 2)],
+    &[sell(1118, 8, 1), buy(2, 1119, 3), buy(2, 1030, 3), buy(2, 1049, 4)],
+    &[buy(2, 1046, 3), forge(3, 1119, 2, 1120)],
+    &[forge(4, 1119, 2, 1131), buy(3, 1121, 2)],
 ];
 
 const TOOLSMITH: &[Level] = &[
-    &[sell(157, 12, 1), buy(1, 159, 8)],
-    &[forge(4, 154, 2, 167), buy(5, 154, 3)],
-    &[forge(8, 155, 2, 169), forge(5, 238, 2, 239)],
+    &[sell(1053, 12, 1), buy(1, 1055, 8)],
+    &[forge(4, 1050, 2, 1063), buy(5, 1050, 3)],
+    &[forge(8, 1051, 2, 1065), forge(5, 1134, 2, 1135)],
 ];
 
 const WEAPONSMITH: &[Level] = &[
-    &[sell(138, 5, 1), buy(2, 166, 1)],
-    &[forge(4, 154, 2, 168), forge(6, 238, 2, 240)],
-    &[forge(9, 155, 2, 170)],
+    &[sell(1034, 5, 1), buy(2, 1062, 1)],
+    &[forge(4, 1050, 2, 1064), forge(6, 1134, 2, 1136)],
+    &[forge(9, 1051, 2, 1066)],
 ];
 
 const ARMORER: &[Level] = &[
-    &[sell(154, 4, 1), buy(3, 171, 1)],
-    &[buy(6, 172, 1), buy(4, 173, 1), buy(3, 174, 1)],
-    &[forge(7, 155, 2, 175), forge(10, 155, 3, 176)],
+    &[sell(1050, 4, 1), buy(3, 1067, 1)],
+    &[buy(6, 1068, 1), buy(4, 1069, 1), buy(3, 1070, 1)],
+    &[forge(7, 1051, 2, 1071), forge(10, 1051, 3, 1072)],
 ];
 
 // Matcha's mason walks the player up a ladder of stone variants; the game's stonecutter turns each
@@ -125,33 +125,33 @@ const MASON: &[Level] = &[
 ];
 
 const LEATHERWORKER: &[Level] = &[
-    &[sell(137, 6, 2), buy(1, 4, 6)],
+    &[sell(1033, 6, 2), buy(1, 4, 6)],
     &[buy(1, 26, 6), buy(1, 29, 6)],
-    &[buy(1, 47, 4), buy(1, 51, 4), buy(2, 137, 3)],
+    &[buy(1, 47, 4), buy(1, 51, 4), buy(2, 1033, 3)],
 ];
 
 // Matcha's librarian sells tomes; here the tomes are Blessings, priced steeply so crafting them stays
 // the main route.
 const LIBRARIAN: &[Level] = &[
     &[buy(3, 33, 1), buy(1, 7, 4)],
-    &[buy(5, 191, 1), buy(9, 218, 1)],
-    &[buy(10, 210, 1), buy(10, 203, 1)],
+    &[buy(5, 1087, 1), buy(9, 1114, 1)],
+    &[buy(10, 1106, 1), buy(10, 1099, 1)],
 ];
 
 // Matcha's cleric deals in splash potions. This game has no potions, so the cleric deals in the
 // things that keep you alive: Estus, golden apples, and the one merchant who will sell you a heart.
 const CLERIC: &[Level] = &[
-    &[buy(4, 128, 1), sell(158, 6, 1)],
-    &[buy(3, 133, 2), buy(9, 160, 1)],
-    &[forge(12, 155, 1, 129), buy(10, 205, 1)],
+    &[buy(4, 1024, 1), sell(1054, 6, 1)],
+    &[buy(3, 1029, 2), buy(9, 1056, 1)],
+    &[forge(12, 1051, 1, 1025), buy(10, 1101, 1)],
 ];
 
 // Matcha's cartographer sells structure maps and a brush; without maps or archaeology this is the
 // expedition outfitter instead — fire, throwables, and the obsidian for a portal.
 const CARTOGRAPHER: &[Level] = &[
-    &[buy(2, 186, 1), buy(2, 190, 6)],
-    &[buy(6, 78, 2), forge(3, 138, 2, 189)],
-    &[buy(10, 78, 4), buy(6, 191, 2)],
+    &[buy(2, 1082, 1), buy(2, 1086, 6)],
+    &[buy(6, 78, 2), forge(3, 1034, 2, 1085)],
+    &[buy(10, 78, 4), buy(6, 1087, 2)],
 ];
 
 impl Profession {

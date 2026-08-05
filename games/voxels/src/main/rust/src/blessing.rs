@@ -59,35 +59,35 @@ const fn b(id: Id, passive: Passive, icon: &'static str, name: &'static str, eff
 
 // Ids 160..162 predate the pantheon but are folded into it; every icon is Matcha's own artwork.
 pub const PANTHEON: [Blessing; 27] = [
-    b(160, Passive::Traversal,     "blessing_clement.png",     "Blessing of Clement",      "Swift of foot; climbs a full block"),
-    b(161, Passive::Might,         "blessing_ares.png",        "Blessing of Ares",         "Melee strikes hit far harder"),
-    b(162, Passive::Deep,          "blessing_yamm.png",        "Blessing of Yamm",         "Swim freely beneath the waves"),
-    b(203, Passive::ToolWard,      "blessing_daedalus.png",    "Blessing of Daedalus",     "Tools never wear down"),
-    b(204, Passive::FeatherFall,   "blessing_icarus.png",      "Blessing of Icarus",       "You take no falling damage"),
-    b(205, Passive::Pyre,          "blessing_yama.png",        "Blessing of Yama",         "Fire and lava cannot burn you"),
-    b(206, Passive::Impact,        "blessing_talos.png",       "Blessing of Talos",        "Your blows send foes flying"),
-    b(207, Passive::SmiteUndead,   "blessing_god_king.png",    "Blessing of the God King", "Double damage to the undead"),
-    b(208, Passive::BaneOfHorrors, "blessing_arachnae.png",    "Blessing of Arachnae",     "Double damage to creepers and horrors"),
-    b(209, Passive::ArmorWard,     "blessing_prometheus.png",  "Blessing of Prometheus",   "Armor never wears down"),
-    b(210, Passive::Mending,       "blessing_lu_ban.png",      "Blessing of Lu Ban",       "Your gear slowly mends itself"),
-    b(211, Passive::Fortune,       "blessing_eros.png",        "Blessing of Eros",         "Ores yield twice as much"),
-    b(212, Passive::Reach,         "blessing_will.png",        "Blessing of Will",         "You can reach much further"),
-    b(213, Passive::DoubleJump,    "blessing_hyacinthus.png",  "Blessing of Hyacinthus",   "Leap a second time in mid-air"),
-    b(214, Passive::WindBurst,     "blessing_aeolus.png",      "Blessing of Aeolus",       "Landing a hit throws you skyward"),
-    b(215, Passive::SwiftSneak,    "blessing_cronus.png",      "Blessing of Cronus",       "Sneak at a walking pace"),
-    b(216, Passive::FrostWalker,   "blessing_demeter.png",     "Blessing of Demeter",      "Water freezes beneath your feet"),
-    b(217, Passive::SeaLuck,       "blessing_glaucus.png",     "Blessing of Glaucus",      "Chests and foes give up more"),
-    b(218, Passive::Marksman,      "blessing_apollo.png",      "Blessing of Apollo",       "Thrown weapons strike twice as hard"),
-    b(219, Passive::Multishot,     "blessing_artemis.png",     "Blessing of Artemis",      "Throw three projectiles at once"),
-    b(220, Passive::Thorns,        "blessing_warding.png",     "Blessing of Warding",      "Attackers suffer for striking you"),
-    b(221, Passive::Infinity,      "blessing_paris.png",       "Blessing of Paris",        "Thrown items are never used up"),
+    b(1056, Passive::Traversal,     "blessing_clement.png",     "Blessing of Clement",      "Swift of foot; climbs a full block"),
+    b(1057, Passive::Might,         "blessing_ares.png",        "Blessing of Ares",         "Melee strikes hit far harder"),
+    b(1058, Passive::Deep,          "blessing_yamm.png",        "Blessing of Yamm",         "Swim freely beneath the waves"),
+    b(1099, Passive::ToolWard,      "blessing_daedalus.png",    "Blessing of Daedalus",     "Tools never wear down"),
+    b(1100, Passive::FeatherFall,   "blessing_icarus.png",      "Blessing of Icarus",       "You take no falling damage"),
+    b(1101, Passive::Pyre,          "blessing_yama.png",        "Blessing of Yama",         "Fire and lava cannot burn you"),
+    b(1102, Passive::Impact,        "blessing_talos.png",       "Blessing of Talos",        "Your blows send foes flying"),
+    b(1103, Passive::SmiteUndead,   "blessing_god_king.png",    "Blessing of the God King", "Double damage to the undead"),
+    b(1104, Passive::BaneOfHorrors, "blessing_arachnae.png",    "Blessing of Arachnae",     "Double damage to creepers and horrors"),
+    b(1105, Passive::ArmorWard,     "blessing_prometheus.png",  "Blessing of Prometheus",   "Armor never wears down"),
+    b(1106, Passive::Mending,       "blessing_lu_ban.png",      "Blessing of Lu Ban",       "Your gear slowly mends itself"),
+    b(1107, Passive::Fortune,       "blessing_eros.png",        "Blessing of Eros",         "Ores yield twice as much"),
+    b(1108, Passive::Reach,         "blessing_will.png",        "Blessing of Will",         "You can reach much further"),
+    b(1109, Passive::DoubleJump,    "blessing_hyacinthus.png",  "Blessing of Hyacinthus",   "Leap a second time in mid-air"),
+    b(1110, Passive::WindBurst,     "blessing_aeolus.png",      "Blessing of Aeolus",       "Landing a hit throws you skyward"),
+    b(1111, Passive::SwiftSneak,    "blessing_cronus.png",      "Blessing of Cronus",       "Sneak at a walking pace"),
+    b(1112, Passive::FrostWalker,   "blessing_demeter.png",     "Blessing of Demeter",      "Water freezes beneath your feet"),
+    b(1113, Passive::SeaLuck,       "blessing_glaucus.png",     "Blessing of Glaucus",      "Chests and foes give up more"),
+    b(1114, Passive::Marksman,      "blessing_apollo.png",      "Blessing of Apollo",       "Thrown weapons strike twice as hard"),
+    b(1115, Passive::Multishot,     "blessing_artemis.png",     "Blessing of Artemis",      "Throw three projectiles at once"),
+    b(1116, Passive::Thorns,        "blessing_warding.png",     "Blessing of Warding",      "Attackers suffer for striking you"),
+    b(1117, Passive::Infinity,      "blessing_paris.png",       "Blessing of Paris",        "Thrown items are never used up"),
     // These five carry Matcha enchantments with no earlier equivalent, so their charms are recoloured
     // rather than drawn from the pack's own artwork.
-    b(245, Passive::Divinity,      "blessing_athena.png",      "Blessing of Athena",       "A shield that reforms out of combat"),
-    b(246, Passive::Bloodrage,     "blessing_sekhmet.png",     "Blessing of Sekhmet",      "Near death you grow stronger and harder to kill"),
-    b(247, Passive::Lifesteal,     "blessing_camazotz.png",    "Blessing of Camazotz",     "Your strikes drink the life from foes"),
-    b(248, Passive::Conduit,       "blessing_tangaroa.png",    "Blessing of Tangaroa",     "You see and fight at full strength underwater"),
-    b(249, Passive::WardUndead,    "blessing_anubis.png",      "Blessing of Anubis",       "The undead will not come near you"),
+    b(1141, Passive::Divinity,      "blessing_athena.png",      "Blessing of Athena",       "A shield that reforms out of combat"),
+    b(1142, Passive::Bloodrage,     "blessing_sekhmet.png",     "Blessing of Sekhmet",      "Near death you grow stronger and harder to kill"),
+    b(1143, Passive::Lifesteal,     "blessing_camazotz.png",    "Blessing of Camazotz",     "Your strikes drink the life from foes"),
+    b(1144, Passive::Conduit,       "blessing_tangaroa.png",    "Blessing of Tangaroa",     "You see and fight at full strength underwater"),
+    b(1145, Passive::WardUndead,    "blessing_anubis.png",      "Blessing of Anubis",       "The undead will not come near you"),
 ];
 
 pub fn is_blessing(id: Id) -> bool { PANTHEON.iter().any(|b| b.id == id) }
@@ -162,11 +162,11 @@ mod tests {
     #[test]
     fn attuning_fills_slots_and_rejects_duplicates() {
         let mut a = Attunement::default();
-        assert!(a.attune(160));
-        assert!(!a.attune(160), "the same blessing must not stack");
-        assert!(a.attune(204));
-        assert!(a.attune(211));
-        assert!(!a.attune(212), "there are only {SLOTS} slots");
+        assert!(a.attune(1056));
+        assert!(!a.attune(1056), "the same blessing must not stack");
+        assert!(a.attune(1100));
+        assert!(a.attune(1107));
+        assert!(!a.attune(1108), "there are only {SLOTS} slots");
         assert!(a.has(Passive::Traversal));
         assert!(a.has(Passive::Fortune));
         assert!(!a.has(Passive::Reach));
@@ -175,19 +175,19 @@ mod tests {
     #[test]
     fn releasing_returns_the_charm() {
         let mut a = Attunement::default();
-        a.attune(205);
+        a.attune(1101);
         assert!(a.has(Passive::Pyre));
-        assert_eq!(a.release(0), Some(205));
+        assert_eq!(a.release(0), Some(1101));
         assert!(!a.has(Passive::Pyre));
         assert_eq!(a.release(0), None, "an empty slot gives nothing back");
-        assert!(a.attune(212), "the slot is free again");
+        assert!(a.attune(1108), "the slot is free again");
     }
 
     #[test]
     fn non_blessings_cannot_be_attuned() {
         let mut a = Attunement::default();
         assert!(!a.attune(0));
-        assert!(!a.attune(155)); // a diamond
-        assert!(!a.attune(169)); // a pickaxe
+        assert!(!a.attune(1051)); // a diamond
+        assert!(!a.attune(1065)); // a pickaxe
     }
 }

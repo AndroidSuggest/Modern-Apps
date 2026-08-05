@@ -161,16 +161,15 @@ mod tests {
         original.set_block(15, 255, 15, 123);
         original.set_block_meta(8, 64, 8, 102, 0b100);
         original.set_block(0, 255, 0, 123);
-        // An id from the high block window, which only VOX3 is wide enough to carry.
-        original.set_block(1, 255, 0, crate::world::block::BLOCK_HIGH_BASE);
+        // An id past what a byte can hold, which is the whole reason the format is 16-bit.
+        original.set_block(1, 255, 0, 900);
 
         let encoded = encode_chunk(&original);
         assert_eq!(&encoded[0..4], b"VOX3");
 
         let mut loaded = Chunk::new(ChunkPos(7, 7));
         decode_chunk(&encoded, &mut loaded).expect("VOX3 must decode");
-        assert_eq!(loaded.get_block(1, 255, 0), crate::world::block::BLOCK_HIGH_BASE,
-            "a wide id must survive the round trip intact");
+        assert_eq!(loaded.get_block(1, 255, 0), 900, "a wide id must survive the round trip intact");
         for (a, b) in original.sections.iter().zip(loaded.sections.iter()) {
             match (a, b) {
                 (Some(a), Some(b)) => {

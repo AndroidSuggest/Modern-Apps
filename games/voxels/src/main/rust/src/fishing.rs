@@ -6,9 +6,9 @@
 /// Item 254. Cook it in a furnace for the cooked fish the villagers sell.
 use crate::world::block::Id;
 
-pub const RAW_FISH: Id = 254;
+pub const RAW_FISH: Id = 1150;
 /// Item 253.
-pub const ROD: Id = 253;
+pub const ROD: Id = 1149;
 
 /// Shortest and longest wait before a bite.
 const WAIT_MIN: f32 = 3.0;
@@ -70,10 +70,10 @@ pub fn catch_of_the_day(roll: f32, lucky: bool) -> Id {
     if r < treasure {
         // Four treasures, evenly split within the treasure band.
         match ((r / treasure) * 4.0) as u32 {
-            0 => 191,                                  // ender pearl
-            1 => 156,                                  // emerald
+            0 => 1087,                                  // ender pearl
+            1 => 1052,                                  // emerald
             2 => crate::world::block::Block::SeaLantern as Id,
-            _ => 137,                                  // leather (a waterlogged boot, near enough)
+            _ => 1033,                                  // leather (a waterlogged boot, near enough)
         }
     } else if r < treasure + junk {
         crate::world::block::Block::Kelp as Id
@@ -133,7 +133,7 @@ mod tests {
             for i in 0..n {
                 let id = catch_of_the_day(i as f32 / n as f32, lucky);
                 assert!(id != 0, "the hook came up with nothing");
-                assert!(id <= crate::world::block::MAX_LOW_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
+                assert!(id <= crate::world::block::MAX_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
                 if id == RAW_FISH { fish += 1; }
                 else if id == crate::world::block::Block::Kelp as Id { junk += 1; }
                 else { treasure += 1; }

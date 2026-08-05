@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-/// One id space for blocks and items, 16 bits wide. The split is by range, not by width:
-/// `ITEM_BASE..=ITEM_MAX` is items and everything else is a block. See `item.rs`.
+/// One 16-bit id space for blocks and items, split at `ITEM_BASE`: below it is a block, at or above
+/// it is an item. See `item.rs`.
 pub type Id = u16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -142,19 +142,9 @@ pub enum Block {
     MelonCrop = 123,
 }
 
-/// Blocks live in two windows either side of the item range. The low window is the original
-/// `u8` numbering, frozen so no saved chunk needs remapping; new blocks go in the high window.
-pub const MAX_LOW_BLOCK_ID: Id = 123;
-pub const BLOCK_HIGH_BASE: Id = 1024;
-/// One below `BLOCK_HIGH_BASE` while the high window is empty, which makes the range check below
-/// match nothing rather than matching `Air`.
-pub const MAX_HIGH_BLOCK_ID: Id = BLOCK_HIGH_BASE - 1;
-
-/// Every id that names a real block, low window then high. The plain `0..=MAX` loop that used to
-/// work would now walk the item window and half of nothing.
-pub fn all_block_ids() -> impl Iterator<Item = Id> {
-    (0..=MAX_LOW_BLOCK_ID).chain(BLOCK_HIGH_BASE..=MAX_HIGH_BLOCK_ID)
-}
+/// Blocks occupy the low 10 bits of the id space; items start where they end. Both sides have room
+/// to grow, and there is exactly one boundary to remember.
+pub const MAX_BLOCK_ID: Id = 123;
 
 /// Growth stage occupies meta bits 3-4 (bits 0-2 are facing and top-half, used by slabs and stairs).
 pub const CROP_STAGE_SHIFT: u8 = 3;
@@ -209,9 +199,7 @@ impl Boxes {
 
 impl Block {
     pub fn from_id(id: Id) -> Self {
-        let known = id <= MAX_LOW_BLOCK_ID
-            || (BLOCK_HIGH_BASE..=MAX_HIGH_BLOCK_ID).contains(&id);
-        if known { unsafe { std::mem::transmute(id) } } else { Self::Air }
+        if id <= MAX_BLOCK_ID { unsafe { std::mem::transmute(id) } } else { Self::Air }
     }
     pub fn id(self) -> Id { self as Id }
     pub fn is_air(self) -> bool { matches!(self, Self::Air) }
@@ -228,14 +216,14 @@ impl Block {
     pub fn is_crop(self) -> bool { matches!(self, Self::WheatCrop | Self::CarrotCrop | Self::MelonCrop) }
     /// The seed that plants this crop, and what a ripe one yields.
     pub fn crop_seed(self) -> Id {
-        match self { Self::WheatCrop => 250, Self::CarrotCrop => 135, Self::MelonCrop => 136, _ => 0 }
+        match self { Self::WheatCrop => 1146, Self::CarrotCrop => 1031, Self::MelonCrop => 1032, _ => 0 }
     }
     pub fn crop_yield(self) -> Id {
-        match self { Self::WheatCrop => 251, Self::CarrotCrop => 135, Self::MelonCrop => 136, _ => 0 }
+        match self { Self::WheatCrop => 1147, Self::CarrotCrop => 1031, Self::MelonCrop => 1032, _ => 0 }
     }
     /// The crop a given seed plants, if any.
     pub fn crop_from_seed(seed: Id) -> Option<Self> {
-        match seed { 250 => Some(Self::WheatCrop), 135 => Some(Self::CarrotCrop), 136 => Some(Self::MelonCrop), _ => None }
+        match seed { 1146 => Some(Self::WheatCrop), 1031 => Some(Self::CarrotCrop), 1032 => Some(Self::MelonCrop), _ => None }
     }
 
     /// Does this block stop light? Distinct from `is_opaque`, which asks whether a neighbour's face
@@ -590,27 +578,25 @@ mod tests {
 
     #[test]
     fn every_id_up_to_the_max_maps_to_a_distinct_block() {
-        for id in all_block_ids() {
+        for id in 0..=MAX_BLOCK_ID {
             assert_eq!(Block::from_id(id).id(), id, "id {id} did not round-trip");
         }
-        // Ids in the gap between the windows must not be mistaken for real blocks.
-        assert_eq!(Block::from_id(MAX_LOW_BLOCK_ID + 1), Block::Air);
-        assert_eq!(Block::from_id(BLOCK_HIGH_BASE - 1), Block::Air);
+        // Anything past the last block reads back as air rather than transmuting into a variant
+        // that doesn't exist.
+        assert_eq!(Block::from_id(MAX_BLOCK_ID + 1), Block::Air);
         assert_eq!(Block::from_id(Id::MAX), Block::Air);
-        // The whole item window has to read back as air, or a stray item id in a chunk would
-        // transmute into a block that doesn't exist.
-        for id in crate::item::ITEM_BASE..=crate::item::ITEM_MAX {
-            assert_eq!(Block::from_id(id), Block::Air, "item id {id} decoded as a block");
-        }
     }
 
-    // The three windows must stay disjoint and in order, or an id would mean two things at once.
+    // One boundary, and blocks have to stay on their side of it.
     #[test]
-    fn the_id_windows_do_not_overlap() {
-        assert!(MAX_LOW_BLOCK_ID < crate::item::ITEM_BASE);
-        assert!(crate::item::ITEM_BASE <= crate::item::ITEM_MAX);
-        assert!(crate::item::ITEM_MAX < BLOCK_HIGH_BASE);
-        for id in all_block_ids() { assert!(!crate::item::is_item(id), "block {id} sits in the item window"); }
+    fn blocks_and_items_never_share_an_id() {
+        assert!(MAX_BLOCK_ID < crate::item::ITEM_BASE);
+        for id in 0..=MAX_BLOCK_ID { assert!(!crate::item::is_item(id), "block {id} reads as an item"); }
+        assert!(crate::item::is_item(crate::item::ITEM_BASE));
+        // Every item id decodes to air, so a stray one in a chunk is a hole rather than a wrong block.
+        for id in crate::item::ITEM_BASE..crate::item::ITEM_BASE + 256 {
+            assert_eq!(Block::from_id(id), Block::Air, "item id {id} decoded as a block");
+        }
     }
 
     #[test]
@@ -716,7 +702,7 @@ mod tests {
     #[test]
     fn crops_are_walkable_and_plantable() {
         let mut seen = 0;
-        for id in all_block_ids() {
+        for id in 0..=MAX_BLOCK_ID {
             let b = Block::from_id(id);
             if !b.is_crop() { continue; }
             seen += 1;
