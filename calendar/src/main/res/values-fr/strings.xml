@@ -6,9 +6,9 @@
     <string name="no_title">(Sans titre)</string>
     <string name="event_not_found">Événement non trouvé</string>
     <string name="twelve_am">12 AM</string>
-    <string name="hour_am">%1$d AM</string>
+    <string name="hour_am">&lt;xliff:g id=\"hour\" example=\"9\"&gt;%1$d&lt;/xliff:g&gt; h</string>
     <string name="twelve_pm">12 PM</string>
-    <string name="hour_pm">%1$d PM</string>
+    <string name="hour_pm">&lt;xliff:g id=\"hour\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; h</string>
     <string name="label_title">Titre</string>
     <string name="label_description">Description</string>
     <string name="label_location">Localisation</string>
@@ -17,16 +17,16 @@
     <string name="does_not_repeat">Ne pas répéter</string>
     <string name="repeats">Se répète</string>
     <string name="no_account">(Pas de compte)</string>
-    <string name="calendar_id_label">ID : %1$d</string>
+    <string name="calendar_id_label">ID : &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="choose_calendar">Sélectionner le calendrier</string>
     <string name="local_account">(Local)</string>
     <string name="go_to_date">Aller à la date</string>
     <string name="repeat">Répéter</string>
     <string name="every">Chaque</string>
-    <string name="dropdown_freq_format">%1$s ▼</string>
+    <string name="dropdown_freq_format">&lt;xliff:g id=\"frequency\" example=\"Hebdomadaire\"&gt;%1$s&lt;/xliff:g&gt; ▼</string>
     <string name="never">Jamais</string>
     <string name="until">Jusqu\'à</string>
-    <string name="until_date">Jusqu\'à : %1$s</string>
+    <string name="until_date">Jusqu’au &lt;xliff:g id=\"date\" example=\"31 déc. 2025\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="new_local_calendar">Nouveau calendrier local</string>
     <string name="calendar_name">Nom du calendrier</string>
     <string name="choose_color">Choisir une couleur :</string>
@@ -34,17 +34,17 @@
     <string name="change_color">Modifier la couleur</string>
     <string name="delete_calendar">Supprimer le calendrier</string>
     <string name="delete_calendar_confirm">Voulez-vous vraiment supprimer ce calendrier ? Cela supprimera tous les événements de ce calendrier.</string>
-    <string name="delete_calendar_name_confirm">Voulez-vous vraiment supprimer \"%1$s\" ? Cela supprimera tous les événements de ce calendrier.</string>
+    <string name="delete_calendar_name_confirm">Voulez-vous vraiment supprimer « &lt;xliff:g id=\"calendar_name\" example=\"Travail\"&gt;%1$s&lt;/xliff:g&gt; » ? Tous les événements de ce calendrier seront supprimés.</string>
     <string name="rename_calendar">Renommer le calendrier</string>
     <string name="new_name">Nouveau nom</string>
     <string name="create_a_calendar">Créer un calendrier</string>
     <string name="choose_timezone">Choix du fuseau horaire</string>
     <string name="on_days_of_week">Les jours de la semaine</string>
     <string name="end">Fin</string>
-    <string name="month_year_format">%1$s %2$d</string>
-    <string name="date_range_format">%1$s - %2$s</string>
-    <string name="date_time_range_format">%1$s • %2$s - %3$s</string>
-    <string name="full_date_time_range_format">%1$s, %2$s - %3$s, %4$s</string>
+    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"janvier\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="date_range_format">Du &lt;xliff:g id=\"start_date\" example=\"1 janv.\"&gt;%1$s&lt;/xliff:g&gt; au &lt;xliff:g id=\"end_date\" example=\"2 janv.\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"1 janv.\"&gt;%1$s&lt;/xliff:g&gt; • de &lt;xliff:g id=\"start_time\" example=\"09:00\"&gt;%2$s&lt;/xliff:g&gt; à &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="full_date_time_range_format">Du &lt;xliff:g id=\"start_date\" example=\"1 janv.\"&gt;%1$s&lt;/xliff:g&gt; à &lt;xliff:g id=\"start_time\" example=\"09:00\"&gt;%2$s&lt;/xliff:g&gt; au &lt;xliff:g id=\"end_date\" example=\"2 janv.\"&gt;%3$s&lt;/xliff:g&gt; à &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%4$s&lt;/xliff:g&gt;</string>
     <string name="count">Fois</string>
     <string name="delete_this_event">Supprimer l\'événement</string>
     <string name="delete_all_events">Supprimer tous les événements</string>
@@ -53,38 +53,40 @@
     <string name="open_location_in_navigation">Ouvrir l\'emplacement</string>
     <string name="add_reminder">Définir un rappel</string>
     <string name="calendar_widget_description">Aperçu des événements à venir ― tapoter pour ouvrir le calendrier</string>
-    <string name="month_option_day_of_month">Le %1$d du mois</string>
-    <string name="month_option_last_weekday">Chaque dernier %1$s du mois</string>
-    <string name="year_option_week">La %1$de semaine de l\'année, le %2$s</string>
-    <string name="year_option_day_of_year">Le %1$d de l\'année</string>
+    <string name="month_option_day_of_month">Le &lt;xliff:g id=\"day\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; du mois</string>
+    <string name="month_option_last_weekday">Le dernier &lt;xliff:g id=\"weekday\" example=\"vendredi\"&gt;%1$s&lt;/xliff:g&gt; du mois</string>
+    <string name="year_option_week">Le &lt;xliff:g id=\"weekday\" example=\"lundi\"&gt;%2$s&lt;/xliff:g&gt; de la semaine &lt;xliff:g id=\"week_num\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt; de l’année</string>
+    <string name="year_option_day_of_year">Le jour &lt;xliff:g id=\"day_of_year\" example=\"100\"&gt;%1$d&lt;/xliff:g&gt; de l’année</string>
     <string name="on_label">Chaque</string>
-    <string name="month_option_nth_weekday">Chaque %1$s %2$s</string>
-    <string name="year_option_month_day">Chaque %2$d %1$s</string>
+    <string name="month_option_nth_weekday">Le &lt;xliff:g id=\"ordinal\" example=\"deuxième\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"weekday\" example=\"lundi\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="year_option_month_day">Le &lt;xliff:g id=\"day\" example=\"15\"&gt;%2$d&lt;/xliff:g&gt; &lt;xliff:g id=\"month\" example=\"mars\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="import_ics_file">Importer à partir d\'un fichier .ics</string>
     <string name="import_events">Importer des événements</string>
     <string name="import_to_existing_calendar">Importer vers un calendrier existant</string>
     <string name="create_new_calendar_option">Créer un nouveau calendrier</string>
     <string name="no_events_found">Aucun événement trouvé</string>
     <plurals name="import_summary">
-        <item quantity="other">%1$d événements sont prêts à être importés</item>
+        <item quantity="one">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événement prêt à être importé</item>
+        <item quantity="many">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événements prêts à être importés</item>
+        <item quantity="other">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événements prêts à être importés</item>
     </plurals>
     <plurals name="rrule_every_months">
-        <item quantity="one">Tous les %1$d mois</item>
-        <item quantity="many">Tous les %1$d mois</item>
-        <item quantity="other">Tous les %1$d mois</item>
+        <item quantity="one">À intervalles de &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; mois</item>
+        <item quantity="many">À intervalles de &lt;xliff:g id=\"count\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; mois</item>
+        <item quantity="other">À intervalles de &lt;xliff:g id=\"count\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; mois</item>
     </plurals>
     <string name="theme_light">Clair</string>
     <plurals name="reminder_hours_before">
-        <item quantity="one">%1$d heure avant</item>
-        <item quantity="many">%1$d heures avant</item>
-        <item quantity="other">%1$d heures avant</item>
+        <item quantity="one">&lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; heure avant</item>
+        <item quantity="many">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; heures avant</item>
+        <item quantity="other">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; heures avant</item>
     </plurals>
     <string name="layout_full_week_summary">Résumé de la semaine complète</string>
     <string name="import_events_from_ics_files">Importer des événements depuis des fichiers .ics</string>
     <plurals name="rrule_count_suffix">
-        <item quantity="one">, %1$d fois</item>
-        <item quantity="many">, %1$d fois</item>
-        <item quantity="other">, %1$d fois</item>
+        <item quantity="one">, &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; fois</item>
+        <item quantity="many">, &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; fois</item>
+        <item quantity="other">, &lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; fois</item>
     </plurals>
     <string name="theme_dark">Sombre</string>
     <string name="theme_system_default">Par défaut du système</string>
@@ -92,21 +94,21 @@
     <string name="layout_short_month">M</string>
     <string name="layout_work_week">Semaine de travail</string>
     <plurals name="rrule_every_weeks">
-        <item quantity="one">Toutes les %1$d semaine</item>
-        <item quantity="many">Toutes les %1$d semaines</item>
-        <item quantity="other">Toutes les %1$d semaines</item>
+        <item quantity="one">À intervalles de &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; semaine</item>
+        <item quantity="many">À intervalles de &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; semaines</item>
+        <item quantity="other">À intervalles de &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; semaines</item>
     </plurals>
     <string name="theme">Thème</string>
     <string name="layout_agenda">Agenda</string>
     <plurals name="reminder_minutes_before">
-        <item quantity="one">%1$d minute avant</item>
-        <item quantity="many">%1$d minutes avant</item>
-        <item quantity="other">%1$d minutes avant</item>
+        <item quantity="one">&lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; minute avant</item>
+        <item quantity="many">&lt;xliff:g id=\"count\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; minutes avant</item>
+        <item quantity="other">&lt;xliff:g id=\"count\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; minutes avant</item>
     </plurals>
     <plurals name="rrule_every_days">
-        <item quantity="one">Tous les %1$d jour</item>
-        <item quantity="many">Tous les %1$d jours</item>
-        <item quantity="other">Tous les %1$d jours</item>
+        <item quantity="one">À intervalles de &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; jour</item>
+        <item quantity="many">À intervalles de &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; jours</item>
+        <item quantity="other">À intervalles de &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; jours</item>
     </plurals>
     <string name="layout_work_week_summary">Résumé de la semaine de travail</string>
     <string name="search_countries">Rechercher des pays</string>
@@ -115,28 +117,34 @@
     <string name="rrule_yearly">Chaque année</string>
     <string name="layout_day">Jour</string>
     <string name="layout_full_week">Semaine complète</string>
-    <string name="rrule_until_suffix">, jusqu’au %1$s</string>
+    <string name="rrule_until_suffix">, jusqu’au &lt;xliff:g id=\"date\" example=\"31 déc. 2025\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="reminder_at_time_of_event">Au moment de l’événement</string>
     <string name="layout_short_work_week">S5</string>
-    <string name="rrule_on_days">%1$s le %2$s</string>
+    <string name="rrule_on_days">&lt;xliff:g id=\"frequency\" example=\"Hebdomadaire\"&gt;%1$s&lt;/xliff:g&gt; : &lt;xliff:g id=\"days\" example=\"lun., mer.\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="layout_short_work_week_summary">S5R</string>
     <string name="layout_month">Mois</string>
     <string name="rrule_daily">Chaque jour</string>
     <string name="add_public_holidays_for_countries">Ajouter les jours fériés par pays</string>
     <plurals name="rrule_every_years">
-        <item quantity="one">Tous les %1$d an</item>
-        <item quantity="many">Tous les %1$d ans</item>
-        <item quantity="other">Tous les %1$d ans</item>
+        <item quantity="one">À intervalles de &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; an</item>
+        <item quantity="many">À intervalles de &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; ans</item>
+        <item quantity="other">À intervalles de &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; ans</item>
     </plurals>
     <string name="layout_short_full_week">S7</string>
     <string name="rrule_monthly">Chaque mois</string>
     <string name="layout_short_full_week_summary">S7R</string>
     <string name="choose_language">Choisir une langue</string>
     <plurals name="reminder_days_before">
-        <item quantity="one">%1$d jour avant</item>
-        <item quantity="many">%1$d jours avant</item>
-        <item quantity="other">%1$d jours avant</item>
+        <item quantity="one">&lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; jour avant</item>
+        <item quantity="many">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; jours avant</item>
+        <item quantity="other">&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; jours avant</item>
     </plurals>
     <string name="layout_short_day">J</string>
     <string name="holiday_calendars">Calendriers des jours fériés</string>
+    <string name="widget_preview_event_1_title">Réunion d’équipe</string>
+    <string name="widget_preview_event_1_time">9 h – 9 h 30</string>
+    <string name="widget_preview_event_2_title">Déjeuner avec Sam</string>
+    <string name="widget_preview_event_2_time">12 h 30 – 13 h 30</string>
+    <string name="widget_preview_event_3_title">Revue de conception</string>
+    <string name="widget_preview_event_3_time">15 h – 16 h</string>
 </resources>
