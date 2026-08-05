@@ -28,30 +28,36 @@ impl Effect {
 pub struct ActiveEffect { pub kind: Effect, pub secs: f32, pub amp: u8 }
 
 pub const ITEM_BASE: u8 = 128;
+// Matcha alloy line: 192 Sulfur, 193 Silver Ingot, 194 Quicksilver, 195 Steel Ingot,
+// 196 Adamant Ingot, 197/198 adamant pickaxe/sword, 199..202 adamant armor.
 pub fn is_item(id: u8) -> bool { id >= ITEM_BASE }
 pub fn is_estus(id: u8) -> bool { id == 128 }
 pub fn is_heart_container(id: u8) -> bool { id == 129 }
 pub fn is_food(id: u8) -> bool { food_effects(id).is_some() }
 
-// ---- Tools & armor (ids 163..178) ----
+// ---- Tools & armor ----
 // Tools 163..170: {wood,stone,iron,diamond} x {pickaxe,sword}. Armor 171..178: {iron,diamond} x
-// {helmet,chestplate,leggings,boots}. Durability is stored in the inventory slot's `count`.
-pub fn is_tool(id: u8) -> bool { (163..=170).contains(&id) }
-pub fn is_pickaxe(id: u8) -> bool { matches!(id, 163 | 165 | 167 | 169) }
-pub fn is_sword(id: u8) -> bool { matches!(id, 164 | 166 | 168 | 170) }
+// {helmet,chestplate,leggings,boots}. The Matcha adamant tier sits above diamond at 197..202.
+// Durability is stored in the inventory slot's `count`.
+pub fn is_tool(id: u8) -> bool { (163..=170).contains(&id) || matches!(id, 197 | 198) }
+pub fn is_pickaxe(id: u8) -> bool { matches!(id, 163 | 165 | 167 | 169 | 197) }
+pub fn is_sword(id: u8) -> bool { matches!(id, 164 | 166 | 168 | 170 | 198) }
 pub fn is_elytra(id: u8) -> bool { id == 188 }
-pub fn is_armor(id: u8) -> bool { (171..=178).contains(&id) || id == 188 } // elytra occupies the chest slot
-pub fn armor_slot(id: u8) -> usize { if id == 188 { 1 } else { ((id - 171) % 4) as usize } } // 0 helm, 1 chest, 2 legs, 3 boots
+pub fn is_armor(id: u8) -> bool { (171..=178).contains(&id) || (199..=202).contains(&id) || id == 188 } // elytra occupies the chest slot
+pub fn armor_slot(id: u8) -> usize {
+    if id == 188 { 1 } else if id >= 199 { (id - 199) as usize } else { ((id - 171) % 4) as usize }
+} // 0 helm, 1 chest, 2 legs, 3 boots
 pub fn is_flint_steel(id: u8) -> bool { id == 186 }
 pub fn is_firework(id: u8) -> bool { id == 189 }
 pub fn has_durability(id: u8) -> bool { is_tool(id) || is_armor(id) || id == 186 }
 
-pub fn sword_damage(id: u8) -> f32 { match id { 164 => 5.0, 166 => 6.0, 168 => 7.0, 170 => 9.0, _ => 0.0 } }
-pub fn pick_damage(id: u8) -> f32 { match id { 163 => 2.0, 165 => 3.0, 167 => 4.0, 169 => 5.0, _ => 0.0 } }
+pub fn sword_damage(id: u8) -> f32 { match id { 164 => 5.0, 166 => 6.0, 168 => 7.0, 170 => 9.0, 198 => 11.0, _ => 0.0 } }
+pub fn pick_damage(id: u8) -> f32 { match id { 163 => 2.0, 165 => 3.0, 167 => 4.0, 169 => 5.0, 197 => 6.0, _ => 0.0 } }
 pub fn armor_defense(id: u8) -> f32 {
     match id {
         171 => 2.0, 172 => 6.0, 173 => 5.0, 174 => 2.0, // iron helm/chest/legs/boots
         175 => 3.0, 176 => 8.0, 177 => 6.0, 178 => 3.0, // diamond
+        199 => 4.0, 200 => 9.0, 201 => 7.0, 202 => 4.0, // adamant
         188 => 1.0,                                     // elytra (mostly for mobility, minor defense)
         _ => 0.0,
     }
@@ -62,6 +68,8 @@ pub fn max_durability(id: u8) -> i32 {
         171..=174 => 240, 175..=178 => 528,                                       // iron/diamond armor
         186 => 64,                                                                // flint & steel
         188 => 432,                                                               // elytra
+        197 | 198 => 2031,                                                        // adamant tools
+        199..=202 => 666,                                                         // adamant armor
         _ => 0,
     }
 }

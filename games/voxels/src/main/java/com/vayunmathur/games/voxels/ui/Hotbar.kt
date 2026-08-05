@@ -38,13 +38,14 @@ data class InvSlot(val id: Int, val count: Int)
 @Serializable
 data class InventoryState(val selected: Int = 0, val slots: List<InvSlot> = List(9) { InvSlot(0, 0) }, val armor: List<InvSlot> = emptyList())
 
-// Ids 163..178 are tools/armor whose slot `count` is durability (not a stack size).
-fun isDurabilityItem(id: Int) = id in 163..178 || id == 186 || id == 188
+// Ids 163..178 and 197..202 are tools/armor whose slot `count` is durability (not a stack size).
+fun isDurabilityItem(id: Int) = id in 163..178 || id in 197..202 || id == 186 || id == 188
 
 val maxDurability = mapOf(
     163 to 60, 164 to 60, 165 to 132, 166 to 132, 167 to 250, 168 to 250, 169 to 1562, 170 to 1562,
     171 to 240, 172 to 240, 173 to 240, 174 to 240, 175 to 528, 176 to 528, 177 to 528, 178 to 528,
-    186 to 64, 188 to 432
+    186 to 64, 188 to 432,
+    197 to 2031, 198 to 2031, 199 to 666, 200 to 666, 201 to 666, 202 to 666
 )
 
 @Composable
@@ -88,7 +89,13 @@ val blockNames = mapOf(
     179 to "Disc: Golden", 180 to "Disc: Lullaby", 181 to "Disc: Forest", 182 to "Disc: Deep Mining",
     183 to "Disc: Winter", 184 to "Disc: Piano", 185 to "Disc: Gift",
     186 to "Flint & Steel", 187 to "Nether Star", 188 to "Elytra", 189 to "Firework Rocket",
-    190 to "Snowball", 191 to "Ender Pearl"
+    190 to "Snowball", 191 to "Ender Pearl",
+    // Matcha alloy tier.
+    90 to "Silver Ore", 91 to "Sulfur Ore", 92 to "Cinnabar Ore",
+    93 to "Silver Block", 94 to "Steel Block", 95 to "Adamant Block", 96 to "Blast Furnace",
+    192 to "Sulfur", 193 to "Silver Ingot", 194 to "Quicksilver", 195 to "Steel Ingot", 196 to "Adamant Ingot",
+    197 to "Adamant Pickaxe", 198 to "Adamant Sword",
+    199 to "Adamant Helmet", 200 to "Adamant Chestplate", 201 to "Adamant Leggings", 202 to "Adamant Boots"
 )
 
 // Music disc item id -> track asset in assets/music/.
@@ -131,21 +138,28 @@ val blockIconFile = mapOf(
     179 to "music_disc_13.png", 180 to "music_disc_cat.png", 181 to "music_disc_blocks.png", 182 to "music_disc_chirp.png",
     183 to "music_disc_5.png", 184 to "music_disc_11.png", 185 to "music_disc_bounce.png",
     186 to "flint_and_steel.png", 187 to "nether_star.png", 188 to "elytra.png", 189 to "firework_rocket.png",
-    190 to "snowball.png", 191 to "ender_pearl.png"
+    190 to "snowball.png", 191 to "ender_pearl.png",
+    90 to "silver_ore.png", 91 to "sulfur_ore.png", 92 to "cinnabar_ore.png",
+    93 to "silver_block.png", 94 to "steel_block.png", 95 to "adamant_block.png", 96 to "blast_furnace.png",
+    192 to "sulfur.png", 193 to "silver_ingot.png", 194 to "quicksilver.png", 195 to "steel_ingot.png",
+    196 to "adamant_ingot.png", 197 to "adamant_pickaxe.png", 198 to "adamant_sword.png",
+    199 to "adamant_helmet.png", 200 to "adamant_chestplate.png", 201 to "adamant_leggings.png", 202 to "adamant_boots.png"
 )
 
 // Creative catalog, split into tabs.
 val catalogNatural = listOf(3, 2, 40, 46, 60, 39, 41, 71, 1, 6, 38, 36, 37, 14, 16, 17, 15, 45, 79, 75, 70,
     4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 84, 85, 13)
-val catalogOres = listOf(18, 19, 20, 21, 22, 23, 24, 25, 73)
+val catalogOres = listOf(18, 19, 20, 21, 22, 90, 91, 92, 23, 24, 25, 93, 94, 95, 73)
 val catalogOcean = listOf(61, 62, 63, 64, 65, 66, 67, 68, 69)
 val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
     146, 147, 148, 149, 150, 151, 152, 153,
-    154, 155, 156, 157, 158, 159, 160, 161, 162, 187, 189, 190, 191)
+    154, 155, 156, 157, 158, 159, 160, 161, 162, 187, 189, 190, 191,
+    192, 193, 194, 195, 196)
 val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,
-    171, 172, 173, 174, 175, 176, 177, 178, 186, 188)
+    171, 172, 173, 174, 175, 176, 177, 178, 186, 188,
+    197, 198, 199, 200, 201, 202)
 val catalogMusic = listOf(82, 179, 180, 181, 182, 183, 184, 185)
-val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 88, 89)
+val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 96, 88, 89)
 
 @Composable
 fun rememberBlockIcon(id: Int): androidx.compose.ui.graphics.ImageBitmap? {

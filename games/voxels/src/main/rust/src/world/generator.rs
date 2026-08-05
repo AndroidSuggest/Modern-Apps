@@ -286,15 +286,21 @@ pub struct TerrainGen {
 // Ore/stone-variant veins, richest first so a rare vein wins where two overlap.
 // (block id, noise offset, noise scale, threshold, min y, max y)
 type Vein = (u8, f64, f64, f64, i32, i32);
-const OVERWORLD_VEINS: [Vein; 8] = [
+const OVERWORLD_VEINS: [Vein; 9] = [
     (22, 947.0, 0.115, 0.80, 62, 118), // emerald — mountains only, the rarest surface find
     (20, 823.0, 0.105, 0.78,  5,  20), // diamond — deepest
+    (90, 179.0, 0.095, 0.76,  5,  58), // silver — rarer than iron, never near the surface
     (21, 601.0, 0.100, 0.72,  5,  30), // redstone
     (19, 137.0, 0.090, 0.68,  5,  74), // iron
     (18,   7.0, 0.080, 0.62,  5, 112), // coal — large shallow seams
     (14, 311.0, 0.060, 0.70,  5, 100), // gravel pockets
     (16, 419.0, 0.055, 0.66,  5,  96), // diorite blobs
     (75, 733.0, 0.050, 0.66,  5,  34), // tuff blobs, deep
+];
+// Nether ores: cinnabar and sulfur, the feedstock for the alloy line.
+const NETHER_VEINS: [Vein; 2] = [
+    (92, 271.0, 0.100, 0.74, 4, 118), // cinnabar
+    (91, 563.0, 0.090, 0.68, 4, 118), // sulfur
 ];
 // Below this depth plain stone becomes deepslate (with a noisy transition band above it).
 const DEEPSLATE_Y: i32 = 16;
@@ -500,7 +506,9 @@ impl TerrainGen {
                     if y <= LAVA { chunk.set_block(dx, yy, dz, 84); } // lava sea in the open low area
                 } else {
                     // Magma near the lava line, netherrack elsewhere.
-                    let id = if y <= LAVA + 1 && n > 0.02 { 76 } else { 32 };
+                    let id = if y <= LAVA + 1 && n > 0.02 { 76 } else {
+                        self.stone_at(&NETHER_VEINS, wx, y, wz, 32)
+                    };
                     chunk.set_block(dx, yy, dz, id);
                 }
             }
@@ -937,11 +945,36 @@ mod tests {
             (21u8, "redstone", 0.02, 0.6),
             (20u8, "diamond", 0.005, 0.3),
             (22u8, "emerald", 0.002, 0.3),
+            (90u8, "silver", 0.02, 0.8),
         ] {
             let p = pct(id);
             println!("{name}: {p:.4}%");
             assert!(p >= lo && p <= hi, "{name} at {p:.4}% of stone, expected {lo}..{hi}%");
         }
         assert!(pct(57) > 5.0, "deepslate should fill the lower world, got {:.2}%", pct(57));
+    }
+
+    // The Nether must actually yield the alloy feedstock, or steel and adamant are unreachable.
+    #[test]
+    fn nether_ores_are_reachable() {
+        let gen = TerrainGen::new_dim(999, 1);
+        let (mut sulfur, mut cinnabar, mut total) = (0u32, 0u32, 0u32);
+        for wx in (-192..192).step_by(3) {
+            for wz in (-192..192).step_by(3) {
+                for y in (5..118).step_by(4) {
+                    total += 1;
+                    match gen.stone_at(&NETHER_VEINS, wx as f64, y, wz as f64, 32) {
+                        91 => sulfur += 1,
+                        92 => cinnabar += 1,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let sp = sulfur as f64 * 100.0 / total as f64;
+        let cp = cinnabar as f64 * 100.0 / total as f64;
+        println!("sulfur: {sp:.4}%  cinnabar: {cp:.4}%");
+        assert!((0.05..3.0).contains(&sp), "sulfur at {sp:.4}%");
+        assert!((0.02..2.0).contains(&cp), "cinnabar at {cp:.4}%");
     }
 }

@@ -95,9 +95,18 @@ pub enum Block {
     EndPortal = 87,
     Beacon = 88,
     Purpur = 89,
+    // Matcha alloy tier: silver in the overworld, sulfur and cinnabar in the Nether, feeding the
+    // steel -> adamant smithing line.
+    SilverOre = 90,
+    SulfurOre = 91,
+    CinnabarOre = 92,
+    SilverBlock = 93,
+    SteelBlock = 94,
+    AdamantBlock = 95,
+    BlastFurnace = 96,
 }
 
-pub const MAX_BLOCK_ID: u8 = 89;
+pub const MAX_BLOCK_ID: u8 = 96;
 
 impl Block {
     pub fn from_id(id: u8) -> Self {
@@ -111,9 +120,9 @@ impl Block {
     }
     pub fn is_opaque(self) -> bool { !self.is_transparent() }
 
-    // Interactive block menu: 0 = none, 1 = crafting, 2 = furnace.
+    // Interactive block menu: 0 = none, 1 = crafting, 2 = furnace, 3 = jukebox, 4 = blast furnace.
     pub fn menu(self) -> i32 {
-        match self { Self::CraftingTable => 1, Self::Furnace => 2, Self::Jukebox => 3, _ => 0 }
+        match self { Self::CraftingTable => 1, Self::Furnace => 2, Self::Jukebox => 3, Self::BlastFurnace => 4, _ => 0 }
     }
 
     // Atlas tile indices (8x8 atlas). See the atlas generator's TILES order.
@@ -209,6 +218,13 @@ impl Block {
             Self::EndPortal => 123,
             Self::Beacon => 124,
             Self::Purpur => 125,
+            Self::SilverOre => 128,
+            Self::SulfurOre => 129,
+            Self::CinnabarOre => 130,
+            Self::SilverBlock => 131,
+            Self::SteelBlock => 132,
+            Self::AdamantBlock => 133,
+            Self::BlastFurnace => 134,
         }
     }
     pub fn tile_bottom(self) -> u32 {
@@ -220,6 +236,7 @@ impl Block {
             Self::Bookshelf => 10,
             Self::CraftingTable => 10,
             Self::Furnace => 43,
+            Self::BlastFurnace => 135,
             Self::Sandstone => 69,
             Self::Podzol => 1,
             Self::Mycelium => 1,
@@ -244,6 +261,7 @@ impl Block {
             Self::JungleLog => 85,
             Self::HayBlock => 93,
             Self::Farmland => 1,
+            Self::BlastFurnace => 135,
             _ => self.tile_top(),
         }
     }
@@ -265,7 +283,8 @@ impl Block {
             | Self::IronBlock | Self::DiamondBlock | Self::EmeraldBlock | Self::Netherrack | Self::Furnace
             | Self::RedSandstone | Self::Sandstone | Self::GraniteBricks | Self::DeepslateBricks | Self::NetherBricks
             | Self::EndStoneBricks | Self::CobbledDeepslate | Self::Prismarine | Self::DarkPrismarine | Self::Dripstone
-            | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce | Self::Purpur)
+            | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce | Self::Purpur
+            | Self::SilverOre | Self::SulfurOre | Self::CinnabarOre | Self::SilverBlock | Self::SteelBlock | Self::AdamantBlock | Self::BlastFurnace)
     }
     // Block light emitted (0..15) for dynamic lighting.
     pub fn light_emission(self) -> u8 {

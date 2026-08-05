@@ -128,7 +128,7 @@ class MainActivity : ComponentActivity() {
                             onPlace = { off -> try {
                                 when (VoxelsNative.placeBlockAt(off.x, off.y)) {
                                     1 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace()
-                                    11, 12 -> { invStartTab = 2; inventoryOpen = true } // crafting table / furnace
+                                    11, 12, 14 -> { invStartTab = 2; inventoryOpen = true } // crafting table / furnace / blast furnace
                                     13 -> { // jukebox: play the held disc (or stop)
                                         val inv = try { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<com.vayunmathur.games.voxels.ui.InventoryState>(inventoryJson) } catch (_: Exception) { null }
                                         val held = inv?.slots?.getOrNull(inv.selected)?.id ?: 0

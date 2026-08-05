@@ -688,7 +688,7 @@ fn dim_dir(base: &str, dim: u8) -> String {
 // Layer k (k=1..4) at depth k must be a full (2k+1)x(2k+1) square of iron/diamond/emerald blocks
 // centred under the beacon. Tier stops at the first incomplete layer.
 fn beacon_tier(chunks: &ChunkMap, x: i32, y: i32, z: i32) -> i32 {
-    let is_mineral = |id: u8| matches!(id, 23 | 24 | 25);
+    let is_mineral = |id: u8| matches!(id, 23 | 24 | 25 | 93 | 94 | 95);
     let mut tier = 0;
     for k in 1..=4i32 {
         let mut full = true;

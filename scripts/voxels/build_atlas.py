@@ -15,6 +15,7 @@ import os, struct, zlib, shutil
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PACK = os.path.join(ROOT, "tmp/Matcha_Flavoured/assets/minecraft/textures/block")
+PACK_ITEM = os.path.join(ROOT, "tmp/Matcha_Flavoured/assets/minecraft/textures/item")
 ATLAS_BIN = os.path.join(ROOT, "games/voxels/src/main/rust/shaders/atlas.bin")
 ASSETS = os.path.join(ROOT, "games/voxels/src/main/assets/block")
 
@@ -62,6 +63,7 @@ NEW_TILES = {
     95: "farmland.png",
     96: "packed_dirt.png",
     116: "azalea_leaves.png",
+    133: "netherite_block.png",
 }
 
 # Procedurally generated tiles (index -> base RGB) for blocks the pack lacks textures for (coral,
@@ -98,6 +100,39 @@ PROC_TILES = {
     125: (170, 116, 172),  # purpur (muted purple)
     126: (214, 66, 66),    # firework rocket icon (red) — item only, tile unused by any block
     127: (226, 238, 250),  # snowball icon (near-white) — item only
+    131: (198, 202, 214),  # silver block (pale metal)
+    132: (86, 92, 104),    # steel block (blue-gray)
+    134: (58, 54, 62),     # blast furnace top (dark iron)
+    135: (44, 42, 48),     # blast furnace side
+}
+
+# Ore tiles: a stone/netherrack base with deterministic mineral blobs speckled over it, so new ores
+# read like the pack's real ore textures rather than a flat colour.
+# index -> (base tile index, mineral rgb, blob seed)
+ORE_TILES = {
+    128: (0, (214, 220, 232), 0x511E),   # silver ore in stone
+    129: (37, (238, 214, 62), 0x5F1F),   # sulfur ore in netherrack
+    130: (37, (196, 40, 44), 0xC14B),    # cinnabar ore in netherrack
+}
+
+# Blocks and items whose icon comes straight from a pack PNG. dest filename -> (subdir, source).
+COPY_ICONS = {
+    "adamant_block.png": ("block", "netherite_block.png"),
+    "adamant_ingot.png": ("item", "netherite_ingot.png"),
+    "adamant_pickaxe.png": ("item", "adamant_mattock.png"),
+    "adamant_sword.png": ("item", "adamant_claymore.png"),
+    "adamant_helmet.png": ("item", "netherite_helmet.png"),
+    "adamant_chestplate.png": ("item", "netherite_chestplate.png"),
+    "adamant_leggings.png": ("item", "netherite_leggings.png"),
+    "adamant_boots.png": ("item", "netherite_boots.png"),
+    "silver_ingot.png": ("item", "prismarine_crystals.png"),
+    "quicksilver.png": ("item", "prismarine_shard.png"),
+}
+
+# Item-only icons with no atlas tile (items are never placed as blocks). filename -> base rgb.
+PROC_ITEM_ICON = {
+    "sulfur.png": (238, 214, 62),
+    "steel_ingot.png": (118, 126, 140),
 }
 
 
@@ -109,6 +144,8 @@ PROC_ICON = {
     109: "amethyst.png", 110: "calcite.png", 111: "tuff.png", 112: "magma.png", 113: "glowstone.png",
     114: "obsidian.png", 115: "clay.png", 117: "warding_stone.png", 118: "jukebox.png", 119: "chest.png",
     120: "lava.png", 121: "end_stone.png", 124: "beacon.png", 125: "purpur_block.png", 126: "firework_rocket.png", 127: "snowball.png",
+    128: "silver_ore.png", 129: "sulfur_ore.png", 130: "cinnabar_ore.png",
+    131: "silver_block.png", 132: "steel_block.png", 134: "blast_furnace.png",
 }
 
 
@@ -140,6 +177,41 @@ def make_proc_tile(rgb):
             out[o+1] = max(0, min(255, g + n))
             out[o+2] = max(0, min(255, b + n))
             out[o+3] = 255
+    return out
+
+
+def read_tile(atlas, tile_index):
+    """Copy a 16x16 RGBA tile out of the packed atlas."""
+    col, row = tile_index % NEW_COLS, tile_index // NEW_COLS
+    out = bytearray(TILE * TILE * 4)
+    for ty in range(TILE):
+        s = ((row * TILE + ty) * NEW_W + col * TILE) * 4
+        out[ty*TILE*4:(ty+1)*TILE*4] = atlas[s:s + TILE*4]
+    return out
+
+
+def make_ore_tile(base, rgb, seed):
+    """Speckle mineral blobs over a base stone tile so it reads as an ore vein."""
+    out = bytearray(base)
+    r, g, b = rgb
+    h = seed & 0xFFFFFFFF
+    def rnd(limit):
+        nonlocal h
+        h = (h * 1103515245 + 12345) & 0x7FFFFFFF
+        return h % limit
+    for _ in range(8):
+        cx, cy, rad = rnd(TILE), rnd(TILE), 1 + rnd(2)
+        for y in range(cy - rad, cy + rad + 1):
+            for x in range(cx - rad, cx + rad + 1):
+                if not (0 <= x < TILE and 0 <= y < TILE): continue
+                if (x - cx) ** 2 + (y - cy) ** 2 > rad * rad: continue
+                # Keep the base tile's own luminance variation so the ore isn't a flat blob.
+                o = (y * TILE + x) * 4
+                shade = (base[o] + base[o+1] + base[o+2]) / 765.0 * 0.4 + 0.8
+                out[o]   = max(0, min(255, int(r * shade)))
+                out[o+1] = max(0, min(255, int(g * shade)))
+                out[o+2] = max(0, min(255, int(b * shade)))
+                out[o+3] = 255
     return out
 
 
@@ -292,6 +364,22 @@ def main():
         if idx in PROC_ICON:
             write_png(os.path.join(ASSETS, PROC_ICON[idx]), TILE, TILE, tile)
         print("tile %3d <- proc %s" % (idx, rgb))
+
+    for idx, (base_idx, rgb, seed) in sorted(ORE_TILES.items()):
+        tile = make_ore_tile(read_tile(new, base_idx), rgb, seed)
+        blit(new, NEW_W, idx, NEW_COLS, tile, TILE)
+        if idx in PROC_ICON:
+            write_png(os.path.join(ASSETS, PROC_ICON[idx]), TILE, TILE, tile)
+        print("tile %3d <- ore over tile %d %s" % (idx, base_idx, rgb))
+
+    for name, rgb in sorted(PROC_ITEM_ICON.items()):
+        write_png(os.path.join(ASSETS, name), TILE, TILE, make_proc_tile(rgb))
+        print("icon %s <- proc %s" % (name, rgb))
+
+    for dest, (subdir, src_name) in sorted(COPY_ICONS.items()):
+        src = os.path.join(PACK if subdir == "block" else PACK_ITEM, src_name)
+        shutil.copyfile(src, os.path.join(ASSETS, dest))
+        print("icon %s <- %s/%s" % (dest, subdir, src_name))
 
     open(ATLAS_BIN, "wb").write(new)
     print("wrote %s (%dx%d, %d bytes)" % (ATLAS_BIN, NEW_W, NEW_H, len(new)))

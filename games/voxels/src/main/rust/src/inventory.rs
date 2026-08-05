@@ -24,7 +24,7 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Crafting and smelting both flow through this table
 // (the Furnace menu opens the same crafting UI).
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 38] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 56] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -61,6 +61,28 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 38] = [
     // Armor: material only.
     (154, 5, 0, 0, 171, 1), (154, 8, 0, 0, 172, 1), (154, 7, 0, 0, 173, 1), (154, 4, 0, 0, 174, 1), // iron
     (155, 5, 0, 0, 175, 1), (155, 8, 0, 0, 176, 1), (155, 7, 0, 0, 177, 1), (155, 4, 0, 0, 178, 1), // diamond
+    // --- Matcha alloy tier ---
+    // Smelt the three new ores into their raw materials.
+    (Block::SilverOre as u8,   1, 0, 0, 193 /*Silver Ingot*/, 1),
+    (Block::SulfurOre as u8,   1, 0, 0, 192 /*Sulfur*/,       2),
+    (Block::CinnabarOre as u8, 1, 0, 0, 194 /*Quicksilver*/,  1),
+    // Iron quenched in sulfur makes steel; steel amalgamated with quicksilver makes adamant.
+    (154, 1, 192, 1, 195, 1), // iron ingot + sulfur -> steel ingot
+    (195, 4, 194, 2, 196, 1), // steel + quicksilver -> adamant ingot
+    // Adamant gear: the tier above diamond.
+    (196, 3, 159, 2, 197, 1), // adamant pickaxe
+    (196, 2, 159, 1, 198, 1), // adamant sword
+    (196, 5, 0, 0, 199, 1), (196, 8, 0, 0, 200, 1), (196, 7, 0, 0, 201, 1), (196, 4, 0, 0, 202, 1),
+    // Metal storage blocks (silver/steel/adamant also power beacons).
+    (193, 9, 0, 0, Block::SilverBlock as u8,  1),
+    (195, 9, 0, 0, Block::SteelBlock as u8,   1),
+    (196, 9, 0, 0, Block::AdamantBlock as u8, 1),
+    // A steel-lined furnace: the only place the alloy recipes will smelt.
+    (Block::Furnace as u8, 1, 195, 5, Block::BlastFurnace as u8, 1),
+    // Blessings: quicksilver charms. Previously unobtainable outside the creative catalog.
+    (194, 2, 193, 1, 160, 1), // quicksilver + silver -> Blessing of Swiftness
+    (194, 2, 154, 4, 161, 1), // quicksilver + iron   -> Blessing of the Warrior
+    (194, 2, 156, 2, 162, 1), // quicksilver + emerald-> Blessing of the Deep
 ];
 
 // Villager trades: (cost_id, cost_count, give_id, give_count). Emerald = item 156.
