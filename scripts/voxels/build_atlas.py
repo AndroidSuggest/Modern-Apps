@@ -29,6 +29,7 @@ NEW_H = NEW_ROWS * TILE
 # New tiles: atlas index -> source PNG filename in the pack. Indices 0..63 are copied from the old
 # atlas untouched; new blocks start at 64.
 NEW_TILES = {
+    144: "suspicious_sand_0.png",
     64: "red_sand.png",
     65: "red_sandstone.png",
     66: "red_sandstone_top.png",
@@ -136,6 +137,7 @@ COPY_ICONS = {
     "silver_ingot.png": ("item", "prismarine_crystals.png"),
     "shears.png": ("item", "shears.png"),
     "raw_fish.png": ("item", "catfish.png"),
+    "brush.png": ("item", "archaeologists_brush.png"),
     "quicksilver.png": ("item", "prismarine_shard.png"),
     # The blessing pantheon. Items only: a blessing is never placed as a block, so no atlas tile.
     **{f"blessing_{n}.png": ("item", f"blessing_{n}.png") for n in (
@@ -192,6 +194,7 @@ PROC_ICON = {
     138: "copper_block.png", 139: "gold_block.png", 140: "bronze_block.png",
     141: "stonecutter.png",
     143: "wool.png",
+    144: "suspicious_sand.png",
 }
 
 

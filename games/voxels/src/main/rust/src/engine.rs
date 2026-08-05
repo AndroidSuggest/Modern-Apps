@@ -1316,6 +1316,28 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             return true;
         }
     }
+    // Brushing: sweep suspicious sand for whatever was buried in it. The sand stays behind either
+    // way, so a dig site can't be turned into a hole by accident.
+    if sel == crate::item::BRUSH {
+        if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) {
+            let (x, y, z) = hit.pos;
+            if state.chunks.get_block_world(x, y, z) == Block::SuspiciousSand as u8 {
+                let mut r = state.spawn_rng;
+                r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+                state.spawn_rng = r;
+                let id = buried_find((r >> 8) as f32 / 16_777_216.0);
+                if !state.inventory.has_room_for(id, 1) { return false; }
+                state.inventory.add_block(id);
+                state.chunks.set_block_world(x, y, z, Block::Sand as u8);
+                mark_neighbors_dirty(state, x, z);
+                damage_tool(state);
+                let c = vec3(x as f32 + 0.5, y as f32 + 1.0, z as f32 + 0.5);
+                spawn_particles(&mut state.spawn_rng, &mut state.particles, c, 12, [0.86, 0.78, 0.58], 2.5, 0.6, 0.1);
+                return true;
+            }
+        }
+        return false;
+    }
     // Fishing: the first tap casts into water, the second strikes. Striking on a bite lands a catch;
     // striking early just reels the line back in.
     if sel == crate::fishing::ROD && state.player.eat_cd <= 0.0 {
@@ -1656,6 +1678,19 @@ fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
     if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
 }
+/// What a dig site gives up. Matcha's archaeology yields pottery sherds, which this game doesn't
+/// model, so the pool is the small treasures a buried cache would plausibly hold.
+pub fn buried_find(roll: f32) -> u8 {
+    match (roll.clamp(0.0, 0.999) * 100.0) as u32 {
+        0..=29 => 137,                                  // leather scraps
+        30..=54 => 236,                                 // copper ingot
+        55..=74 => Block::Amethyst as u8,
+        75..=89 => 237,                                 // gold ingot
+        90..=96 => 156,                                 // emerald
+        _ => 155,                                       // diamond
+    }
+}
+
 /// March along the aim direction looking for the top of a body of water to drop a float onto.
 fn water_surface_along(state: &EngineState, origin: Vec3, dir: Vec3, max_dist: f32) -> Option<[f32; 3]> {
     let mut t = 1.0f32;
@@ -1895,6 +1930,21 @@ mod tests {
             assert!((day_t_at(elapsed) - resumed).abs() < 1e-4, "{elapsed}s round-tripped to a different phase");
         }
         assert!((CLAMP / DAY_CYCLE).fract() < 1e-6, "the world_secs clamp must be a whole number of days");
+    }
+
+    // A dig site has to be worth digging: every roll gives a real item, most of them modest.
+    #[test]
+    fn every_buried_find_is_a_real_item() {
+        let mut diamonds = 0;
+        let n = 10_000;
+        for i in 0..n {
+            let id = buried_find(i as f32 / n as f32);
+            assert!(id != 0, "an empty dig site");
+            assert!(id <= crate::world::block::MAX_BLOCK_ID || crate::item::is_item(id), "{id} is not an id");
+            if id == 155 { diamonds += 1; }
+        }
+        let rate = diamonds as f32 / n as f32;
+        assert!(rate > 0.0 && rate < 0.06, "diamonds turn up {rate} of the time, which is not a treasure");
     }
 
     // The weather is a random walk, so what matters is that it can't wander somewhere invalid and that

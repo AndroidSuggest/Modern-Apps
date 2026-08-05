@@ -597,6 +597,10 @@ impl TerrainGen {
                 let surface: u8 = if h < 62 {
                     match biome { Biome::Badlands => 36, Biome::SnowyPlains | Biome::SnowyTaiga | Biome::IceSpikes | Biome::FrozenPeaks | Biome::SnowySlopes => 11, _ => 6 }
                 } else { surface_top };
+                // Buried finds hide in sand, wherever sand happens to be the surface.
+                let surface = if matches!(surface, 6 | 36) && hash3(wx as i32, wz as i32, 0x5A9D) % 900 == 0 {
+                    crate::world::block::Block::SuspiciousSand as u8
+                } else { surface };
                 chunk.set_block(dx, h, dz, surface);
                 if h > 1 && !self.cave_at(wx, (h-1) as f64, wz) { chunk.set_block(dx, h - 1, dz, sub); }
             }

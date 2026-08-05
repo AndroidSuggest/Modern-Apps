@@ -131,9 +131,11 @@ pub enum Block {
     Stonecutter = 118,
     /// Sheared from sheep; the game's first block that can't be mined out of the ground.
     Wool = 119,
+    /// Buried finds. Brushing it yields loot and leaves plain sand behind; mining it just gives sand.
+    SuspiciousSand = 120,
 }
 
-pub const MAX_BLOCK_ID: u8 = 119;
+pub const MAX_BLOCK_ID: u8 = 120;
 
 /// The geometry a block occupies within its cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -417,6 +419,7 @@ impl Block {
             Self::BronzeBlock => 140,
             Self::Stonecutter => 141,
             Self::Wool => 143,
+            Self::SuspiciousSand => 144,
             // Slabs and stairs are textured entirely from their parent material.
             Self::StoneSlab | Self::StoneStairs => Self::Stone.tile_top(),
             Self::CobbleSlab | Self::CobbleStairs => Self::Cobble.tile_top(),
