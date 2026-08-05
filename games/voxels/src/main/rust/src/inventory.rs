@@ -164,26 +164,7 @@ pub fn fuel_secs(id: u8) -> f32 {
 // Fuels with no use other than burning, tried before anything a player might be saving.
 const DEDICATED_FUELS: [u8; 3] = [157, 84, 192];
 
-// Villager trades: (cost_id, cost_count, give_id, give_count). Emerald = item 156.
-pub const TRADES: [(u8, i32, u8, i32); 16] = [
-    (156, 3, 168, 1),  // 3 Emerald -> Iron Sword
-    (156, 6, 172, 1),  // 6 Emerald -> Iron Chestplate
-    (156, 2, 133, 1),  // 2 Emerald -> Golden Apple
-    (156, 1, 131, 6),  // 1 Emerald -> 6 Bread
-    (156, 4, 128, 1),  // 4 Emerald -> Estus Flask
-    (157, 12, 156, 1), // 12 Coal -> 1 Emerald
-    (137, 6, 156, 2),  // 6 Leather -> 2 Emerald
-    // The village market: produce and prepared dishes the player can't grow or catch themselves.
-    (156, 1, 135, 4),  // 1 Emerald -> 4 Carrots
-    (156, 1, 146, 4),  // 1 Emerald -> 4 Baked Potatoes
-    (156, 1, 136, 3),  // 1 Emerald -> 3 Melon Slices
-    (156, 2, 132, 4),  // 2 Emerald -> 4 Cooked Fish
-    (156, 2, 148, 4),  // 2 Emerald -> 4 Cooked Salmon
-    (156, 2, 150, 3),  // 2 Emerald -> 3 Cooked Rabbit
-    (156, 2, 134, 3),  // 2 Emerald -> 3 Brownies
-    (156, 2, 153, 4),  // 2 Emerald -> 4 Chocolate Chip Cookies
-    (222, 8, 156, 1),  // 8 Raw Meat -> 1 Emerald (a butcher's price)
-];
+// Villager trades live in `villager.rs`, tiered per profession. Emerald = item 156.
 
 // Which shelf of the crafting menu a recipe belongs on. Purely for the UI — the recipe table itself
 // stays a flat list so indices remain stable.
@@ -346,13 +327,17 @@ impl Inventory {
         self.armor[slot] = InvSlot { id, count: dur };
         if old.id != 0 { Some(old) } else { None }
     }
-    // Execute a villager trade if the player can afford it.
-    pub fn trade(&mut self, idx: usize) -> bool {
-        let Some(&(c, cn, g, gn)) = TRADES.get(idx) else { return false; };
-        if self.count_of(c) < cn { return false; }
-        self.remove_count(c, cn);
-        if crate::item::has_durability(g) { self.add_item_with_count(g, crate::item::max_durability(g)); }
-        else { for _ in 0..gn { self.add_block(g); } }
+    // Execute a villager trade if the player can afford it and has somewhere to put the goods.
+    // Both costs are checked before either is taken, so a half-affordable trade consumes nothing.
+    pub fn trade_offer(&mut self, o: &crate::villager::Offer) -> bool {
+        let give_n = crate::villager::give_count(o);
+        if self.count_of(o.cost) < o.cost_n { return false; }
+        if o.cost2 != 0 && self.count_of(o.cost2) < o.cost2_n { return false; }
+        if !crate::item::has_durability(o.give) && !self.has_room_for(o.give, give_n) { return false; }
+        self.remove_count(o.cost, o.cost_n);
+        if o.cost2 != 0 { self.remove_count(o.cost2, o.cost2_n); }
+        if crate::item::has_durability(o.give) { self.add_item_with_count(o.give, give_n); }
+        else { for _ in 0..give_n { self.add_block(o.give); } }
         true
     }
     // Execute a stonecutter conversion if the player has the input and room for the output.
@@ -631,5 +616,38 @@ mod tests {
         assert!(fuel_secs(10) > 0.0);    // planks
         assert_eq!(fuel_secs(155), 0.0); // diamonds are not firewood
         assert_eq!(fuel_secs(0), 0.0);
+    }
+
+    // A two-ingredient trade must be all-or-nothing: the emeralds can't disappear when the player is
+    // short on the material half.
+    #[test]
+    fn a_half_affordable_trade_takes_nothing() {
+        use crate::villager::{Offer, EMERALD};
+        let forge = Offer { cost: EMERALD, cost_n: 4, cost2: 154, cost2_n: 2, give: 167, give_n: 1 };
+        let mut inv = Inventory::default();
+        inv.slots[0] = InvSlot { id: EMERALD, count: 8 };
+        inv.slots[1] = InvSlot { id: 154, count: 1 };
+
+        assert!(!inv.trade_offer(&forge), "one iron ingot short");
+        assert_eq!(inv.count_of(EMERALD), 8, "the emeralds must survive a refused trade");
+        assert_eq!(inv.count_of(154), 1);
+
+        inv.slots[1].count = 2;
+        assert!(inv.trade_offer(&forge));
+        assert_eq!(inv.count_of(EMERALD), 4);
+        assert_eq!(inv.count_of(154), 0);
+        assert!(inv.count_of(167) > 0, "the pickaxe arrives with durability");
+    }
+
+    #[test]
+    fn trading_into_a_full_inventory_is_refused() {
+        use crate::villager::{Offer, EMERALD};
+        let bulk = Offer { cost: EMERALD, cost_n: 1, cost2: 0, cost2_n: 0, give: Block::Stone as u8, give_n: 8 };
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as u8, count: STACK }; }
+        inv.slots[0] = InvSlot { id: EMERALD, count: 4 };
+
+        assert!(!inv.trade_offer(&bulk), "nowhere to put the stone");
+        assert_eq!(inv.count_of(EMERALD), 4, "the payment must survive a refused trade");
     }
 }

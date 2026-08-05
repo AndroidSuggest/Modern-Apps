@@ -21,6 +21,9 @@
     <string name="create_play">Create &amp; Play</string>
     <string name="villager_trades">Villager Trades</string>
     <string name="tap_a_trade_to_exchange_need_the_cost_it">Tap a trade to exchange (need the cost items).</string>
+    <string name="villager_level">Level %1$d of %2$d</string>
+    <string name="villager_next_tier">%1$d more trades unlocks the next tier.</string>
+    <string name="villager_tier">Tier %1$d</string>
     <string name="seed_2">Seed: %1$s  •  %2$s</string>
     <string name="estus">Estus ×%1$s</string>
     <string name="down">Down</string>

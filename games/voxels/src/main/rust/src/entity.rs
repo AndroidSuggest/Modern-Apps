@@ -165,6 +165,9 @@ pub struct Mob {
     anim: f32,
     on_ground: bool,
     rng: u32,
+    /// Villagers only: which trade table this one keeps. Drawn from the spawn seed, so it's stable for
+    /// the mob's lifetime even though mobs aren't saved.
+    pub profession: u8,
 }
 
 fn xorshift(s: &mut u32) -> f32 {
@@ -183,7 +186,8 @@ pub struct Terrain<'a> {
 impl Mob {
     pub fn new(kind: MobKind, pos: Vec3, seed: u32) -> Self {
         Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: kind.max_health(), attack_cd: 0.0, fuse: 0.0,
-            target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1 }
+            target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1,
+            profession: crate::villager::Profession::from_seed(seed | 1).index() as u8 }
     }
 
     pub fn tick(&mut self, dt: f32, player: Vec3, terrain: &Terrain) {
@@ -294,11 +298,21 @@ impl Mob {
         Some(top)
     }
 
+    /// A villager wears its profession's colours; everything else uses its skin unmodified.
+    fn tint(&self) -> [f32; 3] {
+        if self.kind == MobKind::Villager {
+            crate::villager::Profession::from_index(self.profession as usize).tint()
+        } else {
+            [1.0, 1.0, 1.0]
+        }
+    }
+
     fn append_mesh(&self, verts: &mut Vec<Vertex>, indices: &mut Vec<u32>) {
         let col = (self.kind.cell() % 4) as f32 * CELL;
         let row = (self.kind.cell() / 4) as f32 * CELL;
         // Procedural skins are uniform, so sample the cell centre for every face.
         let uniform = self.kind.uniform_skin();
+        let tint = self.tint();
         let (yc, ys) = (self.yaw.cos(), self.yaw.sin());
         for part in self.kind.parts() {
             let swing = if part.leg != 0.0 { self.anim.sin() * 0.55 * part.leg } else { 0.0 };
@@ -349,7 +363,7 @@ impl Mob {
                     wp = Vec3::new(rx, wp.y, rz) + self.pos;
                     let uv = if uniform { [(col + 32.0) / ATLAS, (row + 32.0) / ATLAS] }
                              else { [(col + uvc[c][0]) / ATLAS, (row + uvc[c][1]) / ATLAS] };
-                    verts.push(Vertex { pos: [wp.x, wp.y, wp.z], uv, color: [1.0,1.0,1.0], ao: 1.0, tile_idx: 0.0, normal: nrm, light: 0.0 });
+                    verts.push(Vertex { pos: [wp.x, wp.y, wp.z], uv, color: tint, ao: 1.0, tile_idx: 0.0, normal: nrm, light: 0.0 });
                 }
                 indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
             }

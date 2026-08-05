@@ -54,6 +54,10 @@ pub struct EngineState {
     pub deepest_y: i32,
     // Throttle for the Lu Ban mending blessing.
     pub mend_cd: f32,
+    // Which villager's trade list is open, and how many trades each profession has completed (the
+    // latter is what levels them up, since villager mobs aren't persisted).
+    pub trade_prof: u8,
+    pub trades_done: [u32; crate::villager::ALL.len()],
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -148,6 +152,10 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let mut dim_visited = [false; 3];
     for (i, v) in progress.dim_visited.iter().enumerate().take(3) { dim_visited[i] = *v; }
     dim_visited[dim as usize] = true;
+    // Trade counts are stored as a Vec so old saves load; a short or long one is padded/truncated.
+    let mut trades_done = [0u32; crate::villager::ALL.len()];
+    for (i, n) in progress.trades_done.iter().enumerate().take(trades_done.len()) { trades_done[i] = *n; }
+
     // Rewind the clock so the world resumes at the time of day it was saved at.
     let start_time = Instant::now()
         .checked_sub(std::time::Duration::from_secs_f32(progress.world_secs.clamp(0.0, 86_400.0)))
@@ -191,6 +199,8 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         best_beacon: progress.best_beacon,
         deepest_y: if had_save { progress.deepest_y } else { py as i32 },
         mend_cd: 0.0,
+        trade_prof: 0,
+        trades_done,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -246,6 +256,7 @@ pub fn destroy_engine() {
                 best_beacon: state.best_beacon,
                 deepest_y: state.deepest_y,
                 blessings: state.player.blessings,
+                trades_done: state.trades_done.to_vec(),
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
@@ -729,12 +740,34 @@ pub fn get_smelt_json() -> String { cref(&SMELT_CACHE, "{}").lock().map(|c| c.cl
 pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
 pub fn inventory_give(id: u8) { with_engine(|s| s.inventory.give(id)); }
 pub fn inventory_craft(recipe: usize) -> bool { with_engine(|s| s.inventory.craft(recipe)).unwrap_or(false) }
-pub fn do_trade(idx: usize) -> bool { with_engine(|s| s.inventory.trade(idx)).unwrap_or(false) }
+pub fn do_trade(idx: usize) -> bool {
+    with_engine(|s| {
+        let prof = crate::villager::Profession::from_index(s.trade_prof as usize);
+        let level = crate::villager::level_for(s.trades_done[prof.index()]);
+        let Some(offer) = crate::villager::offers(prof, level).get(idx).copied() else { return false; };
+        if !s.inventory.trade_offer(&offer) { return false; }
+        s.trades_done[prof.index()] = s.trades_done[prof.index()].saturating_add(1);
+        true
+    }).unwrap_or(false)
+}
 pub fn get_trades_json() -> String {
-    let items: Vec<_> = crate::inventory::TRADES.iter()
-        .map(|(c, cn, g, gn)| serde_json::json!({"cost": c, "costN": cn, "give": g, "giveN": gn}))
-        .collect();
-    serde_json::json!(items).to_string()
+    with_engine(|s| {
+        let prof = crate::villager::Profession::from_index(s.trade_prof as usize);
+        let done = s.trades_done[prof.index()];
+        let level = crate::villager::level_for(done);
+        let items: Vec<_> = crate::villager::offers(prof, level).iter().enumerate()
+            .map(|(i, o)| serde_json::json!({
+                "cost": o.cost, "costN": o.cost_n,
+                "cost2": o.cost2, "cost2N": o.cost2_n,
+                "give": o.give, "giveN": crate::villager::give_count(o),
+                "level": crate::villager::level_of_offer(prof, i),
+            }))
+            .collect();
+        serde_json::json!({
+            "prof": prof.name(), "level": level, "maxLevel": crate::villager::MAX_LEVEL,
+            "done": done, "nextAt": crate::villager::next_level_at(level), "trades": items,
+        }).to_string()
+    }).unwrap_or_else(|| "{}".to_string())
 }
 
 // The stonecutter's whole catalog; the UI filters it down to what the player is carrying.
@@ -1511,7 +1544,10 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
             let block_hit = crate::raycast::raycast(&state.chunks, o, d, reach);
             let bdist = block_hit.as_ref().map(|h| (vec3(h.pos.0 as f32 + 0.5, h.pos.1 as f32 + 0.5, h.pos.2 as f32 + 0.5) - o).length()).unwrap_or(f32::INFINITY);
             if let Some(idx) = nearest_mob_hit(state, o, d, reach - 1.5, bdist) {
-                if state.mobs[idx].kind == MobKind::Villager { return 20; }
+                if state.mobs[idx].kind == MobKind::Villager {
+                    state.trade_prof = state.mobs[idx].profession;
+                    return 20;
+                }
             }
             if let Some(hit) = block_hit {
                 let (x, y, z) = hit.pos;

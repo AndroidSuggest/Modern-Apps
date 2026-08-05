@@ -167,7 +167,8 @@ mod tests {
             let crafted = RECIPES.iter().any(|r| r.4 == id);
             let smelted = SMELTING.iter().any(|s| s.out == id);
             let dropped = crate::entity::MobKind::ALL.iter().any(|k| k.loot().contains(&id));
-            let traded = crate::inventory::TRADES.iter().any(|t| t.2 == id);
+            let traded = crate::villager::ALL.iter()
+                .any(|&p| crate::villager::offers(p, crate::villager::MAX_LEVEL).iter().any(|o| o.give == id));
             let foraged = id == 130; // apples fall out of leaves
             let looted = (0..40).any(|i| {
                 crate::container::roll_loot(i * 7, 40, i * 13, i as u8 % 3, false)

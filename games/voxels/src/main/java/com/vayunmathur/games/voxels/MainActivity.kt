@@ -63,9 +63,9 @@ class MainActivity : ComponentActivity() {
                 var chestOpen by remember { mutableStateOf(false) }
                 var cutsJson by remember { mutableStateOf("[]") }
                 var stonecutterOpen by remember { mutableStateOf(false) }
-                var tradesJson by remember { mutableStateOf("[]") }
+                var tradesJson by remember { mutableStateOf("{}") }
                 var tradeOpen by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson(); cutsJson = VoxelsNative.getCutsJson() } catch (_: Exception) {} }
+                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson(); cutsJson = VoxelsNative.getCutsJson() } catch (_: Exception) {} }
                 var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
                 val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
@@ -169,7 +169,12 @@ class MainActivity : ComponentActivity() {
                                         com.vayunmathur.games.voxels.util.MusicFx.toggle(this@MainActivity, com.vayunmathur.games.voxels.ui.discTrack[held])
                                     }
                                     15 -> stonecutterOpen = true // stonecutter
-                                    20 -> tradeOpen = true // villager
+                                    // Every villager has its own profession and level, so the stall is
+                                    // read fresh from the one that was tapped.
+                                    20 -> {
+                                        tradesJson = try { VoxelsNative.getTradesJson() } catch (_: Exception) { "{}" }
+                                        tradeOpen = true
+                                    }
                                     30 -> { // chest
                                         containerJson = try { VoxelsNative.getContainerJson() } catch (_: Exception) { """{"slots":[]}""" }
                                         chestOpen = true

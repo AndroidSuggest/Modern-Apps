@@ -7,6 +7,7 @@ pub mod player;
 pub mod raycast;
 pub mod input;
 pub mod inventory;
+pub mod villager;
 pub mod engine;
 pub mod texture_atlas;
 pub mod vulkan;

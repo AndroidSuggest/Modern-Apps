@@ -101,6 +101,9 @@ pub struct ProgressSave {
     #[serde(default)] pub best_beacon: i32,
     #[serde(default = "default_deepest")] pub deepest_y: i32,
     #[serde(default)] pub blessings: crate::blessing::Attunement,
+    // Completed trades per profession, indexed by `villager::ALL` order. Villager mobs aren't saved,
+    // so levels are tracked against the profession rather than the individual.
+    #[serde(default)] pub trades_done: Vec<u32>,
 }
 fn default_max_health() -> f32 { 20.0 }
 fn default_deepest() -> i32 { 128 }
@@ -112,6 +115,7 @@ impl Default for ProgressSave {
             end_dragon_dead: false, nether_wither_dead: false, world_secs: 0.0,
             best_beacon: 0, deepest_y: default_deepest(),
             blessings: crate::blessing::Attunement::default(),
+            trades_done: Vec::new(),
         }
     }
 }
@@ -262,6 +266,7 @@ mod tests {
         ps.progress.respawn = Some([8.0, 70.0, 9.0]);
         ps.progress.nether_wither_dead = true;
         ps.progress.world_secs = 372.5;
+        ps.progress.trades_done = vec![0, 7, 0, 0, 0, 0, 14, 0, 0, 0, 0];
         let back: PlayerSave = serde_json::from_str(&serde_json::to_string(&ps).unwrap()).unwrap();
         assert_eq!(back.progress.max_health, 34.0);
         assert_eq!(back.progress.dim, 1);
@@ -270,5 +275,7 @@ mod tests {
         assert_eq!(back.progress.respawn, Some([8.0, 70.0, 9.0]));
         assert!(back.progress.nether_wither_dead);
         assert_eq!(back.progress.world_secs, 372.5);
+        assert_eq!(back.progress.trades_done[1], 7, "villager levels have to survive a quit");
+        assert_eq!(back.progress.trades_done[6], 14);
     }
 }
