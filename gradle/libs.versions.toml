@@ -64,9 +64,6 @@ connectClient = "1.2.0-alpha04"
 # AndroidX – ink
 ink = "1.1.0-alpha04"
 
-# AndroidX – testing
-androidxTestRunner = "1.7.0"
-
 # Google libraries
 protobuf = "4.36.0-RC1"
 protobufJavalite = "4.35.0"
@@ -215,10 +212,6 @@ androidx-ink-brush = { group = "androidx.ink", name = "ink-brush", version.ref =
 androidx-ink-geometry = { group = "androidx.ink", name = "ink-geometry", version.ref = "ink" }
 androidx-ink-strokes = { group = "androidx.ink", name = "ink-strokes", version.ref = "ink" }
 androidx-ink-rendering = { group = "androidx.ink", name = "ink-rendering", version.ref = "ink" }
-
-# AndroidX – testing
-androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
-androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 
 # Google libraries
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
