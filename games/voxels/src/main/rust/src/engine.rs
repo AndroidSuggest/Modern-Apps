@@ -41,6 +41,19 @@ pub struct EngineState {
     pub portal_charge: f32,
     pub end_dragon_dead: bool,
     pub nether_wither_dead: bool,
+    // Night tracking: `was_night` edge-detects the night->day flip so `night_survived` only latches
+    // after the player has actually lived through a full night.
+    pub was_night: bool,
+    pub night_survived: bool,
+}
+
+// The world clock is offset by 60s so a fresh world opens at midday (day_t = 0.5 -> sun overhead).
+const DAY_CYCLE: f32 = 120.0;
+impl EngineState {
+    pub fn world_time(&self) -> f32 { 60.0 + self.start_time.elapsed().as_secs_f32() }
+    pub fn day_t(&self) -> f32 { (self.world_time() / DAY_CYCLE) % 1.0 }
+    // The sun is below the horizon at both ends of the cycle (day_t = 0 is midnight).
+    pub fn is_night(&self) -> bool { let t = self.day_t(); t < 0.25 || t > 0.75 }
 }
 
 unsafe impl Send for EngineState {}
@@ -58,13 +71,17 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let save_dir = files_dir.clone();
     let player_save = crate::world::save::load_player(&save_dir);
     let had_save = player_save.is_some();
-    let (px, py, pz, yaw, pitch, inv) = if let Some(ps) = player_save {
+    let progress = player_save.as_ref().map(|ps| ps.progress.clone()).unwrap_or_default();
+    let (px, py, pz, yaw, pitch, inv) = if let Some(ps) = &player_save {
         let inv = {
             let mut inv = Inventory::default();
             inv.selected = ps.inventory.selected.min(8);
             for (i, slot) in ps.inventory.slots.iter().enumerate().take(inv.slots.len()) {
                 inv.slots[i].id = slot.id;
                 inv.slots[i].count = slot.count;
+            }
+            for (i, slot) in progress.armor.iter().enumerate().take(inv.armor.len()) {
+                inv.armor[i] = crate::inventory::InvSlot { id: slot.id, count: slot.count };
             }
             inv.placed = ps.stats.placed;
             inv.broken = ps.stats.broken;
@@ -78,8 +95,13 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let mut player = Player::new(px, py, pz);
     player.yaw = yaw;
     player.pitch = pitch;
+    if had_save {
+        player.max_health = progress.max_health.clamp(crate::player::MIN_MAX_HEALTH, crate::player::CAP_MAX_HEALTH);
+        player.health = player.max_health;
+    }
 
-    let mut chunks = ChunkMap::new(seed, save_dir.clone());
+    let dim = if progress.dim < 3 { progress.dim } else { 0 };
+    let mut chunks = ChunkMap::new_dim(seed, dim_dir(&save_dir, dim), dim);
     chunks.ensure_radius(px as i32, pz as i32);
 
     if !had_save {
@@ -91,6 +113,16 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         }
     }
 
+    let mut dim_pos = [Vec3::ZERO; 3];
+    for (i, p) in progress.dim_pos.iter().enumerate().take(3) { dim_pos[i] = vec3(p[0], p[1], p[2]); }
+    let mut dim_visited = [false; 3];
+    for (i, v) in progress.dim_visited.iter().enumerate().take(3) { dim_visited[i] = *v; }
+    dim_visited[dim as usize] = true;
+    // Rewind the clock so the world resumes at the time of day it was saved at.
+    let start_time = Instant::now()
+        .checked_sub(std::time::Duration::from_secs_f32(progress.world_secs.clamp(0.0, 86_400.0)))
+        .unwrap_or_else(Instant::now);
+
     *guard = Some(EngineState {
         chunks,
         player,
@@ -99,7 +131,7 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         renderer: None,
         width: 0,
         height: 0,
-        start_time: Instant::now(),
+        start_time,
         last_tick: Instant::now(),
         window_ptr: None,
         needs_resize: false,
@@ -107,20 +139,22 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         mobs: Vec::new(),
         spawn_timer: 2.0,
         spawn_rng: seed ^ 0x9E3779B9,
-        respawn: None,
+        respawn: progress.respawn.map(|p| vec3(p[0], p[1], p[2])),
         checkpoint_cd: 0.0,
         beacon_cd: 0.0,
         particles: Vec::new(),
         projectiles: Vec::new(),
-        dim: 0,
+        dim,
         seed,
         stored: [None, None, None],
-        dim_pos: [Vec3::ZERO; 3],
-        dim_visited: [true, false, false],
+        dim_pos,
+        dim_visited,
         portal_armed: true,
         portal_charge: 0.0,
-        end_dragon_dead: false,
-        nether_wither_dead: false,
+        end_dragon_dead: progress.end_dragon_dead,
+        nether_wither_dead: progress.nether_wither_dead,
+        was_night: false,
+        night_survived: player_save.as_ref().map(|ps| ps.stats.night_seen).unwrap_or(false),
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -146,6 +180,7 @@ where F: FnOnce(&mut EngineState) -> R {
 pub fn destroy_engine() {
     let mut guard = match engine_lock().lock() { Ok(g) => g, Err(_) => return, };
     if let Some(mut state) = guard.take() {
+        state.dim_pos[state.dim as usize] = state.player.pos;
         let ps = crate::world::save::PlayerSave {
             x: state.player.pos.x,
             y: state.player.pos.y,
@@ -160,7 +195,18 @@ pub fn destroy_engine() {
                 placed: state.inventory.placed,
                 broken: state.inventory.broken,
                 walked: state.player.walk_dist as i32,
-                night_seen: state.inventory.placed > 0 && state.start_time.elapsed().as_secs() > 60,
+                night_seen: state.night_survived,
+            },
+            progress: crate::world::save::ProgressSave {
+                armor: state.inventory.armor.iter().map(|s| crate::world::save::InvSlotSave{ id: s.id, count: s.count }).collect(),
+                max_health: state.player.max_health,
+                dim: state.dim,
+                dim_pos: state.dim_pos.iter().map(|p| [p.x, p.y, p.z]).collect(),
+                dim_visited: state.dim_visited.to_vec(),
+                respawn: state.respawn.map(|p| [p.x, p.y, p.z]),
+                end_dragon_dead: state.end_dragon_dead,
+                nether_wither_dead: state.nether_wither_dead,
+                world_secs: state.start_time.elapsed().as_secs_f32(),
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
@@ -268,6 +314,12 @@ pub fn tick_and_render() {
         let mut input_mut = input;
         let move_len = (input.move_forward*input.move_forward + input.move_right*input.move_right).sqrt();
         if move_len > 0.9 { input_mut.sprint = true; }
+
+        // Latch "survived a night" on the night -> day flip, as long as the player is alive and in
+        // the overworld (the Nether and End have no day cycle).
+        let night_now = state.is_night();
+        if state.was_night && !night_now && !state.player.dead && state.dim == 0 { state.night_survived = true; }
+        state.was_night = night_now;
 
         // Elytra equipped in the chest slot enables gliding.
         state.player.elytra = state.inventory.armor[1].id == 188;
@@ -435,10 +487,7 @@ pub fn tick_and_render() {
                     if id != 0 && Block::from_id(id).is_solid() { gy = Some(y); break; }
                 }
                 if let Some(gy) = gy {
-                    let world_time = 60.0 + (Instant::now() - state.start_time).as_secs_f32();
-                    let day_t = (world_time / 120.0) % 1.0;
-                    // Sun is below the horizon (night) near the ends of the cycle; ~noon at day_t=0.5.
-                    let night = day_t < 0.25 || day_t > 0.75;
+                    let night = state.is_night();
                     let kind = if state.dim == 1 {
                         // Nether: hostile natives only (Ghasts are rarer floating threats).
                         match (rand(&mut rng) * 8.0) as u32 { 0 => MobKind::Ghast, 1 | 2 => MobKind::Blaze, 3 | 4 => MobKind::WitherSkeleton, _ => MobKind::Zombie }
@@ -500,6 +549,8 @@ pub fn tick_and_render() {
             append_projectiles(&mut entity_verts, &mut entity_indices, &state.projectiles, right, Vec3::Y);
         }
 
+        // Start at midday (day_t=0.5 -> sun overhead) so the world is lit when the app opens.
+        let time = state.world_time();
         if let Some(renderer) = state.renderer.as_mut() {
             if state.needs_resize {
                 let w = state.width; let h = state.height;
@@ -520,7 +571,6 @@ pub fn tick_and_render() {
             let vulkan_correction = Mat4::from_cols_array(&[1.0,0.0,0.0,0.0, 0.0,-1.0,0.0,0.0, 0.0,0.0,0.5,0.0, 0.0,0.0,0.5,1.0]);
             let view_proj = Mat4::from_rotation_z(pre_rot_angle) * vulkan_correction * proj * view;
             // Start at midday (day_t=0.5 -> sun overhead) so the world is lit when the app opens.
-            let time = 60.0 + (Instant::now() - state.start_time).as_secs_f32();
             let eb = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
             let nv = if state.player.night_vision() { 1.0 } else { 0.0 };
@@ -566,9 +616,10 @@ fn publish_ui(state: &EngineState) {
             format!("sh{:.1} main{:.1} bloom{:.1} comp{:.1}", p[0], p[1], p[2], p[3])
         }).unwrap_or_default(),
     }).to_string();
-    let time = (Instant::now() - state.start_time).as_secs_f32();
-    let day_t = (time / 120.0) % 1.0;
-    let stats = serde_json::json!({ "placed": state.inventory.placed, "broken": state.inventory.broken, "walked": state.player.walk_dist as i32, "night": day_t > 0.5 && day_t < 0.92 }).to_string();
+    let stats = serde_json::json!({
+        "placed": state.inventory.placed, "broken": state.inventory.broken,
+        "walked": state.player.walk_dist as i32, "night": state.night_survived,
+    }).to_string();
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
     let estus: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();

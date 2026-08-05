@@ -278,9 +278,26 @@ pub struct TerrainGen {
     perlin_detail: Perlin,
     perlin_cave: Perlin,
     perlin_biome: Perlin,
+    perlin_ore: Perlin,
     seed: u32,
     pub dim: u8, // 0 overworld, 1 nether, 2 end
 }
+
+// Ore/stone-variant veins, richest first so a rare vein wins where two overlap.
+// (block id, noise offset, noise scale, threshold, min y, max y)
+type Vein = (u8, f64, f64, f64, i32, i32);
+const OVERWORLD_VEINS: [Vein; 8] = [
+    (22, 947.0, 0.115, 0.80, 62, 118), // emerald — mountains only, the rarest surface find
+    (20, 823.0, 0.105, 0.78,  5,  20), // diamond — deepest
+    (21, 601.0, 0.100, 0.72,  5,  30), // redstone
+    (19, 137.0, 0.090, 0.68,  5,  74), // iron
+    (18,   7.0, 0.080, 0.62,  5, 112), // coal — large shallow seams
+    (14, 311.0, 0.060, 0.70,  5, 100), // gravel pockets
+    (16, 419.0, 0.055, 0.66,  5,  96), // diorite blobs
+    (75, 733.0, 0.050, 0.66,  5,  34), // tuff blobs, deep
+];
+// Below this depth plain stone becomes deepslate (with a noisy transition band above it).
+const DEEPSLATE_Y: i32 = 16;
 
 impl TerrainGen {
     pub fn new(seed: u32) -> Self { Self::new_dim(seed, 0) }
@@ -290,6 +307,7 @@ impl TerrainGen {
             perlin_detail: Perlin::new(seed.wrapping_add(101)),
             perlin_cave: Perlin::new(seed.wrapping_add(202)),
             perlin_biome: Perlin::new(seed.wrapping_add(303)),
+            perlin_ore: Perlin::new(seed.wrapping_add(404)),
             seed,
             dim,
         }
@@ -427,6 +445,20 @@ impl TerrainGen {
         let depth_bias = ((60.0 - y) / 55.0).clamp(0.0, 1.0) as f64; // more/bigger caverns deeper
         cheese > (0.70 - 0.16 * depth_bias)
     }
+    // The block that fills a solid underground cell: an ore/variant vein if one passes here,
+    // otherwise deepslate at depth or plain stone.
+    fn stone_at(&self, veins: &[Vein], wx: f64, y: i32, wz: f64, base: u8) -> u8 {
+        for &(id, off, scale, thresh, y0, y1) in veins {
+            if y < y0 || y > y1 { continue; }
+            if self.perlin_ore.get([wx * scale + off, y as f64 * scale, wz * scale - off]) > thresh { return id; }
+        }
+        base
+    }
+    // Deepslate replaces stone below DEEPSLATE_Y, with a noisy band so the boundary isn't a flat line.
+    fn deep_base(&self, wx: f64, y: i32, wz: f64) -> u8 {
+        let jitter = self.perlin_detail.get([wx * 0.06, wz * 0.06]) * 5.0;
+        if (y as f64) < DEEPSLATE_Y as f64 + jitter { 57 } else { 1 }
+    }
     // Underground biome for cave decoration, from depth + humidity.
     fn cave_kind(&self, wx: f64, wz: f64, y: i32) -> u8 {
         if y < 20 { return 0; } // deep dark
@@ -539,7 +571,8 @@ impl TerrainGen {
             let stone_top = h.saturating_sub(4);
             for y in 5..stone_top {
                 if !self.cave_at(wx, y as f64, wz) {
-                    chunk.set_block(dx, y, dz, 1);
+                    let base = self.deep_base(wx, y as i32, wz);
+                    chunk.set_block(dx, y, dz, self.stone_at(&OVERWORLD_VEINS, wx, y as i32, wz, base));
                 }
             }
             let (surface_top, sub) = self.surface_blocks(biome, h, wx, wz);
@@ -617,7 +650,7 @@ impl TerrainGen {
             while y + 1 < top {
                 let here = chunk.get_block(dx, y, dz);
                 let above = chunk.get_block(dx, y + 1, dz);
-                if here == 1 && above == 0 {
+                if matches!(here, 1 | 57) && above == 0 {
                     // Cave floor.
                     let kind = self.cave_kind(wx, wz, y as i32);
                     let mut hasher = DefaultHasher::new();
@@ -628,7 +661,7 @@ impl TerrainGen {
                         1 => { if r < 40 { chunk.set_block(dx, y, dz, 71); } if r < 6 { chunk.set_block(dx, y + 1, dz, 80); } if r == 7 { chunk.set_block(dx, y + 1, dz, 77); } } // moss / azalea / glow
                         _ => { if r < 25 { chunk.set_block(dx, y, dz, 70); } } // dripstone
                     }
-                } else if here == 0 && above == 1 {
+                } else if here == 0 && matches!(above, 1 | 57) {
                     // Cave ceiling: hanging dripstone in dry caves.
                     if self.cave_kind(wx, wz, y as i32) == 2 {
                         let mut hasher = DefaultHasher::new();
@@ -873,5 +906,42 @@ impl TerrainGen {
                 }
             }
         }}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Sanity-check ore rarity: sample the vein fields over a large volume and assert each ore lands
+    // in a plausible band. Guards against a threshold tweak silently flooding or emptying the world.
+    #[test]
+    fn ore_density_is_plausible() {
+        let gen = TerrainGen::new(12345);
+        let mut counts = std::collections::HashMap::new();
+        let mut total = 0u32;
+        for wx in (-256..256).step_by(2) {
+            for wz in (-256..256).step_by(2) {
+                for y in (5..120).step_by(3) {
+                    let base = gen.deep_base(wx as f64, y, wz as f64);
+                    let id = gen.stone_at(&OVERWORLD_VEINS, wx as f64, y, wz as f64, base);
+                    total += 1;
+                    *counts.entry(id).or_insert(0u32) += 1;
+                }
+            }
+        }
+        let pct = |id: u8| counts.get(&id).copied().unwrap_or(0) as f64 * 100.0 / total as f64;
+        for (id, name, lo, hi) in [
+            (18u8, "coal", 0.5, 4.0),
+            (19u8, "iron", 0.2, 2.5),
+            (21u8, "redstone", 0.02, 0.6),
+            (20u8, "diamond", 0.005, 0.3),
+            (22u8, "emerald", 0.002, 0.3),
+        ] {
+            let p = pct(id);
+            println!("{name}: {p:.4}%");
+            assert!(p >= lo && p <= hi, "{name} at {p:.4}% of stone, expected {lo}..{hi}%");
+        }
+        assert!(pct(57) > 5.0, "deepslate should fill the lower world, got {:.2}%", pct(57));
     }
 }
