@@ -56,10 +56,11 @@
     <string name="grant_calendar_permissions">Anna õigused kalendri kasutamiseks</string>
     <string name="delete_selected_contacts_title">Kustuta valitud kontaktid</string>
     <plurals name="delete_selected_contacts_confirm">
+        <item quantity="one">Kas oled kindel, et soovid kustutada <xliff:g id="count" example="1">%1$d</xliff:g> valitud kontakti? Seda tegevust ei saa tagasi pöörata.</item>
         <item quantity="other">Kas oled kindel, et soovid kustutada <xliff:g id="count" example="5">%1$d</xliff:g> valitud kontakti? Seda tegevust ei saa tagasi pöörata.</item>
     </plurals>
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> on valitud</string>
-    <string name="display">Ekraanivaade</string>
+    <string name="display">Ekraan</string>
     <string name="show_account_labels">Näita kontakti kasutajakontosid</string>
     <string name="search_contacts">Otsi kontaktide hulgast</string>
     <string name="include_year">Kaasa aasta</string>
@@ -78,6 +79,7 @@
     <string name="delete_group_confirm">Kas oled kindel, et soovid selle grupi kustutada? Kontaktid jäävad sel puhul alles.</string>
     <string name="no_groups_found">Ühtegi gruppi ei leidu. Saad mõne luua gruppide vahekaardilt.</string>
     <plurals name="contacts_count">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> kontakt</item>
         <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> kontakti</item>
     </plurals>
     <string name="import_vcf_file">Impordi vcf-fail</string>
@@ -85,6 +87,7 @@
     <string name="create_new_account_option">Loo uus kasutajakonto</string>
     <string name="no_contacts_found">Kontakte ei leidu</string>
     <plurals name="import_summary_contacts">
+        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> kontakt on importimiseks valmis</item>
         <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> kontakti on importimiseks valmis</item>
     </plurals>
     <string name="select_account">Vali kasutajakonto</string>
