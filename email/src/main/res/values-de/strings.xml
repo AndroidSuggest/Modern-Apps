@@ -28,4 +28,5 @@
     <string name="listening_for_new_mail">Suche nach neuen Mails</string>
     <string name="email_widget_description">Neueste Nachrichten aus allen Posteingängen - tippe um Email zu öffnen</string>
     <string name="drafts">Entwürfe</string>
+    <string name="open">Öffnen</string>
 </resources>
