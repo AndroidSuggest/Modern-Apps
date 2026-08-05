@@ -68,10 +68,9 @@ pub struct EngineState {
     prev_walk: f32,
     pub fishing: crate::fishing::Fishing,
     farm_cd: f32,
-    // Recipes revealed so far. Matcha ships 115 recipe advancements that unlock a recipe once the
-    // player first holds an ingredient; this is that, as a bitmask over RECIPES.
-    pub known_recipes: Vec<bool>,
-    known_cd: f32,
+    // Which recipes have been crafted at least once. This is what drives the crafting tech tree:
+    // a recipe unlocks when its prerequisite has been made (see inventory::recipe_unlocked).
+    pub crafted_recipes: Vec<bool>,
     // One-shot latches for the tutorial advancements. Not saved: the achievements manager persists
     // the unlock itself, so re-earning them in a later session costs nothing.
     pub did_shear: bool,
@@ -221,11 +220,13 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let mut dim_visited = [false; 3];
     for (i, v) in progress.dim_visited.iter().enumerate().take(3) { dim_visited[i] = *v; }
     dim_visited[dim as usize] = true;
-    // Revealed recipes, unpacked from the saved bitmask. A save from before this existed reveals
-    // nothing up front, and the first tick re-derives whatever the player already has.
-    let mut known_recipes = vec![false; crate::inventory::RECIPES.len()];
-    for (i, k) in known_recipes.iter_mut().enumerate() {
-        *k = progress.known_recipes.get(i / 8).is_some_and(|b| b & (1 << (i % 8)) != 0);
+    // Crafted recipes, unpacked from the saved bitmask. Saves written before the tech tree existed
+    // carry only the old ingredient-based "discovered" set; seed from that so a returning player
+    // keeps the access they had rather than being sent back to the roots.
+    let mut crafted_recipes = vec![false; crate::inventory::RECIPES.len()];
+    let bit = |bits: &[u8], i: usize| bits.get(i / 8).is_some_and(|b| b & (1 << (i % 8)) != 0);
+    for (i, c) in crafted_recipes.iter_mut().enumerate() {
+        *c = bit(&progress.crafted_recipes, i) || bit(&progress.known_recipes, i);
     }
 
     // Trade counts are stored as a Vec so old saves load; a short or long one is padded/truncated.
@@ -285,8 +286,7 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         prev_walk: 0.0,
         fishing: crate::fishing::Fishing::default(),
         farm_cd: 0.0,
-        known_recipes,
-        known_cd: 0.0,
+        crafted_recipes,
         did_shear: false, did_fish: false, did_brush: false, did_harvest: false, did_rest: false,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
@@ -346,13 +346,14 @@ pub fn destroy_engine() {
                 trades_done: state.trades_done.to_vec(),
                 weather: state.weather,
                 weather_cd: state.weather_cd,
-                known_recipes: {
-                    let mut bits = vec![0u8; state.known_recipes.len().div_ceil(8)];
-                    for (i, k) in state.known_recipes.iter().enumerate() {
-                        if *k { bits[i / 8] |= 1 << (i % 8); }
+                crafted_recipes: {
+                    let mut bits = vec![0u8; state.crafted_recipes.len().div_ceil(8)];
+                    for (i, c) in state.crafted_recipes.iter().enumerate() {
+                        if *c { bits[i / 8] |= 1 << (i % 8); }
                     }
                     bits
                 },
+                known_recipes: Vec::new(),
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
@@ -720,7 +721,6 @@ pub fn tick_and_render() {
         tick_ambience(state, dt, player_pos);
         tick_fishing(state, dt, player_pos);
         tick_farmland(state, dt, player_pos);
-        tick_recipe_unlocks(state, dt);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
@@ -821,7 +821,8 @@ fn publish_ui(state: &EngineState) {
         "trader": state.trades_done.iter().any(|&n| crate::villager::level_for(n) >= crate::villager::MAX_LEVEL),
         "sheared": state.did_shear, "fished": state.did_fish, "brushed": state.did_brush,
         "harvested": state.did_harvest, "rested": state.did_rest,
-        "recipes": state.known_recipes.iter().filter(|k| **k).count(),
+        "recipes": (0..crate::inventory::RECIPES.len())
+            .filter(|&i| crate::inventory::recipe_unlocked(i, &state.crafted_recipes)).count(),
     }).to_string();
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
@@ -866,7 +867,14 @@ pub fn get_ambience_json() -> String { cref(&AMBIENCE_CACHE, "{}").lock().map(|c
 
 pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
 pub fn inventory_give(id: Id) { with_engine(|s| s.inventory.give(id)); }
-pub fn inventory_craft(recipe: usize) -> bool { with_engine(|s| s.inventory.craft(recipe)).unwrap_or(false) }
+pub fn inventory_craft(recipe: usize) -> bool {
+    with_engine(|s| {
+        if !s.inventory.craft(recipe, &s.crafted_recipes) { return false; }
+        // Crafting it is what opens whatever it gates.
+        if let Some(flag) = s.crafted_recipes.get_mut(recipe) { *flag = true; }
+        true
+    }).unwrap_or(false)
+}
 pub fn do_trade(idx: usize) -> bool {
     with_engine(|s| {
         let prof = crate::villager::Profession::from_index(s.trade_prof as usize);
@@ -906,12 +914,15 @@ pub fn get_cuts_json() -> String {
 }
 pub fn do_cut(idx: usize) -> bool { with_engine(|s| s.inventory.cut(idx)).unwrap_or(false) }
 pub fn get_recipes_json() -> String {
-    let known = with_engine(|s| s.known_recipes.clone()).unwrap_or_default();
+    let crafted = with_engine(|s| s.crafted_recipes.clone()).unwrap_or_default();
     let items: Vec<_> = crate::inventory::RECIPES.iter().enumerate()
-        .map(|(i, (i1, c1, i2, c2, oid, oc))| serde_json::json!({
-            "in": i1, "inN": c1, "in2": i2, "in2N": c2, "out": oid, "outN": oc,
-            "cat": crate::inventory::recipe_category(*oid),
-            "known": known.get(i).copied().unwrap_or(false),
+        .map(|(i, rec)| serde_json::json!({
+            "in": rec.in1, "inN": rec.n1, "in2": rec.in2, "in2N": rec.n2,
+            "out": rec.out, "outN": rec.out_n,
+            "cat": crate::inventory::recipe_category(rec.out),
+            "known": crate::inventory::recipe_unlocked(i, &crafted),
+            // What the player has to craft first, so a locked row can say why.
+            "requires": rec.unlocked_by,
         }))
         .collect();
     serde_json::json!(items).to_string()
@@ -1732,20 +1743,6 @@ fn player_reach(state: &EngineState) -> f32 {
 fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
     if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
-}
-/// Reveal any recipe whose ingredients the player is carrying. Throttled: this walks every recipe,
-/// and nothing about it needs to happen at frame rate.
-fn tick_recipe_unlocks(state: &mut EngineState, dt: f32) {
-    state.known_cd -= dt;
-    if state.known_cd > 0.0 { return; }
-    state.known_cd = 0.5;
-    for (i, r) in crate::inventory::RECIPES.iter().enumerate() {
-        if state.known_recipes[i] { continue; }
-        let (in1, _, in2, _, _, _) = *r;
-        let have1 = state.inventory.count_of(in1) > 0;
-        let have2 = in2 == 0 || state.inventory.count_of(in2) > 0;
-        if have1 && have2 { state.known_recipes[i] = true; }
-    }
 }
 
 /// Seconds between growth passes, and how many random spots each pass checks. Sampling beats

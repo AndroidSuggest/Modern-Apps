@@ -184,7 +184,7 @@ mod tests {
         let mut missing = Vec::new();
         for id in 0..=255 as Id {
             if food_effects(id).is_none() { continue; }
-            let crafted = RECIPES.iter().any(|r| r.4 == id);
+            let crafted = RECIPES.iter().any(|r| r.out == id);
             let smelted = SMELTING.iter().any(|s| s.out == id);
             let dropped = crate::entity::MobKind::ALL.iter().any(|k| k.loot().contains(&id));
             let traded = crate::villager::ALL.iter()

@@ -21,108 +21,124 @@ pub struct Inventory {
     pub armor: [InvSlot; 4],
 }
 
-// (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(Id, i32, Id, i32, Id, i32); 96] = [
-    (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
-    (154, 2, 0, 0, 252, 1),   // iron            -> shears
-    (159, 3, 137, 2, 253, 1), // sticks + leather -> fishing rod
-    (159, 1, 236, 1, 255, 1), // stick + copper   -> archaeologist's brush
-    (251, 3, 0, 0, 131, 1),   // wheat            -> bread
-    (Block::HayBlock as Id, 1, 0, 0, 250, 4), // hay bale -> wheat seeds
-    (187, 1, Block::Glass as Id, 5, Block::Beacon as Id, 1), // nether star + glass -> beacon
-    (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
-    (Block::Snow as Id, 1, 0, 0, 190, 4), // snow -> snowballs
-    (Block::Wood as Id,      1, 0, 0, Block::Planks as Id,      4),
-    (Block::BirchLog as Id,  1, 0, 0, Block::BirchPlanks as Id, 4),
-    (Block::SpruceLog as Id, 1, 0, 0, Block::SprucePlanks as Id,4),
-    (Block::Planks as Id,    4, 0, 0, Block::CraftingTable as Id, 1),
-    (Block::Cobble as Id,    8, 0, 0, Block::Furnace as Id,     1),
-    (Block::Diorite as Id,   4, 0, 0, Block::PolishedDiorite as Id, 4),
-    (Block::Planks as Id,    2, 0, 0, 159 /*Stick*/,            4),
+/// One crafting recipe. `in2 == 0` means a single ingredient.
+///
+/// `unlocked_by` is the tech tree: the recipe stays hidden and uncraftable until the recipe whose
+/// output is `unlocked_by` has actually been crafted. 0 means it is available from the first minute.
+/// Naming the prerequisite by its *output id* rather than by index keeps the table readable and
+/// survives reordering.
+pub struct Recipe {
+    pub in1: Id, pub n1: i32,
+    pub in2: Id, pub n2: i32,
+    pub out: Id, pub out_n: i32,
+    pub unlocked_by: Id,
+}
+#[allow(clippy::too_many_arguments)]
+const fn r(in1: Id, n1: i32, in2: Id, n2: i32, out: Id, out_n: i32, unlocked_by: Id) -> Recipe {
+    Recipe { in1, n1, in2, n2, out, out_n, unlocked_by }
+}
+
+pub const RECIPES: [Recipe; 96] = [
+    r(154, 1, 157, 1, 186, 1, 165), // iron + coal -> flint & steel
+    r(154, 2, 0, 0, 252, 1, 165),   // iron            -> shears
+    r(159, 3, 137, 2, 253, 1, 159), // sticks + leather -> fishing rod
+    r(159, 1, 236, 1, 255, 1, 159), // stick + copper   -> archaeologist's brush
+    r(251, 3, 0, 0, 131, 1, 250),   // wheat            -> bread
+    r(Block::HayBlock as Id, 1, 0, 0, 250, 4, 0), // hay bale -> wheat seeds
+    r(187, 1, Block::Glass as Id, 5, Block::Beacon as Id, 1, 169), // nether star + glass -> beacon
+    r(138, 2, 0, 0, 189, 3, 0), // gunpowder -> firework rockets
+    r(Block::Snow as Id, 1, 0, 0, 190, 4, 0), // snow -> snowballs
+    r(Block::Wood as Id, 1, 0, 0, Block::Planks as Id, 4, 0),
+    r(Block::BirchLog as Id, 1, 0, 0, Block::BirchPlanks as Id, 4, 0),
+    r(Block::SpruceLog as Id, 1, 0, 0, Block::SprucePlanks as Id, 4, 0),
+    r(Block::Planks as Id, 4, 0, 0, Block::CraftingTable as Id, 1, 0),
+    r(Block::Cobble as Id, 8, 0, 0, Block::Furnace as Id, 1, 0),
+    r(Block::Diorite as Id, 4, 0, 0, Block::PolishedDiorite as Id, 4, 0),
+    r(Block::Planks as Id, 2, 0, 0, 159 /*Stick*/, 4, 0),
     // Material -> block.
-    (154, 9, 0, 0, Block::IronBlock as Id,    1),
-    (155, 9, 0, 0, Block::DiamondBlock as Id, 1),
-    (156, 9, 0, 0, Block::EmeraldBlock as Id, 1),
+    r(154, 9, 0, 0, Block::IronBlock as Id, 1, 165),
+    r(155, 9, 0, 0, Block::DiamondBlock as Id, 1, 167),
+    r(156, 9, 0, 0, Block::EmeraldBlock as Id, 1, 167),
     // Tools: material + stick(159).
-    (Block::Planks as Id, 3, 159, 2, 163, 1), // wood pickaxe
-    (Block::Planks as Id, 2, 159, 1, 164, 1), // wood sword
-    (Block::Cobble as Id, 3, 159, 2, 165, 1), // stone pickaxe
-    (Block::Cobble as Id, 2, 159, 1, 166, 1), // stone sword
-    (154, 3, 159, 2, 167, 1),                 // iron pickaxe
-    (154, 2, 159, 1, 168, 1),                 // iron sword
-    (155, 3, 159, 2, 169, 1),                 // diamond pickaxe
-    (155, 2, 159, 1, 170, 1),                 // diamond sword
+    r(Block::Planks as Id, 3, 159, 2, 163, 1, 0), // wood pickaxe
+    r(Block::Planks as Id, 2, 159, 1, 164, 1, 0), // wood sword
+    r(Block::Cobble as Id, 3, 159, 2, 165, 1, 163), // stone pickaxe
+    r(Block::Cobble as Id, 2, 159, 1, 166, 1, 163), // stone sword
+    r(154, 3, 159, 2, 167, 1, 165),                 // iron pickaxe
+    r(154, 2, 159, 1, 168, 1, 165),                 // iron sword
+    r(155, 3, 159, 2, 169, 1, 167),                 // diamond pickaxe
+    r(155, 2, 159, 1, 170, 1, 167),                 // diamond sword
     // Armor: material only.
-    (154, 5, 0, 0, 171, 1), (154, 8, 0, 0, 172, 1), (154, 7, 0, 0, 173, 1), (154, 4, 0, 0, 174, 1), // iron
-    (155, 5, 0, 0, 175, 1), (155, 8, 0, 0, 176, 1), (155, 7, 0, 0, 177, 1), (155, 4, 0, 0, 178, 1), // diamond
+    r(154, 5, 0, 0, 171, 1, 167), r(154, 8, 0, 0, 172, 1, 167), r(154, 7, 0, 0, 173, 1, 167), r(154, 4, 0, 0, 174, 1, 167), // iron
+    r(155, 5, 0, 0, 175, 1, 169), r(155, 8, 0, 0, 176, 1, 169), r(155, 7, 0, 0, 177, 1, 169), r(155, 4, 0, 0, 178, 1, 169), // diamond
     // --- Matcha alloy tier ---
     // Adamant gear: the tier above diamond.
-    (196, 3, 159, 2, 197, 1), // adamant pickaxe
-    (196, 2, 159, 1, 198, 1), // adamant sword
-    (196, 5, 0, 0, 199, 1), (196, 8, 0, 0, 200, 1), (196, 7, 0, 0, 201, 1), (196, 4, 0, 0, 202, 1),
+    r(196, 3, 159, 2, 197, 1, Block::BlastFurnace as Id), // adamant pickaxe
+    r(196, 2, 159, 1, 198, 1, 197), // adamant sword
+    r(196, 5, 0, 0, 199, 1, 197), r(196, 8, 0, 0, 200, 1, 197), r(196, 7, 0, 0, 201, 1, 197), r(196, 4, 0, 0, 202, 1, 197),
     // Metal storage blocks (silver/steel/adamant also power beacons).
-    (193, 9, 0, 0, Block::SilverBlock as Id,  1),
-    (195, 9, 0, 0, Block::SteelBlock as Id,   1),
-    (196, 9, 0, 0, Block::AdamantBlock as Id, 1),
+    r(193, 9, 0, 0, Block::SilverBlock as Id, 1, Block::BlastFurnace as Id),
+    r(195, 9, 0, 0, Block::SteelBlock as Id, 1, Block::BlastFurnace as Id),
+    r(196, 9, 0, 0, Block::AdamantBlock as Id, 1, Block::BlastFurnace as Id),
     // A steel-lined furnace: the only place the alloy recipes will smelt.
-    (Block::Furnace as Id, 1, 195, 5, Block::BlastFurnace as Id, 1),
+    r(Block::Furnace as Id, 1, 195, 5, Block::BlastFurnace as Id, 1, Block::Furnace as Id),
     // Blessings: quicksilver charms bound to a thematic offering. Attuning one grants a permanent
     // passive (see blessing.rs), so the ingredient cost tracks roughly how strong the passive is.
-    (194, 2, 193, 1, 160, 1),  // silver          -> Clement, swift of foot
-    (194, 2, 154, 4, 161, 1),  // iron            -> Ares, might
-    (194, 2, 156, 2, 162, 1),  // emerald         -> Yamm, the deep
-    (194, 2, 195, 3, 203, 1),  // steel           -> Daedalus, tools never wear
-    (194, 2, 189, 4, 204, 1),  // fireworks       -> Icarus, no fall damage
-    (194, 2, 192, 6, 205, 1),  // sulfur          -> Yama, immune to fire
-    (194, 2, Block::Obsidian as Id, 4, 206, 1),   // Talos, crushing blows
-    (194, 2, 187, 1, 207, 1),  // nether star     -> the God King, smite the undead
-    (194, 2, 138, 8, 208, 1),  // gunpowder       -> Arachnae, bane of horrors
-    (194, 2, 196, 2, 209, 1),  // adamant         -> Prometheus, armor never wears
-    (194, 2, 155, 3, 210, 1),  // diamond         -> Lu Ban, mending
-    (194, 2, Block::EmeraldBlock as Id, 1, 211, 1), // Eros, fortune
-    (194, 2, 191, 3, 212, 1),  // ender pearls    -> Will, reach
-    (194, 2, Block::Glowstone as Id, 4, 213, 1),  // Hyacinthus, second jump
-    (194, 2, Block::Purpur as Id, 6, 214, 1),     // Aeolus, wind burst
-    (194, 2, Block::Sculk as Id, 8, 215, 1),      // Cronus, swift sneak
-    (194, 2, Block::BlueIce as Id, 4, 216, 1),    // Demeter, frost walker
-    (194, 2, Block::SeaLantern as Id, 4, 217, 1), // Glaucus, sea luck
-    (194, 2, Block::Amethyst as Id, 6, 218, 1),   // Apollo, marksman
-    (194, 2, 190, 16, 219, 1), // snowballs       -> Artemis, multishot
-    (194, 2, Block::WardingStone as Id, 2, 220, 1), // Warding, thorns
-    (194, 2, Block::DiamondBlock as Id, 1, 221, 1), // Paris, infinity
+    r(194, 2, 193, 1, 160, 1, Block::BlastFurnace as Id),  // silver          -> Clement, swift of foot
+    r(194, 2, 154, 4, 161, 1, Block::BlastFurnace as Id),  // iron            -> Ares, might
+    r(194, 2, 156, 2, 162, 1, Block::BlastFurnace as Id),  // emerald         -> Yamm, the deep
+    r(194, 2, 195, 3, 203, 1, Block::BlastFurnace as Id),  // steel           -> Daedalus, tools never wear
+    r(194, 2, 189, 4, 204, 1, Block::BlastFurnace as Id),  // fireworks       -> Icarus, no fall damage
+    r(194, 2, 192, 6, 205, 1, Block::BlastFurnace as Id),  // sulfur          -> Yama, immune to fire
+    r(194, 2, Block::Obsidian as Id, 4, 206, 1, Block::BlastFurnace as Id),   // Talos, crushing blows
+    r(194, 2, 187, 1, 207, 1, Block::BlastFurnace as Id),  // nether star     -> the God King, smite the undead
+    r(194, 2, 138, 8, 208, 1, Block::BlastFurnace as Id),  // gunpowder       -> Arachnae, bane of horrors
+    r(194, 2, 196, 2, 209, 1, Block::BlastFurnace as Id),  // adamant         -> Prometheus, armor never wears
+    r(194, 2, 155, 3, 210, 1, Block::BlastFurnace as Id),  // diamond         -> Lu Ban, mending
+    r(194, 2, Block::EmeraldBlock as Id, 1, 211, 1, Block::BlastFurnace as Id), // Eros, fortune
+    r(194, 2, 191, 3, 212, 1, Block::BlastFurnace as Id),  // ender pearls    -> Will, reach
+    r(194, 2, Block::Glowstone as Id, 4, 213, 1, Block::BlastFurnace as Id),  // Hyacinthus, second jump
+    r(194, 2, Block::Purpur as Id, 6, 214, 1, Block::BlastFurnace as Id),     // Aeolus, wind burst
+    r(194, 2, Block::Sculk as Id, 8, 215, 1, Block::BlastFurnace as Id),      // Cronus, swift sneak
+    r(194, 2, Block::BlueIce as Id, 4, 216, 1, Block::BlastFurnace as Id),    // Demeter, frost walker
+    r(194, 2, Block::SeaLantern as Id, 4, 217, 1, Block::BlastFurnace as Id), // Glaucus, sea luck
+    r(194, 2, Block::Amethyst as Id, 6, 218, 1, Block::BlastFurnace as Id),   // Apollo, marksman
+    r(194, 2, 190, 16, 219, 1, Block::BlastFurnace as Id), // snowballs       -> Artemis, multishot
+    r(194, 2, Block::WardingStone as Id, 2, 220, 1, Block::BlastFurnace as Id), // Warding, thorns
+    r(194, 2, Block::DiamondBlock as Id, 1, 221, 1, Block::BlastFurnace as Id), // Paris, infinity
     // The five late additions cost the alloy tier, so they arrive after the Blast Furnace does.
-    (194, 2, Block::IronBlock as Id, 2, 245, 1),    // Athena, absorption shield
-    (194, 2, Block::Magma as Id, 4, 246, 1),        // Sekhmet, bloodrage
-    (194, 2, 222, 12, 247, 1), // raw meat        -> Camazotz, lifesteal
-    (194, 2, Block::Prismarine as Id, 8, 248, 1),   // Tangaroa, conduit
-    (194, 2, Block::Sculk as Id, 4, 249, 1),        // Anubis, ward undead
+    r(194, 2, Block::IronBlock as Id, 2, 245, 1, Block::BlastFurnace as Id),    // Athena, absorption shield
+    r(194, 2, Block::Magma as Id, 4, 246, 1, Block::BlastFurnace as Id),        // Sekhmet, bloodrage
+    r(194, 2, 222, 12, 247, 1, Block::BlastFurnace as Id), // raw meat        -> Camazotz, lifesteal
+    r(194, 2, Block::Prismarine as Id, 8, 248, 1, Block::BlastFurnace as Id),   // Tangaroa, conduit
+    r(194, 2, Block::Sculk as Id, 4, 249, 1, Block::BlastFurnace as Id),        // Anubis, ward undead
     // --- Matcha's kitchen. Cooked meat is the base ingredient; everything else builds on it. ---
-    (223, 1, 131, 1, 224, 1),  // cooked meat + bread          -> ramen
-    (223, 2, 135, 2, 225, 1),  // cooked meat + carrot         -> japanese curry
-    (132, 2, 135, 2, 226, 1),  // cooked fish + carrot         -> green curry
-    (146, 2, 131, 1, 227, 1),  // baked potato + bread         -> gnocchi
-    (131, 2, 0, 0, 228, 2),    // bread                        -> naan
-    (131, 1, 223, 2, 229, 1),  // bread + cooked meat          -> pupusa
-    (146, 3, 0, 0, 230, 1),    // baked potato                 -> latke
-    (131, 1, 130, 2, 231, 1),  // bread + apple                -> bruschetta
-    (131, 1, 149, 1, 232, 1),  // bread + fried egg            -> french toast
-    (131, 1, 152, 1, 233, 1),  // bread + glow berry crumble   -> sweet berry danish
-    (136, 2, Block::Snow as Id, 2, 234, 1), // melon + snow    -> melon sorbet
-    (223, 3, 131, 1, 235, 1),  // cooked meat + bread          -> stroganoff
-    (130, 2, 131, 1, 151, 1),  // apple + bread                -> apple empanada
-    (130, 1, Block::Glowstone as Id, 1, 152, 1), // apple + glowstone -> glow berry crumble
+    r(223, 1, 131, 1, 224, 1, 131),  // cooked meat + bread          -> ramen
+    r(223, 2, 135, 2, 225, 1, 131),  // cooked meat + carrot         -> japanese curry
+    r(132, 2, 135, 2, 226, 1, 131),  // cooked fish + carrot         -> green curry
+    r(146, 2, 131, 1, 227, 1, 131),  // baked potato + bread         -> gnocchi
+    r(131, 2, 0, 0, 228, 2, 131),    // bread                        -> naan
+    r(131, 1, 223, 2, 229, 1, 131),  // bread + cooked meat          -> pupusa
+    r(146, 3, 0, 0, 230, 1, 131),    // baked potato                 -> latke
+    r(131, 1, 130, 2, 231, 1, 131),  // bread + apple                -> bruschetta
+    r(131, 1, 149, 1, 232, 1, 131),  // bread + fried egg            -> french toast
+    r(131, 1, 152, 1, 233, 1, 131),  // bread + glow berry crumble   -> sweet berry danish
+    r(136, 2, Block::Snow as Id, 2, 234, 1, 131), // melon + snow    -> melon sorbet
+    r(223, 3, 131, 1, 235, 1, 131),  // cooked meat + bread          -> stroganoff
+    r(130, 2, 131, 1, 151, 1, 131),  // apple + bread                -> apple empanada
+    r(130, 1, Block::Glowstone as Id, 1, 152, 1, 131), // apple + glowstone -> glow berry crumble
     // --- Bronze: Matcha alloys copper with gold, landing between iron and diamond. ---
     // 236 copper ingot, 237 gold ingot, 238 bronze ingot.
-    (238, 3, 159, 2, 239, 1), // bronze pickaxe
-    (238, 2, 159, 1, 240, 1), // bronze sword
-    (238, 5, 0, 0, 241, 1), (238, 8, 0, 0, 242, 1), (238, 7, 0, 0, 243, 1), (238, 4, 0, 0, 244, 1),
-    (236, 9, 0, 0, Block::CopperBlock as Id, 1),
-    (237, 9, 0, 0, Block::GoldBlock as Id,   1),
-    (238, 9, 0, 0, Block::BronzeBlock as Id, 1),
+    r(238, 3, 159, 2, 239, 1, 167), // bronze pickaxe
+    r(238, 2, 159, 1, 240, 1, 239), // bronze sword
+    r(238, 5, 0, 0, 241, 1, 239), r(238, 8, 0, 0, 242, 1, 239), r(238, 7, 0, 0, 243, 1, 239), r(238, 4, 0, 0, 244, 1, 239),
+    r(236, 9, 0, 0, Block::CopperBlock as Id, 1, 167),
+    r(237, 9, 0, 0, Block::GoldBlock as Id, 1, 167),
+    r(238, 9, 0, 0, Block::BronzeBlock as Id, 1, 167),
     // The stonecutter itself: an iron blade on a stone bed.
-    (Block::Stone as Id, 3, 154, 1, Block::Stonecutter as Id, 1),
+    r(Block::Stone as Id, 3, 154, 1, Block::Stonecutter as Id, 1, 165),
 ];
 
 // Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
@@ -177,6 +193,16 @@ pub fn fuel_secs(id: Id) -> f32 {
 const DEDICATED_FUELS: [Id; 3] = [157, 84, 192];
 
 // Villager trades live in `villager.rs`, tiered per profession. Emerald = item 156.
+
+/// Whether recipe `idx` is available, given which recipes have already been crafted. A recipe with no
+/// prerequisite is always available; otherwise the recipe that produces `unlocked_by` must have been
+/// crafted at least once.
+pub fn recipe_unlocked(idx: usize, crafted: &[bool]) -> bool {
+    let Some(recipe) = RECIPES.get(idx) else { return false; };
+    if recipe.unlocked_by == 0 { return true; }
+    RECIPES.iter().enumerate()
+        .any(|(i, other)| other.out == recipe.unlocked_by && crafted.get(i).copied().unwrap_or(false))
+}
 
 // Which shelf of the crafting menu a recipe belongs on. Purely for the UI — the recipe table itself
 // stays a flat list so indices remain stable.
@@ -302,14 +328,18 @@ impl Inventory {
             }
         }
     }
-    pub fn craft(&mut self, recipe: usize) -> bool {
-        let Some(&(i1, c1, i2, c2, oid, oc)) = RECIPES.get(recipe) else { return false; };
-        if self.count_of(i1) < c1 { return false; }
-        if i2 != 0 && self.count_of(i2) < c2 { return false; }
-        self.remove_count(i1, c1);
-        if i2 != 0 { self.remove_count(i2, c2); }
-        if crate::item::has_durability(oid) { self.add_item_with_count(oid, crate::item::max_durability(oid)); }
-        else { for _ in 0..oc { self.add_block(oid); } }
+    /// Craft one batch. `crafted` is the set of recipes already made, which is what gates the tech
+    /// tree: a locked recipe consumes nothing and reports failure.
+    pub fn craft(&mut self, recipe: usize, crafted: &[bool]) -> bool {
+        if !recipe_unlocked(recipe, crafted) { return false; }
+        let Some(&Recipe { in1, n1, in2, n2, out, out_n, .. }) = RECIPES.get(recipe) else { return false; };
+        if self.count_of(in1) < n1 { return false; }
+        if in2 != 0 && self.count_of(in2) < n2 { return false; }
+        if !crate::item::has_durability(out) && !self.has_room_for(out, out_n) { return false; }
+        self.remove_count(in1, n1);
+        if in2 != 0 { self.remove_count(in2, n2); }
+        if crate::item::has_durability(out) { self.add_item_with_count(out, crate::item::max_durability(out)); }
+        else { for _ in 0..out_n { self.add_block(out); } }
         true
     }
     // Place a non-stacking item (tool/armor) into the first empty slot with a given count (durability).
@@ -457,13 +487,13 @@ mod tests {
     #[test]
     fn every_recipe_lands_on_a_known_shelf() {
         const SHELVES: [&str; 6] = ["block", "tool", "armor", "material", "food", "blessing"];
-        for &(_, _, _, _, out, _) in RECIPES.iter() {
-            let cat = recipe_category(out);
+        for rec in RECIPES.iter() {
+            let (out, cat) = (rec.out, recipe_category(rec.out));
             assert!(SHELVES.contains(&cat), "recipe for {out} has unknown category {cat}");
         }
         // Each shelf should actually have something on it.
         for shelf in SHELVES {
-            assert!(RECIPES.iter().any(|r| recipe_category(r.4) == shelf), "shelf {shelf} is empty");
+            assert!(RECIPES.iter().any(|r| recipe_category(r.out) == shelf), "shelf {shelf} is empty");
         }
     }
 
@@ -472,7 +502,7 @@ mod tests {
     #[test]
     fn every_id_in_the_tables_names_something_real() {
         use crate::world::block::is_real_id;
-        for (i, &(in1, _, in2, _, out, _)) in RECIPES.iter().enumerate() {
+        for (i, &Recipe { in1, in2, out, .. }) in RECIPES.iter().enumerate() {
             assert!(is_real_id(in1), "recipe {i} takes {in1}, which is nothing");
             assert!(in2 == 0 || is_real_id(in2), "recipe {i} takes {in2}, which is nothing");
             assert!(is_real_id(out), "recipe {i} yields {out}, which is nothing");
@@ -491,9 +521,100 @@ mod tests {
         for id in DEDICATED_FUELS { assert!(is_real_id(id), "fuel {id} is nothing"); }
     }
 
+    // The tech tree is the one structure in the game that can strand a player: a cycle or an
+    // orphaned prerequisite would make a recipe permanently uncraftable. These three properties are
+    // what make that impossible.
+    #[test]
+    fn the_crafting_tree_is_sound() {
+        // Every prerequisite must be something another recipe actually produces.
+        for (i, rec) in RECIPES.iter().enumerate() {
+            if rec.unlocked_by == 0 { continue; }
+            assert!(
+                RECIPES.iter().any(|o| o.out == rec.unlocked_by),
+                "recipe {i} (yields {}) waits on {}, which nothing makes",
+                rec.out, rec.unlocked_by,
+            );
+            assert_ne!(rec.unlocked_by, rec.out, "recipe {i} unlocks itself");
+        }
+
+        // There has to be somewhere to start.
+        let roots = RECIPES.iter().filter(|r| r.unlocked_by == 0).count();
+        assert!(roots > 0, "every recipe is locked behind another one");
+
+        // Walk the graph from the roots. Anything still locked when this settles is unreachable,
+        // which also rules out cycles: a cycle can never be entered.
+        let mut crafted = vec![false; RECIPES.len()];
+        loop {
+            let mut progressed = false;
+            for i in 0..RECIPES.len() {
+                if crafted[i] || !recipe_unlocked(i, &crafted) { continue; }
+                crafted[i] = true;
+                progressed = true;
+            }
+            if !progressed { break; }
+        }
+        let stranded: Vec<_> = crafted.iter().enumerate()
+            .filter(|(_, c)| !**c)
+            .map(|(i, _)| format!("{} (needs {})", RECIPES[i].out, RECIPES[i].unlocked_by))
+            .collect();
+        assert!(stranded.is_empty(), "these recipes can never be crafted: {stranded:?}");
+    }
+
+    // The gate has to actually withhold: a locked recipe must not quietly consume the ingredients.
+    #[test]
+    fn a_locked_recipe_crafts_nothing() {
+        // Diamond armour sits behind the diamond pickaxe.
+        let idx = RECIPES.iter().position(|r| r.out == 176).expect("diamond chestplate");
+        let need = RECIPES[idx].n1;
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
+        inv.slots[0] = InvSlot { id: 155, count: need };
+
+        let mut crafted = vec![false; RECIPES.len()];
+        assert!(!recipe_unlocked(idx, &crafted), "it should start locked");
+        assert!(!inv.craft(idx, &crafted), "a locked recipe must refuse");
+        assert_eq!(inv.count_of(155), need, "and must not take the diamonds");
+        assert_eq!(inv.count_of(176), 0);
+
+        // Crafting the prerequisite opens it.
+        let pick = RECIPES.iter().position(|r| r.out == RECIPES[idx].unlocked_by).unwrap();
+        crafted[pick] = true;
+        assert!(recipe_unlocked(idx, &crafted));
+        assert!(inv.craft(idx, &crafted), "now it should go through");
+        assert_eq!(inv.count_of(155), 0);
+        assert!(inv.count_of(176) > 0);
+    }
+
+    // A root recipe has to work from a standing start, or a new world is unplayable.
+    #[test]
+    fn the_roots_need_nothing_crafted_first() {
+        let none = vec![false; RECIPES.len()];
+        let planks = RECIPES.iter().position(|r| r.out == Block::Planks as Id).unwrap();
+        assert!(recipe_unlocked(planks, &none));
+
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
+        inv.slots[0] = InvSlot { id: Block::Wood as Id, count: 1 };
+        assert!(inv.craft(planks, &none), "logs into planks must work on the first day");
+        assert!(inv.count_of(Block::Planks as Id) > 0);
+    }
+
+    // Crafting into a full inventory must not eat the ingredients and drop the result.
+    #[test]
+    fn crafting_into_a_full_inventory_is_refused() {
+        let planks = RECIPES.iter().position(|r| r.out == Block::Planks as Id).unwrap();
+        let none = vec![false; RECIPES.len()];
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: Block::Dirt as Id, count: STACK }; }
+        inv.slots[0] = InvSlot { id: Block::Wood as Id, count: STACK };
+
+        assert!(!inv.craft(planks, &none), "nowhere to put the planks");
+        assert_eq!(inv.count_of(Block::Wood as Id), STACK, "the logs must survive");
+    }
+
     #[test]
     fn recipe_tables_are_well_formed() {
-        for (i, &(in1, n1, in2, n2, out, out_n)) in RECIPES.iter().enumerate() {
+        for (i, &Recipe { in1, n1, in2, n2, out, out_n, .. }) in RECIPES.iter().enumerate() {
             assert!(in1 != 0 && n1 > 0, "recipe {i} has no first ingredient");
             assert!(out != 0 && out_n > 0, "recipe {i} has no output");
             assert!(in2 != 0 || n2 == 0, "recipe {i} has a count for a missing second ingredient");
@@ -515,7 +636,7 @@ mod tests {
         assert!(steel.blast && adamant.blast, "the alloy line must require a blast furnace");
         // Every blessing in the pantheon must be reachable in normal play, not creative-only.
         for b in crate::blessing::PANTHEON.iter() {
-            assert!(RECIPES.iter().any(|r| r.4 == b.id), "{} has no recipe", b.name);
+            assert!(RECIPES.iter().any(|r| r.out == b.id), "{} has no recipe", b.name);
         }
     }
 

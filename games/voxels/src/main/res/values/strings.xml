@@ -25,6 +25,7 @@
     <string name="villager_next_tier">%1$d more trades unlocks the next tier.</string>
     <string name="villager_tier">Tier %1$d</string>
     <string name="recipes_show_locked">Show locked</string>
+    <string name="recipe_requires">Requires: craft %1$s first</string>
     <string name="seed_2">Seed: %1$s  •  %2$s</string>
     <string name="estus">Estus ×%1$s</string>
     <string name="down">Down</string>

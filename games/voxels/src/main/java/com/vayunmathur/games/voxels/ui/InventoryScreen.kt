@@ -226,14 +226,14 @@ private fun CraftingTable(recipesJson: String) {
             val arr = org.json.JSONArray(recipesJson)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"), o.optString("cat", "block"), o.optBoolean("known", true))
+                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"), o.optString("cat", "block"), o.optBoolean("known", true), o.optInt("requires", 0))
             }
         } catch (_: Exception) { emptyList() }
     }
     var sel by remember { mutableStateOf(0) }
     var cat by remember { mutableStateOf("block") }
-    // Unrevealed recipes are hidden by default so the list grows with the player, but they can be
-    // browsed on demand rather than being a secret.
+    // Locked recipes are hidden by default so the list grows with the player, but they can be
+    // browsed on demand: knowing what a tier leads to is half the reason to chase it.
     var showLocked by remember { mutableStateOf(false) }
     val r = recipes.getOrNull(sel)
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -299,11 +299,26 @@ private fun CraftingTable(recipesJson: String) {
                 Text("→", color = Color.White.copy(0.8f), fontSize = 24.sp)
                 GridCell(r?.outId ?: 0, r?.outN ?: 0)
             }
+            // A locked recipe says what opens it, so the tree reads as a path rather than a wall.
+            if (r != null && !r.known) {
+                Text(
+                    stringResource(R.string.recipe_requires, blockNames[r.requires] ?: "?"),
+                    color = Color(0xFFD9B36C), fontSize = 12.sp,
+                )
+            }
+            val unlocked = r != null && r.known
             Box(
-                Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF3A6B3A))
-                    .clickable { if (r != null) try { VoxelsNative.craft(sel) } catch (_: Exception) {} }
+                Modifier.clip(RoundedCornerShape(8.dp))
+                    .background(if (unlocked) Color(0xFF3A6B3A) else Color.White.copy(0.10f))
+                    .clickable(enabled = unlocked) { try { VoxelsNative.craft(sel) } catch (_: Exception) {} }
                     .padding(horizontal = 24.dp, vertical = 8.dp)
-            ) { Text(stringResource(R.string.craft), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+            ) {
+                Text(
+                    stringResource(R.string.craft),
+                    color = Color.White.copy(if (unlocked) 1f else 0.4f),
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }
@@ -311,8 +326,9 @@ private fun CraftingTable(recipesJson: String) {
 private data class Recipe(
     val inId: Int, val inN: Int, val in2Id: Int, val in2N: Int,
     val outId: Int, val outN: Int, val cat: String,
-    // Revealed once the player has held the ingredients, the way Matcha's recipe advancements work.
+    // Unlocked once `requires` has been crafted; 0 means available from the start.
     val known: Boolean,
+    val requires: Int,
 )
 
 // Crafting shelves, in the order they appear as filter chips.
