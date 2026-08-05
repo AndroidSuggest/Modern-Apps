@@ -1,3 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Traduction</string>
+    <string name="enter_text">Saisissez du texte</string>
+    <string name="loading_translator">Chargement du traducteur…</string>
+    <string name="copy">Copier</string>
+    <string name="speak">Écouter</string>
+    <string name="translation">Traduction</string>
+    <string name="translation_model_not_installed_showing">Modèle de traduction non installé — seul le texte détecté est affiché</string>
+    <string name="grant_camera_access">Autoriser l’accès à l’appareil photo pour traduire ce que vous voyez</string>
+</resources>
