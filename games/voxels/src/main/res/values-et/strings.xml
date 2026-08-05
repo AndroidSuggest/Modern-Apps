@@ -1,3 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="paused">Peatatud</string>
+    <string name="resume">Jätka</string>
+    <string name="create_new_world">Loo usu maailm</string>
+    <string name="create_world">Loo maailm</string>
+    <string name="products">Tooted</string>
+</resources>
