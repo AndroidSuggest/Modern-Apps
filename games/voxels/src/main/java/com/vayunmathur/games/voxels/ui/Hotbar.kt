@@ -39,12 +39,12 @@ data class InvSlot(val id: Int, val count: Int)
 data class InventoryState(val selected: Int = 0, val slots: List<InvSlot> = List(9) { InvSlot(0, 0) }, val armor: List<InvSlot> = emptyList())
 
 // Ids 163..178 and 197..202 are tools/armor whose slot `count` is durability (not a stack size).
-fun isDurabilityItem(id: Int) = id in 163..178 || id in 197..202 || id in 239..244 || id == 186 || id == 188
+fun isDurabilityItem(id: Int) = id in 163..178 || id in 197..202 || id in 239..244 || id == 186 || id == 188 || id == 252
 
 val maxDurability = mapOf(
     163 to 60, 164 to 60, 165 to 132, 166 to 132, 167 to 250, 168 to 250, 169 to 1562, 170 to 1562,
     171 to 240, 172 to 240, 173 to 240, 174 to 240, 175 to 528, 176 to 528, 177 to 528, 178 to 528,
-    186 to 64, 188 to 432,
+    186 to 64, 188 to 432, 252 to 238,
     239 to 700, 240 to 700, 241 to 380, 242 to 380, 243 to 380, 244 to 380,
     197 to 2031, 198 to 2031, 199 to 666, 200 to 666, 201 to 666, 202 to 666
 )
@@ -118,6 +118,7 @@ val blockNames = mapOf(
     197 to "Adamant Pickaxe", 198 to "Adamant Sword",
     199 to "Adamant Helmet", 200 to "Adamant Chestplate", 201 to "Adamant Leggings", 202 to "Adamant Boots",
     // Matcha's building set: slabs and stairs, cut on a stonecutter.
+    119 to "Wool", 252 to "Shears",
     102 to "Stone Slab", 103 to "Stone Stairs", 104 to "Cobble Slab", 105 to "Cobble Stairs",
     106 to "Plank Slab", 107 to "Plank Stairs", 108 to "Brick Slab", 109 to "Brick Stairs",
     110 to "Sandstone Slab", 111 to "Sandstone Stairs",
@@ -164,6 +165,7 @@ val blockIconFile = mapOf(
     212 to "blessing_will.png", 213 to "blessing_hyacinthus.png", 214 to "blessing_aeolus.png",
     215 to "blessing_cronus.png", 216 to "blessing_demeter.png", 217 to "blessing_glaucus.png",
     218 to "blessing_apollo.png", 219 to "blessing_artemis.png", 220 to "blessing_warding.png",
+    119 to "wool.png", 252 to "shears.png",
     221 to "blessing_paris.png",
     245 to "blessing_athena.png", 246 to "blessing_sekhmet.png", 247 to "blessing_camazotz.png",
     248 to "blessing_tangaroa.png", 249 to "blessing_anubis.png",
@@ -219,10 +221,10 @@ val catalogBlessings = listOf(160, 161, 162, 203, 204, 205, 206, 207, 208, 209, 
 val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,
     171, 172, 173, 174, 175, 176, 177, 178, 186, 188,
     239, 240, 241, 242, 243, 244,
-    197, 198, 199, 200, 201, 202)
+    197, 198, 199, 200, 201, 202, 252)
 val catalogMusic = listOf(82, 179, 180, 181, 182, 183, 184, 185)
 val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 96, 118, 88, 89,
-    102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117)
+    102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 119)
 
 @Composable
 fun rememberBlockIcon(id: Int): androidx.compose.ui.graphics.ImageBitmap? {

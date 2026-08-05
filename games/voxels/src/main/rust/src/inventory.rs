@@ -24,8 +24,9 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 91] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 92] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
+    (154, 2, 0, 0, 252, 1),   // iron            -> shears
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
     (Block::Snow as u8, 1, 0, 0, 190, 4), // snow -> snowballs

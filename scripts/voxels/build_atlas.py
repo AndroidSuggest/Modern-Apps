@@ -70,6 +70,7 @@ NEW_TILES = {
 # cave, and ocean specials). Each is a solid colour with light deterministic speckle so it reads as a
 # textured block rather than a flat swatch.
 PROC_TILES = {
+    143: (236, 238, 234),  # wool (soft off-white; the pack never retextures it)
     97:  (52, 90, 235),    # tube coral (blue)
     98:  (240, 116, 168),  # brain coral (pink)
     99:  (178, 52, 216),   # bubble coral (purple)
@@ -133,6 +134,7 @@ COPY_ICONS = {
     "adamant_leggings.png": ("item", "netherite_leggings.png"),
     "adamant_boots.png": ("item", "netherite_boots.png"),
     "silver_ingot.png": ("item", "prismarine_crystals.png"),
+    "shears.png": ("item", "shears.png"),
     "quicksilver.png": ("item", "prismarine_shard.png"),
     # The blessing pantheon. Items only: a blessing is never placed as a block, so no atlas tile.
     **{f"blessing_{n}.png": ("item", f"blessing_{n}.png") for n in (
@@ -186,6 +188,7 @@ PROC_ICON = {
     136: "copper_ore.png", 137: "gold_ore.png",
     138: "copper_block.png", 139: "gold_block.png", 140: "bronze_block.png",
     141: "stonecutter.png",
+    143: "wool.png",
 }
 
 

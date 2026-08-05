@@ -1597,6 +1597,8 @@ fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
     if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
 }
+/// Wool from one shearing. A sheep only carries one coat, so this is the whole yield.
+const WOOL_PER_SHEARING: i32 = 3;
 /// Anubis keeps the dead this far back.
 const WARD_UNDEAD_RADIUS: f32 = 6.0;
 pub fn is_undead(kind: MobKind) -> bool {
@@ -1733,6 +1735,15 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
                 if state.mobs[idx].kind == MobKind::Villager {
                     state.trade_prof = state.mobs[idx].profession;
                     return 20;
+                }
+                // Shearing a sheep: wool now, and the sheep walks away unharmed to regrow it.
+                let held = state.inventory.selected_block();
+                if crate::item::is_shears(held) && state.mobs[idx].kind == MobKind::Sheep && !state.mobs[idx].sheared {
+                    if !state.inventory.has_room_for(Block::Wool as u8, WOOL_PER_SHEARING) { return 0; }
+                    state.mobs[idx].sheared = true;
+                    for _ in 0..WOOL_PER_SHEARING { state.inventory.add_block(Block::Wool as u8); }
+                    damage_tool(state);
+                    return 1;
                 }
             }
             if let Some(hit) = block_hit {

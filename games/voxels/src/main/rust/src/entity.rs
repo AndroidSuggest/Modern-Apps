@@ -185,6 +185,8 @@ pub struct Mob {
     /// Radius the mob refuses to come inside, set by the engine each tick. Anubis pushes the undead
     /// back; everything else leaves this at zero.
     pub repelled: f32,
+    /// Sheep only: its coat has already been taken.
+    pub sheared: bool,
 }
 
 /// Per-spawn stat jitter. Matcha retunes mobs by type; this adds variation *within* a type so an
@@ -241,7 +243,7 @@ impl Mob {
         Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: v.health, attack_cd: 0.0, fuse: 0.0,
             target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1,
             profession: crate::villager::Profession::from_seed(seed | 1).index() as u8,
-            max_health: v.health, speed: v.speed, elite: v.elite, repelled: 0.0 }
+            max_health: v.health, speed: v.speed, elite: v.elite, repelled: 0.0, sheared: false }
     }
 
     pub fn tick(&mut self, dt: f32, player: Vec3, terrain: &Terrain) {
