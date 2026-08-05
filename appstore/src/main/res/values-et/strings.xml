@@ -1,3 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="nav_home">Avaleht</string>
+    <string name="nav_search">Otsi</string>
+    <string name="nav_updates">Tarkvarauuendused</string>
+    <string name="open">Ava</string>
+    <string name="uninstall">Eemalda rakendus</string>
+    <string name="view_in_play_store">Vaata Play Store\'is</string>
+    <string name="installed">Paigaldatud</string>
+    <string name="installed_2">Paigaldatud: %1$s</string>
+    <string name="uninstall_3">Kas eemaldad „%1$s“ rakenduse?</string>
+    <string name="this_will_uninstall_you_can_reinstall_la">„%1$s“ saab järgnevaga eemaldatud. Võid ta alati uuesti paigaldada.</string>
+    <string name="last_sync">Viimane sünkroonimine: %1$s</string>
+    <string name="repositories">Lähtekood</string>
+    <string name="search_placeholder">Otsi rakendust</string>
+</resources>
