@@ -49,7 +49,7 @@
     <string name="block_air_quality">Õhukvaliteet</string>
     <string name="hourly_forecast">Ennustus tundide kaupa</string>
     <string name="daily_forecast">Järgmiste päevade ennustus</string>
-    <string name="now">Praegu</string>
+    <string name="now">Hetkel</string>
     <string name="today">Täna</string>
     <string name="today_short">TÄNA</string>
     <string name="tomorrow_short">HOMME</string>
@@ -93,4 +93,5 @@
     <string name="summary_winds_noticeable">Täna puhub märgatav tuul.</string>
     <string name="weather_no_data">-</string>
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
+    <string name="condition_mostly_clear">Enamuses pilvitu</string>
 </resources>
