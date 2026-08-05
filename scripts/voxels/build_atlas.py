@@ -30,6 +30,9 @@ NEW_H = NEW_ROWS * TILE
 # atlas untouched; new blocks start at 64.
 NEW_TILES = {
     144: "suspicious_sand_0.png",
+    145: "wheat_stage7_top.png",
+    146: "carrots_stage3.png",
+    147: "melon_stem_stage7.png",
     64: "red_sand.png",
     65: "red_sandstone.png",
     66: "red_sandstone_top.png",
@@ -138,6 +141,8 @@ COPY_ICONS = {
     "shears.png": ("item", "shears.png"),
     "raw_fish.png": ("item", "catfish.png"),
     "brush.png": ("item", "archaeologists_brush.png"),
+    "wheat.png": ("item", "wheat.png"),
+    "wheat_seeds.png": ("item", "wheat_seeds.png"),
     "quicksilver.png": ("item", "prismarine_shard.png"),
     # The blessing pantheon. Items only: a blessing is never placed as a block, so no atlas tile.
     **{f"blessing_{n}.png": ("item", f"blessing_{n}.png") for n in (
@@ -195,6 +200,9 @@ PROC_ICON = {
     141: "stonecutter.png",
     143: "wool.png",
     144: "suspicious_sand.png",
+    145: "wheat_crop.png",
+    146: "carrot_crop.png",
+    147: "melon_crop.png",
 }
 
 

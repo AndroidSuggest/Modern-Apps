@@ -119,6 +119,7 @@ val blockNames = mapOf(
     199 to "Adamant Helmet", 200 to "Adamant Chestplate", 201 to "Adamant Leggings", 202 to "Adamant Boots",
     // Matcha's building set: slabs and stairs, cut on a stonecutter.
     119 to "Wool", 120 to "Suspicious Sand", 252 to "Shears", 253 to "Fishing Rod", 254 to "Raw Fish", 255 to "Brush",
+    121 to "Wheat Crop", 122 to "Carrot Crop", 123 to "Melon Crop", 250 to "Wheat Seeds", 251 to "Wheat",
     102 to "Stone Slab", 103 to "Stone Stairs", 104 to "Cobble Slab", 105 to "Cobble Stairs",
     106 to "Plank Slab", 107 to "Plank Stairs", 108 to "Brick Slab", 109 to "Brick Stairs",
     110 to "Sandstone Slab", 111 to "Sandstone Stairs",
@@ -167,6 +168,8 @@ val blockIconFile = mapOf(
     218 to "blessing_apollo.png", 219 to "blessing_artemis.png", 220 to "blessing_warding.png",
     119 to "wool.png", 120 to "suspicious_sand.png", 252 to "shears.png", 253 to "fishing_rod.png",
     254 to "raw_fish.png", 255 to "brush.png",
+    121 to "wheat_crop.png", 122 to "carrot_crop.png", 123 to "melon_crop.png",
+    250 to "wheat_seeds.png", 251 to "wheat.png",
     221 to "blessing_paris.png",
     245 to "blessing_athena.png", 246 to "blessing_sekhmet.png", 247 to "blessing_camazotz.png",
     248 to "blessing_tangaroa.png", 249 to "blessing_anubis.png",
@@ -207,7 +210,8 @@ val blockIconFile = mapOf(
 
 // Creative catalog, split into tabs.
 val catalogNatural = listOf(3, 2, 40, 46, 60, 39, 41, 71, 1, 6, 38, 36, 37, 14, 16, 17, 15, 45, 79, 75, 70,
-    4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 84, 85, 13, 120)
+    4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 84, 85, 13, 120,
+    121, 122, 123)
 val catalogOres = listOf(18, 19, 20, 21, 22, 90, 91, 92, 97, 98, 23, 24, 25, 93, 94, 95, 99, 100, 101, 73)
 val catalogOcean = listOf(61, 62, 63, 64, 65, 66, 67, 68, 69)
 val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
@@ -215,7 +219,7 @@ val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
     154, 155, 156, 157, 158, 159, 187, 189, 190, 191,
     192, 193, 194, 195, 196,
     222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235,
-    236, 237, 238, 254)
+    236, 237, 238, 254, 250, 251)
 val catalogBlessings = listOf(160, 161, 162, 203, 204, 205, 206, 207, 208, 209, 210, 211,
     212, 213, 214, 215, 216, 217, 218, 219, 220, 221,
     245, 246, 247, 248, 249)

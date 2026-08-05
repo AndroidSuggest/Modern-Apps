@@ -67,6 +67,7 @@ pub struct EngineState {
     pub ambience: crate::ambience::Ambience,
     prev_walk: f32,
     pub fishing: crate::fishing::Fishing,
+    farm_cd: f32,
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -257,6 +258,7 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         ambience: crate::ambience::Ambience::default(),
         prev_walk: 0.0,
         fishing: crate::fishing::Fishing::default(),
+        farm_cd: 0.0,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -681,6 +683,7 @@ pub fn tick_and_render() {
         tick_weather(state, dt, player_pos);
         tick_ambience(state, dt, player_pos);
         tick_fishing(state, dt, player_pos);
+        tick_farmland(state, dt, player_pos);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
@@ -1488,6 +1491,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
         if id != 0 {
             // Stone/ore only drops when mined with a pickaxe; soft blocks always drop.
             let drops = !Block::from_id(id).needs_pickaxe() || item::is_pickaxe(sel);
+            let meta_before = state.chunks.get_meta_world(x, y, z);
             state.chunks.set_block_world(x, y, z, 0);
             // Leaves occasionally give up an apple. Rolled against the world RNG rather than the
             // block position, so one lucky coordinate can't be replanted into an apple farm.
@@ -1496,7 +1500,11 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
                 *r ^= *r << 13; *r ^= *r >> 17; *r ^= *r << 5;
                 if *r % 20 == 0 { state.inventory.add_block(130); }
             }
-            if drops {
+            let crop = Block::from_id(id);
+            if crop.is_crop() {
+                harvest_crop(state, crop, meta_before);
+                state.inventory.broken += 1;
+            } else if drops {
                 // Eros doubles what an ore gives up.
                 let n = if state.player.blessed(Passive::Fortune) && is_ore(id) { 2 } else { 1 };
                 for _ in 0..n { state.inventory.add_block(id); }
@@ -1678,6 +1686,59 @@ fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
     if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
 }
+/// Seconds between growth passes, and how many random spots each pass checks. Sampling beats
+/// scanning: a full sweep of the loaded world every tick would dwarf everything else the engine does.
+const FARM_INTERVAL: f32 = 2.0;
+const FARM_SAMPLES: usize = 40;
+const FARM_RANGE: i32 = 24;
+
+fn tick_farmland(state: &mut EngineState, dt: f32, player_pos: Vec3) {
+    if state.dim != 0 { return; }
+    state.farm_cd -= dt;
+    if state.farm_cd > 0.0 { return; }
+    state.farm_cd = FARM_INTERVAL;
+
+    let (px, py, pz) = (player_pos.x.floor() as i32, player_pos.y.floor() as i32, player_pos.z.floor() as i32);
+    let mut r = state.spawn_rng;
+    let mut next = |s: &mut u32| { *s ^= *s << 13; *s ^= *s >> 17; *s ^= *s << 5; *s };
+    let mut grown: Vec<(i32, i32)> = Vec::new();
+    for _ in 0..FARM_SAMPLES {
+        let a = next(&mut r);
+        let x = px + (a % (FARM_RANGE as u32 * 2 + 1)) as i32 - FARM_RANGE;
+        let b = next(&mut r);
+        let z = pz + (b % (FARM_RANGE as u32 * 2 + 1)) as i32 - FARM_RANGE;
+        let c = next(&mut r);
+        let y = py + (c % 9) as i32 - 4;
+
+        let id = state.chunks.get_block_world(x, y, z);
+        if !Block::from_id(id).is_crop() { continue; }
+        let meta = state.chunks.get_meta_world(x, y, z);
+        let stage = crate::world::block::crop_stage(meta);
+        if stage >= crate::world::block::CROP_RIPE { continue; }
+        // Crops only grow on tended ground; break the farmland and the field stalls.
+        if state.chunks.get_block_world(x, y - 1, z) != Block::Farmland as u8 { continue; }
+        state.chunks.set_block_meta_world(x, y, z, id, crate::world::block::crop_meta(stage + 1));
+        grown.push((x, z));
+    }
+    state.spawn_rng = r;
+    for (x, z) in grown { mark_neighbors_dirty(state, x, z); }
+}
+
+/// A ripe crop pays out; an unripe one only returns the seed that was put in.
+fn harvest_crop(state: &mut EngineState, crop: Block, meta: u8) {
+    let seed = crop.crop_seed();
+    if crate::world::block::crop_stage(meta) < crate::world::block::CROP_RIPE {
+        state.inventory.add_block(seed);
+        return;
+    }
+    let produce = crop.crop_yield();
+    // Eros is a harvest blessing as much as a mining one.
+    let n = if state.player.blessed(Passive::Fortune) { 5 } else { 3 };
+    for _ in 0..n { state.inventory.add_block(produce); }
+    // And the seed back, so a field is self-sustaining once it's planted.
+    if seed != produce { state.inventory.add_block(seed); }
+}
+
 /// What a dig site gives up. Matcha's archaeology yields pottery sherds, which this game doesn't
 /// model, so the pool is the small treasures a buried cache would plausibly hold.
 pub fn buried_find(roll: f32) -> u8 {
@@ -1785,8 +1846,22 @@ fn placement_meta(block: Block, hit: &crate::raycast::HitResult, origin: Vec3, d
 }
 
 fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
-    // Items (food, estus, materials) are never placeable as blocks.
     let sel = state.inventory.selected_block();
+    // Seeds are items, so planting has to be handled before the is_item bail-out below.
+    if let Some(crop) = Block::crop_from_seed(sel) {
+        if let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) {
+            let (x, y, z) = hit.pos;
+            let (tx, ty, tz) = (x + hit.normal.0, y + hit.normal.1, z + hit.normal.2);
+            let on_farmland = state.chunks.get_block_world(x, y, z) == Block::Farmland as u8 && hit.normal.1 == 1;
+            if on_farmland && state.chunks.get_block_world(tx, ty, tz) == 0 && state.inventory.consume_selected().is_some() {
+                state.chunks.set_block_meta_world(tx, ty, tz, crop as u8, crate::world::block::crop_meta(0));
+                mark_neighbors_dirty(state, tx, tz);
+                return true;
+            }
+        }
+        return false;
+    }
+    // Items (food, estus, materials) are never placeable as blocks.
     if sel == 0 || crate::item::is_item(sel) { return false; }
     let block = Block::from_id(sel);
     let Some(hit) = crate::raycast::raycast(&state.chunks, origin, dir, player_reach(state)) else { return false; };

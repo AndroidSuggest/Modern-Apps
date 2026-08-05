@@ -133,9 +133,21 @@ pub enum Block {
     Wool = 119,
     /// Buried finds. Brushing it yields loot and leaves plain sand behind; mining it just gives sand.
     SuspiciousSand = 120,
+    // Crops. Growth stage lives in the free meta bits, so each crop costs one block id rather than
+    // one per stage; see CROP_STAGE_SHIFT below.
+    WheatCrop = 121,
+    CarrotCrop = 122,
+    MelonCrop = 123,
 }
 
-pub const MAX_BLOCK_ID: u8 = 120;
+pub const MAX_BLOCK_ID: u8 = 123;
+
+/// Growth stage occupies meta bits 3-4 (bits 0-2 are facing and top-half, used by slabs and stairs).
+pub const CROP_STAGE_SHIFT: u8 = 3;
+pub const CROP_STAGE_MASK: u8 = 0b1_1000;
+pub const CROP_RIPE: u8 = 3;
+pub fn crop_stage(meta: u8) -> u8 { (meta & CROP_STAGE_MASK) >> CROP_STAGE_SHIFT }
+pub fn crop_meta(stage: u8) -> u8 { (stage.min(CROP_RIPE) << CROP_STAGE_SHIFT) & CROP_STAGE_MASK }
 
 /// The geometry a block occupies within its cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -180,14 +192,28 @@ impl Block {
     }
     pub fn id(self) -> u8 { self as u8 }
     pub fn is_air(self) -> bool { matches!(self, Self::Air) }
-    pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass | Self::Lava | Self::NetherPortal | Self::EndPortal) }
+    pub fn is_solid(self) -> bool { !matches!(self, Self::Air | Self::Water | Self::Glass | Self::Lava | Self::NetherPortal | Self::EndPortal) && !self.is_crop() }
     pub fn is_transparent(self) -> bool {
         // Slabs and stairs leave part of their cell empty, so they can never hide a neighbour's
         // face wholesale. `occludes_face` decides the per-direction cases.
         self.shape() != Shape::Cube
             || matches!(self, Self::Air | Self::Glass | Self::Leaves | Self::Water | Self::BirchLeaves | Self::SpruceLeaves | Self::DarkOakLeaves | Self::AzaleaLeaves | Self::Lava | Self::NetherPortal | Self::EndPortal)
+            || self.is_crop()
     }
     pub fn is_opaque(self) -> bool { !self.is_transparent() }
+    /// Crops grow on farmland and are harvested rather than mined.
+    pub fn is_crop(self) -> bool { matches!(self, Self::WheatCrop | Self::CarrotCrop | Self::MelonCrop) }
+    /// The seed that plants this crop, and what a ripe one yields.
+    pub fn crop_seed(self) -> u8 {
+        match self { Self::WheatCrop => 250, Self::CarrotCrop => 135, Self::MelonCrop => 136, _ => 0 }
+    }
+    pub fn crop_yield(self) -> u8 {
+        match self { Self::WheatCrop => 251, Self::CarrotCrop => 135, Self::MelonCrop => 136, _ => 0 }
+    }
+    /// The crop a given seed plants, if any.
+    pub fn crop_from_seed(seed: u8) -> Option<Self> {
+        match seed { 250 => Some(Self::WheatCrop), 135 => Some(Self::CarrotCrop), 136 => Some(Self::MelonCrop), _ => None }
+    }
 
     /// Does this block stop light? Distinct from `is_opaque`, which asks whether a neighbour's face
     /// can be culled. A slab fills only half its cell so it can never hide a face, but it is still
@@ -420,6 +446,9 @@ impl Block {
             Self::Stonecutter => 141,
             Self::Wool => 143,
             Self::SuspiciousSand => 144,
+            Self::WheatCrop => 145,
+            Self::CarrotCrop => 146,
+            Self::MelonCrop => 147,
             // Slabs and stairs are textured entirely from their parent material.
             Self::StoneSlab | Self::StoneStairs => Self::Stone.tile_top(),
             Self::CobbleSlab | Self::CobbleStairs => Self::Cobble.tile_top(),
@@ -629,6 +658,41 @@ mod tests {
         assert!(Block::StoneSlab.blocks_light());
         assert!(Block::StoneStairs.blocks_light());
         assert!(Block::PlankSlab.blocks_light());
+    }
+
+    // Growth stage shares a meta byte with slab/stair facing, so the two must not tread on each other.
+    #[test]
+    fn crop_stage_survives_the_meta_it_shares() {
+        for stage in 0..=CROP_RIPE {
+            let m = crop_meta(stage);
+            assert_eq!(crop_stage(m), stage, "stage {stage} didn't round-trip");
+            assert_eq!(m & META_FACING, 0, "stage {stage} bled into the facing bits");
+            assert_eq!(m & META_TOP, 0, "stage {stage} bled into the top-half bit");
+        }
+        // Over-ripe input clamps rather than wrapping to stage 0.
+        assert_eq!(crop_stage(crop_meta(200)), CROP_RIPE);
+        // And reading a slab's meta as a crop stage can't produce a ripe crop by accident.
+        assert_eq!(crop_stage(META_TOP | FACE_WEST), 0);
+    }
+
+    // A crop has to be walkable, unlit and self-consistent about what it plants and yields.
+    #[test]
+    fn crops_are_walkable_and_plantable() {
+        let mut seen = 0;
+        for id in 0..=MAX_BLOCK_ID {
+            let b = Block::from_id(id);
+            if !b.is_crop() { continue; }
+            seen += 1;
+            assert!(!b.is_solid(), "{id} blocks the field it grows in");
+            assert!(!b.blocks_light(), "{id} casts a shadow");
+            assert!(b.is_transparent());
+            let seed = b.crop_seed();
+            assert!(seed != 0 && b.crop_yield() != 0, "{id} has no seed or no yield");
+            assert_eq!(Block::crop_from_seed(seed), Some(b), "{id} can't be planted from its own seed");
+        }
+        assert_eq!(seen, 3, "expected three crops");
+        assert_eq!(Block::crop_from_seed(0), None);
+        assert_eq!(Block::crop_from_seed(Block::Stone as u8), None);
 
         // Glass is the mirror image: it fills the cell but lets light straight through.
         assert!(!Block::Glass.blocks_light());
