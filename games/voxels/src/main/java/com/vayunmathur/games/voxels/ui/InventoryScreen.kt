@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -225,12 +226,15 @@ private fun CraftingTable(recipesJson: String) {
             val arr = org.json.JSONArray(recipesJson)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"), o.optString("cat", "block"))
+                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"), o.optString("cat", "block"), o.optBoolean("known", true))
             }
         } catch (_: Exception) { emptyList() }
     }
     var sel by remember { mutableStateOf(0) }
     var cat by remember { mutableStateOf("block") }
+    // Unrevealed recipes are hidden by default so the list grows with the player, but they can be
+    // browsed on demand rather than being a secret.
+    var showLocked by remember { mutableStateOf(false) }
     val r = recipes.getOrNull(sel)
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         // Left: product picker, filtered to one shelf so the list stays navigable.
@@ -243,9 +247,14 @@ private fun CraftingTable(recipesJson: String) {
                             .clickable { cat = key }.padding(horizontal = 8.dp, vertical = 5.dp)
                     ) { Text(label, color = Color.White.copy(0.9f), fontSize = 11.sp) }
                 }
+                Box(
+                    Modifier.clip(RoundedCornerShape(6.dp))
+                        .background(if (showLocked) Color(0xFF3A6B3A) else Color.White.copy(0.08f))
+                        .clickable { showLocked = !showLocked }.padding(horizontal = 8.dp, vertical = 5.dp)
+                ) { Text(stringResource(R.string.recipes_show_locked), color = Color.White.copy(0.9f), fontSize = 11.sp) }
             }
             Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                recipes.withIndex().filter { it.value.cat == cat }.forEach { (i, rec) ->
+                recipes.withIndex().filter { it.value.cat == cat && (it.value.known || showLocked) }.forEach { (i, rec) ->
                     val icon = rememberBlockIcon(rec.outId)
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
@@ -253,8 +262,17 @@ private fun CraftingTable(recipesJson: String) {
                             .clickable { sel = i }.padding(6.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(26.dp), filterQuality = FilterQuality.None)
-                        Text(blockNames[rec.outId] ?: "", color = Color.White.copy(0.95f), fontSize = 12.sp)
+                        if (icon != null) {
+                            Image(
+                                bitmap = icon, contentDescription = null,
+                                modifier = Modifier.size(26.dp).alpha(if (rec.known) 1f else 0.35f),
+                                filterQuality = FilterQuality.None,
+                            )
+                        }
+                        Text(
+                            blockNames[rec.outId] ?: "",
+                            color = Color.White.copy(if (rec.known) 0.95f else 0.4f), fontSize = 12.sp,
+                        )
                     }
                 }
             }
@@ -293,6 +311,8 @@ private fun CraftingTable(recipesJson: String) {
 private data class Recipe(
     val inId: Int, val inN: Int, val in2Id: Int, val in2N: Int,
     val outId: Int, val outN: Int, val cat: String,
+    // Revealed once the player has held the ingredients, the way Matcha's recipe advancements work.
+    val known: Boolean,
 )
 
 // Crafting shelves, in the order they appear as filter chips.

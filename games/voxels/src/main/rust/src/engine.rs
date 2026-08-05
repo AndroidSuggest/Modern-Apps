@@ -68,6 +68,17 @@ pub struct EngineState {
     prev_walk: f32,
     pub fishing: crate::fishing::Fishing,
     farm_cd: f32,
+    // Recipes revealed so far. Matcha ships 115 recipe advancements that unlock a recipe once the
+    // player first holds an ingredient; this is that, as a bitmask over RECIPES.
+    pub known_recipes: Vec<bool>,
+    known_cd: f32,
+    // One-shot latches for the tutorial advancements. Not saved: the achievements manager persists
+    // the unlock itself, so re-earning them in a later session costs nothing.
+    pub did_shear: bool,
+    pub did_fish: bool,
+    pub did_brush: bool,
+    pub did_harvest: bool,
+    pub did_rest: bool,
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -129,6 +140,14 @@ pub fn next_weather(current: u8, r: f32) -> u8 {
 
 pub fn weather_duration(r: f32) -> f32 {
     WEATHER_MIN_SECS + r.clamp(0.0, 1.0) * (WEATHER_MAX_SECS - WEATHER_MIN_SECS)
+}
+
+/// Just past sunrise, where resting at a Warding Stone lands you.
+pub const DAWN: f32 = 0.27;
+/// Seconds of world time between `day_t` and the next dawn. Always forward: the clock never rewinds.
+pub fn secs_until_dawn(day_t: f32) -> f32 {
+    let ahead = (DAWN - day_t).rem_euclid(1.0);
+    ahead * DAY_CYCLE
 }
 
 impl EngineState {
@@ -202,6 +221,13 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let mut dim_visited = [false; 3];
     for (i, v) in progress.dim_visited.iter().enumerate().take(3) { dim_visited[i] = *v; }
     dim_visited[dim as usize] = true;
+    // Revealed recipes, unpacked from the saved bitmask. A save from before this existed reveals
+    // nothing up front, and the first tick re-derives whatever the player already has.
+    let mut known_recipes = vec![false; crate::inventory::RECIPES.len()];
+    for (i, k) in known_recipes.iter_mut().enumerate() {
+        *k = progress.known_recipes.get(i / 8).is_some_and(|b| b & (1 << (i % 8)) != 0);
+    }
+
     // Trade counts are stored as a Vec so old saves load; a short or long one is padded/truncated.
     let mut trades_done = [0u32; crate::villager::ALL.len()];
     for (i, n) in progress.trades_done.iter().enumerate().take(trades_done.len()) { trades_done[i] = *n; }
@@ -259,6 +285,9 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         prev_walk: 0.0,
         fishing: crate::fishing::Fishing::default(),
         farm_cd: 0.0,
+        known_recipes,
+        known_cd: 0.0,
+        did_shear: false, did_fish: false, did_brush: false, did_harvest: false, did_rest: false,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -317,6 +346,13 @@ pub fn destroy_engine() {
                 trades_done: state.trades_done.to_vec(),
                 weather: state.weather,
                 weather_cd: state.weather_cd,
+                known_recipes: {
+                    let mut bits = vec![0u8; state.known_recipes.len().div_ceil(8)];
+                    for (i, k) in state.known_recipes.iter().enumerate() {
+                        if *k { bits[i / 8] |= 1 << (i % 8); }
+                    }
+                    bits
+                },
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
@@ -684,6 +720,7 @@ pub fn tick_and_render() {
         tick_ambience(state, dt, player_pos);
         tick_fishing(state, dt, player_pos);
         tick_farmland(state, dt, player_pos);
+        tick_recipe_unlocks(state, dt);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
@@ -779,6 +816,12 @@ fn publish_ui(state: &EngineState) {
             || state.player.blessings.slots.iter().any(|&id| id != 0),
         "depth": state.deepest_y,
         "attuned": state.player.blessings.slots.iter().filter(|&&s| s != 0).count(),
+        // The verbs added on top of Matcha's own systems, for the tutorial chain.
+        "traded": state.trades_done.iter().any(|&n| n > 0),
+        "trader": state.trades_done.iter().any(|&n| crate::villager::level_for(n) >= crate::villager::MAX_LEVEL),
+        "sheared": state.did_shear, "fished": state.did_fish, "brushed": state.did_brush,
+        "harvested": state.did_harvest, "rested": state.did_rest,
+        "recipes": state.known_recipes.iter().filter(|k| **k).count(),
     }).to_string();
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
@@ -863,10 +906,12 @@ pub fn get_cuts_json() -> String {
 }
 pub fn do_cut(idx: usize) -> bool { with_engine(|s| s.inventory.cut(idx)).unwrap_or(false) }
 pub fn get_recipes_json() -> String {
-    let items: Vec<_> = crate::inventory::RECIPES.iter()
-        .map(|(i1, c1, i2, c2, oid, oc)| serde_json::json!({
+    let known = with_engine(|s| s.known_recipes.clone()).unwrap_or_default();
+    let items: Vec<_> = crate::inventory::RECIPES.iter().enumerate()
+        .map(|(i, (i1, c1, i2, c2, oid, oc))| serde_json::json!({
             "in": i1, "inN": c1, "in2": i2, "in2N": c2, "out": oid, "outN": oc,
             "cat": crate::inventory::recipe_category(*oid),
+            "known": known.get(i).copied().unwrap_or(false),
         }))
         .collect();
     serde_json::json!(items).to_string()
@@ -1331,6 +1376,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
                 let id = buried_find((r >> 8) as f32 / 16_777_216.0);
                 if !state.inventory.has_room_for(id, 1) { return false; }
                 state.inventory.add_block(id);
+                state.did_brush = true;
                 state.chunks.set_block_world(x, y, z, Block::Sand as u8);
                 mark_neighbors_dirty(state, x, z);
                 damage_tool(state);
@@ -1354,6 +1400,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
                 let id = crate::fishing::catch_of_the_day(roll, state.player.blessed(Passive::SeaLuck));
                 if state.inventory.has_room_for(id, 1) {
                     state.inventory.add_block(id);
+                    state.did_fish = true;
                     damage_tool(state);
                 }
             }
@@ -1686,6 +1733,21 @@ fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
     if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
 }
+/// Reveal any recipe whose ingredients the player is carrying. Throttled: this walks every recipe,
+/// and nothing about it needs to happen at frame rate.
+fn tick_recipe_unlocks(state: &mut EngineState, dt: f32) {
+    state.known_cd -= dt;
+    if state.known_cd > 0.0 { return; }
+    state.known_cd = 0.5;
+    for (i, r) in crate::inventory::RECIPES.iter().enumerate() {
+        if state.known_recipes[i] { continue; }
+        let (in1, _, in2, _, _, _) = *r;
+        let have1 = state.inventory.count_of(in1) > 0;
+        let have2 = in2 == 0 || state.inventory.count_of(in2) > 0;
+        if have1 && have2 { state.known_recipes[i] = true; }
+    }
+}
+
 /// Seconds between growth passes, and how many random spots each pass checks. Sampling beats
 /// scanning: a full sweep of the loaded world every tick would dwarf everything else the engine does.
 const FARM_INTERVAL: f32 = 2.0;
@@ -1735,6 +1797,7 @@ fn harvest_crop(state: &mut EngineState, crop: Block, meta: u8) {
     // Eros is a harvest blessing as much as a mining one.
     let n = if state.player.blessed(Passive::Fortune) { 5 } else { 3 };
     for _ in 0..n { state.inventory.add_block(produce); }
+    state.did_harvest = true;
     // And the seed back, so a field is self-sustaining once it's planted.
     if seed != produce { state.inventory.add_block(seed); }
 }
@@ -1929,6 +1992,7 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
                 if crate::item::is_shears(held) && state.mobs[idx].kind == MobKind::Sheep && !state.mobs[idx].sheared {
                     if !state.inventory.has_room_for(Block::Wool as u8, WOOL_PER_SHEARING) { return 0; }
                     state.mobs[idx].sheared = true;
+                    state.did_shear = true;
                     for _ in 0..WOOL_PER_SHEARING { state.inventory.add_block(Block::Wool as u8); }
                     damage_tool(state);
                     return 1;
@@ -1937,6 +2001,21 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
             if let Some(hit) = block_hit {
                 let (x, y, z) = hit.pos;
                 let id = state.chunks.get_block_world(x, y, z);
+                // Resting at a Warding Stone burns off the night. Matcha sets `can_sleep: always` and
+                // fast-forwards time; there are no beds here, so the bonfire does the job.
+                if id == 81 {
+                    if !state.is_night() { return 0; }
+                    let skip = secs_until_dawn(state.day_t());
+                    state.start_time -= std::time::Duration::from_secs_f32(skip);
+                    state.did_rest = true;
+                    state.player.heal(state.player.max_health);
+                    // You wake to whatever weather the night left behind, but never mid-downpour.
+                    state.weather = WEATHER_CLEAR;
+                    state.weather_cd = weather_duration(0.4);
+                    let c = vec3(x as f32 + 0.5, y as f32 + 1.2, z as f32 + 0.5);
+                    spawn_particles(&mut state.spawn_rng, &mut state.particles, c, 20, [1.0, 0.82, 0.42], 2.0, 1.0, 0.12);
+                    return 1;
+                }
                 if id == 83 { // chest: open its container
                     let key = ensure_chest(state, x, y, z);
                     state.open_chest = Some(key);
@@ -2005,6 +2084,22 @@ mod tests {
             assert!((day_t_at(elapsed) - resumed).abs() < 1e-4, "{elapsed}s round-tripped to a different phase");
         }
         assert!((CLAMP / DAY_CYCLE).fract() < 1e-6, "the world_secs clamp must be a whole number of days");
+    }
+
+    // Resting always moves the clock forward to the same point in the morning, never backwards and
+    // never by more than a day.
+    #[test]
+    fn resting_always_skips_forward_to_dawn() {
+        for t in [0.0f32, 0.1, 0.24, 0.26, 0.28, 0.5, 0.76, 0.99] {
+            let skip = secs_until_dawn(t);
+            assert!(skip >= 0.0, "the clock went backwards from {t}");
+            assert!(skip <= DAY_CYCLE + 1e-3, "skipping {skip}s from {t} is more than a day");
+            let landed = (t + skip / DAY_CYCLE) % 1.0;
+            assert!((landed - DAWN).abs() < 1e-3 || (landed - DAWN).abs() > 0.999, "{t} landed at {landed}");
+            assert!(!is_night_at(DAWN), "dawn must not itself count as night");
+        }
+        // Resting at dawn costs a whole day rather than doing nothing surprising.
+        assert!((secs_until_dawn(DAWN) - 0.0).abs() < 1e-3 || secs_until_dawn(DAWN) >= DAY_CYCLE - 1e-3);
     }
 
     // A dig site has to be worth digging: every roll gives a real item, most of them modest.

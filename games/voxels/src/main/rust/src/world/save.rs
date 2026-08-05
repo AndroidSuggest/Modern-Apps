@@ -107,6 +107,8 @@ pub struct ProgressSave {
     // Weather state and the seconds left on it, so a save doesn't reopen to a clear sky mid-storm.
     #[serde(default)] pub weather: u8,
     #[serde(default)] pub weather_cd: f32,
+    /// Bitmask over RECIPES of the recipes the player has been shown.
+    #[serde(default)] pub known_recipes: Vec<u8>,
 }
 fn default_max_health() -> f32 { 20.0 }
 fn default_deepest() -> i32 { 128 }
@@ -119,7 +121,7 @@ impl Default for ProgressSave {
             best_beacon: 0, deepest_y: default_deepest(),
             blessings: crate::blessing::Attunement::default(),
             trades_done: Vec::new(),
-            weather: 0, weather_cd: 0.0,
+            weather: 0, weather_cd: 0.0, known_recipes: Vec::new(),
         }
     }
 }
@@ -273,6 +275,7 @@ mod tests {
         ps.progress.trades_done = vec![0, 7, 0, 0, 0, 0, 14, 0, 0, 0, 0];
         ps.progress.weather = 2;
         ps.progress.weather_cd = 88.0;
+        ps.progress.known_recipes = vec![0b0000_0101, 0b1000_0000];
         let back: PlayerSave = serde_json::from_str(&serde_json::to_string(&ps).unwrap()).unwrap();
         assert_eq!(back.progress.max_health, 34.0);
         assert_eq!(back.progress.dim, 1);
@@ -285,5 +288,6 @@ mod tests {
         assert_eq!(back.progress.trades_done[6], 14);
         assert_eq!(back.progress.weather, 2, "a storm has to still be raging after a reload");
         assert_eq!(back.progress.weather_cd, 88.0);
+        assert_eq!(back.progress.known_recipes, vec![0b0000_0101, 0b1000_0000], "discovered recipes must persist");
     }
 }

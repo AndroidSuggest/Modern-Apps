@@ -105,7 +105,11 @@ class MainActivity : ComponentActivity() {
                                 debugJson = VoxelsNative.getDebugJson()
                                 if (furnaceOpen) smeltJson = VoxelsNative.getSmeltJson()
                                 if (chestOpen) containerJson = VoxelsNative.getContainerJson()
-                                if (inventoryOpen) blessingsJson = VoxelsNative.getBlessingsJson()
+                                if (inventoryOpen) {
+                                    blessingsJson = VoxelsNative.getBlessingsJson()
+                                    // Recipes reveal themselves as the player picks up ingredients.
+                                    recipesJson = VoxelsNative.getRecipesJson()
+                                }
                                 try {
                                     healthJson = VoxelsNative.getHealthJson()
                                     val hp = org.json.JSONObject(healthJson).optDouble("hp", prevHp.toDouble()).toFloat()
@@ -144,6 +148,14 @@ class MainActivity : ComponentActivity() {
                                         if (obj.optBoolean("maxHearts", false)) mgr.onAchievementUnlocked("heart_of_gold")
                                         if (obj.optInt("attuned", 0) > 0) mgr.onAchievementUnlocked("attuned")
                                         if (obj.optInt("attuned", 0) >= 3) mgr.onAchievementUnlocked("pantheon")
+                                        if (obj.optBoolean("traded", false)) mgr.onAchievementUnlocked("first_trade")
+                                        if (obj.optBoolean("trader", false)) mgr.onAchievementUnlocked("master_trader")
+                                        if (obj.optBoolean("sheared", false)) mgr.onAchievementUnlocked("first_shear")
+                                        if (obj.optBoolean("fished", false)) mgr.onAchievementUnlocked("first_catch")
+                                        if (obj.optBoolean("brushed", false)) mgr.onAchievementUnlocked("first_dig")
+                                        if (obj.optBoolean("harvested", false)) mgr.onAchievementUnlocked("first_harvest")
+                                        if (obj.optBoolean("rested", false)) mgr.onAchievementUnlocked("first_rest")
+                                        mgr.onProgressUpdated("recipes_50", obj.optInt("recipes", 0))
                                     }
                                 } catch (_: Exception) {}
                             } catch (_: Exception) {}

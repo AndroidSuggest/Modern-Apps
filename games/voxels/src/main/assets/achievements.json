@@ -106,5 +106,46 @@
     "id": "pantheon",
     "name": "Pantheon",
     "description": "Fill every attunement slot"
+  },
+  {
+    "id": "first_trade",
+    "name": "Open for Business",
+    "description": "Trade with a villager"
+  },
+  {
+    "id": "master_trader",
+    "name": "Regular",
+    "description": "Take a villager's trade to its highest tier"
+  },
+  {
+    "id": "first_shear",
+    "name": "Close Shave",
+    "description": "Shear a sheep for its wool"
+  },
+  {
+    "id": "first_catch",
+    "name": "Angler",
+    "description": "Land your first catch"
+  },
+  {
+    "id": "first_dig",
+    "name": "Archaeologist",
+    "description": "Brush a buried find out of suspicious sand"
+  },
+  {
+    "id": "first_harvest",
+    "name": "Green Thumb",
+    "description": "Harvest a crop you planted"
+  },
+  {
+    "id": "first_rest",
+    "name": "Bonfire Lit",
+    "description": "Rest at a Warding Stone to see out the night"
+  },
+  {
+    "id": "recipes_50",
+    "name": "Well Read",
+    "description": "Discover 50 recipes",
+    "targetProgress": 50
   }
 ]

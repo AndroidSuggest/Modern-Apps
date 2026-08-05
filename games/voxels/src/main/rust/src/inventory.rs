@@ -292,7 +292,7 @@ impl Inventory {
         for slot in self.slots.iter_mut() { if slot.id == id { slot.count = STACK; return; } }
     }
 
-    fn count_of(&self, id: u8) -> i32 { self.slots.iter().filter(|s| s.id == id).map(|s| s.count).sum() }
+    pub fn count_of(&self, id: u8) -> i32 { self.slots.iter().filter(|s| s.id == id).map(|s| s.count).sum() }
     fn remove_count(&mut self, id: u8, mut n: i32) {
         for slot in self.slots.iter_mut() {
             if slot.id == id && n > 0 {
