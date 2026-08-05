@@ -43,7 +43,7 @@
     <string name="notification_low_battery"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> - aku hakkab tühjaks saama</string>
     <string name="notification_entered_waypoint"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> on sisenenud asukohta <xliff:g id="waypoint_name" example="Koduaed">%2$s</xliff:g></string>
     <string name="notification_exited_waypoint"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> on väljunud asukohast <xliff:g id="waypoint_name" example="Koduaed">%2$s</xliff:g></string>
-    <string name="battery_percentage">%1$d%%</string>
+    <string name="battery_percentage"><xliff:g id="battery_level" example="85">%1$d</xliff:g>%%</string>
     <string name="fab_person">Isik</string>
     <string name="fab_location">Asukoht</string>
     <string name="fab_link">Link</string>
@@ -75,11 +75,11 @@
     <string name="permission_background_granted">✅ Taustal töötamine on lubatud</string>
     <string name="permission_enable_all_the_time">2. Valikust „Luba alati“ anna nõusolek taustal töötamiseks</string>
     <string name="permission_background_explanation">Tagamaks, et asukoha tuvastamine toimib taustateenusena, vali järgmisest vaatest „Luba alati“.</string>
-    <string name="user_card_status">Uuendatud %1$s\n%2$s\n%3$s</string>
+    <string name="user_card_status">Uuendatud <xliff:g id="last_updated" example="5 minutit tagasi">%1$s</xliff:g>\n<xliff:g id="location_name" example="Kodu">%2$s</xliff:g>\n<xliff:g id="since_text" example="Alates tänasest">%3$s</xliff:g></string>
     <string name="notification_channel_uwb_request_name">Otsi lähedalt (UWB) päringud</string>
     <string name="notification_channel_uwb_request_desc">Keegi kasutab sinu asukoha tuvastamiseks Otsi lähedalt (UWB)</string>
     <string name="notification_uwb_request_title">Keegi on sind leidmas</string>
-    <string name="notification_uwb_request_text">%1$s kasutab Otsi lähedalt (UWB). Klõpsa ja näed vahemaad ning suunda.</string>
+    <string name="notification_uwb_request_text"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> kasutab Otsi lähedalt (UWB) teenust. Klõpsa ja näed vahemaad ning suunda.</string>
     <string name="uwb_unknown_peer_name">Keegi</string>
     <string name="uwb_status_starting">Otsi lähedalt (UWB) on seadistamisel…</string>
     <string name="uwb_status_waiting">Ootel teise seadme järgi…</string>
@@ -100,4 +100,17 @@
     <string name="history_step_plus_10s">+10 sek</string>
     <string name="history_step_plus_1m">+1 min</string>
     <string name="history_step_plus_5m">+5 min</string>
+    <string name="auto_toggle_never">Mitte kunagi</string>
+    <string name="security_code">Turvakood</string>
+    <string name="computing">Arvutan…</string>
+    <string name="disable_after">Lülita antud aja möödumisel välja</string>
+    <string name="enable_after">Lülita antud aja möödumisel sisse</string>
+    <string name="link_pqc_unavailable">Seadmes lingi loomine ei õnnestunud.</string>
+    <string name="dist">vahemaa:</string>
+    <string name="az">as:</string>
+    <string name="el">krg:</string>
+    <string name="point_the_back_of_your_phone_toward_your">Pööra oma telefoni tagaosa kontakti suunas</string>
+    <string name="unknown">Pole teada</string>
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab">Arvutamine veel ei õnnestunud: kasutaja „<xliff:g id="person_name" example="Bob">%1$s</xliff:g>“ võti pole saadaval. Palun kontrolli, et teil mõlemal ühendus toimib ja proovi siis uuesti.</string>
+    <string name="compare_this_code_with_on_their_device_i">Võrdle sead koodi kasutajaga „<xliff:g id="person_name" example="Mati">%1$s</xliff:g>“ tema seadmes kuvatavaga. Kui numbrid on mõlemas seadmes samad, siis on ühendus läbivalt krüptitud ja verifitseeritud ning mitte keegi ei saa seda vahepealt jälgida.</string>
 </resources>
