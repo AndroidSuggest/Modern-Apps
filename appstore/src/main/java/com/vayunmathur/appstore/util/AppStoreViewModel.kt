@@ -13,7 +13,7 @@ import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.CatalogRepository
 import com.vayunmathur.appstore.data.InstalledAppsRepository
 import com.vayunmathur.appstore.data.InstalledInfo
-import com.vayunmathur.appstore.data.PlayStoreDataSource
+import com.vayunmathur.appstore.data.PlayStoreLinks
 import com.vayunmathur.appstore.data.SyncStep
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
@@ -291,7 +291,7 @@ class AppStoreViewModel(
         if (_playSections.value.isEmpty()) {
             // No account, or Play changed its stream shape. A top chart is one request and
             // still gives the screen something beyond this repo's own dozen apps.
-            val chart = play.topChart().ifEmpty { PlayStoreDataSource.topCharts() }
+            val chart = play.topChart()
             if (chart.isNotEmpty()) {
                 _playSections.value = listOf(
                     AppSection(
@@ -413,7 +413,7 @@ class AppStoreViewModel(
             val local = catalog.searchLocal(query)
             _searchResults.value = rank(local, query)
 
-            val remote = play.search(query).ifEmpty { PlayStoreDataSource.search(query) }
+            val remote = play.search(query)
             _searchResults.value = rank(merge(local, remote), query)
             _isSearching.value = false
             _hasSearched.value = true
@@ -469,12 +469,11 @@ class AppStoreViewModel(
                 _selectedApp.value = cached
                 return@launch
             }
-            // Play listings from a cluster or a scrape are shells: no description, no
+            // Play listings from a cluster are shells: no description, no
             // screenshots, no version code. Fill them in before the page settles.
             if (app.source == AppSource.PLAYSTORE && app.screenshots.isEmpty()) {
                 _isLoadingDetails.value = true
                 val details = play.details(app.packageName)
-                    ?: PlayStoreDataSource.appDetails(app.packageName)
                 if (details != null) _selectedApp.value = details
                 _isLoadingDetails.value = false
             }
@@ -495,7 +494,7 @@ class AppStoreViewModel(
                 source = AppSource.PLAYSTORE,
                 name = packageName.substringAfterLast('.'),
             )
-            val details = play.details(packageName) ?: PlayStoreDataSource.appDetails(packageName)
+            val details = play.details(packageName)
             if (details != null) _selectedApp.value = details
             _isLoadingDetails.value = false
         }
@@ -555,7 +554,7 @@ class AppStoreViewModel(
 
     override fun openInPlayStore(packageName: String) {
         if (startActivity(Intent(Intent.ACTION_VIEW, "market://details?id=$packageName".toUri()))) return
-        startActivity(Intent(Intent.ACTION_VIEW, PlayStoreDataSource.playStoreUrl(packageName).toUri()))
+        startActivity(Intent(Intent.ACTION_VIEW, PlayStoreLinks.playStoreUrl(packageName).toUri()))
     }
 
     override fun openInBrowser(url: String) {
@@ -564,7 +563,7 @@ class AppStoreViewModel(
     }
 
     override fun shareApp(app: UnifiedApp) {
-        val link = app.website ?: PlayStoreDataSource.playStoreUrl(app.packageName)
+        val link = app.website ?: PlayStoreLinks.playStoreUrl(app.packageName)
         val share = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, context.getString(R.string.share_app_text, app.name, link))
