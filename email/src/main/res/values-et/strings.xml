@@ -14,8 +14,8 @@
     <string name="to_label">Saaja</string>
     <string name="subject_label">Kirja pealkiri</string>
     <string name="body_label">Kirja sisu</string>
-    <string name="outbox">Saadetud</string>
-    <string name="outbox_with_count">Saadetud (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
+    <string name="outbox">Saadetavad kirjad</string>
+    <string name="outbox_with_count">Saadetavad kirjad (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="send_now">Saada kohe</string>
     <string name="email_address">E-posti aadress</string>
     <string name="testing_connection">Testin ühenduse toimimist…</string>
@@ -47,7 +47,7 @@
     <string name="message_sent">Kiri on saadetud</string>
     <string name="load_images">Laadi pildid</string>
     <string name="ai_summary">Tehisaru loodud kokkuvõte</string>
-    <string name="deleted_from_outbox">Kustutatud saadetud kirjade postkastist</string>
+    <string name="deleted_from_outbox">Kustutatud saadetavate kirjade postkastist</string>
     <string name="bcc">Pimekoopia</string>
     <string name="attachments_1">Manused (<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>)</string>
     <string name="attachments_2">Manused:</string>
@@ -104,6 +104,12 @@
     <string name="no_subject">(teemat pole)</string>
     <string name="cd_insert_image">Lisa pilt</string>
     <plurals name="attempts">
-        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> katse(t)</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$s</xliff:g> katse</item>
+        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> katset</item>
     </plurals>
+    <string name="unified_inbox">Ühine sisendpostkast</string>
+    <string name="saved_to_outbox">Salvestatud saadetavate kirjade postkasti: <xliff:g id="reason" example="Võrguühendus puudub">%1$s</xliff:g></string>
+    <string name="added"><xliff:g id="email" example="kadri@toredomeen.ee">%1$s</xliff:g> konto on lisatud</string>
+    <string name="total_attachment_size_exceeds_25_mb_many">Manuste kogumaht on üle 25 MB ja paljud teenusepakkujad selliseid kirju ei edasta.</string>
+    <string name="outbox_is_empty">Saadetavate kirjade postkast on tühi</string>
 </resources>
