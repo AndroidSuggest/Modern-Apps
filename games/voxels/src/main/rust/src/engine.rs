@@ -457,8 +457,11 @@ pub fn tick_and_render() {
         let player_pos = state.player.pos;
         {
             let chunks = &state.chunks;
-            let solid = |x: i32, y: i32, z: i32| { let id = chunks.get_block_world(x, y, z); id != 0 && Block::from_id(id).is_solid() };
-            for m in state.mobs.iter_mut() { m.tick(dt, player_pos, &solid); }
+            let terrain = crate::entity::Terrain {
+                solid: &|x, y, z| chunks.solid_at(x, y, z),
+                surface: &|x, z, ceiling| chunks.surface_below(x, z, ceiling, 2),
+            };
+            for m in state.mobs.iter_mut() { m.tick(dt, player_pos, &terrain); }
         }
         // Mob melee contact damage + creeper fuse + ranged fire.
         let mut incoming = 0.0f32;

@@ -185,6 +185,17 @@ impl Block {
     }
     pub fn is_opaque(self) -> bool { !self.is_transparent() }
 
+    /// Does this block stop light? Distinct from `is_opaque`, which asks whether a neighbour's face
+    /// can be culled. A slab fills only half its cell so it can never hide a face, but it is still
+    /// cut from solid stone and must cast shadow — the opposite of glass, which fills the whole cell
+    /// and lets light straight through.
+    pub fn blocks_light(self) -> bool {
+        match self.shape() {
+            Shape::Cube => self.is_opaque(),
+            _ => self.parent().is_opaque(),
+        }
+    }
+
     pub fn shape(self) -> Shape {
         match self {
             Self::StoneSlab | Self::CobbleSlab | Self::PlankSlab | Self::BrickSlab
@@ -599,6 +610,24 @@ mod tests {
         assert_eq!(step(FACE_SOUTH).max[2], 0.5, "south-facing steps sit on -Z");
         assert_eq!(step(FACE_EAST).max[0], 0.5, "east-facing steps sit on -X");
         assert_eq!(step(FACE_WEST).min[0], 0.5, "west-facing steps sit on +X");
+    }
+
+    // Occluding a face and blocking light are different questions, and slabs and glass sit on
+    // opposite sides of both.
+    #[test]
+    fn slabs_cast_shadow_even_though_they_cannot_cull_faces() {
+        // A slab fills half its cell, so it can never hide a neighbour's face...
+        assert!(!Block::StoneSlab.is_opaque());
+        assert!(!Block::StoneStairs.is_opaque());
+        // ...but it is cut from solid stone, so light must not pass through it.
+        assert!(Block::StoneSlab.blocks_light());
+        assert!(Block::StoneStairs.blocks_light());
+        assert!(Block::PlankSlab.blocks_light());
+
+        // Glass is the mirror image: it fills the cell but lets light straight through.
+        assert!(!Block::Glass.blocks_light());
+        assert!(!Block::Air.blocks_light());
+        assert!(Block::Stone.blocks_light());
     }
 
     #[test]

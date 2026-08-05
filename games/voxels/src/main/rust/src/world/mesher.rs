@@ -12,7 +12,7 @@ fn compute_light(chunk: &Chunk) -> ([[i32; 16]; 16], Vec<u8>) {
     for x in 0..16 { for z in 0..16 {
         for y in (0..CHUNK_HEIGHT).rev() {
             let id = chunk.get_block(x, y, z);
-            if id != 0 && Block::from_id(id).is_opaque() { col_top[x][z] = y as i32; break; }
+            if id != 0 && Block::from_id(id).blocks_light() { col_top[x][z] = y as i32; break; }
         }
     }}
     let mut blk = vec![0u8; 16 * CHUNK_HEIGHT * 16];
@@ -32,7 +32,7 @@ fn compute_light(chunk: &Chunk) -> ([[i32; 16]; 16], Vec<u8>) {
             if nx < 0 || nx >= 16 || nz < 0 || nz >= 16 || ny < 0 || ny >= CHUNK_HEIGHT as i32 { continue; }
             let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
             let bid = chunk.get_block(nx, ny, nz);
-            if bid != 0 && Block::from_id(bid).is_opaque() { continue; }
+            if bid != 0 && Block::from_id(bid).blocks_light() { continue; }
             let i = idx(nx, ny, nz);
             if blk[i] < nl { blk[i] = nl; q.push_back((nx, ny, nz, nl)); }
         }
@@ -456,6 +456,31 @@ mod tests {
             .flat_map(|md| md.indices.chunks(6).map(move |c| &md.vertices[c[0] as usize]))
             .filter(|v| v.normal == normal && (v.pos[0] - x_plane).abs() < 1e-5)
             .count()
+    }
+
+    // A slab roof has to darken what is under it, or interiors built from slabs stay daylit.
+    #[test]
+    fn a_slab_roof_casts_shadow() {
+        // The light packed into the floor block's up-facing quad, under an optional roof.
+        let floor_light = |roof: Option<u8>| -> f32 {
+            let mut c = Chunk::new(ChunkPos(0, 0));
+            c.set_block(8, 10, 8, Block::Stone as u8);
+            if let Some(r) = roof { c.set_block_meta(8, 14, 8, r, 0); }
+            let m = mesh_alone(&c);
+            m.iter().flatten()
+                .flat_map(|md| md.indices.chunks(6).map(move |ci| md.vertices[ci[0] as usize]))
+                .find(|v| v.normal == [0.0, 1.0, 0.0] && (v.pos[1] - 11.0).abs() < 1e-5)
+                .expect("the floor block must have a top face")
+                .light
+        };
+        let open_sky = floor_light(None);
+        let under_slab = floor_light(Some(Block::StoneSlab as u8));
+        let under_stairs = floor_light(Some(Block::StoneStairs as u8));
+        let under_glass = floor_light(Some(Block::Glass as u8));
+
+        assert!(under_slab < open_sky, "a slab roof must dim the floor ({under_slab} vs {open_sky})");
+        assert!(under_stairs < open_sky, "so must a stair roof ({under_stairs} vs {open_sky})");
+        assert_eq!(under_glass, open_sky, "glass has always let daylight through");
     }
 
     // Two boxes of one stair share a plane. Emitting both sides would z-fight, so the sealed one is

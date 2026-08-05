@@ -180,16 +180,19 @@ impl Player {
             if !self.collides_at(try_x, chunks) {
                 if !(sneaking && self.on_ground) || self.supported_at(try_x, chunks) { new_pos.x = try_x.x; }
             } else if self.on_ground && !sneaking {
-                let step = vec3(try_x.x, new_pos.y + step_h, new_pos.z);
-                if !self.collides_at(step, chunks) { new_pos.x = step.x; new_pos.y = step.y; }
+                // Climb to the surface that blocked us, not by a fixed amount.
+                if let Some(top) = self.step_up_to(try_x, chunks, new_pos.y, step_h) {
+                    new_pos.x = try_x.x; new_pos.y = top;
+                }
             }
             // Z axis, same rules.
             let try_z = vec3(new_pos.x, new_pos.y, new_pos.z + horiz_vel.z * dt);
             if !self.collides_at(try_z, chunks) {
                 if !(sneaking && self.on_ground) || self.supported_at(try_z, chunks) { new_pos.z = try_z.z; }
             } else if self.on_ground && !sneaking {
-                let step = vec3(new_pos.x, new_pos.y + step_h, try_z.z);
-                if !self.collides_at(step, chunks) { new_pos.z = step.z; new_pos.y = step.y; }
+                if let Some(top) = self.step_up_to(try_z, chunks, new_pos.y, step_h) {
+                    new_pos.z = try_z.z; new_pos.y = top;
+                }
             }
             self.walk_dist += (vec3(new_pos.x, 0.0, new_pos.z) - vec3(self.pos.x, 0.0, self.pos.z)).length();
             // Vertical: gravity + collision, resting at whatever height horizontal step-up left us at.
@@ -204,8 +207,15 @@ impl Player {
             if self.gliding { self.vel.y = self.vel.y.max(-3.5); } // slow, gliding descent
             new_pos.y = base_y + self.vel.y * dt;
             if self.collides_at(new_pos, chunks) {
-                new_pos.y = base_y;
-                if self.vel.y <= 0.0 { self.on_ground = true; }
+                if self.vel.y <= 0.0 {
+                    // Landing: come to rest exactly on the surface, so a slab holds you half a
+                    // block up instead of at the cell boundary.
+                    let depth = ((base_y - new_pos.y).ceil() as i32 + 2).max(2);
+                    new_pos.y = self.surface_under(new_pos, chunks, base_y, depth).unwrap_or(base_y);
+                    self.on_ground = true;
+                } else {
+                    new_pos.y = base_y; // knocked our head on something above
+                }
                 self.vel.y = 0.0;
             } else {
                 let mut probe = new_pos; probe.y -= 0.05;
@@ -252,30 +262,36 @@ impl Player {
         feet == 12 || chest == 12
     }
 
-    // True if there is something solid to stand on just under the player's footprint at `pos` (used
-    // so a sneaking player won't walk off ledges). A slab counts only where its solid half reaches.
-    fn supported_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {
+    /// The highest surface under the player's footprint at or below `ceiling` — the height they
+    /// should come to rest at. Probing all four corners means the tallest thing under any part of
+    /// the body wins, so you stand on a stair's step rather than sinking into it.
+    fn surface_under(&self, pos: Vec3, chunks: &ChunkMap, ceiling: f32, depth: i32) -> Option<f32> {
         let hw = 0.3;
-        let foot = pos.y - 0.05;
-        let y = foot.floor() as i32;
+        let mut best: Option<f32> = None;
         for &dx in &[-hw, hw] {
             for &dz in &[-hw, hw] {
-                let x = (pos.x + dx).floor() as i32;
-                let z = (pos.z + dz).floor() as i32;
-                let id = chunks.get_block_world(x, y, z);
-                if id == 0 { continue; }
-                let meta = chunks.get_meta_world(x, y, z);
-                // The probe point sits `foot` above the cell floor; something must fill it.
-                let local = foot - y as f32;
-                let (lx, lz) = (pos.x + dx - x as f32, pos.z + dz - z as f32);
-                for b in Block::from_id(id).collision_boxes(meta).as_slice() {
-                    if local >= b.min[1] && local <= b.max[1]
-                        && lx >= b.min[0] && lx <= b.max[0]
-                        && lz >= b.min[2] && lz <= b.max[2] { return true; }
+                if let Some(t) = chunks.surface_below(pos.x + dx, pos.z + dz, ceiling, depth) {
+                    if best.is_none_or(|b| t > b) { best = Some(t); }
                 }
             }
         }
-        false
+        best
+    }
+
+    /// The height to climb to when walking into something: the surface just above the feet, if it
+    /// is within `max_step` and the player actually fits standing on it. Returns the real surface
+    /// height, so a slab lifts you half a block rather than the full step allowance.
+    fn step_up_to(&self, pos: Vec3, chunks: &ChunkMap, from_y: f32, max_step: f32) -> Option<f32> {
+        let target = self.surface_under(pos, chunks, from_y + max_step, 2)?;
+        if target <= from_y + 1e-4 { return None; }
+        if self.collides_at(vec3(pos.x, target, pos.z), chunks) { return None; }
+        Some(target)
+    }
+
+    // True if there is something solid to stand on just under the player's footprint at `pos` (used
+    // so a sneaking player won't walk off ledges). A slab counts only where its solid half reaches.
+    fn supported_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {
+        self.surface_under(pos, chunks, pos.y + 1e-3, 1).is_some_and(|t| pos.y - t < 0.1)
     }
 
     fn collides_at(&self, pos: Vec3, chunks: &ChunkMap) -> bool {
@@ -406,6 +422,115 @@ mod tests {
         assert!(!p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.2), &w), "standing on the tread is clear");
         // The tall half is +Z and reaches the cell ceiling.
         assert!(p.collides_at(vec3(0.5, SKY as f32 + 0.5, 0.75), &w), "the step fills the far half");
+    }
+
+    fn walk(p: &mut Player, w: &ChunkMap, forward: f32, ticks: usize) {
+        let input = crate::input::InputState { move_forward: forward, ..Default::default() };
+        for _ in 0..ticks { p.tick(1.0 / 60.0, &input, w); }
+    }
+
+    // Falling onto a slab must leave you standing on its surface, not hovering at the cell
+    // boundary and not sunk into it.
+    #[test]
+    fn you_come_to_rest_on_a_slabs_surface() {
+        let mut w = world();
+        w.set_block_meta_world(0, SKY, 0, Block::StoneSlab as u8, 0);
+        let mut p = Player::new(0.5, SKY as f32 + 3.0, 0.5);
+        let input = crate::input::InputState::default();
+        for _ in 0..120 { p.tick(1.0 / 60.0, &input, &w); }
+
+        assert!(p.on_ground, "the player should have landed");
+        assert!((p.pos.y - (SKY as f32 + 0.5)).abs() < 1e-3,
+            "expected to rest on the slab top at {}, got {}", SKY as f32 + 0.5, p.pos.y);
+    }
+
+    // The same drop onto a full block rests a whole block up, so the slab case is really following
+    // the shape rather than getting lucky.
+    #[test]
+    fn a_full_block_still_holds_you_a_whole_block_up() {
+        let mut w = world();
+        w.set_block_world(0, SKY, 0, Block::Stone as u8);
+        let mut p = Player::new(0.5, SKY as f32 + 3.0, 0.5);
+        let input = crate::input::InputState::default();
+        for _ in 0..120 { p.tick(1.0 / 60.0, &input, &w); }
+        assert!((p.pos.y - (SKY as f32 + 1.0)).abs() < 1e-3, "got {}", p.pos.y);
+    }
+
+    /// A long floor to walk along, so a test never runs off the end of the world.
+    fn floor(w: &mut ChunkMap, from_z: i32, to_z: i32, cell_y: i32) {
+        for z in from_z..=to_z { w.set_block_world(0, cell_y, z, Block::Stone as u8); }
+    }
+
+    // Walking into a slab should climb it, and land on its surface rather than the step allowance.
+    #[test]
+    fn you_walk_up_onto_a_slab() {
+        let mut w = world();
+        floor(&mut w, -20, 1, SKY);
+        for z in -20..=-2 { w.set_block_meta_world(0, SKY + 1, z, Block::StoneSlab as u8, 0); }
+
+        let mut p = Player::new(0.5, SKY as f32 + 1.0, 0.5);
+        p.yaw = 0.0; // facing -Z
+        walk(&mut p, &w, 1.0, 90);
+
+        assert!(p.pos.z < -2.5, "the player should have walked onto the slab, z = {}", p.pos.z);
+        assert!((p.pos.y - (SKY as f32 + 1.5)).abs() < 1e-3,
+            "expected to stand on the slab surface at {}, got {}", SKY as f32 + 1.5, p.pos.y);
+    }
+
+    // A staircase is a pair of half-steps per block, so it must be climbable without jumping.
+    #[test]
+    fn you_walk_up_a_staircase() {
+        use crate::world::block::FACE_SOUTH;
+        let mut w = world();
+        floor(&mut w, -20, 1, SKY);
+        // Six steps rising away from the player: column -(2+i) is filled to the previous step's
+        // height and capped with a stair whose low side faces the approach (+Z).
+        const STEPS: i32 = 6;
+        for i in 0..STEPS {
+            let z = -2 - i;
+            for c in 1..=i { w.set_block_world(0, SKY + c, z, Block::Stone as u8); }
+            w.set_block_meta_world(0, SKY + 1 + i, z, Block::StoneStairs as u8, FACE_SOUTH);
+        }
+        // A landing at the top so the climb has somewhere to finish.
+        for z in -20..=-(2 + STEPS) {
+            for c in 1..=STEPS { w.set_block_world(0, SKY + c, z, Block::Stone as u8); }
+        }
+
+        let mut p = Player::new(0.5, SKY as f32 + 1.0, 0.5);
+        p.yaw = 0.0;
+        walk(&mut p, &w, 1.0, 240);
+
+        assert!(p.pos.y > SKY as f32 + 5.0, "the player should have climbed the stairs, y = {}", p.pos.y);
+        assert!(p.pos.z < -6.0, "and travelled along them, z = {}", p.pos.z);
+    }
+
+    // A full block is too tall to walk up — only jumping clears it.
+    #[test]
+    fn a_full_block_still_blocks_you() {
+        let mut w = world();
+        floor(&mut w, -20, 1, SKY);
+        w.set_block_world(0, SKY + 1, -2, Block::Stone as u8);
+
+        let mut p = Player::new(0.5, SKY as f32 + 1.0, 0.5);
+        p.yaw = 0.0;
+        walk(&mut p, &w, 1.0, 90);
+        assert!(p.pos.z > -1.8, "a full block should stop you, z = {}", p.pos.z);
+        assert!((p.pos.y - (SKY as f32 + 1.0)).abs() < 1e-3, "and you stay on the floor, y = {}", p.pos.y);
+    }
+
+    // Sneaking must still refuse to step off a ledge, including off the edge of a slab.
+    #[test]
+    fn sneaking_wont_walk_off_a_slab_ledge() {
+        let mut w = world();
+        for z in -20..=1 { w.set_block_meta_world(0, SKY, z, Block::StoneSlab as u8, 0); }
+        let p = Player::new(0.5, SKY as f32 + 0.5, 0.5);
+
+        // Over the slab: supported.
+        assert!(p.supported_at(vec3(0.5, SKY as f32 + 0.5, 0.5), &w));
+        // Out past the end of the run: nothing underfoot.
+        assert!(!p.supported_at(vec3(0.5, SKY as f32 + 0.5, 3.5), &w));
+        // Standing a whole block above the slab is not "supported" either.
+        assert!(!p.supported_at(vec3(0.5, SKY as f32 + 1.5, 0.5), &w));
     }
 
     #[test]

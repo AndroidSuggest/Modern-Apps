@@ -172,16 +172,24 @@ fn xorshift(s: &mut u32) -> f32 {
     (x >> 8) as f32 / 16_777_216.0 // [0,1)
 }
 
+/// The world queries a mob's physics needs, both understanding slab and stair geometry:
+/// whether a point is inside solid material, and how high the surface under a column is.
+pub struct Terrain<'a> {
+    pub solid: &'a dyn Fn(f32, f32, f32) -> bool,
+    /// (x, z, ceiling) -> the highest surface at or below `ceiling` in that column.
+    pub surface: &'a dyn Fn(f32, f32, f32) -> Option<f32>,
+}
+
 impl Mob {
     pub fn new(kind: MobKind, pos: Vec3, seed: u32) -> Self {
         Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: kind.max_health(), attack_cd: 0.0, fuse: 0.0,
             target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1 }
     }
 
-    pub fn tick(&mut self, dt: f32, player: Vec3, solid: &dyn Fn(i32, i32, i32) -> bool) {
+    pub fn tick(&mut self, dt: f32, player: Vec3, terrain: &Terrain) {
         // Flying bosses (Dragon/Wither): no gravity/collision; orbit + periodic swoop at the player.
         if self.kind.flies() {
-            let _ = solid;
+            let _ = terrain;
             self.attack_cd = (self.attack_cd - dt).max(0.0);
             self.wander -= dt;
             if self.wander <= 0.0 { self.wander = 9.0; }
@@ -232,16 +240,16 @@ impl Mob {
         self.vel.y -= 24.0 * dt;
         self.vel.y = self.vel.y.max(-40.0);
 
-        let at = |x: f32, y: f32, z: f32| solid(x.floor() as i32, y.floor() as i32, z.floor() as i32);
+        let at = |x: f32, y: f32, z: f32| (terrain.solid)(x, y, z);
         let r = 0.3;
-        // Horizontal move per axis, blocked by walls, with a 1-block auto step-up on the ground.
+        // Horizontal move per axis, blocked by walls, stepping up onto whatever is actually there.
         let dx = fwd.x * speed * dt;
         if dx != 0.0 {
             let nx = self.pos.x + dx + r * dx.signum();
             if !at(nx, self.pos.y + 0.2, self.pos.z) && !at(nx, self.pos.y + 1.0, self.pos.z) {
                 self.pos.x += dx;
-            } else if self.on_ground && !at(nx, self.pos.y + 1.2, self.pos.z) && !at(nx, self.pos.y + 2.0, self.pos.z) {
-                self.pos.x += dx; self.pos.y += 1.0;
+            } else if let Some(top) = self.step_target(terrain, nx, self.pos.z) {
+                self.pos.x += dx; self.pos.y = top;
             }
         }
         let dz = fwd.z * speed * dt;
@@ -249,23 +257,41 @@ impl Mob {
             let nz = self.pos.z + dz + r * dz.signum();
             if !at(self.pos.x, self.pos.y + 0.2, nz) && !at(self.pos.x, self.pos.y + 1.0, nz) {
                 self.pos.z += dz;
-            } else if self.on_ground && !at(self.pos.x, self.pos.y + 1.2, nz) && !at(self.pos.x, self.pos.y + 2.0, nz) {
-                self.pos.z += dz; self.pos.y += 1.0;
+            } else if let Some(top) = self.step_target(terrain, self.pos.x, nz) {
+                self.pos.z += dz; self.pos.y = top;
             }
         }
-        // Vertical: fall until a block is underfoot.
+        // Vertical: fall until something is underfoot, then rest on its actual surface.
+        let prev_y = self.pos.y;
         self.pos.y += self.vel.y * dt;
         self.on_ground = false;
-        if self.vel.y <= 0.0 && at(self.pos.x, self.pos.y - 0.05, self.pos.z) {
-            self.pos.y = self.pos.y.floor() + 1.0;
-            self.vel.y = 0.0;
-            self.on_ground = true;
+        if self.vel.y <= 0.0 {
+            if let Some(top) = (terrain.surface)(self.pos.x, self.pos.z, prev_y) {
+                if self.pos.y <= top {
+                    self.pos.y = top;
+                    self.vel.y = 0.0;
+                    self.on_ground = true;
+                }
+            }
         }
         // Hostiles hop toward the player over small ledges.
         if chasing && self.on_ground && speed > 0.0 && at(self.pos.x + fwd.x * 0.4, self.pos.y + 0.1, self.pos.z + fwd.z * 0.4) {
             self.vel.y = 8.0;
         }
         self.anim += speed * dt * 5.5;
+    }
+
+    /// The height to climb to when a mob walks into something at (x, z): the surface just above its
+    /// feet, if the rise is at most a block and the mob's body fits standing there. Following the
+    /// real surface means a slab lifts a mob half a block, not a whole one.
+    fn step_target(&self, terrain: &Terrain, x: f32, z: f32) -> Option<f32> {
+        if !self.on_ground { return None; }
+        let top = (terrain.surface)(x, z, self.pos.y + 1.0)?;
+        let rise = top - self.pos.y;
+        if rise <= 1e-4 || rise > 1.0 { return None; }
+        let head = self.kind.height().max(1.0);
+        if (terrain.solid)(x, top + 0.2, z) || (terrain.solid)(x, top + head, z) { return None; }
+        Some(top)
     }
 
     fn append_mesh(&self, verts: &mut Vec<Vertex>, indices: &mut Vec<u32>) {
@@ -409,5 +435,88 @@ pub fn append_particles(verts: &mut Vec<Vertex>, indices: &mut Vec<u32>, ps: &[P
             verts.push(Vertex { pos: [cc.x, cc.y, cc.z], uv: [PARTICLE_UV, PARTICLE_UV], color: c, ao: 1.0, tile_idx: 0.0, normal: [0.0, 1.0, 0.0], light: 0.0 });
         }
         indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::block::Block;
+    use crate::world::ChunkMap;
+
+    // Terrain never reaches this high, so the test platform sits in clear air.
+    const SKY: i32 = 200;
+
+    fn world() -> ChunkMap {
+        let dir = std::env::temp_dir().join("voxels_mob_test").to_string_lossy().into_owned();
+        ChunkMap::new(3, dir)
+    }
+
+    /// A wide platform so a wandering mob can't stroll off it during the test.
+    fn platform(w: &mut ChunkMap, id: u8, meta: u8) {
+        for x in -6..=6 { for z in -6..=6 { w.set_block_meta_world(x, SKY, z, id, meta); } }
+    }
+
+    fn settle(w: &ChunkMap, kind: MobKind, from_y: f32) -> Mob {
+        let terrain = Terrain {
+            solid: &|x, y, z| w.solid_at(x, y, z),
+            surface: &|x, z, ceiling| w.surface_below(x, z, ceiling, 2),
+        };
+        let mut m = Mob::new(kind, Vec3::new(0.5, from_y, 0.5), 7);
+        // A player far away, so passive mobs just wander and hostiles don't charge off the platform.
+        let player = Vec3::new(0.5, from_y, 400.0);
+        for _ in 0..180 { m.tick(1.0 / 60.0, player, &terrain); }
+        m
+    }
+
+    // A mob standing on a slab must rest on its surface, not float at the cell boundary.
+    #[test]
+    fn a_mob_rests_on_a_slabs_surface() {
+        let mut w = world();
+        platform(&mut w, Block::StoneSlab as u8, 0);
+        let m = settle(&w, MobKind::Pig, SKY as f32 + 3.0);
+        assert!(m.on_ground, "the pig should have landed");
+        assert!((m.pos.y - (SKY as f32 + 0.5)).abs() < 1e-3,
+            "expected to stand on the slab top at {}, got {}", SKY as f32 + 0.5, m.pos.y);
+    }
+
+    // The same fall onto full blocks rests a whole block up, so the slab case really follows shape.
+    #[test]
+    fn a_mob_rests_a_whole_block_up_on_cubes() {
+        let mut w = world();
+        platform(&mut w, Block::Stone as u8, 0);
+        let m = settle(&w, MobKind::Pig, SKY as f32 + 3.0);
+        assert!((m.pos.y - (SKY as f32 + 1.0)).abs() < 1e-3, "got {}", m.pos.y);
+    }
+
+    // A top slab's solid half is its upper half, so a mob stands at the cell ceiling.
+    #[test]
+    fn a_mob_stands_on_top_of_a_top_slab() {
+        let mut w = world();
+        platform(&mut w, Block::StoneSlab as u8, crate::world::block::META_TOP);
+        let m = settle(&w, MobKind::Pig, SKY as f32 + 3.0);
+        assert!((m.pos.y - (SKY as f32 + 1.0)).abs() < 1e-3, "got {}", m.pos.y);
+    }
+
+    // Mobs step up half a block onto a slab rather than the full block they used to.
+    #[test]
+    fn a_mob_steps_up_onto_a_slab() {
+        let mut w = world();
+        // A long floor so the chase never runs off the end, with a slab ledge across the path.
+        for x in -3..=3 { for z in -20..=3 { w.set_block_world(x, SKY, z, Block::Stone as u8); } }
+        for x in -3..=3 { w.set_block_meta_world(x, SKY + 1, -3, Block::StoneSlab as u8, 0); }
+
+        let terrain = Terrain {
+            solid: &|x, y, z| w.solid_at(x, y, z),
+            surface: &|x, z, ceiling| w.surface_below(x, z, ceiling, 2),
+        };
+        let mut m = Mob::new(MobKind::Zombie, Vec3::new(0.5, SKY as f32 + 1.0, 0.5), 11);
+        // A hostile chases the player, who stands beyond the ledge.
+        let player = Vec3::new(0.5, SKY as f32 + 1.5, -8.0);
+        for _ in 0..240 { m.tick(1.0 / 60.0, player, &terrain); }
+
+        assert!(m.pos.z < -2.0, "the zombie should have reached the ledge, z = {}", m.pos.z);
+        assert!(m.pos.y >= SKY as f32 + 1.0, "and never sunk below the floor, y = {}", m.pos.y);
+        assert!(m.pos.y <= SKY as f32 + 2.0, "nor been launched onto a phantom full block, y = {}", m.pos.y);
     }
 }
