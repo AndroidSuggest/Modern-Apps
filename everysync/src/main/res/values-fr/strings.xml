@@ -1,3 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    </resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="add_account_title">Ajouter un compte</string>
+    <string name="apple_id_email">Adresse e-mail de l’identifiant Apple</string>
+    <string name="accounts_title">Synchronisation</string>
+    <string name="app_name">Synchronisation</string>
+    <string name="app_specific_password">Mot de passe pour application</string>
+    <string name="conflict_local">Privilégier l’appareil</string>
+    <string name="conflict_lww">La dernière modification l’emporte</string>
+    <string name="conflict_policy">Résolution des conflits</string>
+    <string name="conflict_remote">Privilégier le serveur</string>
+    <string name="dav_base_url">URL du serveur</string>
+    <string name="dav_login_title">Connexion à <xliff:g id="provider" example="iCloud">%1$s</xliff:g></string>
+    <string name="dav_password">Mot de passe (pour application)</string>
+    <string name="dav_username">Nom d’utilisateur / adresse e-mail</string>
+    <string name="everysync_privacy_policy">Synchronisation synchronise les contacts, les calendriers et les données de santé entre vos comptes infonuagiques et cet appareil. Les données sont uniquement stockées sur cet appareil et sur les serveurs que vous configurez.</string>
+    <string name="global_interval">Intervalle de synchronisation (minutes)</string>
+    <string name="icloud_app_password_steps">iCloud nécessite un mot de passe pour application, et non le mot de passe de votre identifiant Apple :\n\n1. Connectez-vous sur account.apple.com\n2. Ouvrez Connexion et sécurité → Mots de passe pour application\n3. Créez-en un et nommez-le « Synchronisation»\n4. Saisissez ci-dessous l’adresse e-mail de votre identifiant Apple ainsi que ce mot de passe</string>
+    <string name="icloud_create_password">Créer un mot de passe pour application</string>
+    <string name="last_synced">Dernière synchronisation : <xliff:g id="date" example="Aujourd’hui à 10 h 30">%1$s</xliff:g></string>
+</resources>
