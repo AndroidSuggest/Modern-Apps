@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.voxels.util.VoxelsNative
+import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.library.ui.Text
 import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
@@ -41,12 +42,15 @@ private data class DragState(val from: Int, val pos: Offset, val id: Int, val co
 fun InventoryOverlay(
     inventoryJson: String, recipesJson: String, blessingsJson: String, blessingCatalogJson: String,
     onClose: () -> Unit, startTab: Int = 0,
+    // This world's achievement tier. Null until the manager has loaded from assets.
+    worldAchievements: AchievementsManager? = null,
 ) {
     val inv = remember(inventoryJson) {
         try { Json { ignoreUnknownKeys = true }.decodeFromString<InventoryState>(inventoryJson) } catch (_: Exception) { InventoryState() }
     }
     val slots = inv.slots
-    var leftTab by remember { mutableStateOf(startTab) }   // 0 Inventory, 1 Outfit, 2 Crafting, 3 Blessings
+    // 0 Inventory, 1 Outfit, 2 Crafting, 3 Blessings, 4 Achievements
+    var leftTab by remember { mutableStateOf(startTab) }
     var catTab by remember { mutableStateOf(0) }
     val bounds = remember { mutableStateMapOf<Int, Rect>() }
     var drag by remember { mutableStateOf<DragState?>(null) }
@@ -67,6 +71,7 @@ fun InventoryOverlay(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TabButton(stringResource(R.string.crafting), leftTab == 2) { leftTab = 2 }
                 TabButton(stringResource(R.string.blessings), leftTab == 3) { leftTab = 3 }
+                TabButton(stringResource(R.string.achievements), leftTab == 4) { leftTab = 4 }
                 TabButton(stringResource(R.string.outfit), leftTab == 1) { leftTab = 1 }
                 TabButton(stringResource(R.string.inventory), leftTab == 0) { leftTab = 0 }
                 Spacer(Modifier.weight(1f))
@@ -89,6 +94,7 @@ fun InventoryOverlay(
                         }, onDragCancel = { drag = null })
                     1 -> OutfitView(inv.armor)
                     3 -> BlessingsView(blessingsJson, blessingCatalogJson, slots)
+                    4 -> AchievementsView(worldAchievements)
                     else -> CraftingTable(recipesJson)
                 }
             }
@@ -438,6 +444,55 @@ private fun OutfitView(armor: List<InvSlot>) {
                     if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(34.dp), filterQuality = FilterQuality.None)
                 }
                 Text(if (s.id != 0) (blockNames[s.id] ?: "?") else "${labels[i]}: empty", color = Color.White.copy(if (s.id != 0) 0.95f else 0.5f))
+            }
+        }
+    }
+}
+
+/// This world's achievements. The app-level tier is what the Games Hub shows; this is the one that
+/// starts at zero in a new world, which is the whole point of tracking both.
+@Composable
+private fun AchievementsView(manager: AchievementsManager?) {
+    if (manager == null) {
+        Text(stringResource(R.string.achievements_unavailable), color = Color.White.copy(0.6f), fontSize = 12.sp)
+        return
+    }
+    val statuses by manager.getAchievementStatuses().collectAsState(initial = emptyList())
+    // Earned first, then whatever is closest to being earned.
+    val ordered = remember(statuses) {
+        statuses.sortedWith(
+            compareByDescending<com.vayunmathur.library.util.AchievementStatus> { it.isUnlocked }
+                .thenByDescending { it.progress.toFloat() / it.achievement.targetProgress.coerceAtLeast(1) }
+        )
+    }
+    val earned = ordered.count { it.isUnlocked }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            stringResource(R.string.achievements_earned, earned, ordered.size),
+            color = Color.White.copy(0.75f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+        )
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
+               verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (st in ordered) {
+                val done = st.isUnlocked
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                        .background(if (done) Color(0xFF2C4A2C) else Color.White.copy(0.06f))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(if (done) "\u2713" else "\u00b7", color = Color.White.copy(if (done) 0.9f else 0.35f), fontSize = 14.sp)
+                    Column(Modifier.weight(1f)) {
+                        Text(st.achievement.name, color = Color.White.copy(if (done) 0.95f else 0.6f), fontSize = 12.sp)
+                        Text(st.achievement.description, color = Color.White.copy(0.45f), fontSize = 10.sp)
+                    }
+                    // Only the counting achievements have anything useful to show here.
+                    if (!done && st.achievement.targetProgress > 1) {
+                        Text("${st.progress}/${st.achievement.targetProgress}",
+                             color = Color.White.copy(0.5f), fontSize = 10.sp)
+                    }
+                }
             }
         }
     }

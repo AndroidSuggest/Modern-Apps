@@ -182,6 +182,19 @@ class DataStoreUtils private constructor(context: Context) {
         }
     }
 
+    /**
+     * Drop [names] entirely, whatever type they hold. Deleting the thing a namespaced key belongs to
+     * has to delete the key too, or the store grows a tail of state nothing can ever reach again.
+     */
+    suspend fun removeKeys(names: Collection<String>) {
+        dataStore.edit { prefs ->
+            for (name in names) {
+                prefs.remove(stringSetPreferencesKey(name))
+                prefs.remove(longPreferencesKey(name))
+            }
+        }
+    }
+
     fun getBoolean(string: String, bool: Boolean): Boolean {
         return getWithFallback(booleanPreferencesKey(string)) ?: bool
     }

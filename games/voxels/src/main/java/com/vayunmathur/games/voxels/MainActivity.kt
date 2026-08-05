@@ -18,7 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vayunmathur.games.voxels.ui.*
-import com.vayunmathur.games.voxels.util.VoxelsAchievementsManager
+import com.vayunmathur.games.voxels.util.VoxelsAchievements
 import com.vayunmathur.games.voxels.util.VoxelsNative
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.GameHubComposeHook
@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
         val worldDir = intent.getStringExtra("world_dir")
             ?: java.io.File(filesDir, "worlds/default").apply { mkdirs() }.absolutePath
         val worldSeed = intent.getIntExtra("world_seed", 0xB10CCA)
+        // The world's directory name is its id (see WorldManager.createWorld). Deriving it here beats
+        // widening the Intent contract MenuActivity already has.
+        val worldId = java.io.File(worldDir).name
         if (VoxelsNative.isAvailable) {
             try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: Exception) {
                 android.util.Log.e("VoxelsMain", "nativeInit failed", e)
@@ -66,13 +69,13 @@ class MainActivity : ComponentActivity() {
                 var tradesJson by remember { mutableStateOf("{}") }
                 var tradeOpen by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson(); cutsJson = VoxelsNative.getCutsJson() } catch (_: Exception) {} }
-                var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
-                val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
+                var achievements by remember { mutableStateOf<VoxelsAchievements?>(null) }
+                val newAchievement by (achievements?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
                 LaunchedEffect(Unit) {
                     try {
                         val json = assets.open("achievements.json").bufferedReader().readText()
-                        achievementsManager = VoxelsAchievementsManager(this@MainActivity, json)
+                        achievements = VoxelsAchievements(this@MainActivity, json, worldId)
                     } catch (_: Exception) {}
                 }
 
@@ -126,36 +129,36 @@ class MainActivity : ComponentActivity() {
                                     val placed = obj.optInt("placed", 0)
                                     val broken = obj.optInt("broken", 0)
                                     val walked = obj.optInt("walked", 0)
-                                    achievementsManager?.let { mgr ->
-                                        if (broken > 0) mgr.onAchievementUnlocked("first_block")
-                                        if (placed > 0) mgr.onAchievementUnlocked("first_place")
-                                        mgr.onProgressUpdated("builder_100", placed)
-                                        mgr.onProgressUpdated("miner_100", broken)
-                                        mgr.onProgressUpdated("explorer_100", walked)
-                                        if (obj.optBoolean("night", false)) mgr.onAchievementUnlocked("night_survivor")
-                                        if (obj.optInt("depth", 128) <= 8) mgr.onAchievementUnlocked("deep_diver")
-                                        if (obj.optBoolean("silver", false)) mgr.onAchievementUnlocked("silver_tongue")
-                                        if (obj.optBoolean("steel", false)) mgr.onAchievementUnlocked("steelworker")
-                                        if (obj.optBoolean("adamant", false)) mgr.onAchievementUnlocked("alchemist")
-                                        if (obj.optBoolean("blessing", false)) mgr.onAchievementUnlocked("blessed")
-                                        if (obj.optBoolean("fullArmor", false)) mgr.onAchievementUnlocked("fully_armed")
-                                        if (obj.optBoolean("nether", false)) mgr.onAchievementUnlocked("nether_bound")
-                                        if (obj.optBoolean("end", false)) mgr.onAchievementUnlocked("the_end")
-                                        if (obj.optBoolean("dragon", false)) mgr.onAchievementUnlocked("dragonslayer")
-                                        if (obj.optBoolean("wither", false)) mgr.onAchievementUnlocked("withering")
-                                        if (obj.optInt("beacon", 0) >= 4) mgr.onAchievementUnlocked("beacon_master")
-                                        if (obj.optBoolean("elytra", false)) mgr.onAchievementUnlocked("sky_bound")
-                                        if (obj.optBoolean("maxHearts", false)) mgr.onAchievementUnlocked("heart_of_gold")
-                                        if (obj.optInt("attuned", 0) > 0) mgr.onAchievementUnlocked("attuned")
-                                        if (obj.optInt("attuned", 0) >= 3) mgr.onAchievementUnlocked("pantheon")
-                                        if (obj.optBoolean("traded", false)) mgr.onAchievementUnlocked("first_trade")
-                                        if (obj.optBoolean("trader", false)) mgr.onAchievementUnlocked("master_trader")
-                                        if (obj.optBoolean("sheared", false)) mgr.onAchievementUnlocked("first_shear")
-                                        if (obj.optBoolean("fished", false)) mgr.onAchievementUnlocked("first_catch")
-                                        if (obj.optBoolean("brushed", false)) mgr.onAchievementUnlocked("first_dig")
-                                        if (obj.optBoolean("harvested", false)) mgr.onAchievementUnlocked("first_harvest")
-                                        if (obj.optBoolean("rested", false)) mgr.onAchievementUnlocked("first_rest")
-                                        mgr.onProgressUpdated("recipes_50", obj.optInt("recipes", 0))
+                                    achievements?.let { mgr ->
+                                        if (broken > 0) mgr.unlock("first_block")
+                                        if (placed > 0) mgr.unlock("first_place")
+                                        mgr.progress("builder_100", placed)
+                                        mgr.progress("miner_100", broken)
+                                        mgr.progress("explorer_100", walked)
+                                        if (obj.optBoolean("night", false)) mgr.unlock("night_survivor")
+                                        if (obj.optInt("depth", 128) <= 8) mgr.unlock("deep_diver")
+                                        if (obj.optBoolean("silver", false)) mgr.unlock("silver_tongue")
+                                        if (obj.optBoolean("steel", false)) mgr.unlock("steelworker")
+                                        if (obj.optBoolean("adamant", false)) mgr.unlock("alchemist")
+                                        if (obj.optBoolean("blessing", false)) mgr.unlock("blessed")
+                                        if (obj.optBoolean("fullArmor", false)) mgr.unlock("fully_armed")
+                                        if (obj.optBoolean("nether", false)) mgr.unlock("nether_bound")
+                                        if (obj.optBoolean("end", false)) mgr.unlock("the_end")
+                                        if (obj.optBoolean("dragon", false)) mgr.unlock("dragonslayer")
+                                        if (obj.optBoolean("wither", false)) mgr.unlock("withering")
+                                        if (obj.optInt("beacon", 0) >= 4) mgr.unlock("beacon_master")
+                                        if (obj.optBoolean("elytra", false)) mgr.unlock("sky_bound")
+                                        if (obj.optBoolean("maxHearts", false)) mgr.unlock("heart_of_gold")
+                                        if (obj.optInt("attuned", 0) > 0) mgr.unlock("attuned")
+                                        if (obj.optInt("attuned", 0) >= 3) mgr.unlock("pantheon")
+                                        if (obj.optBoolean("traded", false)) mgr.unlock("first_trade")
+                                        if (obj.optBoolean("trader", false)) mgr.unlock("master_trader")
+                                        if (obj.optBoolean("sheared", false)) mgr.unlock("first_shear")
+                                        if (obj.optBoolean("fished", false)) mgr.unlock("first_catch")
+                                        if (obj.optBoolean("brushed", false)) mgr.unlock("first_dig")
+                                        if (obj.optBoolean("harvested", false)) mgr.unlock("first_harvest")
+                                        if (obj.optBoolean("rested", false)) mgr.unlock("first_rest")
+                                        mgr.progress("recipes_50", obj.optInt("recipes", 0))
                                     }
                                 } catch (_: Exception) {}
                             } catch (_: Exception) {}
@@ -164,7 +167,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                GameHubComposeHook("voxels", achievementsManager)
+                // The Hub only ever sees the app-level tier: its contract is (gameId, achievementId)
+                // with no room for a world.
+                GameHubComposeHook("voxels", achievements?.app)
 
                 Box(Modifier.fillMaxSize()) {
                     if (VoxelsNative.isAvailable) {
@@ -296,7 +301,7 @@ class MainActivity : ComponentActivity() {
 
                     newAchievement?.let { ach ->
                         Box(Modifier.align(Alignment.TopCenter).padding(top = 80.dp)) {
-                            AchievementNotification(ach) { achievementsManager?.dismissNotification() }
+                            AchievementNotification(ach) { achievements?.dismissNotification() }
                         }
                     }
 
@@ -304,7 +309,8 @@ class MainActivity : ComponentActivity() {
                         InventoryOverlay(
                             inventoryJson = inventoryJson, recipesJson = recipesJson,
                             blessingsJson = blessingsJson, blessingCatalogJson = blessingCatalogJson,
-                            onClose = { inventoryOpen = false }, startTab = invStartTab
+                            onClose = { inventoryOpen = false }, startTab = invStartTab,
+                            worldAchievements = achievements?.world,
                         )
                     }
 

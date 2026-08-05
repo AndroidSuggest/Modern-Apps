@@ -26,6 +26,9 @@
     <string name="villager_tier">Tier %1$d</string>
     <string name="recipes_show_locked">Show locked</string>
     <string name="recipe_requires">Requires: craft %1$s first</string>
+    <string name="achievements">Awards</string>
+    <string name="achievements_earned">%1$d of %2$d earned in this world</string>
+    <string name="achievements_unavailable">Awards are still loading.</string>
     <string name="seed_2">Seed: %1$s  •  %2$s</string>
     <string name="estus">Estus ×%1$s</string>
     <string name="down">Down</string>

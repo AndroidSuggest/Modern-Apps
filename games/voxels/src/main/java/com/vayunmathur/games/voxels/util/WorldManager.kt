@@ -1,6 +1,9 @@
 package com.vayunmathur.games.voxels.util
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -77,5 +80,10 @@ object WorldManager {
 
     fun deleteWorld(ctx: Context, id: String) {
         File(worldsRoot(ctx), id).deleteRecursively()
+        // The world's achievement tier lives in the app-wide DataStore rather than in its directory,
+        // so it has to be dropped by hand or it outlives the world forever.
+        val json = ctx.assets.open("achievements.json").bufferedReader().use { it.readText() }
+        val tier = VoxelsAchievementsManager(ctx, json, "world_$id:")
+        CoroutineScope(Dispatchers.IO).launch { tier.forgetAll() }
     }
 }

@@ -14,10 +14,25 @@ import kotlinx.serialization.json.Json
 
 private val achievementsJson = Json { ignoreUnknownKeys = true }
 
-abstract class AchievementsManager(val context: Context, jsonContent: String) {
+/**
+ * Tracks achievement unlocks and progress in the app-wide DataStore.
+ *
+ * [keyPrefix] namespaces the stored keys. The default empty prefix is the app-level tier — the one the
+ * Games Hub mirrors — so every existing game keeps writing exactly the keys it always has. A game with
+ * multiple saves can additionally construct one manager per save with a prefix, giving each its own
+ * independent progress without touching the app-level totals.
+ */
+abstract class AchievementsManager(
+    val context: Context,
+    jsonContent: String,
+    private val keyPrefix: String = "",
+) {
     protected val ds = DataStoreUtils.getInstance(context)
     val achievements: List<Achievement> =
         achievementsJson.decodeFromString(ListSerializer(Achievement.serializer()), jsonContent)
+
+    private val unlockedKey get() = "${keyPrefix}achievements_unlocked"
+    private fun progressKey(id: String) = "${keyPrefix}achievement_progress_$id"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -29,7 +44,7 @@ abstract class AchievementsManager(val context: Context, jsonContent: String) {
     fun onAchievementUnlocked(id: String) {
         val achievement = achievements.find { it.id == id } ?: return
         scope.launch {
-            if (ds.addStringToSetIfAbsent("achievements_unlocked", id)) {
+            if (ds.addStringToSetIfAbsent(unlockedKey, id)) {
                 _newAchievement.value = achievement
             }
         }
@@ -38,7 +53,7 @@ abstract class AchievementsManager(val context: Context, jsonContent: String) {
     fun onProgressUpdated(id: String, progress: Int) {
         val achievement = achievements.find { it.id == id } ?: return
         scope.launch {
-            if (ds.setLongIfGreater("achievement_progress_$id", progress.toLong()) &&
+            if (ds.setLongIfGreater(progressKey(id), progress.toLong()) &&
                 progress >= achievement.targetProgress
             ) {
                 onAchievementUnlocked(id)
@@ -47,8 +62,8 @@ abstract class AchievementsManager(val context: Context, jsonContent: String) {
     }
 
     fun getAchievementStatuses(): Flow<List<AchievementStatus>> {
-        val unlockedFlow = ds.stringSetFlow("achievements_unlocked")
-        val progressFlows = achievements.map { ds.longFlow("achievement_progress_${it.id}", 0L) }
+        val unlockedFlow = ds.stringSetFlow(unlockedKey)
+        val progressFlows = achievements.map { ds.longFlow(progressKey(it.id), 0L) }
         return combine(unlockedFlow, combine(progressFlows) { it }) { unlocked, progresses ->
             achievements.mapIndexed { index, achievement ->
                 AchievementStatus(
@@ -62,5 +77,10 @@ abstract class AchievementsManager(val context: Context, jsonContent: String) {
 
     fun dismissNotification() {
         _newAchievement.value = null
+    }
+
+    /** Forget everything stored under [keyPrefix]. Used when the save it belongs to is deleted. */
+    suspend fun forgetAll() {
+        ds.removeKeys(listOf(unlockedKey) + achievements.map { progressKey(it.id) })
     }
 }
