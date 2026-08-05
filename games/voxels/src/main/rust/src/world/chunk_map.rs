@@ -56,7 +56,7 @@ impl ChunkMap {
         if !loaded {
             self.gen.fill_chunk(&mut chunk);
         }
-        // Water below sea level, for freshly generated AND older saved chunks (idempotent).
+        // Water below sea level, for freshly generated and loaded chunks alike (idempotent).
         self.gen.ensure_water(&mut chunk);
         self.chunks.insert(pos, chunk);
     }

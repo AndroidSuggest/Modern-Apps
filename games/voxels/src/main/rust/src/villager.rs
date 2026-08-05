@@ -256,7 +256,7 @@ pub fn give_count(offer: &Offer) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::block::{is_real_id, MAX_LOW_BLOCK_ID};
+    use crate::world::block::is_real_id;
 
     // A typo in a trade table is invisible until a player taps it and receives Air, so every id in
     // every tier of every profession gets checked.

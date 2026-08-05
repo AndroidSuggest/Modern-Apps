@@ -95,7 +95,7 @@ impl Containers {
 }
 
 fn container_file(base: &str) -> PathBuf {
-    Path::new(base).join("voxels").join("worlds").join("default").join("containers.json")
+    Path::new(base).join("containers.json")
 }
 
 // Deterministic loot for a world-generated chest, from its position. The End's chests hold the

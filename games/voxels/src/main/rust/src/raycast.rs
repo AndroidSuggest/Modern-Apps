@@ -1,5 +1,5 @@
 use glam::Vec3;
-use crate::world::{ChunkMap, block::{Aabb, Block, Shape}};
+use crate::world::{ChunkMap, block::{Block, Shape}};
 
 #[derive(Debug, Clone, Copy)]
 pub struct HitResult { pub pos: (i32,i32,i32), pub prev: (i32,i32,i32), pub normal: (i32,i32,i32), pub dist: f32 }

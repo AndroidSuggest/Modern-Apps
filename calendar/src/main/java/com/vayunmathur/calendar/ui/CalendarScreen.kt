@@ -54,11 +54,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,6 +81,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import com.vayunmathur.library.util.localizedMonthNames
 import com.vayunmathur.library.util.localizedDayOfWeekNames
+import com.vayunmathur.library.util.localeFirstDayOfWeek
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.number
@@ -90,27 +89,13 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.format
 import kotlinx.datetime.todayIn
-import androidx.core.text.util.LocalePreferences
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-private fun getFirstDayOfWeekValue(locale: Locale): Int {
-    return when (LocalePreferences.getFirstDayOfWeek(locale)) {
-        LocalePreferences.FirstDayOfWeek.MONDAY -> 1
-        LocalePreferences.FirstDayOfWeek.TUESDAY -> 2
-        LocalePreferences.FirstDayOfWeek.WEDNESDAY -> 3
-        LocalePreferences.FirstDayOfWeek.THURSDAY -> 4
-        LocalePreferences.FirstDayOfWeek.FRIDAY -> 5
-        LocalePreferences.FirstDayOfWeek.SATURDAY -> 6
-        LocalePreferences.FirstDayOfWeek.SUNDAY -> 7
-        else -> 7
-    }
-}
-
 private fun firstDayOfWeekOffset(date: LocalDate, locale: Locale): Int {
-    val firstDayOfWeek = getFirstDayOfWeekValue(locale)
+    val firstDayOfWeek = localeFirstDayOfWeek(locale)
     return (date.dayOfWeek.isoDayNumber - firstDayOfWeek + 7) % 7
 }
 
@@ -281,11 +266,15 @@ fun CalendarPagerView(
 ) {
     val daysToShow = when (currentLayout) {
         CalendarViewModel.CalendarLayout.Day -> 1
-        CalendarViewModel.CalendarLayout.WorkWeek, CalendarViewModel.CalendarLayout.WorkWeekSummary -> 5
+        CalendarViewModel.CalendarLayout.WorkWeek,
+        CalendarViewModel.CalendarLayout.WorkWeekSummary,
+        CalendarViewModel.CalendarLayout.WorkWeekCompact -> 5
         else -> 7
     }
     val isSummary = currentLayout == CalendarViewModel.CalendarLayout.WorkWeekSummary || 
                     currentLayout == CalendarViewModel.CalendarLayout.FullWeekSummary
+    val isCompact = currentLayout == CalendarViewModel.CalendarLayout.WorkWeekCompact ||
+                    currentLayout == CalendarViewModel.CalendarLayout.FullWeekCompact
     
     val pagerState = rememberPagerState(initialPage = 5000) { 10000 }
     // Track whether the pager is being programmatically scrolled to avoid feedback loops
@@ -318,100 +307,62 @@ fun CalendarPagerView(
         }
     }
 
-    Row(Modifier.fillMaxSize()) {
-        var yOffset by remember { mutableStateOf(0.dp) }
-        val density = LocalDensity.current
-
-        if (!isSummary) {
-            // Static Hour labels column
-            Column {
-                Spacer(Modifier.height(yOffset))
-                Column(
-                    Modifier
-                        .verticalScroll(verticalState)
-                        .padding(bottom = 16.dp)
-                ) {
-                    for (hour in 0..23) {
-                        Box(modifier = Modifier
-                            .height(56.dp)
-                            .width(56.dp)) {
-                            val hourString = if(DateFormat.is24HourFormat(context)) {
-                                "%02d:00".format(hour)
-                            } else when {
-                                hour == 0 -> context.getString(R.string.twelve_am)
-                                hour < 12 -> context.getString(R.string.hour_am, hour)
-                                hour == 12 -> context.getString(R.string.twelve_pm)
-                                else -> context.getString(R.string.hour_pm, hour - 12)
-                            }
-                            Text(
-                                text = hourString,
-                                modifier = Modifier.padding(start = 8.dp),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-                }
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        beyondViewportPageCount = 1
+    ) { page ->
+        val delta = page - 5000
+        val pageStartDate = if (daysToShow == 1) {
+            anchorDate.plus(DatePeriod(days = delta))
+        } else {
+            anchorDate.plus(DatePeriod(days = delta * 7))
+        }
+        
+        val startDay = when (currentLayout) {
+            CalendarViewModel.CalendarLayout.Day -> pageStartDate
+            CalendarViewModel.CalendarLayout.WorkWeek,
+            CalendarViewModel.CalendarLayout.WorkWeekSummary,
+            CalendarViewModel.CalendarLayout.WorkWeekCompact ->
+                pageStartDate.minus(DatePeriod(days = (pageStartDate.dayOfWeek.isoDayNumber - 1) % 7))
+            else -> {
+                val locale = context.resources.configuration.locales[0]
+                pageStartDate.minus(DatePeriod(days = firstDayOfWeekOffset(pageStartDate, locale)))
             }
         }
+        
+        val weekDays = (0 until daysToShow).map { startDay.plus(DatePeriod(days = it)) }
+        val vEventsByID = remember(events) { events.associateBy { it.id!! } }
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-            beyondViewportPageCount = 1
-        ) { page ->
-            val delta = page - 5000
-            val pageStartDate = if (daysToShow == 1) {
-                anchorDate.plus(DatePeriod(days = delta))
+        val weekInstances by produceState(emptyList<Instance>(), events, calendarVisibility, startDay, daysToShow) {
+            value = loadInstances(
+                weekDays.first().atStartOfDayIn(TimeZone.currentSystemDefault()),
+                weekDays.last().atEndOfDayIn(TimeZone.currentSystemDefault())
+            )
+        }
+
+        Column(Modifier.fillMaxSize()) {
+            WeekHeader(weekDays, leadingGutter = !isSummary)
+            
+            if (isSummary) {
+                SummaryGrid(context, weekInstances, vEventsByID, calendars, weekDays, onEventClick)
             } else {
-                anchorDate.plus(DatePeriod(days = delta * 7))
-            }
-            
-            val startDay = when (currentLayout) {
-                CalendarViewModel.CalendarLayout.Day -> pageStartDate
-                CalendarViewModel.CalendarLayout.WorkWeek, CalendarViewModel.CalendarLayout.WorkWeekSummary -> 
-                    pageStartDate.minus(DatePeriod(days = (pageStartDate.dayOfWeek.isoDayNumber - 1) % 7))
-                else -> {
-                    val locale = context.resources.configuration.locales[0]
-                    pageStartDate.minus(DatePeriod(days = firstDayOfWeekOffset(pageStartDate, locale)))
+                val (allDay, notAllDay) = weekInstances.partition { it.allDay }
+                val allDayByDate = weekDays.associateWith { d -> allDay.filter { d in it.spanDays } }
+                val timedByDateHour = weekDays.associateWith { d ->
+                    notAllDay.filter { d in it.spanDays }.groupBy { it.startDateTime.hour }
                 }
-            }
-            
-            val weekDays = (0 until daysToShow).map { startDay.plus(DatePeriod(days = it)) }
-            val vEventsByID = remember(events) { events.associateBy { it.id!! } }
 
-            val weekInstances by produceState(emptyList<Instance>(), events, calendarVisibility, startDay, daysToShow) {
-                value = loadInstances(
-                    weekDays.first().atStartOfDayIn(TimeZone.currentSystemDefault()),
-                    weekDays.last().atEndOfDayIn(TimeZone.currentSystemDefault())
+                AllDayRow(allDayByDate, vEventsByID, calendars, weekDays, onEventClick)
+                HourlyGrid(
+                    context,
+                    timedByDateHour,
+                    weekDays,
+                    verticalState,
+                    shrinkEmptyHours = isCompact,
+                    onEventClick = onEventClick,
+                    innerPadding = PaddingValues(0.dp)
                 )
-            }
-
-            Column(Modifier.fillMaxSize()) {
-                WeekHeader(weekDays)
-                
-                if (isSummary) {
-                    SummaryGrid(context, weekInstances, vEventsByID, calendars, weekDays, onEventClick)
-                } else {
-                    val (allDay, notAllDay) = weekInstances.partition { it.allDay }
-                    val allDayByDate = weekDays.associateWith { d -> allDay.filter { d in it.spanDays } }
-                    val timedByDateHour = weekDays.associateWith { d ->
-                        notAllDay.filter { d in it.spanDays }.groupBy { it.startDateTime.hour }
-                    }
-
-                    AllDayRow(allDayByDate, vEventsByID, calendars, weekDays, onEventClick)
-                    Spacer(Modifier.onGloballyPositioned {
-                        if (page == pagerState.currentPage) {
-                            yOffset = with(density) { it.positionInParent().y.toDp() }
-                        }
-                    })
-                    HourlyGrid(
-                        timedByDateHour,
-                        weekDays,
-                        verticalState,
-                        onEventClick,
-                        PaddingValues(0.dp)
-                    )
-                }
             }
         }
     }
@@ -543,7 +494,7 @@ fun MonthView(
         val lastOfMonth = firstOfMonth.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1))
         
         val locale = context.resources.configuration.locales[0]
-        val firstDayOfWeek = getFirstDayOfWeekValue(locale)
+        val firstDayOfWeek = localeFirstDayOfWeek(locale)
         val lastDayOfWeek = if (firstDayOfWeek == 1) 7 else firstDayOfWeek - 1
         
         val startDay = firstOfMonth.minus(DatePeriod(days = firstDayOfWeekOffset(firstOfMonth, locale)))
@@ -732,10 +683,14 @@ fun LocalDate.atEndOfDayIn(currentSystemDefault: TimeZone): Instant {
     return this.plus(DatePeriod(days = 1)).atStartOfDayIn(currentSystemDefault)
 }
 
+/** Width of the hour-label gutter down the left of the day/week grid. */
+private val HourGutterWidth = 56.dp
+
 @Composable
-private fun WeekHeader(weekDays: List<LocalDate>) {
+private fun WeekHeader(weekDays: List<LocalDate>, leadingGutter: Boolean) {
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
     Row(modifier = Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp)) {
+        if (leadingGutter) Spacer(Modifier.width(HourGutterWidth))
         weekDays.forEach { d ->
             val isToday = d == today
             Column(
@@ -774,6 +729,7 @@ private fun AllDayRow(
     onEventClick: (Instance) -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp)) {
+        Spacer(Modifier.width(HourGutterWidth))
         weekDays.forEach { d ->
             val instances = allDayByDate[d].orEmpty()
             Column(Modifier.weight(1f)) {
@@ -813,14 +769,14 @@ private fun AllDayRow(
 
 @Composable
 private fun HourlyGrid(
+    context: android.content.Context,
     timedByDateHour: Map<LocalDate, Map<Int, List<Instance>>>,
     weekDays: List<LocalDate>,
     verticalState: ScrollState,
+    shrinkEmptyHours: Boolean,
     onEventClick: (Instance) -> Unit,
     innerPadding: PaddingValues
 ) {
-    // Each hour row height
-    val hourRowHeight = 56.dp
     val minEventHeight = 18.dp
     val minEventWidth = 56.dp
 
@@ -834,94 +790,138 @@ private fun HourlyGrid(
         }
     }
 
-    Row(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(verticalState)
-            .padding(bottom = innerPadding.calculateBottomPadding()).padding(bottom = 4.dp), Arrangement.spacedBy(4.dp)
-    ) {
-        // create 7 equal columns with weight so all 7 fit on screen
-        for (d in weekDays) {
-            val isToday = d == today
-            // collect unique timed events for this day (timedByDateHour groups by hour)
-            val eventsForDay = timedByDateHour[d]?.values?.flatten().orEmpty().distinctBy { it.id }
+    val eventsByDay = weekDays.associateWith { d ->
+        timedByDateHour[d]?.values?.flatten().orEmpty().distinctBy { it.id }
+    }
+    val positionedByDay = eventsByDay.mapValues { (d, events) -> computePositionedEventsForDay(events, d) }
 
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
-                // background hourly grid — fixed 24 rows with faint hour separators
-                Column {
-                    for (hour in 0..23) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val bottomPadding = innerPadding.calculateBottomPadding() + 4.dp
+        // One scale for the whole page: the columns share the hour gutter, so a shrunk hour has to
+        // be shrunk on every day at once.
+        val scale = if (shrinkEmptyHours) {
+            HourScale.collapsingEmptyHours(busyHours(positionedByDay.values.flatten()), maxHeight - bottomPadding)
+        } else {
+            HourScale.uniform()
+        }
+
+        Row(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(verticalState)
+                .padding(bottom = bottomPadding), Arrangement.spacedBy(4.dp)
+        ) {
+            HourLabelColumn(context, scale)
+
+            // create 7 equal columns with weight so all 7 fit on screen
+            for (d in weekDays) {
+                val isToday = d == today
+
+                Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
+                    // background hourly grid — fixed 24 rows with faint hour separators
+                    Column {
+                        for (hour in 0..23) {
+                            Box(
+                                Modifier
+                                    .height(scale.heightOf(hour))
+                                    .fillMaxWidth()
+                            ) {
+                                if (hour != 0) {
+                                    HorizontalDivider(
+                                        Modifier.align(Alignment.TopStart),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (isToday) {
+                        val yOffset = scale.offsetOf(now.hour * 60 + now.minute)
                         Box(
                             Modifier
-                                .height(hourRowHeight)
+                                .offset(y = yOffset - 1.dp)
                                 .fillMaxWidth()
-                        ) {
-                            if (hour != 0) {
-                                HorizontalDivider(
-                                    Modifier.align(Alignment.TopStart),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                .height(2.dp)
+                                .background(Color.Red)
+                                .zIndex(10f)
+                        )
+                    }
+
+                    val positioned = positionedByDay.getValue(d)
+                    val eventsForDay = eventsByDay.getValue(d)
+                    val instancesById = remember(eventsForDay) { eventsForDay.associateBy { it.id } }
+
+                    // overlay event segments positioned by their time within the day and column
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val columnWidth = this.maxWidth
+
+                        positioned.forEach { ev ->
+                            val instance = instancesById.getValue(ev.instanceID)
+                            // compute vertical position and height
+                            val yOffset = scale.offsetOf(ev.startMinutes)
+                            var heightDp = scale.offsetOf(ev.endMinutes) - yOffset
+                            if (heightDp < minEventHeight) heightDp = minEventHeight
+
+                            // compute horizontal position and size
+                            val widthFraction = 1f / ev.totalColumns.toFloat()
+                            val xFraction = ev.columnIndex * widthFraction
+                            val xOffsetDp = columnWidth * xFraction
+                            val widthDp = (columnWidth * widthFraction).coerceAtLeast(minEventWidth)
+
+                            Box(
+                                Modifier
+                                    .offset(xOffsetDp, yOffset)
+                                    .size(widthDp, heightDp)
+                                    .padding(2.dp)
+                                    .zIndex(1f + ev.columnIndex * 0.01f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(ev.color))
+                                    .clickable { onEventClick(instance) }
+                            ) {
+                                Text(
+                                    ev.title.ifEmpty { stringResource(R.string.no_title) },
+                                    Modifier.padding(6.dp),
+                                    Color.White,
+                                    maxLines = 2,
+                                    fontSize = 12.sp
                                 )
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
 
-                if (isToday) {
-                    val minutesPassed = now.hour * 60 + now.minute
-                    val yOffset = hourRowHeight * (minutesPassed.toFloat() / 60f)
-                    Box(
-                        Modifier
-                            .offset(y = yOffset - 1.dp)
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(Color.Red)
-                            .zIndex(10f)
-                    )
+/**
+ * The hour gutter. It lives inside the grid's scroll container so it stays pinned to the rows
+ * it labels even when [scale] gives them different heights.
+ */
+@Composable
+private fun HourLabelColumn(context: android.content.Context, scale: HourScale) {
+    Column {
+        for (hour in 0..23) {
+            Box(
+                Modifier
+                    .height(scale.heightOf(hour))
+                    .width(HourGutterWidth)
+                    .clipToBounds()
+            ) {
+                val hourString = if (DateFormat.is24HourFormat(context)) {
+                    "%02d:00".format(hour)
+                } else when {
+                    hour == 0 -> context.getString(R.string.twelve_am)
+                    hour < 12 -> context.getString(R.string.hour_am, hour)
+                    hour == 12 -> context.getString(R.string.twelve_pm)
+                    else -> context.getString(R.string.hour_pm, hour - 12)
                 }
-
-                // compute positioned events using the helper that assigns columns for overlaps
-                val positioned = computePositionedEventsForDay(eventsForDay, d)
-                val instancesById = remember(eventsForDay) { eventsForDay.associateBy { it.id } }
-
-                // overlay event segments positioned by their time within the day and column
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val columnWidth = this.maxWidth
-
-                    positioned.forEach { ev ->
-                        val instance = instancesById.getValue(ev.instanceID)
-                        // compute vertical position and height
-                        val startHours = ev.startMinutes.toFloat() / 60f
-                        val lengthHours = (ev.endMinutes - ev.startMinutes).toFloat() / 60f
-
-                        val yOffset = hourRowHeight * startHours
-                        var heightDp = hourRowHeight * lengthHours
-                        if (heightDp < minEventHeight) heightDp = minEventHeight
-
-                        // compute horizontal position and size
-                        val widthFraction = 1f / ev.totalColumns.toFloat()
-                        val xFraction = ev.columnIndex * widthFraction
-                        val xOffsetDp = columnWidth * xFraction
-                        val widthDp = (columnWidth * widthFraction).coerceAtLeast(minEventWidth)
-
-                        Box(
-                            Modifier
-                                .offset(xOffsetDp, yOffset)
-                                .size(widthDp, heightDp)
-                                .padding(2.dp)
-                                .zIndex(1f + ev.columnIndex * 0.01f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(ev.color))
-                                .clickable { onEventClick(instance) }
-                        ) {
-                            Text(
-                                ev.title.ifEmpty { stringResource(R.string.no_title) },
-                                Modifier.padding(6.dp),
-                                Color.White,
-                                maxLines = 2,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = hourString,
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
     }

@@ -17,6 +17,10 @@
     <string name="layout_work_week_summary">Work Week Summary</string>
     <!-- Main calendar: Summary of full week events -->
     <string name="layout_full_week_summary">Full Week Summary</string>
+    <!-- Main calendar: Work week hourly grid where hours with no events are shrunk so the whole day fits without scrolling -->
+    <string name="layout_work_week_compact">Work Week Compact</string>
+    <!-- Main calendar: Full week hourly grid where hours with no events are shrunk so the whole day fits without scrolling -->
+    <string name="layout_full_week_compact">Full Week Compact</string>
     <!-- Layout picker: short single-letter abbreviation for Agenda (keep very short) -->
     <string name="layout_short_agenda">A</string>
     <!-- Layout picker: short abbreviation for Day -->
@@ -31,6 +35,10 @@
     <string name="layout_short_work_week_summary">W5S</string>
     <!-- Layout picker: short abbreviation for Full Week Summary (7-day summary) -->
     <string name="layout_short_full_week_summary">W7S</string>
+    <!-- Layout picker: short abbreviation for Work Week Compact (5-day compact) -->
+    <string name="layout_short_work_week_compact">W5C</string>
+    <!-- Layout picker: short abbreviation for Full Week Compact (7-day compact) -->
+    <string name="layout_short_full_week_compact">W7C</string>
 
     <!-- Theme settings: ThemeMode enum labels -->
     <!-- Settings: follow system light/dark theme -->

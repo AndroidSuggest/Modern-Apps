@@ -57,7 +57,9 @@ class CalendarViewModel(application: Application) :
         FullWeek(R.string.layout_short_full_week, R.string.layout_full_week),
         Month(R.string.layout_short_month, R.string.layout_month),
         WorkWeekSummary(R.string.layout_short_work_week_summary, R.string.layout_work_week_summary),
-        FullWeekSummary(R.string.layout_short_full_week_summary, R.string.layout_full_week_summary)
+        FullWeekSummary(R.string.layout_short_full_week_summary, R.string.layout_full_week_summary),
+        WorkWeekCompact(R.string.layout_short_work_week_compact, R.string.layout_work_week_compact),
+        FullWeekCompact(R.string.layout_short_full_week_compact, R.string.layout_full_week_compact)
     }
 
     private val _currentLayout = MutableStateFlow(

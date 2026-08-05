@@ -220,16 +220,13 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
     let mut dim_visited = [false; 3];
     for (i, v) in progress.dim_visited.iter().enumerate().take(3) { dim_visited[i] = *v; }
     dim_visited[dim as usize] = true;
-    // Crafted recipes, unpacked from the saved bitmask. Saves written before the tech tree existed
-    // carry only the old ingredient-based "discovered" set; seed from that so a returning player
-    // keeps the access they had rather than being sent back to the roots.
+    // Crafted recipes, unpacked from the saved bitmask.
     let mut crafted_recipes = vec![false; crate::inventory::RECIPES.len()];
-    let bit = |bits: &[u8], i: usize| bits.get(i / 8).is_some_and(|b| b & (1 << (i % 8)) != 0);
     for (i, c) in crafted_recipes.iter_mut().enumerate() {
-        *c = bit(&progress.crafted_recipes, i) || bit(&progress.known_recipes, i);
+        *c = progress.crafted_recipes.get(i / 8).is_some_and(|b| b & (1 << (i % 8)) != 0);
     }
 
-    // Trade counts are stored as a Vec so old saves load; a short or long one is padded/truncated.
+    // A Vec rather than a fixed array so adding a profession doesn't invalidate a save mid-development.
     let mut trades_done = [0u32; crate::villager::ALL.len()];
     for (i, n) in progress.trades_done.iter().enumerate().take(trades_done.len()) { trades_done[i] = *n; }
 
@@ -353,7 +350,6 @@ pub fn destroy_engine() {
                     }
                     bits
                 },
-                known_recipes: Vec::new(),
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
