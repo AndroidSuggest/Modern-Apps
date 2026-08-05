@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Astronoomia</string>
+    <string name="display">Ekraan</string>
+    <string name="save_location">Salvesta asukoht</string>
+    <string name="location">Asukoht</string>
+</resources>
