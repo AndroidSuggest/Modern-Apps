@@ -22,6 +22,37 @@ object ImapClient {
 
     private const val TAG = "ImapClient"
 
+    /**
+     * Canonical inbox mailbox name. RFC 3501 §5.1 defines INBOX case-insensitively,
+     * so servers are free to report it however they like — Gmail/Yahoo/iCloud return
+     * `INBOX`, but Office 365 / Exchange returns `Inbox`. Every inbox query in the app
+     * (per-account *and* the unified inbox) matches on this exact literal, and SQLite
+     * TEXT comparison is case-sensitive, so all persisted folder names must be folded
+     * to this constant via [canonicalizeMailbox] before they hit the DB.
+     */
+    const val INBOX = "INBOX"
+
+    /**
+     * Folds a server-reported mailbox path to its canonical form, so `Inbox` and
+     * `Inbox/Receipts` (Office 365) are stored the same way as `INBOX` and
+     * `INBOX/Receipts` (Gmail). Non-inbox mailboxes are returned untouched — only the
+     * inbox has spec-mandated case-insensitivity.
+     *
+     * @param delimiter the server's hierarchy delimiter; when unknown, the two common
+     *   ones (`/` and `.`) are both accepted.
+     */
+    fun canonicalizeMailbox(mailbox: String, delimiter: String? = null): String {
+        if (mailbox.equals(INBOX, ignoreCase = true)) return INBOX
+        if (mailbox.length <= INBOX.length) return mailbox
+        if (!mailbox.regionMatches(0, INBOX, 0, INBOX.length, ignoreCase = true)) return mailbox
+        val delims = if (delimiter.isNullOrEmpty()) listOf("/", ".") else listOf(delimiter)
+        return if (delims.any { mailbox.startsWith(it, INBOX.length) }) {
+            INBOX + mailbox.substring(INBOX.length)
+        } else {
+            mailbox
+        }
+    }
+
     val GMAIL_VIRTUAL_FOLDERS = setOf(
         "[Gmail]/All Mail",
         "[Gmail]/Important",
@@ -83,9 +114,12 @@ object ImapClient {
         withConnection(server, user, auth) { conn ->
             val entries = conn.list("", "*")
             entries.map { entry ->
-                val fullName = entry.mailbox
                 val delim = entry.delimiter ?: "/"
-                val name = if (fullName.contains(delim)) fullName.substringAfterLast(delim) else fullName.substringAfterLast('/')
+                // Identify the folder by its canonical path, but keep the server's own
+                // casing for the drawer label so Outlook still reads "Inbox", not "INBOX".
+                val fullName = canonicalizeMailbox(entry.mailbox, delim)
+                val displayPath = entry.mailbox
+                val name = if (displayPath.contains(delim)) displayPath.substringAfterLast(delim) else displayPath.substringAfterLast('/')
                 val parent = fullName.lastIndexOf(delim).let { if (it > 0) fullName.substring(0, it).takeIf { it.isNotEmpty() } else null }
                 val holds = !entry.flags.any { it.equals("\\Noselect", ignoreCase = true) }
                 EmailFolder(accountEmail = user, fullName = fullName, name = name.ifBlank { fullName }, parentFullName = parent, holdsMessages = holds, delimiter = delim)
@@ -117,7 +151,11 @@ object ImapClient {
         skipUids: Set<Long>,
         context: Context?,
     ): Pair<List<EmailMessage>, List<Attachment>> {
+        // SELECT with the exact name the server gave us, but persist under the
+        // canonical one so an Office 365 "Inbox" lands in the same bucket as a
+        // Gmail "INBOX" (see [canonicalizeMailbox]).
         val sel = conn.select(folderName)
+        val storedFolderName = canonicalizeMailbox(folderName)
         val total = sel.exists
         if (total == 0) return Pair(emptyList(), emptyList())
         val end = (total - offset).coerceAtLeast(1)
@@ -145,7 +183,7 @@ object ImapClient {
             var isHtmlFlag = false
             var hasAtt = false
             if (fetchBodies && fr.bodyBytes != null) {
-                val triple = try { MimeParser.parseMessage(fr.bodyBytes, fr.uid, user, folderName, context) } catch (_: Exception) { Triple<String?, Boolean, List<Attachment>>(null, false, emptyList()) }
+                val triple = try { MimeParser.parseMessage(fr.bodyBytes, fr.uid, user, storedFolderName, context) } catch (_: Exception) { Triple<String?, Boolean, List<Attachment>>(null, false, emptyList()) }
                 body = triple.first
                 isHtmlFlag = triple.second
                 allAttachments.addAll(triple.third)
@@ -155,7 +193,7 @@ object ImapClient {
             messages.add(
                 EmailMessage(
                     accountEmail = user,
-                    folderName = folderName,
+                    folderName = storedFolderName,
                     id = fr.uid,
                     serverId = headerMap["message-id"],
                     threadId = gmThrid ?: fr.uid.toString(),
@@ -190,7 +228,7 @@ object ImapClient {
         val res = conn.uidFetchFullSet(uid.toString()).firstOrNull()
             ?: return@withConnection Triple<String?, Boolean, List<Attachment>>(null, false, emptyList())
         val bytes = res.bodyBytes ?: return@withConnection Triple(null, false, emptyList())
-        try { MimeParser.parseMessage(bytes, uid, user, folderName, context) } catch (e: Exception) { Log.w(TAG, "parse failed ${e.message}"); Triple(null, false, emptyList()) }
+        try { MimeParser.parseMessage(bytes, uid, user, canonicalizeMailbox(folderName), context) } catch (e: Exception) { Log.w(TAG, "parse failed ${e.message}"); Triple(null, false, emptyList()) }
     }
 
     suspend fun fetchFullForBody(
@@ -204,7 +242,7 @@ object ImapClient {
         conn.select(folderName)
         val res = conn.uidFetchFullSet(uid.toString()).firstOrNull() ?: return@withConnection EmailManager.FullFetchResult(Triple(null, false, emptyList()))
         val bytes = res.bodyBytes ?: return@withConnection EmailManager.FullFetchResult(Triple(null, false, emptyList()))
-        val triple = try { MimeParser.parseMessage(bytes, uid, user, folderName, context.applicationContext) } catch (e: Exception) { Log.w(TAG, "full parse fail ${e.message}"); Triple<String?, Boolean, List<Attachment>>(null, false, emptyList()) }
+        val triple = try { MimeParser.parseMessage(bytes, uid, user, canonicalizeMailbox(folderName), context.applicationContext) } catch (e: Exception) { Log.w(TAG, "full parse fail ${e.message}"); Triple<String?, Boolean, List<Attachment>>(null, false, emptyList()) }
         EmailManager.FullFetchResult(triple)
     }
 

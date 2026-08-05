@@ -25,7 +25,7 @@ import com.vayunmathur.email.Attachment
         BlockedSender::class,
         DeletedUid::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = false,
 )
 abstract class EmailDatabase : RoomDatabase() {
@@ -96,6 +96,40 @@ abstract class EmailDatabase : RoomDatabase() {
             it.execSQL("ALTER TABLE DraftEntry ADD COLUMN inlineImageJson TEXT NOT NULL DEFAULT '[]'")
         }
 
+        /**
+         * Office 365 / Exchange IMAP reports the inbox as "Inbox", while Gmail and
+         * friends report "INBOX". RFC 3501 defines the name case-insensitively, but
+         * SQLite TEXT comparison is not, so Outlook rows persisted as "Inbox" never
+         * matched the `folderName = 'INBOX'` predicate behind the unified inbox.
+         * Fold those legacy rows onto the canonical name. `OR REPLACE` collapses the
+         * duplicates created when the IDLE push path (which hardcoded "INBOX") and
+         * the sync worker (which used the server's casing) both stored the same UID.
+         */
+        private val MIGRATION_18_19 = Migration(18, 19) {
+            // Matches a mixed-case spelling of the inbox itself ("Inbox", "inbox", ...).
+            fun isInbox(column: String) = "$column <> 'INBOX' AND $column = 'INBOX' COLLATE NOCASE"
+
+            // Matches a child of a mixed-case inbox, e.g. "Inbox/Receipts" or "Inbox.Receipts".
+            fun isUnderInbox(column: String) =
+                "length($column) > 5 AND substr($column, 1, 5) = 'INBOX' COLLATE NOCASE " +
+                    "AND substr($column, 1, 5) <> 'INBOX' AND substr($column, 6, 1) IN ('/', '.')"
+
+            // Rewrites just the leading "Inbox" segment, preserving the rest of the path.
+            fun canonical(column: String) = "'INBOX' || substr($column, 6)"
+
+            for ((table, column) in listOf(
+                "EmailMessage" to "folderName",
+                "DeletedUid" to "folderName",
+                "Attachment" to "folderName",
+                "EmailFolder" to "fullName",
+            )) {
+                it.execSQL("UPDATE OR REPLACE $table SET $column = 'INBOX' WHERE ${isInbox(column)}")
+                it.execSQL("UPDATE OR REPLACE $table SET $column = ${canonical(column)} WHERE ${isUnderInbox(column)}")
+            }
+            it.execSQL("UPDATE EmailFolder SET parentFullName = 'INBOX' WHERE ${isInbox("parentFullName")}")
+            it.execSQL("UPDATE EmailFolder SET parentFullName = ${canonical("parentFullName")} WHERE ${isUnderInbox("parentFullName")}")
+        }
+
         private val MIGRATION_5_6 = Migration(5, 6) {
             it.execSQL("ALTER TABLE EmailMessage ADD COLUMN dateMillis INTEGER NOT NULL DEFAULT 0")
         }
@@ -146,7 +180,7 @@ abstract class EmailDatabase : RoomDatabase() {
         fun getInstance(context: Context): EmailDatabase {
             return instance ?: synchronized(this) {
                 instance ?: context.applicationContext.buildDatabase<EmailDatabase>(
-                    migrations = listOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18),
+                    migrations = listOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19),
                     dbName = "email-db"
                 ).also { instance = it }
             }

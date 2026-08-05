@@ -46,7 +46,7 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
 
                 val skipSet = if (account.provider == PROVIDER_GMAIL) ImapClient.GMAIL_VIRTUAL_FOLDERS else emptySet()
                 val messageFolders = if (nonInboxOnly) {
-                    folders.filter { it.holdsMessages && it.fullName !in skipSet && it.fullName != "INBOX" }
+                    folders.filter { it.holdsMessages && it.fullName !in skipSet && it.fullName != ImapClient.INBOX }
                 } else {
                     folders.filter { it.holdsMessages && it.fullName !in skipSet }
                 }
@@ -70,11 +70,11 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                         if (attachments.isNotEmpty()) dao.insertAttachments(attachments)
 
                         if (!nonInboxOnly) {
-                            if (knownUids.isNotEmpty() && folder.fullName == "INBOX") {
+                            if (knownUids.isNotEmpty() && folder.fullName == ImapClient.INBOX) {
                                 syncReadStatusRaw(applicationContext, account, folder.fullName, knownUids)
                             }
 
-                            if (folder.fullName == "INBOX" && messages.isNotEmpty()) {
+                            if (folder.fullName == ImapClient.INBOX && messages.isNotEmpty()) {
                                 val lastSeen = lastSeenPrefs(applicationContext)
                                     .getLong(lastSeenKey(account.email, folder.fullName), -1L)
                                 if (lastSeen >= 0L && !com.vayunmathur.email.util.AppLifecycleTracker.isAppInForeground) {
