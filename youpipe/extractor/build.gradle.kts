@@ -10,7 +10,6 @@ dependencies {
     implementation(libs.brotli.dec)
 
     testImplementation(libs.kotlin.test)
-    testImplementation(libs.kotlin.test.junit)
 }
 
 protobuf {
