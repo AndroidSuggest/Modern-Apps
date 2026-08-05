@@ -70,7 +70,7 @@ data class PackColorScheme(
     val error: Long = 0xFFFF0000
 )
 
-private fun packFromJson(json: String): LevelPack {
+internal fun packFromJson(json: String): LevelPack {
     val jsonObject = Json.parseToJsonElement(json).jsonObject
     val colors = jsonObject["colors"]?.jsonObject?.let {
         fun parseColor(key: String, default: Long): Long =
