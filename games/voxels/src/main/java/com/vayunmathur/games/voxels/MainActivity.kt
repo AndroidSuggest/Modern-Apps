@@ -78,9 +78,29 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     var prevHp = 20f
+                    // Footsteps and atmosphere cues arrive as monotonic counters; a change means the
+                    // engine wants a sound. See ambience.rs.
+                    var prevStep = -1
+                    var prevCue = -1
                     while (isActive) {
                         if (VoxelsNative.isAvailable) {
                             try {
+                                try {
+                                    val amb = org.json.JSONObject(VoxelsNative.getAmbienceJson())
+                                    val stepN = amb.optInt("stepN", prevStep)
+                                    if (prevStep >= 0 && stepN != prevStep) {
+                                        com.vayunmathur.games.voxels.util.SoundFx.playStep(amb.optInt("stepMat", 0))
+                                    }
+                                    prevStep = stepN
+                                    val cueN = amb.optInt("cueN", prevCue)
+                                    if (prevCue >= 0 && cueN != prevCue) {
+                                        when (amb.optInt("cueKind", 0)) {
+                                            1 -> com.vayunmathur.games.voxels.util.SoundFx.playCave()
+                                            2 -> com.vayunmathur.games.voxels.util.SoundFx.playStalk()
+                                        }
+                                    }
+                                    prevCue = cueN
+                                } catch (_: Exception) {}
                                 inventoryJson = VoxelsNative.getInventoryJson()
                                 debugJson = VoxelsNative.getDebugJson()
                                 if (furnaceOpen) smeltJson = VoxelsNative.getSmeltJson()

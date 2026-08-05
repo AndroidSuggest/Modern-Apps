@@ -8,6 +8,7 @@ pub mod raycast;
 pub mod input;
 pub mod inventory;
 pub mod villager;
+pub mod ambience;
 pub mod engine;
 pub mod texture_atlas;
 pub mod vulkan;
@@ -301,6 +302,14 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getSm
 ) -> jstring {
     let null = std::ptr::null_mut();
     match env.new_string(engine::get_smelt_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getAmbienceJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_ambience_json()) { Ok(s) => s.into_raw(), Err(_) => null }
 }
 
 #[no_mangle]

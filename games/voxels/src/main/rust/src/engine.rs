@@ -63,6 +63,9 @@ pub struct EngineState {
     pub weather: u8,
     pub weather_cd: f32,
     pub rain: f32,
+    // Footsteps, cave ambience and the eerie score; see ambience.rs.
+    pub ambience: crate::ambience::Ambience,
+    prev_walk: f32,
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -250,6 +253,8 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         weather_cd: progress.weather_cd.clamp(0.0, WEATHER_MAX_SECS),
         // Resume mid-downpour rather than fading in from a clear sky.
         rain: rain_target(progress.weather),
+        ambience: crate::ambience::Ambience::default(),
+        prev_walk: 0.0,
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -672,6 +677,7 @@ pub fn tick_and_render() {
         }
         tick_particles(&mut state.particles, dt);
         tick_weather(state, dt, player_pos);
+        tick_ambience(state, dt, player_pos);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
@@ -725,6 +731,7 @@ static INV_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static STATS_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static HEALTH_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static SMELT_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+static AMBIENCE_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 fn cref(c: &'static OnceLock<Mutex<String>>, default: &str) -> &'static Mutex<String> { c.get_or_init(|| Mutex::new(default.to_string())) }
 
 // Called from the render tick (holds the engine lock) to refresh the UI caches.
@@ -791,6 +798,13 @@ fn publish_ui(state: &EngineState) {
         "blast": sm.blast,
     }).to_string();
     if let Ok(mut c) = cref(&SMELT_CACHE, "{}").lock() { *c = smelt; }
+    let a = &state.ambience;
+    let ambience = serde_json::json!({
+        "stepN": a.step_n, "stepMat": a.step_mat,
+        "cueN": a.cue_n, "cueKind": a.cue_kind,
+        "eerie": a.eerie, "rain": state.rain,
+    }).to_string();
+    if let Ok(mut c) = cref(&AMBIENCE_CACHE, "{}").lock() { *c = ambience; }
 }
 
 pub fn get_debug_json() -> String { cref(&DEBUG_CACHE, r#"{"error":"no engine"}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
@@ -798,6 +812,7 @@ pub fn get_inventory_json() -> String { cref(&INV_CACHE, r#"{"selected":0,"slots
 pub fn get_stats_json() -> String { cref(&STATS_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 pub fn get_health_json() -> String { cref(&HEALTH_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 pub fn get_smelt_json() -> String { cref(&SMELT_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
+pub fn get_ambience_json() -> String { cref(&AMBIENCE_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 
 pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
 pub fn inventory_give(id: u8) { with_engine(|s| s.inventory.give(id)); }
@@ -1097,6 +1112,33 @@ fn tick_projectiles(state: &mut EngineState, dt: f32) {
         let n = if big { 24 } else { 10 };
         spawn_particles(&mut state.spawn_rng, &mut state.particles, pos, n, color, if big { 5.0 } else { 3.0 }, 0.6, if big { 0.22 } else { 0.13 });
     }
+}
+
+// Feed the atmosphere system: how far the player walked, what they're standing on, and how dark and
+// deep it is where they are.
+fn tick_ambience(state: &mut EngineState, dt: f32, player_pos: Vec3) {
+    let walked = (state.player.walk_dist - state.prev_walk).max(0.0);
+    state.prev_walk = state.player.walk_dist;
+
+    let (px, pz) = (player_pos.x.floor() as i32, player_pos.z.floor() as i32);
+    let under = state.chunks.get_block_world(px, (player_pos.y - 0.1).floor() as i32, pz);
+
+    // "Deep" means genuinely enclosed: a solid ceiling somewhere overhead, well below the surface.
+    let head = player_pos.y.floor() as i32 + 2;
+    let covered = (head..head + 40).any(|y| {
+        let id = state.chunks.get_block_world(px, y, pz);
+        id != 0 && Block::from_id(id).blocks_light()
+    });
+    let deep = covered && player_pos.y < 50.0;
+    // The Nether and End are always oppressive; the overworld only after dark.
+    let dark = state.dim != 0 || state.is_night();
+
+    let mut r = state.spawn_rng;
+    r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+    state.spawn_rng = r;
+    let roll = (r >> 8) as f32 / 16_777_216.0;
+
+    state.ambience.tick(dt, walked, state.player.on_ground, under, dark, deep, roll);
 }
 
 // Advance the weather random walk and drop precipitation around the player. Only the overworld has a

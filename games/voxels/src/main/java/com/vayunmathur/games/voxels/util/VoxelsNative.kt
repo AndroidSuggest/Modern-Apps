@@ -44,6 +44,7 @@ object VoxelsNative {
     // Furnace: recipe catalog, live job state, and start/stop.
     external fun getSmeltingJson(): String
     external fun getSmeltJson(): String
+    external fun getAmbienceJson(): String
     external fun startSmelt(recipe: Int, blast: Boolean): Boolean
     external fun stopSmelt()
     // Chest containers, keyed by the block the player last opened.
