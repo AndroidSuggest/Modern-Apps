@@ -44,6 +44,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.util.localeWeekDayNumbers
+import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.clock.util.AlarmScheduler
 import com.vayunmathur.clock.mainPages
 import com.vayunmathur.clock.R
@@ -262,16 +265,19 @@ fun AlarmCard(
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                "SMTWTFS".forEachIndexed { idx, day ->
-                    val isSelected = alarm.days and (1 shl idx) != 0
+                val dayNames = localizedDayOfWeekNames(DateNameStyle.NARROW)
+                localeWeekDayNumbers().forEach { isoDay ->
+                    // Alarm.days is a bitmask with Sunday at bit 0 .. Saturday at bit 6.
+                    val bit = isoDay % 7
+                    val isSelected = alarm.days and (1 shl bit) != 0
                     ToggleButton(
                         checked = isSelected,
                         onCheckedChange = {
-                            val newDays = if (isSelected) alarm.days and (1 shl idx).inv() else alarm.days or (1 shl idx)
+                            val newDays = if (isSelected) alarm.days and (1 shl bit).inv() else alarm.days or (1 shl bit)
                             actions.setDays(alarm, newDays)
                         }
                     ) {
-                        Text(day.toString())
+                        Text(dayNames[isoDay - 1])
                     }
                 }
             }
