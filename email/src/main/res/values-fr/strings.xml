@@ -17,7 +17,7 @@
     <string name="send_now">Envoyer maintenant</string>
     <string name="host_label">Serveur</string>
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> sélectionné(s)</string>
-    <string name="outbox_with_count">Boîte d\'envoi (%1$d)</string>
+    <string name="outbox_with_count">Boîte d’envoi (<xliff:g id="count" example="2">%1$d</xliff:g>)</string>
     <string name="outbox">Boîte d\'envoi</string>
     <string name="compose">Rédiger</string>
     <string name="from_label">De</string>
@@ -27,7 +27,7 @@
     <string name="add_account">Ajouter un compte</string>
     <string name="drafts">Brouillons</string>
     <string name="email_widget_description">Messages récents de votre boîte de réception unifiée — appuyez pour ouvrir Courrier</string>
-    <string name="open_app_password_help">Ouvrir l’aide de %1$s sur les mots de passe d’application</string>
+    <string name="open_app_password_help">Ouvrir l’aide de <xliff:g id="provider" example="Google">%1$s</xliff:g> sur les mots de passe d’application</string>
     <string name="to_me">à moi</string>
     <string name="total_attachment_size_exceeds_25_mb_many">La taille totale des pièces jointes dépasse 25 Mo ; de nombreux fournisseurs rejetteront le message.</string>
     <string name="later_today_6_pm">Plus tard aujourd’hui (18 h)</string>
@@ -39,7 +39,7 @@
     <string name="cc">Cc</string>
     <string name="password">Mot de passe</string>
     <string name="show_quoted_text">Afficher le texte cité</string>
-    <string name="from">De %1$s</string>
+    <string name="from">De <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
     <string name="sign_in_with_microsoft">Se connecter avec Microsoft</string>
     <string name="app_password">Mot de passe d’application</string>
     <string name="accounts">Comptes</string>
@@ -48,16 +48,16 @@
     <string name="ai_summary">Résumé par l’IA</string>
     <string name="saved_to_downloads">Enregistré dans Téléchargements</string>
     <string name="unsubscribing">Désabonnement en cours…</string>
-    <string name="all">Tous</string>
+    <string name="all">Tout</string>
     <string name="username_is_not_my_email">Mon nom d’utilisateur n’est pas mon adresse e-mail</string>
     <string name="none">Aucun</string>
-    <string name="added">Ajout de %1$s</string>
+    <string name="added">Adresse <xliff:g id="email" example="user@example.com">%1$s</xliff:g> ajoutée</string>
     <string name="load_images">Charger les images</string>
     <string name="deleted_from_outbox">Supprimé de la boîte d’envoi</string>
     <string name="blocked_senders">Expéditeurs bloqués</string>
     <string name="username">Nom d’utilisateur</string>
-    <string name="inline_images">Images intégrées (%1$s – %2$s)</string>
-    <string name="sign_in_with">Se connecter avec %1$s</string>
+    <string name="inline_images">Images intégrées (<xliff:g id="count" example="2">%1$s</xliff:g> – <xliff:g id="size" example="1,2 Mo">%2$s</xliff:g>)</string>
+    <string name="sign_in_with">Se connecter avec <xliff:g id="provider" example="Microsoft">%1$s</xliff:g></string>
     <string name="your_signature">Votre signature</string>
     <string name="attachments">Pièces jointes</string>
     <string name="remote_images_blocked">Images distantes bloquées</string>
@@ -68,10 +68,14 @@
     <string name="no_messages_found_pull_down_to_refresh">Aucun message trouvé. Faites glisser vers le bas pour actualiser.</string>
     <string name="saved_to_outbox">Enregistré dans la boîte d’envoi : %1$s</string>
     <plurals name="attempts">
-        <item quantity="other">%1$s tentative(s)</item>
+        <item quantity="one"><xliff:g id="count" example="2">%1$s</xliff:g> tentative</item>
+        <item quantity="many"><xliff:g id="count" example="2">%1$s</xliff:g> tentatives</item>
+        <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> tentatives</item>
     </plurals>
     <plurals name="retrying_pending_messages">
-        <item quantity="other">Nouvelle tentative d’envoi de %1$s message(s) en attente…</item>
+        <item quantity="one">Nouvelle tentative d’envoi de <xliff:g id="count" example="3">%1$s</xliff:g> message en attente…</item>
+        <item quantity="many">Nouvelle tentative d’envoi de <xliff:g id="count" example="3">%1$s</xliff:g> messages en attente…</item>
+        <item quantity="other">Nouvelle tentative d’envoi de <xliff:g id="count" example="3">%1$s</xliff:g> messages en attente…</item>
     </plurals>
     <string name="retry">Réessayer</string>
     <string name="outbox_is_empty">La boîte d’envoi est vide</string>
@@ -89,7 +93,7 @@
     <string name="in_1_week">Dans une semaine</string>
     <string name="hide">Masquer</string>
     <string name="tomorrow_8_am">Demain (8 h)</string>
-    <string name="attachments_1">Pièces jointes (%1$s)</string>
+    <string name="attachments_1">Pièces jointes (<xliff:g id="size" example="2.3 MB">%1$s</xliff:g>)</string>
     <string name="cc_1">Cc : %1$s</string>
     <string name="open">Ouvrir</string>
     <string name="this_evening_6_pm">Ce soir (18 h)</string>
@@ -108,7 +112,7 @@
     <string name="security">Sécurité :</string>
     <string name="show">Afficher</string>
     <string name="attachments_2">Pièces jointes :</string>
-    <string name="to_1">À %1$s</string>
+    <string name="to_1">À <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
     <string name="snoozed">Mis en attente</string>
     <string name="sender_blocked">Expéditeur bloqué</string>
     <string name="save_as_eml">Enregistrer au format .eml</string>
@@ -118,4 +122,31 @@
     <string name="unsubscribe">Se désabonner</string>
     <string name="failed">Échec : %1$s</string>
     <string name="microsoft_sign_in_failed">Échec de la connexion avec Microsoft</string>
+    <string name="normal">Normal</string>
+    <string name="heading_1">Titre 1</string>
+    <string name="heading_2">Titre 2</string>
+    <string name="heading_3">Titre 3</string>
+    <string name="left">Gauche</string>
+    <string name="center">Centré</string>
+    <string name="right">Droite</string>
+    <string name="justify">Justifié</string>
+    <string name="small">Petit</string>
+    <string name="large">Grand</string>
+    <string name="extra_large">Très grand</string>
+    <string name="font_default">Par défaut</string>
+    <string name="sans">Sans</string>
+    <string name="serif">Serif</string>
+    <string name="monospace">Monospace</string>
+    <string name="alignment">Alignement</string>
+    <string name="blockquote">Citation</string>
+    <string name="inline_code">Code en ligne</string>
+    <string name="horizontal_rule">Ligne horizontale</string>
+    <string name="text_color">Couleur du texte</string>
+    <string name="highlight">Surlignage</string>
+    <string name="font_size">Taille de la police</string>
+    <string name="font_family">Famille de polices</string>
+    <string name="clear_formatting">Effacer la mise en forme</string>
+    <string name="email_sync_channel_name">Synchronisation des e-mails en arrière-plan</string>
+    <string name="email_sync_channel_desc">Maintient une connexion IMAP ouverte afin que les nouveaux e-mails arrivent instantanément.</string>
+    <string name="unified_inbox_label">Boîte de réception unifiée</string>
 </resources>
