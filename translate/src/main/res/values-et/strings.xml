@@ -1,3 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Tõlkija</string>
+    <string name="enter_text">Sisesta tekst</string>
+    <string name="loading_translator">Laadin tõlkijaid…</string>
+    <string name="copy">Kopeeri</string>
+    <string name="speak">Räägi</string>
+    <string name="translation">Tõlge</string>
+    <string name="translation_model_not_installed_showing">Tõlkemudel pole paigaldatud - kuvan vaid tuvastatud teksti</string>
+    <string name="grant_camera_access">Tõlkimaks seda, mida näed, luba kasutada kaamerat</string>
+</resources>
