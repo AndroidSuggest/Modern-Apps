@@ -154,6 +154,16 @@ COPY_ICONS = {
     )},
 }
 
+# New blessings have no Matcha artwork, so they borrow a charm silhouette from an existing one and
+# recolour it. dest -> (source blessing png, rgb multiplier).
+TINT_ICONS = {
+    "blessing_athena.png": ("blessing_warding.png", (0.72, 0.86, 1.25)),
+    "blessing_sekhmet.png": ("blessing_ares.png", (1.30, 0.52, 0.48)),
+    "blessing_camazotz.png": ("blessing_glaucus.png", (1.25, 0.45, 0.62)),
+    "blessing_tangaroa.png": ("blessing_yamm.png", (0.55, 1.15, 1.10)),
+    "blessing_anubis.png": ("blessing_prometheus.png", (1.20, 0.98, 0.42)),
+}
+
 # Item-only icons with no atlas tile (items are never placed as blocks). filename -> base rgb.
 PROC_ITEM_ICON = {
     "sulfur.png": (238, 214, 62),
@@ -413,6 +423,15 @@ def main():
         src = os.path.join(PACK if subdir == "block" else PACK_ITEM, src_name)
         shutil.copyfile(src, os.path.join(ASSETS, dest))
         print("icon %s <- %s/%s" % (dest, subdir, src_name))
+
+    for dest, (src_name, mul) in sorted(TINT_ICONS.items()):
+        w, h, rgba = decode_png(os.path.join(PACK_ITEM, src_name))
+        out = bytearray(rgba)
+        for i in range(0, len(out), 4):
+            for c in range(3):
+                out[i + c] = min(255, int(out[i + c] * mul[c]))
+        write_png(os.path.join(ASSETS, dest), w, h, bytes(out))
+        print("icon %s <- %s tinted %s" % (dest, src_name, mul))
 
     open(ATLAS_BIN, "wb").write(new)
     print("wrote %s (%dx%d, %d bytes)" % (ATLAS_BIN, NEW_W, NEW_H, len(new)))

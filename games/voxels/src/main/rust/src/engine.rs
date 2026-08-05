@@ -530,7 +530,11 @@ pub fn tick_and_render() {
                 solid: &|x, y, z| chunks.solid_at(x, y, z),
                 surface: &|x, z, ceiling| chunks.surface_below(x, z, ceiling, 2),
             };
-            for m in state.mobs.iter_mut() { m.tick(dt, player_pos, &terrain); }
+            let ward = if state.player.blessed(Passive::WardUndead) { WARD_UNDEAD_RADIUS } else { 0.0 };
+            for m in state.mobs.iter_mut() {
+                m.repelled = if is_undead(m.kind) { ward } else { 0.0 };
+                m.tick(dt, player_pos, &terrain);
+            }
         }
         // Mob melee contact damage + creeper fuse + ranged fire.
         let mut incoming = 0.0f32;
@@ -698,7 +702,9 @@ pub fn tick_and_render() {
             let view_proj = Mat4::from_rotation_z(pre_rot_angle) * vulkan_correction * proj * view;
             let eb = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
-            let nv = if state.player.night_vision() { 1.0 } else { 0.0 };
+            // Tangaroa lights the water up the way night vision lights the dark.
+            let conduit = underwater > 0.5 && state.player.blessed(Passive::Conduit);
+            let nv = if state.player.night_vision() || conduit { 1.0 } else { 0.0 };
             let dim = state.dim;
             let rain = state.rain;
             unsafe {
@@ -1327,6 +1333,7 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
                 m.pos += kb * kb_h; m.vel.y = kb_v;
                 mpos = m.pos + vec3(0.0, 0.5, 0.0);
             }
+            state.player.lifesteal(dmg);
             state.player.wind_burst();
             spawn_particles(&mut state.spawn_rng, &mut state.particles, mpos, 6, [0.85, 0.12, 0.12], 3.0, 0.4, 0.09);
             return true;
@@ -1545,9 +1552,13 @@ fn player_reach(state: &EngineState) -> f32 {
 }
 // Damage multiplier against a particular kind of foe, from the slayer blessings.
 fn slayer_mult(player: &Player, kind: MobKind) -> f32 {
-    let undead = matches!(kind, MobKind::Zombie | MobKind::WitherSkeleton | MobKind::Wither);
     let horror = matches!(kind, MobKind::Creeper | MobKind::Shulker | MobKind::Ghast);
-    if (undead && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
+    if (is_undead(kind) && player.blessed(Passive::SmiteUndead)) || (horror && player.blessed(Passive::BaneOfHorrors)) { 2.0 } else { 1.0 }
+}
+/// Anubis keeps the dead this far back.
+const WARD_UNDEAD_RADIUS: f32 = 6.0;
+pub fn is_undead(kind: MobKind) -> bool {
+    matches!(kind, MobKind::Zombie | MobKind::WitherSkeleton | MobKind::Wither)
 }
 // Wear the held tool, unless Daedalus is holding it together.
 fn damage_tool(state: &mut EngineState) {

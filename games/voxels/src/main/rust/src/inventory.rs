@@ -24,7 +24,7 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 86] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 91] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -87,6 +87,12 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 86] = [
     (194, 2, 190, 16, 219, 1), // snowballs       -> Artemis, multishot
     (194, 2, Block::WardingStone as u8, 2, 220, 1), // Warding, thorns
     (194, 2, Block::DiamondBlock as u8, 1, 221, 1), // Paris, infinity
+    // The five late additions cost the alloy tier, so they arrive after the Blast Furnace does.
+    (194, 2, Block::IronBlock as u8, 2, 245, 1),    // Athena, absorption shield
+    (194, 2, Block::Magma as u8, 4, 246, 1),        // Sekhmet, bloodrage
+    (194, 2, 222, 12, 247, 1), // raw meat        -> Camazotz, lifesteal
+    (194, 2, Block::Prismarine as u8, 8, 248, 1),   // Tangaroa, conduit
+    (194, 2, Block::Sculk as u8, 4, 249, 1),        // Anubis, ward undead
     // --- Matcha's kitchen. Cooked meat is the base ingredient; everything else builds on it. ---
     (223, 1, 131, 1, 224, 1),  // cooked meat + bread          -> ramen
     (223, 2, 135, 2, 225, 1),  // cooked meat + carrot         -> japanese curry

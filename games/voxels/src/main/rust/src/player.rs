@@ -33,7 +33,20 @@ pub struct Player {
     pub eat_cd: f32,
     pub air_max_y: f32,
     pub dead: bool,
+    /// Seconds since the last hit taken. Athena's shield only reforms once this runs out.
+    pub combat_cd: f32,
 }
+
+/// Below this fraction of max health, Sekhmet's bloodrage kicks in.
+pub const BLOODRAGE_AT: f32 = 0.3;
+const BLOODRAGE_DAMAGE: f32 = 1.5;
+const BLOODRAGE_RESIST: f32 = 0.7;
+/// Athena's shield: how much it holds, how long after a hit it starts reforming, and how fast.
+const DIVINITY_SHIELD: f32 = 8.0;
+const DIVINITY_DELAY: f32 = 6.0;
+const DIVINITY_REGEN: f32 = 2.0;
+/// Camazotz returns this share of melee damage dealt as health.
+pub const LIFESTEAL_SHARE: f32 = 0.15;
 
 /// Damage taken on landing after falling from `peak` to `y`. Drops under the safe margin are free,
 /// and Icarus removes it entirely. Swimming keeps `peak` pinned to the current height, which is how
@@ -47,7 +60,7 @@ fn landing_damage(peak: f32, y: f32, feather_fall: bool) -> f32 {
 impl Player {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { pos: vec3(x,y,z), vel: Vec3::ZERO, yaw: 0.0, pitch: 0.0, on_ground: false, flying: false, elytra: false, gliding: false, glide_armed: false, prev_jump: false, glide_boost: 0.0, jumps_left: 0, walk_dist: 0.0, sneaking: false, blessings: Attunement::default(),
-            health: 20.0, max_health: 20.0, absorption: 0.0, effects: Vec::new(), hurt_cd: 0.0, attack_cd: 0.0, eat_cd: 0.0, air_max_y: y, dead: false }
+            health: 20.0, max_health: 20.0, absorption: 0.0, effects: Vec::new(), hurt_cd: 0.0, attack_cd: 0.0, eat_cd: 0.0, air_max_y: y, dead: false, combat_cd: 0.0 }
     }
 
     pub fn blessed(&self, p: Passive) -> bool { self.blessings.has(p) }
@@ -63,9 +76,23 @@ impl Player {
     pub fn jump_bonus(&self) -> f32 { 2.2 * self.effect_amp(Effect::JumpBoost).map(|a| a as f32 + 1.0).unwrap_or(0.0) }
     pub fn night_vision(&self) -> bool { self.has_effect(Effect::NightVision) }
     pub fn strength_bonus(&self) -> f32 { 3.0 * self.effect_amp(Effect::Strength).map(|a| a as f32 + 1.0).unwrap_or(0.0) }
-    // Ares makes every melee swing land far harder.
-    pub fn might_mult(&self) -> f32 { if self.blessed(Passive::Might) { 1.5 } else { 1.0 } }
-    fn resistance_mult(&self) -> f32 { (1.0 - 0.2 * self.effect_amp(Effect::Resistance).map(|a| a as f32 + 1.0).unwrap_or(0.0)).max(0.0) }
+    // Ares makes every melee swing land far harder. Sekhmet stacks on top of it once you're bloodied.
+    pub fn might_mult(&self) -> f32 {
+        let ares = if self.blessed(Passive::Might) { 1.5 } else { 1.0 };
+        ares * if self.bloodraging() { BLOODRAGE_DAMAGE } else { 1.0 }
+    }
+    /// Sekhmet: cornered and bleeding, you hit harder and soak more.
+    pub fn bloodraging(&self) -> bool {
+        self.blessed(Passive::Bloodrage) && !self.dead && self.health <= self.max_health * BLOODRAGE_AT
+    }
+    fn resistance_mult(&self) -> f32 {
+        let effects = (1.0 - 0.2 * self.effect_amp(Effect::Resistance).map(|a| a as f32 + 1.0).unwrap_or(0.0)).max(0.0);
+        effects * if self.bloodraging() { BLOODRAGE_RESIST } else { 1.0 }
+    }
+    /// Camazotz: how much health a melee hit for `dealt` damage gives back.
+    pub fn lifesteal(&mut self, dealt: f32) {
+        if self.blessed(Passive::Lifesteal) { self.heal(dealt * LIFESTEAL_SHARE); }
+    }
 
     pub fn add_effect(&mut self, kind: Effect, secs: f32, amp: u8) {
         if kind == Effect::Absorption { self.absorption = self.absorption.max((amp as f32 + 1.0) * 4.0); }
@@ -92,6 +119,7 @@ impl Player {
         self.absorption -= soak;
         self.health -= amt - soak;
         self.hurt_cd = 0.4;
+        self.combat_cd = DIVINITY_DELAY;
         if self.health <= 0.0 { self.health = 0.0; self.dead = true; }
     }
     // Aeolus: a landed hit throws you skyward, which is what makes its combos work.
@@ -106,6 +134,7 @@ impl Player {
     // Regeneration/poison/absorption expiry + cooldowns. Called every frame.
     pub fn tick_status(&mut self, dt: f32) {
         if self.hurt_cd > 0.0 { self.hurt_cd -= dt; }
+        if self.combat_cd > 0.0 { self.combat_cd -= dt; }
         if self.attack_cd > 0.0 { self.attack_cd -= dt; }
         if self.eat_cd > 0.0 { self.eat_cd -= dt; }
         for e in self.effects.iter_mut() { e.secs -= dt; }
@@ -114,7 +143,18 @@ impl Player {
         if let Some(a) = self.effect_amp(Effect::Poison) {
             if self.health > 1.0 { self.health = (self.health - (a as f32 + 1.0) * dt).max(1.0); }
         }
-        if !self.has_effect(Effect::Absorption) { self.absorption = 0.0; }
+        // Absorption from food expires; Athena's shield doesn't, so it sets the floor the potion
+        // value decays back down to rather than being wiped along with it.
+        if !self.has_effect(Effect::Absorption) {
+            let floor = if self.blessed(Passive::Divinity) { DIVINITY_SHIELD } else { 0.0 };
+            self.absorption = self.absorption.min(floor);
+        }
+        // Athena's shield reforms between fights. A larger absorption from food still wins while it
+        // lasts, since the cap is whichever is higher.
+        if self.blessed(Passive::Divinity) && self.combat_cd <= 0.0 && !self.dead {
+            let cap = DIVINITY_SHIELD.max(self.absorption);
+            self.absorption = (self.absorption + DIVINITY_REGEN * dt).min(cap);
+        }
     }
     pub fn eye_pos(&self) -> Vec3 { self.pos + vec3(0.0, 1.62, 0.0) }
     pub fn forward(&self) -> Vec3 {
@@ -197,7 +237,7 @@ impl Player {
             self.walk_dist += (vec3(new_pos.x, 0.0, new_pos.z) - vec3(self.pos.x, 0.0, self.pos.z)).length();
             // Vertical: gravity + collision, resting at whatever height horizontal step-up left us at.
             // Yamm turns water into something you can actually swim in: buoyant, with jump to rise.
-            let submerged = self.blessed(Passive::Deep) && self.in_water(chunks);
+            let submerged = (self.blessed(Passive::Deep) || self.blessed(Passive::Conduit)) && self.in_water(chunks);
             let base_y = new_pos.y;
             if submerged {
                 self.vel.y = if input.jump_held { 4.5 } else { (self.vel.y - 6.0 * dt).max(-2.0) };
@@ -540,5 +580,74 @@ mod tests {
         assert!(p.blessed(Passive::Fortune));
         assert!(!p.blessed(Passive::Reach));
         assert!(!p.blessed(Passive::DoubleJump));
+    }
+
+    // Athena's shield has to reform between fights but never during one, or it makes the player
+    // unkillable while a mob is still swinging.
+    #[test]
+    fn athenas_shield_reforms_only_out_of_combat() {
+        let mut p = blessed_player(&[245]);
+        p.tick_status(10.0);
+        assert!(p.absorption > 0.0, "the shield should form when nothing is attacking");
+        let full = p.absorption;
+
+        p.damage(4.0);
+        assert!(p.absorption < full, "the shield has to soak the hit");
+        let after = p.absorption;
+        p.tick_status(1.0);
+        assert_eq!(p.absorption, after, "it must not refill mid-fight");
+        p.tick_status(30.0);
+        assert!(p.absorption > after, "and must refill once the fight is over");
+
+        // Without the blessing there is no shield at all.
+        let mut plain = Player::new(0.0, 64.0, 0.0);
+        plain.tick_status(30.0);
+        assert_eq!(plain.absorption, 0.0);
+    }
+
+    // Sekhmet is a comeback mechanic: it must be off at full health and on when nearly dead.
+    #[test]
+    fn sekhmet_only_rages_when_bloodied() {
+        let mut p = blessed_player(&[246]);
+        assert!(!p.bloodraging(), "a healthy player is not enraged");
+        let calm_hit = p.might_mult();
+
+        p.health = p.max_health * (BLOODRAGE_AT - 0.05);
+        assert!(p.bloodraging());
+        assert!(p.might_mult() > calm_hit, "rage has to hit harder");
+
+        // And it soaks more: the same blow costs less health.
+        let mut raging = blessed_player(&[246]);
+        raging.health = raging.max_health * (BLOODRAGE_AT - 0.05);
+        let before = raging.health;
+        raging.damage(4.0);
+        let raged_loss = before - raging.health;
+
+        let mut plain = Player::new(0.0, 64.0, 0.0);
+        plain.health = plain.max_health * (BLOODRAGE_AT - 0.05);
+        let before = plain.health;
+        plain.damage(4.0);
+        assert!(raged_loss < before - plain.health, "rage has to soak damage too");
+
+        // A dead player doesn't rage back to life.
+        p.health = 0.0;
+        p.dead = true;
+        assert!(!p.bloodraging());
+    }
+
+    #[test]
+    fn camazotz_heals_a_share_of_the_damage_dealt() {
+        let mut p = blessed_player(&[247]);
+        p.health = 10.0;
+        p.lifesteal(20.0);
+        assert!((p.health - (10.0 + 20.0 * LIFESTEAL_SHARE)).abs() < 1e-4);
+        // It can't overheal.
+        p.lifesteal(1000.0);
+        assert_eq!(p.health, p.max_health);
+        // And it does nothing unattuned.
+        let mut plain = Player::new(0.0, 64.0, 0.0);
+        plain.health = 10.0;
+        plain.lifesteal(20.0);
+        assert_eq!(plain.health, 10.0);
     }
 }

@@ -90,6 +90,8 @@ val blockNames = mapOf(
     215 to "Blessing of Cronus", 216 to "Blessing of Demeter", 217 to "Blessing of Glaucus",
     218 to "Blessing of Apollo", 219 to "Blessing of Artemis", 220 to "Blessing of Warding",
     221 to "Blessing of Paris",
+    245 to "Blessing of Athena", 246 to "Blessing of Sekhmet", 247 to "Blessing of Camazotz",
+    248 to "Blessing of Tangaroa", 249 to "Blessing of Anubis",
     // Matcha's kitchen.
     222 to "Raw Meat", 223 to "Cooked Meat", 224 to "Ramen", 225 to "Japanese Curry",
     226 to "Green Curry", 227 to "Gnocchi", 228 to "Naan", 229 to "Pupusa", 230 to "Latke",
@@ -163,6 +165,8 @@ val blockIconFile = mapOf(
     215 to "blessing_cronus.png", 216 to "blessing_demeter.png", 217 to "blessing_glaucus.png",
     218 to "blessing_apollo.png", 219 to "blessing_artemis.png", 220 to "blessing_warding.png",
     221 to "blessing_paris.png",
+    245 to "blessing_athena.png", 246 to "blessing_sekhmet.png", 247 to "blessing_camazotz.png",
+    248 to "blessing_tangaroa.png", 249 to "blessing_anubis.png",
     222 to "raw_meat.png", 223 to "cooked_meat.png", 224 to "ramen.png", 225 to "japanese_curry.png",
     226 to "green_curry.png", 227 to "gnocchi.png", 228 to "naan.png", 229 to "pupusa.png",
     230 to "latke.png", 231 to "bruschetta.png", 232 to "french_toast.png",
@@ -210,7 +214,8 @@ val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
     222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235,
     236, 237, 238)
 val catalogBlessings = listOf(160, 161, 162, 203, 204, 205, 206, 207, 208, 209, 210, 211,
-    212, 213, 214, 215, 216, 217, 218, 219, 220, 221)
+    212, 213, 214, 215, 216, 217, 218, 219, 220, 221,
+    245, 246, 247, 248, 249)
 val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,
     171, 172, 173, 174, 175, 176, 177, 178, 186, 188,
     239, 240, 241, 242, 243, 244,

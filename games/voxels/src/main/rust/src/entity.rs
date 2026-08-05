@@ -182,6 +182,9 @@ pub struct Mob {
     pub max_health: f32,
     pub speed: f32,
     pub elite: bool,
+    /// Radius the mob refuses to come inside, set by the engine each tick. Anubis pushes the undead
+    /// back; everything else leaves this at zero.
+    pub repelled: f32,
 }
 
 /// Per-spawn stat jitter. Matcha retunes mobs by type; this adds variation *within* a type so an
@@ -238,7 +241,7 @@ impl Mob {
         Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: v.health, attack_cd: 0.0, fuse: 0.0,
             target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1,
             profession: crate::villager::Profession::from_seed(seed | 1).index() as u8,
-            max_health: v.health, speed: v.speed, elite: v.elite }
+            max_health: v.health, speed: v.speed, elite: v.elite, repelled: 0.0 }
     }
 
     pub fn tick(&mut self, dt: f32, player: Vec3, terrain: &Terrain) {
@@ -269,9 +272,13 @@ impl Mob {
         self.wander -= dt;
         let to_player = player - self.pos;
         let pdist = to_player.length();
+        // Anubis: a warded player is walked away from, not toward.
+        let warded = self.repelled > 0.0 && pdist < self.repelled;
         if self.wander <= 0.0 {
             self.wander = 1.5 + xorshift(&mut self.rng) * 3.0;
-            if self.kind.hostile() && pdist < 22.0 {
+            if warded {
+                self.target_yaw = (-to_player.x).atan2(to_player.z); // turn tail
+            } else if self.kind.hostile() && pdist < 22.0 {
                 self.target_yaw = to_player.x.atan2(-to_player.z); // face the player
             } else {
                 self.target_yaw = (xorshift(&mut self.rng) - 0.5) * std::f32::consts::TAU;
@@ -279,13 +286,15 @@ impl Mob {
             // Occasionally idle (stand still).
             if !self.kind.hostile() && xorshift(&mut self.rng) < 0.3 { self.wander = 1.0; self.target_yaw = self.yaw; }
         }
+        // A warded mob flees at once rather than waiting for its next wander roll.
+        if warded { self.target_yaw = (-to_player.x).atan2(to_player.z); }
         // Ease yaw toward the target.
         let mut dyaw = self.target_yaw - self.yaw;
         while dyaw > std::f32::consts::PI { dyaw -= std::f32::consts::TAU; }
         while dyaw < -std::f32::consts::PI { dyaw += std::f32::consts::TAU; }
         self.yaw += dyaw.clamp(-3.0 * dt, 3.0 * dt);
 
-        let chasing = self.kind.hostile() && pdist < 22.0;
+        let chasing = self.kind.hostile() && pdist < 22.0 && !warded;
         let idle = !chasing && (self.target_yaw - self.yaw).abs() < 0.05 && self.wander < 1.05 && !self.kind.hostile();
         let speed = if idle { 0.0 } else { self.speed * if chasing { 1.25 } else { 1.0 } };
         // Model front is -Z; rotating (0,0,-1) by yaw gives (sin, 0, -cos).
@@ -658,6 +667,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    // Anubis has to actually push the undead away, not merely stop them closing in.
+    #[test]
+    fn a_warded_mob_backs_off() {
+        let mut w = world();
+        for x in -6..=6 { for z in -6..=20 { w.set_block_world(x, SKY, z, Block::Stone as u8); } }
+        let terrain = Terrain {
+            solid: &|x, y, z| w.solid_at(x, y, z),
+            surface: &|x, z, ceiling| w.surface_below(x, z, ceiling, 2),
+        };
+        let player = Vec3::new(0.5, SKY as f32 + 1.5, 0.5);
+        let start = Vec3::new(0.5, SKY as f32 + 1.0, 5.5);
+
+        let mut chaser = Mob::new(MobKind::Zombie, start, 21);
+        for _ in 0..180 { chaser.tick(1.0 / 60.0, player, &terrain); }
+        let chased = (chaser.pos - player).length();
+
+        let mut warded = Mob::new(MobKind::Zombie, start, 21);
+        warded.repelled = 6.0;
+        for _ in 0..180 { warded.tick(1.0 / 60.0, player, &terrain); }
+        let kept = (warded.pos - player).length();
+
+        assert!(chased < 4.0, "an unwarded zombie should have closed in, dist = {chased}");
+        assert!(kept > 5.0, "a warded zombie should have backed off, dist = {kept}");
     }
 
     #[test]

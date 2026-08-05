@@ -34,6 +34,12 @@ pub enum Passive {
     Multishot,     // Artemis — throw three at once
     Thorns,        // Warding — attackers take a share of the damage back
     Infinity,      // Paris — thrown items are never used up
+    // Matcha enchantments that had no home until now.
+    Divinity,      // Athena — a shield that refills out of combat
+    Bloodrage,     // Sekhmet — stronger and tougher near death
+    Lifesteal,     // Camazotz — melee hits feed you
+    Conduit,       // Tangaroa — full strength underwater
+    WardUndead,    // Anubis — the dead keep their distance
 }
 
 pub struct Blessing {
@@ -50,7 +56,7 @@ const fn b(id: u8, passive: Passive, icon: &'static str, name: &'static str, eff
 }
 
 // Ids 160..162 predate the pantheon but are folded into it; every icon is Matcha's own artwork.
-pub const PANTHEON: [Blessing; 22] = [
+pub const PANTHEON: [Blessing; 27] = [
     b(160, Passive::Traversal,     "blessing_clement.png",     "Blessing of Clement",      "Swift of foot; climbs a full block"),
     b(161, Passive::Might,         "blessing_ares.png",        "Blessing of Ares",         "Melee strikes hit far harder"),
     b(162, Passive::Deep,          "blessing_yamm.png",        "Blessing of Yamm",         "Swim freely beneath the waves"),
@@ -73,6 +79,13 @@ pub const PANTHEON: [Blessing; 22] = [
     b(219, Passive::Multishot,     "blessing_artemis.png",     "Blessing of Artemis",      "Throw three projectiles at once"),
     b(220, Passive::Thorns,        "blessing_warding.png",     "Blessing of Warding",      "Attackers suffer for striking you"),
     b(221, Passive::Infinity,      "blessing_paris.png",       "Blessing of Paris",        "Thrown items are never used up"),
+    // These five carry Matcha enchantments with no earlier equivalent, so their charms are recoloured
+    // rather than drawn from the pack's own artwork.
+    b(245, Passive::Divinity,      "blessing_athena.png",      "Blessing of Athena",       "A shield that reforms out of combat"),
+    b(246, Passive::Bloodrage,     "blessing_sekhmet.png",     "Blessing of Sekhmet",      "Near death you grow stronger and harder to kill"),
+    b(247, Passive::Lifesteal,     "blessing_camazotz.png",    "Blessing of Camazotz",     "Your strikes drink the life from foes"),
+    b(248, Passive::Conduit,       "blessing_tangaroa.png",    "Blessing of Tangaroa",     "You see and fight at full strength underwater"),
+    b(249, Passive::WardUndead,    "blessing_anubis.png",      "Blessing of Anubis",       "The undead will not come near you"),
 ];
 
 pub fn is_blessing(id: u8) -> bool { PANTHEON.iter().any(|b| b.id == id) }
