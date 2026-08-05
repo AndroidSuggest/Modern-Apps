@@ -228,7 +228,7 @@ pub fn detect_and_describe_orb(g: &Gray, max_features: usize, threshold: i32) ->
 
     let mut nfeatures_per_level = Vec::with_capacity(actual_levels);
     let mut sum = 0usize;
-    for level in 0..actual_levels - 1 {
+    for _level in 0..actual_levels - 1 {
         let cnt = ndesired_per_scale.round() as usize;
         nfeatures_per_level.push(cnt);
         sum += cnt;

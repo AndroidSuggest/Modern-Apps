@@ -129,6 +129,43 @@ impl Matrix3<f64> {
     /// Eigen-decomposition of a **symmetric** matrix via cyclic Jacobi.
     /// `eigenvectors`' columns are the (unit) eigenvectors; eigenvalues are
     /// unordered (matching `nalgebra::SymmetricEigen`).
+    /// As [`Matrix3::svd`], but with singular values in **descending** order and
+    /// `u` / `v_t` permuted to match.
+    ///
+    /// Plain `svd()` inherits the Jacobi eigensolver's arbitrary ordering, which is
+    /// harmless for callers that only form `U·Vᵀ` (orthonormalization) but wrong for
+    /// anyone indexing a specific singular direction — e.g. taking the null vector as
+    /// `u.column(2)`, or forcing the smallest singular value to zero. `DMatrix::svd`
+    /// already sorts; this makes the 3×3 path consistent with it.
+    pub fn svd_sorted(&self) -> Svd {
+        let s = self.svd(true, true);
+        let (u, vt) = match (s.u, s.v_t) {
+            (Some(u), Some(vt)) => (u, vt),
+            _ => return s,
+        };
+        let sigma = s.singular_values;
+        let mut order = [0usize, 1, 2];
+        order.sort_by(|&a, &b| sigma[b].total_cmp(&sigma[a]));
+
+        let mut nu = Matrix3::zeros();
+        let mut nv = Matrix3::zeros();
+        for (rank, &src) in order.iter().enumerate() {
+            nu.set_column(rank, u.column(src));
+            // Row `src` of v_t is the corresponding right singular vector.
+            let r = Vector3::new(vt[(src, 0)], vt[(src, 1)], vt[(src, 2)]);
+            nv.set_column(rank, r);
+        }
+        Svd {
+            u: Some(nu),
+            v_t: Some(nv.transpose()),
+            singular_values: Vector3::new(
+                sigma[order[0]],
+                sigma[order[1]],
+                sigma[order[2]],
+            ),
+        }
+    }
+
     pub fn symmetric_eigen(&self) -> SymmetricEigen {
         let (evals, evecs) = jacobi_sym(&self.d, 3);
         SymmetricEigen {
@@ -471,6 +508,13 @@ impl Mul<f64> for Vector3<f64> {
     type Output = Vector3<f64>;
     fn mul(self, s: f64) -> Vector3<f64> {
         Vector3::new(self.x * s, self.y * s, self.z * s)
+    }
+}
+
+impl std::ops::Add<Vector3<f64>> for Vector3<f64> {
+    type Output = Vector3<f64>;
+    fn add(self, o: Vector3<f64>) -> Vector3<f64> {
+        Vector3::new(self.x + o.x, self.y + o.y, self.z + o.z)
     }
 }
 

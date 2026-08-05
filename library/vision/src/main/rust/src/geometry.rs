@@ -4,12 +4,14 @@ use crate::linalg::{DMatrix, Matrix3, Vector3};
 
 pub type Pt = (f32, f32);
 
-struct Lcg(u64);
+/// Small deterministic LCG for RANSAC sampling. Public so other crates in the
+/// workspace (measure's VIO engine) get reproducible sampling without pulling `rand`.
+pub struct Lcg(u64);
 impl Lcg {
-    fn new(seed: u64) -> Self {
+    pub fn new(seed: u64) -> Self {
         Lcg(seed | 1)
     }
-    fn next_usize(&mut self, n: usize) -> usize {
+    pub fn next_usize(&mut self, n: usize) -> usize {
         self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         ((self.0 >> 33) as usize) % n.max(1)
     }

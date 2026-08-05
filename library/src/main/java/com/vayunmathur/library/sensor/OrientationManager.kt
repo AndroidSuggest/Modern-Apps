@@ -1,4 +1,4 @@
-package com.vayunmathur.astronomy.domain.sensor
+package com.vayunmathur.library.sensor
 
 import android.content.Context
 import android.hardware.GeomagneticField
@@ -8,7 +8,6 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.Surface
 import android.view.WindowManager
-import com.vayunmathur.astronomy.domain.engine.AltAz
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.*
@@ -22,11 +21,11 @@ data class DeviceOrientation(
     val declinationDeg: Double = 0.0,
     // "Window" model: the view looks where the BACK of the phone points, i.e. the
     // device -Z axis (the camera's optical axis), expressed in world ENU. Hold the
-    // phone up like a pane of glass and the sky drawn matches what's behind it (and
+    // phone up like a pane of glass and what is drawn matches what's behind it (and
     // what the AR camera sees). Flat screen-up => back faces the ground => nadir;
     // vertical => horizon; back facing the zenith => alt +90.
-    // viewRotationDeg is the true roll about that -Z axis, so content stays fixed to
-    // the sky as the phone rolls.
+    // viewRotationDeg is the true roll about that -Z axis, so world-anchored content
+    // stays fixed as the phone rolls.
     val pointingAzTrueDeg: Double = azimuthTrueDeg,
     val pointingAltDeg: Double = 0.0,
     val viewRotationDeg: Double = 0.0
@@ -34,7 +33,6 @@ data class DeviceOrientation(
     val pointingAzRad get() = Math.toRadians(pointingAzTrueDeg)
     val pointingAltRad get() = Math.toRadians(pointingAltDeg)
     val viewRotationRad get() = Math.toRadians(viewRotationDeg)
-    val pointingAltAz get() = AltAz(pointingAzRad, pointingAltRad)
 }
 
 class OrientationManager(private val context: Context) : SensorEventListener {

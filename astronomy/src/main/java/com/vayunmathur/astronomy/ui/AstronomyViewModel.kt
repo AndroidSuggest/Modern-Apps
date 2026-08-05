@@ -7,9 +7,9 @@ import com.vayunmathur.astronomy.data.CatalogRepository
 import com.vayunmathur.astronomy.data.model.PlanetId
 import com.vayunmathur.astronomy.R
 import com.vayunmathur.astronomy.domain.engine.*
-import com.vayunmathur.astronomy.domain.sensor.DeviceOrientation
+import com.vayunmathur.library.sensor.DeviceOrientation
 import com.vayunmathur.astronomy.domain.sensor.LocationProvider
-import com.vayunmathur.astronomy.domain.sensor.OrientationManager
+import com.vayunmathur.library.sensor.OrientationManager
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

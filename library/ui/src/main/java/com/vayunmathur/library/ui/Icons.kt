@@ -3,7 +3,10 @@ package com.vayunmathur.library.ui
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.DeliveryDining
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.SquareFoot
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.Dehaze
@@ -1219,3 +1222,18 @@ fun IconRestaurant(modifier: Modifier = Modifier, tint: Color = LocalContentColo
 @Composable
 fun IconDeliveryDining(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.DeliveryDining, "Courier", modifier, tint)
+
+/** Compass rose — the compass tool. */
+@Composable
+fun IconCompass(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Explore, "Compass", modifier, tint)
+
+/** Ruler — the on-screen ruler tool. */
+@Composable
+fun IconRuler(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Straighten, "Ruler", modifier, tint)
+
+/** Corner with dimension marks — area and perimeter measurement. */
+@Composable
+fun IconArea(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SquareFoot, "Area", modifier, tint)

@@ -1,0 +1,20 @@
+[package]
+name = "vision_core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared computer-vision primitives: dependency-free linear algebra, image buffers, ORB/FAST/BRIEF features, and homography geometry"
+license = "GPL-2.0-only"
+
+[lib]
+name = "vision_core"
+crate-type = ["rlib"]
+
+[features]
+default = []
+# JPEG decoding is only needed by the camera app's panorama pipeline. Left off by
+# default so consumers that just want the CV primitives (e.g. measure's VIO engine)
+# pull no image codecs at all.
+jpeg = ["dep:jpeg-decoder"]
+
+[dependencies]
+jpeg-decoder = { version = "0.3.2", default-features = false, optional = true }

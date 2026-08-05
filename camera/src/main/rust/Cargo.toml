@@ -11,6 +11,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
+# Shared CV primitives (linalg / imgbuf / features / geometry / camera) now live in
+# library/vision/src/main/rust so measure's VIO engine can reuse them. The `jpeg`
+# feature keeps Rgba::from_jpeg available for the panorama pipeline.
+vision_core = { path = "../../../../library/vision/src/main/rust", features = ["jpeg"] }
 # image crate 0.25 removed – pulled moxcms/pxfm/bytemuck; now jpeg-decoder + jpeg-encoder (trivial 1-function)
 jpeg-decoder = { version = "0.3.2", default-features = false }
 jpeg-encoder = { version = "0.6.1", default-features = false }

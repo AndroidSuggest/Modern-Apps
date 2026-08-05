@@ -11,6 +11,8 @@ members = [
   "vpn/src/main/rust",
   "library/e2ee-p2p/src/main/rust",
   "library/jni-http/src/main/rust",
+  "library/vision/src/main/rust",
+  "measure/src/main/rust",
   "messages/src/main/rust",
   "youpipe/src/main/rust",
   "third_party/om-file-format-sys",

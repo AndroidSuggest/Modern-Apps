@@ -1,11 +1,13 @@
 //! Camera stitching native library: feature-based panorama stitcher + night
 //! burst aligner, exposed to Kotlin via JNI. Replaces the OpenCV dependency.
+//!
+//! The linear algebra, image buffers, feature detection and homography geometry
+//! now live in the shared `vision_core` crate (library/vision/src/main/rust) so the
+//! measure app's VIO engine can reuse them. They are re-exported here under their
+//! original paths, which is why the rest of this crate still says `crate::linalg`.
 
-mod linalg;
-mod imgbuf;
-mod features;
-mod geometry;
-mod camera;
+pub use vision_core::{camera, features, geometry, imgbuf, linalg};
+
 mod matching;
 mod estimator;
 mod bundle;

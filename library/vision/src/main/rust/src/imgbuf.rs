@@ -23,6 +23,11 @@ impl Rgba {
     /// Decode JPEG/PNG bytes into an RGBA buffer.
     /// Previously used `image` crate which pulled moxcms, pxfm, bytemuck, etc for this single call.
     /// Now uses jpeg-decoder directly (armv8-only, minimal pure Rust, already in pdf_render).
+    ///
+    /// Behind the `jpeg` feature: consumers that only want the CV primitives (the
+    /// measure app's VIO engine feeds raw camera luminance and never sees a JPEG)
+    /// should not have to link a codec.
+    #[cfg(feature = "jpeg")]
     pub fn from_jpeg(bytes: &[u8]) -> Option<Rgba> {
         use std::io::Cursor;
         let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
