@@ -22,9 +22,9 @@ pub struct Inventory {
 }
 
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
-// Item ids 154+ are materials/tools (see item.rs). Crafting and smelting both flow through this table
-// (the Furnace menu opens the same crafting UI).
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 56] = [
+// Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
+// instead, since those need a furnace, fuel and time.
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 43] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -34,17 +34,8 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 56] = [
     (Block::SpruceLog as u8, 1, 0, 0, Block::SprucePlanks as u8,4),
     (Block::Planks as u8,    4, 0, 0, Block::CraftingTable as u8, 1),
     (Block::Cobble as u8,    8, 0, 0, Block::Furnace as u8,     1),
-    (Block::Sand as u8,      2, 0, 0, Block::Glass as u8,       1),
-    (Block::Cobble as u8,    4, 0, 0, Block::Stone as u8,       1),
     (Block::Diorite as u8,   4, 0, 0, Block::PolishedDiorite as u8, 4),
     (Block::Planks as u8,    2, 0, 0, 159 /*Stick*/,            4),
-    (Block::Clay as u8,      4, 0, 0, Block::Brick as u8,       1),
-    // Smelting: ore -> material.
-    (Block::CoalOre as u8,   1, 0, 0, 157 /*Coal*/,             1),
-    (Block::IronOre as u8,   1, 0, 0, 154 /*Iron Ingot*/,       1),
-    (Block::DiamondOre as u8,1, 0, 0, 155 /*Diamond*/,          1),
-    (Block::EmeraldOre as u8,1, 0, 0, 156 /*Emerald*/,          1),
-    (Block::RedstoneOre as u8,1,0, 0, 158 /*Redstone*/,         1),
     // Material -> block.
     (154, 9, 0, 0, Block::IronBlock as u8,    1),
     (155, 9, 0, 0, Block::DiamondBlock as u8, 1),
@@ -62,13 +53,6 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 56] = [
     (154, 5, 0, 0, 171, 1), (154, 8, 0, 0, 172, 1), (154, 7, 0, 0, 173, 1), (154, 4, 0, 0, 174, 1), // iron
     (155, 5, 0, 0, 175, 1), (155, 8, 0, 0, 176, 1), (155, 7, 0, 0, 177, 1), (155, 4, 0, 0, 178, 1), // diamond
     // --- Matcha alloy tier ---
-    // Smelt the three new ores into their raw materials.
-    (Block::SilverOre as u8,   1, 0, 0, 193 /*Silver Ingot*/, 1),
-    (Block::SulfurOre as u8,   1, 0, 0, 192 /*Sulfur*/,       2),
-    (Block::CinnabarOre as u8, 1, 0, 0, 194 /*Quicksilver*/,  1),
-    // Iron quenched in sulfur makes steel; steel amalgamated with quicksilver makes adamant.
-    (154, 1, 192, 1, 195, 1), // iron ingot + sulfur -> steel ingot
-    (195, 4, 194, 2, 196, 1), // steel + quicksilver -> adamant ingot
     // Adamant gear: the tier above diamond.
     (196, 3, 159, 2, 197, 1), // adamant pickaxe
     (196, 2, 159, 1, 198, 1), // adamant sword
@@ -84,6 +68,51 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 56] = [
     (194, 2, 154, 4, 161, 1), // quicksilver + iron   -> Blessing of the Warrior
     (194, 2, 156, 2, 162, 1), // quicksilver + emerald-> Blessing of the Deep
 ];
+
+// Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
+// `blast` only run in a Blast Furnace — that gate is what makes the steel/adamant line an unlock
+// rather than just another recipe.
+pub struct Smelt {
+    pub in1: u8, pub n1: i32,
+    pub in2: u8, pub n2: i32,
+    pub out: u8, pub out_n: i32,
+    pub secs: f32,
+    pub blast: bool,
+}
+const fn smelt(in1: u8, n1: i32, in2: u8, n2: i32, out: u8, out_n: i32, secs: f32, blast: bool) -> Smelt {
+    Smelt { in1, n1, in2, n2, out, out_n, secs, blast }
+}
+pub const SMELTING: [Smelt; 13] = [
+    smelt(Block::CoalOre as u8,     1, 0, 0, 157, 1,  6.0, false), // coal
+    smelt(Block::IronOre as u8,     1, 0, 0, 154, 1,  8.0, false), // iron ingot
+    smelt(Block::DiamondOre as u8,  1, 0, 0, 155, 1, 10.0, false),
+    smelt(Block::EmeraldOre as u8,  1, 0, 0, 156, 1, 10.0, false),
+    smelt(Block::RedstoneOre as u8, 1, 0, 0, 158, 1,  6.0, false),
+    smelt(Block::SilverOre as u8,   1, 0, 0, 193, 1,  9.0, false), // silver ingot
+    smelt(Block::Sand as u8,        2, 0, 0, Block::Glass as u8,  1, 5.0, false),
+    smelt(Block::Cobble as u8,      4, 0, 0, Block::Stone as u8,  1, 5.0, false),
+    smelt(Block::Clay as u8,        4, 0, 0, Block::Brick as u8,  1, 6.0, false),
+    // Blast furnace only: the alloy line.
+    smelt(Block::SulfurOre as u8,   1, 0, 0, 192, 2,  5.0, true),  // sulfur
+    smelt(Block::CinnabarOre as u8, 1, 0, 0, 194, 1,  7.0, true),  // quicksilver
+    smelt(154, 1, 192, 1, 195, 1, 12.0, true),                     // iron + sulfur -> steel
+    smelt(195, 4, 194, 2, 196, 1, 20.0, true),                     // steel + quicksilver -> adamant
+];
+
+// Seconds of furnace burn a stack item is worth. Anything not listed can't be used as fuel.
+pub fn fuel_secs(id: u8) -> f32 {
+    match id {
+        157 => 80.0,                                        // coal
+        84 => 200.0,                                        // a lava block
+        192 => 60.0,                                        // sulfur burns hot
+        4 | 26 | 29 | 47 | 50 | 51 => 15.0,                 // logs
+        10 | 27 | 30 | 49 | 52 => 15.0,                     // planks
+        159 => 5.0,                                         // sticks
+        _ => 0.0,
+    }
+}
+// Fuels with no use other than burning, tried before anything a player might be saving.
+const DEDICATED_FUELS: [u8; 3] = [157, 84, 192];
 
 // Villager trades: (cost_id, cost_count, give_id, give_count). Emerald = item 156.
 pub const TRADES: [(u8, i32, u8, i32); 7] = [
@@ -122,10 +151,13 @@ impl Inventory {
         self.placed += 1;
         Some(id)
     }
-    pub fn add_block(&mut self, id: u8) {
-        if id == 0 { return; }
-        for slot in self.slots.iter_mut() { if slot.id == id && slot.count < STACK { slot.count += 1; return; } }
-        for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = 1; return; } }
+    pub fn add_block(&mut self, id: u8) { self.try_add_block(id); }
+    // Add one unit, reporting whether it actually fit anywhere.
+    pub fn try_add_block(&mut self, id: u8) -> bool {
+        if id == 0 { return false; }
+        for slot in self.slots.iter_mut() { if slot.id == id && slot.count < STACK { slot.count += 1; return true; } }
+        for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = 1; return true; } }
+        false
     }
     pub fn select(&mut self, idx: usize) { if idx < HOTBAR { self.selected = idx; } }
 
@@ -176,8 +208,9 @@ impl Inventory {
         true
     }
     // Place a non-stacking item (tool/armor) into the first empty slot with a given count (durability).
-    pub fn add_item_with_count(&mut self, id: u8, count: i32) {
-        for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = count; return; } }
+    pub fn add_item_with_count(&mut self, id: u8, count: i32) -> bool {
+        for slot in self.slots.iter_mut() { if slot.id == 0 { slot.id = id; slot.count = count; return true; } }
+        false
     }
     pub fn selected_count(&self) -> i32 { if self.selected < HOTBAR { self.slots[self.selected].count } else { 0 } }
     // Remove the whole selected stack, returning (id, count). Used to equip armor without losing durability.
@@ -211,6 +244,60 @@ impl Inventory {
         true
     }
     pub fn armor_defense(&self) -> f32 { self.armor.iter().map(|s| if s.id != 0 { crate::item::armor_defense(s.id) } else { 0.0 }).sum() }
+
+    // ---- Smelting ----
+    pub fn can_smelt(&self, s: &Smelt) -> bool {
+        self.count_of(s.in1) >= s.n1 && (s.in2 == 0 || self.count_of(s.in2) >= s.n2)
+    }
+    // Consume one batch of a smelt recipe's inputs and bank its output. Callers must check
+    // `can_smelt` first; this is only reached once the furnace has finished a cycle.
+    pub fn take_smelt_inputs(&mut self, s: &Smelt) {
+        self.remove_count(s.in1, s.n1);
+        if s.in2 != 0 { self.remove_count(s.in2, s.n2); }
+    }
+    pub fn give_smelt_output(&mut self, s: &Smelt) {
+        for _ in 0..s.out_n { self.add_block(s.out); }
+    }
+    // Whether `n` of `id` would actually fit. Used to pause a furnace rather than smelt into a full
+    // inventory and drop the result on the floor.
+    pub fn has_room_for(&self, id: u8, n: i32) -> bool {
+        if crate::item::has_durability(id) { return self.slots.iter().any(|s| s.id == 0); }
+        let mut need = n;
+        for s in self.slots.iter() {
+            if s.id == 0 { need -= STACK; } else if s.id == id { need -= STACK - s.count; }
+            if need <= 0 { return true; }
+        }
+        need <= 0
+    }
+    // Burn one fuel item, returning how many seconds of heat it provides. `spare` lists ids the
+    // active recipe needs as ingredients so the furnace never eats its own input (sulfur is both a
+    // fuel and the second half of the steel recipe). Dedicated fuels are preferred over logs and
+    // planks so a smelt doesn't quietly consume the player's building stock.
+    pub fn consume_fuel(&mut self, spare: &[u8]) -> Option<f32> {
+        let usable = |s: &InvSlot| s.count > 0 && fuel_secs(s.id) > 0.0 && !spare.contains(&s.id);
+        let idx = self.slots.iter().position(|s| usable(s) && DEDICATED_FUELS.contains(&s.id))
+            .or_else(|| self.slots.iter().position(usable))?;
+        let secs = fuel_secs(self.slots[idx].id);
+        self.slots[idx].count -= 1;
+        if self.slots[idx].count <= 0 { self.slots[idx] = InvSlot::default(); }
+        Some(secs)
+    }
+
+    // ---- Containers ----
+    // Pull a stack out of a container slot. Whatever doesn't fit stays in `slot`, so a full
+    // inventory can never silently void a chest.
+    pub fn take_from(&mut self, slot: &mut InvSlot) {
+        if slot.id == 0 || slot.count <= 0 { return; }
+        if crate::item::has_durability(slot.id) {
+            if self.add_item_with_count(slot.id, slot.count) { *slot = InvSlot::default(); }
+            return;
+        }
+        while slot.count > 0 {
+            if !self.try_add_block(slot.id) { return; }
+            slot.count -= 1;
+        }
+        *slot = InvSlot::default();
+    }
     // Wear down each equipped piece by 1 when the player is hurt.
     pub fn damage_armor(&mut self) {
         for s in self.armor.iter_mut() { if s.id != 0 { s.count -= 1; if s.count <= 0 { *s = InvSlot::default(); } } }
@@ -231,5 +318,113 @@ mod serde_slots {
         let mut out = [InvSlot::default(); SLOTS];
         for (i, slot) in v.into_iter().enumerate().take(SLOTS) { out[i] = slot; }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Every crafting and smelting output must have a sane recipe: no zero ids, no free lunches.
+    #[test]
+    fn recipe_tables_are_well_formed() {
+        for (i, &(in1, n1, in2, n2, out, out_n)) in RECIPES.iter().enumerate() {
+            assert!(in1 != 0 && n1 > 0, "recipe {i} has no first ingredient");
+            assert!(out != 0 && out_n > 0, "recipe {i} has no output");
+            assert!(in2 != 0 || n2 == 0, "recipe {i} has a count for a missing second ingredient");
+            assert!(in2 == 0 || n2 > 0, "recipe {i} has a second ingredient with no count");
+        }
+        for (i, s) in SMELTING.iter().enumerate() {
+            assert!(s.in1 != 0 && s.n1 > 0, "smelt {i} has no input");
+            assert!(s.out != 0 && s.out_n > 0, "smelt {i} has no output");
+            assert!(s.secs > 0.0, "smelt {i} would finish instantly");
+        }
+    }
+
+    // The alloy line is the Matcha progression gate: it must stay blast-furnace only, and the
+    // three Blessings must remain craftable so they aren't creative-only content again.
+    #[test]
+    fn alloy_line_is_gated_and_blessings_are_craftable() {
+        let steel = SMELTING.iter().find(|s| s.out == 195).expect("steel must be smeltable");
+        let adamant = SMELTING.iter().find(|s| s.out == 196).expect("adamant must be smeltable");
+        assert!(steel.blast && adamant.blast, "the alloy line must require a blast furnace");
+        for blessing in [160u8, 161, 162] {
+            assert!(RECIPES.iter().any(|r| r.4 == blessing), "blessing {blessing} has no recipe");
+        }
+    }
+
+    #[test]
+    fn smelting_consumes_inputs_and_fuel() {
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
+        inv.slots[0] = InvSlot { id: 19, count: 3 };  // 3 iron ore
+        inv.slots[1] = InvSlot { id: 157, count: 1 }; // 1 coal
+
+        let recipe = SMELTING.iter().find(|s| s.out == 154).unwrap();
+        assert!(inv.can_smelt(recipe));
+        assert_eq!(inv.consume_fuel(&[recipe.in1, recipe.in2]), Some(fuel_secs(157)));
+        assert_eq!(inv.count_of(157), 0, "the coal should be burnt");
+
+        inv.take_smelt_inputs(recipe);
+        inv.give_smelt_output(recipe);
+        assert_eq!(inv.count_of(19), 2, "one ore should be consumed");
+        assert_eq!(inv.count_of(154), 1, "one ingot should be produced");
+
+        // With no fuel left the furnace can't run again.
+        assert_eq!(inv.consume_fuel(&[recipe.in1, recipe.in2]), None);
+    }
+
+    // Sulfur is both a fuel and the second half of the steel recipe. Burning it would consume the
+    // input and leave the player with nothing.
+    #[test]
+    fn a_recipe_never_burns_its_own_ingredients() {
+        let steel = SMELTING.iter().find(|s| s.out == 195).unwrap();
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
+        inv.slots[0] = InvSlot { id: 154, count: 1 };  // iron ingot
+        inv.slots[1] = InvSlot { id: 192, count: 1 };  // the only sulfur, also a valid fuel
+
+        assert!(inv.can_smelt(steel));
+        assert_eq!(inv.consume_fuel(&[steel.in1, steel.in2]), None, "the sulfur input must be spared");
+        assert_eq!(inv.count_of(192), 1);
+        assert!(inv.can_smelt(steel), "the recipe must still be runnable");
+    }
+
+    // Coal exists to be burnt; planks and logs are building material, so reach for coal first.
+    #[test]
+    fn dedicated_fuel_is_burnt_before_building_material() {
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot::default(); }
+        inv.slots[0] = InvSlot { id: 10, count: 4 };   // planks, earlier in the inventory
+        inv.slots[5] = InvSlot { id: 157, count: 2 };  // coal
+
+        assert_eq!(inv.consume_fuel(&[]), Some(fuel_secs(157)));
+        assert_eq!(inv.count_of(10), 4, "the planks should be untouched");
+        assert_eq!(inv.count_of(157), 1);
+    }
+
+    // A full inventory must not let a furnace eat its inputs and throw the result away.
+    #[test]
+    fn a_full_inventory_has_no_room() {
+        let mut inv = Inventory::default();
+        for s in inv.slots.iter_mut() { *s = InvSlot { id: 2, count: STACK }; }
+        assert!(!inv.has_room_for(154, 1), "no free slot and no matching stack");
+        assert!(!inv.has_room_for(2, 1), "every dirt stack is already full");
+
+        inv.slots[3] = InvSlot { id: 154, count: STACK - 2 };
+        assert!(inv.has_room_for(154, 2));
+        assert!(!inv.has_room_for(154, 3), "only 2 of 3 would fit");
+
+        inv.slots[4] = InvSlot::default();
+        assert!(inv.has_room_for(154, 3));
+        assert!(inv.has_room_for(169, 1), "an empty slot can hold a tool");
+    }
+
+    #[test]
+    fn only_listed_items_burn() {
+        assert!(fuel_secs(157) > 0.0);   // coal
+        assert!(fuel_secs(10) > 0.0);    // planks
+        assert_eq!(fuel_secs(155), 0.0); // diamonds are not firewood
+        assert_eq!(fuel_secs(0), 0.0);
     }
 }

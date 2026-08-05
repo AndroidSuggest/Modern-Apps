@@ -24,4 +24,19 @@
     <string name="seed_2">Seed: %1$s  •  %2$s</string>
     <string name="estus">Estus ×%1$s</string>
     <string name="down">Down</string>
+    <string name="furnace">Furnace</string>
+    <string name="blast_furnace">Blast Furnace</string>
+    <string name="smelt">Smelt</string>
+    <string name="stop">Stop</string>
+    <string name="close">Close</string>
+    <string name="inventory">Inventory</string>
+    <string name="crafting">Crafting</string>
+    <string name="outfit">Outfit</string>
+    <string name="chest">Chest</string>
+    <string name="smelting_progress">Smelting</string>
+    <string name="fuel">Fuel</string>
+    <string name="furnace_fuel_hint">Burns coal, logs, planks or sulfur from your inventory.</string>
+    <string name="furnace_busy">Already smelting something else — stop it first.</string>
+    <string name="busy">Busy</string>
+    <string name="chest_tap_hint">Tap a chest slot to take it, an inventory slot to store it.</string>
 </resources>

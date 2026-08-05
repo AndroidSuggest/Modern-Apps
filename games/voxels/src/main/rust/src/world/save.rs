@@ -69,14 +69,18 @@ pub struct ProgressSave {
     #[serde(default)] pub end_dragon_dead: bool,
     #[serde(default)] pub nether_wither_dead: bool,
     #[serde(default)] pub world_secs: f32,
+    #[serde(default)] pub best_beacon: i32,
+    #[serde(default = "default_deepest")] pub deepest_y: i32,
 }
 fn default_max_health() -> f32 { 20.0 }
+fn default_deepest() -> i32 { 128 }
 impl Default for ProgressSave {
     fn default() -> Self {
         Self {
             armor: Vec::new(), max_health: default_max_health(), dim: 0,
             dim_pos: Vec::new(), dim_visited: Vec::new(), respawn: None,
             end_dragon_dead: false, nether_wither_dead: false, world_secs: 0.0,
+            best_beacon: 0, deepest_y: default_deepest(),
         }
     }
 }

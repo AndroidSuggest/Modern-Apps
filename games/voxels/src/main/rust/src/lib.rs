@@ -1,4 +1,5 @@
 pub mod world;
+pub mod container;
 pub mod entity;
 pub mod item;
 pub mod player;
@@ -282,6 +283,65 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getHe
         Ok(s) => s.into_raw(),
         Err(_) => null,
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getSmeltingJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_smelting_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getSmeltJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_smelt_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_startSmelt<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, recipe: jint, blast: jboolean,
+) -> jboolean {
+    engine::start_smelt(recipe.max(0) as usize, blast != 0) as jboolean
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_stopSmelt<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>,
+) {
+    engine::stop_smelt();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getContainerJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(engine::get_container_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_containerTake<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+) -> jboolean {
+    engine::container_take(idx.max(0) as usize) as jboolean
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_containerPut<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
+) -> jboolean {
+    engine::container_put(idx.max(0) as usize) as jboolean
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_closeContainer<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>,
+) {
+    engine::close_container();
 }
 
 #[cfg(test)]

@@ -351,11 +351,14 @@ def main():
         raise SystemExit("unexpected atlas.bin size %d" % len(raw))
 
     os.makedirs(ASSETS, exist_ok=True)
+    # Icons that COPY_ICONS renames are skipped here so the pack filename isn't also left behind.
+    renamed = {src for _, src in COPY_ICONS.values()}
     for idx, fname in sorted(NEW_TILES.items()):
         src = os.path.join(PACK, fname)
         w, h, rgba = decode_png(src)
         blit(new, NEW_W, idx, NEW_COLS, rgba, w)
-        shutil.copyfile(src, os.path.join(ASSETS, fname))
+        if fname not in renamed:
+            shutil.copyfile(src, os.path.join(ASSETS, fname))
         print("tile %3d <- %s (%dx%d)" % (idx, fname, w, h))
 
     for idx, rgb in sorted(PROC_TILES.items()):

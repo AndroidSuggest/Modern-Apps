@@ -101,3 +101,49 @@ pub fn food_effects(id: u8) -> Option<&'static [(Effect, f32, u8)]> {
         _ => return None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Blocks and items share one u8 id space split at ITEM_BASE. If a new block ever crosses that
+    // line it would silently become unplaceable, so pin the invariant down.
+    #[test]
+    fn block_ids_stay_below_the_item_base() {
+        assert!(crate::world::block::MAX_BLOCK_ID < ITEM_BASE);
+        assert!(!is_item(crate::world::block::MAX_BLOCK_ID));
+    }
+
+    // armor_slot() does range arithmetic over three disjoint id blocks; a wrong mapping would let
+    // a helmet occupy the boots slot.
+    #[test]
+    fn armor_maps_to_the_right_slot() {
+        for (id, slot) in [(171u8, 0usize), (172, 1), (173, 2), (174, 3),   // iron
+                           (175, 0), (176, 1), (177, 2), (178, 3),          // diamond
+                           (199, 0), (200, 1), (201, 2), (202, 3),          // adamant
+                           (188, 1)] {                                      // elytra -> chest
+            assert!(is_armor(id), "{id} should be armor");
+            assert_eq!(armor_slot(id), slot, "{id} mapped to the wrong slot");
+        }
+    }
+
+    #[test]
+    fn tools_and_armor_do_not_overlap() {
+        for id in 0..=255u8 {
+            assert!(!(is_tool(id) && is_armor(id)), "{id} is both a tool and armor");
+            if is_tool(id) { assert!(is_pickaxe(id) ^ is_sword(id), "{id} must be exactly one tool kind"); }
+            if is_tool(id) || is_armor(id) { assert!(max_durability(id) > 0, "{id} has no durability"); }
+        }
+    }
+
+    // Adamant is the top tier: it must beat diamond everywhere it competes.
+    #[test]
+    fn adamant_outclasses_diamond() {
+        assert!(sword_damage(198) > sword_damage(170));
+        assert!(pick_damage(197) > pick_damage(169));
+        for (adamant, diamond) in [(199u8, 175u8), (200, 176), (201, 177), (202, 178)] {
+            assert!(armor_defense(adamant) > armor_defense(diamond), "{adamant} must beat {diamond}");
+        }
+        assert!(max_durability(197) > max_durability(169));
+    }
+}

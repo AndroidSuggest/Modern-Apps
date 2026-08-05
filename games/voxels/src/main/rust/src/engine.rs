@@ -45,6 +45,25 @@ pub struct EngineState {
     // after the player has actually lived through a full night.
     pub was_night: bool,
     pub night_survived: bool,
+    pub containers: crate::container::Containers,
+    pub open_chest: Option<crate::container::ContainerKey>,
+    pub smelter: Smelter,
+    // Milestone tracking for achievements.
+    pub best_beacon: i32,
+    pub deepest_y: i32,
+}
+
+// One furnace job at a time, owned by the world rather than by a specific furnace block: the player
+// lights a recipe and it keeps burning while they walk away or close the menu.
+#[derive(Default)]
+pub struct Smelter {
+    pub recipe: usize,
+    pub active: bool,
+    pub progress: f32,
+    pub fuel_left: f32,
+    pub fuel_max: f32,
+    // Whether the furnace the player last opened was a Blast Furnace (gates the alloy recipes).
+    pub blast: bool,
 }
 
 // The world clock is offset by 60s so a fresh world opens at midday (day_t = 0.5 -> sun overhead).
@@ -155,6 +174,11 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         nether_wither_dead: progress.nether_wither_dead,
         was_night: false,
         night_survived: player_save.as_ref().map(|ps| ps.stats.night_seen).unwrap_or(false),
+        containers: crate::container::Containers::load(&files_dir),
+        open_chest: None,
+        smelter: Smelter::default(),
+        best_beacon: progress.best_beacon,
+        deepest_y: if had_save { progress.deepest_y } else { py as i32 },
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -207,9 +231,12 @@ pub fn destroy_engine() {
                 end_dragon_dead: state.end_dragon_dead,
                 nether_wither_dead: state.nether_wither_dead,
                 world_secs: state.start_time.elapsed().as_secs_f32(),
+                best_beacon: state.best_beacon,
+                deepest_y: state.deepest_y,
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
+        let _ = state.containers.save(&state.save_dir);
         state.chunks.save_all();
         // Persist the stashed dimensions too (each writes to its own save subdir).
         for m in state.stored.iter().flatten() { m.save_all(); }
@@ -321,6 +348,10 @@ pub fn tick_and_render() {
         if state.was_night && !night_now && !state.player.dead && state.dim == 0 { state.night_survived = true; }
         state.was_night = night_now;
 
+        tick_smelter(state, dt);
+        // Overworld-only depth record, so the Nether's low ceiling doesn't hand out the mining badge.
+        if state.dim == 0 { state.deepest_y = state.deepest_y.min(state.player.pos.y as i32); }
+
         // Elytra equipped in the chest slot enables gliding.
         state.player.elytra = state.inventory.armor[1].id == 188;
         state.player.tick(dt, &input_mut, &state.chunks);
@@ -395,6 +426,7 @@ pub fn tick_and_render() {
             }}}
             if let Some((tier, _)) = best {
                 use crate::item::Effect::*;
+                state.best_beacon = state.best_beacon.max(tier);
                 let e = &mut state.player;
                 e.add_effect(Speed, 6.0, 0);
                 if tier >= 2 { e.add_effect(Haste, 6.0, 0); }
@@ -592,6 +624,7 @@ static DEBUG_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static INV_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static STATS_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 static HEALTH_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
+static SMELT_CACHE: OnceLock<Mutex<String>> = OnceLock::new();
 fn cref(c: &'static OnceLock<Mutex<String>>, default: &str) -> &'static Mutex<String> { c.get_or_init(|| Mutex::new(default.to_string())) }
 
 // Called from the render tick (holds the engine lock) to refresh the UI caches.
@@ -616,9 +649,21 @@ fn publish_ui(state: &EngineState) {
             format!("sh{:.1} main{:.1} bloom{:.1} comp{:.1}", p[0], p[1], p[2], p[3])
         }).unwrap_or_default(),
     }).to_string();
+    let has = |id: u8| state.inventory.slots.iter().any(|s| s.id == id && s.count > 0);
+    let armor_at_least = |lo: u8, hi: u8| state.inventory.armor.iter().all(|s| s.id >= lo && s.id <= hi);
     let stats = serde_json::json!({
         "placed": state.inventory.placed, "broken": state.inventory.broken,
         "walked": state.player.walk_dist as i32, "night": state.night_survived,
+        "nether": state.dim_visited[1], "end": state.dim_visited[2],
+        "dragon": state.end_dragon_dead, "wither": state.nether_wither_dead,
+        "beacon": state.best_beacon,
+        "elytra": state.player.elytra,
+        "maxHearts": state.player.max_health >= crate::player::CAP_MAX_HEALTH,
+        // Full diamond (175..178) or full adamant (199..202) counts as end-tier armor.
+        "fullArmor": armor_at_least(175, 178) || armor_at_least(199, 202),
+        "silver": has(193), "steel": has(195), "adamant": has(196),
+        "blessing": has(160) || has(161) || has(162),
+        "depth": state.deepest_y,
     }).to_string();
     let inv = state.inventory.to_json();
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
@@ -635,12 +680,22 @@ fn publish_ui(state: &EngineState) {
     if let Ok(mut c) = cref(&STATS_CACHE, "{}").lock() { *c = stats; }
     if let Ok(mut c) = cref(&INV_CACHE, r#"{"selected":0,"slots":[]}"#).lock() { *c = inv; }
     if let Ok(mut c) = cref(&HEALTH_CACHE, "{}").lock() { *c = health; }
+    let sm = &state.smelter;
+    let secs = crate::inventory::SMELTING.get(sm.recipe).map(|r| r.secs).unwrap_or(1.0);
+    let smelt = serde_json::json!({
+        "active": sm.active, "recipe": sm.recipe,
+        "progress": (sm.progress / secs.max(0.001)).clamp(0.0, 1.0),
+        "fuel": if sm.fuel_max > 0.0 { (sm.fuel_left / sm.fuel_max).clamp(0.0, 1.0) } else { 0.0 },
+        "blast": sm.blast,
+    }).to_string();
+    if let Ok(mut c) = cref(&SMELT_CACHE, "{}").lock() { *c = smelt; }
 }
 
 pub fn get_debug_json() -> String { cref(&DEBUG_CACHE, r#"{"error":"no engine"}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 pub fn get_inventory_json() -> String { cref(&INV_CACHE, r#"{"selected":0,"slots":[]}"#).lock().map(|c| c.clone()).unwrap_or_else(|_| r#"{"selected":0,"slots":[]}"#.into()) }
 pub fn get_stats_json() -> String { cref(&STATS_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 pub fn get_health_json() -> String { cref(&HEALTH_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
+pub fn get_smelt_json() -> String { cref(&SMELT_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 
 pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
 pub fn inventory_give(id: u8) { with_engine(|s| s.inventory.give(id)); }
@@ -808,25 +863,14 @@ fn light_portal(state: &mut EngineState, x: i32, y: i32, z: i32) -> bool {
     false
 }
 
-// Loot a chest deterministically from its position (each chest is consumed after one open).
-fn loot_chest(state: &mut EngineState, x: i32, y: i32, z: i32) {
-    let mut r = ((x as u64).wrapping_mul(73856093) ^ (y as u64).wrapping_mul(19349663) ^ (z as u64).wrapping_mul(83492791)) | 1;
-    let mut next = |r: &mut u64| { *r ^= *r << 13; *r ^= *r >> 7; *r ^= *r << 17; *r };
-    // (item id, max stack from this chest). The End's chests (dim 2) hold the endgame reward pool:
-    // an elytra, diamond gear, a heart container and gems.
-    let end_pool: [(u8, i32); 9] = [(188, 1), (176, 1), (175, 1), (170, 1), (129, 1), (155, 3), (156, 4), (133, 2), (24, 2)];
-    let over_pool: [(u8, i32); 10] = [(157, 8), (154, 4), (155, 1), (156, 2), (131, 4), (133, 1), (168, 1), (128, 1), (138, 3), (137, 2)];
-    let pool: &[(u8, i32)] = if state.dim == 2 { &end_pool } else { &over_pool };
-    let n = 2 + (next(&mut r) % 3) as usize; // 2..4 stacks
-    for _ in 0..n {
-        let (id, maxc) = pool[(next(&mut r) as usize) % pool.len()];
-        if crate::item::has_durability(id) {
-            state.inventory.add_item_with_count(id, crate::item::max_durability(id));
-        } else {
-            let c = 1 + (next(&mut r) % maxc as u64) as i32;
-            for _ in 0..c { state.inventory.add_block(id); }
-        }
+// Make sure a chest at this position has a container, rolling world loot the first time a chest the
+// player never placed is opened.
+fn ensure_chest(state: &mut EngineState, x: i32, y: i32, z: i32) -> crate::container::ContainerKey {
+    let key = (state.dim, x, y, z);
+    if !state.containers.contains(key) {
+        state.containers.insert(key, crate::container::roll_loot(x, y, z, state.dim));
     }
+    key
 }
 
 // Apply damage to the player through equipped armor (each defense point cuts ~4%, capped), wearing
@@ -1054,8 +1098,21 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     if let Some(hit) = block_hit {
         let (x, y, z) = hit.pos;
         let id = state.chunks.get_block_world(x, y, z);
-        if id == 83 { // chest: breaking it loots it (never yields a placeable chest item)
-            loot_chest(state, x, y, z);
+        if id == 83 { // chest: breaking it spills its contents and returns the chest itself
+            let key = ensure_chest(state, x, y, z);
+            // Only break the chest once everything actually fit — otherwise the leftovers would be
+            // dropped on the floor, which this game has no representation for.
+            let mut left = match state.containers.remove(key) {
+                Some(slots) => slots,
+                None => Vec::new(),
+            };
+            for s in left.iter_mut() { state.inventory.take_from(s); }
+            if left.iter().any(|s| s.id != 0) {
+                state.containers.insert(key, left);
+                return false;
+            }
+            state.inventory.add_block(83);
+            if state.open_chest == Some(key) { state.open_chest = None; }
             state.chunks.set_block_world(x, y, z, 0);
             mark_neighbors_dirty(state, x, z);
             return true;
@@ -1075,6 +1132,101 @@ fn do_break(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
     false
 }
 
+// Advance the active furnace job: burn fuel, accumulate progress and bank finished batches. Stops
+// itself when it runs out of inputs or fuel so the player never silently loses items.
+fn tick_smelter(state: &mut EngineState, dt: f32) {
+    if !state.smelter.active { return; }
+    let Some(recipe) = crate::inventory::SMELTING.get(state.smelter.recipe) else {
+        state.smelter.active = false;
+        return;
+    };
+    let stop = |s: &mut Smelter| { s.active = false; s.progress = 0.0; };
+    if recipe.blast && !state.smelter.blast { stop(&mut state.smelter); return; }
+    if !state.inventory.can_smelt(recipe) { stop(&mut state.smelter); return; }
+    // Pause instead of burning fuel when the result would have nowhere to go.
+    if !state.inventory.has_room_for(recipe.out, recipe.out_n) { return; }
+    if state.smelter.fuel_left <= 0.0 {
+        let spare = [recipe.in1, recipe.in2];
+        match state.inventory.consume_fuel(&spare) {
+            Some(secs) => { state.smelter.fuel_left = secs; state.smelter.fuel_max = secs; }
+            None => { stop(&mut state.smelter); return; }
+        }
+    }
+    state.smelter.fuel_left -= dt;
+    state.smelter.progress += dt;
+    if state.smelter.progress >= recipe.secs {
+        state.smelter.progress -= recipe.secs;
+        state.inventory.take_smelt_inputs(recipe);
+        state.inventory.give_smelt_output(recipe);
+        if !state.inventory.can_smelt(recipe) { stop(&mut state.smelter); }
+    }
+}
+
+// Light a furnace recipe. `blast` reports which kind of furnace the player tapped. A job already in
+// flight is left alone: switching would throw away its progress and the fuel already spent on it.
+pub fn start_smelt(recipe: usize, blast: bool) -> bool {
+    with_engine(|state| {
+        let Some(r) = crate::inventory::SMELTING.get(recipe) else { return false; };
+        if r.blast && !blast { return false; }
+        if state.smelter.active && state.smelter.recipe != recipe { return false; }
+        if !state.inventory.can_smelt(r) { return false; }
+        state.smelter.blast = blast;
+        if state.smelter.recipe != recipe { state.smelter.progress = 0.0; }
+        state.smelter.recipe = recipe;
+        state.smelter.active = true;
+        true
+    }).unwrap_or(false)
+}
+pub fn stop_smelt() { with_engine(|s| { s.smelter.active = false; s.smelter.progress = 0.0; }); }
+pub fn get_smelting_json() -> String {
+    let items: Vec<_> = crate::inventory::SMELTING.iter()
+        .map(|s| serde_json::json!({
+            "in": s.in1, "inN": s.n1, "in2": s.in2, "in2N": s.n2,
+            "out": s.out, "outN": s.out_n, "secs": s.secs, "blast": s.blast,
+        }))
+        .collect();
+    serde_json::json!(items).to_string()
+}
+
+// ---- Chest containers ----
+pub fn get_container_json() -> String {
+    with_engine_try(|state| match state.open_chest {
+        Some(key) => state.containers.to_json(key),
+        None => r#"{"slots":[]}"#.to_string(),
+    }).unwrap_or_else(|| r#"{"slots":[]}"#.to_string())
+}
+// Move a chest stack into the player's inventory, leaving behind whatever didn't fit.
+pub fn container_take(idx: usize) -> bool {
+    with_engine(|state| {
+        let Some(key) = state.open_chest else { return false; };
+        let Some(slot) = state.containers.slot_mut(key, idx) else { return false; };
+        if slot.id == 0 { return false; }
+        let mut held = *slot;
+        state.inventory.take_from(&mut held);
+        let moved = held.count < slot.count || held.id == 0;
+        if let Some(slot) = state.containers.slot_mut(key, idx) { *slot = held; }
+        moved
+    }).unwrap_or(false)
+}
+// Move a whole player stack into the chest, putting back anything that didn't fit.
+pub fn container_put(inv_idx: usize) -> bool {
+    with_engine(|state| {
+        let Some(key) = state.open_chest else { return false; };
+        if inv_idx >= crate::inventory::SLOTS { return false; }
+        let s = state.inventory.slots[inv_idx];
+        if s.id == 0 { return false; }
+        let left = state.containers.add(key, s.id, s.count);
+        if left >= s.count { return false; } // chest full, nothing moved
+        state.inventory.slots[inv_idx] = if left > 0 {
+            crate::inventory::InvSlot { id: s.id, count: left }
+        } else {
+            crate::inventory::InvSlot::default()
+        };
+        true
+    }).unwrap_or(false)
+}
+pub fn close_container() { with_engine(|s| s.open_chest = None); }
+
 // Destroy blocks in a sphere and hurt the player — creeper explosions.
 fn explode(state: &mut EngineState, center: Vec3, radius: f32) {
     let r = radius.ceil() as i32;
@@ -1085,6 +1237,15 @@ fn explode(state: &mut EngineState, center: Vec3, radius: f32) {
         let (x, y, z) = (cx + dx, cy + dy, cz + dz);
         let id = state.chunks.get_block_world(x, y, z);
         if id != 0 && id != 13 && Block::from_id(id).is_solid() {
+            // A blown-up chest hands what it can to the player; the rest goes with the blast. Leaving
+            // the entry behind would let a chest placed here later inherit the old loot.
+            if id == 83 {
+                let key = (state.dim, x, y, z);
+                if let Some(mut slots) = state.containers.remove(key) {
+                    for s in slots.iter_mut() { state.inventory.take_from(s); }
+                }
+                if state.open_chest == Some(key) { state.open_chest = None; }
+            }
             state.chunks.set_block_world(x, y, z, 0);
             cols.push((x, z));
         }
@@ -1111,6 +1272,8 @@ fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
         if inside_x && inside_y && inside_z { return false; }
         if let Some(id) = state.inventory.consume_selected() {
             state.chunks.set_block_world(px,py,pz, id);
+            // A chest the player places starts empty; only chests already in the world roll loot.
+            if id == 83 { state.containers.insert_empty((state.dim, px, py, pz)); }
             mark_neighbors_dirty(state, px, pz);
             return true;
         }
@@ -1140,10 +1303,9 @@ pub fn place_block_at(px: f32, py: f32) -> i32 {
             if let Some(hit) = block_hit {
                 let (x, y, z) = hit.pos;
                 let id = state.chunks.get_block_world(x, y, z);
-                if id == 83 { // chest: one-time loot, then it's consumed
-                    loot_chest(state, x, y, z);
-                    state.chunks.set_block_world(x, y, z, 0);
-                    mark_neighbors_dirty(state, x, z);
+                if id == 83 { // chest: open its container
+                    let key = ensure_chest(state, x, y, z);
+                    state.open_chest = Some(key);
                     return 30;
                 }
                 // Tap an obsidian frame with flint & steel to ignite a nether portal.

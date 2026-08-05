@@ -60,11 +60,11 @@ fun InventoryOverlay(inventoryJson: String, recipesJson: String, onClose: () -> 
         ) {
             // Left tabs (top→bottom: Crafting, Outfit, Inventory).
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TabButton("Crafting", leftTab == 2) { leftTab = 2 }
-                TabButton("Outfit", leftTab == 1) { leftTab = 1 }
-                TabButton("Inventory", leftTab == 0) { leftTab = 0 }
+                TabButton(stringResource(R.string.crafting), leftTab == 2) { leftTab = 2 }
+                TabButton(stringResource(R.string.outfit), leftTab == 1) { leftTab = 1 }
+                TabButton(stringResource(R.string.inventory), leftTab == 0) { leftTab = 0 }
                 Spacer(Modifier.weight(1f))
-                TabButton("Close", false) { onClose() }
+                TabButton(stringResource(R.string.close), false) { onClose() }
             }
 
             // Center content.

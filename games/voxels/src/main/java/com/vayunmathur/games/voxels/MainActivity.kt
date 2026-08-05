@@ -53,9 +53,15 @@ class MainActivity : ComponentActivity() {
                 val activity = LocalContext.current as? android.app.Activity
                 var invStartTab by remember { mutableStateOf(0) }
                 var recipesJson by remember { mutableStateOf("[]") }
+                var smeltingJson by remember { mutableStateOf("[]") }
+                var smeltJson by remember { mutableStateOf("{}") }
+                var containerJson by remember { mutableStateOf("""{"slots":[]}""") }
+                var furnaceOpen by remember { mutableStateOf(false) }
+                var furnaceIsBlast by remember { mutableStateOf(false) }
+                var chestOpen by remember { mutableStateOf(false) }
                 var tradesJson by remember { mutableStateOf("[]") }
                 var tradeOpen by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson() } catch (_: Exception) {} }
+                LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); tradesJson = VoxelsNative.getTradesJson(); smeltingJson = VoxelsNative.getSmeltingJson() } catch (_: Exception) {} }
                 var achievementsManager by remember { mutableStateOf<VoxelsAchievementsManager?>(null) }
                 val newAchievement by (achievementsManager?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
 
@@ -73,6 +79,8 @@ class MainActivity : ComponentActivity() {
                             try {
                                 inventoryJson = VoxelsNative.getInventoryJson()
                                 debugJson = VoxelsNative.getDebugJson()
+                                if (furnaceOpen) smeltJson = VoxelsNative.getSmeltJson()
+                                if (chestOpen) containerJson = VoxelsNative.getContainerJson()
                                 try {
                                     healthJson = VoxelsNative.getHealthJson()
                                     val hp = org.json.JSONObject(healthJson).optDouble("hp", prevHp.toDouble()).toFloat()
@@ -96,6 +104,19 @@ class MainActivity : ComponentActivity() {
                                         mgr.onProgressUpdated("miner_100", broken)
                                         mgr.onProgressUpdated("explorer_100", walked)
                                         if (obj.optBoolean("night", false)) mgr.onAchievementUnlocked("night_survivor")
+                                        if (obj.optInt("depth", 128) <= 8) mgr.onAchievementUnlocked("deep_diver")
+                                        if (obj.optBoolean("silver", false)) mgr.onAchievementUnlocked("silver_tongue")
+                                        if (obj.optBoolean("steel", false)) mgr.onAchievementUnlocked("steelworker")
+                                        if (obj.optBoolean("adamant", false)) mgr.onAchievementUnlocked("alchemist")
+                                        if (obj.optBoolean("blessing", false)) mgr.onAchievementUnlocked("blessed")
+                                        if (obj.optBoolean("fullArmor", false)) mgr.onAchievementUnlocked("fully_armed")
+                                        if (obj.optBoolean("nether", false)) mgr.onAchievementUnlocked("nether_bound")
+                                        if (obj.optBoolean("end", false)) mgr.onAchievementUnlocked("the_end")
+                                        if (obj.optBoolean("dragon", false)) mgr.onAchievementUnlocked("dragonslayer")
+                                        if (obj.optBoolean("wither", false)) mgr.onAchievementUnlocked("withering")
+                                        if (obj.optInt("beacon", 0) >= 4) mgr.onAchievementUnlocked("beacon_master")
+                                        if (obj.optBoolean("elytra", false)) mgr.onAchievementUnlocked("sky_bound")
+                                        if (obj.optBoolean("maxHearts", false)) mgr.onAchievementUnlocked("heart_of_gold")
                                     }
                                 } catch (_: Exception) {}
                             } catch (_: Exception) {}
@@ -126,16 +147,26 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxSize(),
                             onLookRate = { ry, rp -> try { VoxelsNative.onLookInput(ry, rp) } catch (_: Exception) {} },
                             onPlace = { off -> try {
-                                when (VoxelsNative.placeBlockAt(off.x, off.y)) {
+                                val code = VoxelsNative.placeBlockAt(off.x, off.y)
+                                when (code) {
                                     1 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace()
-                                    11, 12, 14 -> { invStartTab = 2; inventoryOpen = true } // crafting table / furnace / blast furnace
+                                    11 -> { invStartTab = 2; inventoryOpen = true } // crafting table
+                                    12, 14 -> { // furnace / blast furnace
+                                        furnaceIsBlast = code == 14
+                                        smeltJson = try { VoxelsNative.getSmeltJson() } catch (_: Exception) { "{}" }
+                                        furnaceOpen = true
+                                    }
                                     13 -> { // jukebox: play the held disc (or stop)
                                         val inv = try { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<com.vayunmathur.games.voxels.ui.InventoryState>(inventoryJson) } catch (_: Exception) { null }
                                         val held = inv?.slots?.getOrNull(inv.selected)?.id ?: 0
                                         com.vayunmathur.games.voxels.util.MusicFx.toggle(this@MainActivity, com.vayunmathur.games.voxels.ui.discTrack[held])
                                     }
                                     20 -> tradeOpen = true // villager
-                                    30 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace() // looted a chest
+                                    30 -> { // chest
+                                        containerJson = try { VoxelsNative.getContainerJson() } catch (_: Exception) { """{"slots":[]}""" }
+                                        chestOpen = true
+                                        com.vayunmathur.games.voxels.util.SoundFx.playPlace()
+                                    }
                                     41 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace() // ignited a portal
                                 }
                             } catch (_: Exception) {} },
@@ -230,6 +261,20 @@ class MainActivity : ComponentActivity() {
 
                     if (tradeOpen && VoxelsNative.isAvailable) {
                         TradeOverlay(tradesJson = tradesJson, onClose = { tradeOpen = false })
+                    }
+
+                    if (furnaceOpen && VoxelsNative.isAvailable) {
+                        FurnaceOverlay(
+                            smeltingJson = smeltingJson, smeltJson = smeltJson,
+                            isBlast = furnaceIsBlast, onClose = { furnaceOpen = false }
+                        )
+                    }
+
+                    if (chestOpen && VoxelsNative.isAvailable) {
+                        ChestOverlay(containerJson = containerJson, inventoryJson = inventoryJson, onClose = {
+                            chestOpen = false
+                            try { VoxelsNative.closeContainer() } catch (_: Exception) {}
+                        })
                     }
 
                     if (paused) {
