@@ -24,7 +24,7 @@ pub struct Inventory {
 // (in1_id, in1_count, in2_id, in2_count, out_id, out_count). in2_id == 0 means a single ingredient.
 // Item ids 154+ are materials/tools (see item.rs). Ore -> material conversions live in SMELTING
 // instead, since those need a furnace, fuel and time.
-pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 76] = [
+pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 85] = [
     (154, 1, 157, 1, 186, 1), // iron + coal -> flint & steel
     (187, 1, Block::Glass as u8, 5, Block::Beacon as u8, 1), // nether star + glass -> beacon
     (138, 2, 0, 0, 189, 3), // gunpowder -> firework rockets
@@ -102,6 +102,14 @@ pub const RECIPES: [(u8, i32, u8, i32, u8, i32); 76] = [
     (223, 3, 131, 1, 235, 1),  // cooked meat + bread          -> stroganoff
     (130, 2, 131, 1, 151, 1),  // apple + bread                -> apple empanada
     (130, 1, Block::Glowstone as u8, 1, 152, 1), // apple + glowstone -> glow berry crumble
+    // --- Bronze: Matcha alloys copper with gold, landing between iron and diamond. ---
+    // 236 copper ingot, 237 gold ingot, 238 bronze ingot.
+    (238, 3, 159, 2, 239, 1), // bronze pickaxe
+    (238, 2, 159, 1, 240, 1), // bronze sword
+    (238, 5, 0, 0, 241, 1), (238, 8, 0, 0, 242, 1), (238, 7, 0, 0, 243, 1), (238, 4, 0, 0, 244, 1),
+    (236, 9, 0, 0, Block::CopperBlock as u8, 1),
+    (237, 9, 0, 0, Block::GoldBlock as u8,   1),
+    (238, 9, 0, 0, Block::BronzeBlock as u8, 1),
 ];
 
 // Furnace recipes. Unlike crafting these cost fuel and take `secs` of real time, and the ones marked
@@ -117,7 +125,7 @@ pub struct Smelt {
 const fn smelt(in1: u8, n1: i32, in2: u8, n2: i32, out: u8, out_n: i32, secs: f32, blast: bool) -> Smelt {
     Smelt { in1, n1, in2, n2, out, out_n, secs, blast }
 }
-pub const SMELTING: [Smelt; 15] = [
+pub const SMELTING: [Smelt; 18] = [
     smelt(Block::CoalOre as u8,     1, 0, 0, 157, 1,  6.0, false), // coal
     smelt(Block::IronOre as u8,     1, 0, 0, 154, 1,  8.0, false), // iron ingot
     smelt(Block::DiamondOre as u8,  1, 0, 0, 155, 1, 10.0, false),
@@ -129,6 +137,9 @@ pub const SMELTING: [Smelt; 15] = [
     smelt(Block::Clay as u8,        4, 0, 0, Block::Brick as u8,  1, 6.0, false),
     smelt(222, 1, 0, 0, 223, 1, 6.0, false), // raw meat -> cooked meat
     smelt(131, 1, 0, 0, 147, 3, 5.0, false), // bread -> cookies (baking)
+    smelt(Block::CopperOre as u8, 1, 0, 0, 236, 1, 6.0, false), // copper ingot
+    smelt(Block::GoldOre as u8,   1, 0, 0, 237, 1, 8.0, false), // gold ingot
+    smelt(236, 6, 237, 1, 238, 1, 14.0, true),                  // copper + gold -> bronze
     // Blast furnace only: the alloy line.
     smelt(Block::SulfurOre as u8,   1, 0, 0, 192, 2,  5.0, true),  // sulfur
     smelt(Block::CinnabarOre as u8, 1, 0, 0, 194, 1,  7.0, true),  // quicksilver

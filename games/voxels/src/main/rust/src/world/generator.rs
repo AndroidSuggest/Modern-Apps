@@ -286,12 +286,14 @@ pub struct TerrainGen {
 // Ore/stone-variant veins, richest first so a rare vein wins where two overlap.
 // (block id, noise offset, noise scale, threshold, min y, max y)
 type Vein = (u8, f64, f64, f64, i32, i32);
-const OVERWORLD_VEINS: [Vein; 9] = [
+const OVERWORLD_VEINS: [Vein; 11] = [
     (22, 947.0, 0.115, 0.80, 62, 118), // emerald — mountains only, the rarest surface find
     (20, 823.0, 0.105, 0.78,  5,  20), // diamond — deepest
     (90, 179.0, 0.095, 0.76,  5,  58), // silver — rarer than iron, never near the surface
     (21, 601.0, 0.100, 0.72,  5,  30), // redstone
     (19, 137.0, 0.090, 0.68,  5,  74), // iron
+    (97, 233.0, 0.085, 0.66,  5,  88), // copper — shallow and plentiful
+    (98, 389.0, 0.100, 0.76,  5,  40), // gold — deep and scarce
     (18,   7.0, 0.080, 0.62,  5, 112), // coal — large shallow seams
     (14, 311.0, 0.060, 0.70,  5, 100), // gravel pockets
     (16, 419.0, 0.055, 0.66,  5,  96), // diorite blobs
@@ -946,6 +948,8 @@ mod tests {
             (20u8, "diamond", 0.005, 0.3),
             (22u8, "emerald", 0.002, 0.3),
             (90u8, "silver", 0.02, 0.8),
+            (97u8, "copper", 0.3, 3.0),
+            (98u8, "gold", 0.01, 0.5),
         ] {
             let p = pct(id);
             println!("{name}: {p:.4}%");

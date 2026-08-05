@@ -39,12 +39,13 @@ data class InvSlot(val id: Int, val count: Int)
 data class InventoryState(val selected: Int = 0, val slots: List<InvSlot> = List(9) { InvSlot(0, 0) }, val armor: List<InvSlot> = emptyList())
 
 // Ids 163..178 and 197..202 are tools/armor whose slot `count` is durability (not a stack size).
-fun isDurabilityItem(id: Int) = id in 163..178 || id in 197..202 || id == 186 || id == 188
+fun isDurabilityItem(id: Int) = id in 163..178 || id in 197..202 || id in 239..244 || id == 186 || id == 188
 
 val maxDurability = mapOf(
     163 to 60, 164 to 60, 165 to 132, 166 to 132, 167 to 250, 168 to 250, 169 to 1562, 170 to 1562,
     171 to 240, 172 to 240, 173 to 240, 174 to 240, 175 to 528, 176 to 528, 177 to 528, 178 to 528,
     186 to 64, 188 to 432,
+    239 to 700, 240 to 700, 241 to 380, 242 to 380, 243 to 380, 244 to 380,
     197 to 2031, 198 to 2031, 199 to 666, 200 to 666, 201 to 666, 202 to 666
 )
 
@@ -94,6 +95,11 @@ val blockNames = mapOf(
     226 to "Green Curry", 227 to "Gnocchi", 228 to "Naan", 229 to "Pupusa", 230 to "Latke",
     231 to "Bruschetta", 232 to "French Toast", 233 to "Sweet Berry Danish", 234 to "Melon Sorbet",
     235 to "Stroganoff",
+    // Matcha's bronze tier.
+    97 to "Copper Ore", 98 to "Gold Ore", 99 to "Copper Block", 100 to "Gold Block", 101 to "Bronze Block",
+    236 to "Copper Ingot", 237 to "Gold Ingot", 238 to "Bronze Ingot",
+    239 to "Bronze Pickaxe", 240 to "Bronze Sword",
+    241 to "Bronze Helmet", 242 to "Bronze Chestplate", 243 to "Bronze Leggings", 244 to "Bronze Boots",
     163 to "Wood Pickaxe", 164 to "Wood Sword", 165 to "Stone Pickaxe", 166 to "Stone Sword",
     167 to "Iron Pickaxe", 168 to "Iron Sword", 169 to "Diamond Pickaxe", 170 to "Diamond Sword",
     171 to "Iron Helmet", 172 to "Iron Chestplate", 173 to "Iron Leggings", 174 to "Iron Boots",
@@ -154,6 +160,11 @@ val blockIconFile = mapOf(
     226 to "green_curry.png", 227 to "gnocchi.png", 228 to "naan.png", 229 to "pupusa.png",
     230 to "latke.png", 231 to "bruschetta.png", 232 to "french_toast.png",
     233 to "sweet_berry_danish.png", 234 to "melon_sorbet.png", 235 to "stroganoff.png",
+    97 to "copper_ore.png", 98 to "gold_ore.png", 99 to "copper_block.png",
+    100 to "gold_block.png", 101 to "bronze_block.png",
+    236 to "copper_ingot.png", 237 to "gold_ingot.png", 238 to "bronze_ingot.png",
+    239 to "bronze_pickaxe.png", 240 to "bronze_sword.png", 241 to "bronze_helmet.png",
+    242 to "bronze_chestplate.png", 243 to "bronze_leggings.png", 244 to "bronze_boots.png",
     163 to "wood_pickaxe.png", 164 to "wood_sword.png", 165 to "stone_pickaxe.png", 166 to "stone_sword.png",
     167 to "iron_pickaxe.png", 168 to "iron_sword.png", 169 to "diamond_pickaxe.png", 170 to "diamond_sword.png",
     171 to "iron_helmet.png", 172 to "iron_chestplate.png", 173 to "iron_leggings.png", 174 to "iron_boots.png",
@@ -173,17 +184,19 @@ val blockIconFile = mapOf(
 // Creative catalog, split into tabs.
 val catalogNatural = listOf(3, 2, 40, 46, 60, 39, 41, 71, 1, 6, 38, 36, 37, 14, 16, 17, 15, 45, 79, 75, 70,
     4, 5, 26, 28, 29, 31, 47, 48, 50, 51, 80, 11, 42, 43, 44, 32, 84, 85, 13)
-val catalogOres = listOf(18, 19, 20, 21, 22, 90, 91, 92, 23, 24, 25, 93, 94, 95, 73)
+val catalogOres = listOf(18, 19, 20, 21, 22, 90, 91, 92, 97, 98, 23, 24, 25, 93, 94, 95, 99, 100, 101, 73)
 val catalogOcean = listOf(61, 62, 63, 64, 65, 66, 67, 68, 69)
 val catalogItems = listOf(128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138,
     146, 147, 148, 149, 150, 151, 152, 153,
     154, 155, 156, 157, 158, 159, 187, 189, 190, 191,
     192, 193, 194, 195, 196,
-    222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235)
+    222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235,
+    236, 237, 238)
 val catalogBlessings = listOf(160, 161, 162, 203, 204, 205, 206, 207, 208, 209, 210, 211,
     212, 213, 214, 215, 216, 217, 218, 219, 220, 221)
 val catalogGear = listOf(163, 164, 165, 166, 167, 168, 169, 170,
     171, 172, 173, 174, 175, 176, 177, 178, 186, 188,
+    239, 240, 241, 242, 243, 244,
     197, 198, 199, 200, 201, 202)
 val catalogMusic = listOf(82, 179, 180, 181, 182, 183, 184, 185)
 val catalogBuilding = listOf(10, 27, 30, 49, 52, 8, 57, 9, 53, 54, 55, 56, 58, 59, 72, 74, 76, 77, 78, 81, 7, 33, 34, 35, 96, 88, 89)

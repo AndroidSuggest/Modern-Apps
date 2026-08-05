@@ -104,6 +104,9 @@ PROC_TILES = {
     132: (86, 92, 104),    # steel block (blue-gray)
     134: (58, 54, 62),     # blast furnace top (dark iron)
     135: (44, 42, 48),     # blast furnace side
+    138: (204, 118, 66),   # copper block
+    139: (246, 208, 62),   # gold block
+    140: (176, 141, 87),   # bronze block
 }
 
 # Ore tiles: a stone/netherrack base with deterministic mineral blobs speckled over it, so new ores
@@ -113,6 +116,8 @@ ORE_TILES = {
     128: (0, (214, 220, 232), 0x511E),   # silver ore in stone
     129: (37, (238, 214, 62), 0x5F1F),   # sulfur ore in netherrack
     130: (37, (196, 40, 44), 0xC14B),    # cinnabar ore in netherrack
+    136: (0, (216, 130, 78), 0xC099),    # copper ore in stone
+    137: (0, (250, 214, 76), 0x901D),    # gold ore in stone
 }
 
 # Blocks and items whose icon comes straight from a pack PNG. dest filename -> (subdir, source).
@@ -133,6 +138,12 @@ COPY_ICONS = {
         "demeter", "eros", "glaucus", "god_king", "hyacinthus", "icarus", "lu_ban", "paris",
         "prometheus", "talos", "warding", "will", "yama", "yamm",
     )},
+    # Matcha's bronze tier, between iron and diamond.
+    "copper_ingot.png": ("item", "copper_ingot.png"),
+    "gold_ingot.png": ("item", "gold_ingot.png"),
+    **{f"bronze_{n}.png": ("item", f"bronze_{n}.png") for n in (
+        "pickaxe", "sword", "helmet", "chestplate", "leggings", "boots",
+    )},
     # Matcha's cooked dishes.
     "cooked_meat.png": ("item", "porkchop_classic.png"),
     **{f"{n}.png": ("item", f"{n}.png") for n in (
@@ -146,6 +157,7 @@ PROC_ITEM_ICON = {
     "sulfur.png": (238, 214, 62),
     "steel_ingot.png": (118, 126, 140),
     "raw_meat.png": (214, 108, 116),  # the pack leaves raw meat vanilla, so make our own
+    "bronze_ingot.png": (176, 141, 87),
 }
 
 
@@ -159,6 +171,8 @@ PROC_ICON = {
     120: "lava.png", 121: "end_stone.png", 124: "beacon.png", 125: "purpur_block.png", 126: "firework_rocket.png", 127: "snowball.png",
     128: "silver_ore.png", 129: "sulfur_ore.png", 130: "cinnabar_ore.png",
     131: "silver_block.png", 132: "steel_block.png", 134: "blast_furnace.png",
+    136: "copper_ore.png", 137: "gold_ore.png",
+    138: "copper_block.png", 139: "gold_block.png", 140: "bronze_block.png",
 }
 
 

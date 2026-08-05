@@ -104,9 +104,15 @@ pub enum Block {
     SteelBlock = 94,
     AdamantBlock = 95,
     BlastFurnace = 96,
+    // Copper and gold round out Matcha's metals, feeding the bronze alloy.
+    CopperOre = 97,
+    GoldOre = 98,
+    CopperBlock = 99,
+    GoldBlock = 100,
+    BronzeBlock = 101,
 }
 
-pub const MAX_BLOCK_ID: u8 = 96;
+pub const MAX_BLOCK_ID: u8 = 101;
 
 impl Block {
     pub fn from_id(id: u8) -> Self {
@@ -225,6 +231,11 @@ impl Block {
             Self::SteelBlock => 132,
             Self::AdamantBlock => 133,
             Self::BlastFurnace => 134,
+            Self::CopperOre => 136,
+            Self::GoldOre => 137,
+            Self::CopperBlock => 138,
+            Self::GoldBlock => 139,
+            Self::BronzeBlock => 140,
         }
     }
     pub fn tile_bottom(self) -> u32 {
@@ -284,7 +295,8 @@ impl Block {
             | Self::RedSandstone | Self::Sandstone | Self::GraniteBricks | Self::DeepslateBricks | Self::NetherBricks
             | Self::EndStoneBricks | Self::CobbledDeepslate | Self::Prismarine | Self::DarkPrismarine | Self::Dripstone
             | Self::Amethyst | Self::Calcite | Self::Tuff | Self::Magma | Self::Obsidian | Self::PackedIce | Self::BlueIce | Self::Purpur
-            | Self::SilverOre | Self::SulfurOre | Self::CinnabarOre | Self::SilverBlock | Self::SteelBlock | Self::AdamantBlock | Self::BlastFurnace)
+            | Self::SilverOre | Self::SulfurOre | Self::CinnabarOre | Self::SilverBlock | Self::SteelBlock | Self::AdamantBlock | Self::BlastFurnace
+            | Self::CopperOre | Self::GoldOre | Self::CopperBlock | Self::GoldBlock | Self::BronzeBlock)
     }
     // Block light emitted (0..15) for dynamic lighting.
     pub fn light_emission(self) -> u8 {
