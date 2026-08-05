@@ -80,7 +80,7 @@
     <string name="label_youtube_content">Contenu YouTube</string>
     <string name="label_no_muted_keywords">Aucun mot-clé masqué</string>
     <string name="time_ago_hours">Il y a %1$d heures</string>
-    <string name="action_update">Actualiser</string>
+    <string name="action_update">Mettre à jour</string>
     <string name="label_hide_shorts">Masquer les Shorts</string>
     <string name="action_more_like_this">Autres articles similaires</string>
     <string name="label_dial_fresh">Intemporel ↔ Récent</string>
