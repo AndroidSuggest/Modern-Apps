@@ -1,3 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="hide">Peida</string>
+    <string name="all">Kõik</string>
+    <string name="bookmarks">Järjehoidjad</string>
+    <string name="general">Üldist</string>
+    <string name="copy">Kopeeri</string>
+    <string name="app_name">Kontor</string>
+    <string name="open_document">Ava dokument</string>
+    <string name="error_loading">Viga dokumendi laadimisel</string>
+    <string name="document_info">Teave</string>
+    <string name="meta_title">Pealkiri</string>
+    <string name="meta_author">Autor</string>
+    <string name="meta_created">Loodud</string>
+    <string name="meta_modified">Muudetud</string>
+    <string name="meta_subject">Teema</string>
+    <string name="meta_description">Kirjeldus</string>
+    <string name="meta_keywords">Märksõnad</string>
+    <string name="meta_pages">Lehti</string>
+    <string name="meta_words">Sõnu</string>
+    <string name="close_search">Sulge</string>
+    <string name="search_hint">Otsi dokumendist…</string>
+    <string name="outline">Faili üldine kokkuvõte</string>
+    <string name="reset">Lähtesta suum</string>
+    <string name="unsaved_changes">Salvestamata muudatused</string>
+    <string name="unsaved_changes_message">Sul on salvestamata muudatusi. Kas soovid seda enne lahkumist teha?</string>
+    <string name="discard">Loobu</string>
+    <string name="replace_hint">Asenda järgnevaga…</string>
+    <string name="print_doc">Prindi</string>
+    <string name="apply">Rakenda</string>
+    <string name="off">VÄLJAS</string>
+    <string name="computing">Arvutan…</string>
+    <string name="header">Päis</string>
+    <string name="insert_comment">Lisa kommentaar</string>
+    <string name="empty_presentation">Tühi esitlus</string>
+    <string name="font_size_1">Kirjatüübi suurus</string>
+    <string name="sort_rows">Järjesta ridu</string>
+    <string name="edit_image">Muuda pilti</string>
+    <string name="sort">Järjesta</string>
+    <string name="unknown">Pole teada</string>
+</resources>
