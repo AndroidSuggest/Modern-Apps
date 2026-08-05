@@ -26,6 +26,15 @@ data class GameUiState(
     val canUndo: Boolean = false,
 )
 
+/** The pinned daily-challenge card above the pack list. Null while the day's pack is generating. */
+data class DailyProgress(
+    /** Local epoch day the pack was generated for. */
+    val day: Long,
+    val completed: Int,
+    val total: Int,
+    val streak: Long,
+)
+
 /**
  * Game screen callbacks. Every method has a no-op default so a preview can render a board
  * without supplying behaviour — [Noop] is the whole implementation a preview needs.

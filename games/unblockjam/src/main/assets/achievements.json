@@ -32,5 +32,22 @@
     "name": "Unblock Pro",
     "description": "Complete 50 unique levels.",
     "targetProgress": 50
+  },
+  {
+    "id": "first_daily",
+    "name": "Daily Habit",
+    "description": "Complete a daily challenge puzzle."
+  },
+  {
+    "id": "daily_streak_7",
+    "name": "Week Streak",
+    "description": "Clear the daily pack 7 days in a row.",
+    "targetProgress": 7
+  },
+  {
+    "id": "daily_streak_30",
+    "name": "Month Streak",
+    "description": "Clear the daily pack 30 days in a row.",
+    "targetProgress": 30
   }
 ]
