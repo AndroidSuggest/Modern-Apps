@@ -582,7 +582,9 @@ pub fn tick_and_render() {
         // but not bosses — a second Nether Star would hand out a free extra beacon.
         let mut loot: Vec<(u8, bool)> = Vec::new();
         state.mobs.retain(|m| if m.health <= 0.0 {
-            loot.extend(m.kind.loot().iter().map(|&id| (id, m.kind.is_boss())));
+            // An elite was twice the fight, so it pays twice.
+            let times = if m.elite { 2 } else { 1 };
+            for _ in 0..times { loot.extend(m.kind.loot().iter().map(|&id| (id, m.kind.is_boss()))); }
             false
         } else { true });
         let lucky = state.player.blessed(Passive::SeaLuck);
@@ -763,7 +765,7 @@ fn publish_ui(state: &EngineState) {
     let effects: Vec<_> = state.player.effects.iter().map(|e| serde_json::json!({"k": e.kind.key(), "amp": e.amp, "t": e.secs.ceil() as i32})).collect();
     let estus: i32 = state.inventory.slots.iter().filter(|s| s.id == 128).map(|s| s.count).sum();
     let boss_mob = state.mobs.iter().find(|m| m.kind.is_boss());
-    let boss: f32 = boss_mob.map(|m| (m.health / m.kind.max_health()).clamp(0.0, 1.0)).unwrap_or(-1.0);
+    let boss: f32 = boss_mob.map(|m| (m.health / m.max_health).clamp(0.0, 1.0)).unwrap_or(-1.0);
     let boss_name = match boss_mob.map(|m| m.kind) { Some(MobKind::Dragon) => "Ender Dragon", Some(MobKind::Wither) => "The Wither", _ => "" };
     let health = serde_json::json!({
         "hp": state.player.health, "max": state.player.max_health, "absorb": state.player.absorption,

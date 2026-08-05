@@ -8,7 +8,7 @@ const ATLAS: f32 = ENTITY_ATLAS_W as f32;
 const CELL: f32 = ENTITY_CELL as f32;
 const PX: f32 = 1.0 / 16.0; // one skin pixel in blocks
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MobKind { Pig, Cow, Sheep, Chicken, Creeper, Zombie, Villager, Dragon, Wither, Blaze, WitherSkeleton, Shulker, Ghast }
 
 impl MobKind {
@@ -121,7 +121,16 @@ impl MobKind {
     pub fn flies(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither | MobKind::Ghast) }
     // Procedurally-skinned mobs sample their cell centre uniformly (no real texture map).
     pub fn uniform_skin(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither | MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Shulker | MobKind::Ghast) }
-    pub fn max_health(self) -> f32{ match self { MobKind::Dragon => 200.0, MobKind::Wither => 150.0, MobKind::Shulker | MobKind::Ghast => 30.0, MobKind::Zombie | MobKind::Creeper | MobKind::Villager | MobKind::Blaze | MobKind::WitherSkeleton => 20.0, _ => 10.0 } }
+    pub fn max_health(self) -> f32{ match self {
+        MobKind::Dragon => 200.0, MobKind::Wither => 150.0,
+        // Matcha rebalances hostiles away from vanilla's flat 20: creepers are chunkier than skeletons,
+        // and a ghast is a big fragile balloon rather than a tank.
+        MobKind::Shulker => 30.0, MobKind::Ghast => 12.0,
+        MobKind::Zombie | MobKind::Villager | MobKind::Blaze => 20.0,
+        MobKind::Creeper => 16.0, MobKind::WitherSkeleton => 14.0,
+        MobKind::Chicken => 4.0,
+        _ => 10.0,
+    } }
     pub fn height(self) -> f32 { match self { MobKind::Dragon => 4.0, MobKind::Ghast => 4.0, MobKind::Wither => 3.2, MobKind::WitherSkeleton => 2.4, MobKind::Zombie | MobKind::Villager => 1.9, MobKind::Blaze => 1.8, MobKind::Creeper => 1.6, MobKind::Shulker => 1.0, MobKind::Chicken => 0.7, _ => 0.9 } }
     pub fn hit_radius(self) -> f32 { match self { MobKind::Dragon => 2.2, MobKind::Ghast => 2.0, MobKind::Wither => 1.3, MobKind::Shulker => 0.55, _ => 0.45 } }
     pub fn contact_damage(self) -> f32 { match self { MobKind::Zombie => 4.0, MobKind::Dragon => 7.0, MobKind::Wither => 6.0, MobKind::Blaze | MobKind::WitherSkeleton => 5.0, MobKind::Shulker => 4.0, _ => 0.0 } }
@@ -136,7 +145,8 @@ impl MobKind {
             MobKind::Ghast => &[138, 138],
         }
     }
-    fn speed(self) -> f32 { match self { MobKind::Chicken=>1.6, MobKind::Creeper=>1.5, MobKind::Zombie=>1.7, MobKind::Blaze=>1.4, MobKind::WitherSkeleton=>1.8, MobKind::Shulker=>0.0, MobKind::Villager=>0.9, _=>1.15 } }
+    // Matcha makes zombies notably fast; they're the pressure mob, so they out-run a walking player.
+    fn speed(self) -> f32 { match self { MobKind::Chicken=>1.6, MobKind::Creeper=>1.5, MobKind::Zombie=>2.0, MobKind::Blaze=>1.4, MobKind::WitherSkeleton=>1.8, MobKind::Shulker=>0.0, MobKind::Villager=>0.9, _=>1.15 } }
     fn parts(self) -> &'static [Part] {
         match self {
             MobKind::Pig | MobKind::Cow | MobKind::Sheep => QUAD,
@@ -168,6 +178,45 @@ pub struct Mob {
     /// Villagers only: which trade table this one keeps. Drawn from the spawn seed, so it's stable for
     /// the mob's lifetime even though mobs aren't saved.
     pub profession: u8,
+    /// This individual's rolled stats, so two zombies aren't interchangeable.
+    pub max_health: f32,
+    pub speed: f32,
+    pub elite: bool,
+}
+
+/// Per-spawn stat jitter. Matcha retunes mobs by type; this adds variation *within* a type so an
+/// encounter isn't fully predictable, plus a rare elite that reads as visibly dangerous.
+pub struct Variation {
+    pub health: f32,
+    pub speed: f32,
+    pub elite: bool,
+}
+
+const ELITE_CHANCE: f32 = 0.07;
+const ELITE_HEALTH: f32 = 1.9;
+const ELITE_SPEED: f32 = 1.15;
+/// Jitter bounds, as a fraction either side of the type's base stat.
+const HEALTH_JITTER: f32 = 0.15;
+const SPEED_JITTER: f32 = 0.10;
+
+/// Roll one mob's stats from its spawn seed. Bosses are excluded: a set-piece fight has to be the
+/// same fight every time.
+pub fn roll_variation(kind: MobKind, seed: u32) -> Variation {
+    let base_health = kind.max_health();
+    let base_speed = kind.speed();
+    if kind.is_boss() {
+        return Variation { health: base_health, speed: base_speed, elite: false };
+    }
+    let mut s = seed | 1;
+    let hj = 1.0 + (xorshift(&mut s) * 2.0 - 1.0) * HEALTH_JITTER;
+    let sj = 1.0 + (xorshift(&mut s) * 2.0 - 1.0) * SPEED_JITTER;
+    // Only things that fight the player can be elite; an elite cow is just a confusing cow.
+    let elite = kind.hostile() && xorshift(&mut s) < ELITE_CHANCE;
+    Variation {
+        health: base_health * hj * if elite { ELITE_HEALTH } else { 1.0 },
+        speed: base_speed * sj * if elite { ELITE_SPEED } else { 1.0 },
+        elite,
+    }
 }
 
 fn xorshift(s: &mut u32) -> f32 {
@@ -185,9 +234,11 @@ pub struct Terrain<'a> {
 
 impl Mob {
     pub fn new(kind: MobKind, pos: Vec3, seed: u32) -> Self {
-        Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: kind.max_health(), attack_cd: 0.0, fuse: 0.0,
+        let v = roll_variation(kind, seed);
+        Mob { kind, pos, vel: Vec3::ZERO, yaw: 0.0, health: v.health, attack_cd: 0.0, fuse: 0.0,
             target_yaw: 0.0, wander: 0.0, anim: 0.0, on_ground: false, rng: seed | 1,
-            profession: crate::villager::Profession::from_seed(seed | 1).index() as u8 }
+            profession: crate::villager::Profession::from_seed(seed | 1).index() as u8,
+            max_health: v.health, speed: v.speed, elite: v.elite }
     }
 
     pub fn tick(&mut self, dt: f32, player: Vec3, terrain: &Terrain) {
@@ -236,7 +287,7 @@ impl Mob {
 
         let chasing = self.kind.hostile() && pdist < 22.0;
         let idle = !chasing && (self.target_yaw - self.yaw).abs() < 0.05 && self.wander < 1.05 && !self.kind.hostile();
-        let speed = if idle { 0.0 } else { self.kind.speed() * if chasing { 1.25 } else { 1.0 } };
+        let speed = if idle { 0.0 } else { self.speed * if chasing { 1.25 } else { 1.0 } };
         // Model front is -Z; rotating (0,0,-1) by yaw gives (sin, 0, -cos).
         let fwd = Vec3::new(self.yaw.sin(), 0.0, -self.yaw.cos());
 
@@ -298,10 +349,13 @@ impl Mob {
         Some(top)
     }
 
-    /// A villager wears its profession's colours; everything else uses its skin unmodified.
+    /// A villager wears its profession's colours, an elite burns red, and everything else uses its skin
+    /// unmodified.
     fn tint(&self) -> [f32; 3] {
         if self.kind == MobKind::Villager {
             crate::villager::Profession::from_index(self.profession as usize).tint()
+        } else if self.elite {
+            [1.35, 0.62, 0.55]
         } else {
             [1.0, 1.0, 1.0]
         }
@@ -543,5 +597,77 @@ mod tests {
         assert!(m.pos.z < -2.0, "the zombie should have reached the ledge, z = {}", m.pos.z);
         assert!(m.pos.y >= SKY as f32 + 1.0, "and never sunk below the floor, y = {}", m.pos.y);
         assert!(m.pos.y <= SKY as f32 + 2.0, "nor been launched onto a phantom full block, y = {}", m.pos.y);
+    }
+
+    // Matcha retunes hostiles per type rather than leaving them all on vanilla's flat 20 HP. This is a
+    // sanity net, not a spec: it catches a zero, a negative, and a stat typo an order of magnitude out.
+    #[test]
+    fn every_mob_has_plausible_stats() {
+        for &k in MobKind::ALL.iter() {
+            let (hp, sp) = (k.max_health(), k.speed());
+            assert!(hp > 0.0, "{k:?} spawns dead");
+            assert!(sp >= 0.0, "{k:?} walks backwards");
+            assert!(k.height() > 0.0 && k.hit_radius() > 0.0, "{k:?} can't be hit");
+            if k.is_boss() {
+                assert!(hp >= 100.0, "{k:?} is a boss with only {hp} HP");
+            } else {
+                assert!(hp <= 40.0, "{k:?} has boss-tier health at {hp}");
+                assert!(sp <= 3.0, "{k:?} moves at {sp}, faster than the player can react");
+            }
+            // Creepers do all their damage by detonating, and Ghasts by fireball, so neither needs a
+            // contact hit. Everything else hostile has to hurt you for walking into it.
+            if k.hostile() && k != MobKind::Creeper && !k.flies() {
+                assert!(k.contact_damage() > 0.0, "{k:?} is hostile but harmless");
+            }
+            if !k.hostile() { assert_eq!(k.contact_damage(), 0.0, "{k:?} is passive but hurts on touch"); }
+        }
+        // Zombies are the pressure mob and must out-pace the wandering livestock.
+        assert!(MobKind::Zombie.speed() > MobKind::Cow.speed());
+    }
+
+    // Variation has to be real but bounded, and deterministic for a given spawn seed.
+    #[test]
+    fn spawn_variation_stays_inside_its_bounds() {
+        for &k in MobKind::ALL.iter() {
+            let base = k.max_health();
+            let mut elites = 0;
+            let mut distinct = std::collections::HashSet::new();
+            let mut s = 0xDEAD_BEEFu32;
+            let rolls = 3000;
+            for _ in 0..rolls {
+                s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+                let v = roll_variation(k, s);
+                assert_eq!(v.health, roll_variation(k, s).health, "{k:?} rolls differently for the same seed");
+                let cap = base * (1.0 + HEALTH_JITTER) * if v.elite { ELITE_HEALTH } else { 1.0 };
+                let floor = base * (1.0 - HEALTH_JITTER);
+                assert!(v.health >= floor - 1e-3 && v.health <= cap + 1e-3, "{k:?} rolled {} HP against a {base} base", v.health);
+                assert!(v.speed >= 0.0);
+                if v.elite { elites += 1; }
+                distinct.insert(v.health.to_bits());
+            }
+            if k.is_boss() {
+                assert_eq!(elites, 0, "{k:?} is a boss and must never roll elite");
+                assert_eq!(distinct.len(), 1, "{k:?} is a set-piece fight and must not vary");
+            } else {
+                assert!(distinct.len() > rolls / 2, "{k:?} barely varies: {} distinct rolls", distinct.len());
+                if k.hostile() {
+                    let rate = elites as f32 / rolls as f32;
+                    assert!((rate - ELITE_CHANCE).abs() < 0.03, "{k:?} elite rate {rate} is off target");
+                } else {
+                    assert_eq!(elites, 0, "{k:?} is passive; an elite cow is just confusing");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_elite_is_visibly_different() {
+        let mut elite = Mob::new(MobKind::Zombie, Vec3::ZERO, 7);
+        elite.elite = true;
+        let plain = Mob::new(MobKind::Zombie, Vec3::ZERO, 7);
+        assert_ne!(elite.tint(), plain.tint(), "an elite has to be readable before it reaches you");
+        // A villager's profession colour wins over the elite tint; villagers are never hostile.
+        let v = Mob::new(MobKind::Villager, Vec3::ZERO, 7);
+        assert_eq!(v.tint(), crate::villager::Profession::from_index(v.profession as usize).tint());
     }
 }
