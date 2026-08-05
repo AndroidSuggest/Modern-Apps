@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Clavier</string>
+    <string name="subtype_en">Anglais</string>
+    <string name="abc">ABC</string>
+    <string name="enable_keyboard">Activer le clavier</string>
+    <string name="choose_keyboard">Choisir le clavier</string>
+    <string name="key_height">Hauteur des touches</string>
+    <string name="theme">Thème</string>
+    <string name="follows_the_system_light_dark_theme_and">Suit le thème clair ou sombre du système ainsi que les couleurs Material You</string>
+    <string name="try_the_keyboard_here">Essayez le clavier ici</string>
+</resources>
