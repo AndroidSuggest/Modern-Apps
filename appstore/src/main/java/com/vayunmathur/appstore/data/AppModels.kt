@@ -1,7 +1,7 @@
 package com.vayunmathur.appstore.data
 
 enum class AppSource {
-    /** This monorepo's own GitHub releases, signed with the same key as this app. */
+    /** This monorepo's own repository, signed with the same key as this app. */
     MODERN_APPS,
     FDROID,
     PLAYSTORE
@@ -79,37 +79,52 @@ data class InstalledInfo(
     val lastUpdateTime: Long = 0L,
 )
 
+/** A fixed, signed F-Droid-format repository consumed by this store. */
+data class RepoDescriptor(
+    val url: String,
+    val displayName: String,
+    val pinnedFingerprint: String,
+    val source: AppSource,
+    val supportsReproducibilityFeed: Boolean,
+)
+
 /**
- * The one and only F-Droid repository this store will talk to.
+ * The only repositories this store will talk to.
  *
  * Third-party F-Droid-format repos (IzzyOnDroid and friends) are deliberately not
  * supported and cannot be added: they republish binaries built by the upstream developer
  * rather than building from source, so an app from one carries the developer's release
  * pipeline *and* the mirror operator in its trusted set, with no published source to
- * check the binary against. The f-droid.org archive is excluded for a different reason —
+ * check the binary against. The f-droid.org archive is excluded for a different reason:
  * it exists to serve superseded versions, which is the opposite of what we want.
  */
 object DefaultRepos {
-    const val FDROID_MAIN = "https://f-droid.org/repo"
+    val FDROID = RepoDescriptor(
+        url = "https://f-droid.org/repo",
+        displayName = "F-Droid",
+        pinnedFingerprint =
+            "43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab",
+        source = AppSource.FDROID,
+        supportsReproducibilityFeed = true,
+    )
+
+    val MODERN_APPS = RepoDescriptor(
+        url = "https://ma.vayunmathur.com/fdroid/repo",
+        displayName = "Modern Apps",
+        pinnedFingerprint =
+            "176fcb2525573e5be8e1cb3a496dd97b137e81ca5b887a1d32cb894b4e5717b4",
+        source = AppSource.MODERN_APPS,
+        supportsReproducibilityFeed = false,
+    )
+
+    val ALL: List<RepoDescriptor> = listOf(FDROID, MODERN_APPS)
+
+    /** Cache key written by the retired GitHub releases provider. */
+    const val LEGACY_MODERN_APPS_REPO_KEY = "https://github.com/vayun-mathur/Modern-Apps"
 }
 
-/** The Modern-Apps monorepo's own GitHub release channel. */
+/** The Modern-Apps monorepo's project page. */
 object ModernAppsRepo {
     const val OWNER_REPO = "vayun-mathur/Modern-Apps"
     const val PROJECT_URL = "https://github.com/$OWNER_REPO"
-    const val LATEST_RELEASE_API = "https://api.github.com/repos/$OWNER_REPO/releases/latest"
-
-    /** Asset published by `release.sh` alongside the APKs; see [ModernAppsProvider]. */
-    const val INDEX_ASSET = "index.json"
-
-    /** File listing for a tag, used to recover package names on pre-index releases. */
-    fun treeApi(tag: String) =
-        "https://api.github.com/repos/$OWNER_REPO/git/trees/$tag?recursive=1"
-
-    /** Two lines: versionCode, versionName. Injected into every module by `release.sh`. */
-    fun versionTxt(tag: String) =
-        "https://raw.githubusercontent.com/$OWNER_REPO/$tag/version.txt"
-
-    /** Pseudo repo URL, used as the `repoUrl` key for cached rows. */
-    const val REPO_KEY = PROJECT_URL
 }

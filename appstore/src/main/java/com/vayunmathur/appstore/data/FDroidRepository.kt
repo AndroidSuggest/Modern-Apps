@@ -5,33 +5,27 @@ import android.util.JsonReader
 import android.util.JsonToken
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.appstore.data.security.SignedJarIndex
+import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 
 /**
  * F-Droid repo client. Avoids OOM on the ~100MB index by downloading to a file and
  * streaming-parsing with android.util.JsonReader rather than holding a whole object tree.
  * Filters targetSdk < AppProvider.MIN_TARGET_SDK.
  *
- * **The index is always taken from the repo's signed JAR** (`entry.jar` for index-v2,
- * `index-v1.jar` for the legacy format) and the signing certificate is pinned per repo.
- * The plain `index-v2.json` endpoint is deliberately *not* used as a fallback: without a
+ * **The index is always authenticated through the repo's signed `entry.jar`**, and the
+ * signing certificate is pinned per repo. The plain `index-v2.json` endpoint is deliberately
+ * *not* used as a fallback: without a
  * signature the per-APK `sha256` and `signer` values this parser extracts would be
  * attacker-controlled, and pinning them would be security theatre.
  */
 object FDroidRepository {
-
-    /**
-     * SHA-256 of the certificate f-droid.org signs its index with (CN=Ciaran Gultnieks).
-     * Hard-pinned rather than trust-on-first-use because there is exactly one supported
-     * repository, so there is no reason to ever accept an unknown key for it.
-     */
-    const val FDROID_SIGNING_CERT_SHA256 =
-        "43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab"
 
     /** Parsed index plus the repo signing certificate it was authenticated with. */
     data class IndexResult(val apps: List<UnifiedApp>, val signerSha256: String)
@@ -39,32 +33,21 @@ object FDroidRepository {
     /**
      * Fetch and verify [repoUrl]'s index.
      *
-     * [pinnedFingerprint] null means trust-on-first-use, and the caller must persist
-     * [IndexResult.signerSha256]. Every app's newest version is imported; [isReproducible]
+     * Every app's newest version is imported with [source]; [isReproducible]
      * only *tags* whether that version was independently reproduced (surfaced as a badge),
      * it never drops a version or a package.
      */
     suspend fun fetchRepoIndex(
         context: Context,
         repoUrl: String,
-        pinnedFingerprint: String?,
+        pinnedFingerprint: String,
+        source: AppSource,
         isReproducible: (packageName: String, versionCode: Long) -> Boolean,
     ): IndexResult = withContext(Dispatchers.IO) {
         val base = repoUrl.trimEnd('/')
         val work = File(context.cacheDir, "fdroid-index/${base.hashCode()}").apply { mkdirs() }
         try {
-            val errors = mutableListOf<String>()
-            try {
-                return@withContext fetchV2(base, pinnedFingerprint, work, isReproducible)
-            } catch (e: Exception) {
-                errors += "index-v2: ${e.message}"
-            }
-            try {
-                return@withContext fetchV1(base, pinnedFingerprint, work, isReproducible)
-            } catch (e: Exception) {
-                errors += "index-v1: ${e.message}"
-            }
-            throw java.io.IOException("Could not load a signed index from $base (${errors.joinToString("; ")})")
+            fetchV2(base, pinnedFingerprint, source, work, isReproducible)
         } finally {
             work.deleteRecursively()
         }
@@ -77,7 +60,8 @@ object FDroidRepository {
      */
     private fun fetchV2(
         base: String,
-        pinnedFingerprint: String?,
+        pinnedFingerprint: String,
+        source: AppSource,
         work: File,
         isReproducible: (String, Long) -> Boolean,
     ): IndexResult {
@@ -101,43 +85,39 @@ object FDroidRepository {
         }
 
         return IndexResult(
-            apps = AppProvider.filterTargetSdk(parseV2Streaming(indexFile, base, isReproducible)),
+            apps = AppProvider.filterTargetSdk(
+                parseV2Streaming(indexFile, base, source, isReproducible)
+            ),
             signerSha256 = verified.signerSha256,
         )
     }
 
-    /** Legacy format: the whole index is inside the signed JAR. */
-    private fun fetchV1(
-        base: String,
-        pinnedFingerprint: String?,
-        work: File,
-        isReproducible: (String, Long) -> Boolean,
-    ): IndexResult {
-        val jar = File(work, "index-v1.jar")
-        downloadToFile("$base/index-v1.jar", jar)
-        val indexFile = File(work, "index-v1.json")
-        val signer = SignedJarIndex.extractVerified(jar, "index-v1.json", pinnedFingerprint, indexFile)
-        return IndexResult(
-            apps = AppProvider.filterTargetSdk(parseV1Streaming(indexFile, base, isReproducible)),
-            signerSha256 = signer,
-        )
-    }
-
     internal fun downloadToFile(url: String, outFile: File) {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        val rawConnection = URL(url).openConnection()
+        val sslSocketFactory = NetworkClient.defaultSslSocketFactory
+        if (sslSocketFactory != null && rawConnection is HttpsURLConnection) {
+            rawConnection.sslSocketFactory = sslSocketFactory
+        }
+        val conn = (rawConnection as HttpURLConnection).apply {
             connectTimeout = 30000
             readTimeout = 120000
             setRequestProperty("Accept", "application/json")
             setRequestProperty("User-Agent", "ModernAppStore/1.0")
             instanceFollowRedirects = true
         }
-        if (conn.responseCode !in 200..299) throw java.io.IOException("HTTP ${conn.responseCode} for $url")
-        conn.inputStream.use { input ->
-            outFile.outputStream().use { out ->
-                val buf = ByteArray(32 * 1024)
-                var n: Int
-                while (input.read(buf).also { n = it } != -1) out.write(buf, 0, n)
+        try {
+            if (conn.responseCode !in 200..299) {
+                throw java.io.IOException("HTTP ${conn.responseCode} for $url")
             }
+            conn.inputStream.use { input ->
+                outFile.outputStream().use { out ->
+                    val buf = ByteArray(32 * 1024)
+                    var n: Int
+                    while (input.read(buf).also { n = it } != -1) out.write(buf, 0, n)
+                }
+            }
+        } finally {
+            conn.disconnect()
         }
     }
 
@@ -146,6 +126,7 @@ object FDroidRepository {
     private fun parseV2Streaming(
         file: File,
         repoBase: String,
+        source: AppSource,
         isReproducible: (String, Long) -> Boolean,
     ): List<UnifiedApp> {
         val result = mutableListOf<UnifiedApp>()
@@ -159,7 +140,7 @@ object FDroidRepository {
                         while (r.hasNext()) {
                             val pkg = r.nextName()
                             try {
-                                val app = parsePackageV2(r, pkg, repoBase, isReproducible)
+                                val app = parsePackageV2(r, pkg, repoBase, source, isReproducible)
                                 if (app != null) result.add(app)
                             } catch (_: Exception) {
                                 try { r.skipValue() } catch (_: Exception) {}
@@ -179,6 +160,7 @@ object FDroidRepository {
         reader: JsonReader,
         packageName: String,
         repoBase: String,
+        source: AppSource,
         isReproducible: (String, Long) -> Boolean,
     ): UnifiedApp? {
         // reader at BEGIN_OBJECT of package
@@ -342,7 +324,7 @@ object FDroidRepository {
         val apkUrl = latestFileName.let { repoBase + "/" + it.trimStart('/') }
         return UnifiedApp(
             packageName = packageName,
-            source = AppSource.FDROID,
+            source = source,
             expectedSigners = latestSigners,
             apkSha256 = latestSha256,
             reproducible = isReproducible(packageName, latestVersionCode),
@@ -368,273 +350,6 @@ object FDroidRepository {
             lastUpdated = if (lastUpdated != 0L) lastUpdated else added,
             repoUrl = repoBase
         )
-    }
-
-    // ---- Streaming V1 parser (apps[] + packages{ pkg:[...] }) ----
-
-    private fun parseV1Streaming(
-        file: File,
-        repoBase: String,
-        isReproducible: (String, Long) -> Boolean,
-    ): List<UnifiedApp> {
-        val appsMeta = mutableMapOf<String, V1AppMeta>()
-        val packagesMap = mutableMapOf<String, V1PackageLatest>()
-        JsonReader(file.reader()).use { r ->
-            r.isLenient = true
-            r.beginObject()
-            while (r.hasNext()) {
-                when (r.nextName()) {
-                    "apps" -> {
-                        r.beginArray()
-                        while (r.hasNext()) {
-                            try {
-                                val meta = parseV1AppMeta(r)
-                                if (meta != null) appsMeta[meta.packageName] = meta
-                            } catch (_: Exception) {
-                                try { r.skipValue() } catch (_: Exception) {}
-                            }
-                        }
-                        r.endArray()
-                    }
-                    "packages" -> {
-                        r.beginObject()
-                        while (r.hasNext()) {
-                            val pkgName = r.nextName()
-                            try {
-                                val latest = parseV1PackagesArray(r)
-                                if (latest != null) packagesMap[pkgName] = latest
-                            } catch (_: Exception) {
-                                try { r.skipValue() } catch (_: Exception) {}
-                            }
-                        }
-                        r.endObject()
-                    }
-                    else -> r.skipValue()
-                }
-            }
-            r.endObject()
-        }
-
-        val result = mutableListOf<UnifiedApp>()
-        for ((pkg, meta) in appsMeta) {
-            // No version at all means no catalogue entry.
-            val latest = packagesMap[pkg] ?: continue
-            result.add(
-                UnifiedApp(
-                    packageName = pkg,
-                    source = AppSource.FDROID,
-                    name = meta.name ?: pkg.substringAfterLast('.'),
-                    summary = meta.summary ?: "",
-                    description = meta.description ?: "",
-                    iconUrl = meta.icon?.let { "$repoBase/icons/$it" },
-                    // v1 localised media is stored per-locale under the package's own
-                    // directory, so the locale the names came from is part of the path.
-                    featureGraphic = meta.featureGraphic?.let {
-                        "$repoBase/$pkg/${meta.localeDir}/$it"
-                    },
-                    screenshots = meta.phoneScreenshots.map {
-                        "$repoBase/$pkg/${meta.localeDir}/phoneScreenshots/$it"
-                    },
-                    antiFeatures = meta.antiFeatures,
-                    author = meta.authorName,
-                    categories = meta.categories,
-                    versionName = latest?.versionName,
-                    versionCode = latest?.versionCode ?: 0L,
-                    sizeBytes = latest?.size ?: 0L,
-                    apkUrl = latest?.apkName?.let { repoBase + "/" + it.trimStart('/') },
-                    targetSdk = latest?.targetSdk,
-                    reproducible = latest?.let { isReproducible(pkg, it.versionCode) } ?: false,
-                    expectedSigners = listOfNotNull(latest?.signer),
-                    // v1 states the hash algorithm; only pin it when it really is SHA-256.
-                    apkSha256 = latest?.hash?.takeIf { latest?.hashType.equals("sha256", true) },
-                    website = meta.webSite,
-                    sourceCode = meta.sourceCode,
-                    license = meta.license,
-                    addedTimestamp = meta.added,
-                    lastUpdated = meta.lastUpdated,
-                    repoUrl = repoBase
-                )
-            )
-        }
-        return result
-    }
-
-    private data class V1AppMeta(
-        val packageName: String,
-        val name: String?,
-        val summary: String?,
-        val description: String?,
-        val icon: String?,
-        val authorName: String?,
-        val categories: List<String>,
-        val webSite: String?,
-        val sourceCode: String?,
-        val license: String?,
-        val added: Long,
-        val lastUpdated: Long,
-        val antiFeatures: List<String> = emptyList(),
-        val featureGraphic: String? = null,
-        val phoneScreenshots: List<String> = emptyList(),
-        /** Locale the media above came from; it is a path segment in v1. */
-        val localeDir: String = "en-US",
-    )
-
-    /** The subset of a v1 `localized` block this store shows. */
-    private data class V1Localized(
-        val locale: String,
-        val featureGraphic: String?,
-        val phoneScreenshots: List<String>,
-    )
-
-    private data class V1PackageLatest(
-        val apkName: String?,
-        val versionName: String?,
-        val versionCode: Long,
-        val size: Long,
-        val targetSdk: Int?,
-        val hash: String?,
-        val hashType: String?,
-        val signer: String?
-    )
-
-    private fun parseV1AppMeta(reader: JsonReader): V1AppMeta? {
-        var packageName: String? = null
-        var name: String? = null
-        var summary: String? = null
-        var description: String? = null
-        var icon: String? = null
-        var authorName: String? = null
-        var categories: List<String> = emptyList()
-        var webSite: String? = null
-        var sourceCode: String? = null
-        var license: String? = null
-        var added: Long = 0L
-        var lastUpdated: Long = 0L
-        var antiFeatures: List<String> = emptyList()
-        var localized: V1Localized? = null
-
-        reader.beginObject()
-        while (reader.hasNext()) {
-            when (reader.nextName()) {
-                "packageName" -> packageName = nextStringOrNull(reader)
-                "name" -> name = nextStringOrNull(reader)
-                "summary" -> summary = nextStringOrNull(reader)
-                "description" -> description = nextStringOrNull(reader)
-                "icon" -> icon = nextStringOrNull(reader)
-                "authorName" -> authorName = nextStringOrNull(reader)
-                "categories" -> categories = readStringArray(reader)
-                "webSite" -> webSite = nextStringOrNull(reader)
-                "sourceCode" -> sourceCode = nextStringOrNull(reader)
-                "license" -> license = nextStringOrNull(reader)
-                "added" -> added = nextLongOrNull(reader) ?: 0L
-                "lastUpdated" -> lastUpdated = nextLongOrNull(reader) ?: 0L
-                // v1 lists anti-features as plain strings, unlike v2's id -> reason map.
-                "antiFeatures" -> antiFeatures = readStringArray(reader)
-                "localized" -> localized = readV1Localized(reader)
-                else -> reader.skipValue()
-            }
-        }
-        reader.endObject()
-        val pkg = packageName ?: return null
-        return V1AppMeta(
-            pkg, name, summary, description, icon, authorName, categories, webSite,
-            sourceCode, license, added, lastUpdated,
-            antiFeatures = antiFeatures,
-            featureGraphic = localized?.featureGraphic,
-            phoneScreenshots = localized?.phoneScreenshots ?: emptyList(),
-            localeDir = localized?.locale ?: "en-US",
-        )
-    }
-
-    /**
-     * v1 `localized`: `{ "en-US": { "phoneScreenshots": ["1.png"], "featureGraphic": … } }`.
-     *
-     * Takes the first locale that actually carries media rather than insisting on en-US,
-     * since an app localised only into, say, German still has usable screenshots.
-     */
-    private fun readV1Localized(reader: JsonReader): V1Localized? {
-        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-            reader.skipValue()
-            return null
-        }
-        var best: V1Localized? = null
-        reader.beginObject()
-        while (reader.hasNext()) {
-            val locale = reader.nextName()
-            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-                reader.skipValue()
-                continue
-            }
-            var feature: String? = null
-            var shots: List<String> = emptyList()
-            reader.beginObject()
-            while (reader.hasNext()) {
-                when (reader.nextName()) {
-                    "featureGraphic" -> feature = nextStringOrNull(reader)
-                    "phoneScreenshots" -> shots = readStringArray(reader)
-                    else -> reader.skipValue()
-                }
-            }
-            reader.endObject()
-            val candidate = V1Localized(locale, feature, shots)
-            val hasMedia = feature != null || shots.isNotEmpty()
-            // en-US wins outright; otherwise the first locale with anything to show.
-            if (hasMedia && (locale == "en-US" || best == null)) {
-                best = candidate
-                if (locale == "en-US") {
-                    // Keep draining so the object closes cleanly.
-                    while (reader.hasNext()) { reader.nextName(); reader.skipValue() }
-                }
-            }
-        }
-        reader.endObject()
-        return best
-    }
-
-    private fun parseV1PackagesArray(
-        reader: JsonReader,
-    ): V1PackageLatest? {
-        // Array of package versions; keep the one with the highest versionCode rather than
-        // relying on array order.
-        var best: V1PackageLatest? = null
-        reader.beginArray()
-        while (reader.hasNext()) {
-            try {
-                reader.beginObject()
-                var apkName: String? = null
-                var versionName: String? = null
-                var versionCode: Long = 0L
-                var size: Long = 0L
-                var targetSdk: Int? = null
-                var hash: String? = null
-                var hashType: String? = null
-                var signer: String? = null
-                while (reader.hasNext()) {
-                    when (reader.nextName()) {
-                        "apkName" -> apkName = nextStringOrNull(reader)
-                        "versionName" -> versionName = nextStringOrNull(reader)
-                        "versionCode" -> versionCode = nextLongOrNull(reader) ?: 0L
-                        "size" -> size = nextLongOrNull(reader) ?: 0L
-                        "targetSdkVersion" -> targetSdk = nextIntOrNull(reader)
-                        "hash" -> hash = nextStringOrNull(reader)
-                        "hashType" -> hashType = nextStringOrNull(reader)
-                        "signer" -> signer = nextStringOrNull(reader)
-                        else -> reader.skipValue()
-                    }
-                }
-                reader.endObject()
-                if (best == null || versionCode > best.versionCode) {
-                    best = V1PackageLatest(
-                        apkName, versionName, versionCode, size, targetSdk, hash, hashType, signer
-                    )
-                }
-            } catch (_: Exception) {
-                try { reader.endObject() } catch (_: Exception) {}
-                try { reader.skipValue() } catch (_: Exception) {}
-            }
-        }
-        reader.endArray()
-        return best
     }
 
     // ---- Helpers ----

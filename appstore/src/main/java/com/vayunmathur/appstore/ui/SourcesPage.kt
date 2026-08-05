@@ -19,7 +19,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.DefaultRepos
-import com.vayunmathur.appstore.data.FDroidRepository
 import com.vayunmathur.appstore.data.ModernAppsRepo
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.appstore.util.AppStoreViewModel
@@ -49,7 +48,7 @@ fun SourcesPage(
 ) {
     val repos by viewModel.repos.collectAsState()
     val home by viewModel.home.collectAsState()
-    val fdroid = repos.find { it.url == DefaultRepos.FDROID_MAIN }
+    val fdroid = repos.find { it.url == DefaultRepos.FDROID.url }
 
     Scaffold(
         topBar = {
@@ -111,10 +110,10 @@ fun SourcesPage(
             item {
                 SourceCard(
                     title = stringResource(R.string.source_fdroid),
-                    subtitle = DefaultRepos.FDROID_MAIN,
+                    subtitle = DefaultRepos.FDROID.url,
                     pinLabel = stringResource(R.string.source_fdroid_pin),
                     pins = setOfNotNull(
-                        fdroid?.fingerprint ?: FDroidRepository.FDROID_SIGNING_CERT_SHA256
+                        fdroid?.fingerprint ?: DefaultRepos.FDROID.pinnedFingerprint
                     ),
                     lastSync = fdroid?.lastSync ?: 0L,
                 )

@@ -123,6 +123,7 @@ enum class TrustProfile {
     val ourChecks: List<Int>
         get() = when (this) {
             MODERN_APPS -> listOf(
+                R.string.trust_modern_apps_check_index_signed,
                 R.string.trust_modern_apps_check_key,
                 R.string.trust_modern_apps_check_hash,
             )

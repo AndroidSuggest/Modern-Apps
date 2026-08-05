@@ -23,7 +23,7 @@ data class SyncReport(
 }
 
 /**
- * The offline catalogue: the F-Droid index and the Modern Apps release list, as cached in
+ * The offline catalogue: the F-Droid and Modern Apps repository indexes, as cached in
  * Room, plus the sync that refreshes them.
  *
  * Play is deliberately absent — it has no downloadable catalogue and is queried live (see
@@ -40,8 +40,8 @@ class CatalogRepository(
     scope: CoroutineScope,
 ) {
     private val appContext = context.applicationContext
-    private val fdroidProvider = FDroidAppProvider(db, appContext)
-    private val modernProvider = ModernAppsProvider(appContext)
+    private val fdroidProvider = FDroidAppProvider(db, appContext, DefaultRepos.FDROID)
+    private val modernProvider = FDroidAppProvider(db, appContext, DefaultRepos.MODERN_APPS)
 
     val repos: StateFlow<List<RepoEntity>> =
         db.repoDao().allFlow().stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -142,7 +142,7 @@ class CatalogRepository(
         val fdroid = runCatching { fdroidProvider.syncIntoDb() }.getOrNull()
 
         onProgress(SyncStep.MODERN_APPS)
-        val modern = runCatching { modernProvider.syncIntoDb(db) }.getOrNull()
+        val modern = runCatching { modernProvider.syncIntoDb() }.getOrNull()
 
         SyncReport(
             fdroidCount = fdroid,
@@ -151,27 +151,21 @@ class CatalogRepository(
         )
     }
 
-    /**
-     * There is exactly one supported F-Droid repository and it cannot be changed, so this
-     * both seeds it and prunes anything else a previous version may have stored.
-     */
+    /** Seed the fixed repository set and prune rows left by older configurations. */
     private suspend fun ensureDefaultRepos() {
         val existing = db.repoDao().all()
-        existing.filter { it.url != DefaultRepos.FDROID_MAIN && it.url != ModernAppsRepo.REPO_KEY }
-            .forEach {
-                db.repoDao().deleteByUrl(it.url)
-                db.cachedAppDao().deleteByRepo(it.url)
-            }
-        if (existing.none { it.url == DefaultRepos.FDROID_MAIN }) {
-            db.repoDao().upsert(
-                RepoEntity(
-                    url = DefaultRepos.FDROID_MAIN,
-                    name = "F-Droid",
-                    enabled = true,
-                    fingerprint = FDroidRepository.FDROID_SIGNING_CERT_SHA256,
-                )
-            )
+        val supportedUrls = DefaultRepos.ALL.mapTo(mutableSetOf()) { it.url }
+        existing.filterNot { it.url in supportedUrls }.forEach {
+            db.repoDao().deleteByUrl(it.url)
+            db.cachedAppDao().deleteByRepo(it.url)
         }
+        DefaultRepos.ALL.filter { descriptor ->
+            existing.none { it.url == descriptor.url }
+        }.forEach { db.repoDao().upsert(it.toEntity()) }
+
+        // The retired GitHub provider never inserted a RepoEntity, so pruning rows cannot
+        // discover its pseudo-key. This cleanup is cheap, idempotent, and safe to retain.
+        db.cachedAppDao().deleteByRepo(DefaultRepos.LEGACY_MODERN_APPS_REPO_KEY)
     }
 
     private companion object {

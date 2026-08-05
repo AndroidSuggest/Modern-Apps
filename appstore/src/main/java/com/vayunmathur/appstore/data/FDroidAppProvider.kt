@@ -5,24 +5,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * F-Droid, from a single hard-pinned repository.
+ * Imports one hard-pinned F-Droid-format repository into the shared offline catalogue.
  *
- * **One repository only** — [DefaultRepos.FDROID_MAIN], with its index signing certificate
- * hard-pinned. Third-party F-Droid-format repos are not supported and cannot be added,
- * because they ship binaries the upstream developer built.
- *
- * The whole catalogue is imported (newest version of every app). F-Droid's reproducibility
- * feed ([ReproducibleBuilds]) is consulted only to *badge* the versions that were
- * independently reproduced bit-for-bit — it no longer decides what is listed. That feed is
- * best-effort: if it can't be fetched, apps are simply imported without the badge rather
- * than the sync failing. The signed-index gate still fails closed, so the catalogue is
- * never replaced with entries whose hashes and signer keys weren't authenticated.
- *
- * Reads go through [CatalogRepository], which queries the cache table this writes.
+ * The whole catalogue is imported (newest version of every app). For repositories that
+ * support it, F-Droid's reproducibility feed ([ReproducibleBuilds]) is consulted only to
+ * badge versions independently reproduced bit-for-bit. That feed is best-effort; signed-index
+ * verification always fails closed, so unauthenticated hashes and signer keys never replace
+ * cached rows.
  */
 class FDroidAppProvider(
     private val db: AppDatabase,
     private val appContext: Context,
+    private val descriptor: RepoDescriptor,
 ) {
 
     /** Number of packages tagged reproducible on the last sync. */
@@ -30,18 +24,14 @@ class FDroidAppProvider(
     var lastReproducibleCount: Int = 0
         private set
 
-    /**
-     * Refresh from f-droid.org and replace this source's rows. Throws if the signed index
-     * can't be obtained — the caller surfaces that instead of silently serving a stale or
-     * unauthenticated catalogue. A missing reproducibility feed is not fatal.
-     */
+    /** Refresh [descriptor] and replace only that repository's cached rows. */
     suspend fun syncIntoDb(): Int = withContext(Dispatchers.IO) {
         val result = fetchVerifiedIndex()
-        val repo = db.repoDao().all().find { it.url == DefaultRepos.FDROID_MAIN }
-        db.cachedAppDao().deleteByRepo(DefaultRepos.FDROID_MAIN)
+        val repo = db.repoDao().all().find { it.url == descriptor.url }
+        db.cachedAppDao().deleteByRepo(descriptor.url)
         db.cachedAppDao().upsertAll(result.apps.map { it.toEntity() })
         db.repoDao().upsert(
-            (repo ?: RepoEntity(DefaultRepos.FDROID_MAIN, "F-Droid", true)).copy(
+            (repo ?: descriptor.toEntity()).copy(
                 fingerprint = result.signerSha256,
                 lastSync = System.currentTimeMillis(),
             )
@@ -50,16 +40,20 @@ class FDroidAppProvider(
     }
 
     private suspend fun fetchVerifiedIndex(): FDroidRepository.IndexResult {
-        // Reproducibility verdicts are best-effort: a fetch failure just means nothing gets
-        // the badge this sync, not that the catalogue disappears.
-        val verified = runCatching { ReproducibleBuilds.fetch(appContext) }.getOrNull()
+        val verified = if (descriptor.supportsReproducibilityFeed) {
+            runCatching { ReproducibleBuilds.fetch(appContext) }.getOrNull()
+        } else {
+            null
+        }
         var reproduced = 0
         val result = FDroidRepository.fetchRepoIndex(
             context = appContext,
-            repoUrl = DefaultRepos.FDROID_MAIN,
-            pinnedFingerprint = FDroidRepository.FDROID_SIGNING_CERT_SHA256,
+            repoUrl = descriptor.url,
+            pinnedFingerprint = descriptor.pinnedFingerprint,
+            source = descriptor.source,
         ) { pkg, versionCode ->
-            val ok = verified?.contains(pkg, versionCode) == true
+            val ok = descriptor.supportsReproducibilityFeed &&
+                verified?.contains(pkg, versionCode) == true
             if (ok) reproduced++
             ok
         }
@@ -67,3 +61,10 @@ class FDroidAppProvider(
         return result
     }
 }
+
+fun RepoDescriptor.toEntity(): RepoEntity = RepoEntity(
+    url = url,
+    name = displayName,
+    enabled = true,
+    fingerprint = pinnedFingerprint,
+)

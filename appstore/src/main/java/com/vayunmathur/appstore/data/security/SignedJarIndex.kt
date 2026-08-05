@@ -5,8 +5,7 @@ import java.security.cert.X509Certificate
 import java.util.jar.JarFile
 
 /**
- * Verifies an F-Droid repository index, which ships as a JAR signed with the repo's key
- * (`entry.jar` for index-v2, `index-v1.jar` for the legacy format).
+ * Verifies the signed `entry.jar` that authenticates an F-Droid repository's index-v2.
  *
  * This is the check that makes everything downstream mean anything: the per-APK SHA-256
  * and `signer` fingerprints only bind the APK to the index, so an index we haven't
@@ -31,11 +30,9 @@ object SignedJarIndex {
 
     /**
      * Read [entryName] out of the signed [jar], enforcing that it is covered by the JAR
-     * signature. When [pinnedFingerprint] is non-null the signing certificate must match
-     * it; when null the caller is doing trust-on-first-use and should persist the
-     * returned [Verified.signerSha256].
+     * signature. The signing certificate must match [pinnedFingerprint].
      */
-    fun readVerified(jar: File, entryName: String, pinnedFingerprint: String?): Verified {
+    fun readVerified(jar: File, entryName: String, pinnedFingerprint: String): Verified {
         var content = ByteArray(0)
         val fingerprint = consumeVerified(jar, entryName, pinnedFingerprint) { input ->
             content = input.readBytes()
@@ -43,30 +40,10 @@ object SignedJarIndex {
         return Verified(content, fingerprint)
     }
 
-    /**
-     * Streaming form of [readVerified] for entries too large to hold in memory — the
-     * full F-Droid `index-v1.json` runs to hundreds of megabytes. Writes the entry to
-     * [dest] and returns the signing certificate fingerprint. [dest] is deleted if
-     * verification fails, so a rejected index is never left behind to be parsed.
-     */
-    fun extractVerified(
-        jar: File,
-        entryName: String,
-        pinnedFingerprint: String?,
-        dest: File,
-    ): String = try {
-        consumeVerified(jar, entryName, pinnedFingerprint) { input ->
-            dest.outputStream().use { input.copyTo(it) }
-        }
-    } catch (t: Throwable) {
-        dest.delete()
-        throw t
-    }
-
     private fun consumeVerified(
         jar: File,
         entryName: String,
-        pinnedFingerprint: String?,
+        pinnedFingerprint: String,
         consume: (java.io.InputStream) -> Unit,
     ): String {
         JarFile(jar, true).use { jarFile ->
@@ -86,7 +63,7 @@ object SignedJarIndex {
                 ?: throw VerificationException("$entryName has no X.509 signer")
 
             val fingerprint = ApkCertificates.sha256(signer.encoded)
-            if (pinnedFingerprint != null && !fingerprint.equals(pinnedFingerprint, true)) {
+            if (!fingerprint.equals(pinnedFingerprint, true)) {
                 throw VerificationException(
                     "Repository signing key changed: pinned " +
                         "${ApkCertificates.abbreviate(pinnedFingerprint)}, " +

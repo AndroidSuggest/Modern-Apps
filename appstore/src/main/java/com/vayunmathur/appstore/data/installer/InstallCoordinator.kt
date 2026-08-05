@@ -10,6 +10,7 @@ import com.vayunmathur.appstore.data.play.CertUtil
 import com.vayunmathur.appstore.data.play.PlayRepository
 import com.vayunmathur.appstore.data.security.InstallRequirement
 import com.vayunmathur.appstore.data.security.VerificationResult
+import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 
 /**
  * Where an install has got to.
@@ -141,7 +143,12 @@ class InstallCoordinator(
         }
 
     private fun download(url: String, target: File, expectedSize: Long, onProgress: (Float) -> Unit) {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        val rawConnection = URL(url).openConnection()
+        val sslSocketFactory = NetworkClient.defaultSslSocketFactory
+        if (sslSocketFactory != null && rawConnection is HttpsURLConnection) {
+            rawConnection.sslSocketFactory = sslSocketFactory
+        }
+        val conn = (rawConnection as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 60_000
             instanceFollowRedirects = true

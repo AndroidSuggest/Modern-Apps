@@ -9,7 +9,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -25,6 +24,7 @@ import kotlin.test.assertTrue
  */
 class SignedJarIndexTest {
 
+    private val pinnedFingerprint = "0".repeat(64)
     private val temp: File = File.createTempFile("signedjar", "dir").let {
         it.delete(); it.mkdirs(); it
     }
@@ -69,7 +69,7 @@ class SignedJarIndexTest {
     fun aJarWithNoManifestIsRejected() {
         val jar = unsignedJarWithoutManifest("entry.json" to """{"repo":1}""")
         val e = assertFailsWith<SignedJarIndex.VerificationException> {
-            SignedJarIndex.readVerified(jar, "entry.json", null)
+            SignedJarIndex.readVerified(jar, "entry.json", pinnedFingerprint)
         }
         assertTrue(e.message!!.contains("not signed"), e.message!!)
     }
@@ -80,7 +80,7 @@ class SignedJarIndexTest {
         // and simply reports no certificates, so "no certificates" has to mean "reject".
         val jar = jarWithManifestButNoSignature("entry.json" to """{"repo":1}""")
         val e = assertFailsWith<SignedJarIndex.VerificationException> {
-            SignedJarIndex.readVerified(jar, "entry.json", null)
+            SignedJarIndex.readVerified(jar, "entry.json", pinnedFingerprint)
         }
         assertTrue(e.message!!.contains("not covered by the JAR signature"), e.message!!)
     }
@@ -89,7 +89,7 @@ class SignedJarIndexTest {
     fun aMissingEntryIsRejected() {
         val jar = jarWithManifestButNoSignature("something-else.json" to "{}")
         val e = assertFailsWith<SignedJarIndex.VerificationException> {
-            SignedJarIndex.readVerified(jar, "entry.json", null)
+            SignedJarIndex.readVerified(jar, "entry.json", pinnedFingerprint)
         }
         assertTrue(e.message!!.contains("does not contain"), e.message!!)
     }
@@ -100,38 +100,18 @@ class SignedJarIndexTest {
         f.writeBytes(ByteArray(512) { 0x41 })
         // Not a VerificationException — the point is that it throws rather than returning
         // unverified content, and the caller treats any throw as a failed sync.
-        assertFailsWith<Exception> { SignedJarIndex.readVerified(f, "entry.json", null) }
+        assertFailsWith<Exception> {
+            SignedJarIndex.readVerified(f, "entry.json", pinnedFingerprint)
+        }
     }
 
     @Test
     fun anEmptyFileIsRejected() {
         val f = File(temp, "empty.jar")
         f.writeBytes(ByteArray(0))
-        assertFailsWith<Exception> { SignedJarIndex.readVerified(f, "entry.json", null) }
-    }
-
-    // --- extractVerified must not leave a rejected index on disk ---
-
-    @Test
-    fun extractVerifiedDeletesItsOutputWhenVerificationFails() {
-        val jar = jarWithManifestButNoSignature("entry.json" to """{"repo":1}""")
-        val dest = File(temp, "extracted.json")
-        assertFailsWith<SignedJarIndex.VerificationException> {
-            SignedJarIndex.extractVerified(jar, "entry.json", null, dest)
+        assertFailsWith<Exception> {
+            SignedJarIndex.readVerified(f, "entry.json", pinnedFingerprint)
         }
-        // A surviving file would be an unverified index sitting where the parser looks.
-        assertFalse(dest.exists(), "rejected index was left on disk at $dest")
-    }
-
-    @Test
-    fun extractVerifiedDeletesAPreexistingOutputWhenVerificationFails() {
-        val jar = jarWithManifestButNoSignature("entry.json" to """{"repo":1}""")
-        val dest = File(temp, "stale.json")
-        dest.writeText("""{"stale":"previous sync"}""")
-        assertFailsWith<SignedJarIndex.VerificationException> {
-            SignedJarIndex.extractVerified(jar, "entry.json", null, dest)
-        }
-        assertFalse(dest.exists(), "stale index survived a failed verification")
     }
 
     // --- fingerprint helpers used to report pin mismatches ---

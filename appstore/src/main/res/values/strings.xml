@@ -150,8 +150,9 @@
     <string name="trust_modern_apps_summary">Built in the same repo as this store and signed with the same key, which your phone can check against the copy of the store you are holding.</string>
     <string name="trust_modern_apps_practice_open">All of it is open source, in one public repository</string>
     <string name="trust_modern_apps_practice_one_key">Every app ships from one tagged release, signed with one key</string>
+    <string name="trust_modern_apps_check_index_signed">The repository index is signed and checked against this store\'s own pinned key</string>
     <string name="trust_modern_apps_check_key">Signed by this app\'s own key, read straight from your phone at install time</string>
-    <string name="trust_modern_apps_check_hash">The file matches the hash published with the release on GitHub</string>
+    <string name="trust_modern_apps_check_hash">The file matches the hash in the repository\'s signed index</string>
     <string name="trust_modern_apps_limits">One developer, one key, no independent review and nobody rebuilding the source to confirm the app matches it. There is no scanning and no way to pull a bad release off phones that already took it.</string>
 
     <string name="trust_fdroid_title">F-Droid</string>

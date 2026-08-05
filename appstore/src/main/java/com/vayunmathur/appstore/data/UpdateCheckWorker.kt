@@ -22,6 +22,8 @@ import androidx.work.WorkerParameters
 import com.vayunmathur.appstore.MainActivity
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.play.PlayRepository
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.room.buildDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -47,6 +49,8 @@ class UpdateCheckWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = try {
+        // WorkManager can cold-start the process without MainActivity initializing TLS.
+        NetworkClient.init(context, TrustBundle.STANDARD)
         val scope = CoroutineScope(SupervisorJob())
         val db = context.buildDatabase<AppDatabase>(
             dbName = DB_NAME,
