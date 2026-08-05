@@ -88,6 +88,7 @@ include(":vpn")
 include(":web")
 include(":appstore")
 include(":fooddelivery")
+include(":musicbrainz")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.

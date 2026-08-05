@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- Name of the app. MusicBrainz is a proper noun and should not be translated. -->
+    <string name="app_name">MusicBrainz</string>
+
+    <!-- Search screen: placeholder in the search field. -->
+    <string name="search_placeholder">Search music</string>
+    <!-- Search screen: tab showing album results. Noun, plural. -->
+    <string name="tab_releases">Albums</string>
+    <!-- Search screen: tab showing artist results. Noun, plural. -->
+    <string name="tab_artists">Artists</string>
+    <!-- Search screen: tab showing individual song results. Noun, plural. -->
+    <string name="tab_recordings">Songs</string>
+
+    <!-- Search screen: title shown before the user has searched for anything. -->
+    <string name="search_prompt_title">Search MusicBrainz</string>
+    <!-- Search screen: body shown before the user has searched for anything. -->
+    <string name="search_prompt_message">Find an album, artist or song to browse and download.</string>
+    <!-- Search screen: title shown when a search returned nothing. -->
+    <string name="no_results">No results</string>
+    <!-- Search screen: body shown when a search returned nothing. -->
+    <string name="no_results_message">Try a different spelling or fewer words.</string>
+    <!-- Search screen: title shown when the search request failed. -->
+    <string name="search_failed">Search failed</string>
+    <!-- Error title shown when a page could not be loaded. -->
+    <string name="load_failed">Could not load</string>
+    <!-- Button: retries a failed request. Verb. -->
+    <string name="retry">Retry</string>
+
+    <!-- Artist screen: title used before the artist name has loaded. Noun. -->
+    <string name="artist">Artist</string>
+    <!-- Album screen: title used before the album title has loaded. Noun. -->
+    <string name="album">Album</string>
+    <!-- Artist screen: shown when the artist has no albums listed. -->
+    <string name="no_releases">No albums found</string>
+
+    <!-- Album screen: number of different editions (pressings, reissues) of an album. -->
+    <plurals name="editions_count">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> edition</item>
+        <item quantity="other"><xliff:g id="count" example="7">%1$d</xliff:g> editions</item>
+    </plurals>
+    <!-- Album screen: how many songs from this album are already on the device. -->
+    <string name="owned_count"><xliff:g id="owned" example="4">%1$d</xliff:g> of <xliff:g id="total" example="12">%2$d</xliff:g> already on this device</string>
+    <!-- Album screen: button that downloads every song the user does not already have. Verb. -->
+    <plurals name="download_missing">
+        <item quantity="one">Download <xliff:g id="count" example="1">%1$d</xliff:g> missing</item>
+        <item quantity="other">Download <xliff:g id="count" example="8">%1$d</xliff:g> missing</item>
+    </plurals>
+    <!-- A song's length, as minutes and seconds. %2$s is already zero-padded. -->
+    <string name="duration_format"><xliff:g id="minutes" example="3">%1$d</xliff:g>:<xliff:g id="seconds" example="45">%2$s</xliff:g></string>
+
+    <!-- Downloads screen: title. Noun, plural. -->
+    <string name="downloads">Downloads</string>
+    <!-- Downloads screen: title shown when nothing is being downloaded. -->
+    <string name="no_downloads">Nothing downloading</string>
+    <!-- Downloads screen: body shown when nothing is being downloaded. -->
+    <string name="no_downloads_message">Songs you download will show their progress here.</string>
+    <!-- Download status: not started yet. -->
+    <string name="state_queued">Waiting</string>
+    <!-- Download status: looking for an audio source for the song. -->
+    <string name="state_searching">Finding audio</string>
+    <!-- Download status: transferring the song. -->
+    <string name="state_downloading">Downloading</string>
+    <!-- Download status: writing song details into the file. -->
+    <string name="state_tagging">Adding details</string>
+    <!-- Download status: finished successfully. -->
+    <string name="state_done">Saved</string>
+    <!-- Download status: did not finish. -->
+    <string name="state_failed">Failed</string>
+
+    <!-- Settings screen: title. Noun, plural. -->
+    <string name="settings">Settings</string>
+    <!-- Settings section: the folder songs are saved to and scanned from. -->
+    <string name="music_folder">Music folder</string>
+    <!-- Settings row: opens the folder picker. Verb. -->
+    <string name="choose_folder">Choose folder</string>
+    <!-- Settings row: shown when the user has not picked a music folder yet. -->
+    <string name="no_folder_selected">Not set. Downloads need a folder.</string>
+    <!-- Settings row: scans the music folder again. Verb. -->
+    <string name="rescan_library">Rescan library</string>
+    <!-- Settings row: shown while the music folder is being scanned. -->
+    <string name="scanning">Scanning\u2026</string>
+    <!-- Settings row: how many songs were found in the music folder. -->
+    <plurals name="indexed_tracks">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> song found</item>
+        <item quantity="other"><xliff:g id="count" example="428">%1$d</xliff:g> songs found</item>
+    </plurals>
+    <!-- Settings row: saves album artwork inside downloaded files. Noun. -->
+    <string name="embed_cover_art">Album art</string>
+    <!-- Settings row: explanation of the album art setting. -->
+    <string name="embed_cover_art_description">Save cover art inside downloaded songs.</string>
+    <!-- Settings row: saves lyrics inside downloaded files. Noun, plural. -->
+    <string name="fetch_lyrics">Lyrics</string>
+    <!-- Settings row: explanation of the lyrics setting. -->
+    <string name="fetch_lyrics_description">Look up synced lyrics and save them with the song.</string>
+</resources>
