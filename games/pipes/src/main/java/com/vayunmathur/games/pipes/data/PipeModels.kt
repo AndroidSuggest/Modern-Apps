@@ -68,7 +68,7 @@ private fun rectangularCells(rows: Int, cols: Int): Set<CellPos> {
     }
 }
 
-private fun computeAdjacency(cells: Set<CellPos>): Map<CellPos, List<CellPos>> {
+internal fun computeAdjacency(cells: Set<CellPos>): Map<CellPos, List<CellPos>> {
     val dirs = listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1)
     return cells.associateWith { cell ->
         dirs.mapNotNull { (dr, dc) ->
