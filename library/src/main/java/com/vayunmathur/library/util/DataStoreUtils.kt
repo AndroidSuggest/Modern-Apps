@@ -66,6 +66,11 @@ class DataStoreUtils private constructor(context: Context) {
         return dataStore.data.mapNotNull { it[booleanPreferencesKey(name)] }
     }
 
+    /** Suspend variant that awaits DataStore hydration. */
+    suspend fun getBooleanAwait(name: String, default: Boolean = false): Boolean {
+        return dataStore.data.first()[booleanPreferencesKey(name)] ?: default
+    }
+
     suspend fun setBoolean(name: String, value: Boolean) {
         dataStore.edit {
             it[booleanPreferencesKey(name)] = value

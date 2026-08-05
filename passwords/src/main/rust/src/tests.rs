@@ -67,6 +67,27 @@ fn export_then_import_roundtrips_all_fields() {
 }
 
 #[test]
+fn sync_metadata_fields_survive_roundtrip() {
+    let mut m = EntryMap::new();
+    m.insert("Title".into(), "Synced".into());
+    m.insert("Password".into(), "p".into());
+    m.insert("_Type".into(), "password".into());
+    m.insert("_SyncId".into(), "0123456789abcdef0123456789abcdef".into());
+    m.insert("_Modified".into(), "1785954985000".into());
+    let json_str = json_array_of(&[m]);
+
+    let bytes = export_kdbx(PW, &json_str).expect("export");
+    let parsed = entries_of(&import_kdbx(PW, &bytes).expect("import"));
+
+    let e = find_entry(&parsed, "Synced");
+    assert_eq!(
+        e.get("_SyncId").map(|s| s.as_str()),
+        Some("0123456789abcdef0123456789abcdef"),
+    );
+    assert_eq!(e.get("_Modified").map(|s| s.as_str()), Some("1785954985000"));
+}
+
+#[test]
 fn password_field_is_stored_protected() {
     let mut m = EntryMap::new();
     m.insert("Title".into(), "x".into());

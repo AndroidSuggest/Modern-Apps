@@ -41,6 +41,7 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.credentials.lib)
     implementation(libs.androidx.autofill)
+    implementation(libs.androidx.work.runtime.ktx)
     // Own WebSocketClient via :library:network – no Ktor
     implementation(project(":library:network"))
 }

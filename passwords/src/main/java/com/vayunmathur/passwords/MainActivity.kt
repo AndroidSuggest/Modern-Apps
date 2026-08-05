@@ -6,6 +6,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.NavKey
@@ -25,6 +27,8 @@ import com.vayunmathur.passwords.ui.PasskeyPage
 import com.vayunmathur.passwords.ui.PasswordEditPage
 import com.vayunmathur.passwords.ui.PasswordPage
 import com.vayunmathur.passwords.ui.SettingsPage
+import com.vayunmathur.passwords.sync.KdbxSyncScheduler
+import com.vayunmathur.passwords.sync.KdbxSyncSettings
 import com.vayunmathur.passwords.util.PasswordsViewModel
 import com.vayunmathur.passwords.util.PasswordsViewModelFactory
 import kotlinx.serialization.Serializable
@@ -53,6 +57,13 @@ class MainActivity : FragmentActivity() {
                 val db = buildDatabase<PasswordDatabase>(encryptionPassword = passphrase)
                 passwordDao = db.passwordDao()
                 passkeyDao = db.passkeyDao()
+                lifecycleScope.launch {
+                    if (KdbxSyncSettings.enabled(this@MainActivity)) {
+                        // Re-registering keeps the periodic work alive across app updates.
+                        KdbxSyncScheduler.schedulePeriodic(this@MainActivity)
+                        KdbxSyncScheduler.syncNow(this@MainActivity)
+                    }
+                }
                 setContent {
                     DynamicTheme {
                         Navigation(passwordsViewModel, passphrase)

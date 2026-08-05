@@ -1,17 +1,21 @@
 package com.vayunmathur.passwords.util
 
 import android.content.Context
-import android.util.Base64
 import com.vayunmathur.library.util.BackupFormat
-import com.vayunmathur.passwords.data.Passkey
 import com.vayunmathur.passwords.data.PasskeyDao
-import com.vayunmathur.passwords.data.Password
 import com.vayunmathur.passwords.data.PasswordDao
+import com.vayunmathur.passwords.data.newSyncId
+import com.vayunmathur.passwords.sync.EntryMapper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStream
 import java.io.OutputStream
 
+/**
+ * One-shot kdbx backup/restore. Shares [EntryMapper] with the bidirectional sync, but
+ * deliberately keeps the standalone semantics: exports carry no sync identity, and an
+ * import always inserts fresh rows.
+ */
 class KdbxBackupFormat(
     private val passwordDao: PasswordDao,
     private val passkeyDao: PasskeyDao,
@@ -24,38 +28,8 @@ class KdbxBackupFormat(
         requireNotNull(password) { "Password required for KDBX export" }
 
         val entries = JSONArray()
-
-        for (pw in passwordDao.getAll()) {
-            val entry = JSONObject()
-            entry.put("Title", pw.name)
-            entry.put("UserName", pw.userId)
-            entry.put("Password", pw.password)
-            if (pw.websites.isNotEmpty()) {
-                entry.put("URL", pw.websites.first())
-                if (pw.websites.size > 1) {
-                    entry.put("Websites", pw.websites.joinToString("\n"))
-                }
-            }
-            pw.totpSecret?.let { secret ->
-                entry.put("otp", "otpauth://totp/?secret=$secret")
-            }
-            entry.put("_Type", "password")
-            entries.put(entry)
-        }
-
-        for (pk in passkeyDao.getAll()) {
-            val entry = JSONObject()
-            entry.put("Title", pk.rpName)
-            entry.put("UserName", pk.userName)
-            entry.put("URL", pk.rpId)
-            entry.put("_Type", "passkey")
-            entry.put("KPEX_PASSKEY_USERNAME", pk.userName)
-            entry.put("KPEX_PASSKEY_PRIVATE_KEY_PEM", Base64.encodeToString(pk.privateKeyBytes, Base64.NO_WRAP))
-            entry.put("KPEX_PASSKEY_CREDENTIAL_ID", pk.credentialId)
-            entry.put("KPEX_PASSKEY_USER_HANDLE", pk.userId)
-            entry.put("KPEX_PASSKEY_RELYING_PARTY", pk.rpId)
-            entries.put(entry)
-        }
+        for (pw in passwordDao.getAll()) entries.put(EntryMapper.toFields(pw).withoutSyncFields())
+        for (pk in passkeyDao.getAll()) entries.put(EntryMapper.toFields(pk).withoutSyncFields())
 
         val bytes = KdbxNative.nativeExport(password, entries.toString())
             ?: error("Failed to write KDBX file")
@@ -71,59 +45,21 @@ class KdbxBackupFormat(
         val entries = JSONArray(json)
         for (i in 0 until entries.length()) {
             val entry = entries.getJSONObject(i).toStringMap()
-            val isPasskey = entry.keys.any { it.startsWith("KPEX_PASSKEY_") }
-            if (isPasskey) {
-                importPasskey(entry)
+            if (EntryMapper.isPasskeyEntry(entry)) {
+                passkeyDao.upsert(EntryMapper.toPasskey(entry).copy(syncId = newSyncId()))
             } else {
-                importPassword(entry)
+                passwordDao.upsert(EntryMapper.toPassword(entry).copy(syncId = newSyncId()))
             }
         }
     }
 
-    private suspend fun importPassword(entry: Map<String, String>) {
-        val websites = mutableListOf<String>()
-        val url = entry["URL"].orEmpty()
-        if (url.isNotEmpty()) websites.add(url)
-        val extraWebsites = entry["Websites"]
-        if (!extraWebsites.isNullOrEmpty()) {
-            extraWebsites.split("\n").filter { it.isNotBlank() }.forEach { w ->
-                if (w !in websites) websites.add(w)
-            }
+    private fun Map<String, String>.withoutSyncFields(): JSONObject {
+        val json = JSONObject()
+        for ((key, value) in this) {
+            if (key == EntryMapper.FIELD_SYNC_ID || key == EntryMapper.FIELD_MODIFIED) continue
+            json.put(key, value)
         }
-        var totpSecret: String? = null
-        val otp = entry["otp"]
-        if (!otp.isNullOrEmpty()) {
-            val match = Regex("[?&]secret=([^&]+)").find(otp)
-            totpSecret = match?.groupValues?.get(1) ?: otp
-        }
-        if (totpSecret == null) {
-            totpSecret = entry["TOTP Seed"]
-        }
-
-        val pw = Password(
-            name = entry["Title"].orEmpty(),
-            userId = entry["UserName"].orEmpty(),
-            password = entry["Password"].orEmpty(),
-            websites = websites,
-            totpSecret = totpSecret,
-        )
-        passwordDao.upsert(pw)
-    }
-
-    private suspend fun importPasskey(entry: Map<String, String>) {
-        val privateKeyB64 = entry["KPEX_PASSKEY_PRIVATE_KEY_PEM"].orEmpty()
-        val privateKeyBytes = if (privateKeyB64.isNotEmpty()) Base64.decode(privateKeyB64, Base64.NO_WRAP) else ByteArray(0)
-
-        val pk = Passkey(
-            rpId = entry["KPEX_PASSKEY_RELYING_PARTY"].orEmpty().ifEmpty { entry["URL"].orEmpty() },
-            rpName = entry["Title"].orEmpty(),
-            credentialId = entry["KPEX_PASSKEY_CREDENTIAL_ID"].orEmpty(),
-            userId = entry["KPEX_PASSKEY_USER_HANDLE"].orEmpty(),
-            userName = entry["KPEX_PASSKEY_USERNAME"].orEmpty().ifEmpty { entry["UserName"].orEmpty() },
-            userDisplayName = entry["UserName"].orEmpty(),
-            privateKeyBytes = privateKeyBytes,
-        )
-        passkeyDao.upsert(pk)
+        return json
     }
 
     private fun JSONObject.toStringMap(): Map<String, String> = buildMap {

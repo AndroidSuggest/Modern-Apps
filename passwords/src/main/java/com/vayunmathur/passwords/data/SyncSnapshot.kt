@@ -1,0 +1,29 @@
+package com.vayunmathur.passwords.data
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import java.util.UUID
+
+/** Opaque 32-char identity shared between a local row and its kdbx entry. */
+fun newSyncId(): String = UUID.randomUUID().toString().replace("-", "")
+
+/**
+ * Last agreed state of one synced entry, written after a successful kdbx sync.
+ *
+ * Without this baseline "present locally, absent remotely" cannot be told apart from
+ * "created locally, not pushed yet", so deletions could never propagate.
+ */
+@Entity
+data class SyncSnapshot(
+    @PrimaryKey val syncId: String,
+    val kind: String,
+    val contentHash: String,
+    val localUpdatedAt: Long,
+    val remoteModified: Long,
+    val lastSyncedAt: Long,
+) {
+    companion object {
+        const val KIND_PASSWORD = "password"
+        const val KIND_PASSKEY = "passkey"
+    }
+}

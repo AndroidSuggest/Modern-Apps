@@ -83,4 +83,43 @@
     <string name="cable_prompt_title">Sign in on your other device?</string>
     <string name="cable_prompt_subtitle">Verify to approve this passkey sign-in</string>
     <string name="name_and_user_id_required">Name and User ID cannot be empty</string>
+
+    <!-- Section header for the two-way KeePass file sync settings. KDBX = KeePass database file extension, keep as-is -->
+    <string name="sync_section">KDBX Sync</string>
+    <!-- Toggle row title. Verb phrase enabling two-way sync with a KeePass file -->
+    <string name="sync_enable">Sync with a KDBX file</string>
+    <!-- Supporting text under the sync toggle explaining the behaviour -->
+    <string name="sync_enable_description">Keeps this vault and a KeePass file in agreement every 15 minutes and after each change.</string>
+    <!-- Row title for choosing which file to sync with. Noun phrase -->
+    <string name="sync_file">KDBX file</string>
+    <!-- Supporting text when no file has been picked yet. Parentheses intentional -->
+    <string name="sync_file_none">(none selected)</string>
+    <!-- Menu item: pick an existing .kdbx file via the system file picker. Verb phrase -->
+    <string name="sync_choose_file">Choose existing file</string>
+    <!-- Menu item: create a brand new empty .kdbx file. Verb phrase -->
+    <string name="sync_create_file">Create new file</string>
+    <!-- Row title for the password that unlocks the KDBX file. Distinct from the app unlock -->
+    <string name="sync_vault_password">Vault password</string>
+    <!-- Supporting text when the vault password has been stored -->
+    <string name="sync_vault_password_set">Saved</string>
+    <!-- Supporting text when no vault password has been stored yet. Parentheses intentional -->
+    <string name="sync_vault_password_unset">(not set)</string>
+    <!-- Dialog button. Verb, Title Case -->
+    <string name="sync_save">Save</string>
+    <!-- Dialog button. Verb, Title Case -->
+    <string name="sync_cancel">Cancel</string>
+    <!-- Row title showing when the last sync ran. Noun phrase -->
+    <string name="sync_last">Last sync</string>
+    <!-- Supporting text when no sync has ever completed. Adverb -->
+    <string name="sync_never">Never</string>
+    <!-- Row title triggering an immediate sync. Verb phrase, Title Case -->
+    <string name="sync_now">Sync now</string>
+    <!-- Error: the chosen file could not be opened, e.g. moved, deleted, or permission revoked -->
+    <string name="sync_error_file_missing">The KDBX file could not be opened. Nothing was changed locally.</string>
+    <!-- Error: the stored vault password does not unlock the file -->
+    <string name="sync_error_wrong_password">Wrong vault password. Nothing was changed locally.</string>
+    <!-- Error: the merged vault failed its re-parse check, so the file was left untouched -->
+    <string name="sync_error_verify_failed">The merged vault failed verification, so the file was not written.</string>
+    <!-- Error with details. %1$s = raw failure message from the sync -->
+    <string name="sync_error_generic">Sync failed: <xliff:g id="reason" example="No space left on device">%1$s</xliff:g></string>
 </resources>

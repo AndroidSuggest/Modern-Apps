@@ -21,6 +21,8 @@ import com.vayunmathur.passwords.data.Passkey
 import com.vayunmathur.passwords.data.PasskeyDao
 import com.vayunmathur.passwords.data.Password
 import com.vayunmathur.passwords.data.PasswordDao
+import com.vayunmathur.passwords.sync.KdbxSyncScheduler
+import com.vayunmathur.passwords.sync.KdbxSyncSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,6 +74,7 @@ class PasswordsViewModel(
     fun deletePasskey(passkey: Passkey) {
         viewModelScope.launch(Dispatchers.IO) {
             passkeyDao.delete(passkey)
+            requestSync()
         }
     }
 
@@ -79,13 +82,20 @@ class PasswordsViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val newId = passwordDao.upsert(password)
             onSaved?.invoke(newId)
+            requestSync()
         }
     }
 
     override fun delete(password: Password) {
         viewModelScope.launch(Dispatchers.IO) {
             passwordDao.delete(password)
+            requestSync()
         }
+    }
+
+    private suspend fun requestSync() {
+        val ctx = getApplication<Application>()
+        if (KdbxSyncSettings.enabled(ctx)) KdbxSyncScheduler.scheduleDebounced(ctx)
     }
 
     /**

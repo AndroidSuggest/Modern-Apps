@@ -12,56 +12,65 @@ import com.vayunmathur.library.util.DatabaseMigrations
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface PasswordDao {
+abstract class PasswordDao {
     @Query("SELECT * FROM Password")
-    fun getAllFlow(): Flow<List<Password>>
+    abstract fun getAllFlow(): Flow<List<Password>>
 
     @Query("SELECT * FROM Password")
-    suspend fun getAll(): List<Password>
+    abstract suspend fun getAll(): List<Password>
 
     @Query("SELECT * FROM Password WHERE id = :id")
-    fun getByIdFlow(id: Long): Flow<Password?>
+    abstract fun getByIdFlow(id: Long): Flow<Password?>
 
     @Query("SELECT * FROM Password WHERE id = :id")
-    suspend fun getById(id: Long): Password?
+    abstract suspend fun getById(id: Long): Password?
 
+    /** Writes [value] verbatim. Only the kdbx sync uses this, to preserve a pulled timestamp. */
     @Upsert
-    suspend fun upsert(value: Password): Long
+    abstract suspend fun upsertRaw(value: Password): Long
 
     @Delete
-    suspend fun delete(value: Password): Int
+    abstract suspend fun delete(value: Password): Int
+
+    suspend fun upsert(value: Password): Long =
+        upsertRaw(value.copy(updatedAt = System.currentTimeMillis()))
 }
 
 @Dao
-interface PasskeyDao {
+abstract class PasskeyDao {
     @Query("SELECT * FROM Passkey")
-    fun getAllFlow(): Flow<List<Passkey>>
+    abstract fun getAllFlow(): Flow<List<Passkey>>
 
     @Query("SELECT * FROM Passkey")
-    suspend fun getAll(): List<Passkey>
+    abstract suspend fun getAll(): List<Passkey>
 
     @Query("SELECT * FROM Passkey WHERE rpId = :rpId")
-    suspend fun getByRpId(rpId: String): List<Passkey>
+    abstract suspend fun getByRpId(rpId: String): List<Passkey>
 
     @Query("SELECT * FROM Passkey WHERE credentialId = :credentialId")
-    suspend fun getByCredentialId(credentialId: String): Passkey?
+    abstract suspend fun getByCredentialId(credentialId: String): Passkey?
 
+    /** Writes [passkey] verbatim. Only the kdbx sync uses this, to preserve a pulled timestamp. */
     @Upsert
-    suspend fun upsert(passkey: Passkey): Long
+    abstract suspend fun upsertRaw(passkey: Passkey): Long
 
     @Delete
-    suspend fun delete(passkey: Passkey): Int
+    abstract suspend fun delete(passkey: Passkey): Int
+
+    suspend fun upsert(passkey: Passkey): Long =
+        upsertRaw(passkey.copy(updatedAt = System.currentTimeMillis()))
 }
 
 @Database(
-    entities = [Password::class, Passkey::class],
-    version = 2,
+    entities = [Password::class, Passkey::class, SyncSnapshot::class],
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
 abstract class PasswordDatabase : RoomDatabase() {
     abstract fun passwordDao(): PasswordDao
     abstract fun passkeyDao(): PasskeyDao
+    abstract fun syncSnapshotDao(): SyncSnapshotDao
 
     companion object : DatabaseMigrations {
         override val migrations = listOf(
@@ -81,7 +90,27 @@ abstract class PasswordDatabase : RoomDatabase() {
                         `signCount` INTEGER NOT NULL
                     )"""
                 )
-            }
+            },
+            Migration(2, 3) {
+                for (table in listOf("Password", "Passkey")) {
+                    it.execSQL("ALTER TABLE `$table` ADD COLUMN `syncId` TEXT NOT NULL DEFAULT ''")
+                    it.execSQL("ALTER TABLE `$table` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0")
+                    it.execSQL("UPDATE `$table` SET `syncId` = lower(hex(randomblob(16))) WHERE `syncId` = ''")
+                }
+                it.execSQL("UPDATE `Password` SET `updatedAt` = ${System.currentTimeMillis()} WHERE `updatedAt` = 0")
+                it.execSQL("UPDATE `Passkey` SET `updatedAt` = `creationTime` WHERE `updatedAt` = 0")
+                it.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `SyncSnapshot` (
+                        `syncId` TEXT NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `contentHash` TEXT NOT NULL,
+                        `localUpdatedAt` INTEGER NOT NULL,
+                        `remoteModified` INTEGER NOT NULL,
+                        `lastSyncedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`syncId`)
+                    )"""
+                )
+            },
         )
     }
 }

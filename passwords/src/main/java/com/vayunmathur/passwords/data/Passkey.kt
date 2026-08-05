@@ -17,6 +17,8 @@ data class Passkey(
     val creationTime: Long = System.currentTimeMillis(),
     val lastUsedTime: Long = System.currentTimeMillis(),
     val signCount: Int = 0,
+    val syncId: String = newSyncId(),
+    val updatedAt: Long = System.currentTimeMillis(),
 ) : DatabaseItem {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

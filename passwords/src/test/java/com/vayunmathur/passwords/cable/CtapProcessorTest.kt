@@ -27,14 +27,14 @@ class CtapProcessorTest {
 
     private val urlEncoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
-    private class FakePasskeyDao(initial: List<Passkey>) : PasskeyDao {
+    private class FakePasskeyDao(initial: List<Passkey>) : PasskeyDao() {
         val store = initial.toMutableList()
         override fun getAllFlow(): Flow<List<Passkey>> = flowOf(store.toList())
         override suspend fun getAll(): List<Passkey> = store.toList()
         override suspend fun getByRpId(rpId: String): List<Passkey> = store.filter { it.rpId == rpId }
         override suspend fun getByCredentialId(credentialId: String): Passkey? =
             store.firstOrNull { it.credentialId == credentialId }
-        override suspend fun upsert(passkey: Passkey): Long {
+        override suspend fun upsertRaw(passkey: Passkey): Long {
             store.removeAll { it.id == passkey.id }
             store.add(passkey)
             return passkey.id

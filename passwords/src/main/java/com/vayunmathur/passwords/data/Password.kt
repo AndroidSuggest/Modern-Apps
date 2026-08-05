@@ -12,5 +12,7 @@ data class Password(
     val userId: String = "",
     val password: String = "",
     val totpSecret: String? = null,
-    val websites: List<String> = emptyList()
+    val websites: List<String> = emptyList(),
+    val syncId: String = newSyncId(),
+    val updatedAt: Long = System.currentTimeMillis(),
 ): DatabaseItem
