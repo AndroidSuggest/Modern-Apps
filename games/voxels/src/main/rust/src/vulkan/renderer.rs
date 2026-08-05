@@ -185,7 +185,7 @@ impl VulkanRenderer {
         }
         Ok(())
     }
-    pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32, night_vision: f32, dim: u8) {
+    pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32, night_vision: f32, dim: u8, rain: f32) {
         self.dim = dim;
         let day_cycle=crate::engine::DAY_CYCLE; let day_t=(time/day_cycle)%1.0;
         let sun_angle=day_t*std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
@@ -221,8 +221,22 @@ impl VulkanRenderer {
             fog_color = Vec3::new(0.05, 0.03, 0.09); ambient_color = Vec3::new(0.44, 0.38, 0.54);
             sun_color = Vec3::ZERO; day_factor = 0.9; cloud_shadow = 0.0;
         }
+        // Overcast weather: grey the horizon, kill the warmth and the contrast, and thicken the haze.
+        // Doing this here rather than in each shader keeps the whole scene consistent for free.
+        let rain = rain.clamp(0.0, 1.0);
+        let mut fog_density = 0.008 / (1.0 + day_factor * 0.8).max(0.2);
+        if rain > 0.0 && dim == 0 {
+            let overcast = Vec3::new(0.44, 0.46, 0.50) * (0.25 + 0.75 * sun_up);
+            fog_color = fog_color.lerp(overcast, rain * 0.8);
+            sun_color = sun_color.lerp(sun_color * 0.35, rain);
+            ambient_color = ambient_color.lerp(Vec3::new(0.26, 0.28, 0.32) * (0.2 + 0.8 * sun_up), rain * 0.85);
+            // A solid overcast casts no crisp cloud shadows; it just dims everything.
+            cloud_shadow *= 1.0 - rain * 0.7;
+            day_factor *= 1.0 - rain * 0.4;
+            fog_density *= 1.0 + rain * 2.2;
+        }
         let _ = (&mut fog_color, &mut sun_color, &mut ambient_color, &mut cloud_shadow);
-        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density: 0.008 / (1.0+day_factor*0.8).max(0.2), player_pos: [player_pos.x, player_pos.y, player_pos.z, underwater], day_factor, _pad: [0.0;3], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow, ambient_color: ambient_color.to_array(), _pad2: night_vision, light_view_proj: light_view_proj.to_cols_array_2d() };
+        self.ubo_data=UboData{ view_proj: view_proj.to_cols_array_2d(), sun_dir: sun_dir.to_array(), time, fog_color: fog_color.to_array(), fog_density, player_pos: [player_pos.x, player_pos.y, player_pos.z, underwater], day_factor, rain, _pad: [0.0;2], inv_view_proj: inv_view_proj.to_cols_array_2d(), sun_color: sun_color.to_array(), cloud_shadow, ambient_color: ambient_color.to_array(), _pad2: night_vision, light_view_proj: light_view_proj.to_cols_array_2d() };
         let bytes=unsafe { std::slice::from_raw_parts((&self.ubo_data as *const UboData) as *const u8, std::mem::size_of::<UboData>()) };
         self.ubo_buffer.upload(&self.ctx.device, bytes);
     }

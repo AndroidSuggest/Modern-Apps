@@ -13,6 +13,11 @@ layout(binding=0) uniform Ubo {
     float fogDensity;
     vec4 playerPos;
     float dayFactor;
+    // Precipitation intensity, 0..1. Occupies what the other shaders leave as implicit std140 padding
+    // between dayFactor and the mat4 that follows, so the block layout is identical either way.
+    float rain;
+    float _padA;
+    float _padB;
     mat4 invViewProj;
     vec3 sunColor;
     float cloudShadow;
@@ -72,20 +77,21 @@ const float COVERAGE  = 0.47;
 const float SIGMA_V   = 0.12;
 const float SIGMA_L   = 0.02;
 
-float cloudDensity(vec3 p) {
+// Coverage is a parameter rather than a constant so rain can thicken the deck into a solid overcast.
+float cloudDensity(vec3 p, float cov) {
     vec3 q = p * 0.0045 + vec3(time * 0.06, time * 0.04, time * 0.045);
     q += 0.7 * (fbm2(q * 0.55) - 0.5);
     float base = fbm2(q);
-    float d = smoothstep(1.0 - COVERAGE, 1.0 - COVERAGE * 0.25, base);
+    float d = smoothstep(1.0 - cov, 1.0 - cov * 0.25, base);
     d -= 0.15 * fbm2(q * 3.0 + vec3(0.0, time * 0.2, 0.0) + 4.0);
     float hn = (p.y - CLOUD_BOT) / (CLOUD_TOP - CLOUD_BOT);
     float grad = smoothstep(0.0, 0.28, hn) * smoothstep(1.0, 0.5, hn);
     return clamp(d, 0.0, 1.0) * grad;
 }
-float cloudDensityLow(vec3 p) {
+float cloudDensityLow(vec3 p, float cov) {
     vec3 q = p * 0.0045 + vec3(time * 0.06, time * 0.04, time * 0.045);
     float base = fbm2(q);
-    float d = smoothstep(1.0 - COVERAGE, 1.0 - COVERAGE * 0.25, base);
+    float d = smoothstep(1.0 - cov, 1.0 - cov * 0.25, base);
     float hn = (p.y - CLOUD_BOT) / (CLOUD_TOP - CLOUD_BOT);
     float grad = smoothstep(0.0, 0.28, hn) * smoothstep(1.0, 0.5, hn);
     return clamp(d, 0.0, 1.0) * grad;
@@ -127,7 +133,9 @@ void main() {
     const int STEPS = 14;
     float stepLen = (t1 - t0) / float(STEPS);
     float t = t0 + stepLen * hash(rd * 91.7);
-    vec3 sunCol = sunColor;
+    float cov = clamp(COVERAGE + rain * 0.30, 0.0, 0.95);
+    float sigmaV = SIGMA_V * (1.0 + rain * 1.8);
+    vec3 sunCol = sunColor * (1.0 - rain * 0.55);
     vec3 skyBg = skyColor(rd, s);
     vec3 ambient = skyBg * 0.5 + ambientColor * 0.4;
     float mu = dot(rd, s);
@@ -137,17 +145,17 @@ void main() {
     vec3 scattered = vec3(0.0);
     for (int i = 0; i < STEPS; i++) {
         vec3 p = ro + rd * t;
-        float dens = cloudDensity(p);
+        float dens = cloudDensity(p, cov);
         if (dens > 0.01) {
             float od = 0.0;
             float ls = 45.0;
             for (int j = 0; j < 2; j++) {
-                od += cloudDensityLow(p + s * ls * (float(j) + 0.7)) * ls;
+                od += cloudDensityLow(p + s * ls * (float(j) + 0.7), cov) * ls;
             }
             float lightT = exp(-od * SIGMA_L);
             float powder = 1.0 - exp(-dens * 2.0);
             vec3 lum = sunCol * lightT * (phase * 2.0 + 0.6) * powder + ambient;
-            float att = exp(-dens * stepLen * SIGMA_V);
+            float att = exp(-dens * stepLen * sigmaV);
             scattered += transmittance * (1.0 - att) * lum;
             transmittance *= att;
             if (transmittance < 0.02) break;

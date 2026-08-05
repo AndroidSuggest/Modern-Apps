@@ -40,7 +40,10 @@ pub struct UboData {
     pub fog_density: f32,
     pub player_pos: [f32; 4],
     pub day_factor: f32,
-    pub _pad: [f32; 3],
+    // Precipitation intensity, 0..1. Sits in what used to be padding, so the std140 layout the shaders
+    // see is unchanged.
+    pub rain: f32,
+    pub _pad: [f32; 2],
     // Inverse of view_proj; the sky pass reconstructs per-pixel world rays from it.
     pub inv_view_proj: [[f32; 4]; 4],
     // Shared lighting used by sky, clouds AND terrain so the whole scene reads as one system.
@@ -54,7 +57,7 @@ pub struct UboData {
 
 impl Default for UboData {
     fn default() -> Self {
-        Self { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_dir: [0.2, -1.0, 0.3], time: 0.0, fog_color: [0.53, 0.81, 0.92], fog_density: 0.01, player_pos: [0.0, 70.0, 0.0, 0.0], day_factor: 1.0, _pad: [0.0;3], inv_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_color: [1.0, 0.97, 0.9], cloud_shadow: 0.6, ambient_color: [0.45, 0.55, 0.72], _pad2: 0.0, light_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d() }
+        Self { view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_dir: [0.2, -1.0, 0.3], time: 0.0, fog_color: [0.53, 0.81, 0.92], fog_density: 0.01, player_pos: [0.0, 70.0, 0.0, 0.0], day_factor: 1.0, rain: 0.0, _pad: [0.0;2], inv_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(), sun_color: [1.0, 0.97, 0.9], cloud_shadow: 0.6, ambient_color: [0.45, 0.55, 0.72], _pad2: 0.0, light_view_proj: glam::Mat4::IDENTITY.to_cols_array_2d() }
     }
 }
 

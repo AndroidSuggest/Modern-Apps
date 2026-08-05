@@ -58,6 +58,11 @@ pub struct EngineState {
     // latter is what levels them up, since villager mobs aren't persisted).
     pub trade_prof: u8,
     pub trades_done: [u32; crate::villager::ALL.len()],
+    // Weather (overworld only): the current state, seconds until the next roll, and the eased
+    // intensity the renderer and the mob spawner actually read.
+    pub weather: u8,
+    pub weather_cd: f32,
+    pub rain: f32,
 }
 
 // One furnace job at a time, owned by the world rather than by a specific furnace block: the player
@@ -83,10 +88,50 @@ pub fn day_t_at(elapsed: f32) -> f32 { ((NOON_OFFSET + elapsed) / DAY_CYCLE) % 1
 // The sun is below the horizon at both ends of the cycle (day_t = 0 is midnight). This band is not
 // arbitrary: renderer.rs derives sun height as -cos(day_t * TAU), which is negative exactly here.
 pub fn is_night_at(day_t: f32) -> bool { day_t < 0.25 || day_t > 0.75 }
+
+// ---- Weather ----
+// Matcha drives rain and clear weather explicitly from its mechanics. Here it's a slow random walk
+// between three states, re-rolled every few minutes and persisted, with `rain` easing toward the
+// target so the sky fades over rather than snapping.
+pub const WEATHER_CLEAR: u8 = 0;
+pub const WEATHER_RAIN: u8 = 1;
+pub const WEATHER_STORM: u8 = 2;
+/// How long a weather state lasts before the next roll.
+const WEATHER_MIN_SECS: f32 = 150.0;
+const WEATHER_MAX_SECS: f32 = 420.0;
+/// Rain fades in and out over ~7 seconds.
+const RAIN_FADE_PER_SEC: f32 = 0.14;
+/// Rain this heavy lets hostile mobs spawn in daylight, the way an overcast sky does in Minecraft.
+pub const RAIN_SPAWN_THRESHOLD: f32 = 0.55;
+
+pub fn rain_target(weather: u8) -> f32 {
+    match weather {
+        WEATHER_RAIN => 0.65,
+        WEATHER_STORM => 1.0,
+        _ => 0.0,
+    }
+}
+
+/// Pick the next weather state. `r` is a uniform sample in [0, 1). Clear is the most common state and
+/// storms only arrive by way of rain, so the sky doesn't flip from sunshine to downpour.
+pub fn next_weather(current: u8, r: f32) -> u8 {
+    match current {
+        WEATHER_RAIN => if r < 0.30 { WEATHER_STORM } else if r < 0.75 { WEATHER_CLEAR } else { WEATHER_RAIN },
+        WEATHER_STORM => if r < 0.65 { WEATHER_RAIN } else { WEATHER_CLEAR },
+        _ => if r < 0.28 { WEATHER_RAIN } else { WEATHER_CLEAR },
+    }
+}
+
+pub fn weather_duration(r: f32) -> f32 {
+    WEATHER_MIN_SECS + r.clamp(0.0, 1.0) * (WEATHER_MAX_SECS - WEATHER_MIN_SECS)
+}
+
 impl EngineState {
     pub fn world_time(&self) -> f32 { NOON_OFFSET + self.start_time.elapsed().as_secs_f32() }
     pub fn day_t(&self) -> f32 { day_t_at(self.start_time.elapsed().as_secs_f32()) }
     pub fn is_night(&self) -> bool { is_night_at(self.day_t()) }
+    /// Whether hostile mobs may spawn: after dark, or under heavy rain.
+    pub fn mobs_can_spawn_hostile(&self) -> bool { self.is_night() || self.rain >= RAIN_SPAWN_THRESHOLD }
 }
 
 unsafe impl Send for EngineState {}
@@ -201,6 +246,10 @@ pub fn init_engine(files_dir: String, seed: u32) -> bool {
         mend_cd: 0.0,
         trade_prof: 0,
         trades_done,
+        weather: if progress.weather <= WEATHER_STORM { progress.weather } else { WEATHER_CLEAR },
+        weather_cd: progress.weather_cd.clamp(0.0, WEATHER_MAX_SECS),
+        // Resume mid-downpour rather than fading in from a clear sky.
+        rain: rain_target(progress.weather),
     });
     INIT_DONE.store(true, Ordering::SeqCst);
     true
@@ -257,6 +306,8 @@ pub fn destroy_engine() {
                 deepest_y: state.deepest_y,
                 blessings: state.player.blessings,
                 trades_done: state.trades_done.to_vec(),
+                weather: state.weather,
+                weather_cd: state.weather_cd,
             },
         };
         let _ = crate::world::save::save_player(&state.save_dir, &ps);
@@ -558,14 +609,15 @@ pub fn tick_and_render() {
                     if id != 0 && Block::from_id(id).is_solid() { gy = Some(y); break; }
                 }
                 if let Some(gy) = gy {
-                    let night = state.is_night();
+                    // Hostiles come out after dark — and, as in Minecraft, under a heavy enough sky.
+                    let hostile = state.mobs_can_spawn_hostile();
                     let kind = if state.dim == 1 {
                         // Nether: hostile natives only (Ghasts are rarer floating threats).
                         match (rand(&mut rng) * 8.0) as u32 { 0 => MobKind::Ghast, 1 | 2 => MobKind::Blaze, 3 | 4 => MobKind::WitherSkeleton, _ => MobKind::Zombie }
                     } else if state.dim == 2 {
                         // Sparse End hostiles: End-city Shulker guardians + wandering wither skeletons.
                         if rand(&mut rng) < 0.4 { MobKind::Shulker } else { MobKind::WitherSkeleton }
-                    } else if night {
+                    } else if hostile {
                         if rand(&mut rng) < 0.5 { MobKind::Zombie } else { MobKind::Creeper }
                     } else if rand(&mut rng) < 0.18 {
                         MobKind::Villager
@@ -608,11 +660,12 @@ pub fn tick_and_render() {
             let r = state.player.right();
             for &side in &[-1.0f32, 1.0] {
                 if state.particles.len() < 400 {
-                    state.particles.push(Particle { pos: base + r * (0.55 * side), vel: Vec3::ZERO, life: 0.5, max_life: 0.5, size: 0.09, color: [0.88, 0.95, 1.0] });
+                    state.particles.push(Particle { pos: base + r * (0.55 * side), vel: Vec3::ZERO, life: 0.5, max_life: 0.5, size: 0.09, color: [0.88, 0.95, 1.0], gravity: crate::entity::BURST_GRAVITY });
                 }
             }
         }
         tick_particles(&mut state.particles, dt);
+        tick_weather(state, dt, player_pos);
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
@@ -645,8 +698,9 @@ pub fn tick_and_render() {
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
             let nv = if state.player.night_vision() { 1.0 } else { 0.0 };
             let dim = state.dim;
+            let rain = state.rain;
             unsafe {
-                renderer.update_ubo(view_proj, state.player.pos, time, underwater, nv, dim);
+                renderer.update_ubo(view_proj, state.player.pos, time, underwater, nv, dim, rain);
                 renderer.upload_entity_mesh(&entity_verts, &entity_indices);
                 let _ = renderer.draw_frame();
             }
@@ -1018,7 +1072,7 @@ fn tick_projectiles(state: &mut EngineState, dt: f32) {
             continue;
         }
         // Trail spark.
-        if state.particles.len() < 400 { state.particles.push(Particle { pos: p.pos, vel: Vec3::ZERO, life: 0.3, max_life: 0.3, size: p.size() * 0.7, color: p.color() }); }
+        if state.particles.len() < 400 { state.particles.push(Particle { pos: p.pos, vel: Vec3::ZERO, life: 0.3, max_life: 0.3, size: p.size() * 0.7, color: p.color(), gravity: crate::entity::BURST_GRAVITY }); }
         survivors.push(p);
     }
     state.projectiles = survivors;
@@ -1037,13 +1091,90 @@ fn tick_projectiles(state: &mut EngineState, dt: f32) {
     }
 }
 
+// Advance the weather random walk and drop precipitation around the player. Only the overworld has a
+// sky to rain from; the Nether and End are left alone.
+fn tick_weather(state: &mut EngineState, dt: f32, player_pos: Vec3) {
+    if state.dim != 0 {
+        state.rain = 0.0;
+        return;
+    }
+    let mut rng = state.spawn_rng;
+    let mut rand = |s: &mut u32| { let mut x = *s; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *s = x; (x >> 8) as f32 / 16_777_216.0 };
+
+    state.weather_cd -= dt;
+    if state.weather_cd <= 0.0 {
+        state.weather = next_weather(state.weather, rand(&mut rng));
+        state.weather_cd = weather_duration(rand(&mut rng));
+    }
+    // Ease toward the target so the sky fades between states instead of snapping.
+    let target = rain_target(state.weather);
+    let step = RAIN_FADE_PER_SEC * dt;
+    state.rain += (target - state.rain).clamp(-step, step);
+
+    if state.rain > 0.02 {
+        spawn_precipitation(state, &mut rng, &mut rand, player_pos);
+    }
+    state.spawn_rng = rng;
+}
+
+/// Precipitation sits in its own slice of the particle budget so a downpour can never crowd out the
+/// combat and mining bursts that the player actually needs to see.
+const RAIN_BUDGET: usize = 260;
+/// How far above the player drops appear, and the radius they fall inside.
+const RAIN_HEIGHT: f32 = 13.0;
+const RAIN_RADIUS: f32 = 13.0;
+
+fn spawn_precipitation(
+    state: &mut EngineState,
+    rng: &mut u32,
+    rand: &mut impl FnMut(&mut u32) -> f32,
+    player_pos: Vec3,
+) {
+    // Nothing falls on a player who is under cover: if there's solid material overhead, skip it. This
+    // stands in for a per-column sky test and costs one short scan instead of one per drop.
+    let (px, pz) = (player_pos.x.floor() as i32, player_pos.z.floor() as i32);
+    let head = player_pos.y.floor() as i32 + 2;
+    for y in head..=(head + RAIN_HEIGHT as i32) {
+        let id = state.chunks.get_block_world(px, y, pz);
+        if id != 0 && Block::from_id(id).blocks_light() { return; }
+    }
+    // Snow rather than rain wherever the ground is frozen over.
+    let ground = state.chunks.get_block_world(px, player_pos.y.floor() as i32 - 1, pz);
+    let snowy = matches!(ground, 11 | 42 | 43 | 44);
+
+    let want = (state.rain * 22.0) as usize;
+    for _ in 0..want {
+        if state.particles.len() >= RAIN_BUDGET { break; }
+        let ang = rand(rng) * std::f32::consts::TAU;
+        let r = rand(rng).sqrt() * RAIN_RADIUS;
+        let pos = vec3(
+            player_pos.x + ang.cos() * r,
+            player_pos.y + RAIN_HEIGHT * (0.6 + 0.4 * rand(rng)),
+            player_pos.z + ang.sin() * r,
+        );
+        let p = if snowy {
+            // Flakes drift: almost no gravity, a little sideways wander, and a long life.
+            Particle {
+                pos, vel: vec3((rand(rng) - 0.5) * 0.8, -1.6, (rand(rng) - 0.5) * 0.8),
+                life: 6.0, max_life: 6.0, size: 0.075, color: [0.95, 0.97, 1.0], gravity: 0.35,
+            }
+        } else {
+            Particle {
+                pos, vel: vec3(0.0, -14.0, 0.0),
+                life: 1.3, max_life: 1.3, size: 0.045, color: [0.62, 0.72, 0.85], gravity: 6.0,
+            }
+        };
+        state.particles.push(p);
+    }
+}
+
 // Spawn a small burst of particles (capped so the buffer never overflows).
 fn spawn_particles(rng: &mut u32, out: &mut Vec<Particle>, center: Vec3, n: usize, color: [f32; 3], speed: f32, life: f32, size: f32) {
     let mut r = |s: &mut u32| { let mut x = *s; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *s = x; (x >> 8) as f32 / 16_777_216.0 * 2.0 - 1.0 };
     for _ in 0..n {
         if out.len() > 500 { break; }
         let v = vec3(r(rng) * speed, r(rng).abs() * speed + 1.0, r(rng) * speed);
-        out.push(Particle { pos: center, vel: v, life, max_life: life, size, color });
+        out.push(Particle { pos: center, vel: v, life, max_life: life, size, color, gravity: crate::entity::BURST_GRAVITY });
     }
 }
 
@@ -1620,5 +1751,45 @@ mod tests {
             assert!((day_t_at(elapsed) - resumed).abs() < 1e-4, "{elapsed}s round-tripped to a different phase");
         }
         assert!((CLAMP / DAY_CYCLE).fract() < 1e-6, "the world_secs clamp must be a whole number of days");
+    }
+
+    // The weather is a random walk, so what matters is that it can't wander somewhere invalid and that
+    // clear skies stay the common case rather than the game raining most of the time.
+    #[test]
+    fn weather_stays_mostly_clear_and_never_leaves_its_three_states() {
+        let mut w = WEATHER_CLEAR;
+        let mut counts = [0usize; 3];
+        let mut storm_from = [0usize; 3];
+        let steps = 20_000;
+        let mut s = 0x1234_5678u32;
+        for _ in 0..steps {
+            s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+            let r = (s >> 8) as f32 / 16_777_216.0;
+            let next = next_weather(w, r);
+            assert!(next <= WEATHER_STORM, "weather wandered to {next}");
+            if next == WEATHER_STORM { storm_from[w as usize] += 1; }
+            w = next;
+            counts[w as usize] += 1;
+        }
+        let clear = counts[WEATHER_CLEAR as usize] as f32 / steps as f32;
+        assert!(clear > 0.5, "it rains too much: clear only {clear} of the time");
+        assert!(counts[WEATHER_RAIN as usize] > 0 && counts[WEATHER_STORM as usize] > 0, "some weather never happens");
+        assert_eq!(storm_from[WEATHER_CLEAR as usize], 0, "a storm must build through rain, not out of sunshine");
+    }
+
+    #[test]
+    fn rain_intensity_lines_up_with_the_spawn_rule() {
+        assert_eq!(rain_target(WEATHER_CLEAR), 0.0);
+        assert!(rain_target(WEATHER_RAIN) < rain_target(WEATHER_STORM));
+        assert!(rain_target(WEATHER_STORM) <= 1.0);
+        // Rain is heavy enough to bring hostiles out; a clear sky never is.
+        assert!(rain_target(WEATHER_RAIN) >= RAIN_SPAWN_THRESHOLD);
+        assert!(rain_target(WEATHER_CLEAR) < RAIN_SPAWN_THRESHOLD);
+        // A corrupt saved value reads as clear rather than as a permanent storm.
+        assert_eq!(rain_target(200), 0.0);
+        for r in [0.0f32, 0.5, 1.0, -3.0, 7.0] {
+            let d = weather_duration(r);
+            assert!((WEATHER_MIN_SECS..=WEATHER_MAX_SECS).contains(&d), "duration {d} out of range");
+        }
     }
 }

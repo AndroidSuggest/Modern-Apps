@@ -9,6 +9,11 @@ layout(binding=0) uniform Ubo {
     float fogDensity;
     vec4 playerPos;
     float dayFactor;
+    // Precipitation intensity, 0..1. Occupies what the other shaders leave as implicit std140 padding
+    // between dayFactor and the mat4 that follows, so the block layout is identical either way.
+    float rain;
+    float _padA;
+    float _padB;
     mat4 invViewProj;
     vec3 sunColor;
     float cloudShadow;
@@ -163,6 +168,15 @@ void main() {
     // Sky background only. Clouds are a separate depth-tested volumetric pass (cloud.frag) so they
     // sit at a real world altitude and interact with terrain depth.
     vec3 col = skyColor(dir, s);
+
+    // Overcast: collapse the Rayleigh gradient toward a flat grey that dims with the sun, so a storm
+    // reads as heavy rather than merely desaturated.
+    if (rain > 0.0) {
+        float lum = dot(col, vec3(0.30, 0.59, 0.11));
+        vec3 overcast = mix(vec3(0.020, 0.024, 0.030), vec3(0.30, 0.32, 0.35), sunUp);
+        overcast *= 0.55 + 0.45 * clamp(lum * 3.0, 0.0, 1.0);
+        col = mix(col, overcast, clamp(rain * 0.85, 0.0, 1.0));
+    }
 
     if (playerPos.w > 0.5) { col = mix(col, vec3(0.05, 0.20, 0.32), 0.85); } // underwater
 

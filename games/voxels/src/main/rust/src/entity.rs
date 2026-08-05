@@ -424,11 +424,22 @@ pub fn append_projectiles(verts: &mut Vec<Vertex>, indices: &mut Vec<u32>, ps: &
 }
 
 // ---- Particles: short-lived billboarded quads (block break, hits, explosions). ----
-pub struct Particle { pub pos: Vec3, pub vel: Vec3, pub life: f32, pub max_life: f32, pub size: f32, pub color: [f32; 3] }
+pub struct Particle {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub life: f32,
+    pub max_life: f32,
+    pub size: f32,
+    pub color: [f32; 3],
+    /// Downward acceleration. Debris uses `BURST_GRAVITY`; snow drifts at almost nothing.
+    pub gravity: f32,
+}
+
+pub const BURST_GRAVITY: f32 = 14.0;
 
 pub fn tick_particles(ps: &mut Vec<Particle>, dt: f32) {
     for p in ps.iter_mut() {
-        p.vel.y -= 14.0 * dt;
+        p.vel.y -= p.gravity * dt;
         p.pos += p.vel * dt;
         p.life -= dt;
     }
