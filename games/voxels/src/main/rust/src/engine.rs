@@ -1916,8 +1916,14 @@ fn do_place(state: &mut EngineState, origin: Vec3, dir: Vec3) -> bool {
             let (x, y, z) = hit.pos;
             let (tx, ty, tz) = (x + hit.normal.0, y + hit.normal.1, z + hit.normal.2);
             let on_farmland = state.chunks.get_block_world(x, y, z) == Block::Farmland as u8 && hit.normal.1 == 1;
-            if on_farmland && state.chunks.get_block_world(tx, ty, tz) == 0 && state.inventory.consume_selected().is_some() {
-                state.chunks.set_block_meta_world(tx, ty, tz, crop as u8, crate::world::block::crop_meta(0));
+            // Plant only once the write is known to have landed, so an unloaded chunk can't eat the seed.
+            if on_farmland && state.chunks.get_block_world(tx, ty, tz) == 0
+                && state.chunks.set_block_meta_world(tx, ty, tz, crop as u8, crate::world::block::crop_meta(0))
+            {
+                if state.inventory.consume_selected().is_none() {
+                    state.chunks.set_block_world(tx, ty, tz, 0);
+                    return false;
+                }
                 mark_neighbors_dirty(state, tx, tz);
                 return true;
             }
