@@ -1,3 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Kalkulaator</string>
+    <string name="history">Ajalugu</string>
+    <string name="no_calculations_yet">Ühtegi arvutust veel pole.</string>
+    <string name="graph">Diagramm</string>
+    <string name="add_function">Lisa funktsioon</string>
+    <string name="toggle_curve_visibility">Näita seda kõverat või peida ta</string>
+    <string name="feature_root">juur</string>
+    <string name="feature_minimum">miinimum</string>
+    <string name="feature_maximum">maksimum</string>
+    <string name="feature_intersection">lõige</string>
+    <string name="feature_y_intercept">y-telglõik</string>
+</resources>
