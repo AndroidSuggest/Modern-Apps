@@ -25,6 +25,7 @@
     <string name="people_scanning">Grupeerin näotuvastuse tulemusi… inimesed on siin näha peale nende leidmist.</string>
     <string name="people_model_missing">Näotuvastuse tulemuste grupeerimine eeldab MobileFaceNet mudeli kasutamist. Lisa lubatava litsentsi alusel avaldatud „mobilefacenet.tflite“ mudel asukohta „photos/src/main/assets“ (vt ka „FaceRecognizer“).</string>
     <plurals name="people_photo_count">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> foto</item>
         <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> fotot</item>
     </plurals>
     <plurals name="people_in_photo">
@@ -40,7 +41,7 @@
     <string name="trash_is_empty">Prügikast on tühi</string>
     <string name="panorama">Panoraampilt</string>
     <string name="reset_all">Lähtesta kõik</string>
-    <string name="reset">Lähtesta</string>
+    <string name="reset">Lähtesta suum</string>
     <string name="export_as_webp">Ekspordi WebP-failina</string>
     <string name="export_as_png">Ekspordi PNG-failina</string>
     <string name="apply">Rakenda</string>
@@ -110,4 +111,33 @@
     <string name="editor_desc_shape_line">Joone joonistamiseks lohista.</string>
     <string name="editor_desc_shape_ellipse">Täidetud ellipsi joonistamiseks lohista.</string>
     <string name="editor_desc_shape_rect">Täidetud ristküliku joonistamiseks lohista.</string>
+    <string name="file_size">Suurus: <xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
+    <string name="edge_softness">Äärte pehmus</string>
+    <string name="density">Tihedus</string>
+    <string name="blue_yellow">Sini-kollane</string>
+    <string name="green_mag">Rohe-magenta</string>
+    <string name="red_cyan">Runa-rohekassinine</string>
+    <string name="levels">Tasemed</string>
+    <string name="tool_cat_desc_layers">Halda kihte ja maske.</string>
+    <string name="tool_cat_desc_paint">Täited, gradiendid ja kujundid.</string>
+    <string name="sel_tool_rectangle">Ristkülik</string>
+    <string name="sel_tool_ellipse">Ellips</string>
+    <string name="sel_tool_lasso">Lasso</string>
+    <string name="sel_tool_polygon">Hulktahukas</string>
+    <string name="adj_brightness">Heledus</string>
+    <string name="adj_contrast">Kontrast</string>
+    <string name="adj_saturation">Küllastus</string>
+    <string name="adj_warmth">Värvisoojus</string>
+    <string name="adj_exposure">Säritus</string>
+    <string name="adj_shadows">Varjud</string>
+    <string name="adj_highlights">Esiletõstmised</string>
+    <string name="adj_sharpness">Teravus</string>
+    <string name="adj_vignette">Vinjett</string>
+    <string name="tool_threshold">Lävend</string>
+    <string name="tool_invert">Pööra ümber</string>
+    <string name="tool_eyedropper">Pipett</string>
+    <string name="set_as_wallpaper">Määra taustapildiks</string>
+    <string name="wallpaper_scrollable_desc">Keritavad taustapildid on laiemad ja liiguvad, kui viipad ekraanivaadete vahel</string>
+    <string name="editor_desc_crop">Kadreeri, sirgenda ja pööra fotot.</string>
+    <string name="tool_photo_filter">Fotofilter</string>
 </resources>
