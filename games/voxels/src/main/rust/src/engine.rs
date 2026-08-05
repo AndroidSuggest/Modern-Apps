@@ -69,13 +69,20 @@ pub struct Smelter {
     pub blast: bool,
 }
 
-// The world clock is offset by 60s so a fresh world opens at midday (day_t = 0.5 -> sun overhead).
-const DAY_CYCLE: f32 = 120.0;
+// Seconds per full day. Matcha's day_cycle_extender stretches vanilla's 1200s toward hour-long days;
+// 900 keeps that unhurried feel without asking a mobile session to sit through a 10-minute night.
+pub const DAY_CYCLE: f32 = 900.0;
+// The clock starts half a cycle in so a fresh world opens at midday (day_t = 0.5 -> sun overhead).
+const NOON_OFFSET: f32 = DAY_CYCLE * 0.5;
+// Pure clock maths, split out from EngineState so they're testable without an Instant.
+pub fn day_t_at(elapsed: f32) -> f32 { ((NOON_OFFSET + elapsed) / DAY_CYCLE) % 1.0 }
+// The sun is below the horizon at both ends of the cycle (day_t = 0 is midnight). This band is not
+// arbitrary: renderer.rs derives sun height as -cos(day_t * TAU), which is negative exactly here.
+pub fn is_night_at(day_t: f32) -> bool { day_t < 0.25 || day_t > 0.75 }
 impl EngineState {
-    pub fn world_time(&self) -> f32 { 60.0 + self.start_time.elapsed().as_secs_f32() }
-    pub fn day_t(&self) -> f32 { (self.world_time() / DAY_CYCLE) % 1.0 }
-    // The sun is below the horizon at both ends of the cycle (day_t = 0 is midnight).
-    pub fn is_night(&self) -> bool { let t = self.day_t(); t < 0.25 || t > 0.75 }
+    pub fn world_time(&self) -> f32 { NOON_OFFSET + self.start_time.elapsed().as_secs_f32() }
+    pub fn day_t(&self) -> f32 { day_t_at(self.start_time.elapsed().as_secs_f32()) }
+    pub fn is_night(&self) -> bool { is_night_at(self.day_t()) }
 }
 
 unsafe impl Send for EngineState {}
@@ -623,7 +630,6 @@ pub fn tick_and_render() {
             let proj = Mat4::perspective_rh(70f32.to_radians(), aspect, 0.1, 500.0);
             let vulkan_correction = Mat4::from_cols_array(&[1.0,0.0,0.0,0.0, 0.0,-1.0,0.0,0.0, 0.0,0.0,0.5,0.0, 0.0,0.0,0.5,1.0]);
             let view_proj = Mat4::from_rotation_z(pre_rot_angle) * vulkan_correction * proj * view;
-            // Start at midday (day_t=0.5 -> sun overhead) so the world is lit when the app opens.
             let eb = (eye.x.floor() as i32, eye.y.floor() as i32, eye.z.floor() as i32);
             let underwater = if state.chunks.get_block_world(eb.0, eb.1, eb.2) == 12 { 1.0 } else { 0.0 };
             let nv = if state.player.night_vision() { 1.0 } else { 0.0 };
@@ -1545,5 +1551,38 @@ mod tests {
         assert_eq!(stair_facing(FRAC_PI_2 * 4.0), FACE_SOUTH);
         assert_eq!(stair_facing(-FRAC_PI_2), FACE_WEST);
         assert_eq!(stair_facing(0.3), FACE_SOUTH, "a small tilt still reads as north");
+    }
+
+    // A fresh world must open in daylight, and the night has to be long enough to matter but short
+    // enough to wait out on a phone.
+    #[test]
+    fn the_day_starts_at_noon_and_night_is_half_the_cycle() {
+        assert!((day_t_at(0.0) - 0.5).abs() < 1e-4, "a fresh world opens at midday");
+        assert!(!is_night_at(day_t_at(0.0)));
+        // Quarter-cycle steps walk noon -> dusk -> midnight -> dawn -> noon.
+        let q = DAY_CYCLE * 0.25;
+        assert!(is_night_at(day_t_at(q * 1.5)), "dusk has fallen a cycle-eighth after sunset");
+        assert!(is_night_at(day_t_at(q * 2.0)), "midnight");
+        assert!(!is_night_at(day_t_at(q * 4.0)), "back to noon a full day later");
+
+        let steps = 2000;
+        let nights = (0..steps).filter(|i| is_night_at(day_t_at(DAY_CYCLE * *i as f32 / steps as f32))).count();
+        let fraction = nights as f32 / steps as f32;
+        assert!((fraction - 0.5).abs() < 0.01, "sun-below-horizon is half the cycle, got {fraction}");
+        let night_secs = DAY_CYCLE * fraction;
+        assert!((240.0..600.0).contains(&night_secs), "night lasts {night_secs}s, outside the playable range");
+    }
+
+    // world_secs is stored as elapsed-since-start and load rewinds start_time by it, so a save taken
+    // at some time of day reopens at that same time of day. The clamp is the part that can bite: a
+    // session past the clamp silently jumps, so the ceiling has to be a whole number of days.
+    #[test]
+    fn a_saved_clock_resumes_at_the_same_time_of_day() {
+        const CLAMP: f32 = 86_400.0;
+        for elapsed in [0.0f32, 37.5, DAY_CYCLE * 0.3, DAY_CYCLE * 1.7, CLAMP - 1.0] {
+            let resumed = day_t_at(elapsed.clamp(0.0, CLAMP));
+            assert!((day_t_at(elapsed) - resumed).abs() < 1e-4, "{elapsed}s round-tripped to a different phase");
+        }
+        assert!((CLAMP / DAY_CYCLE).fract() < 1e-6, "the world_secs clamp must be a whole number of days");
     }
 }

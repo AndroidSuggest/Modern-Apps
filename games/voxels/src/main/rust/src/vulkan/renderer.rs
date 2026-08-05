@@ -187,7 +187,7 @@ impl VulkanRenderer {
     }
     pub unsafe fn update_ubo(&mut self, view_proj: Mat4, player_pos: Vec3, time: f32, underwater: f32, night_vision: f32, dim: u8) {
         self.dim = dim;
-        let day_cycle=120.0; let day_t=(time/day_cycle)%1.0;
+        let day_cycle=crate::engine::DAY_CYCLE; let day_t=(time/day_cycle)%1.0;
         let sun_angle=day_t*std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
         let sun_dir=Vec3::new(sun_angle.cos()*0.3, sun_angle.sin(), sun_angle.cos()*0.1).normalize_or_zero();
         let mut day_factor=(sun_dir.y*0.5+0.5).clamp(0.0,1.0).powf(0.6);
