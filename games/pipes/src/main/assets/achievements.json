@@ -31,5 +31,22 @@
     "name": "5×5 Champion",
     "description": "Complete all levels in the 5×5 pack.",
     "targetProgress": 30
+  },
+  {
+    "id": "first_daily",
+    "name": "Daily Habit",
+    "description": "Complete a daily challenge level."
+  },
+  {
+    "id": "daily_streak_7",
+    "name": "Week Streak",
+    "description": "Clear the daily pack 7 days in a row.",
+    "targetProgress": 7
+  },
+  {
+    "id": "daily_streak_30",
+    "name": "Month Streak",
+    "description": "Clear the daily pack 30 days in a row.",
+    "targetProgress": 30
   }
 ]

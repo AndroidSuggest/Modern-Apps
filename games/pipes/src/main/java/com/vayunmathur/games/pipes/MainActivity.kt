@@ -29,6 +29,7 @@ import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
+import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.Icon
 import com.vayunmathur.library.ui.IconButton
@@ -50,10 +51,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.vayunmathur.games.pipes.data.DailyLevels
 import com.vayunmathur.games.pipes.data.LevelPack
 import com.vayunmathur.games.pipes.ui.GameBoard
 import com.vayunmathur.games.pipes.ui.PipesTheme
 import com.vayunmathur.games.pipes.util.AppBackupAgent
+import com.vayunmathur.games.pipes.util.DailyProgress
 import com.vayunmathur.games.pipes.util.GameBoardUiState
 import com.vayunmathur.games.pipes.util.PackProgress
 import com.vayunmathur.games.pipes.util.PipesActions
@@ -72,6 +75,9 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 class MainActivity : ComponentActivity() {
 
@@ -100,6 +106,12 @@ sealed interface Route : NavKey {
     data class Game(val packIndex: Int, val levelIndex: Int) : Route
 
     @Serializable
+    data object DailySelector : Route
+
+    @Serializable
+    data class DailyGame(val levelIndex: Int) : Route
+
+    @Serializable
     data object GameCenter : Route
 
     @Serializable
@@ -126,6 +138,12 @@ fun Navigation(viewModel: PipesViewModel) {
             entry<Route.Game> {
                 GameScreen(backStack, viewModel, it.packIndex, it.levelIndex)
             }
+            entry<Route.DailySelector> {
+                DailyLevelScreen(backStack, viewModel)
+            }
+            entry<Route.DailyGame> {
+                GameScreen(backStack, viewModel, PipesViewModel.DAILY_PACK_INDEX, it.levelIndex)
+            }
             entry<Route.GameCenter> {
                 GameCenterScreen(
                     backupAgent = AppBackupAgent(),
@@ -150,7 +168,17 @@ fun Navigation(viewModel: PipesViewModel) {
 @Composable
 fun PackScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, onOpenGameCenter: () -> Unit) {
     val levelStats by viewModel.levelStats.collectAsState()
+    val dailyCompleted by viewModel.dailyCompleted.collectAsState()
+    val dailyDay by viewModel.dailyDay.collectAsState()
+    val dailyStreak by viewModel.dailyStreak.collectAsState()
+
     PackListScreen(
+        daily = DailyProgress(
+            day = dailyDay,
+            completed = dailyCompleted,
+            total = DailyLevels.LEVELS_PER_DAY,
+            streak = dailyStreak,
+        ),
         packs = LevelPack.PACKS.map { pack ->
             PackProgress(
                 name = pack.name,
@@ -159,6 +187,7 @@ fun PackScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, onOpen
                 total = pack.levels.size,
             )
         },
+        onOpenDaily = { backStack.add(Route.DailySelector) },
         onOpenPack = { backStack.add(Route.LevelSelector(it)) },
         onOpenSettings = { backStack.add(Route.Settings) },
         onOpenGameCenter = onOpenGameCenter,
@@ -177,6 +206,8 @@ fun PackListScreen(
     onOpenPack: (Int) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenGameCenter: () -> Unit,
+    daily: DailyProgress? = null,
+    onOpenDaily: () -> Unit = {},
 ) {
     Scaffold(topBar = {
         TopAppBar(
@@ -196,6 +227,7 @@ fun PackListScreen(
             contentPadding = paddingValues + PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 0.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            daily?.let { item { DailyCard(it, onOpenDaily) } }
             itemsIndexed(packs) { index, pack ->
                 Card(
                     Modifier.clickable { onOpenPack(index) },
@@ -223,6 +255,105 @@ fun PackListScreen(
                             "${pack.completed}/${pack.total}",
                             style = MaterialTheme.typography.titleMedium
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyCard(daily: DailyProgress, onOpen: () -> Unit) {
+    Card(
+        Modifier.clickable { onOpen() },
+        colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    stringResource(R.string.daily_challenge),
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Text(
+                    formatEpochDay(daily.day),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "${daily.completed}/${daily.total}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    stringResource(R.string.daily_streak, daily.streak.toInt()),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+private fun formatEpochDay(day: Long): String = LocalDate.ofEpochDay(day)
+    .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+
+/** The 5 levels of today's daily pack, reusing the badge logic of the pack level grid. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DailyLevelScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel) {
+    val dailyPack by viewModel.dailyPack.collectAsState()
+    val dailyStats by viewModel.dailyStats.collectAsState()
+
+    // Generates on first open, and again if the day rolled over while the app was backgrounded.
+    LaunchedEffect(Unit) { viewModel.refreshDaily() }
+    Scaffold(topBar = {
+        TopAppBar(
+            { Text(stringResource(R.string.daily_challenge)) },
+            navigationIcon = { IconNavigation(backStack) }
+        )
+    }) { paddingValues ->
+        val levels = dailyPack?.levels
+        if (levels == null) {
+            Box(Modifier.fillMaxSize().padding(paddingValues), Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
+        LazyVerticalGrid(
+            GridCells.Adaptive(88.dp),
+            Modifier.fillMaxSize(),
+            contentPadding = paddingValues + PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 0.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            itemsIndexed(levels) { index, levelData ->
+                Card(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { backStack.add(Route.DailyGame(index)) },
+                    colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
+                ) {
+                    Box(Modifier.fillMaxSize().padding(8.dp)) {
+                        Text("${index + 1}", Modifier.align(Alignment.Center))
+                        val levelStat = dailyStats[levelData.id]
+                        Box(
+                            Modifier
+                                .size(20.dp)
+                                .align(Alignment.CenterEnd),
+                            Alignment.Center
+                        ) {
+                            when {
+                                levelStat == null -> return@Box
+                                levelStat.bestScore <= levelData.optimalMoves -> IconStar()
+                                else -> IconCheck()
+                            }
+                        }
                     }
                 }
             }
@@ -288,25 +419,39 @@ fun LevelScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packI
 /** Binds [PipesViewModel] to the stateless [GameBoardScreen] and loads the level. */
 @Composable
 fun GameScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packIndex: Int, levelIndex: Int) {
-    val pack = LevelPack.PACKS[packIndex]
     val uiState by viewModel.uiState.collectAsState()
-    val levelStats by viewModel.levelStats.collectAsState()
+    val packStats by viewModel.levelStats.collectAsState()
+    val dailyStats by viewModel.dailyStats.collectAsState()
+    val dailyPack by viewModel.dailyPack.collectAsState()
     val colorblind by viewModel.colorblind.collectAsState()
 
-    LaunchedEffect(packIndex, levelIndex) {
+    val isDaily = packIndex == PipesViewModel.DAILY_PACK_INDEX
+    val levels = if (isDaily) dailyPack?.levels else LevelPack.PACKS[packIndex].levels
+    val levelStats = if (isDaily) dailyStats else packStats
+
+    // Restoring straight onto a daily level can outrun pack generation.
+    LaunchedEffect(isDaily) { if (isDaily) viewModel.refreshDaily() }
+
+    LaunchedEffect(packIndex, levelIndex, levels) {
         viewModel.loadLevel(packIndex, levelIndex)
+    }
+
+    val levelData = levels?.getOrNull(levelIndex)
+    if (levels == null || levelData == null) {
+        Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+        return
     }
 
     val isReady = uiState.packIndex == packIndex &&
             uiState.levelIndex == levelIndex &&
             uiState.levelData != null
-    val currentLevelStats = pack.levels.getOrNull(levelIndex)?.id?.let { levelStats[it] }
+    val currentLevelStats = levelStats[levelData.id]
 
     GameBoardScreen(
         state = GameBoardUiState(
-            levelData = if (isReady) uiState.levelData!! else pack.levels[levelIndex],
+            levelData = if (isReady) uiState.levelData!! else levelData,
             levelIndex = levelIndex,
-            maxLevelIndex = pack.levels.lastIndex,
+            maxLevelIndex = levels.lastIndex,
             gameState = if (isReady) uiState.gameState else PipesGameState(),
             activeColor = if (isReady) uiState.activeColor else null,
             activePath = if (isReady) uiState.activePath else emptyList(),
@@ -320,7 +465,10 @@ fun GameScreen(backStack: NavBackStack<Route>, viewModel: PipesViewModel, packIn
         actions = viewModel,
         onBack = { backStack.pop() },
         onLevelChange = { newIndex ->
-            backStack.setLast(Route.Game(packIndex, newIndex.coerceIn(0, pack.levels.lastIndex)))
+            val clamped = newIndex.coerceIn(0, levels.lastIndex)
+            backStack.setLast(
+                if (isDaily) Route.DailyGame(clamped) else Route.Game(packIndex, clamped)
+            )
         },
     )
 }

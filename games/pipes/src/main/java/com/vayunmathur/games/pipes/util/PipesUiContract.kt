@@ -12,8 +12,7 @@ import com.vayunmathur.games.pipes.data.LevelData
  * runs one way: the screens depend on `util`, and the ViewModel implements [PipesActions].
  */
 
-/**
- * One row of the pack selector. Flattened to plain counts so the screen needs neither the
+/** One row of the pack selector. Flattened to plain counts so the screen needs neither the
  * asset-loaded packs nor the stats repository.
  */
 data class PackProgress(
@@ -21,6 +20,15 @@ data class PackProgress(
     val shape: String,
     val completed: Int,
     val total: Int,
+)
+
+/** The pinned daily-challenge card above the pack list. Null while the day's pack is generating. */
+data class DailyProgress(
+    /** Local epoch day the pack was generated for. */
+    val day: Long,
+    val completed: Int,
+    val total: Int,
+    val streak: Long,
 )
 
 /** Everything the game screen draws for one level. */

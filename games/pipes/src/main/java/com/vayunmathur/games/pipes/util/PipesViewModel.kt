@@ -5,16 +5,20 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.games.pipes.data.CellPos
 import com.vayunmathur.games.pipes.data.CompletedLevelsRepository
+import com.vayunmathur.games.pipes.data.DailyLevels
 import com.vayunmathur.games.pipes.data.LevelData
 import com.vayunmathur.games.pipes.data.LevelPack
 import com.vayunmathur.library.util.LevelStats
 import com.vayunmathur.library.util.AchievementsManager
+import com.vayunmathur.library.util.DailyChallengeStore
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.library.util.LevelStatsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -56,6 +60,36 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
 
     private val ds = DataStoreUtils.getInstance(application)
 
+    // ---- Daily challenge ----
+
+    /**
+     * Daily scores live in their own prefs file, pruned to the current day. They must not land in
+     * [repository], whose map size feeds the `level_50` achievement and the pack-completion
+     * checks — five new level IDs a day would inflate both.
+     */
+    private val dailyRepository = LevelStatsRepository(application, "daily_stats")
+
+    private val dailyStore = DailyChallengeStore(application, "pipes_daily")
+
+    private val _dailyDay = MutableStateFlow(dailyStore.todayEpochDay())
+    val dailyDay: StateFlow<Long> = _dailyDay.asStateFlow()
+
+    private val _dailyPack = MutableStateFlow<LevelPack?>(null)
+    val dailyPack: StateFlow<LevelPack?> = _dailyPack.asStateFlow()
+
+    private val _dailyStats = MutableStateFlow(dailyRepository.getLevelStats())
+    val dailyStats: StateFlow<Map<String, LevelStats>> = _dailyStats.asStateFlow()
+
+    val dailyStreak: StateFlow<Long> = dailyStore.currentStreak
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    /** How many of today's daily levels are solved. Derived from the IDs, so it needs no pack. */
+    val dailyCompleted: StateFlow<Int> =
+        combine(_dailyDay, _dailyStats) { day, stats ->
+            (0 until DailyLevels.LEVELS_PER_DAY)
+                .count { stats.containsKey(DailyLevels.levelId(day, it)) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     val colorblind: StateFlow<Boolean> = ds.booleanFlow(KEY_COLORBLIND)
         .stateIn(viewModelScope, SharingStarted.Eagerly, ds.getBoolean(KEY_COLORBLIND, false))
 
@@ -69,14 +103,43 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
         }
     }
 
+    /**
+     * Generates the day's pack off the main thread — deliberately not in `LevelPack.init()`, which
+     * runs synchronously in `onCreate`. Only runs when the player opens the daily; the pack-list
+     * card derives its progress from the level IDs alone.
+     */
+    fun refreshDaily() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val today = dailyStore.todayEpochDay()
+            if (_dailyDay.value == today && _dailyPack.value != null) return@launch
+            _dailyDay.value = today
+            withContext(Dispatchers.IO) {
+                // Only today's pack is ever playable, so yesterday's scores are dead weight.
+                dailyRepository.retainOnly(todayLevelIds(today))
+                _dailyStats.value = dailyRepository.getLevelStats()
+            }
+            _dailyPack.value = DailyLevels.packFor(today)
+        }
+    }
+
+    private fun todayLevelIds(day: Long): Set<String> =
+        (0 until DailyLevels.LEVELS_PER_DAY)
+            .mapTo(mutableSetOf()) { DailyLevels.levelId(day, it) }
+
+    /** Resolves a pack index to its levels, covering both shipped packs and the daily pack. */
+    private fun levelsFor(packIndex: Int): List<LevelData>? = when (packIndex) {
+        DAILY_PACK_INDEX -> _dailyPack.value?.levels
+        in LevelPack.PACKS.indices -> LevelPack.PACKS[packIndex].levels
+        else -> null
+    }
+
     fun loadLevel(packIndex: Int, levelIndex: Int) {
         val current = _uiState.value
         if (current.packIndex == packIndex &&
             current.levelIndex == levelIndex &&
             current.levelData != null
         ) return
-        val pack = LevelPack.PACKS[packIndex]
-        val levelData = pack.levels[levelIndex]
+        val levelData = levelsFor(packIndex)?.getOrNull(levelIndex) ?: return
         _uiState.value = PipesUiState(
             packIndex = packIndex,
             levelIndex = levelIndex,
@@ -246,12 +309,16 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
 
     private fun onLevelWon() {
         val s = _uiState.value
-        if (s.isLevelWon || s.packIndex < 0) return
+        if (s.isLevelWon || s.packIndex == NO_PACK_INDEX) return
         _uiState.update { it.copy(isLevelWon = true) }
 
-        val pack = LevelPack.PACKS[s.packIndex]
-        val level = pack.levels[s.levelIndex]
+        val level = s.levelData ?: return
         val moves = getCurrentMoves()
+
+        if (s.packIndex == DAILY_PACK_INDEX) {
+            onDailyLevelWon(level.id, moves, level.optimalMoves)
+            return
+        }
 
         viewModelScope.launch {
             val refreshed = withContext(Dispatchers.IO) {
@@ -274,6 +341,32 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
         }
     }
 
+    /** Daily wins record into the separate store, and extend the streak once the day is cleared. */
+    private fun onDailyLevelWon(levelId: String, moves: Int, optimalMoves: Int) {
+        val day = _dailyDay.value
+        viewModelScope.launch {
+            val refreshed = withContext(Dispatchers.IO) {
+                dailyRepository.updateBestScore(levelId, moves)
+                dailyRepository.getLevelStats()
+            }
+            _dailyStats.value = refreshed
+
+            achievementsManager.onAchievementUnlocked("first_flow")
+            achievementsManager.onAchievementUnlocked("first_daily")
+            if (moves <= optimalMoves) {
+                achievementsManager.onAchievementUnlocked("optimal_win")
+            }
+
+            val dayComplete = (0 until DailyLevels.LEVELS_PER_DAY)
+                .all { refreshed.containsKey(DailyLevels.levelId(day, it)) }
+            if (dayComplete) {
+                val streak = dailyStore.recordDayCompleted(day)
+                achievementsManager.onProgressUpdated("daily_streak_7", streak.best.toInt())
+                achievementsManager.onProgressUpdated("daily_streak_30", streak.best.toInt())
+            }
+        }
+    }
+
     fun getCurrentMoves(): Int = _uiState.value.history.size
 
     override fun onUndo() {
@@ -291,7 +384,7 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
 
     override fun onRestart() {
         val s = _uiState.value
-        if (s.history.isEmpty() || s.isLevelWon || s.packIndex < 0) return
+        if (s.history.isEmpty() || s.isLevelWon || s.packIndex == NO_PACK_INDEX) return
         _uiState.update {
             it.copy(
                 gameState = PipesGameState(),
@@ -309,5 +402,11 @@ class PipesViewModel(application: Application) : AndroidViewModel(application), 
 
     companion object {
         const val KEY_COLORBLIND = "pipes_colorblind"
+
+        /** Sentinel [PipesUiState.packIndex] for the date-generated daily pack. */
+        const val DAILY_PACK_INDEX = -2
+
+        /** Sentinel [PipesUiState.packIndex] for "no level loaded". */
+        private const val NO_PACK_INDEX = -1
     }
 }
