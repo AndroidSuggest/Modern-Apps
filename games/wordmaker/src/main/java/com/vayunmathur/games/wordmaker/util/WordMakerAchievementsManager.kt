@@ -3,6 +3,7 @@ package com.vayunmathur.games.wordmaker.util
 import android.content.Context
 import com.vayunmathur.games.wordmaker.data.LevelDataStore
 import com.vayunmathur.library.util.AchievementsManager
+import com.vayunmathur.library.util.DailyChallengeStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -13,6 +14,9 @@ class WordMakerAchievementsManager(
     json: String,
     private val levelDataStore: LevelDataStore
 ) : AchievementsManager(context, json) {
+
+    private val dailyStore = DailyChallengeStore(context, "wordmaker_daily")
+
     override fun checkExistingAchievements() {
         CoroutineScope(Dispatchers.IO).launch {
             val currentLevel = levelDataStore.currentLevel.first()
@@ -25,6 +29,13 @@ class WordMakerAchievementsManager(
             
             val totalBonus = levelDataStore.totalBonusWords.first()
             onProgressUpdated("bonus_hunter", totalBonus)
+
+            val bestStreak = dailyStore.bestStreak()
+            if (bestStreak > 0) {
+                onAchievementUnlocked("first_daily")
+                onProgressUpdated("daily_streak_7", bestStreak.toInt())
+                onProgressUpdated("daily_streak_30", bestStreak.toInt())
+            }
         }
     }
 }

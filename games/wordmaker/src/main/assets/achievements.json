@@ -38,5 +38,22 @@
     "id": "long_word",
     "name": "Lexicographer",
     "description": "Find a word with 7 or more letters."
+  },
+  {
+    "id": "first_daily",
+    "name": "Daily Habit",
+    "description": "Complete a daily challenge."
+  },
+  {
+    "id": "daily_streak_7",
+    "name": "Week Streak",
+    "description": "Complete the daily challenge 7 days in a row.",
+    "targetProgress": 7
+  },
+  {
+    "id": "daily_streak_30",
+    "name": "Month Streak",
+    "description": "Complete the daily challenge 30 days in a row.",
+    "targetProgress": 30
   }
 ]

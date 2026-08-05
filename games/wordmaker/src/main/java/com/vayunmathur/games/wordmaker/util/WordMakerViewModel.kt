@@ -9,7 +9,9 @@ import com.vayunmathur.games.wordmaker.data.CrosswordData
 import com.vayunmathur.games.wordmaker.data.Difficulty
 import com.vayunmathur.games.wordmaker.data.GameMode
 import com.vayunmathur.games.wordmaker.data.LevelDataStore
+import com.vayunmathur.library.util.DailyChallengeStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,14 +39,14 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
     private val casualFoundWords: StateFlow<Set<String>> = levelDataStore.foundWords
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
-    val bonusWords: StateFlow<Set<String>> = levelDataStore.bonusWords
+    private val casualBonusWords: StateFlow<Set<String>> = levelDataStore.bonusWords
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private val casualRevealedHints: StateFlow<Set<Pair<Int, Int>>> = levelDataStore.revealedHints
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     val tapToSpell: StateFlow<Boolean> = levelDataStore.tapToSpell
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-
-    val revealedHints: StateFlow<Set<Pair<Int, Int>>> = levelDataStore.revealedHints
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private val _hintCooldownEnd = MutableStateFlow(System.currentTimeMillis() + 30_000L)
     val hintCooldownEnd: StateFlow<Long> = _hintCooldownEnd.asStateFlow()
@@ -83,14 +85,65 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _casualCrossword = MutableStateFlow<CrosswordData?>(null)
 
+    // ---- Daily challenge state ----
+
+    private val dailyStore = DailyChallengeStore(application, "wordmaker_daily")
+
+    private val _dailyDay = MutableStateFlow(dailyStore.todayEpochDay())
+    val dailyDay: StateFlow<Long> = _dailyDay.asStateFlow()
+
+    private val _dailyCrossword = MutableStateFlow<CrosswordData?>(null)
+
+    val dailyStreak: StateFlow<Long> = dailyStore.currentStreak
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    val dailyBestStreak: StateFlow<Long> = dailyStore.bestStreakFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    /** Saved daily sets, blanked whenever the stored day is not the day currently being played. */
+    private fun <T> dailyScoped(saved: Flow<T>, empty: T): Flow<T> =
+        combine(_dailyDay, levelDataStore.dailyDay, saved) { today, stored, value ->
+            if (stored == today) value else empty
+        }
+
+    private val dailyFoundWords: StateFlow<Set<String>> =
+        dailyScoped(levelDataStore.dailyFoundWords, emptySet<String>())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private val dailyBonusWords: StateFlow<Set<String>> =
+        dailyScoped(levelDataStore.dailyBonusWords, emptySet<String>())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private val dailyRevealedHints: StateFlow<Set<Pair<Int, Int>>> =
+        dailyScoped(levelDataStore.dailyRevealedHints, emptySet<Pair<Int, Int>>())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     val crosswordData: StateFlow<CrosswordData?> =
-        combine(gameMode, _casualCrossword, _competitiveCrossword) { mode, casual, competitive ->
-            if (mode == GameMode.COMPETITIVE) competitive else casual
+        combine(gameMode, _casualCrossword, _competitiveCrossword, _dailyCrossword) { mode, casual, competitive, daily ->
+            when (mode) {
+                GameMode.COMPETITIVE -> competitive
+                GameMode.DAILY -> daily
+                GameMode.CASUAL -> casual
+            }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val foundWords: StateFlow<Set<String>> =
-        combine(gameMode, casualFoundWords, _competitiveFoundWords) { mode, casual, competitive ->
-            if (mode == GameMode.COMPETITIVE) competitive else casual
+        combine(gameMode, casualFoundWords, _competitiveFoundWords, dailyFoundWords) { mode, casual, competitive, daily ->
+            when (mode) {
+                GameMode.COMPETITIVE -> competitive
+                GameMode.DAILY -> daily
+                GameMode.CASUAL -> casual
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val bonusWords: StateFlow<Set<String>> =
+        combine(gameMode, casualBonusWords, dailyBonusWords) { mode, casual, daily ->
+            if (mode == GameMode.DAILY) daily else casual
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val revealedHints: StateFlow<Set<Pair<Int, Int>>> =
+        combine(gameMode, casualRevealedHints, dailyRevealedHints) { mode, casual, daily ->
+            if (mode == GameMode.DAILY) daily else casual
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private val _error = MutableStateFlow<String?>(null)
@@ -106,6 +159,9 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             currentLevel.collectLatest { level -> loadCasualLevel(level) }
         }
+        viewModelScope.launch {
+            gameMode.collectLatest { mode -> if (mode == GameMode.DAILY) refreshDaily() }
+        }
         // Auto-count words that become fully filled in by their crossing words, so the player
         // never has to retrace a word that is already complete on the board.
         viewModelScope.launch {
@@ -114,14 +170,55 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
                     if (data == null) return@collect
                     val incidental = data.incidentalWords(found)
                     if (incidental.isEmpty()) return@collect
-                    if (gameMode.value == GameMode.COMPETITIVE) {
-                        _competitiveFoundWords.value = _competitiveFoundWords.value + incidental
-                    } else {
-                        incidental.forEach { levelDataStore.addFoundWord(it) }
+                    when (gameMode.value) {
+                        GameMode.COMPETITIVE ->
+                            _competitiveFoundWords.value = _competitiveFoundWords.value + incidental
+                        GameMode.DAILY -> incidental.forEach { levelDataStore.addDailyFoundWord(it) }
+                        GameMode.CASUAL -> incidental.forEach { levelDataStore.addFoundWord(it) }
                     }
                 }
         }
         // Competitive mode always opens on the lobby; the player starts each level manually.
+    }
+
+    /**
+     * Rolls the daily over to today (discarding a previous day's progress) and generates the
+     * board. Cheap to call repeatedly: the board is only regenerated when the day changes.
+     */
+    private suspend fun refreshDaily() {
+        val today = dailyStore.todayEpochDay()
+        if (_dailyDay.value == today && _dailyCrossword.value != null) return
+        _dailyDay.value = today
+        _dailyCrossword.value = null
+        levelDataStore.ensureDailyDay(today)
+        val ctx = getApplication<Application>()
+        val data = withContext(Dispatchers.Default) { generateDailyLevel(ctx, today) }
+        _dailyCrossword.value = data
+        if (gameMode.value == GameMode.DAILY) {
+            _error.value = if (data == null) ctx.getString(R.string.error_parse_level) else null
+        }
+    }
+
+    /**
+     * The day's board. The offset keeps daily seeds clear of the small level-number seeds casual
+     * mode uses, so the two never generate the same puzzle.
+     */
+    private fun generateDailyLevel(ctx: Context, day: Long): CrosswordData? {
+        val generator = levelGenerator
+            ?: CompetitiveLevelGenerator.fromAssets(ctx).also { levelGenerator = it }
+        val seed = DAILY_SEED_OFFSET + day * 100
+        var data = generator.generate(Random(seed))
+        var attempt = 1
+        while (data == null && attempt < 5) {
+            data = generator.generate(Random(seed + attempt * 1_000_000L))
+            attempt++
+        }
+        return data
+    }
+
+    /** Records today's daily as solved, extending the streak. Idempotent within a day. */
+    fun onDailyWin() {
+        viewModelScope.launch { dailyStore.recordDayCompleted(_dailyDay.value) }
     }
 
     private suspend fun loadCasualLevel(level: Int) {
@@ -136,7 +233,7 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
             asset ?: generateSeededLevel(ctx, level)
         }
         _casualCrossword.value = data
-        if (gameMode.value != GameMode.COMPETITIVE) {
+        if (gameMode.value == GameMode.CASUAL) {
             _error.value = if (data == null) ctx.getString(R.string.error_parse_level) else null
         }
     }
@@ -185,6 +282,8 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
             _competitiveActive.value = false
             _competitiveResult.value = null
             _competitiveDeadline.value = 0L
+            // The error belongs to the mode that produced it, not to the one being entered.
+            _error.value = null
         }
     }
 
@@ -222,14 +321,16 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun addFoundWord(word: String) {
-        if (gameMode.value == GameMode.COMPETITIVE) {
-            _competitiveFoundWords.value = _competitiveFoundWords.value + word
-        } else {
-            viewModelScope.launch { levelDataStore.addFoundWord(word) }
+        when (gameMode.value) {
+            GameMode.COMPETITIVE -> _competitiveFoundWords.value = _competitiveFoundWords.value + word
+            GameMode.DAILY -> viewModelScope.launch { levelDataStore.addDailyFoundWord(word) }
+            GameMode.CASUAL -> viewModelScope.launch { levelDataStore.addFoundWord(word) }
         }
     }
 
-    override suspend fun addBonusWord(word: String): Int = levelDataStore.addBonusWord(word)
+    override suspend fun addBonusWord(word: String): Int =
+        if (gameMode.value == GameMode.DAILY) levelDataStore.addDailyBonusWord(word)
+        else levelDataStore.addBonusWord(word)
 
     fun setTapToSpell(enabled: Boolean) {
         viewModelScope.launch { levelDataStore.setTapToSpell(enabled) }
@@ -246,12 +347,18 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
 
         val target = unrevealed.random()
         _hintCooldownEnd.value = System.currentTimeMillis() + 30_000L
+        val daily = gameMode.value == GameMode.DAILY
         viewModelScope.launch {
-            levelDataStore.addRevealedHint(target.first, target.second)
+            if (daily) {
+                levelDataStore.addDailyRevealedHint(target.first, target.second)
+            } else {
+                levelDataStore.addRevealedHint(target.first, target.second)
+            }
             val nowRevealed = revealed + target
             crosswordData.letterPositions.forEach { (word, occurrences) ->
                 if (word !in foundWords && occurrences.any { nowRevealed.containsAll(it) }) {
-                    levelDataStore.addFoundWord(word)
+                    if (daily) levelDataStore.addDailyFoundWord(word)
+                    else levelDataStore.addFoundWord(word)
                 }
             }
         }
@@ -260,5 +367,8 @@ class WordMakerViewModel(application: Application) : AndroidViewModel(applicatio
     companion object {
         /** Highest level shipped as a designed asset; higher levels are generated at runtime. */
         const val MAX_DESIGNED_LEVEL = 8000
+
+        /** Keeps date-derived daily seeds far away from the level-number seeds casual mode uses. */
+        private const val DAILY_SEED_OFFSET = 700_000_000L
     }
 }

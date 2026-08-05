@@ -42,6 +42,15 @@
     <!-- CompetitiveLobbyScreen: Result when timer expired. %1$d = points delta negative e.g. -15 or penalized, but displays as positive in string with context. Sentence -->
     <string name="competitive_timed_out">Time\'s up! <xliff:g id="points" example="-15">%1$d</xliff:g> points</string>
 
+    <!-- GameModeDropdown: Daily challenge mode label. One date-seeded puzzle per day. Adjective -->
+    <string name="mode_daily">Daily</string>
+    <!-- DailyStatusBar: Title shown above the board in daily mode. Noun phrase -->
+    <string name="daily_challenge">Daily Challenge</string>
+    <!-- DailyStatusBar: Consecutive days solved. %1$d = streak length e.g. 5. Noun phrase with number -->
+    <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> day streak</string>
+    <!-- WordGameScreen: Shown after solving the daily, in place of the Next Level button. Sentence -->
+    <string name="daily_come_back_tomorrow">Solved! Come back tomorrow.</string>
+
     <!-- LetterChooser: Accessibility content description for shuffle button that randomizes letter order. Verb -->
     <string name="cd_shuffle">Shuffle</string>
     <!-- WordGameScreen: Accessibility description for hint button (help icon) that reveals a letter with 30s cooldown indicator. Noun -->

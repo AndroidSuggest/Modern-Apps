@@ -260,14 +260,23 @@ fun WordGamePage(
     val competitiveScore by viewModel.competitiveScore.collectAsState()
     val competitiveLevelNumber by viewModel.competitiveLevelNumber.collectAsState()
     val competitiveDeadline by viewModel.competitiveDeadline.collectAsState()
+    val dailyDay by viewModel.dailyDay.collectAsState()
+    val dailyStreak by viewModel.dailyStreak.collectAsState()
+    val dailyBestStreak by viewModel.dailyBestStreak.collectAsState()
 
     val isCompetitive = gameMode == GameMode.COMPETITIVE
+    val isDaily = gameMode == GameMode.DAILY
     val isWon = crosswordData.winsWith(foundWords)
 
     LaunchedEffect(isWon) {
         if (!isWon) return@LaunchedEffect
         if (isCompetitive) {
             viewModel.onCompetitiveWin()
+            return@LaunchedEffect
+        }
+        if (isDaily) {
+            viewModel.onDailyWin()
+            achievementsManager.onAchievementUnlocked("first_daily")
             return@LaunchedEffect
         }
         if (currentLevel == 1) achievementsManager.onAchievementUnlocked("level_1_done")
@@ -277,6 +286,12 @@ fun WordGamePage(
         achievementsManager.onProgressUpdated("level_50", currentLevel)
         achievementsManager.onProgressUpdated("level_100", currentLevel)
         achievementsManager.onProgressUpdated("level_500", currentLevel)
+    }
+
+    LaunchedEffect(dailyBestStreak) {
+        if (dailyBestStreak <= 0L) return@LaunchedEffect
+        achievementsManager.onProgressUpdated("daily_streak_7", dailyBestStreak.toInt())
+        achievementsManager.onProgressUpdated("daily_streak_30", dailyBestStreak.toInt())
     }
 
     // The achievements manager belongs to the activity, not the ViewModel, so the two
@@ -307,7 +322,9 @@ fun WordGamePage(
             gameMode = gameMode,
             competitiveScore = competitiveScore,
             competitiveLevelNumber = competitiveLevelNumber,
-            competitiveDeadline = competitiveDeadline
+            competitiveDeadline = competitiveDeadline,
+            dailyDay = dailyDay,
+            dailyStreak = dailyStreak
         ),
         actions = actions,
         onOpenGameCenter = onOpenGameCenter,
@@ -340,7 +357,12 @@ fun WordGameScreen(
     val competitiveLevelNumber = state.competitiveLevelNumber
     val competitiveDeadline = state.competitiveDeadline
     val isCompetitive = gameMode == GameMode.COMPETITIVE
-    val levelKey = if (isCompetitive) "c$competitiveLevelNumber" else "n$currentLevel"
+    val isDaily = gameMode == GameMode.DAILY
+    val levelKey = when (gameMode) {
+        GameMode.COMPETITIVE -> "c$competitiveLevelNumber"
+        GameMode.DAILY -> "d${state.dailyDay}"
+        GameMode.CASUAL -> "n$currentLevel"
+    }
     var showBonusWordsDialog by remember(levelKey) { mutableStateOf(false) }
     var showHintDialog by remember(levelKey) { mutableStateOf(false) }
     var remainingCooldown by remember { mutableLongStateOf(0L) }
@@ -500,13 +522,20 @@ fun WordGameScreen(
                         score = competitiveScore,
                         remainingTimeMs = remainingTime
                     )
+                } else if (isDaily) {
+                    DailyStatusBar(streak = state.dailyStreak)
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 Box(
                     modifier = Modifier.height(320.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isWon && !isCompetitive) {
+                    if (isWon && isDaily) {
+                        Text(
+                            stringResource(R.string.daily_come_back_tomorrow),
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (isWon && !isCompetitive) {
                         Button(onClick = { actions.saveLevel(currentLevel + 1) }) {
                             Text(stringResource(R.string.next_level))
                         }
@@ -682,30 +711,41 @@ fun GameModeDropdown(selected: GameMode, onSelected: (GameMode) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { expanded = true }) {
-            Text(
-                stringResource(
-                    if (selected == GameMode.COMPETITIVE) R.string.mode_competitive else R.string.mode_casual
-                ),
-                fontWeight = FontWeight.Bold
-            )
+            Text(stringResource(gameModeLabel(selected)), fontWeight = FontWeight.Bold)
             Text("  ▾", fontWeight = FontWeight.Bold)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.mode_casual)) },
-                onClick = {
-                    expanded = false
-                    onSelected(GameMode.CASUAL)
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.mode_competitive)) },
-                onClick = {
-                    expanded = false
-                    onSelected(GameMode.COMPETITIVE)
-                }
-            )
+            GameMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(gameModeLabel(mode))) },
+                    onClick = {
+                        expanded = false
+                        onSelected(mode)
+                    }
+                )
+            }
         }
+    }
+}
+
+private fun gameModeLabel(mode: GameMode) = when (mode) {
+    GameMode.CASUAL -> R.string.mode_casual
+    GameMode.COMPETITIVE -> R.string.mode_competitive
+    GameMode.DAILY -> R.string.mode_daily
+}
+
+/** Streak readout shown above the board in daily mode, in place of the competitive timer. */
+@Composable
+fun DailyStatusBar(streak: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(stringResource(R.string.daily_challenge), fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Text(stringResource(R.string.daily_streak, streak.toInt()))
     }
 }
 

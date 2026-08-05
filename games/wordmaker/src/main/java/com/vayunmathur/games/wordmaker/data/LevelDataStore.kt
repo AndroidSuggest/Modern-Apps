@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -27,6 +28,20 @@ class LevelDataStore(context: Context) {
         private val GAME_MODE_KEY = stringPreferencesKey("game_mode")
         private val DIFFICULTY_KEY = stringPreferencesKey("competitive_difficulty")
         private val COMPETITIVE_SCORE_KEY = intPreferencesKey("competitive_score")
+        private val DAILY_DAY_KEY = longPreferencesKey("daily_day")
+        private val DAILY_FOUND_WORDS_KEY = stringSetPreferencesKey("daily_found_words")
+        private val DAILY_BONUS_WORDS_KEY = stringSetPreferencesKey("daily_bonus_words")
+        private val DAILY_REVEALED_HINTS_KEY = stringSetPreferencesKey("daily_revealed_hints")
+
+        /** Sentinel for "no daily has ever been opened", distinct from epoch day 0 (1970-01-01). */
+        const val NO_DAY = Long.MIN_VALUE
+
+        private fun Set<String>?.toCells(): Set<Pair<Int, Int>> = this?.mapNotNull { s ->
+            val parts = s.split(",")
+            if (parts.size == 2) {
+                parts[0].toIntOrNull()?.let { r -> parts[1].toIntOrNull()?.let { c -> r to c } }
+            } else null
+        }?.toSet() ?: emptySet()
     }
 
     val currentLevel: Flow<Int> = appContext.dataStore.data.map { it[LEVEL_KEY] ?: 1 }
@@ -47,12 +62,55 @@ class LevelDataStore(context: Context) {
 
     val competitiveScore: Flow<Int> = appContext.dataStore.data.map { it[COMPETITIVE_SCORE_KEY] ?: 0 }
 
-    val revealedHints: Flow<Set<Pair<Int, Int>>> = appContext.dataStore.data.map { prefs ->
-        prefs[REVEALED_HINTS_KEY]?.mapNotNull { s ->
-            val parts = s.split(",")
-            if (parts.size == 2) parts[0].toIntOrNull()?.let { r -> parts[1].toIntOrNull()?.let { c -> r to c } }
-            else null
-        }?.toSet() ?: emptySet()
+    val revealedHints: Flow<Set<Pair<Int, Int>>> =
+        appContext.dataStore.data.map { it[REVEALED_HINTS_KEY].toCells() }
+
+    /** Epoch day the saved daily progress belongs to; [NO_DAY] before the first daily is opened. */
+    val dailyDay: Flow<Long> = appContext.dataStore.data.map { it[DAILY_DAY_KEY] ?: NO_DAY }
+    val dailyFoundWords: Flow<Set<String>> =
+        appContext.dataStore.data.map { it[DAILY_FOUND_WORDS_KEY] ?: emptySet() }
+    val dailyBonusWords: Flow<Set<String>> =
+        appContext.dataStore.data.map { it[DAILY_BONUS_WORDS_KEY] ?: emptySet() }
+    val dailyRevealedHints: Flow<Set<Pair<Int, Int>>> =
+        appContext.dataStore.data.map { it[DAILY_REVEALED_HINTS_KEY].toCells() }
+
+    /** Rolls the saved daily progress over to [day], discarding the previous day's state. */
+    suspend fun ensureDailyDay(day: Long) {
+        appContext.dataStore.edit { settings ->
+            if (settings[DAILY_DAY_KEY] == day) return@edit
+            settings[DAILY_DAY_KEY] = day
+            settings[DAILY_FOUND_WORDS_KEY] = emptySet()
+            settings[DAILY_BONUS_WORDS_KEY] = emptySet()
+            settings[DAILY_REVEALED_HINTS_KEY] = emptySet()
+        }
+    }
+
+    suspend fun addDailyFoundWord(word: String) {
+        appContext.dataStore.edit { settings ->
+            settings[DAILY_FOUND_WORDS_KEY] = (settings[DAILY_FOUND_WORDS_KEY] ?: emptySet()) + word
+        }
+    }
+
+    suspend fun addDailyRevealedHint(row: Int, col: Int) {
+        appContext.dataStore.edit { settings ->
+            settings[DAILY_REVEALED_HINTS_KEY] =
+                (settings[DAILY_REVEALED_HINTS_KEY] ?: emptySet()) + "$row,$col"
+        }
+    }
+
+    /** Adds a daily bonus word, still folding it into the lifetime total the achievement tracks. */
+    suspend fun addDailyBonusWord(word: String): Int {
+        var newTotal = 0
+        appContext.dataStore.edit { settings ->
+            val current = settings[DAILY_BONUS_WORDS_KEY] ?: emptySet()
+            newTotal = settings[TOTAL_BONUS_WORDS_KEY] ?: 0
+            if (word !in current) {
+                settings[DAILY_BONUS_WORDS_KEY] = current + word
+                newTotal += 1
+                settings[TOTAL_BONUS_WORDS_KEY] = newTotal
+            }
+        }
+        return newTotal
     }
 
     suspend fun setTapToSpell(enabled: Boolean) {

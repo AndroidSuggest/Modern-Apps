@@ -28,6 +28,9 @@ data class WordGameUiState(
     val competitiveLevelNumber: Int = 0,
     /** Epoch millis at which the competitive timer expires; 0 outside competitive play. */
     val competitiveDeadline: Long = 0L,
+    /** Local epoch day the daily board belongs to. */
+    val dailyDay: Long = 0L,
+    val dailyStreak: Long = 0L,
 )
 
 /** Everything the between-levels competitive lobby draws. */

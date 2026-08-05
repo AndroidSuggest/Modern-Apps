@@ -1,9 +1,13 @@
 package com.vayunmathur.games.wordmaker.data
 
-/** Whether the player is on the endless casual progression or the timed competitive ladder. */
+/**
+ * Whether the player is on the endless casual progression, the timed competitive ladder, or the
+ * single date-seeded daily puzzle.
+ */
 enum class GameMode {
     CASUAL,
     COMPETITIVE,
+    DAILY,
 }
 
 /**
