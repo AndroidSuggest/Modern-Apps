@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -224,26 +225,37 @@ private fun CraftingTable(recipesJson: String) {
             val arr = org.json.JSONArray(recipesJson)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
-                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"))
+                Recipe(o.getInt("in"), o.getInt("inN"), o.optInt("in2", 0), o.optInt("in2N", 0), o.getInt("out"), o.getInt("outN"), o.optString("cat", "block"))
             }
         } catch (_: Exception) { emptyList() }
     }
     var sel by remember { mutableStateOf(0) }
+    var cat by remember { mutableStateOf("block") }
     val r = recipes.getOrNull(sel)
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Left: product picker.
-        Column(Modifier.width(160.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.products), color = Color.White.copy(0.6f), fontSize = 12.sp)
-            recipes.forEachIndexed { i, rec ->
-                val icon = rememberBlockIcon(rec.outId)
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
-                        .background(if (i == sel) Color(0xFF3A6B3A) else Color.White.copy(alpha = 0.08f))
-                        .clickable { sel = i }.padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(26.dp), filterQuality = FilterQuality.None)
-                    Text(blockNames[rec.outId] ?: "", color = Color.White.copy(0.95f), fontSize = 12.sp)
+        // Left: product picker, filtered to one shelf so the list stays navigable.
+        Column(Modifier.width(190.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                recipeCategories.forEach { (key, label) ->
+                    Box(
+                        Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(if (cat == key) Color(0xFF3A6B3A) else Color.White.copy(0.08f))
+                            .clickable { cat = key }.padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) { Text(label, color = Color.White.copy(0.9f), fontSize = 11.sp) }
+                }
+            }
+            Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                recipes.withIndex().filter { it.value.cat == cat }.forEach { (i, rec) ->
+                    val icon = rememberBlockIcon(rec.outId)
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                            .background(if (i == sel) Color(0xFF3A6B3A) else Color.White.copy(alpha = 0.08f))
+                            .clickable { sel = i }.padding(6.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(26.dp), filterQuality = FilterQuality.None)
+                        Text(blockNames[rec.outId] ?: "", color = Color.White.copy(0.95f), fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -278,7 +290,16 @@ private fun CraftingTable(recipesJson: String) {
     }
 }
 
-private data class Recipe(val inId: Int, val inN: Int, val in2Id: Int, val in2N: Int, val outId: Int, val outN: Int)
+private data class Recipe(
+    val inId: Int, val inN: Int, val in2Id: Int, val in2N: Int,
+    val outId: Int, val outN: Int, val cat: String,
+)
+
+// Crafting shelves, in the order they appear as filter chips.
+private val recipeCategories = listOf(
+    "block" to "Blocks", "tool" to "Tools", "armor" to "Armor",
+    "material" to "Materials", "food" to "Food", "blessing" to "Blessings",
+)
 
 private data class BlessingInfo(val id: Int, val name: String, val effect: String)
 

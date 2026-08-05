@@ -729,7 +729,10 @@ pub fn get_trades_json() -> String {
 }
 pub fn get_recipes_json() -> String {
     let items: Vec<_> = crate::inventory::RECIPES.iter()
-        .map(|(i1, c1, i2, c2, oid, oc)| serde_json::json!({"in": i1, "inN": c1, "in2": i2, "in2N": c2, "out": oid, "outN": oc}))
+        .map(|(i1, c1, i2, c2, oid, oc)| serde_json::json!({
+            "in": i1, "inN": c1, "in2": i2, "in2N": c2, "out": oid, "outN": oc,
+            "cat": crate::inventory::recipe_category(*oid),
+        }))
         .collect();
     serde_json::json!(items).to_string()
 }

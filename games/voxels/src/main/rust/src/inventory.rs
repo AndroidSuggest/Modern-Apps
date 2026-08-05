@@ -172,6 +172,17 @@ pub const TRADES: [(u8, i32, u8, i32); 16] = [
     (222, 8, 156, 1),  // 8 Raw Meat -> 1 Emerald (a butcher's price)
 ];
 
+// Which shelf of the crafting menu a recipe belongs on. Purely for the UI — the recipe table itself
+// stays a flat list so indices remain stable.
+pub fn recipe_category(out: u8) -> &'static str {
+    if crate::blessing::is_blessing(out) { return "blessing"; }
+    if crate::item::food_effects(out).is_some() { return "food"; }
+    if crate::item::is_tool(out) { return "tool"; }
+    if crate::item::is_armor(out) { return "armor"; }
+    if crate::item::is_item(out) { return "material"; }
+    "block"
+}
+
 impl Default for Inventory {
     fn default() -> Self {
         let mut slots = [InvSlot::default(); SLOTS];
@@ -380,6 +391,21 @@ mod tests {
     use super::*;
 
     // Every crafting and smelting output must have a sane recipe: no zero ids, no free lunches.
+    // The crafting menu only renders the six shelves it knows about. A recipe landing outside them
+    // would be unreachable in the UI even though the engine can still craft it.
+    #[test]
+    fn every_recipe_lands_on_a_known_shelf() {
+        const SHELVES: [&str; 6] = ["block", "tool", "armor", "material", "food", "blessing"];
+        for &(_, _, _, _, out, _) in RECIPES.iter() {
+            let cat = recipe_category(out);
+            assert!(SHELVES.contains(&cat), "recipe for {out} has unknown category {cat}");
+        }
+        // Each shelf should actually have something on it.
+        for shelf in SHELVES {
+            assert!(RECIPES.iter().any(|r| recipe_category(r.4) == shelf), "shelf {shelf} is empty");
+        }
+    }
+
     #[test]
     fn recipe_tables_are_well_formed() {
         for (i, &(in1, n1, in2, n2, out, out_n)) in RECIPES.iter().enumerate() {
