@@ -10,7 +10,7 @@ Instructions
 
 Translations
 - Translatons should be made through weblate (https://hosted.weblate.org/projects/modern-apps/)
-  - Translations may be included in a PR that adds new strings, but may not be a pr themselves
+  - Translations may not even be included in a PR that adds new strings due to the way weblate is set up.
 - AI is not allowed for translations, and neither is any translation software like Google Translate
 
 Genral Policies
