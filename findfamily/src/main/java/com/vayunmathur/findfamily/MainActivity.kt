@@ -1,6 +1,7 @@
 package com.vayunmathur.findfamily
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,6 +53,7 @@ import com.vayunmathur.findfamily.ui.MainPage
 import com.vayunmathur.findfamily.ui.UwbRangingScreen
 import com.vayunmathur.findfamily.ui.dialogs.AddLinkDialog
 import com.vayunmathur.findfamily.ui.dialogs.AddPersonDialog
+import com.vayunmathur.findfamily.ui.dialogs.decodeBase26
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.util.DialogPage
@@ -84,8 +86,16 @@ class MainActivity : ComponentActivity() {
         FindFamilyViewModelFactory(application, userDao, waypointDao, locationValueDao, temporaryLinkDao)
     }
 
+    /**
+     * Pending `findfamily://add/<base26>` invite id (already decoded), set on cold
+     * start and via [onNewIntent] for warm starts. Read from Compose so a tap routes
+     * to the prefilled Add Person dialog; cleared once consumed.
+     */
+    private val deepLinkAddId = mutableStateOf<Long?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        deepLinkAddId.value = parseAddDeepLink(intent)
         // FIRST_PARTY: api.vayunmathur.com + data.vayunmathur.com + findfamily.cc (Cloudflare ISRG+GTS)
         NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
@@ -126,10 +136,37 @@ class MainActivity : ComponentActivity() {
                             ?.getLongExtra(EXTRA_UWB_PEER_ID, -1L)
                             ?.takeIf { it != -1L }
                     }
-                    Navigation(platform, ffViewModel, ffViewModel.missingFeatures, deepLinkPeerId)
+                    Navigation(
+                        platform,
+                        ffViewModel,
+                        ffViewModel.missingFeatures,
+                        deepLinkPeerId,
+                        deepLinkAddId.value,
+                        onDeepLinkAddConsumed = { deepLinkAddId.value = null },
+                    )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop: warm-start links arrive here. Keep getIntent() in sync and
+        // surface the invite so Compose routes to the prefilled dialog.
+        setIntent(intent)
+        parseAddDeepLink(intent)?.let { deepLinkAddId.value = it }
+    }
+
+    /**
+     * Decodes a `findfamily://add/<base26Userid>` invite to a numeric user id, or
+     * null for any other intent. The link carries only the sender's public id.
+     */
+    private fun parseAddDeepLink(intent: Intent?): Long? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "findfamily" || data.host != "add") return null
+        val segment = data.lastPathSegment?.trim()?.uppercase() ?: return null
+        if (segment.isEmpty() || segment.any { it !in 'A'..'Z' }) return null
+        return runCatching { segment.decodeBase26() }.getOrNull()
     }
 }
 
@@ -305,6 +342,8 @@ fun Navigation(
     ffViewModel: FindFamilyViewModel,
     showMissingFeatures: Boolean,
     deepLinkUwbPeerId: Long? = null,
+    deepLinkAddId: Long? = null,
+    onDeepLinkAddConsumed: () -> Unit = {},
 ) {
     val backStack = rememberNavBackStack<Route>(Route.MainPage())
 
@@ -317,6 +356,15 @@ fun Navigation(
     LaunchedEffect(deepLinkUwbPeerId) {
         if (deepLinkUwbPeerId != null) {
             backStack.add(Route.UwbRangingPage(deepLinkUwbPeerId))
+        }
+    }
+
+    // A tapped invite prefills the Add Person dialog; the user still explicitly
+    // accepts, so the connection/crypto flow is unchanged.
+    LaunchedEffect(deepLinkAddId) {
+        if (deepLinkAddId != null) {
+            backStack.add(Route.AddPersonDialog(deepLinkAddId))
+            onDeepLinkAddConsumed()
         }
     }
 

@@ -191,6 +191,10 @@
     <string name="accept_location_request">Accept Location Request</string>
     <!-- AddPersonDialog: Button to send location sharing request. Verb phrase -->
     <string name="request_location">Request Location</string>
+    <!-- AddPersonDialog: Button that opens the system share sheet with an invite link. Verb phrase -->
+    <string name="share_invite_link">Share invite link</string>
+    <!-- AddPersonDialog: Title of the system share chooser for the invite link. Noun phrase -->
+    <string name="share_invite_link_chooser">Share FindFamily invite</string>
 
     <!-- Platform: Label for clipboard data when copying ID. Generic noun -->
     <string name="clipboard_label">text</string>

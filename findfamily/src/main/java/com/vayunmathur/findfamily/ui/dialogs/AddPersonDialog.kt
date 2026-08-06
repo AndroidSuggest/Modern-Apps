@@ -3,10 +3,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.findfamily.util.FindFamilyViewModel
@@ -49,6 +56,7 @@ fun AddPersonDialog(
     }
 
     val userStatus = usersByID[userid.decodeBase26()]?.requestStatus
+    val context = LocalContext.current
 
     Dialog({backStack.pop()}) {
         Card {
@@ -67,6 +75,25 @@ fun AddPersonDialog(
                     },
                     readOnly = true
                 )
+
+                // Share sheet instead of copy/paste: sends findfamily://add/<myId>,
+                // which prefills the recipient's Add Person dialog. The link carries
+                // only a public id — never a key — so it's safe to share anywhere.
+                OutlinedButton(
+                    {
+                        val link = "findfamily://add/${Networking.userid.encodeBase26()}"
+                        ExternalIntents.shareText(
+                            context,
+                            link,
+                            context.getString(R.string.share_invite_link_chooser),
+                        )
+                    },
+                    Modifier.fillMaxWidth()
+                ) {
+                    IconShare()
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.share_invite_link))
+                }
 
                 OutlinedTextField(
                     userid,
