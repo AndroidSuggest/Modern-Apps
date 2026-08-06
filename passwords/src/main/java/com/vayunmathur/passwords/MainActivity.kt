@@ -12,6 +12,7 @@ import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -66,7 +67,9 @@ class MainActivity : FragmentActivity() {
                 }
                 setContent {
                     DynamicTheme {
-                        Navigation(passwordsViewModel, passphrase)
+                        OfflineAware {
+                            Navigation(passwordsViewModel, passphrase)
+                        }
                     }
                 }
             },
