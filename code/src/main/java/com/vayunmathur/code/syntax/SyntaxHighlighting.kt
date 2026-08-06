@@ -49,9 +49,20 @@ enum class Language(val label: String) {
     C("C"),
     CPP("C++"),
     RUST("Rust"),
+    GO("Go"),
+    SWIFT("Swift"),
+    RUBY("Ruby"),
+    PHP("PHP"),
     JSON("JSON"),
     XML("XML"),
     MARKDOWN("Markdown"),
+    YAML("YAML"),
+    TOML("TOML"),
+    SHELL("Shell"),
+    CSS("CSS"),
+    SQL("SQL"),
+    DOCKERFILE("Dockerfile"),
+    GRADLE("Gradle"),
     PLAINTEXT("Plain Text");
 
     /** The tokenizer for this language, or null for languages we render without colors. */
@@ -60,6 +71,7 @@ enum class Language(val label: String) {
     companion object {
         /** Picks a language from a file name's extension, defaulting to plain text. */
         fun fromFileName(name: String): Language {
+            if (name == "Dockerfile" || name.startsWith("Dockerfile.")) return DOCKERFILE
             val ext = name.substringAfterLast('.', "").lowercase()
             return when (ext) {
                 "kt", "kts" -> KOTLIN
@@ -70,9 +82,19 @@ enum class Language(val label: String) {
                 "c", "h" -> C
                 "cpp", "cc", "cxx", "hpp", "hh", "hxx" -> CPP
                 "rs" -> RUST
+                "go" -> GO
+                "swift" -> SWIFT
+                "rb" -> RUBY
+                "php" -> PHP
                 "json" -> JSON
                 "xml", "html", "htm", "svg", "xhtml" -> XML
                 "md", "markdown" -> MARKDOWN
+                "yml", "yaml" -> YAML
+                "toml" -> TOML
+                "sh", "bash", "zsh" -> SHELL
+                "css" -> CSS
+                "sql" -> SQL
+                "gradle" -> GRADLE
                 else -> PLAINTEXT
             }
         }
@@ -88,10 +110,14 @@ private const val TRIPLE_SINGLE = "'''[\\s\\S]*?'''"
 private const val LINE_COMMENT = "//[^\\n]*"
 private const val BLOCK_COMMENT = "/\\*[\\s\\S]*?\\*/"
 private const val HASH_COMMENT = "#[^\\n]*"
+private const val SQL_LINE_COMMENT = "--[^\\n]*"
 private const val NUMBER = "\\b(?:0[xX][0-9a-fA-F_]+|\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d+)?[fFlLuU]*)\\b"
 private const val ANNOTATION = "@\\w+"
 
 private fun keywords(vararg words: String) = "\\b(?:" + words.joinToString("|") + ")\\b"
+
+/** Case-insensitive keyword alternation, for languages whose keywords ignore case (SQL, Dockerfile). */
+private fun keywordsCI(vararg words: String) = "\\b(?i:" + words.joinToString("|") + ")\\b"
 
 private fun specFor(language: Language): LanguageSpec? = when (language) {
     Language.KOTLIN, Language.JAVA -> LanguageSpec(
@@ -223,6 +249,175 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
             TokenKind.ANNOTATION to "\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__", // bold
             TokenKind.ANNOTATION to "\\*[^*\\n]+\\*|_[^_\\n]+_",       // italic
             TokenKind.COMMENT to "^>.*$", // blockquote
+        )
+    )
+
+    Language.GO -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to BLOCK_COMMENT,
+            TokenKind.COMMENT to LINE_COMMENT,
+            TokenKind.STRING to BACKTICK_STRING,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.KEYWORD to keywords(
+                "break", "case", "chan", "const", "continue", "default", "defer", "else",
+                "fallthrough", "false", "for", "func", "go", "goto", "if", "import", "interface",
+                "iota", "map", "nil", "package", "range", "return", "select", "struct", "switch",
+                "true", "type", "var",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.SWIFT -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to BLOCK_COMMENT,
+            TokenKind.COMMENT to LINE_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.ANNOTATION to ANNOTATION,
+            TokenKind.KEYWORD to keywords(
+                "as", "associatedtype", "async", "await", "break", "case", "catch", "class",
+                "continue", "default", "defer", "deinit", "do", "else", "enum", "extension",
+                "fallthrough", "false", "fileprivate", "final", "for", "func", "guard", "if",
+                "import", "in", "init", "internal", "is", "lazy", "let", "nil", "open", "override",
+                "private", "protocol", "public", "repeat", "return", "self", "static", "struct",
+                "super", "switch", "throw", "throws", "true", "try", "typealias", "unowned", "var",
+                "weak", "where", "while",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.RUBY -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to HASH_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.KEYWORD to keywords(
+                "and", "attr_accessor", "attr_reader", "attr_writer", "begin", "break", "case",
+                "class", "def", "do", "else", "elsif", "end", "ensure", "false", "for", "if", "in",
+                "lambda", "module", "next", "nil", "not", "or", "proc", "puts", "raise", "redo",
+                "require", "require_relative", "rescue", "retry", "return", "self", "super", "then",
+                "true", "unless", "until", "when", "while", "yield",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.PHP -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to BLOCK_COMMENT,
+            TokenKind.COMMENT to LINE_COMMENT,
+            TokenKind.COMMENT to HASH_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.ANNOTATION to "\\$\\w+", // variables
+            TokenKind.KEYWORD to keywords(
+                "abstract", "and", "array", "as", "break", "callable", "case", "catch", "class",
+                "clone", "const", "continue", "declare", "default", "do", "echo", "else", "elseif",
+                "empty", "enum", "extends", "final", "finally", "fn", "for", "foreach", "function",
+                "global", "goto", "if", "implements", "include", "include_once", "instanceof",
+                "insteadof", "interface", "isset", "list", "match", "namespace", "new", "null",
+                "or", "print", "private", "protected", "public", "readonly", "require",
+                "require_once", "return", "static", "switch", "throw", "trait", "try", "unset",
+                "use", "var", "while", "xor", "yield", "true", "false",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.YAML -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to HASH_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.KEYWORD to keywords("true", "false", "null", "yes", "no", "on", "off"),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.TOML -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to HASH_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.KEYWORD to keywords("true", "false"),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.SHELL -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to HASH_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.ANNOTATION to "\\$\\w+|\\$\\{[^}]*\\}", // variable expansions
+            TokenKind.KEYWORD to keywords(
+                "break", "case", "cd", "continue", "declare", "do", "done", "echo", "elif", "else",
+                "esac", "exit", "export", "fi", "for", "function", "if", "in", "local", "readonly",
+                "return", "select", "source", "then", "until", "while",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.CSS -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to BLOCK_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.ANNOTATION to "@[\\w-]+", // at-rules like @media, @import
+            TokenKind.NUMBER to "#[0-9a-fA-F]{3,8}\\b|\\b\\d+(?:\\.\\d+)?(?:px|em|rem|%|vh|vw|pt|s|ms)?\\b",
+        )
+    )
+
+    Language.SQL -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to BLOCK_COMMENT,
+            TokenKind.COMMENT to SQL_LINE_COMMENT,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.KEYWORD to keywordsCI(
+                "add", "all", "alter", "and", "as", "asc", "between", "by", "case", "column",
+                "create", "cross", "delete", "desc", "distinct", "drop", "else", "end", "exists",
+                "foreign", "from", "full", "group", "having", "in", "index", "inner", "insert",
+                "into", "is", "join", "key", "left", "like", "limit", "not", "null", "on", "or",
+                "order", "outer", "primary", "references", "right", "select", "set", "table", "then",
+                "top", "union", "unique", "update", "values", "view", "where",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.DOCKERFILE -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to HASH_COMMENT,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.KEYWORD to keywordsCI(
+                "add", "arg", "cmd", "copy", "entrypoint", "env", "expose", "from", "healthcheck",
+                "label", "maintainer", "onbuild", "run", "shell", "stopsignal", "user", "volume",
+                "workdir",
+            ),
+            TokenKind.NUMBER to NUMBER,
+        )
+    )
+
+    Language.GRADLE -> LanguageSpec(
+        listOf(
+            TokenKind.COMMENT to BLOCK_COMMENT,
+            TokenKind.COMMENT to LINE_COMMENT,
+            TokenKind.STRING to TRIPLE_DOUBLE,
+            TokenKind.STRING to DOUBLE_STRING,
+            TokenKind.STRING to SINGLE_STRING,
+            TokenKind.KEYWORD to keywords(
+                "abstract", "as", "assert", "break", "case", "catch", "class", "continue", "def",
+                "default", "do", "else", "enum", "extends", "false", "final", "finally", "for",
+                "if", "implements", "import", "in", "interface", "new", "null", "package",
+                "private", "protected", "public", "return", "static", "super", "switch", "this",
+                "throw", "trait", "true", "try", "void", "while",
+            ),
+            TokenKind.NUMBER to NUMBER,
         )
     )
 
