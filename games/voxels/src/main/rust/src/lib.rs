@@ -11,6 +11,7 @@ pub mod villager;
 pub mod ambience;
 pub mod fishing;
 pub mod engine;
+pub mod net;
 pub mod texture_atlas;
 pub mod vulkan;
 
@@ -401,6 +402,46 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_cut<'
     _env: JNIEnv<'l>, _class: JClass<'l>, idx: jint,
 ) -> jboolean {
     if idx >= 0 && engine::do_cut(idx as usize) { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativeSetRole<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>, role: jint,
+) {
+    crate::net::set_role(role.clamp(0, 2) as u8);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_nativeSetDevice<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>, device: JString<'l>,
+) {
+    if let Some(d) = get_string(&mut env, &device) { crate::net::set_local_device(d); }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_netPushInbound<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>, json: JString<'l>,
+) -> jboolean {
+    match get_string(&mut env, &json) {
+        Some(s) => if crate::net::push_inbound_json(&s) { 1 } else { 0 },
+        None => 0,
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_netDrainOutbound<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(crate::net::drain_outbound_json()) { Ok(s) => s.into_raw(), Err(_) => null }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getPeersJson<'l>(
+    mut env: JNIEnv<'l>, _class: JClass<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    match env.new_string(crate::net::peers_json()) { Ok(s) => s.into_raw(), Err(_) => null }
 }
 
 #[cfg(test)]

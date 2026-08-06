@@ -116,7 +116,9 @@ static CHICKEN: &[Part] = &[
 ];
 
 impl MobKind {
-    fn cell(self) -> u32 { match self { MobKind::Pig=>0, MobKind::Cow=>1, MobKind::Sheep=>2, MobKind::Chicken=>3, MobKind::Creeper=>4, MobKind::Zombie=>5, MobKind::Villager=>6, MobKind::Dragon=>7, MobKind::Wither=>8, MobKind::Blaze=>9, MobKind::WitherSkeleton=>10, MobKind::Shulker=>11, MobKind::Ghast=>12 } }
+    pub fn cell(self) -> u32 { match self { MobKind::Pig=>0, MobKind::Cow=>1, MobKind::Sheep=>2, MobKind::Chicken=>3, MobKind::Creeper=>4, MobKind::Zombie=>5, MobKind::Villager=>6, MobKind::Dragon=>7, MobKind::Wither=>8, MobKind::Blaze=>9, MobKind::WitherSkeleton=>10, MobKind::Shulker=>11, MobKind::Ghast=>12 } }
+    /// Inverse of [`cell`] for reconstructing a mob kind off the wire; unknown tags fall back to Pig.
+    pub fn from_cell(c: u32) -> MobKind { MobKind::ALL.get(c as usize).copied().unwrap_or(MobKind::Pig) }
     pub fn hostile(self) -> bool { matches!(self, MobKind::Creeper | MobKind::Zombie | MobKind::Dragon | MobKind::Wither | MobKind::Blaze | MobKind::WitherSkeleton | MobKind::Shulker | MobKind::Ghast) }
     pub fn is_boss(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither) }
     pub fn flies(self) -> bool { matches!(self, MobKind::Dragon | MobKind::Wither | MobKind::Ghast) }
@@ -443,6 +445,17 @@ pub fn build_entity_mesh(mobs: &[Mob]) -> (Vec<Vertex>, Vec<u32>) {
     let mut indices = Vec::new();
     for m in mobs { m.append_mesh(&mut verts, &mut indices); }
     (verts, indices)
+}
+
+// Append humanoid avatars for remote players (multiplayer). Each is drawn with the biped model — we
+// reuse the mob mesh path rather than a bespoke skeleton, so remote players read as villager-shaped
+// figures at the reported position/facing. `poses` is (position, yaw).
+pub fn append_remote_players(verts: &mut Vec<Vertex>, indices: &mut Vec<u32>, poses: &[(Vec3, f32)]) {
+    for &(pos, yaw) in poses {
+        let mut m = Mob::new(MobKind::Villager, pos, 1);
+        m.yaw = yaw;
+        m.append_mesh(verts, indices);
+    }
 }
 
 // ---- Projectiles: flying attacks (blaze fireballs, shulker bullets) and firework rockets. ----

@@ -23,7 +23,7 @@ pub fn save_chunk(base: &str, chunk: &Chunk) -> std::io::Result<()> {
 // little-endian; has_meta u8; if 1 { 4096 meta bytes } }. Block ids are two bytes wide so ids above
 // 255 have somewhere to live; meta stays one byte. The meta flag keeps cube-only sections from
 // paying for an array they never filled.
-fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
+pub fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
     let mut data = Vec::with_capacity(32*1024);
     data.extend_from_slice(b"VOX3");
     data.push(SECTIONS_PER_CHUNK as u8);
@@ -45,7 +45,7 @@ pub fn load_chunk(base: &str, _pos: ChunkPos, chunk: &mut Chunk) -> std::io::Res
 // Reads the one format there is. A decode error makes `load_or_gen` treat the chunk as ungenerated
 // and regenerate it from the seed, erasing whatever the player built there, so `Err` has to mean the
 // bytes genuinely are not a chunk.
-fn decode_chunk(bytes: &[u8], chunk: &mut Chunk) -> std::io::Result<()> {
+pub fn decode_chunk(bytes: &[u8], chunk: &mut Chunk) -> std::io::Result<()> {
     let bad = |m: &'static str| std::io::Error::new(std::io::ErrorKind::InvalidData, m);
     if bytes.len() < 5 { return Err(bad("too small")); }
     if &bytes[0..4] != b"VOX3" { return Err(bad("bad magic")); }

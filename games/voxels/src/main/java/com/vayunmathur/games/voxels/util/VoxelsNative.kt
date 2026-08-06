@@ -57,4 +57,15 @@ object VoxelsNative {
     external fun getBlessingCatalogJson(): String
     external fun attuneBlessing(idx: Int): Boolean
     external fun releaseBlessing(slot: Int): Boolean
+    // --- Online multiplayer bridge (see net.rs). Transport lives in Kotlin (VoxelsSync). ---
+    // role: 0 offline, 1 host, 2 client.
+    external fun nativeSetRole(role: Int)
+    // This device's sync id, stamped onto outbound PlayerTransform frames.
+    external fun nativeSetDevice(device: String)
+    // Kotlin -> Rust: feed a decrypted, already-authorized NetMsg (or JSON array of them).
+    external fun netPushInbound(json: String): Boolean
+    // Rust -> Kotlin: pull queued outbound NetMsgs as a JSON array to encrypt + relay.
+    external fun netDrainOutbound(): String
+    // Remote players for the HUD/avatars: [{device,x,y,z,yaw}].
+    external fun getPeersJson(): String
 }

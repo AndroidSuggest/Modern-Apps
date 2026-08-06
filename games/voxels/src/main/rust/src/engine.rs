@@ -446,6 +446,10 @@ pub fn tick_and_render() {
         state.last_tick = now;
         if !state.running { return; }
 
+        // Drain any decrypted, already-authorized network messages before simulating this frame, so
+        // the net thread never contends for the engine lock (mirrors the publish_ui/CACHE pattern).
+        crate::net::apply_inbound(state);
+
         let input = crate::input::snapshot_and_clear_look();
         if input.toggle_fly { state.player.flying = !state.player.flying; }
 
@@ -720,6 +724,7 @@ pub fn tick_and_render() {
         let (mut entity_verts, mut entity_indices) = build_entity_mesh(&state.mobs);
         {
             let right = state.player.right();
+            crate::entity::append_remote_players(&mut entity_verts, &mut entity_indices, &crate::net::remote_player_poses());
             append_particles(&mut entity_verts, &mut entity_indices, &state.particles, right, Vec3::Y);
             append_projectiles(&mut entity_verts, &mut entity_indices, &state.projectiles, right, Vec3::Y);
         }
@@ -758,6 +763,7 @@ pub fn tick_and_render() {
                 let _ = renderer.draw_frame();
             }
         }
+        crate::net::publish(state);
         publish_ui(state);
     });
 }
@@ -1316,6 +1322,9 @@ fn spawn_particles(rng: &mut u32, out: &mut Vec<Particle>, center: Vec3, n: usiz
 fn mark_neighbors_dirty(state: &mut EngineState, x: i32, z: i32) {
     use crate::world::chunk::ChunkPos;
     let cp = ChunkPos::from_world(x, z);
+    // Every runtime block edit funnels through here, so it's the one place to record what changed for
+    // the network to ship (no-op offline / when applying a remote edit).
+    crate::net::note_edited_chunk(cp.0, cp.1);
     if let Some(ch) = state.chunks.get_mut(cp) { ch.mesh_dirty = true; }
     let lx = x.rem_euclid(16); let lz = z.rem_euclid(16);
     if lx==0 { if let Some(ch) = state.chunks.get_mut(ChunkPos(cp.0-1, cp.1)) { ch.mesh_dirty=true; } }
