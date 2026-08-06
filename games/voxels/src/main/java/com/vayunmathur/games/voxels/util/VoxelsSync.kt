@@ -337,11 +337,10 @@ object VoxelsSync {
     )
 }
 
-/** World access roles — enforced entirely client-side via signature checks (relay is a pure log). */
+/** World access roles — enforced entirely client-side via signature checks (relay is a pure log).
+ *  Voxels worlds have no viewers: the owner (host) and invited editors can all build. */
 object VoxelsRoles {
     const val OWNER = "owner"
     const val EDITOR = "editor"
-    const val VIEWER = "viewer"
-    const val REVOKED = "revoked"
     fun canEdit(role: String) = role == OWNER || role == EDITOR
 }

@@ -573,6 +573,11 @@ pub fn tick_and_render() {
 
         // --- Mobs: AI/physics tick, spawn/despawn near the player. ---
         let player_pos = state.player.pos;
+        if crate::net::is_client() {
+            // The host owns mob AI, spawning and combat; a client just eases its mobs toward the
+            // latest host snapshot (projectiles arrive via ProjSnapshot).
+            crate::net::interpolate_mobs(state, dt);
+        } else {
         {
             let chunks = &state.chunks;
             let terrain = crate::entity::Terrain {
@@ -685,6 +690,7 @@ pub fn tick_and_render() {
                 }
                 state.spawn_rng = rng;
             }
+        }
         }
         // Death: burn one heart of max HP (floored) and respawn at world spawn — the "lives" system.
         if state.player.dead {
@@ -870,7 +876,13 @@ pub fn get_health_json() -> String { cref(&HEALTH_CACHE, "{}").lock().map(|c| c.
 pub fn get_smelt_json() -> String { cref(&SMELT_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 pub fn get_ambience_json() -> String { cref(&AMBIENCE_CACHE, "{}").lock().map(|c| c.clone()).unwrap_or_else(|_| "{}".into()) }
 
-pub fn inventory_move(from: usize, to: usize) { with_engine(|s| s.inventory.move_item(from, to)); }
+pub fn inventory_move(from: usize, to: usize) {
+    with_engine(|s| {
+        // Clients send the move as an intent; the host applies it and echoes the inventory back.
+        if crate::net::is_client() { crate::net::client_inv_intent(from as u32, to as u32); return; }
+        s.inventory.move_item(from, to)
+    });
+}
 pub fn inventory_give(id: Id) { with_engine(|s| s.inventory.give(id)); }
 pub fn inventory_craft(recipe: usize) -> bool {
     with_engine(|s| {
@@ -1653,12 +1665,18 @@ pub fn get_container_json() -> String {
 pub fn container_take(idx: usize) -> bool {
     with_engine(|state| {
         let Some(key) = state.open_chest else { return false; };
+        // Clients don't mutate authoritative state: send the intent and wait for the host's sync.
+        if crate::net::is_client() {
+            crate::net::client_container_intent([key.0 as i32, key.1, key.2, key.3], true, idx as u32);
+            return false;
+        }
         let Some(slot) = state.containers.slot_mut(key, idx) else { return false; };
         if slot.id == 0 { return false; }
         let mut held = *slot;
         state.inventory.take_from(&mut held);
         let moved = held.count < slot.count || held.id == 0;
         if let Some(slot) = state.containers.slot_mut(key, idx) { *slot = held; }
+        if moved { crate::net::host_container_changed(state, key); }
         moved
     }).unwrap_or(false)
 }
@@ -1666,6 +1684,10 @@ pub fn container_take(idx: usize) -> bool {
 pub fn container_put(inv_idx: usize) -> bool {
     with_engine(|state| {
         let Some(key) = state.open_chest else { return false; };
+        if crate::net::is_client() {
+            crate::net::client_container_intent([key.0 as i32, key.1, key.2, key.3], false, inv_idx as u32);
+            return false;
+        }
         if inv_idx >= crate::inventory::SLOTS { return false; }
         let s = state.inventory.slots[inv_idx];
         if s.id == 0 { return false; }
@@ -1676,10 +1698,23 @@ pub fn container_put(inv_idx: usize) -> bool {
         } else {
             crate::inventory::InvSlot::default()
         };
+        crate::net::host_container_changed(state, key);
         true
     }).unwrap_or(false)
 }
 pub fn close_container() { with_engine(|s| s.open_chest = None); }
+
+/// Client: ask the host to send the currently-open chest's contents (so a freshly-opened chest
+/// shows what's really inside rather than an empty grid). No-op offline or on the host.
+pub fn request_container_sync() {
+    with_engine(|state| {
+        if let Some(key) = state.open_chest {
+            if crate::net::is_client() {
+                crate::net::client_container_intent([key.0 as i32, key.1, key.2, key.3], true, u32::MAX);
+            }
+        }
+    });
+}
 
 // ---- Blessings ----
 // Bind the blessing held in an inventory slot, consuming the charm. Fails if the slot doesn't hold

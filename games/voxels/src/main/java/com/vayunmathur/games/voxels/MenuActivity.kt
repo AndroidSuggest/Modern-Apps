@@ -147,7 +147,7 @@ class MenuActivity : ComponentActivity() {
                             ShareOnlineDialog(
                                 world = world,
                                 onDismiss = { shareTarget = null },
-                                onSend = { recipient, role ->
+                                onSend = { recipient ->
                                     shareTarget = null
                                     scope.launch {
                                         val ok = withContext(Dispatchers.IO) {
@@ -156,15 +156,15 @@ class MenuActivity : ComponentActivity() {
                                                 val key = Base64.decode(world.meta.keyB64)
                                                 val sent = VoxelsSync.sendInvite(
                                                     recipient, world.meta.worldId, key,
-                                                    world.meta.name, world.meta.seed, role,
+                                                    world.meta.name, world.meta.seed, VoxelsRoles.EDITOR,
                                                     Base64.encode(VoxelsSync.publicBundle), deviceId,
                                                 )
-                                                // Publish the owner-signed roster so the host can gate edits by role.
+                                                // Publish the owner-signed roster so the host can gate edits.
                                                 if (sent) VoxelsSync.recordMembers(
                                                     world.meta.worldId, key,
                                                     listOf(
                                                         VoxelsSync.Member(deviceId, "", VoxelsRoles.OWNER),
-                                                        VoxelsSync.Member(recipient, "", role),
+                                                        VoxelsSync.Member(recipient, "", VoxelsRoles.EDITOR),
                                                     ),
                                                 )
                                                 sent

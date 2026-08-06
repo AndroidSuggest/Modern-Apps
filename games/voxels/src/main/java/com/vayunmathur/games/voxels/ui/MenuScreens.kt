@@ -178,16 +178,15 @@ private fun WorldRow(
     }
 }
 
-// Owner-only dialog: invite a device by id, choosing whether they can build (editor) or only look
-// (viewer). Mirrors office's ShareOnlineDialog.
+// Owner-only dialog: invite a device by id. Voxels worlds have no viewers — everyone invited can
+// build — so there's no role choice. Mirrors office's ShareOnlineDialog.
 @Composable
 fun ShareOnlineDialog(
     world: WorldInfo,
     onDismiss: () -> Unit,
-    onSend: (recipient: String, role: String) -> Unit,
+    onSend: (recipient: String) -> Unit,
 ) {
     var recipient by remember { mutableStateOf("") }
-    var role by remember { mutableStateOf(VoxelsRoles.EDITOR) }
     Dialog(onDismissRequest = onDismiss) {
         Card(Modifier.fillMaxWidth().padding(8.dp)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -200,16 +199,9 @@ fun ShareOnlineDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val editorSel = role == VoxelsRoles.EDITOR
-                    if (editorSel) Button(onClick = { role = VoxelsRoles.EDITOR }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_editor)) }
-                    else OutlinedButton(onClick = { role = VoxelsRoles.EDITOR }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_editor)) }
-                    if (!editorSel) Button(onClick = { role = VoxelsRoles.VIEWER }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_viewer)) }
-                    else OutlinedButton(onClick = { role = VoxelsRoles.VIEWER }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_viewer)) }
-                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(UiR.string.cancel)) }
-                    Button(onClick = { onSend(recipient.trim(), role) }, enabled = recipient.isNotBlank(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.send_invite)) }
+                    Button(onClick = { onSend(recipient.trim()) }, enabled = recipient.isNotBlank(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.send_invite)) }
                 }
             }
         }

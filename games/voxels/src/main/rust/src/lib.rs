@@ -444,6 +444,13 @@ pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_getPe
     match env.new_string(crate::net::peers_json()) { Ok(s) => s.into_raw(), Err(_) => null }
 }
 
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_games_voxels_util_VoxelsNative_netRequestContainer<'l>(
+    _env: JNIEnv<'l>, _class: JClass<'l>,
+) {
+    crate::engine::request_container_sync();
+}
+
 #[cfg(test)]
 mod tests {
     use crate::world::chunk::{Chunk, ChunkPos};

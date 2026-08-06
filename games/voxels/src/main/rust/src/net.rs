@@ -146,8 +146,9 @@ pub enum NetMsg {
     EditIntent { device: String, dim: u8, x: i32, y: i32, z: i32, id: Id, meta: u8, break_it: bool },
     /// Client → host: an inventory move request.
     InvIntent { device: String, from: u32, to: u32 },
-    /// Client → host: a container take/put request.
-    ContainerIntent { device: String, take: bool, idx: u32 },
+    /// Client → host: a container take/put request against a specific chest. `key` is [dim,x,y,z];
+    /// `idx == u32::MAX` is a pure "sync me this chest" request (no mutation).
+    ContainerIntent { device: String, key: [i32; 4], take: bool, idx: u32 },
 }
 
 // ---- Shared state ----
@@ -180,6 +181,20 @@ fn local_device() -> String { LOCAL_DEVICE.get_or_init(|| Mutex::new(String::new
 pub fn set_role(r: u8) { ROLE.store(r, Ordering::SeqCst); }
 pub fn role() -> u8 { ROLE.load(Ordering::SeqCst) }
 pub fn is_networked() -> bool { role() != ROLE_OFFLINE }
+pub fn is_client() -> bool { role() == ROLE_CLIENT }
+pub fn is_host() -> bool { role() == ROLE_HOST }
+
+/// Client → host intent: an inventory move (the client mirrors host state, so it doesn't apply it
+/// locally — the host applies and echoes the authoritative inventory back).
+pub fn client_inv_intent(from: u32, to: u32) {
+    enqueue(NetMsg::InvIntent { device: local_device(), from, to });
+}
+
+/// Client → host intent: a chest take/put (or, with `idx == u32::MAX`, a request to be sent the
+/// chest's current contents).
+pub fn client_container_intent(key: [i32; 4], take: bool, idx: u32) {
+    enqueue(NetMsg::ContainerIntent { device: local_device(), key, take, idx });
+}
 
 pub fn set_local_device(id: String) {
     if let Ok(mut d) = LOCAL_DEVICE.get_or_init(|| Mutex::new(String::new())).lock() { *d = id; }
@@ -248,6 +263,78 @@ pub fn remote_player_poses() -> Vec<(Vec3, f32)> {
     remote().lock().map(|m| m.values().map(|r| (r.pos, r.yaw)).collect()).unwrap_or_default()
 }
 
+// ---- Client-side mob interpolation (host is authoritative; clients smooth between snapshots) ----
+
+static MOB_TARGETS: OnceLock<Mutex<Vec<MobDto>>> = OnceLock::new();
+fn mob_targets() -> &'static Mutex<Vec<MobDto>> { MOB_TARGETS.get_or_init(|| Mutex::new(Vec::new())) }
+
+/// Client: adopt a host mob snapshot. The local list is rebuilt only when the population changes;
+/// otherwise the existing mobs are kept and merely retargeted, so [interpolate_mobs] can ease them
+/// into place instead of teleporting every snapshot.
+fn set_mob_targets(state: &mut EngineState, dtos: Vec<MobDto>) {
+    if state.mobs.len() != dtos.len() {
+        state.mobs = dtos.iter().map(|d| d.to_mob()).collect();
+    }
+    if let Ok(mut t) = mob_targets().lock() { *t = dtos; }
+}
+
+/// Client tick: ease locally-held mobs toward the latest host snapshot (position + yaw).
+pub fn interpolate_mobs(state: &mut EngineState, dt: f32) {
+    let targets = match mob_targets().lock() { Ok(t) => t.clone(), Err(_) => return };
+    if state.mobs.len() != targets.len() {
+        state.mobs = targets.iter().map(|d| d.to_mob()).collect();
+        return;
+    }
+    let a = (dt * 12.0).clamp(0.0, 1.0);
+    for (m, t) in state.mobs.iter_mut().zip(targets.iter()) {
+        m.pos = m.pos.lerp(t.pos, a);
+        m.vel = t.vel;
+        let mut d = t.yaw - m.yaw;
+        while d > std::f32::consts::PI { d -= std::f32::consts::TAU; }
+        while d < -std::f32::consts::PI { d += std::f32::consts::TAU; }
+        m.yaw += d * a;
+        m.health = t.health;
+        m.max_health = t.max_health;
+    }
+}
+
+// ---- Host-side container authority ----
+
+/// Host: broadcast a chest's current contents so clients viewing it stay in sync.
+fn host_broadcast_container(state: &EngineState, key: (u8, i32, i32, i32)) {
+    let slots = state.containers.get(key).cloned().unwrap_or_default();
+    enqueue(NetMsg::ContainerSync { key: [key.0 as i32, key.1, key.2, key.3], slots });
+}
+
+/// Host: apply a client's chest take/put against a specific chest (mirrors the engine's own
+/// container_take/put, but keyed rather than using the host player's open chest).
+fn apply_container_op(state: &mut EngineState, key: (u8, i32, i32, i32), take: bool, idx: usize) {
+    if take {
+        let Some(slot) = state.containers.slot_mut(key, idx) else { return };
+        if slot.id == 0 { return; }
+        let mut held = *slot;
+        state.inventory.take_from(&mut held);
+        if let Some(slot) = state.containers.slot_mut(key, idx) { *slot = held; }
+    } else {
+        if idx >= crate::inventory::SLOTS { return; }
+        let s = state.inventory.slots[idx];
+        if s.id == 0 { return; }
+        let left = state.containers.add(key, s.id, s.count);
+        if left < s.count {
+            state.inventory.slots[idx] = if left > 0 {
+                crate::inventory::InvSlot { id: s.id, count: left }
+            } else {
+                crate::inventory::InvSlot::default()
+            };
+        }
+    }
+}
+
+/// Host: called from the engine's own container_take/put so other players see the change.
+pub fn host_container_changed(state: &EngineState, key: (u8, i32, i32, i32)) {
+    if is_host() { host_broadcast_container(state, key); }
+}
+
 // Mark a chunk (and its edge neighbors) for remesh without going through the engine's edit-notify
 // hook — used when applying remote data so we don't echo it straight back out.
 fn dirty_chunk_and_neighbors(state: &mut EngineState, cx: i32, cz: i32) {
@@ -301,6 +388,12 @@ pub fn apply_inbound(state: &mut EngineState) {
             NetMsg::InvIntent { from, to, .. } if r == ROLE_HOST => {
                 state.inventory.move_item(from as usize, to as usize);
             }
+            NetMsg::ContainerIntent { key, take, idx, .. } if r == ROLE_HOST => {
+                let k = (key[0] as u8, key[1], key[2], key[3]);
+                // idx == u32::MAX is a pure "send me this chest" request (no mutation).
+                if idx != u32::MAX { apply_container_op(state, k, take, idx as usize); }
+                host_broadcast_container(state, k);
+            }
             // A client's edited chunk, sent upstream: trust it (editor role was checked in Kotlin),
             // apply, and re-mark it so the host rebroadcasts the authoritative version.
             NetMsg::ChunkData { dim, cx, cz, data } if r == ROLE_HOST => {
@@ -318,7 +411,7 @@ pub fn apply_inbound(state: &mut EngineState) {
                 if dim == state.dim { apply_block(state, x, y, z, id, meta); }
             }
             NetMsg::MobSnapshot { mobs } if r == ROLE_CLIENT => {
-                state.mobs = mobs.iter().map(|d| d.to_mob()).collect();
+                set_mob_targets(state, mobs);
             }
             NetMsg::ProjSnapshot { projs } if r == ROLE_CLIENT => {
                 state.projectiles = projs.iter().map(|d| d.to_proj()).collect();

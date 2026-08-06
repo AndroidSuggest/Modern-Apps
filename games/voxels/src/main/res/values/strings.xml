@@ -69,8 +69,6 @@
     <string name="shared_with_you">Shared with you</string>
     <string name="share_world">Share world</string>
     <string name="recipient_device_id">Recipient device ID</string>
-    <string name="role_editor">Editor (can build)</string>
-    <string name="role_viewer">Viewer (read-only)</string>
     <string name="send_invite">Send invite</string>
     <string name="invite_sent">Invite sent.</string>
     <string name="invite_failed">Couldn\'t send the invite — check the device ID and your connection.</string>

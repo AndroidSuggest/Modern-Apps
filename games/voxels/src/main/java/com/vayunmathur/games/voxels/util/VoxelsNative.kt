@@ -68,4 +68,6 @@ object VoxelsNative {
     external fun netDrainOutbound(): String
     // Remote players for the HUD/avatars: [{device,x,y,z,yaw}].
     external fun getPeersJson(): String
+    // Client → host: ask for the currently-open chest's contents (host replies with ContainerSync).
+    external fun netRequestContainer()
 }

@@ -27,7 +27,9 @@ import com.vayunmathur.e2ee.Pqc
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.GameHubComposeHook
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
 import org.json.JSONArray
 import org.json.JSONObject
@@ -193,21 +195,26 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(online) {
                     if (!online || !VoxelsNative.isAvailable) return@LaunchedEffect
                     if (!VoxelsSync.init(this@MainActivity)) return@LaunchedEffect
+                    val pumpScope = this
                     val myId = VoxelsSync.deviceId
                     try { VoxelsNative.nativeSetDevice(myId) } catch (_: Exception) {}
                     val key = runCatching { Base64.decode(worldKeyB64) }.getOrNull() ?: return@LaunchedEffect
                     val channel = "world:$sharedWorldId"
                     // Owner bundle: the host is the owner; a client fetches it once to verify host ops.
                     val ownerBundle: ByteArray? = if (netRole == 1) VoxelsSync.publicBundle else VoxelsSync.getKey(ownerDevice)
-                    // Host builds the editor/member sets from the owner-signed roster to gate edits.
-                    val editors = HashSet<String>().apply { add(ownerDevice); add(myId) }
-                    val members = HashSet<String>().apply { add(ownerDevice); add(myId) }
-                    if (netRole == 1) {
-                        runCatching { VoxelsSync.fetchRoster(sharedWorldId, key, VoxelsSync.publicBundle) }.getOrNull()?.forEach { (id, r) ->
-                            members.add(id)
-                            if (r == VoxelsRoles.OWNER || r == VoxelsRoles.EDITOR) editors.add(id)
+                    // Host: the authorized member set (all editors — no viewers) + each member's public
+                    // bundle, so every client op is signature-verified, not just role-gated by id.
+                    val roster = java.util.Collections.synchronizedSet(HashSet<String>())
+                    val bundles = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+                    roster.add(ownerDevice); roster.add(myId)
+                    VoxelsSync.publicBundle.let { bundles[myId] = it; bundles[ownerDevice] = it }
+                    suspend fun refreshRoster() {
+                        runCatching { VoxelsSync.fetchRoster(sharedWorldId, key, VoxelsSync.publicBundle) }.getOrNull()?.forEach { (id, _) ->
+                            roster.add(id)
+                            if (!bundles.containsKey(id)) VoxelsSync.getKey(id)?.let { bundles[id] = it }
                         }
                     }
+                    if (netRole == 1) refreshRoster()
                     // Verify + gate an incoming signed op, then hand the inner NetMsg to the engine.
                     fun handleSignedOp(plain: String) {
                         try {
@@ -223,11 +230,17 @@ class MainActivity : ComponentActivity() {
                                 val ok = runCatching { Pqc.verify(ob, ops.encodeToByteArray(), Base64.decode(sig)) }.getOrDefault(false)
                                 if (!ok) return
                             } else {
-                                // Host gates by the owner-signed roster: viewers may join but not edit.
-                                val type = runCatching { JSONObject(ops).optString("type") }.getOrDefault("")
-                                val isEdit = type == "EditIntent" || type == "ChunkData" || type == "InvIntent" || type == "ContainerIntent"
-                                val allowed = if (isEdit) editors.contains(author) else members.contains(author)
-                                if (!allowed) return
+                                // Host: author must be a rostered member AND the op must carry a valid
+                                // signature from that member's bundle. On a cache miss, fetch it for
+                                // next time and drop this op (the client resends as chunks stay dirty).
+                                if (!roster.contains(author)) return
+                                val ab = bundles[author]
+                                if (ab == null) {
+                                    pumpScope.launch(Dispatchers.IO) { runCatching { VoxelsSync.getKey(author) }.getOrNull()?.let { bundles[author] = it } }
+                                    return
+                                }
+                                val ok = runCatching { Pqc.verify(ab, ops.encodeToByteArray(), Base64.decode(sig)) }.getOrDefault(false)
+                                if (!ok) return
                             }
                             VoxelsNative.netPushInbound(ops)
                         } catch (_: Exception) {}
@@ -265,7 +278,11 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                     )
+                    var rosterTick = 0
                     while (isActive) {
+                        // Periodically re-read the roster so newly-invited editors are accepted mid-session.
+                        rosterTick++
+                        if (netRole == 1 && rosterTick % 125 == 0) refreshRoster()
                         val out = try { VoxelsNative.netDrainOutbound() } catch (_: Exception) { "[]" }
                         try {
                             val arr = JSONArray(out)
@@ -337,6 +354,8 @@ class MainActivity : ComponentActivity() {
                                     30 -> { // chest
                                         containerJson = try { VoxelsNative.getContainerJson() } catch (_: Exception) { """{"slots":[]}""" }
                                         chestOpen = true
+                                        // Online clients mirror host state: ask for the real contents.
+                                        if (online) try { VoxelsNative.netRequestContainer() } catch (_: Exception) {}
                                         com.vayunmathur.games.voxels.util.SoundFx.playPlace()
                                     }
                                     41 -> com.vayunmathur.games.voxels.util.SoundFx.playPlace() // ignited a portal
