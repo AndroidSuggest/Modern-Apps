@@ -113,6 +113,11 @@ interface CodeActions {
     /** Hide the completion popup. */
     fun dismissCompletions() {}
 
+    // ---- Tools ----
+
+    /** Pretty-print the current file if it is JSON or XML (single undo step). */
+    fun formatDocument() {}
+
     /** Move the selection without recording an undo step (used by find navigation). */
     fun setSelection(range: TextRange) {}
 

@@ -777,6 +777,19 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     override fun deleteLine() = applyLineEdit(::deleteLine)
 
+    override fun formatDocument() {
+        val tab = currentTab ?: return
+        val formatted = when (tab.language) {
+            Language.JSON -> formatJson(tab.value.text)
+            Language.XML -> formatXml(tab.value.text)
+            else -> null
+        } ?: return
+        if (formatted == tab.value.text) return
+        tab.pushUndo(tab.value)
+        tab.value = TextFieldValue(formatted, TextRange(formatted.length))
+        if (autoSave) scheduleAutoSave()
+    }
+
     /** Moves the caret to the start of [line] (1-based), without recording an undo step. */
     override fun goToLine(line: Int) {
         val tab = currentTab ?: return

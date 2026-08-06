@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import com.vayunmathur.code.ui.EditorPage
 import com.vayunmathur.code.ui.FolderBrowserPage
 import com.vayunmathur.code.ui.GitPage
+import com.vayunmathur.code.ui.PreviewPage
 import com.vayunmathur.code.ui.SearchPage
 import com.vayunmathur.code.ui.SettingsPage
 import com.vayunmathur.code.ui.TerminalPage
@@ -126,6 +127,9 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Terminal : Route
+
+    @Serializable
+    data object Preview : Route
 }
 
 @Composable
@@ -142,6 +146,7 @@ fun Navigation(viewModel: EditorViewModel) {
                 onOpenFolder = { backStack.add(Route.FolderBrowser) },
                 onOpenGit = { backStack.add(Route.Git) },
                 onOpenTerminal = { backStack.add(Route.Terminal) },
+                onOpenPreview = { backStack.add(Route.Preview) },
             )
         }
         entry<Route.Settings> { SettingsPage(viewModel, backStack) }
@@ -149,5 +154,6 @@ fun Navigation(viewModel: EditorViewModel) {
         entry<Route.FolderBrowser> { FolderBrowserPage(viewModel, backStack) }
         entry<Route.Git> { GitPage(viewModel, backStack) }
         entry<Route.Terminal> { TerminalPage(viewModel, backStack) }
+        entry<Route.Preview> { PreviewPage(viewModel, backStack) }
     }
 }

@@ -77,6 +77,7 @@ fun EditorPage(
     onOpenFolder: () -> Unit = {},
     onOpenGit: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
+    onOpenPreview: () -> Unit = {},
 ) {
     val fileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -91,6 +92,7 @@ fun EditorPage(
         onOpenSearch = onOpenSearch,
         onOpenGit = onOpenGit,
         onOpenTerminal = onOpenTerminal,
+        onOpenPreview = onOpenPreview,
     )
 }
 
@@ -112,6 +114,7 @@ fun EditorScreen(
     onOpenSearch: () -> Unit = {},
     onOpenGit: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
+    onOpenPreview: () -> Unit = {},
     /**
      * Seeds for the screen's own UI-only state (is the drawer showing, is the find bar open
      * and on what query). The app always takes the defaults; previews set them so a given
@@ -167,6 +170,7 @@ fun EditorScreen(
                         onOpenSearch = onOpenSearch,
                         onOpenGit = onOpenGit,
                         onOpenTerminal = onOpenTerminal,
+                        onOpenPreview = onOpenPreview,
                     )
                     HorizontalDivider()
                     CodeEditor(
@@ -276,6 +280,7 @@ private fun EditorToolbar(
     onOpenSearch: () -> Unit = {},
     onOpenGit: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
+    onOpenPreview: () -> Unit = {},
 ) {
     val tab = state.currentTab ?: return
     var showGoToLine by remember { mutableStateOf(false) }
@@ -304,6 +309,8 @@ private fun EditorToolbar(
             Item(text = stringResource(R.string.search_in_project)) { onOpenSearch() }
             Item(text = stringResource(R.string.source_control)) { onOpenGit() }
             Item(text = stringResource(R.string.terminal)) { onOpenTerminal() }
+            Item(text = stringResource(R.string.preview)) { onOpenPreview() }
+            Item(text = stringResource(R.string.format_document)) { actions.formatDocument() }
         }
         Spacer(Modifier.width(8.dp))
         Text(
