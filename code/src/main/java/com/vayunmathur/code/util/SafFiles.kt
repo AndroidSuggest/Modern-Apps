@@ -94,4 +94,44 @@ object SafFiles {
             output.flush()
         }
     }
+
+    /**
+     * Creates a new document (file or folder) under [parentDocumentId]. Pass
+     * [DocumentsContract.Document.MIME_TYPE_DIR] as [mimeType] for a folder, or a file MIME
+     * (see [mimeForFileName]) for a file. Returns the new document's URI, or null on failure.
+     */
+    fun createDocument(
+        context: Context,
+        treeUri: Uri,
+        parentDocumentId: String,
+        displayName: String,
+        mimeType: String,
+    ): Uri? {
+        val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocumentId)
+        return runCatching {
+            DocumentsContract.createDocument(context.contentResolver, parentUri, mimeType, displayName)
+        }.getOrNull()
+    }
+
+    /** Renames a document, returning the (possibly changed) URI, or null on failure. */
+    fun renameDocument(context: Context, uri: Uri, newName: String): Uri? =
+        runCatching { DocumentsContract.renameDocument(context.contentResolver, uri, newName) }.getOrNull()
+
+    /** Deletes a document. Returns true on success. */
+    fun deleteDocument(context: Context, uri: Uri): Boolean =
+        runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false)
+
+    /** A best-effort MIME type for a new file name; defaults to plain text. */
+    fun mimeForFileName(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "json" -> "application/json"
+            "xml" -> "text/xml"
+            "html", "htm" -> "text/html"
+            "css" -> "text/css"
+            "js", "mjs", "cjs" -> "text/javascript"
+            "md", "markdown" -> "text/markdown"
+            else -> "text/plain"
+        }
+    }
 }
