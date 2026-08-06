@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
@@ -39,7 +40,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {
-                Navigation(viewModel)
+                OfflineAware {
+                    Navigation(viewModel)
+                }
             }
         }
     }
