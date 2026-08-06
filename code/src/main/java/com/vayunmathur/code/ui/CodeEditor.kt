@@ -74,6 +74,7 @@ fun CodeEditor(
     initialQuery: String = "",
     completions: List<Completion> = emptyList(),
     showCompletions: Boolean = false,
+    editorTheme: String = com.vayunmathur.code.syntax.EditorThemes.DEFAULT,
 ) {
     // Find/replace state is per-tab, so it resets when switching files. Keyed on the file
     // name rather than the tab value: the latter is rebuilt on every keystroke, which would
@@ -166,7 +167,7 @@ fun CodeEditor(
             lineHeight = (fontSize * 1.4f).sp,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        val syntaxColors = rememberSyntaxColors()
+        val syntaxColors = rememberSyntaxColors(editorTheme)
         val highlightMatches = if (showFind) matches else emptyList()
         val caret = if (tab.value.selection.collapsed) tab.value.selection.start else -1
         val transformation = remember(tab.language, syntaxColors, highlightMatches, activeMatch, caret) {

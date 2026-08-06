@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.R
 import com.vayunmathur.code.Route
+import com.vayunmathur.code.syntax.EditorThemes
 import com.vayunmathur.code.util.EditorPrefs
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.library.ui.AlertDialog
@@ -47,6 +48,7 @@ import kotlin.math.roundToInt
 fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
     var showThemeDialog by remember { mutableStateOf(false) }
     var showTabWidthDialog by remember { mutableStateOf(false) }
+    var showEditorThemeDialog by remember { mutableStateOf(false) }
 
     AppScaffold(title = stringResource(R.string.settings), backStack = backStack) { padding ->
         Column(
@@ -60,6 +62,12 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     title = stringResource(R.string.theme),
                     supportingText = themeLabel(viewModel.themeMode),
                     onClick = { showThemeDialog = true },
+                )
+                SettingsDivider()
+                SettingsRow(
+                    title = stringResource(R.string.editor_theme),
+                    supportingText = editorThemeLabel(viewModel.editorTheme),
+                    onClick = { showEditorThemeDialog = true },
                 )
             }
 
@@ -139,6 +147,16 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
             onDismiss = { showTabWidthDialog = false },
         )
     }
+
+    if (showEditorThemeDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.editor_theme),
+            options = EditorThemes.ALL,
+            selected = viewModel.editorTheme,
+            onSelect = { viewModel.setEditorTheme(it) },
+            onDismiss = { showEditorThemeDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -147,6 +165,9 @@ private fun themeLabel(mode: String): String = when (mode) {
     EditorPrefs.THEME_DARK -> stringResource(R.string.theme_dark)
     else -> stringResource(R.string.theme_system)
 }
+
+private fun editorThemeLabel(theme: String): String =
+    EditorThemes.ALL.firstOrNull { it.first == theme }?.second ?: theme
 
 /** A single-choice list dialog of radio rows; selecting a value applies it and closes. */
 @Composable

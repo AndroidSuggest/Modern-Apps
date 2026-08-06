@@ -2,6 +2,7 @@ package com.vayunmathur.code.util
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import com.vayunmathur.code.syntax.EditorThemes
 import com.vayunmathur.code.syntax.Language
 
 /**
@@ -60,6 +61,7 @@ data class CodeUiState(
     val isSearching: Boolean = false,
     val completions: List<Completion> = emptyList(),
     val showCompletions: Boolean = false,
+    val editorTheme: String = EditorThemes.DEFAULT,
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
 }

@@ -11,6 +11,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.code.syntax.EditorThemes
 import com.vayunmathur.code.syntax.Language
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -142,6 +143,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     val autoCloseBrackets: Boolean get() = _autoCloseBrackets.value
     private val _autoSave = mutableStateOf(false)
     val autoSave: Boolean get() = _autoSave.value
+    private val _editorTheme = mutableStateOf(EditorThemes.DEFAULT)
+    val editorTheme: String get() = _editorTheme.value
     private var autoSaveJob: Job? = null
 
     // ---- Project search ----
@@ -217,6 +220,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             isSearching = isSearching,
             completions = completions.toList(),
             showCompletions = showCompletions,
+            editorTheme = editorTheme,
         )
 
     init {
@@ -227,6 +231,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _autoIndent.value = prefs.autoIndent.first() }
         viewModelScope.launch { _autoCloseBrackets.value = prefs.autoCloseBrackets.first() }
         viewModelScope.launch { _autoSave.value = prefs.autoSave.first() }
+        viewModelScope.launch { _editorTheme.value = prefs.editorTheme.first() }
         viewModelScope.launch { _gitUsername.value = prefs.gitUsername.first() }
         viewModelScope.launch { _gitToken.value = prefs.gitToken.first() }
         viewModelScope.launch { _gitAuthorName.value = prefs.gitAuthorName.first() }
@@ -868,6 +873,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         _autoSave.value = enabled
         viewModelScope.launch { prefs.setAutoSave(enabled) }
         if (enabled) scheduleAutoSave()
+    }
+
+    fun setEditorTheme(theme: String) {
+        _editorTheme.value = theme
+        viewModelScope.launch { prefs.setEditorTheme(theme) }
     }
 
     // ---- Find & replace ----

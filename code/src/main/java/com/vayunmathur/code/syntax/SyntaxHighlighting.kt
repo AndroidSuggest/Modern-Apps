@@ -424,17 +424,29 @@ private fun specFor(language: Language): LanguageSpec? = when (language) {
     Language.PLAINTEXT -> null
 }
 
-/** Theme-derived colors for each token kind plus find-match highlights. */
+/** Named color presets for the editor, theme-aware for [DEFAULT] and fixed for the others. */
+object EditorThemes {
+    const val DEFAULT = "default"
+    const val MONOKAI = "monokai"
+    const val SOLARIZED = "solarized"
+    val ALL = listOf(DEFAULT to "Default", MONOKAI to "Monokai", SOLARIZED to "Solarized")
+}
+
+/** Theme-derived colors for each token kind plus find-match, bracket and whitespace highlights. */
 data class SyntaxColors(
     val keyword: Color,
     val string: Color,
     val number: Color,
     val comment: Color,
     val annotation: Color,
+    val function: Color,
+    val type: Color,
     val match: Color,
     val activeMatch: Color,
     val currentLine: Color,
     val matchedBracket: Color,
+    val trailingWhitespace: Color,
+    val brackets: List<Color>,
 ) {
     fun colorFor(kind: TokenKind): Color = when (kind) {
         TokenKind.COMMENT -> comment
@@ -446,20 +458,62 @@ data class SyntaxColors(
 }
 
 @Composable
-fun rememberSyntaxColors(): SyntaxColors {
+fun rememberSyntaxColors(theme: String = EditorThemes.DEFAULT): SyntaxColors {
     val scheme = MaterialTheme.colorScheme
-    return SyntaxColors(
-        keyword = scheme.primary,
-        string = scheme.tertiary,
-        number = scheme.secondary,
-        comment = scheme.onSurfaceVariant,
-        annotation = scheme.error,
-        match = scheme.primary.copy(alpha = 0.30f),
-        activeMatch = scheme.tertiary.copy(alpha = 0.55f),
-        currentLine = scheme.onSurface.copy(alpha = 0.06f),
-        matchedBracket = scheme.primary.copy(alpha = 0.35f),
-    )
+    return when (theme) {
+        EditorThemes.MONOKAI -> monokaiColors(scheme)
+        EditorThemes.SOLARIZED -> solarizedColors(scheme)
+        else -> defaultColors(scheme)
+    }
 }
+
+private fun defaultColors(scheme: androidx.compose.material3.ColorScheme) = SyntaxColors(
+    keyword = scheme.primary,
+    string = scheme.tertiary,
+    number = scheme.secondary,
+    comment = scheme.onSurfaceVariant,
+    annotation = scheme.error,
+    function = scheme.primary,
+    type = scheme.secondary,
+    match = scheme.primary.copy(alpha = 0.30f),
+    activeMatch = scheme.tertiary.copy(alpha = 0.55f),
+    currentLine = scheme.onSurface.copy(alpha = 0.06f),
+    matchedBracket = scheme.primary.copy(alpha = 0.35f),
+    trailingWhitespace = scheme.error.copy(alpha = 0.15f),
+    brackets = listOf(scheme.primary, scheme.tertiary, scheme.secondary),
+)
+
+private fun monokaiColors(scheme: androidx.compose.material3.ColorScheme) = SyntaxColors(
+    keyword = Color(0xFFF92672),
+    string = Color(0xFFE6DB74),
+    number = Color(0xFFAE81FF),
+    comment = Color(0xFF75715E),
+    annotation = Color(0xFFA6E22E),
+    function = Color(0xFFA6E22E),
+    type = Color(0xFF66D9EF),
+    match = scheme.primary.copy(alpha = 0.30f),
+    activeMatch = scheme.tertiary.copy(alpha = 0.55f),
+    currentLine = Color(0xFFFFFFFF).copy(alpha = 0.06f),
+    matchedBracket = Color(0xFFF92672).copy(alpha = 0.35f),
+    trailingWhitespace = Color(0xFFF92672).copy(alpha = 0.15f),
+    brackets = listOf(Color(0xFFF92672), Color(0xFFA6E22E), Color(0xFF66D9EF), Color(0xFFFD971F)),
+)
+
+private fun solarizedColors(scheme: androidx.compose.material3.ColorScheme) = SyntaxColors(
+    keyword = Color(0xFF859900),
+    string = Color(0xFF2AA198),
+    number = Color(0xFFD33682),
+    comment = Color(0xFF93A1A1),
+    annotation = Color(0xFFB58900),
+    function = Color(0xFF268BD2),
+    type = Color(0xFFB58900),
+    match = scheme.primary.copy(alpha = 0.30f),
+    activeMatch = scheme.tertiary.copy(alpha = 0.55f),
+    currentLine = Color(0xFF586E75).copy(alpha = 0.12f),
+    matchedBracket = Color(0xFF268BD2).copy(alpha = 0.35f),
+    trailingWhitespace = Color(0xFFDC322F).copy(alpha = 0.15f),
+    brackets = listOf(Color(0xFF268BD2), Color(0xFF6C71C4), Color(0xFF2AA198), Color(0xFFB58900)),
+)
 
 /** Index of the bracket matching the one at [index], or -1 if [index] isn't a bracket / unmatched. */
 private fun matchingBracketIndex(text: String, index: Int): Int {
@@ -530,14 +584,51 @@ class SyntaxTransformation(
             }
         }
 
-        if (spec != null && raw.length <= MAX_HIGHLIGHT_LENGTH) {
-            for (match in spec.regex.findAll(raw)) {
+        val highlight = spec != null && raw.length <= MAX_HIGHLIGHT_LENGTH
+        if (highlight) {
+            // Rainbow brackets first, so string/comment spec spans repaint any brackets inside them.
+            if (colors.brackets.isNotEmpty()) {
+                var depth = 0
+                val n = colors.brackets.size
+                for (i in raw.indices) {
+                    when (raw[i]) {
+                        '(', '[', '{' -> {
+                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                            depth++
+                        }
+                        ')', ']', '}' -> {
+                            depth = (depth - 1).coerceAtLeast(0)
+                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                        }
+                    }
+                }
+            }
+
+            val covered = BooleanArray(raw.length)
+            for (match in spec!!.regex.findAll(raw)) {
                 val kind = spec.kindFor(match) ?: continue
-                builder.addStyle(
-                    SpanStyle(color = colors.colorFor(kind)),
-                    match.range.first,
-                    match.range.last + 1,
-                )
+                val first = match.range.first
+                val lastExclusive = match.range.last + 1
+                builder.addStyle(SpanStyle(color = colors.colorFor(kind)), first, lastExclusive)
+                for (p in first until lastExclusive) covered[p] = true
+            }
+
+            // Function calls: an identifier immediately before "(", where not already a token.
+            for (m in FUNCTION_REGEX.findAll(raw)) {
+                if (!rangeCovered(covered, m.range)) {
+                    builder.addStyle(SpanStyle(color = colors.function), m.range.first, m.range.last + 1)
+                    for (p in m.range) covered[p] = true
+                }
+            }
+            // Types: Capitalized identifiers not already covered.
+            for (m in TYPE_REGEX.findAll(raw)) {
+                if (!rangeCovered(covered, m.range)) {
+                    builder.addStyle(SpanStyle(color = colors.type), m.range.first, m.range.last + 1)
+                }
+            }
+            // Trailing whitespace: a subtle background flag per line.
+            for (m in TRAILING_WS_REGEX.findAll(raw)) {
+                builder.addStyle(SpanStyle(background = colors.trailingWhitespace), m.range.first, m.range.last + 1)
             }
         }
 
@@ -574,5 +665,14 @@ class SyntaxTransformation(
         // Above this size, skip tokenization: a single regex pass over hundreds of KB per
         // keystroke would jank. The file still opens and edits fine, just uncolored.
         const val MAX_HIGHLIGHT_LENGTH = 150_000
+        val FUNCTION_REGEX = Regex("\\b[A-Za-z_]\\w*(?=\\s*\\()")
+        val TYPE_REGEX = Regex("\\b[A-Z]\\w*\\b")
+        val TRAILING_WS_REGEX = Regex("[ \\t]+$", RegexOption.MULTILINE)
     }
+}
+
+/** True if any index in [range] is already marked in [covered]. */
+private fun rangeCovered(covered: BooleanArray, range: IntRange): Boolean {
+    for (p in range) if (p in covered.indices && covered[p]) return true
+    return false
 }

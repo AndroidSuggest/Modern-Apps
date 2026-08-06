@@ -25,6 +25,7 @@
     <string name="font_size">Font size</string>
     <string name="tab_width">Tab width</string>
     <string name="theme">Theme</string>
+    <string name="editor_theme">Editor color theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>

@@ -184,6 +184,7 @@ fun EditorScreen(
                         initialQuery = initialFind.orEmpty(),
                         completions = state.completions,
                         showCompletions = state.showCompletions,
+                        editorTheme = state.editorTheme,
                     )
                 }
             }
