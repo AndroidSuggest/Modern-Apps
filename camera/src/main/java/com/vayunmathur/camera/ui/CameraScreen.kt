@@ -22,6 +22,7 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
+import androidx.camera.core.DynamicRange
 import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
 import androidx.camera.viewfinder.core.ImplementationMode
 import androidx.compose.animation.core.Animatable
@@ -643,7 +644,18 @@ fun CameraScreen(
                         CameraXViewfinder(
                             surfaceRequest = request,
                             modifier = previewModifier,
-                            implementationMode = ImplementationMode.EMBEDDED,
+                            // HDR (HLG 10-bit) video previews must render through a SurfaceView
+                            // (EXTERNAL): the EMBEDDED/TextureView path doesn't tone-map the BT.2020
+                            // HLG buffer, which shows up as a reddish/pink cast in video mode. SDR
+                            // (photo) stays EMBEDDED so graphicsLayer RenderEffects (warmth, bokeh)
+                            // still composite onto the preview.
+                            implementationMode = if (
+                                request.dynamicRange.bitDepth != DynamicRange.BIT_DEPTH_8_BIT
+                            ) {
+                                ImplementationMode.EXTERNAL
+                            } else {
+                                ImplementationMode.EMBEDDED
+                            },
                             coordinateTransformer = coordinateTransformer,
                             alignment = Alignment.Center,
                             // Crop (fill) so the camera feed fills the ratio-shaped box for the
