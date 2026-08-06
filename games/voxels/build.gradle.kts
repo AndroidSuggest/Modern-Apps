@@ -29,4 +29,6 @@ rustNativeLib("voxels_engine", "voxels")
 
 dependencies {
     implementation(project(":sdk:games"))
+    implementation(project(":library:network"))
+    implementation(project(":library:e2ee-p2p"))
 }
