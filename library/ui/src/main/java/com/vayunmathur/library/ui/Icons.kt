@@ -205,6 +205,7 @@ import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Whatshot
@@ -832,6 +833,10 @@ fun IconIso(modifier: Modifier = Modifier, tint: Color = LocalContentColor.curre
 @Composable
 fun IconInfo(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.Info, "Info", modifier, tint)
+
+@Composable
+fun IconWarning(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Warning, "Warning", modifier, tint)
 
 @Composable
 fun IconNote(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
