@@ -73,7 +73,6 @@
     <string name="unit_min">min</string>
     <string name="unit_cal">cal</string>
     <string name="label_blood_pressure_unit">mmHg</string>
-    <string name="label_nutrition_details">Ernährungsdetails</string>
     <string name="recipes">Rezepte</string>
     <string name="ingredients">Zutaten</string>
     <string name="rename_ingredient">Zutat umbenennen</string>

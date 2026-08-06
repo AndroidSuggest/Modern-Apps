@@ -94,7 +94,7 @@ pub fn preintegrate(
         let r_next = r * dr;
 
         // Midpoint specific force, rotated into the reference (first) body frame.
-        let a_ref = (&r * a0 + &r_next * a1) * 0.5;
+        let a_ref = (r * a0 + r_next * a1) * 0.5;
 
         p += v * dt + a_ref * (0.5 * dt * dt);
         v += a_ref * dt;

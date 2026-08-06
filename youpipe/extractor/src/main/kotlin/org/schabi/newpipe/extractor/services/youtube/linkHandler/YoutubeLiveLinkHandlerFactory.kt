@@ -21,7 +21,7 @@ class YoutubeLiveLinkHandlerFactory private constructor() : ListLinkHandlerFacto
     }
 
     @Throws(ParsingException::class)
-    override fun getUrl(id: String, contentFilters: List<String>, sortFilter: String): String {
+    override fun getUrl(id: String, contentFilter: List<String>, sortFilter: String): String {
         return "https://www.youtube.com$LIVE_CHANNEL_PATH?$LIVE_CHANNEL_TAB_PARAMS"
     }
 

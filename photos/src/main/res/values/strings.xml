@@ -405,8 +405,6 @@
     <string name="wallpaper_lock">Lock</string>
     <!-- Segment: both home and lock screens. Noun phrase -->
     <string name="wallpaper_both">Both</string>
-    <!-- Toggle label: static (no parallax) wallpaper mode. Adjective -->
-    <string name="wallpaper_static">Static</string>
     <!-- Toggle label: scrollable (parallax) wallpaper mode. Adjective -->
     <string name="wallpaper_scrollable">Scrollable</string>
     <!-- Description for scrollable wallpaper: wider image that moves with home screens. Sentence -->

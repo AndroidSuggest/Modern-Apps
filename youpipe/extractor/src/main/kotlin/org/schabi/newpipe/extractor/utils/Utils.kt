@@ -355,8 +355,7 @@ object Utils {
     fun getStringResultFromRegexArray(input: String, regexes: Array<Pattern>, group: Int): String {
         for (regex in regexes) {
             try {
-                val result = Parser.matchGroup(regex, input, group)
-                if (result != null) return result
+                return Parser.matchGroup(regex, input, group)
             } catch (_: Parser.RegexException) {
             }
         }

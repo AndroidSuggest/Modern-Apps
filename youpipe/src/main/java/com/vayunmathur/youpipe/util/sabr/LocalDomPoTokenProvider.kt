@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.edit
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrPoTokenProvider
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrProtocolException
 import org.schabi.newpipe.extractor.services.youtube.sabr.YoutubeSabrInfo
@@ -203,7 +204,7 @@ class LocalDomPoTokenProvider(context: Context) :
         } ?: throw SabrProtocolException("Missing visitorData for Local DOM PO token")
         if (forceRefresh) {
             cache.remove(videoId)
-            prefs.edit().remove(videoId).apply()
+            prefs.edit { remove(videoId) }
         }
         synchronized(mintLocks.computeIfAbsent(videoId) { Any() }) {
             val now = System.currentTimeMillis()
@@ -240,7 +241,7 @@ class LocalDomPoTokenProvider(context: Context) :
     fun clearCachedToken(videoId: String) {
         synchronized(mintLocks.computeIfAbsent(videoId) { Any() }) {
             cache.remove(videoId)
-            prefs.edit().remove(videoId).commit()
+            prefs.edit(commit = true) { remove(videoId) }
         }
     }
 
@@ -360,7 +361,7 @@ class LocalDomPoTokenProvider(context: Context) :
             rawSessionPoToken = null
         }
         cache.clear()
-        prefs.edit().clear().commit()
+        prefs.edit(commit = true) { clear() }
         Log.i(TAG, "YouTube credentials changed; cleared credential-bound PO token state")
     }
 
@@ -368,13 +369,13 @@ class LocalDomPoTokenProvider(context: Context) :
         val value = prefs.getString(videoId, null) ?: return null
         val parts = value.split('|', limit = 4)
         if (parts.size != 4) {
-            prefs.edit().remove(videoId).apply()
+            prefs.edit { remove(videoId) }
             return null
         }
         return try {
             val mintedAt = parts[0].toLong()
             if (System.currentTimeMillis() - mintedAt >= TOKEN_TTL_MS) {
-                prefs.edit().remove(videoId).apply()
+                prefs.edit { remove(videoId) }
                 null
             } else {
                 val visitorData = String(
@@ -405,10 +406,12 @@ class LocalDomPoTokenProvider(context: Context) :
             visitorData.toByteArray(Charsets.UTF_8),
         )
         val encodedToken = encoder.encodeToString(token)
-        prefs.edit().putString(
-            videoId,
-            "$mintedAt|$credentialIdentity|$encodedVisitorData|$encodedToken",
-        ).commit()
+        prefs.edit(commit = true) {
+            putString(
+                videoId,
+                "$mintedAt|$credentialIdentity|$encodedVisitorData|$encodedToken",
+            )
+        }
     }
 
     companion object {

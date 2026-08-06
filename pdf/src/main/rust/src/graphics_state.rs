@@ -1,8 +1,9 @@
 use crate::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub(crate) enum BlendMode {
+    #[default]
     Normal = 0,
     Multiply = 1,
     Screen = 2,
@@ -19,10 +20,6 @@ pub(crate) enum BlendMode {
     Saturation = 13,
     Color = 14,
     Luminosity = 15,
-}
-
-impl Default for BlendMode {
-    fn default() -> Self { BlendMode::Normal }
 }
 
 impl BlendMode {

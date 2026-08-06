@@ -9,6 +9,7 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import androidx.core.graphics.createBitmap
 import kotlin.math.pow
 import kotlin.random.Random
 
@@ -241,7 +242,7 @@ private fun applySharpen(src: Bitmap, amount: Float): Bitmap {
         out[y * w + w - 1] = pixels[y * w + w - 1]
     }
 
-    val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val result = createBitmap(w, h)
     result.setPixels(out, 0, w, 0, 0, w, h)
     src.recycle()
     return result

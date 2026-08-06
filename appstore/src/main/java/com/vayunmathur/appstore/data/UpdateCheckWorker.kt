@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.edit
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -95,7 +96,7 @@ class UpdateCheckWorker(
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val signature = packages.joinToString(",")
         if (prefs.getString(KEY_LAST_NOTIFIED, "") == signature) return
-        prefs.edit().putString(KEY_LAST_NOTIFIED, signature).apply()
+        prefs.edit { putString(KEY_LAST_NOTIFIED, signature) }
 
         if (count == 0) {
             NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
@@ -133,7 +134,6 @@ class UpdateCheckWorker(
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
             NotificationChannel(

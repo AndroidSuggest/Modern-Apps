@@ -3,7 +3,7 @@
 package com.vayunmathur.messages.signal.web
 
 import kotlin.concurrent.atomics.*
-import android.content.Context
+import android.app.Application
 import android.util.Log
 import com.vayunmathur.messages.signal.proto.WebSocketProtos.WebSocketMessage
 import com.vayunmathur.messages.signal.proto.WebSocketProtos.WebSocketRequestMessage
@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.io.IOException
 
 class SignalWebSocket(
-    private val context: Context,
+    private val context: Application,
     private val basicAuth: String? = null,
 ) {
     sealed class ConnectionEvent {

@@ -148,7 +148,7 @@ open class YoutubeChannelTabExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getPage(page: Page): InfoItemsPage<InfoItem> {
-        if (page == null || isNullOrEmpty(page.url)) {
+        if (isNullOrEmpty(page.url)) {
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 
@@ -339,11 +339,11 @@ open class YoutubeChannelTabExtractor(
         collector.commit(
             object : YoutubeReelInfoItemExtractor(reelItemRenderer) {
                 override fun getUploaderName(): String? {
-                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
+                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName
                 }
 
                 override fun getUploaderUrl(): String? {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl
                 }
 
                 override fun isUploaderVerified(): Boolean {
@@ -363,11 +363,11 @@ open class YoutubeChannelTabExtractor(
         collector.commit(
             object : YoutubeShortsLockupInfoItemExtractor(shortsLockupViewModel) {
                 override fun getUploaderName(): String? {
-                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
+                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName
                 }
 
                 override fun getUploaderUrl(): String? {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl
                 }
 
                 override fun isUploaderVerified(): Boolean {
@@ -392,11 +392,11 @@ open class YoutubeChannelTabExtractor(
                 override fun getUploaderAvatars(): List<Image> = emptyList()
 
                 override fun getUploaderName(): String? {
-                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
+                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName
                 }
 
                 override fun getUploaderUrl(): String? {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl
                 }
 
                 override fun isUploaderVerified(): Boolean {
@@ -416,11 +416,11 @@ open class YoutubeChannelTabExtractor(
         collector.commit(
             object : YoutubeMixOrPlaylistLockupInfoItemExtractor(playlistLockupViewModel) {
                 override fun getUploaderName(): String? {
-                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
+                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName
                 }
 
                 override fun getUploaderUrl(): String? {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl
                 }
 
                 @Throws(ParsingException::class)
@@ -446,11 +446,11 @@ open class YoutubeChannelTabExtractor(
         collector.commit(
             object : YoutubeStreamInfoItemExtractor(jsonObject, timeAgoParser) {
                 override fun getUploaderName(): String? {
-                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
+                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName
                 }
 
                 override fun getUploaderUrl(): String? {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl
                 }
 
                 @Throws(ParsingException::class)
@@ -475,11 +475,11 @@ open class YoutubeChannelTabExtractor(
         collector.commit(
             object : YoutubePlaylistInfoItemExtractor(jsonObject) {
                 override fun getUploaderName(): String? {
-                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName!!
+                    return if (isNullOrEmpty(channelName)) super.getUploaderName() else channelName
                 }
 
                 override fun getUploaderUrl(): String? {
-                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl!!
+                    return if (isNullOrEmpty(channelUrl)) super.getUploaderUrl() else channelUrl
                 }
 
                 @Throws(ParsingException::class)
@@ -503,7 +503,7 @@ open class YoutubeChannelTabExtractor(
             return null
         }
 
-        val continuationEndpoint = continuations!!.getObject("continuationEndpoint").orEmptyObject()
+        val continuationEndpoint = continuations.getObject("continuationEndpoint").orEmptyObject()
         val continuation = continuationEndpoint.getObject("continuationCommand").orEmptyObject()
             .getString("token")
 

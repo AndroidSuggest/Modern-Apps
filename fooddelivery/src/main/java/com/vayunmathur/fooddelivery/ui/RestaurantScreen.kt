@@ -150,7 +150,7 @@ fun RestaurantContent(
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
         } else {
-            val m = merchant!!
+            val m = merchant
             val itemsById = m.items.associateBy { it.id }
 
             LazyColumn(

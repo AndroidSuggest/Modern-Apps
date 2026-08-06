@@ -23,12 +23,15 @@ package com.vayunmathur.library.ui
 // only swapping the import. Apps call our non-experimental wrappers, so these opt-ins are
 // effectively no-ops (they may surface a harmless "unnecessary @OptIn" warning).
 @RequiresOptIn
+@Retention(AnnotationRetention.BINARY)
 annotation class ExperimentalMaterial3Api
 
 @RequiresOptIn
+@Retention(AnnotationRetention.BINARY)
 annotation class ExperimentalMaterial3ExpressiveApi
 
 @RequiresOptIn
+@Retention(AnnotationRetention.BINARY)
 annotation class ExperimentalMaterial3AdaptiveApi
 
 // --- Theme ---

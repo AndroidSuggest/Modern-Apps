@@ -20,8 +20,9 @@ pub(crate) fn cmyk_to_argb(c: f64, m: f64, y: f64, k: f64) -> u32 {
 // Content-stream interpreter
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(crate) enum CsKind {
+    #[default]
     DeviceGray,
     DeviceRGB,
     DeviceCMYK,
@@ -33,10 +34,6 @@ pub(crate) enum CsKind {
     ICCBased { n: u8, alt: Option<Box<CsKind>> },
     CalRGB { white: [f64;3], gamma: [f64;3], matrix: [[f64;3];3] },
     CalGray { white: [f64;3], gamma: f64, black: Option<[f64;3]> },
-}
-
-impl Default for CsKind {
-    fn default() -> Self { CsKind::DeviceGray }
 }
 
 pub(crate) fn colorspaces_from_resources(doc: &Document, res_dict: &lopdf::Dictionary) -> HashMap<Vec<u8>, ObjectId> {
@@ -350,7 +347,7 @@ fn adapt_to_d65(x: f64, y: f64, z: f64, src_white: [f64; 3]) -> (f64, f64, f64) 
 pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_resources: &HashMap<Vec<u8>, ObjectId>) -> Option<u32> {
     match kind {
         CsKind::DeviceGray => {
-            let v = comps.get(0).copied().unwrap_or(0.0);
+            let v = comps.first().copied().unwrap_or(0.0);
             Some(gray_to_argb(v))
         }
         CsKind::DeviceRGB => {
@@ -366,7 +363,7 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
         CsKind::Lab { white, range, .. } => {
             // PDF spec 8.6.5.4 Lab -> XYZ -> (D50->D65 adapt via Bradford) -> sRGB
             let _ = range; // a*/b* already in comps; spec range clamp is done by caller via Decode
-            let l = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,100.0);
+            let l = comps.first().copied().unwrap_or(0.0).clamp(0.0,100.0);
             let a = comps.get(1).copied().unwrap_or(0.0);
             let b = comps.get(2).copied().unwrap_or(0.0);
             let fy = (l + 16.0)/116.0;
@@ -399,6 +396,8 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
                 [ 0.4323053,  0.5183603,  0.0492912],
                 [-0.0085287,  0.0400428,  0.9684867],
             ];
+            // CIE reference white points. The Lab source white is the space's
+            // /WhitePoint (`white`) per PDF 8.6.5.4; D65 is the sRGB destination.
             const LMS_D50_X: f64 = 0.96422;
             const LMS_D50_Y: f64 = 1.0;
             const LMS_D50_Z: f64 = 0.82521;
@@ -418,9 +417,9 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
                 BRAD[2][0]*wx + BRAD[2][1]*wy + BRAD[2][2]*wz,
             ];
             let dst_wp_lms = [
-                BRAD[0][0]*0.95047 + BRAD[0][1]*1.0 + BRAD[0][2]*1.08883,
-                BRAD[1][0]*0.95047 + BRAD[1][1]*1.0 + BRAD[1][2]*1.08883,
-                BRAD[2][0]*0.95047 + BRAD[2][1]*1.0 + BRAD[2][2]*1.08883,
+                BRAD[0][0]*LMS_D65_X + BRAD[0][1]*LMS_D65_Y + BRAD[0][2]*LMS_D65_Z,
+                BRAD[1][0]*LMS_D65_X + BRAD[1][1]*LMS_D65_Y + BRAD[1][2]*LMS_D65_Z,
+                BRAD[2][0]*LMS_D65_X + BRAD[2][1]*LMS_D65_Y + BRAD[2][2]*LMS_D65_Z,
             ];
             let scale = [
                 if src_wp_lms[0].abs() > 1e-9 { dst_wp_lms[0]/src_wp_lms[0] } else { 1.0 },
@@ -444,7 +443,7 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
         CsKind::CalRGB { white, gamma, matrix } => {
             // CalRGB: A^GammaR, B^GammaG, C^GammaB -> XYZ via Matrix, then adapt
             // from the space's /WhitePoint to D65 before XYZ -> sRGB (PDF 8.6.5.3).
-            let a = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[0].clamp(0.1,10.0));
+            let a = comps.first().copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[0].clamp(0.1,10.0));
             let b = comps.get(1).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[1].clamp(0.1,10.0));
             let c = comps.get(2).copied().unwrap_or(0.0).clamp(0.0,1.0).powf(gamma[2].clamp(0.1,10.0));
             let x = matrix[0][0]*a + matrix[0][1]*b + matrix[0][2]*c;
@@ -461,7 +460,7 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             Some(rgb_to_argb(gamma_corr(r_lin), gamma_corr(g_lin), gamma_corr(b_lin)))
         }
         CsKind::CalGray { gamma, white, .. } => {
-            let g = comps.get(0).copied().unwrap_or(0.0).clamp(0.0,1.0);
+            let g = comps.first().copied().unwrap_or(0.0).clamp(0.0,1.0);
             let a = g.powf(gamma.clamp(0.1,10.0));
             // Scale the whitepoint by the gray value, then adapt to D65.
             let (x, y, z) = adapt_to_d65(white[0]*a, white[1]*a, white[2]*a, *white);
@@ -485,7 +484,7 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             // Ideally parse ICC profile, but use RGB/Gray/CMYK by N with alpha-preserved alt lookup.
             match n {
                 1 => {
-                    let v = comps.get(0).copied().unwrap_or(0.0);
+                    let v = comps.first().copied().unwrap_or(0.0);
                     Some(gray_to_argb(v))
                 }
                 3 => {
@@ -498,7 +497,7 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             }
         }
         CsKind::Indexed { base, lookup, base_ncomp, hival } => {
-            let idx = (comps.get(0).copied().unwrap_or(0.0) as usize).clamp(0, *hival as usize);
+            let idx = (comps.first().copied().unwrap_or(0.0) as usize).clamp(0, *hival as usize);
             let off = idx * *base_ncomp as usize;
             if off + *base_ncomp as usize <= lookup.len() {
                 let slice = &lookup[off..off+*base_ncomp as usize];
@@ -520,7 +519,7 @@ pub(crate) fn eval_cs_to_rgb(doc: &Document, kind: &CsKind, comps: &[f64], cs_re
             if name == b"None" {
                 return Some(0x0000_0000);
             }
-            let t = comps.get(0).copied().unwrap_or(1.0).clamp(0.0, 1.0);
+            let t = comps.first().copied().unwrap_or(1.0).clamp(0.0, 1.0);
             if let Some(tf) = tint_fn {
                 let alt_comps = tf.eval(&[t]);
                 if let Some(rgb) = eval_cs_to_rgb(doc, alt, &alt_comps, cs_resources) {

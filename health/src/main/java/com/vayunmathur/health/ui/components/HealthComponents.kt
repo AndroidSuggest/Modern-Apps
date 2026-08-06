@@ -77,8 +77,8 @@ fun SectionHeader(
  */
 @Composable
 fun GroupedSection(
-    title: String? = null,
     modifier: Modifier = Modifier,
+    title: String? = null,
     leadingIcon: (@Composable (Modifier, Color) -> Unit)? = null,
     accentColor: Color? = null,
     content: @Composable () -> Unit,

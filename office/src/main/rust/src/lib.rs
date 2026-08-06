@@ -34,7 +34,6 @@ fn next_handle() -> i64 {
     h
 }
 
-#[cfg(not(test))]
 mod jni_bindings {
     use super::*;
     use jni::objects::{JClass, JString};
@@ -87,7 +86,7 @@ mod jni_bindings {
             None => return,
         };
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if let Some(c) = crdt_registry().lock().unwrap().get_mut(&(handle as i64)) {
+            if let Some(c) = crdt_registry().lock().unwrap().get_mut(&handle) {
                 c.load_state(&json);
             }
         }));
@@ -103,7 +102,7 @@ mod jni_bindings {
             crdt_registry()
                 .lock()
                 .unwrap()
-                .get(&(handle as i64))
+                .get(&handle)
                 .map(|c| c.serialize())
         }))
         .unwrap_or(None);
@@ -129,7 +128,7 @@ mod jni_bindings {
                 Ok(v) => v,
                 Err(_) => return,
             };
-            if let Some(c) = crdt_registry().lock().unwrap().get_mut(&(handle as i64)) {
+            if let Some(c) = crdt_registry().lock().unwrap().get_mut(&handle) {
                 c.apply(&ops);
             }
         }));
@@ -147,7 +146,7 @@ mod jni_bindings {
             None => return std::ptr::null_mut(),
         };
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crdt_registry().lock().unwrap().get_mut(&(handle as i64)).map(|c| {
+            crdt_registry().lock().unwrap().get_mut(&handle).map(|c| {
                 let ops = c.update(&xml);
                 serde_json::to_string(&ops).unwrap_or_else(|_| "[]".to_string())
             })
@@ -169,7 +168,7 @@ mod jni_bindings {
             crdt_registry()
                 .lock()
                 .unwrap()
-                .get(&(handle as i64))
+                .get(&handle)
                 .map(|c| c.render())
         }))
         .unwrap_or(None);
@@ -189,7 +188,7 @@ mod jni_bindings {
             crdt_registry()
                 .lock()
                 .unwrap()
-                .get(&(handle as i64))
+                .get(&handle)
                 .map(|c| c.to_state_nodes_json())
         }))
         .unwrap_or(None);
@@ -205,7 +204,7 @@ mod jni_bindings {
         _class: JClass<'l>,
         handle: jlong,
     ) {
-        crdt_registry().lock().unwrap().remove(&(handle as i64));
+        crdt_registry().lock().unwrap().remove(&handle);
     }
 
     // --- ODF formula engine ---
@@ -222,7 +221,7 @@ mod jni_bindings {
             None => return 0,
         };
         let wb = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            Workbook::from_json(&json, now_millis as i64)
+            Workbook::from_json(&json, now_millis)
         }))
         .unwrap_or(None);
         match wb {
@@ -248,8 +247,8 @@ mod jni_bindings {
             wb_registry()
                 .lock()
                 .unwrap()
-                .get(&(handle as i64))
-                .map(|w| w.display_value(sheet_idx as usize, row as i32, col as i32))
+                .get(&handle)
+                .map(|w| w.display_value(sheet_idx as usize, row, col))
         }))
         .unwrap_or(None);
         match out {
@@ -271,8 +270,8 @@ mod jni_bindings {
             wb_registry()
                 .lock()
                 .unwrap()
-                .get(&(handle as i64))
-                .map(|w| w.is_numeric(sheet_idx as usize, row as i32, col as i32))
+                .get(&handle)
+                .map(|w| w.is_numeric(sheet_idx as usize, row, col))
         }))
         .unwrap_or(None);
         match out {
@@ -287,7 +286,7 @@ mod jni_bindings {
         _class: JClass<'l>,
         handle: jlong,
     ) {
-        wb_registry().lock().unwrap().remove(&(handle as i64));
+        wb_registry().lock().unwrap().remove(&handle);
     }
 
     #[no_mangle]
@@ -299,7 +298,7 @@ mod jni_bindings {
     ) -> jstring {
         let nf_json = read_string(&mut env, &number_format_json).unwrap_or_default();
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            formula::format_value_json(value as f64, &nf_json)
+            formula::format_value_json(value, &nf_json)
         }))
         .unwrap_or_else(|_| String::new());
         out_string(&env, out)
@@ -325,7 +324,7 @@ mod jni_bindings {
     /// Builtin `numFmtId` → the ODF number-style model, as JSON, or `null`.
     #[no_mangle]
     pub extern "system" fn Java_com_vayunmathur_office_util_OfficeNative_numFmtForBuiltin<'l>(
-        mut env: JNIEnv<'l>,
+        env: JNIEnv<'l>,
         _class: JClass<'l>,
         id: jint,
     ) -> jstring {

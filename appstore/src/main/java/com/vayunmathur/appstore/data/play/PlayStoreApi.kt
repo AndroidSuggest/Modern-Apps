@@ -168,7 +168,7 @@ internal fun App.toUnifiedApp(): UnifiedApp {
         isFree = isFree,
         whatsNew = changes.takeIf { it.isNotBlank() },
         targetSdk = targetSdk.takeIf { it > 0 },
-        rating = rating.average.toFloat().takeIf { it > 0f },
+        rating = rating.average.takeIf { it > 0f },
         ratingCount = ratingCount,
         installs = installs,
         updatedOn = updatedOn.takeIf { it.isNotBlank() },
@@ -182,7 +182,7 @@ internal fun App.toUnifiedApp(): UnifiedApp {
         // pins the bytes against a swapped CDN response, but note that Google
         // supplies both this value and the APK, so it is not a publisher key.
         expectedSigners = certificateSetList
-            .mapNotNull { it.sha256?.let(ApkCertificates::normalizeFingerprint) }
+            .mapNotNull { ApkCertificates.normalizeFingerprint(it.sha256) }
             .distinct(),
     )
 }

@@ -118,6 +118,7 @@ private fun OutlookOAuthForm(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accountAddedMsg = stringResource(R.string.account_added)
     var emailHint by rememberSaveable { mutableStateOf("") }
     var useAppPassword by rememberSaveable { mutableStateOf(false) }
     var appPassword by rememberSaveable { mutableStateOf("") }
@@ -198,7 +199,7 @@ private fun OutlookOAuthForm(
                         )
                         working = false
                         if (result == null) {
-                            AppMessages.show(context.getString(R.string.account_added)); onAccountAdded()
+                            AppMessages.show(accountAddedMsg); onAccountAdded()
                         } else error = result
                     }
                 },
@@ -225,6 +226,7 @@ private fun PasswordForm(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accountAddedMsg = stringResource(R.string.account_added)
 
     var email by rememberSaveable { mutableStateOf("") }
     var useDifferentUsername by rememberSaveable { mutableStateOf(false) }
@@ -291,7 +293,7 @@ private fun PasswordForm(
                     val smtp = preset.smtp ?: ServerConfig(smtpHost, smtpPort.toIntOrNull() ?: 465, smtpUseSsl)
                     val result = testAndPersistAccount(context = context, providerId = preset.id, email = email, username = if (useDifferentUsername) username else "", password = password, imap = imap, smtp = smtp)
                     working = false
-                    if (result == null) { AppMessages.show(context.getString(R.string.account_added)); onAccountAdded() } else error = result
+                    if (result == null) { AppMessages.show(accountAddedMsg); onAccountAdded() } else error = result
                 }
             },
             modifier = Modifier.fillMaxWidth(),

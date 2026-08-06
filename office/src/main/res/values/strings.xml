@@ -49,7 +49,7 @@
     <!-- DocumentViews: Header section label. Noun. -->
     <string name="header">Header</string>
     <!-- DocumentViews: Chart series input format hint -->
-    <string name="series_name_v1_v2">Series (Name: v1, v2, ...)</string>
+    <string name="series_name_v1_v2">Series (Name: v1, v2, …)</string>
     <!-- DocumentViews: Spreadsheet freeze panes action. Verb. -->
     <string name="freeze">Freeze</string>
     <!-- DocumentViews: Menu item to insert comment. Verb phrase. -->

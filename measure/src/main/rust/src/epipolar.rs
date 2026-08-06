@@ -245,7 +245,7 @@ pub fn decompose_essential(e: &Matrix3<f64>, a: &[NPt], b: &[NPt]) -> Option<Rel
                 continue;
             }
             // Also require positive depth in the second camera.
-            let p2 = &pose.r * p + pose.t.clone();
+            let p2 = pose.r * p + pose.t;
             if p2[2] > 0.0 {
                 in_front += 1;
             }
@@ -278,7 +278,7 @@ mod tests {
 
     /// Project a world point into a camera at (R, t) as a calibrated bearing.
     fn project(r: &Matrix3<f64>, t: &Vector3<f64>, p: Vector3<f64>) -> NPt {
-        let c = r * p + t.clone();
+        let c = r * p + *t;
         (c[0] / c[2], c[1] / c[2])
     }
 

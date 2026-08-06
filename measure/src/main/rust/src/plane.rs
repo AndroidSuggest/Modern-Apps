@@ -25,7 +25,7 @@ impl Plane {
 
     /// Project a point perpendicularly onto the plane.
     pub fn project(&self, p: &Vector3<f64>) -> Vector3<f64> {
-        p.clone() - self.normal.clone() * self.distance(p)
+        *p - self.normal * self.distance(p)
     }
 
     /// Intersection of the ray `origin + t·dir` with the plane, if it hits in front.
@@ -38,7 +38,7 @@ impl Plane {
         if t <= 0.0 {
             return None; // plane is behind the camera
         }
-        Some(origin.clone() + dir.clone() * t)
+        Some(*origin + *dir * t)
     }
 
     /// Angle between the plane normal and the up direction, in radians.
@@ -53,7 +53,7 @@ impl Plane {
 }
 
 fn plane_through(a: &Vector3<f64>, b: &Vector3<f64>, c: &Vector3<f64>) -> Option<Plane> {
-    let n = (b.clone() - a.clone()).cross(&(c.clone() - a.clone()));
+    let n = (*b - *a).cross(&(*c - *a));
     let len = n.norm();
     if len < 1e-12 {
         return None; // collinear
@@ -128,14 +128,14 @@ fn refit_least_squares(points: &[Vector3<f64>], inliers: &[usize]) -> Option<Pla
     }
     let mut centroid = Vector3::zeros();
     for &i in inliers {
-        centroid += points[i].clone();
+        centroid += points[i];
     }
-    centroid = centroid / inliers.len() as f64;
+    centroid /= inliers.len() as f64;
 
     // Symmetric 3x3 scatter matrix, accumulated as raw sums.
     let mut m = [[0.0f64; 3]; 3];
     for &i in inliers {
-        let d = points[i].clone() - centroid.clone();
+        let d = points[i] - centroid;
         for r in 0..3 {
             for c in 0..3 {
                 m[r][c] += d[r] * d[c];

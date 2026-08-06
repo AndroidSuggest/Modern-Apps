@@ -196,13 +196,13 @@ fun CheckoutScreen(
         val amount = withContext(Dispatchers.IO) {
             runCatching {
                 Stripe(context, PaymentConfiguration.getInstance(context).publishableKey)
-                    .retrievePaymentIntentSynchronous(secret)?.amount?.toInt()
+                    .retrievePaymentIntentSynchronous(secret).amount?.toInt()
             }.onFailure { Log.w("Checkout", "PaymentIntent lookup failed", it) }.getOrNull()
         } ?: return@LaunchedEffect
         val shown = payTotal ?: return@LaunchedEffect
         if (kotlin.math.abs(amount / 100.0 - shown) > 0.005) {
             Log.w("Checkout", "MISMATCH: stripe=${amount / 100.0} shown=$shown " +
-                "componentTotal=${confirmedOrder?.componentTotal} rewards=${rewards?.rewardsAvailable}")
+                "componentTotal=${confirmedOrder.componentTotal} rewards=${rewards?.rewardsAvailable}")
         }
     }
 

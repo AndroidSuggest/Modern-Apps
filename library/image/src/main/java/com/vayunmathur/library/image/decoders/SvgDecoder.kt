@@ -7,6 +7,8 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.toColorInt
 import com.vayunmathur.library.image.ImageRequest
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
@@ -54,7 +56,7 @@ object SvgDecoder {
             else if (docW > 0 && docH > 0) { outW = docW.toInt().coerceAtLeast(1); outH = docH.toInt().coerceAtLeast(1) }
             else { outW = 512; outH = 512 }
 
-            val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+            val bitmap = createBitmap(outW, outH)
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.TRANSPARENT)
             renderSvgToCanvas(canvas, svgString, outW, outH, rootInfo)
@@ -134,7 +136,7 @@ private fun parseColorString(cs: String?): Int? {
     if (lower == "none") return null
     if (lower == "transparent") return Color.TRANSPARENT
     if (lower == "currentcolor") return null
-    if (lower.startsWith("#")) { try { return Color.parseColor(s) } catch (_: Exception) {} }
+    if (lower.startsWith("#")) { try { return s.toColorInt() } catch (_: Exception) {} }
     if (lower.startsWith("rgb(") || lower.startsWith("rgba(")) {
         try {
             val inner = s.substringAfter('(').substringBeforeLast(')').replace('/', ' ').trim()
@@ -146,7 +148,7 @@ private fun parseColorString(cs: String?): Int? {
             }
         } catch (_: Exception) {}
     }
-    try { return Color.parseColor(s) } catch (_: Exception) {
+    try { return s.toColorInt() } catch (_: Exception) {
         return when (lower) {
             "red" -> Color.RED; "green" -> Color.GREEN; "blue" -> Color.BLUE
             "black" -> Color.BLACK; "white" -> Color.WHITE

@@ -31,7 +31,6 @@
     <string name="encrypt_with_password">Zašifrovat heslem</string>
     <string name="open">Otevřít</string>
     <string name="sticky_note">Poznámka</string>
-    <string name="copied">Zkopírováno</string>
     <string name="incorrect_password">Nesprávné heslo</string>
     <string name="password_required">Vyžadováno heslo</string>
     <string name="save_encrypted">Uložit zašifrované</string>

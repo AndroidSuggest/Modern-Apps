@@ -1,7 +1,6 @@
 package com.vayunmathur.calendar.ui
 
 import androidx.compose.ui.res.pluralStringResource
-import android.net.Uri
 import android.provider.CalendarContract
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.Route
@@ -38,7 +38,7 @@ fun ImportIcsScreen(
     backStack: NavBackStack<Route>,
     uris: List<String>,
 ) {
-    val uriList = remember(uris) { uris.map { Uri.parse(it) } }
+    val uriList = remember(uris) { uris.map { it.toUri() } }
     val parsedEvents by viewModel.parsedIcsEvents.collectAsStateWithLifecycle()
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

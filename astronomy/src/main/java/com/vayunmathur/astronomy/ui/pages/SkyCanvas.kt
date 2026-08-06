@@ -33,6 +33,7 @@ fun SkyCanvas(
     visibleSky: VisibleSky,
     viewState: ViewState,
     showConstellationLines: Boolean,
+    modifier: Modifier = Modifier,
     showConstellationArt: Boolean = false,
     showGrid: Boolean,
     showDeepSky: Boolean,
@@ -45,7 +46,6 @@ fun SkyCanvas(
     onTap: (Offset) -> Unit,
     onObjectTap: (String) -> Unit,
     onObjectOpen: (String) -> Unit = onObjectTap,
-    modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
     val projection = remember(viewState) { StereographicProjection(viewState) }

@@ -119,8 +119,7 @@ abstract class Downloader {
         @Nullable localization: Localization?
     ): StreamingResponse {
         val response = get(url, headers, localization ?: NewPipe.getPreferredLocalization())
-        val raw = if (response.responseBody() == null) ByteArray(0)
-        else response.responseBody().toByteArray(Charsets.ISO_8859_1)
+        val raw = response.responseBody().toByteArray(Charsets.ISO_8859_1)
         return StreamingResponse(response.responseCode(), response.responseHeaders(), ByteArrayInputStream(raw))
     }
 
@@ -140,8 +139,7 @@ abstract class Downloader {
         @Nullable localization: Localization?
     ): StreamingResponse {
         val response = post(url, headers, dataToSend, localization ?: NewPipe.getPreferredLocalization())
-        val raw = if (response.responseBody() == null) ByteArray(0)
-        else response.responseBody().toByteArray(Charsets.ISO_8859_1)
+        val raw = response.responseBody().toByteArray(Charsets.ISO_8859_1)
         return StreamingResponse(response.responseCode(), response.responseHeaders(), ByteArrayInputStream(raw))
     }
 

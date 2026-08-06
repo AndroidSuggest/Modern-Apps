@@ -337,7 +337,7 @@ fn group_thousands(digits: &str) -> String {
     let mut out = String::new();
     let len = bytes.len();
     for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
+        if i > 0 && (len - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(*b as char);
@@ -580,7 +580,7 @@ struct DateTime {
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as i64; // [0, 399]
+    let yoe = y - era * 400; // [0, 399]
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1; // [0, 365]
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
     era * 146097 + doe - 719468
@@ -1467,15 +1467,10 @@ impl Parser {
                         self.pos += 1;
                     }
                 }
-                ',' | ';' => {
-                    if depth == 0 {
-                        parts.push(cur.clone());
-                        cur.clear();
-                        self.pos += 1;
-                    } else {
-                        cur.push(c);
-                        self.pos += 1;
-                    }
+                ',' | ';' if depth == 0 => {
+                    parts.push(cur.clone());
+                    cur.clear();
+                    self.pos += 1;
                 }
                 _ => {
                     cur.push(c);
@@ -1519,7 +1514,7 @@ fn parse_cell_coords(token: &str) -> (i32, i32) {
 
 // ---- Kotlin-style substring helpers ----------------------------------------
 
-fn substring_before<'a>(s: &'a str, delim: &str) -> String {
+fn substring_before(s: &str, delim: &str) -> String {
     match s.find(delim) {
         Some(i) => s[..i].to_string(),
         None => s.to_string(),
@@ -2329,7 +2324,7 @@ impl<'a> Evaluator<'a> {
                 let mut list = self.t_nums(&a[0])?;
                 list.sort_by(|p, q| p.total_cmp(q));
                 let p = self.t_num(&a[1])?;
-                if list.is_empty() || p < 0.0 || p > 1.0 {
+                if list.is_empty() || !(0.0..=1.0).contains(&p) {
                     return Err(ferr("#NUM!"));
                 }
                 Ok(Value::Num(percentile_of(&list, p)))
@@ -2545,8 +2540,8 @@ impl<'a> Evaluator<'a> {
                 let r = self.t_num(&a[0])?;
                 let mut total = 0.0;
                 let mut t = 1i32;
-                for i in 1..a.len() {
-                    for cf in self.t_nums(&a[i])? {
+                for arg in a.iter().skip(1) {
+                    for cf in self.t_nums(arg)? {
                         total += cf / (1.0 + r).powi(t);
                         t += 1;
                     }
@@ -2682,7 +2677,7 @@ impl<'a> Evaluator<'a> {
                 let num = self.t_num(&a[0])? as i64;
                 let radix = self.t_num(&a[1])? as u32;
                 let min_len = if a.len() > 2 { self.t_num(&a[2])? as usize } else { 0 };
-                if radix < 2 || radix > 36 {
+                if !(2..=36).contains(&radix) {
                     Err(ferr("#NUM!"))
                 } else {
                     let s = to_radix(num, radix).to_uppercase();
@@ -2691,7 +2686,7 @@ impl<'a> Evaluator<'a> {
             }
             "DECIMAL" => {
                 let radix = self.t_num(&a[1])? as u32;
-                if radix < 2 || radix > 36 {
+                if !(2..=36).contains(&radix) {
                     Err(ferr("#NUM!"))
                 } else {
                     let s = self.t_str(&a[0])?;
@@ -2842,7 +2837,7 @@ impl<'a> Evaluator<'a> {
                 let mut list = self.t_nums(&a[0])?;
                 list.sort_by(|p, q| p.total_cmp(q));
                 let q = self.t_num(&a[1])? as i32;
-                if list.is_empty() || q < 0 || q > 4 {
+                if list.is_empty() || !(0..=4).contains(&q) {
                     Err(ferr("#NUM!"))
                 } else {
                     Ok(Value::Num(percentile_of(&list, q as f64 / 4.0)))
@@ -3007,10 +3002,10 @@ impl<'a> Evaluator<'a> {
                 for _ in 0..100 {
                     let mut npv = 0.0;
                     let mut d = 0.0;
-                    for t in 0..flows.len() {
-                        npv += flows[t] / (1.0 + r).powi(t as i32);
+                    for (t, flow) in flows.iter().enumerate() {
+                        npv += flow / (1.0 + r).powi(t as i32);
                         if t > 0 {
-                            d += -(t as f64) * flows[t] / (1.0 + r).powi(t as i32 + 1);
+                            d += -(t as f64) * flow / (1.0 + r).powi(t as i32 + 1);
                         }
                     }
                     if d == 0.0 {
@@ -3076,12 +3071,12 @@ impl<'a> Evaluator<'a> {
                 let rv = if a.len() > 2 { self.t_values(&a[2])? } else { lv.clone() };
                 let mut best: i32 = -1;
                 let k = self.cmp_num(&key)?;
-                for i in 0..lv.len() {
-                    if self.compare_op("=", &lv[i], &key)? {
+                for (i, item) in lv.iter().enumerate() {
+                    if self.compare_op("=", item, &key)? {
                         best = i as i32;
                         break;
                     }
-                    let nv = self.cmp_num(&lv[i])?;
+                    let nv = self.cmp_num(item)?;
                     if let (Some(kk), Some(n)) = (k, nv) {
                         if n <= kk {
                             best = i as i32;

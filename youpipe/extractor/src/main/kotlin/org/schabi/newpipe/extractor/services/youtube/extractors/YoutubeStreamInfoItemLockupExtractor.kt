@@ -159,7 +159,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
 
         var parsingException: ParsingException? = null
         for (potentialDuration in potentialDurations) {
-            if (potentialDuration == null || !potentialDuration.matches(Regex(".*\\d.*"))) {
+            if (!potentialDuration.matches(Regex(".*\\d.*"))) {
                 continue
             }
             try {
@@ -188,7 +188,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
             throw ParsingException("Could not get uploader name")
         }
 
-        return uploaderName!!
+        return uploaderName
     }
 
     @Throws(ParsingException::class)
@@ -208,14 +208,14 @@ open class YoutubeStreamInfoItemLockupExtractor(
 
         val canonicalBaseUrl = browseEndpoint.getString("canonicalBaseUrl")
         if (!isNullOrEmpty(canonicalBaseUrl)) {
-            return resolveUploaderUrlFromRelativeUrl(canonicalBaseUrl!!)
+            return resolveUploaderUrlFromRelativeUrl(canonicalBaseUrl)
         }
 
         val webCommandMetadataUrl = innerTubeCommand.getObject("commandMetadata").orEmptyObject()
             .getObject("webCommandMetadata").orEmptyObject()
             .getString("url")
         if (!isNullOrEmpty(webCommandMetadataUrl)) {
-            return resolveUploaderUrlFromRelativeUrl(webCommandMetadataUrl!!)
+            return resolveUploaderUrlFromRelativeUrl(webCommandMetadataUrl)
         }
 
         throw ParsingException("Could not get uploader url")
@@ -320,7 +320,7 @@ open class YoutubeStreamInfoItemLockupExtractor(
         if (isNullOrEmpty(viewCountText)) {
             throw ParsingException("Could not get view count")
         }
-        return getViewCountFromViewCountText(viewCountText!!)
+        return getViewCountFromViewCountText(viewCountText)
     }
 
     @Throws(NumberFormatException::class, ParsingException::class)

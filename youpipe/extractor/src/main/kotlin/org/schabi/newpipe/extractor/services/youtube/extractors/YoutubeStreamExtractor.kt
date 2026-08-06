@@ -224,7 +224,7 @@ class YoutubeStreamExtractor(
                         ?.getString("label")
                 }
 
-                if (likesString != null && likesString!!.lowercase().contains("no likes")) {
+                if (likesString != null && likesString.lowercase().contains("no likes")) {
                     return 0
                 }
             }
@@ -337,7 +337,7 @@ class YoutubeStreamExtractor(
                 throw ParsingException("Could not get name")
             }
         }
-        return title!!
+        return title
     }
 
     override fun getTextualUploadDate(): String? {
@@ -457,7 +457,7 @@ class YoutubeStreamExtractor(
             ?.flatMap { content ->
                 content.getArray("runs")?.filterIsInstance<JsonObject>() ?: emptyList()
             }
-            ?.map { run -> run.getString("text", "") ?: "" }
+            ?.map { run -> run.getString("text", "") }
             ?.any { rowText -> rowText.contains("Age-restricted") } ?: false
 
         ageLimit = if (ageRestricted) 18 else NO_AGE_LIMIT
@@ -520,7 +520,7 @@ class YoutubeStreamExtractor(
             }
         }
 
-        if (views!!.lowercase().contains("no views")) {
+        if (views.lowercase().contains("no views")) {
             return 0
         }
 
@@ -571,7 +571,7 @@ class YoutubeStreamExtractor(
             throw ParsingException("Could not get uploader name")
         }
 
-        return uploaderName!!
+        return uploaderName
     }
 
     @Throws(ParsingException::class)
@@ -853,7 +853,7 @@ class YoutubeStreamExtractor(
         val noPoTokenProviderSet = poTokenProviderInstance == null
 
         val androidPoTokenResult = if (noPoTokenProviderSet) null
-        else poTokenProviderInstance!!.getAndroidClientPoToken(videoId)
+        else poTokenProviderInstance.getAndroidClientPoToken(videoId)
 
         fetchAndroidClient(localization, contentCountry, videoId, androidPoTokenResult)
 
@@ -861,7 +861,7 @@ class YoutubeStreamExtractor(
 
         if (fetchIosClient) {
             val iosPoTokenResult = if (noPoTokenProviderSet) null
-            else poTokenProviderInstance!!.getIosClientPoToken(videoId)
+            else poTokenProviderInstance.getIosClientPoToken(videoId)
             fetchIosClient(localization, contentCountry, videoId, iosPoTokenResult)
         }
 
@@ -1277,7 +1277,7 @@ class YoutubeStreamExtractor(
                 return null
             }
 
-            val cipher = Parser.compatParseMap(cipherString!!)
+            val cipher = Parser.compatParseMap(cipherString)
             val signature = YoutubeJavaScriptPlayerManager.deobfuscateSignature(
                 videoId, cipher.getOrDefault("s", "")
             )
@@ -1298,7 +1298,7 @@ class YoutubeStreamExtractor(
 
         val initRange = formatData.getObject("initRange")
         val indexRange = formatData.getObject("indexRange")
-        val mimeType = formatData.getString("mimeType", "") ?: ""
+        val mimeType = formatData.getString("mimeType", "")
         val codec = if (mimeType.contains("codecs")) {
             val parts = mimeType.split("\"")
             if (parts.size > 1) parts[1] else ""
@@ -1319,7 +1319,7 @@ class YoutubeStreamExtractor(
         itagItem.codec = codec
         itagItem.isDrc = formatData.getBoolean("isDrc", false)
         itagItem.lastModified =
-            formatData.getString("lastModified", "-1")?.toLongOrNull() ?: -1
+            formatData.getString("lastModified", "-1").toLongOrNull() ?: -1
         itagItem.xtags = formatData.getString("xtags")
 
         if (streamType == StreamType.LIVE_STREAM || streamType == StreamType.POST_LIVE_STREAM) {
@@ -1337,7 +1337,7 @@ class YoutubeStreamExtractor(
             val audioTrackId = formatData.getObject("audioTrack")?.getString("id")
             if (!Utils.isNullOrEmpty(audioTrackId)) {
                 itagItem.audioTrackId = audioTrackId
-                val dot = audioTrackId!!.indexOf(".")
+                val dot = audioTrackId.indexOf(".")
                 if (dot != -1) {
                     LocaleCompat.forLanguageTag(audioTrackId.substring(0, dot))
                         ?.let { locale -> itagItem.audioLocale = locale }
@@ -1352,16 +1352,16 @@ class YoutubeStreamExtractor(
 
         itagItem.contentLength =
             formatData.getString("contentLength", ItagItem.CONTENT_LENGTH_UNKNOWN.toString())
-                ?.toLongOrNull() ?: ItagItem.CONTENT_LENGTH_UNKNOWN
+                .toLongOrNull() ?: ItagItem.CONTENT_LENGTH_UNKNOWN
         itagItem.approxDurationMs =
             formatData.getString("approxDurationMs", ItagItem.APPROX_DURATION_MS_UNKNOWN.toString())
-                ?.toLongOrNull() ?: ItagItem.APPROX_DURATION_MS_UNKNOWN
+                .toLongOrNull() ?: ItagItem.APPROX_DURATION_MS_UNKNOWN
 
         val itagInfo = ItagInfo(streamUrl, itagItem)
 
         if (streamType == StreamType.VIDEO_STREAM) {
             itagInfo.setIsUrl(
-                !(formatData.getString("type", "") ?: "")
+                !formatData.getString("type", "")
                     .equals("FORMAT_STREAM_TYPE_OTF", ignoreCase = true)
             )
         } else {
@@ -1409,7 +1409,7 @@ class YoutubeStreamExtractor(
                     val totalPages = Math.ceil(totalCount / (framesPerPageX * framesPerPageY).toDouble()).toInt()
                     urls = ArrayList(totalPages)
                     for (j in 0 until totalPages) {
-                        (urls as ArrayList).add(baseUrl.replace("\$M", j.toString()))
+                        urls.add(baseUrl.replace("\$M", j.toString()))
                     }
                 } else {
                     urls = listOf(baseUrl)
@@ -1519,7 +1519,7 @@ class YoutubeStreamExtractor(
                 throw ParsingException("Could not get stream segment title.")
             }
 
-            val segment = StreamSegment(title!!, startTimeSeconds)
+            val segment = StreamSegment(title, startTimeSeconds)
             segment.url = getUrl() + "?t=" + startTimeSeconds
             if (segmentJson.containsKey(THUMBNAIL)) {
                 val previewsArray = segmentJson.getObject(THUMBNAIL)

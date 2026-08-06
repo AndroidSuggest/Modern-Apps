@@ -504,14 +504,14 @@ fun ContactItem(
     isSelected: Boolean,
     showAccountLabels: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     /** Every group in the app; the row labels itself with the ones this contact is in. */
     allGroups: List<ContactGroup> = emptyList(),
     decodePhoto: ((String) -> Bitmap?)? = null,
     onLongClick: (() -> Unit)? = null,
     dropdownList: List<String>? = null,
     dropdownListClick: (Int) -> Unit = {},
-    embeddedInCard: Boolean = false,
-    modifier: Modifier = Modifier
+    embeddedInCard: Boolean = false
 ) {
     val combinedModifier = if (dropdownList == null) {
         modifier.combinedClickable(

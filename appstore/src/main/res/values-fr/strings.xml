@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="updates">Mises à jour</string>
     <string name="installed">Installée</string>
     <string name="all_apps_up_to_date">Toutes les applications sont à jour</string>
     <string name="uninstall">Désinstaller</string>

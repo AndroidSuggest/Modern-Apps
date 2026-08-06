@@ -99,7 +99,7 @@ pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_freeTunnel(_env: 
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_formatHandshakeInit<'a>(
-    mut env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong,
+    env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong,
 ) -> jbyteArray {
     let mut guard = reg().lock().unwrap();
     let e = match guard.get_mut(&(handle as u64)) { Some(x) => x, None => return std::ptr::null_mut() };
@@ -109,7 +109,7 @@ pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_formatHandshakeIn
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_consumeIncomingPacketDetailed<'a>(
-    mut env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong, bytes: JByteArray<'a>,
+    env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong, bytes: JByteArray<'a>,
 ) -> jbyteArray {
     let slice = match env.convert_byte_array(&bytes) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
     let mut guard = reg().lock().unwrap();
@@ -131,7 +131,7 @@ pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_consumeIncomingPa
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_encapsulate<'a>(
-    mut env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong, ip_bytes: JByteArray<'a>,
+    env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong, ip_bytes: JByteArray<'a>,
 ) -> jbyteArray {
     let slice = match env.convert_byte_array(&ip_bytes) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
     let mut guard = reg().lock().unwrap();
@@ -145,7 +145,7 @@ pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_encapsulate<'a>(
 
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_vpn_util_VpnNative_tickTimersDetailed<'a>(
-    mut env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong,
+    env: JNIEnv<'a>, _class: JClass<'a>, handle: jlong,
 ) -> jbyteArray {
     let mut guard = reg().lock().unwrap();
     let e = match guard.get_mut(&(handle as u64)) { Some(x) => x, None => return std::ptr::null_mut() };

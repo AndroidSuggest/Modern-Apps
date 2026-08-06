@@ -1,5 +1,10 @@
 use crate::*;
 
+/// Per-object encrypt/decrypt transform.
+type CryptFn = Box<dyn Fn(&[u8]) -> Vec<u8>>;
+/// Builds the [`CryptFn`] for a given object id.
+type CryptFnFactory = Box<dyn Fn(ObjectId) -> CryptFn>;
+
 /// Whether `bytes` is a standard-encrypted PDF that needs a (non-empty) password
 /// the empty password does not satisfy. Returns: 0 no, 1 needs password, 2
 /// unsupported encryption (e.g. AES).
@@ -237,7 +242,7 @@ pub(crate) fn decrypt_in_place(doc: &mut Document, password: &[u8]) -> DecryptSt
         if id == enc_id {
             continue;
         }
-        let apply: Box<dyn Fn(&[u8]) -> Vec<u8>> = match method {
+        let apply: CryptFn = match method {
             CryptMethod::Rc4 => {
                 let okey = crypto::object_key(&key, id.0, id.1, n);
                 Box::new(move |d: &[u8]| crypto::rc4(&okey, d))
@@ -321,7 +326,7 @@ pub(crate) fn encrypt_doc_bytes(
     let p: i32 = -4; // allow all operations
 
     // Build the /Encrypt dict and per-object cipher factory.
-    let (enc, make_apply): (Dictionary, Box<dyn Fn(ObjectId) -> Box<dyn Fn(&[u8]) -> Vec<u8>>>) =
+    let (enc, make_apply): (Dictionary, CryptFnFactory) =
         match algo {
             EncryptAlgo::Rc4_128 => {
                 let (n, rev) = (16usize, 3u8);
@@ -337,7 +342,7 @@ pub(crate) fn encrypt_doc_bytes(
                 enc.set("O", Object::String(o, lopdf::StringFormat::Literal));
                 enc.set("U", Object::String(u, lopdf::StringFormat::Literal));
                 let key2 = key.clone();
-                let make = move |id: ObjectId| -> Box<dyn Fn(&[u8]) -> Vec<u8>> {
+                let make = move |id: ObjectId| -> CryptFn {
                     let okey = crypto::object_key(&key2, id.0, id.1, n);
                     Box::new(move |d: &[u8]| crypto::rc4(&okey, d))
                 };
@@ -366,7 +371,7 @@ pub(crate) fn encrypt_doc_bytes(
                 enc.set("U", Object::String(u, lopdf::StringFormat::Literal));
                 let key2 = key.clone();
                 let seed = id0.clone();
-                let make = move |id: ObjectId| -> Box<dyn Fn(&[u8]) -> Vec<u8>> {
+                let make = move |id: ObjectId| -> CryptFn {
                     let okey = crypto::object_key_aes(&key2, id.0, id.1, n);
                     let seed = seed.clone();
                     Box::new(move |d: &[u8]| {
@@ -410,7 +415,7 @@ pub(crate) fn encrypt_doc_bytes(
                 enc.set("Perms", Object::String(perms, lopdf::StringFormat::Literal));
                 let fk = file_key.clone();
                 let seed = id0.clone();
-                let make = move |_id: ObjectId| -> Box<dyn Fn(&[u8]) -> Vec<u8>> {
+                let make = move |_id: ObjectId| -> CryptFn {
                     // AESV3 uses the file key directly (no per-object key).
                     let fk = fk.clone();
                     let seed = seed.clone();

@@ -148,7 +148,7 @@ pub(crate) fn invalidate_index(handle: i64) {
     }
 }
 
-pub(crate) fn search_document_inner(index: &Vec<PageIndex>, needle: &str, case_sensitive: bool) -> Vec<(i32, f32, f32, f32, f32)> {
+pub(crate) fn search_document_inner(index: &[PageIndex], needle: &str, case_sensitive: bool) -> Vec<(i32, f32, f32, f32, f32)> {
     let needle_processed = if case_sensitive { needle.to_string() } else { lower_aligned(needle) };
     let mut matches: Vec<(i32, f32, f32, f32, f32)> = Vec::new();
     if needle_processed.is_empty() { return matches; }

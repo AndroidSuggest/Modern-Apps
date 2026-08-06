@@ -28,7 +28,7 @@ open class Response(
     @Nullable
     fun getHeader(name: String): String? {
         for ((key, value) in responseHeaders) {
-            if (key != null && key.equals(name, ignoreCase = true) && value.isNotEmpty()) {
+            if (key.equals(name, ignoreCase = true) && value.isNotEmpty()) {
                 return value[0]
             }
         }

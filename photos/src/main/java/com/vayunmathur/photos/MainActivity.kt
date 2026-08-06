@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -310,7 +311,7 @@ private fun SecureFolderEntry(
     isUnlocked: Boolean,
     vaultPassword: String?,
 ) {
-    val activity = LocalContext.current as FragmentActivity
+    val activity = LocalActivity.current as FragmentActivity
     if (!isUnlocked) {
         LaunchedEffect(Unit) {
             secureFolderViewModel.unlock(

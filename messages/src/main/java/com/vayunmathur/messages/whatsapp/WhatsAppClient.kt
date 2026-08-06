@@ -4,6 +4,7 @@ package com.vayunmathur.messages.whatsapp
 
 import kotlin.time.Duration.Companion.seconds
 import kotlin.concurrent.atomics.*
+import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -37,6 +38,8 @@ import com.vayunmathur.messages.whatsapp.proto.WhatsAppAppStateProto
 import java.security.SecureRandom
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.content.edit
+import androidx.core.graphics.scale
 import java.io.ByteArrayOutputStream
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -82,7 +85,7 @@ object WhatsAppClient {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val random = SecureRandom()
 
-    private lateinit var appContext: Context
+    private lateinit var appContext: Application
     private var authData: WhatsAppAuthData? = null
     // Use WebView-based WebSocket to bypass TLS fingerprinting
     // WhatsApp blocks non-browser TLS fingerprints (JA3). WebView uses Chromium's
@@ -156,7 +159,7 @@ object WhatsAppClient {
 
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
-        appContext = context.applicationContext
+        appContext = context.applicationContext as Application
         db = WhatsAppDatabase.getDatabase(appContext)
         Log.i(TAG, "init")
         runBlocking {
@@ -374,7 +377,6 @@ object WhatsAppClient {
                                         _state.value = State.Disconnected(connState.reason)
                                     }
                                 }
-                                else -> {}
                             }
                         }
                     }
@@ -1549,7 +1551,7 @@ object WhatsAppClient {
         // named and flagged as a group even when we were just added and have no history for it.
         fetchAndEmitGroupInfo(groupJid)
 
-        node.content?.filterIsInstance<WhatsAppProtocol.Node>()?.forEach { child ->
+        node.content.filterIsInstance<WhatsAppProtocol.Node>().forEach { child ->
             val body = when (child.tag) {
                 "subject" -> {
                     val newName = child.attrs["subject"] ?: child.data?.let { String(it, Charsets.UTF_8) } ?: return@forEach
@@ -1560,8 +1562,8 @@ object WhatsAppClient {
                     "[Group description changed: $newDesc]"
                 }
                 "add", "remove", "promote", "demote" -> {
-                    val participants = child.content?.filterIsInstance<WhatsAppProtocol.Node>()
-                        ?.mapNotNull { it.attrs["jid"] } ?: emptyList()
+                    val participants = child.content.filterIsInstance<WhatsAppProtocol.Node>()
+                        .mapNotNull { it.attrs["jid"] }
                     "[Group: ${participants.joinToString()} ${child.tag}ed]"
                 }
                 // Go wrapGroupInfoChange: ephemeral setting
@@ -1704,14 +1706,14 @@ object WhatsAppClient {
 
     private fun appStateKeyId64(keyId: ByteArray) = Base64.encodeToString(keyId, Base64.NO_WRAP)
     private fun storeAppStateKey(keyId: ByteArray, keyData: ByteArray) {
-        appStatePrefs.edit().putString("key_${appStateKeyId64(keyId)}", Base64.encodeToString(keyData, Base64.NO_WRAP)).apply()
+        appStatePrefs.edit { putString("key_${appStateKeyId64(keyId)}", Base64.encodeToString(keyData, Base64.NO_WRAP)) }
     }
     private fun getAppStateKey(keyId: ByteArray): ByteArray? {
         val s = appStatePrefs.getString("key_${appStateKeyId64(keyId)}", null) ?: return null
         return try { Base64.decode(s, Base64.NO_WRAP) } catch (e: Exception) { null }
     }
     private fun appStateVersion(name: String): Long = appStatePrefs.getLong("ver_$name", 0L)
-    private fun setAppStateVersion(name: String, v: Long) { appStatePrefs.edit().putLong("ver_$name", v).apply() }
+    private fun setAppStateVersion(name: String, v: Long) { appStatePrefs.edit { putLong("ver_$name", v) } }
 
     /** Store app-state sync keys shared by our primary, then fetch all collections. */
     private suspend fun handleAppStateKeyShare(share: WhatsAppE2EProto.AppStateSyncKeyShare) {
@@ -3099,7 +3101,7 @@ object WhatsAppClient {
         val maxDim = 720
         val targetDim = size.coerceIn(minDim, maxDim)
         val scaled = if (size != targetDim) {
-            Bitmap.createScaledBitmap(cropped, targetDim, targetDim, true).also {
+            cropped.scale(targetDim, targetDim).also {
                 if (it !== cropped) cropped.recycle()
             }
         } else cropped

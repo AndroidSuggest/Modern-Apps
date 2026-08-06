@@ -188,8 +188,8 @@ impl Matrix3<f64> {
         let ata = self.transpose() * *self;
         let se = ata.symmetric_eigen();
         let mut sigma = [0.0f64; 3];
-        for i in 0..3 {
-            sigma[i] = se.eigenvalues[i].max(0.0).sqrt();
+        for (i, s) in sigma.iter_mut().enumerate() {
+            *s = se.eigenvalues[i].max(0.0).sqrt();
         }
         let vmat = se.eigenvectors;
 
@@ -766,22 +766,22 @@ impl Lu {
         let n = self.n;
         // Apply the row permutation to the RHS.
         let mut x = vec![0.0f64; n];
-        for i in 0..n {
-            x[i] = b.d[self.piv[i]];
+        for (i, xi) in x.iter_mut().enumerate() {
+            *xi = b.d[self.piv[i]];
         }
         // Forward substitution (unit-lower L).
         for i in 0..n {
             let mut s = x[i];
-            for j in 0..i {
-                s -= self.lu[i * n + j] * x[j];
+            for (j, xj) in x.iter().take(i).enumerate() {
+                s -= self.lu[i * n + j] * xj;
             }
             x[i] = s;
         }
         // Back substitution (upper U).
         for i in (0..n).rev() {
             let mut s = x[i];
-            for j in (i + 1)..n {
-                s -= self.lu[i * n + j] * x[j];
+            for (j, xj) in x.iter().enumerate().skip(i + 1) {
+                s -= self.lu[i * n + j] * xj;
             }
             let d = self.lu[i * n + i];
             if d == 0.0 {

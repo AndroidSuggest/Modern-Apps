@@ -28,9 +28,9 @@ import com.vayunmathur.games.hub.R
 @Composable
 fun ActivityFeedScreen(
     viewModel: GameHubViewModel,
+    modifier: Modifier = Modifier,
     backStack: NavBackStack<MainRoute>? = null,
-    onGameClick: ((String) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onGameClick: ((String) -> Unit)? = null
 ) {
     val activity by viewModel.allActivityFlow.collectAsStateWithLifecycle()
 

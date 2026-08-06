@@ -1286,7 +1286,7 @@ object TelegramClient {
             }
             is MessageActionChatDeleteUser -> {
                 _events.emit(GMEvent.ParticipantRemoved(source, chatId, action.userId.toString()))
-                val isSelfLeave = msg.fromId is PeerUser && (msg.fromId as PeerUser).userId == action.userId
+                val isSelfLeave = msg.fromId is PeerUser && msg.fromId.userId == action.userId
                 val body = if (isSelfLeave) {
                     val name = userNameCache[action.userId] ?: action.userId.toString()
                     "$name left the group"
@@ -1298,7 +1298,7 @@ object TelegramClient {
                     body, msg.out, msg.date.toLong() * 1000, senderName))
             }
             is MessageActionChatJoinedByLink -> {
-                val joinedUserId = if (msg.fromId is PeerUser) (msg.fromId as PeerUser).userId else 0L
+                val joinedUserId = if (msg.fromId is PeerUser) msg.fromId.userId else 0L
                 if (joinedUserId != 0L) {
                     _events.emit(GMEvent.ParticipantAdded(source, chatId, joinedUserId.toString()))
                 }
@@ -1392,7 +1392,7 @@ object TelegramClient {
                     msg.out, msg.date.toLong() * 1000, senderName))
             }
             is MessageActionChatJoinedByRequest -> {
-                val joinedUserId = if (msg.fromId is PeerUser) (msg.fromId as PeerUser).userId else 0L
+                val joinedUserId = if (msg.fromId is PeerUser) msg.fromId.userId else 0L
                 if (joinedUserId != 0L) {
                     _events.emit(GMEvent.ParticipantAdded(source, chatId, joinedUserId.toString()))
                 }
@@ -2021,7 +2021,7 @@ object TelegramClient {
                 is MessageMediaWebPage -> if (media.url.isNotBlank()) "[Link: ${media.url}]" else null
                 is MessageMediaPhoto -> "[Photo]"
                 is MessageMediaDocument -> when {
-                    (media as MessageMediaDocument).isSticker -> {
+                    media.isSticker -> {
                         val alt = media.stickerAlt.ifBlank { null }
                         val stickerType = when {
                             media.mimeType == "application/x-tgsticker" -> "animated"

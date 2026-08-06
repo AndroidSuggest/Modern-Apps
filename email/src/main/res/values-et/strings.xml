@@ -28,7 +28,6 @@
     <string name="listening_for_new_mail">Ootan, kas on uusi kirju</string>
     <string name="drafts">Kavandid</string>
     <string name="email_widget_description">Vaata e-kirju ühtsest postkastist - klõpsa ja ava E-post</string>
-    <string name="sign_in_with_microsoft">Logi sisse Microsofti teenusega</string>
     <string name="account_added">Kasutajakonto on lisatud</string>
     <string name="username">Kasutajanimi</string>
     <string name="username_is_not_my_email">Kasutajanimi pole minu e-posti aadress</string>
@@ -95,7 +94,6 @@
     <string name="generating_summary">Koostan kokkuvõtet…</string>
     <string name="block_sender">Blokeeri saatja</string>
     <string name="choose_your_email_provider">Vali oma e-posti teenusepakkuja</string>
-    <string name="oauth2">oauth2</string>
     <string name="to_me">mulle</string>
     <string name="enter_imap_smtp_server_details_manually">Sisesta IMAP/SMTP serveri andmed käsitsi</string>
     <string name="hide_quoted_text">Peida tsiteeritud tekst</string>

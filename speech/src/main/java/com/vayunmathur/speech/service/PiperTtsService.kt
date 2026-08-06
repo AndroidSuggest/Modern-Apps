@@ -1,7 +1,6 @@
 package com.vayunmathur.speech.service
 
 import android.media.AudioFormat
-import android.os.Build
 import android.speech.tts.SynthesisCallback
 import android.speech.tts.SynthesisRequest
 import android.speech.tts.TextToSpeech
@@ -202,7 +201,6 @@ class PiperTtsService : TextToSpeechService() {
     }
 
     override fun onGetVoices(): MutableList<Voice> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return super.onGetVoices()
         val ctx = applicationContext
         val installed = try {
             PiperVoiceRegistry.installedDefs(ctx).let { defs ->
@@ -265,7 +263,7 @@ class PiperTtsService : TextToSpeechService() {
         // so older framework probes that expect exactly those names still enable Play.
         if (installed.any { it.code == "en" }) {
             val enLocale = Locale.US
-            val enLegacy = Locale("en", "US")
+            val enLegacy = Locale.US
             if (voices.none { it.name == "en-US" }) {
                 voices += Voice(
                     "en-US",
@@ -300,9 +298,7 @@ class PiperTtsService : TextToSpeechService() {
         val text = request.charSequenceText?.toString().orEmpty()
 
         // Resolve voice from request params: voiceName has priority, then language.
-        val voiceName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            request.voiceName
-        } else null
+        val voiceName = request.voiceName
 
         val resolvedDef = resolveDef(
             lang = request.language,

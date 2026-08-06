@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.core.graphics.scale
 import com.vayunmathur.ncnn.PortraitSegmenter
 
 private const val TEMPORAL_WEIGHT = 0.35f
@@ -167,7 +168,7 @@ class BokehAnalyzer(
         val newW = (src.width * scale).toInt().coerceAtLeast(1)
         val newH = (src.height * scale).toInt().coerceAtLeast(1)
         // filter=false – nearest/cheap, avoids bilinear alloc cost
-        return Bitmap.createScaledBitmap(src, newW, newH, false)
+        return src.scale(newW, newH, false)
     }
 
     /**

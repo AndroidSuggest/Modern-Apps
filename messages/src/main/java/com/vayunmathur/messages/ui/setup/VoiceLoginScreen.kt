@@ -1,7 +1,7 @@
 package com.vayunmathur.messages.ui.setup
 
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -245,7 +245,7 @@ private fun InstructionCard(
 /** Launch [url] in whatever browser the user has set as default.
  *  No reliance on a specific package, no Google-services dependencies. */
 private fun openInBrowser(context: android.content.Context, url: String) {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+    val intent = Intent(Intent.ACTION_VIEW, url.toUri())
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(intent) }
 }

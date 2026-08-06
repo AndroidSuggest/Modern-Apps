@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.TurnSlightLeft
 import androidx.compose.material.icons.filled.TurnSlightRight
 import androidx.compose.material.icons.filled.UTurnLeft
 import androidx.compose.material.icons.filled.WbCloudy
-import androidx.compose.material.icons.filled.ArrowRightAlt
 import androidx.compose.material.icons.filled.ChangeHistory
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Circle
@@ -53,7 +52,6 @@ import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Pentagon
 import androidx.compose.material.icons.filled.Polyline
 import androidx.compose.material.icons.filled.Rectangle
-import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Square
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.StrikethroughS
@@ -61,7 +59,6 @@ import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Waves
-import androidx.compose.material.icons.outlined.ArrowRightAlt
 import androidx.compose.material.icons.outlined.ChangeHistory
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Diamond
@@ -74,7 +71,9 @@ import androidx.compose.ui.res.painterResource
 import com.vayunmathur.library.R
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowRightAlt
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
@@ -82,12 +81,19 @@ import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
 import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Note
+import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.WrapText
+import androidx.compose.material.icons.automirrored.outlined.ArrowRightAlt
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -107,7 +113,6 @@ import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.ChevronRight
@@ -149,7 +154,6 @@ import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.GppBad
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Iso
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -176,8 +180,6 @@ import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.RotateLeft
-import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -218,9 +220,7 @@ import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.CreateNewFolder
-import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.WrapText
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.Language
@@ -311,11 +311,11 @@ fun IconCrop(modifier: Modifier = Modifier, tint: Color = LocalContentColor.curr
 
 @Composable
 fun IconRotateLeft(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.RotateLeft, "Rotate Left", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.RotateLeft, "Rotate Left", modifier, tint)
 
 @Composable
 fun IconRotateRight(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.RotateRight, "Rotate Right", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.RotateRight, "Rotate Right", modifier, tint)
 
 @Composable
 fun IconNavigation(navBack: () -> Unit) {
@@ -609,7 +609,7 @@ fun IconCall(modifier: Modifier = Modifier, tint: Color = LocalContentColor.curr
 
 @Composable
 fun IconChat(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.Chat, "Chat", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.Chat, "Chat", modifier, tint)
 
 @Composable
 fun IconLocationOn(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
@@ -645,7 +645,7 @@ fun IconFolder(modifier: Modifier = Modifier, tint: Color = LocalContentColor.cu
 
 @Composable
 fun IconFile(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.InsertDriveFile, "File", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.InsertDriveFile, "File", modifier, tint)
 
 @Composable
 fun IconLink(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
@@ -958,7 +958,7 @@ fun IconPolyline(modifier: Modifier = Modifier, tint: Color = LocalContentColor.
 
 @Composable
 fun IconBezier(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.ShowChart, "Bézier curve", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.ShowChart, "Bézier curve", modifier, tint)
 
 @Composable
 fun IconCallout(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
@@ -1056,11 +1056,11 @@ fun IconShapeStarOutline(modifier: Modifier = Modifier, tint: Color = LocalConte
 
 @Composable
 fun IconShapeArrowFill(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.ArrowRightAlt, "Arrow", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.ArrowRightAlt, "Arrow", modifier, tint)
 
 @Composable
 fun IconShapeArrowOutline(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Outlined.ArrowRightAlt, "Arrow outline", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Outlined.ArrowRightAlt, "Arrow outline", modifier, tint)
 
 @Composable
 fun IconWallpaper(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
@@ -1160,7 +1160,7 @@ fun IconFolderOpen(modifier: Modifier = Modifier, tint: Color = LocalContentColo
 
 @Composable
 fun IconNewFile(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.NoteAdd, "New file", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.NoteAdd, "New file", modifier, tint)
 
 @Composable
 fun IconNewFolder(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
@@ -1176,7 +1176,7 @@ fun IconTerminal(modifier: Modifier = Modifier, tint: Color = LocalContentColor.
 
 @Composable
 fun IconWrapText(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
-    AppIcon(Icons.Filled.WrapText, "Wrap lines", modifier, tint)
+    AppIcon(Icons.AutoMirrored.Filled.WrapText, "Wrap lines", modifier, tint)
 
 // --- Keyboard (IME) ---
 @Composable

@@ -20,7 +20,12 @@ import android.location.LocationManager
 import android.media.MediaFormat
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.annotation.OptIn
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
+import androidx.core.net.toUri
 import androidx.annotation.StringRes
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import com.vayunmathur.camera.R
 import android.util.Log
 import android.util.Size
@@ -675,7 +680,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         ds.getString("camera_location")?.let { _locationEnabled.value = it.toBoolean() }
         // Guard against a blank persisted value: Uri.parse("") yields a non-null
         // but invalid URI, making the app think an image exists when none does.
-        ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { _lastCaptureUri.value = Uri.parse(it) }
+        ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { _lastCaptureUri.value = it.toUri() }
         ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }
         ds.getString("camera_level")?.let { _levelEnabled.value = it.toBoolean() }
         ds.getString("camera_mic_muted")?.let { _micMuted.value = it.toBoolean() }
@@ -801,6 +806,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         applyManualControls()
     }
 
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun camera2ControlOrNull(): androidx.camera.camera2.interop.Camera2CameraControl? = try {
         boundCamera?.cameraControl?.let {
             androidx.camera.camera2.interop.Camera2CameraControl.from(it)
@@ -824,6 +830,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * the options are cleared, reverting to CameraX's default auto behavior (including tap-to-focus).
      * Called on every manual-control change and re-applied after a session rebind.
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     fun applyManualControls() {
         val cam2 = camera2ControlOrNull() ?: return
         val builder = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
@@ -1025,6 +1032,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      *   QualitySelector in setupVideoSession/setupPhotoSession). This method's quality selection
      *   only touches the HFR Recorder built here.
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     suspend fun setupHighSpeedSession(): Boolean {
         return try {
             val provider = ProcessCameraProvider.awaitInstance(app)
@@ -1202,6 +1210,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * limits, it falls back to a default ImageCapture resolution. ImageAnalysis is always
      * capped (~1.2 MP) — see the note in [bind].
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     suspend fun setupPhotoSession(): Boolean {
         Log.d("NightPreview", "setupPhotoSession() ENTRY thread=${Thread.currentThread().name} lens=${_lensFacing.value} surfaceBefore=${_surfaceRequest.value?.resolution}")
         return try {
@@ -1579,6 +1588,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * Fallback ladder prioritizes keeping max-res capture:
      * capped+max+UHD → capped+max+JPEG → capped+default+UHD → capped+default+JPEG → default+default
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     suspend fun setupPortraitSession(): Boolean {
         Log.d("NightPreview", "setupPortraitSession() ENTRY lens=${_lensFacing.value} thread=${Thread.currentThread().name}")
         return try {
@@ -1728,6 +1738,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun readManualControlRanges() {
         Log.d("NightPreview", "readManualControlRanges() called bound=${boundCamera != null} thread=${Thread.currentThread().name}")
         val cam = boundCamera ?: run {
@@ -1906,6 +1917,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * range exists we return null and let CameraX pick its default, which avoids the
      * crop-switch flicker.
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun highestFpsRange(cameraInfo: androidx.camera.core.CameraInfo): android.util.Range<Int>? = try {
         val ranges = androidx.camera.camera2.interop.Camera2CameraInfo.from(cameraInfo)
             .getCameraCharacteristic(
@@ -1943,15 +1955,19 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * Preferred video stabilization mode for Cinematic: preview-stabilization ("EIS") when the
      * device lists it, else on-mode, else null (unsupported → stabilization is skipped).
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun preferredStabilizationMode(cameraInfo: androidx.camera.core.CameraInfo): Int? = try {
         val modes = androidx.camera.camera2.interop.Camera2CameraInfo.from(cameraInfo)
             .getCameraCharacteristic(
                 android.hardware.camera2.CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES
             )?.toList() ?: emptyList()
         when {
-            modes.contains(
-                android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
-            ) -> android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
+            // Preview stabilization only exists from API 33; the SDK_INT guard keeps a vendor
+            // HAL that reports the raw mode value on an older release from being taken at its word.
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                modes.contains(
+                    android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
+                ) -> android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION
             modes.contains(
                 android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON
             ) -> android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON
@@ -1963,6 +1979,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /** Applies max-fps + (optional) stabilization capture options onto a Preview/VideoCapture builder. */
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun <T> applyVideoCaptureRequestOptions(
         builder: androidx.camera.core.ExtendableBuilder<T>,
         fpsRange: android.util.Range<Int>?,
@@ -2365,6 +2382,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         return MediaStoreSaver.saveJpegBytes(app.contentResolver, values, bytes)
     }
 
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun captureSinglePhoto() {
         val capture = imageCapture ?: return
         _isCapturing.value = true
@@ -2740,6 +2758,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * Falls back to empty list if [imageCapture] is unavailable, which makes
      * [captureNightPhotoCustom] fall back to single-frame long-exposure.
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun captureNightBurst(exposure: NightExposure, onDone: (List<Bitmap>) -> Unit) {
         val capture = imageCapture ?: run {
             onDone(emptyList())
@@ -2862,6 +2881,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * into the sensor's exposure-time range and picks a high fraction of its sensitivity range.
      * Falls back to [targetNanos] (and auto ISO) if the characteristics are unavailable.
      */
+    @OptIn(ExperimentalCamera2Interop::class)
     private fun computeNightExposure(targetNanos: Long = NIGHT_TARGET_EXPOSURE_NANOS): NightExposure {
         val fallback = NightExposure(targetNanos, null)
         return try {
@@ -3066,11 +3086,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         val maxSide = 512
         val scale = maxSide.toFloat() / maxOf(upright.width, upright.height)
         if (scale >= 1f) return upright
-        return Bitmap.createScaledBitmap(
-            upright,
+        return upright.scale(
             (upright.width * scale).roundToInt(),
-            (upright.height * scale).roundToInt(),
-            true
+            (upright.height * scale).roundToInt()
         )
     }
 
@@ -3081,7 +3099,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
      * mirroring how the normal ImageCapture path stores orientation without rotating pixels.
      */
     private fun applyColorAdjustments(src: Bitmap, warmth: Float, shadows: Float, mirror: Boolean): Bitmap {
-        val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val out = createBitmap(src.width, src.height)
         val paint = Paint().apply {
             colorFilter = ColorMatrixColorFilter(buildColorAdjustmentMatrix(warmth, shadows))
         }
@@ -3359,7 +3377,6 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         unregisterLevelSensor()
         try { bokehExecutor.shutdown() } catch (_: Exception) {}
         try { stillBokeh.close() } catch (_: Exception) {}
-        super.onCleared()
     }
 }
 

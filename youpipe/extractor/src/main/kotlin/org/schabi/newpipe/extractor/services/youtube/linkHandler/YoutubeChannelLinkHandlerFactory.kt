@@ -23,7 +23,7 @@ class YoutubeChannelLinkHandlerFactory private constructor() : ListLinkHandlerFa
     @Throws(ParsingException::class)
     override fun getUrl(
         id: String,
-        contentFilters: List<String>,
+        contentFilter: List<String>,
         sortFilter: String
     ): String {
         return "https://www.youtube.com/$id"

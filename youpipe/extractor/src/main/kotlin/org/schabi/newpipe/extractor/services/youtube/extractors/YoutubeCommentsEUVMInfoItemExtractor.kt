@@ -110,7 +110,7 @@ internal class YoutubeCommentsEUVMInfoItemExtractor(
                 throw ParsingException("Could not get comment ID")
             }
         }
-        return commentId!!
+        return commentId
     }
 
     @Throws(ParsingException::class)

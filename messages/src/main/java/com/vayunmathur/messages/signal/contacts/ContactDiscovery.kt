@@ -37,7 +37,7 @@ data class CDSResponseEntry(val aci: Uuid, val pni: Uuid)
 class ContactDiscovery(
     private val recipientStore: SignalRecipientStore,
     private val ws: com.vayunmathur.messages.signal.web.SignalWebSocket,
-    private val context: android.content.Context,
+    private val context: android.app.Application,
 ) {
     private var cachedCdsiUsername: String? = null
     private var cachedCdsiPassword: String? = null

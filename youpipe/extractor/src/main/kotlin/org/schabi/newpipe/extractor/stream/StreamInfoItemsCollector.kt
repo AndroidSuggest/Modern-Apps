@@ -18,18 +18,18 @@ open class StreamInfoItemsCollector : InfoItemsCollector<StreamInfoItem, StreamI
             getServiceId(), extractor.getUrl(), extractor.getName(), extractor.getStreamType()
         )
 
-        try { resultItem.setDuration(extractor.getDuration()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setUploaderName(extractor.getUploaderName()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setTextualUploadDate(extractor.getTextualUploadDate()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setUploadDate(extractor.getUploadDate()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setViewCount(extractor.getViewCount()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setThumbnails(extractor.getThumbnails()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setUploaderUrl(extractor.getUploaderUrl()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setUploaderAvatars(extractor.getUploaderAvatars()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setUploaderVerified(extractor.isUploaderVerified()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setShortDescription(extractor.getShortDescription()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setShortFormContent(extractor.isShortFormContent()) } catch (e: Exception) { addError(e as Exception) }
-        try { resultItem.setContentAvailability(extractor.getContentAvailability()) } catch (e: Exception) { addError(e as Exception) }
+        try { resultItem.setDuration(extractor.getDuration()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setUploaderName(extractor.getUploaderName()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setTextualUploadDate(extractor.getTextualUploadDate()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setUploadDate(extractor.getUploadDate()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setViewCount(extractor.getViewCount()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setThumbnails(extractor.getThumbnails()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setUploaderUrl(extractor.getUploaderUrl()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setUploaderAvatars(extractor.getUploaderAvatars()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setUploaderVerified(extractor.isUploaderVerified()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setShortDescription(extractor.getShortDescription()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setShortFormContent(extractor.isShortFormContent()) } catch (e: Exception) { addError(e) }
+        try { resultItem.setContentAvailability(extractor.getContentAvailability()) } catch (e: Exception) { addError(e) }
 
         return resultItem
     }

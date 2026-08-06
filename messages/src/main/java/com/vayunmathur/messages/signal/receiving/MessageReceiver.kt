@@ -85,7 +85,7 @@ class MessageReceiver(
                 Log.d(TAG, "Decryption error is retriable for ${result.senderAci}, sending retry request")
                 sendRetryRequest(result, envelope.clientTimestamp)
             }
-            onDecryptionError?.invoke(result.senderAci, result.senderDeviceId, envelope.clientTimestamp, result.error?.message)
+            onDecryptionError?.invoke(result.senderAci, result.senderDeviceId, envelope.clientTimestamp, result.error.message)
             sendWsResponse?.invoke(request.id, 200, "OK")
             return
         }
@@ -270,12 +270,12 @@ class MessageReceiver(
         try {
             val dem = SignalServiceProtos.DecryptionErrorMessage.parseFrom(demBytes)
             val destDeviceId = dem.deviceId
-            if (destDeviceId.toInt() != deviceId) {
+            if (destDeviceId != deviceId) {
                 Log.d(TAG, "Ignoring decryption error message for another device: $destDeviceId")
                 return
             }
             val requestedTimestamp = dem.timestamp
-            val age = System.currentTimeMillis() - requestedTimestamp.toLong()
+            val age = System.currentTimeMillis() - requestedTimestamp
             var cachedContent: SignalServiceProtos.Content? = null
             if (age < maxCacheAge) {
                 cachedContent = sendCache[SendCacheKey(result.senderAci, requestedTimestamp)]

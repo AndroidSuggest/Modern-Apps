@@ -130,7 +130,7 @@ mod tests {
     fn nanojson_defaults() {
         let v = json!({ "s": "x", "n": 5, "sn": "7", "b": true, "o": {"k": 1}, "a": [1, 2] });
         assert_eq!(v.int("missing"), 0);
-        assert_eq!(v.bool("missing"), false);
+        assert!(!v.bool("missing"));
         assert!(v.arr("missing").is_empty());
         assert!(v.obj("missing").is_blank());
         assert_eq!(v.str("missing"), None);

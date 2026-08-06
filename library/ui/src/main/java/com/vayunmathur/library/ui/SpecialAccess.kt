@@ -29,35 +29,25 @@ object SpecialAccess {
         Uri.fromParts("package", context.packageName, null)
 
     /** "All files access" - needed to browse storage outside the media collections. */
-    fun hasAllFilesAccess(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || android.os.Environment.isExternalStorageManager()
+    fun hasAllFilesAccess(): Boolean = android.os.Environment.isExternalStorageManager()
 
     fun requestAllFilesAccess(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.launch(
-                Intent(
-                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    packageUri(context),
-                )
+        context.launch(
+            Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                packageUri(context),
             )
-        } else {
-            openAppSettings(context)
-        }
+        )
     }
 
     /** Exact alarms, required for anything that must fire at a precise time. */
     fun hasExactAlarms(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         val manager = context.getSystemService(android.app.AlarmManager::class.java)
         return manager?.canScheduleExactAlarms() ?: false
     }
 
     fun requestExactAlarms(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            context.launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, packageUri(context)))
-        } else {
-            openAppSettings(context)
-        }
+        context.launch(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, packageUri(context)))
     }
 
     /** Notification listener access, for reading other apps' notifications. */

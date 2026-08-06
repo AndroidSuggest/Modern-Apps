@@ -37,11 +37,11 @@ import com.vayunmathur.games.hub.R
 fun GameCard(
     game: HubGameEntity,
     isInstalled: Boolean,
+    modifier: Modifier = Modifier,
     achievementProgress: Pair<Int, Int>? = null,
     iconDrawable: Drawable? = null,
     onClick: () -> Unit,
-    onPlay: () -> Unit,
-    modifier: Modifier = Modifier
+    onPlay: () -> Unit
 ) {
     val context = LocalContext.current
     val resolvedIcon = iconDrawable ?: remember(game.packageName) {

@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.code.syntax.Language
@@ -138,7 +139,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { softWrap = prefs.softWrap.first() }
         viewModelScope.launch {
             val stored = prefs.folderUri.first() ?: return@launch
-            val uri = Uri.parse(stored)
+            val uri = stored.toUri()
             val loaded = runCatching { loadFolder(uri) }.isSuccess
             if (!loaded) prefs.clearFolderUri()
         }

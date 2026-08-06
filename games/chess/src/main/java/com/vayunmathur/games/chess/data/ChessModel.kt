@@ -167,7 +167,7 @@ data class Board(
         val updatedMoves = moves.toMutableList()
         var updatedLastMove = lastMove
         if (updatedMoves.isNotEmpty()) {
-            updatedLastMove = updatedMoves.removeLast().copy(promotedTo = to, isCheck = isCheck, isCheckmate = isCheckmate)
+            updatedLastMove = updatedMoves.removeAt(updatedMoves.lastIndex).copy(promotedTo = to, isCheck = isCheck, isCheckmate = isCheckmate)
             updatedMoves.add(updatedLastMove)
         }
 

@@ -169,7 +169,7 @@ class YoutubeCommentsExtractor(
             return getInfoItemsPageForDisabledComments()
         }
 
-        if (page == null || isNullOrEmpty(page.id)) {
+        if (isNullOrEmpty(page.id)) {
             throw IllegalArgumentException("Page doesn't have the continuation.")
         }
 

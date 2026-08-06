@@ -25,6 +25,9 @@ class KeyExchange(private val transport: TcpTransport, private val dc: Int = 2) 
     private val random = SecureRandom()
     private val TAG = "KeyExchange"
 
+    // BigInteger.TWO is API 33; minSdk is 31.
+    private val TWO: BigInteger = BigInteger.valueOf(2)
+
     suspend fun perform(): AuthResult {
         // Step 1: req_pq_multi
         val nonce = randomInt128()
@@ -50,7 +53,7 @@ class KeyExchange(private val transport: TcpTransport, private val dc: Int = 2) 
 
         // Step 3: Factor pq
         val pqBig = BigInteger(1, pq)
-        val pqMax = BigInteger.TWO.pow(63)
+        val pqMax = TWO.pow(63)
         check(pqBig <= pqMax) { "server provided bad pq" }
         val (p, q) = PqMath.decompose(pqBig)
         val pBytes = p.toByteArray().let { if (it[0] == 0.toByte()) it.copyOfRange(1, it.size) else it }
@@ -313,7 +316,7 @@ class KeyExchange(private val transport: TcpTransport, private val dc: Int = 2) 
         val one = BigInteger.ONE
         val dhPrimeMinusOne = dhPrime.subtract(one)
         check(g > one && g < dhPrimeMinusOne) { "DH param g out of range (1, p-1)" }
-        val safeMin = BigInteger.TWO.pow(2048 - 64)
+        val safeMin = TWO.pow(2048 - 64)
         val safeMax = dhPrime.subtract(safeMin)
         for (v in values) {
             check(v > one && v < dhPrimeMinusOne) { "DH param out of range (1, p-1)" }

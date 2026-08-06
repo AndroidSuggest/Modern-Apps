@@ -1,8 +1,8 @@
 package com.vayunmathur.youpipe.util
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -63,7 +63,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
         // SABR streams are encoded by the UI as "sabr://<videoId>?v=<itag>" (video) and
         // "sabr://<videoId>?a=<itag>" (audio). They cannot be fetched over plain HTTP; drive a
         // SABR session instead, muxing audio+video into a single mp4.
-        if (Uri.parse(videoUrl).scheme == "sabr") {
+        if (videoUrl.toUri().scheme == "sabr") {
             return@coroutineScope runSabrDownload(videoID, videoUrl, audioUrl, videoInfo, db, dir)
         }
 
@@ -144,10 +144,10 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
         db: SubscriptionDatabase,
         dir: File,
     ): Result {
-        val videoUri = Uri.parse(videoUrl)
+        val videoUri = videoUrl.toUri()
         val youtubeId = videoUri.host
         val videoItag = videoUri.getQueryParameter("v")?.toIntOrNull()
-        val audioItag = audioUrl?.let { Uri.parse(it).getQueryParameter("a")?.toIntOrNull() }
+        val audioItag = audioUrl?.let { it.toUri().getQueryParameter("a")?.toIntOrNull() }
         if (youtubeId.isNullOrEmpty() || videoItag == null || audioItag == null) {
             Log.e("DownloadWorker", "Malformed SABR request video=$videoUrl audio=$audioUrl")
             DownloadManager.finishDownload(videoID)

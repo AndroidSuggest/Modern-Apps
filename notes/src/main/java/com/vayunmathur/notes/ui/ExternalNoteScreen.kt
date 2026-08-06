@@ -22,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.notes.R
@@ -44,7 +43,9 @@ fun ExternalNoteScreen(
     notesViewModel: NotesViewModel,
     uri: String,
 ) {
-    val context = LocalContext.current
+    val readFailedMsg = stringResource(R.string.external_read_failed)
+    val savedMsg = stringResource(R.string.external_saved)
+    val saveFailedMsg = stringResource(R.string.external_save_failed)
 
     var loaded by remember(uri) { mutableStateOf(false) }
     var title by remember(uri) { mutableStateOf("") }
@@ -53,7 +54,7 @@ fun ExternalNoteScreen(
     LaunchedEffect(uri) {
         val result = notesViewModel.readExternal(uri)
         if (result == null) {
-            AppMessages.show(context.getString(R.string.external_read_failed))
+            AppMessages.show(readFailedMsg)
             backStack.pop()
             return@LaunchedEffect
         }
@@ -70,8 +71,7 @@ fun ExternalNoteScreen(
                 actions = {
                     IconButton(onClick = {
                         notesViewModel.saveExternal(uri, content) { ok ->
-                            val msg = if (ok) R.string.external_saved else R.string.external_save_failed
-                            AppMessages.show(context.getString(msg))
+                            AppMessages.show(if (ok) savedMsg else saveFailedMsg)
                         }
                     }) { IconSave() }
                     IconButton(onClick = {

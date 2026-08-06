@@ -6,13 +6,13 @@ import kotlin.uuid.Uuid
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -275,6 +275,27 @@ class SharedWebViewRuntime private constructor(context: Context) {
                 }
             }
             view.webViewClient = object : WebViewClient() {
+                // Returning false here hands the dead renderer back to the framework, which
+                // kills the whole app process. Tear the runtime down instead.
+                override fun onRenderProcessGone(
+                    view: WebView,
+                    detail: RenderProcessGoneDetail,
+                ): Boolean {
+                    Log.w(
+                        TAG,
+                        "renderer gone crashed=${detail.didCrash()} attempt=${attempt.number}"
+                    )
+                    ready = false
+                    if (webView === view) webView = null
+                    retryOrFail(
+                        attempt,
+                        IllegalStateException(
+                            "WebView renderer process gone (didCrash=${detail.didCrash()})"
+                        )
+                    )
+                    return true
+                }
+
                 override fun onPageFinished(view: WebView, url: String) {
                     // WebView 44/83 occasionally misses this callback for a headless local page.
                     // Readiness is therefore determined only by the local document's bridge call.
@@ -291,7 +312,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
                     webError: WebResourceError
                 ) {
                     super.onReceivedError(view, request, webError)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request.isForMainFrame) {
+                    if (request.isForMainFrame) {
                         retryOrFail(
                             attempt,
                             IllegalStateException(

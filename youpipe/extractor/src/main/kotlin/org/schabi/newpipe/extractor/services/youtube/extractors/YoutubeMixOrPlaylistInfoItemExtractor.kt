@@ -24,7 +24,7 @@ class YoutubeMixOrPlaylistInfoItemExtractor(
         if (isNullOrEmpty(name)) {
             throw ParsingException("Could not get name")
         }
-        return name!!
+        return name
     }
 
     @Throws(ParsingException::class)
@@ -33,7 +33,7 @@ class YoutubeMixOrPlaylistInfoItemExtractor(
         if (isNullOrEmpty(url)) {
             throw ParsingException("Could not get url")
         }
-        return url!!
+        return url
     }
 
     override fun getThumbnails(): List<Image> {

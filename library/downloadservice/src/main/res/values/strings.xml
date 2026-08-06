@@ -10,5 +10,5 @@
     <!-- Shared library: downloadservice – InitialDownloader: Status label left of percent in progress row when file download is finished -->
     <string name="completed">Completed</string>
     <!-- Shared library: downloadservice – InitialDownloader: Status label left of percent when download is in progress, includes ellipsis -->
-    <string name="downloading">Downloading...</string>
+    <string name="downloading">Downloading…</string>
 </resources>

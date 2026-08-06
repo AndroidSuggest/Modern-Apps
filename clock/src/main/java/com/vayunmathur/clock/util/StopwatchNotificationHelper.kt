@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import com.vayunmathur.clock.MainActivity
 import com.vayunmathur.clock.R
 import com.vayunmathur.library.util.DataStoreUtils
+import java.util.Locale
 import kotlin.time.Clock
 
 object StopwatchNotificationHelper {
@@ -33,7 +34,7 @@ object StopwatchNotificationHelper {
         
         val minutes = elapsedMs / 60000
         val seconds = (elapsedMs % 60000) / 1000
-        val contentText = String.format("%02d:%02d", minutes, seconds)
+        val contentText = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
         
         // Content intent to open app
         val contentIntent = PendingIntent.getActivity(

@@ -137,8 +137,10 @@ pub(crate) fn render_annotation(doc: &Document, dict: &lopdf::Dictionary, base: 
         Err(_) => return,
     };
 
-    let mut gs = GraphicsState::default();
-    gs.ctm = mat_mul(&appearance_matrix(rect, bbox, matrix), base);
+    let gs = GraphicsState {
+        ctm: mat_mul(&appearance_matrix(rect, bbox, matrix), base),
+        ..Default::default()
+    };
     let start = prims.len();
     interpret_content(doc, &ops, res.as_ref(), gs, prims, 1, false);
 
@@ -220,11 +222,13 @@ pub(crate) fn synthesize_annotation_appearance(
     // Device half-width for strokes (approx via base scale).
     let scale = ((base[0]*base[0]+base[1]*base[1]).sqrt() + (base[2]*base[2]+base[3]*base[3]).sqrt()) / 2.0;
 
-    let mut gs = GraphicsState::default();
-    gs.ctm = *base;
-    gs.line_width = bw.max(0.5);
-    gs.alpha_fill = ca;
-    gs.alpha_stroke = ca;
+    let gs = GraphicsState {
+        ctm: *base,
+        line_width: bw.max(0.5),
+        alpha_fill: ca,
+        alpha_stroke: ca,
+        ..Default::default()
+    };
 
     // QuadPoints (text markup): 8 numbers per quad.
     let quads: Vec<[(f64,f64);4]> = dict.get(b"QuadPoints").ok()
@@ -399,7 +403,7 @@ pub(crate) fn synthesize_annotation_appearance(
             let x0 = rect[0]; let y1 = rect[3];
             let s = 18.0_f64.min((rect[2]-rect[0]).abs().max(12.0));
             let poly = vec![dev(x0, y1 - s), dev(x0 + s, y1 - s), dev(x0 + s, y1), dev(x0, y1)];
-            let col = stroke.or(fill).unwrap_or(0xFFFFE0_00); // note yellow
+            let col = stroke.or(fill).unwrap_or(0xFFFF_E000); // note yellow
             emit_fill(prims, std::slice::from_ref(&poly), apply_alpha_to_argb(col, ca), false, 1.0, BlendMode::Normal);
             let mut ring = poly.clone(); ring.push(poly[0]);
             let mut sgs = gs.clone(); sgs.stroke = 0xFF00_0000;
@@ -1213,7 +1217,7 @@ pub(crate) fn update_free_text(handle: i64, annot_id: i64, text: &str) -> bool {
             .get(b"DA")
             .ok()
             .and_then(|o| o.as_str().ok())
-            .and_then(|s| parse_da_size(s))
+            .and_then(parse_da_size)
             .unwrap_or(12.0);
         (rect, argb, size)
     };

@@ -88,7 +88,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
     // per-app locale config. Share a single committed copy instead of one file per app.
     // (Generated res dirs are NOT scanned by extractSupportedLocales, so this must be a
     // real res source directory.)
-    sourceSets.getByName("main").res.srcDir(File(rootDir, "build-logic/shared-res"))
+    sourceSets.getByName("main").res.directories.add(File(rootDir, "build-logic/shared-res").absolutePath)
 
     ndkVersion = "29.0.14206865"
 

@@ -3,18 +3,20 @@ package com.vayunmathur.youpipe.util.sabr
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.content.edit
+import androidx.webkit.WebViewCompat
 import org.json.JSONObject
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrPoTokenProvider
 import org.schabi.newpipe.extractor.services.youtube.sabr.SabrProtocolException
@@ -74,7 +76,7 @@ class WebViewPoTokenProvider(context: Context) : SabrPoTokenProvider {
         if (forceRefresh) {
             // Server rejected the cached token: drop it (memory + disk) and mint fresh.
             cache.remove(videoId)
-            prefs.edit().remove(videoId).apply()
+            prefs.edit { remove(videoId) }
         }
         synchronized(mintLocks.computeIfAbsent(videoId) { Any() }) {
             val now = System.currentTimeMillis()
@@ -150,7 +152,7 @@ class WebViewPoTokenProvider(context: Context) : SabrPoTokenProvider {
         return try {
             val mintedAt = v.substring(0, sep).toLong()
             if (System.currentTimeMillis() - mintedAt >= TOKEN_TTL_MS) {
-                prefs.edit().remove(videoId).apply()
+                prefs.edit { remove(videoId) }
                 null
             } else {
                 CachedToken(Base64.getUrlDecoder().decode(v.substring(sep + 1)), mintedAt)
@@ -163,7 +165,7 @@ class WebViewPoTokenProvider(context: Context) : SabrPoTokenProvider {
     private fun diskSave(videoId: String, tokenB64: String, mintedAt: Long) {
         // commit() (sync) not apply(): the token must hit disk before a fast force-stop/process
         // kill, else an app cold-start re-mints (~45s) even though a valid token was just minted.
-        prefs.edit().putString(videoId, "$mintedAt|$tokenB64").commit()
+        prefs.edit(commit = true) { putString(videoId, "$mintedAt|$tokenB64") }
     }
 
     @Throws(SabrProtocolException::class)
@@ -271,10 +273,7 @@ class WebViewPoTokenProvider(context: Context) : SabrPoTokenProvider {
     ): WebView {
         val webView = WebView(appContext)
         val injected = AtomicBoolean(false)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            WebView.getCurrentWebViewPackage() != null
-        ) {
-            val pkg = WebView.getCurrentWebViewPackage()!!
+        WebViewCompat.getCurrentWebViewPackage(appContext)?.let { pkg ->
             Log.i(TAG, "WebView package=${pkg.packageName} version=${pkg.versionName}")
             detail.set("webView=${pkg.packageName}/${pkg.versionName}")
         }
@@ -362,6 +361,26 @@ class WebViewPoTokenProvider(context: Context) : SabrPoTokenProvider {
                     stage.set("main_page_failed")
                     latch.countDown()
                 }
+            }
+
+            // Returning false hands the dead renderer back to the framework, which kills the
+            // whole app process. Fail this PO token attempt instead.
+            override fun onRenderProcessGone(
+                view: WebView,
+                gone: RenderProcessGoneDetail,
+            ): Boolean {
+                Log.w(TAG, "renderer gone crashed=${gone.didCrash()}")
+                if (failureRef.compareAndSet(
+                        null,
+                        IllegalStateException(
+                            "WebView renderer process gone (didCrash=${gone.didCrash()})"
+                        )
+                    )
+                ) {
+                    stage.set("renderer_gone")
+                    latch.countDown()
+                }
+                return true
             }
         }
         stage.set("loading_page")
@@ -469,9 +488,9 @@ class WebViewPoTokenProvider(context: Context) : SabrPoTokenProvider {
                     Log.w(TAG, "bridge result ignored after cancellation")
                     return
                 }
-                val obj = JSONObject(json)
+                val obj = JSONObject(json!!)
                 if (obj.optBoolean("ok", false)) {
-                    val token: String? = obj.optString("poToken", null)
+                    val token: String? = obj.opt("poToken")?.toString()
                     tokenRef.set(token)
                     stage.set("bridge_success")
                     Log.i(TAG, "bridge success tokenB64Length=${token?.length ?: -1}")

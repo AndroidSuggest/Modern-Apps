@@ -62,9 +62,9 @@ class MessagesService : Service() {
             buildSyncNotification(MessagesSessionManager.connectionStates.value),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            } else {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            } else 0,
+            },
         )
 
         // Start the GMessages session (idempotent).
@@ -116,9 +116,7 @@ class MessagesService : Service() {
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
         Log.w(TAG, "FGS onTimeout (type=$fgsType) — leaving foreground to avoid crash")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_DETACH)
-        }
+        stopForeground(STOP_FOREGROUND_DETACH)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -167,9 +165,7 @@ class MessagesService : Service() {
             .setContentIntent(tap)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(0, getString(R.string.notification_action_stop), stop)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-        }
+        builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         return builder.build()
     }
 
@@ -254,12 +250,7 @@ class MessagesService : Service() {
 
     private fun shutdown() {
         MessagesSessionManager.stop()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
@@ -275,11 +266,7 @@ class MessagesService : Service() {
         /** Helper used by Activities to start the service on app launch. */
         fun start(context: android.content.Context) {
             val intent = Intent(context, MessagesService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startForegroundService(intent)
         }
     }
 }

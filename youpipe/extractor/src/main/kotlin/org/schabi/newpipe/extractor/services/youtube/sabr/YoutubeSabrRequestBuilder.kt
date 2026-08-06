@@ -238,7 +238,7 @@ internal class YoutubeSabrRequestBuilder private constructor() {
             if (streamState?.getSabrReportRequestCancellationInfoOverride() != null) {
                 state.writeInt32(54, streamState.getSabrReportRequestCancellationInfoOverride()!!)
             }
-            if (officialWebClientAbrFields && streamState != null) {
+            if (officialWebClientAbrFields) {
                 if (includeFollowUpState) {
                     state.writeUInt64(29, longOverride(streamState.getOfficialTimeSinceLastSeekOverride(), 48))
                     state.writeUInt64(36, longOverride(streamState.getOfficialElapsedWallTimeOverride(), 1406))

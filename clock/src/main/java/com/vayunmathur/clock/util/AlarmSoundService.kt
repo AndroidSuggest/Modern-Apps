@@ -6,7 +6,6 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
-import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -119,12 +118,7 @@ class AlarmSoundService : Service() {
     }
 
     private fun startVibration() {
-        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getSystemService(VibratorManager::class.java)?.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Vibrator::class.java)
-        }
+        vibrator = getSystemService(VibratorManager::class.java)?.defaultVibrator
         val pattern = longArrayOf(0, 500, 500) // Off, On, Off
         vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
     }

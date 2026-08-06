@@ -30,6 +30,12 @@ pub struct PbWriter {
     pub buf: Vec<u8>,
 }
 
+impl Default for PbWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PbWriter {
     pub fn new() -> PbWriter {
         PbWriter { buf: Vec::new() }
@@ -100,7 +106,7 @@ impl<'a> PbReader<'a> {
 
     /// Yields (field number, value). Unknown fields are skipped by the caller
     /// simply ignoring field numbers it does not recognise.
-    pub fn next(&mut self) -> Result<Option<(u32, PbValue<'a>)>> {
+    pub fn next_field(&mut self) -> Result<Option<(u32, PbValue<'a>)>> {
         if self.pos >= self.data.len() {
             return Ok(None);
         }
@@ -226,7 +232,7 @@ impl SignalMessage {
         let mut ciphertext = None;
 
         let mut r = PbReader::new(body);
-        while let Some((field, value)) = r.next()? {
+        while let Some((field, value)) = r.next_field()? {
             match (field, value) {
                 (1, PbValue::Bytes(b)) => ratchet_key = Some(crypto::parse_public(b)?),
                 (2, PbValue::Varint(v)) => counter = Some(v as u32),
@@ -305,7 +311,7 @@ impl PreKeySignalMessage {
         let mut message = None;
 
         let mut r = PbReader::new(&data[1..]);
-        while let Some((field, value)) = r.next()? {
+        while let Some((field, value)) = r.next_field()? {
             match (field, value) {
                 (1, PbValue::Varint(v)) => pre_key_id = Some(v as u32),
                 (2, PbValue::Bytes(b)) => base_key = Some(crypto::parse_public(b)?),
@@ -379,7 +385,7 @@ impl SenderKeyMessage {
         let mut iteration = None;
         let mut ciphertext = None;
         let mut r = PbReader::new(body);
-        while let Some((field, value)) = r.next()? {
+        while let Some((field, value)) = r.next_field()? {
             match (field, value) {
                 (1, PbValue::Varint(v)) => key_id = Some(v as u32),
                 (2, PbValue::Varint(v)) => iteration = Some(v as u32),
@@ -443,7 +449,7 @@ impl SenderKeyDistributionMessage {
         let mut chain_key = None;
         let mut signing_key = None;
         let mut r = PbReader::new(&data[1..]);
-        while let Some((field, value)) = r.next()? {
+        while let Some((field, value)) = r.next_field()? {
             match (field, value) {
                 (1, PbValue::Varint(v)) => key_id = Some(v as u32),
                 (2, PbValue::Varint(v)) => iteration = Some(v as u32),

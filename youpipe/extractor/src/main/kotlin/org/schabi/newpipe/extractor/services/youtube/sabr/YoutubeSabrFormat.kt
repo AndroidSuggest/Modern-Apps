@@ -106,7 +106,7 @@ class YoutubeSabrFormat private constructor(
                 audioIsDefaultInternal = audioTrack?.getBoolean("audioIsDefault", false) ?: false,
                 qualityLabel = format.getString("qualityLabel"),
                 audioQuality = format.getString("audioQuality"),
-                drcInternal = format.getBoolean("isDrc", false) ?: false,
+                drcInternal = format.getBoolean("isDrc", false),
                 width = format.getIntCompat("width", -1),
                 height = format.getIntCompat("height", -1),
                 bitrate = format.getIntCompat("bitrate", -1),

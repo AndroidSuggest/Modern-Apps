@@ -12,6 +12,8 @@
     <string name="alchemy_icon_content_description">Icône Alchimie %1$d</string>
     <string name="item_details">Détails de l\'objet</string>
     <plurals name="locked_recipes">
+        <item quantity="one">+ %1$d recette verrouillée.</item>
+        <item quantity="many">+ %1$d de recettes verrouillées.</item>
         <item quantity="other">+ %1$d recettes verrouillées.</item>
     </plurals>
 </resources>

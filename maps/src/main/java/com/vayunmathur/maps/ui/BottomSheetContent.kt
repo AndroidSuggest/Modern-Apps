@@ -1,6 +1,5 @@
 package com.vayunmathur.maps.ui
 import android.content.Intent
-import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -186,11 +185,7 @@ fun RouteSheet(
                             val destPos = lastWaypoint.position
                             val destName = lastWaypoint.name
                             val intent = Intent(context, NavigationService::class.java)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                context.startForegroundService(intent)
-                            } else {
-                                context.startService(intent)
-                            }
+                            context.startForegroundService(intent)
                             NavigationSessionManager.init(context)
                             NavigationSessionManager.start(
                                 route = routeForMode,

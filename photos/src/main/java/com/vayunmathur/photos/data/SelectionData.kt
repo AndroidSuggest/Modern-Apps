@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
+import androidx.core.graphics.scale
 import kotlin.math.roundToInt
 
 /** How a new selection combines with the existing one. */
@@ -192,7 +193,7 @@ class Selection(
             val w = (source.width * scale).roundToInt().coerceAtLeast(1)
             val h = (source.height * scale).roundToInt().coerceAtLeast(1)
             val bmp = if (w == source.width && h == source.height) source
-            else Bitmap.createScaledBitmap(source, w, h, true)
+            else source.scale(w, h)
             val px = IntArray(w * h)
             bmp.getPixels(px, 0, w, 0, 0, w, h)
 

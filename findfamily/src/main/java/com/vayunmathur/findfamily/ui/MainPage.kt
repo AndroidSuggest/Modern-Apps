@@ -108,6 +108,7 @@ import com.vayunmathur.findfamily.util.Networking
 import com.vayunmathur.findfamily.util.PersonActions
 import com.vayunmathur.findfamily.util.PersonUiState
 import com.vayunmathur.findfamily.util.Platform
+import com.vayunmathur.findfamily.util.UwbSessionManager
 import com.vayunmathur.library.ui.BackupButtons
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.util.NavBackStack
@@ -291,9 +292,10 @@ fun MainPage(
                     } else if (selectedUserId != null && !historyMode) {
                         if (selectedUserId != Networking.userid) {
                             val user by ffViewModel.userByIdState(selectedUserId!!)
-                            // UWB Find Nearby (UWB) requires the public android.ranging API
-                            // (Android 15+). Hide the entry point on older devices.
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                            // Find Nearby (UWB) needs both the public
+                            // android.ranging API (Android 16+) and an actual
+                            // UWB radio. Hide the entry point otherwise.
+                            if (UwbSessionManager.isAvailable(context)) {
                                 IconButton({
                                     backStack.add(Route.UwbRangingPage(selectedUserId!!))
                                 }) {

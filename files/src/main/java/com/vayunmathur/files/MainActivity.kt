@@ -711,7 +711,7 @@ fun DirectoryScreen(
                     )
                     LaunchedEffect(Unit) { searchFocus.requestFocus() }
                 } else if (isCategory) {
-                    Text(state.categoryTitle ?: "", style = MaterialTheme.typography.titleLarge)
+                    Text(state.categoryTitle, style = MaterialTheme.typography.titleLarge)
                 } else {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -740,7 +740,7 @@ fun DirectoryScreen(
                                                         ClipDescription.MIMETYPE_TEXT_PLAIN
                                                     )
                                                 },
-                                                target = remember(crumb.realFile!!.absolutePath) {
+                                                target = remember(crumb.realFile.absolutePath) {
                                                     dropTarget(
                                                         onDragStateChange = { isBreadcrumbDraggingOver = it },
                                                         onDrop = { sources -> actions.moveToBreadcrumb(sources, crumb.realFile) }

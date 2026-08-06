@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.email.R
@@ -35,7 +36,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import androidx.core.text.htmlEncode
 import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.util.EmlUtils
 import com.vayunmathur.email.util.MessageListActions
@@ -446,7 +449,7 @@ fun FolderList(folders: List<EmailFolder>, selectedFolder: String, onSelect: (St
     // height constraints". Folder lists are tiny so non-lazy is fine.
     Column {
         folderTree.forEach { root ->
-            renderFolderTree(root, 0, selectedFolder, onSelect)
+            RenderFolderTree(root, 0, selectedFolder, onSelect)
         }
     }
 }
@@ -467,7 +470,7 @@ fun buildFolderTree(folders: List<EmailFolder>): List<FolderNode> {
 }
 
 @Composable
-fun renderFolderTree(
+fun RenderFolderTree(
     node: FolderNode,
     depth: Int,
     selectedFolder: String,
@@ -487,7 +490,7 @@ fun renderFolderTree(
             .padding(start = (depth * 16).dp)
     )
     node.children.forEach { child ->
-        renderFolderTree(child, depth + 1, selectedFolder, onSelect)
+        RenderFolderTree(child, depth + 1, selectedFolder, onSelect)
     }
 }
 
@@ -965,6 +968,7 @@ fun MessageItem(
     var showDetails by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showOverflow by remember { mutableStateOf(false) }
 
     LaunchedEffect(msg.id) {
@@ -1029,7 +1033,7 @@ fun MessageItem(
                         val snooze = { at: Long ->
                             showSnooze = false
                             actions.snoozeMessage(msg.accountEmail, msg.folderName, msg.id, at)
-                            AppMessages.show(context.getString(R.string.snoozed))
+                            AppMessages.show(resources.getString(R.string.snoozed))
                             onBack()
                         }
                         DropdownMenuItem(text = { Text(stringResource(R.string.later_today_6_pm)) }, onClick = { snooze(scheduleTime(18, sameDay = true)) })
@@ -1144,7 +1148,7 @@ fun MessageItem(
             }
             TextButton(onClick = {
                 actions.blockSender(msg.from)
-                AppMessages.show(context.getString(R.string.sender_blocked))
+                AppMessages.show(resources.getString(R.string.sender_blocked))
                 onBack()
             }) { Text(stringResource(R.string.block_sender)) }
         }
@@ -1199,6 +1203,7 @@ fun DetailItem(label: String, name: String, email: String, avatarColor: Color) {
 @Composable
 fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     var downloading by remember { mutableStateOf(false) }
     var localPath by remember { mutableStateOf(attachment.localUri) }
 
@@ -1213,7 +1218,7 @@ fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.clickable {
-                    val uri = try { Uri.parse(localPath) } catch (e: Exception) { null }
+                    val uri = try { localPath?.toUri() } catch (e: Exception) { null }
                     if (uri != null) {
                         val intent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(uri, attachment.mimeType.ifBlank { "*/*" })
@@ -1222,7 +1227,7 @@ fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
                         try {
                             context.startActivity(Intent.createChooser(intent, null))
                         } catch (e: Exception) {
-                            AppMessages.show(context.getString(R.string.no_app_can_open_this_file))
+                            AppMessages.show(resources.getString(R.string.no_app_can_open_this_file))
                         }
                     }
                 }
@@ -1233,10 +1238,10 @@ fun AttachmentItem(attachment: Attachment, actions: MessageThreadActions) {
                 actions.downloadAttachment(attachment, { path ->
                     downloading = false
                     localPath = path
-                    AppMessages.show(context.getString(R.string.saved_to_downloads))
+                    AppMessages.show(resources.getString(R.string.saved_to_downloads))
                 }, { error ->
                     downloading = false
-                    AppMessages.show(context.getString(R.string.download_failed, error))
+                    AppMessages.show(resources.getString(R.string.download_failed, error))
                 })
             }, enabled = !downloading) {
                 if (downloading) CircularProgressIndicator(modifier = Modifier.size(16.dp))
@@ -1261,6 +1266,7 @@ fun ComposerScreen(
     val accounts by viewModel.accounts.collectAsStateWithLifecycle(emptyList())
     val selectedAccount by viewModel.selectedAccount.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     var fromAccount by remember(selectedAccount, accounts) {
         mutableStateOf(selectedAccount ?: accounts.firstOrNull())
@@ -1436,7 +1442,7 @@ fun ComposerScreen(
                                         inReplyTo = inReplyTo,
                                         references = references, scheduledAt = at,
                                     ) { currentDraftId?.let { viewModel.deleteDraft(it) } }
-                                    AppMessages.show(context.getString(R.string.scheduled))
+                                    AppMessages.show(resources.getString(R.string.scheduled))
                                     onBack()
                                 }
                             }
@@ -1463,12 +1469,12 @@ fun ComposerScreen(
                             onSuccess = {
                                 sending = false
                                 currentDraftId?.let { viewModel.deleteDraft(it) }
-                                AppMessages.show(context.getString(R.string.message_sent))
+                                AppMessages.show(resources.getString(R.string.message_sent))
                                 onBack()
                             },
                             onError = { err ->
                                 sending = false
-                                AppMessages.show(context.getString(R.string.saved_to_outbox, err))
+                                AppMessages.show(resources.getString(R.string.saved_to_outbox, err))
                                 onBack()
                             }
                         )
@@ -1824,18 +1830,18 @@ private fun EmailColorPickerDialog(
         listOf(
             null to "Default",
             android.graphics.Color.BLACK to "Black",
-            android.graphics.Color.parseColor("#D32F2F") to "Red",
-            android.graphics.Color.parseColor("#1976D2") to "Blue",
-            android.graphics.Color.parseColor("#388E3C") to "Green",
-            android.graphics.Color.parseColor("#F57C00") to "Orange",
-            android.graphics.Color.parseColor("#7B1FA2") to "Purple",
-            android.graphics.Color.parseColor("#00796B") to "Teal",
-            android.graphics.Color.parseColor("#455A64") to "Gray",
-            android.graphics.Color.parseColor("#FFEB3B") to "Yellow",
-            android.graphics.Color.parseColor("#FFCDD2") to "Light Red",
-            android.graphics.Color.parseColor("#BBDEFB") to "Light Blue",
-            android.graphics.Color.parseColor("#C8E6C9") to "Light Green",
-            android.graphics.Color.parseColor("#FFF9C4") to "Light Yellow",
+            "#D32F2F".toColorInt() to "Red",
+            "#1976D2".toColorInt() to "Blue",
+            "#388E3C".toColorInt() to "Green",
+            "#F57C00".toColorInt() to "Orange",
+            "#7B1FA2".toColorInt() to "Purple",
+            "#00796B".toColorInt() to "Teal",
+            "#455A64".toColorInt() to "Gray",
+            "#FFEB3B".toColorInt() to "Yellow",
+            "#FFCDD2".toColorInt() to "Light Red",
+            "#BBDEFB".toColorInt() to "Light Blue",
+            "#C8E6C9".toColorInt() to "Light Green",
+            "#FFF9C4".toColorInt() to "Light Yellow",
         )
     }
     AlertDialog(
@@ -1902,6 +1908,7 @@ fun OutboxScreen(
 ) {
     val outbox by viewModel.outbox.collectAsStateWithLifecycle(emptyList())
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     Scaffold(
         topBar = {
@@ -1912,7 +1919,7 @@ fun OutboxScreen(
                     if (outbox.isNotEmpty()) {
                         TextButton(onClick = {
                             viewModel.sendOutboxNow(context)
-                            AppMessages.show(context.resources.getQuantityString(R.plurals.retrying_pending_messages, outbox.size, outbox.size))
+                            AppMessages.show(resources.getQuantityString(R.plurals.retrying_pending_messages, outbox.size, outbox.size))
                         }) { Text(stringResource(R.string.send_now)) }
                     }
                 },
@@ -1933,7 +1940,7 @@ fun OutboxScreen(
                         entry = entry,
                         onDelete = {
                             viewModel.deleteOutboxEntry(entry)
-                            AppMessages.show(context.getString(R.string.deleted_from_outbox))
+                            AppMessages.show(resources.getString(R.string.deleted_from_outbox))
                         },
                     )
                     HorizontalDivider()
@@ -2004,7 +2011,7 @@ private fun OutboxRow(entry: OutboxEntry, onDelete: () -> Unit) {
 private fun signatureBlockHtml(acc: com.vayunmathur.email.EmailAccount?): String {
     val s = acc?.signature?.trim().orEmpty()
     if (s.isEmpty()) return ""
-    val escaped = android.text.TextUtils.htmlEncode(s).replace("\n", "<br>")
+    val escaped = s.htmlEncode().replace("\n", "<br>")
     return "<br><br>-- <br>$escaped"
 }
 
@@ -2013,6 +2020,7 @@ private fun signatureBlockHtml(acc: com.vayunmathur.email.EmailAccount?): String
 fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
     val accounts by viewModel.accounts.collectAsStateWithLifecycle(emptyList())
     val context = LocalContext.current
+    val resources = LocalResources.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -2058,7 +2066,7 @@ fun SettingsScreen(viewModel: EmailViewModel, onBack: () -> Unit) {
                     Button(
                         onClick = {
                             viewModel.setSignature(acc.email, sig)
-                            AppMessages.show(context.getString(R.string.signature_saved))
+                            AppMessages.show(resources.getString(R.string.signature_saved))
                         },
                         modifier = Modifier.align(Alignment.End),
                     ) {

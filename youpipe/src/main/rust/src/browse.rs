@@ -436,7 +436,7 @@ fn parse_comment_view_model(root: &Value, view_model: &Value) -> Option<Comment>
         author_url: author.str("channelId").map(linkhandler::channel_url),
         author_thumbnails: thumbnails_from_array(author.obj("avatarThumbnailUrl").arr("thumbnails")),
         author_verified: author.bool("isVerified"),
-        like_count: entity.obj("toolbar").str("likeCountNotliked").map_or(-1, |v| parse_abbreviated_count(v)),
+        like_count: entity.obj("toolbar").str("likeCountNotliked").map_or(-1, parse_abbreviated_count),
         reply_count: entity.obj("toolbar").str("replyCount").and_then(|v| v.parse().ok()).unwrap_or(0),
         published_time: entity.obj("properties").str("publishedTime").map(str::to_string),
         is_pinned: false,

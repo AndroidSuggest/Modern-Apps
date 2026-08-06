@@ -24,8 +24,8 @@ fun GameBoard(
     onExtendPath: (CellPos) -> Unit,
     onCommitDraw: () -> Unit,
     isLevelWon: Boolean,
-    colorblind: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    colorblind: Boolean = false
 ) {
     BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
     val boardSize = minOf(maxWidth, maxHeight)

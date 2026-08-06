@@ -33,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.text.HtmlCompat
+import androidx.core.text.htmlEncode
+import androidx.core.text.toHtml
 
 class OrderedListSpan(var number: Int, private val gapWidth: Int = 48) : LeadingMarginSpan {
     override fun getLeadingMargin(first: Boolean): Int = gapWidth
@@ -696,12 +698,12 @@ fun serializeRich(spanned: Spanned): String {
         if (start >= end) return ""
         val slice = SpannableStringBuilder()
         slice.append(editable.subSequence(start, end))
-        val raw = HtmlCompat.toHtml(slice, HtmlCompat.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE).trim()
+        val raw = slice.toHtml(HtmlCompat.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE).trim()
         var inner = raw.replace(Regex("^<p[^>]*>"), "").replace(Regex("</p>\\s*$"), "").trim()
         if (inner.isEmpty()) {
             val txt = editable.subSequence(start, end).toString()
             if (txt.isBlank()) return ""
-            return android.text.TextUtils.htmlEncode(txt)
+            return txt.htmlEncode()
         }
         return inner
     }
@@ -742,7 +744,7 @@ fun serializeRich(spanned: Spanned): String {
     }
     closeList()
     val result = out.toString()
-    return if (result.isBlank()) HtmlCompat.toHtml(spanned, HtmlCompat.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE) else result
+    return if (result.isBlank()) spanned.toHtml(HtmlCompat.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE) else result
 }
 
 internal fun urlSpanAt(e: Editable, start: Int, end: Int): URLSpan? {

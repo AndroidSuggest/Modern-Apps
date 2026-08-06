@@ -196,12 +196,7 @@ fn collect_group(db: &Database, group_id: keepass::db::GroupId, out: &mut Vec<En
 /// field stored protected (KeePass default MemoryProtection); all other stored
 /// unprotected. Returns `None` on bad JSON or encryption failure.
 pub fn export_kdbx(password: &str, entries_json: &str) -> Option<Vec<u8>> {
-    // Prefer std parser, fallback to serde_json if present in feature (kept for compat)
-    let entries = from_json_std(entries_json).or_else(|| {
-        // fallback: if serde_json still present as optional (workspace dep), keep backwards compat
-        // but we no longer depend on it, so this is unreachable in cleaned lock.
-        None
-    })?;
+    let entries = from_json_std(entries_json)?;
 
     let mut db = Database::new();
     for entry_map in entries {

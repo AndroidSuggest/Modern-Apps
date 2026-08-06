@@ -87,7 +87,7 @@
     <string name="create_new_account_option">Loo uus kasutajakonto</string>
     <string name="no_contacts_found">Kontakte ei leidu</string>
     <plurals name="import_summary_contacts">
-        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> kontakt on importimiseks valmis</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> kontakt on importimiseks valmis</item>
         <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> kontakti on importimiseks valmis</item>
     </plurals>
     <string name="select_account">Vali kasutajakonto</string>

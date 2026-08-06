@@ -231,7 +231,7 @@ fun CutGlueContent(
                                         onDelete(index)
                                     }
                                 },
-                                dragHandle = Modifier.longPressDraggableHandle(reorderState, key = key, index = index),
+                                modifier = Modifier.longPressDraggableHandle(reorderState, key = key, index = index),
                             )
                         }
                     }
@@ -248,7 +248,7 @@ private fun ComposePageThumb(
     index: Int,
     cache: androidx.compose.runtime.snapshots.SnapshotStateMap<Long, SafePdfPage>,
     onDelete: () -> Unit,
-    dragHandle: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     // Render each page once and cache it by its stable key. Reorders and appends
     // then reuse the cached render instead of re-rendering every visible thumb.
@@ -266,7 +266,7 @@ private fun ComposePageThumb(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
-            .then(dragHandle),
+            .then(modifier),
     ) {
         Box(
             Modifier

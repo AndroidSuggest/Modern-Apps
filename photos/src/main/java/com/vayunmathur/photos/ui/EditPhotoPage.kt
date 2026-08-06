@@ -93,6 +93,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.get
 import androidx.core.net.toUri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.widthIn
@@ -1069,7 +1071,7 @@ fun EditPhotoPage(
                                         if (bmp != null) {
                                             val sx = ((o.x / size.width) * bmp.width).toInt().coerceIn(0, bmp.width - 1)
                                             val sy = ((o.y / size.height) * bmp.height).toInt().coerceIn(0, bmp.height - 1)
-                                            useColor(Color(bmp.getPixel(sx, sy)))
+                                            useColor(Color(bmp[sx, sy]))
                                         }
                                     }
                                 })
@@ -1328,7 +1330,7 @@ fun EditPhotoPage(
                         onSelectionClear = { clearSelection() },
                         onSelectionDelete = {
                             vm.applyToActivePixelLayer { src ->
-                                android.graphics.Bitmap.createBitmap(src.width, src.height, android.graphics.Bitmap.Config.ARGB_8888)
+                                createBitmap(src.width, src.height)
                             }
                         },
                         maskPaintReveal = maskPaintReveal,
@@ -2196,7 +2198,7 @@ private fun SelectionMaskOverlay(selection: Selection) {
             // Translucent cyan tint where selected.
             px[i] = (a shl 24) or 0x33B5E5
         }
-        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(w, h)
         bmp.setPixels(px, 0, w, 0, 0, w, h)
         bmp.asImageBitmap()
     }

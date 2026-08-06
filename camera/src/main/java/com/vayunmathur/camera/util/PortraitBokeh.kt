@@ -18,7 +18,10 @@ import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.hardware.HardwareBuffer
 import android.media.ImageReader
+import android.os.Build
 import android.util.Log
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import com.vayunmathur.ncnn.PortraitSegmenter
 import kotlin.math.max
 import kotlin.math.min
@@ -220,6 +223,9 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         mirror: Boolean,
     ): Bitmap? {
         if (closed) return null
+        // The blur pass is AGSL, which needs RuntimeShader (API 33+). Below that
+        // there is no bokeh; the caller keeps the sharp frame.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
         val mask = try {
             buildMask(src, rotationDegrees)
         } catch (e: Throwable) {
@@ -239,7 +245,7 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         if (background == null) return null
 
         return try {
-            val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+            val out = createBitmap(src.width, src.height)
             val canvas = Canvas(out)
             if (mirror) canvas.scale(-1f, 1f, src.width / 2f, src.height / 2f)
             canvas.drawBitmap(src, 0f, 0f, Paint().apply {
@@ -307,11 +313,9 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
     private fun blurBackground(src: Bitmap, mask: Bitmap, strength: Float): Bitmap? {
         val scale = min(1f, BLUR_LONG_SIDE.toFloat() / max(src.width, src.height))
         val small = if (scale < 1f) {
-            Bitmap.createScaledBitmap(
-                src,
+            src.scale(
                 (src.width * scale).roundToInt().coerceAtLeast(1),
-                (src.height * scale).roundToInt().coerceAtLeast(1),
-                true
+                (src.height * scale).roundToInt().coerceAtLeast(1)
             )
         } else {
             src
@@ -347,6 +351,7 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
      * so taps past the frame edge repeat the border rather than fading the edges to transparent.
      */
     private fun renderBlur(src: Bitmap, blurScale: Float): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
         val w = src.width
         val h = src.height
         val reader = ImageReader.newInstance(
@@ -394,11 +399,9 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
         val longest = max(src.width, src.height)
         if (longest <= maxSide) return src
         val scale = maxSide.toFloat() / longest
-        return Bitmap.createScaledBitmap(
-            src,
+        return src.scale(
             (src.width * scale).roundToInt().coerceAtLeast(1),
-            (src.height * scale).roundToInt().coerceAtLeast(1),
-            true
+            (src.height * scale).roundToInt().coerceAtLeast(1)
         )
     }
 
@@ -410,6 +413,6 @@ class StillBokehRenderer(private val context: Context) : AutoCloseable {
 
     private companion object {
         val TRANSPARENT_1X1: Bitmap =
-            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.TRANSPARENT) }
+            createBitmap(1, 1).apply { eraseColor(Color.TRANSPARENT) }
     }
 }

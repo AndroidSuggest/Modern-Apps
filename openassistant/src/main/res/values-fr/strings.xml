@@ -9,7 +9,7 @@
     <string name="mic_error_format">Erreur de micro : %1$s</string>
     <string name="error_request_expired">La requête a expiré dans la file d\'attente</string>
     <string name="error_ai_json_schema_mismatch">L\'IA n\'a pas réussi à renvoyer un JSON valide correspondant au schéma.</string>
-    <string name="processing_ai_inference">Traitement de l\'inférence IA...</string>
+    <string name="processing_ai_inference">Traitement de l\'inférence IA…</string>
     <string name="voice_message">Message vocal</string>
     <string name="error_prefix">Erreur : %1$s</string>
     <string name="inference_service">Service d\'inférence</string>

@@ -112,7 +112,6 @@ internal class LocalDomPoTokenGenerator private constructor(
         Thread({
             try {
                 val downloader = NewPipe.getDownloader()
-                    ?: throw SabrProtocolException("Downloader is not initialized")
                 val response = downloader.post(
                     url,
                     mapOf(
@@ -144,7 +143,6 @@ internal class LocalDomPoTokenGenerator private constructor(
         Thread({
             try {
                 val downloader = NewPipe.getDownloader()
-                    ?: throw SabrProtocolException("Downloader is not initialized")
                 val response = downloader.get(
                     url,
                     mapOf(

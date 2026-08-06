@@ -286,6 +286,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         PendingIntentHandler.setGetCredentialResponse(
             result,
             androidx.credentials.GetCredentialResponse(credentialResponse),
+            providerRequest,
         )
         setResult(RESULT_OK, result)
     }
@@ -303,6 +304,11 @@ class PasskeyAuthActivity : FragmentActivity() {
     }
 
     private fun handlePassword() {
+        val providerRequest = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent) ?: run {
+            Log.e(TAG, "No get credential request in intent")
+            setResult(RESULT_CANCELED)
+            return
+        }
         val passwordId = intent.getLongExtra(PasskeyCredentialService.EXTRA_PASSWORD_ID, -1)
         if (passwordId == -1L) {
             Log.e(TAG, "No password ID in intent")
@@ -320,6 +326,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         PendingIntentHandler.setGetCredentialResponse(
             result,
             androidx.credentials.GetCredentialResponse(credentialResponse),
+            providerRequest,
         )
         setResult(RESULT_OK, result)
     }

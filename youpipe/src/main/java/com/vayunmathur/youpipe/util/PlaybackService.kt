@@ -1,10 +1,12 @@
 package com.vayunmathur.youpipe.util
 import android.content.Intent
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -96,7 +98,7 @@ class PlaybackService : MediaSessionService() {
                     var audioTrackIdOverride: String? = extras?.getString(EXTRA_AUDIO_TRACK_ID)
                     if (audioItag == 0 && rawAudioUri != null) {
                         try {
-                            val aUri = android.net.Uri.parse(rawAudioUri)
+                            val aUri = rawAudioUri.toUri()
                             if (aUri.scheme == "sabr") {
                                 audioItag = aUri.getQueryParameter("a")?.toIntOrNull() ?: 0
                             }
@@ -157,6 +159,7 @@ class PlaybackService : MediaSessionService() {
         } catch (_: Exception) {}
 
         val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            @OptIn(ExperimentalApi::class)
             override fun buildTextRenderers(
                 context: android.content.Context,
                 output: androidx.media3.exoplayer.text.TextOutput,
@@ -167,14 +170,12 @@ class PlaybackService : MediaSessionService() {
                 super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, out)
                 out.filterIsInstance<androidx.media3.exoplayer.text.TextRenderer>().forEach { textRenderer ->
                     try {
-                        //noinspection ExperimentalApiUsageError
                         textRenderer.experimentalSetLegacyDecodingEnabled(true)
                     } catch (_: Exception) {}
                 }
                 if (out.none { it.trackType == androidx.media3.common.C.TRACK_TYPE_TEXT }) {
                     val tr = androidx.media3.exoplayer.text.TextRenderer(output, outputLooper)
                     try {
-                        //noinspection ExperimentalApiUsageError
                         tr.experimentalSetLegacyDecodingEnabled(true)
                     } catch (_: Exception) {}
                     out.add(tr)

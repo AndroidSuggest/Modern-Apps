@@ -27,7 +27,6 @@ class SabrSessionPolicyHost(
     fun evaluateDemandRoute(event: SabrSessionPolicy.DemandRouteEvent): SabrSessionPolicy.DemandRoute {
         validateDemandEvent(event)
         val route = policy.evaluateDemandRoute(event)
-            ?: throw IllegalStateException("SABR demand policy returned no route")
         transcript?.recordDemandRoute(event, route)
         return route
     }
@@ -44,8 +43,7 @@ class SabrSessionPolicyHost(
             throw IllegalArgumentException("Invalid SABR demand response event")
         }
         for (segment in event.getReturnedSegments()) {
-            if (segment == null ||
-                segment.itag <= 0 ||
+            if (segment.itag <= 0 ||
                 segment.sequenceNumber < 0 ||
                 segment.startMs < 0 ||
                 segment.getDurationMs() < 0
@@ -54,9 +52,7 @@ class SabrSessionPolicyHost(
             }
         }
         val decision = policy.evaluateDemandResponse(event)
-        if (decision == null ||
-            decision.outcome == null ||
-            decision.getRetryDelayMs() < 0 ||
+        if (decision.getRetryDelayMs() < 0 ||
             decision.getRetryDelayMs() > SabrSessionPolicy.MAX_DEMAND_RETRY_DELAY_MS
         ) {
             throw IllegalStateException("Invalid SABR demand response decision")
@@ -158,7 +154,7 @@ class SabrSessionPolicyHost(
             val actions = result.getActions()
             val seen = EnumSet.noneOf(SabrSessionPolicy.ActionType::class.java)
             for (action in actions) {
-                if (action == null || !seen.add(action.getType())) {
+                if (!seen.add(action.getType())) {
                     throw IllegalStateException("Duplicate SABR control action")
                 }
             }
@@ -169,7 +165,7 @@ class SabrSessionPolicyHost(
             if (terminalCount != 1 || !TERMINAL.contains(actions[actions.size - 1].getType())) {
                 throw IllegalStateException("SABR control policy has no terminal action")
             }
-            val decision = result.controlDecision!!
+            val decision = result.controlDecision
             if (seen.contains(SabrSessionPolicy.ActionType.APPLY_RESPONSE_STATE) != (result.getStatePatch() != null)) {
                 throw IllegalStateException("SABR response state action/patch mismatch")
             }
@@ -179,7 +175,7 @@ class SabrSessionPolicyHost(
                 throw IllegalStateException("SABR response state actions are mutually exclusive")
             }
             if (seen.contains(SabrSessionPolicy.ActionType.APPLY_REDIRECT) !=
-                (decision.redirectUrl != null && decision.redirectUrl!!.isNotEmpty())
+                (decision.redirectUrl != null && decision.redirectUrl.isNotEmpty())
             ) {
                 throw IllegalStateException("SABR redirect action/value mismatch")
             }

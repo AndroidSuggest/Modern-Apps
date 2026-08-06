@@ -5,7 +5,7 @@ import org.schabi.newpipe.extractor.exceptions.ParsingException
 abstract class SearchQueryHandlerFactory : ListLinkHandlerFactory() {
 
     @Throws(ParsingException::class, UnsupportedOperationException::class)
-    abstract override fun getUrl(query: String, contentFilter: List<String>, sortFilter: String): String
+    abstract override fun getUrl(id: String, contentFilter: List<String>, sortFilter: String): String
 
     open fun getSearchString(url: String): String = ""
 
@@ -13,8 +13,8 @@ abstract class SearchQueryHandlerFactory : ListLinkHandlerFactory() {
     override fun getId(url: String): String = getSearchString(url)
 
     @Throws(ParsingException::class)
-    override fun fromQuery(query: String, contentFilter: List<String>, sortFilter: String): SearchQueryHandler =
-        SearchQueryHandler(super.fromQuery(query, contentFilter, sortFilter))
+    override fun fromQuery(id: String, contentFilters: List<String>, sortFilter: String): SearchQueryHandler =
+        SearchQueryHandler(super.fromQuery(id, contentFilters, sortFilter))
 
     @Throws(ParsingException::class)
     fun fromQuery(query: String): SearchQueryHandler =

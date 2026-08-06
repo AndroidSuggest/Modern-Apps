@@ -354,13 +354,10 @@ impl DocumentTreeCrdt {
                 self.insert(parent, &desired[mid_d_start + di], ops, &mut prev_id);
             }
         }
-        for ci in 0..mid_c.len() {
-            if !matched_c.contains(&ci) {
-                let id = &mid_c[ci];
-                if !self.nodes[id].deleted {
-                    self.nodes.get_mut(id).unwrap().deleted = true;
-                    ops.push(self.nodes[id].clone());
-                }
+        for (ci, id) in mid_c.iter().enumerate() {
+            if !matched_c.contains(&ci) && !self.nodes[id].deleted {
+                self.nodes.get_mut(id).unwrap().deleted = true;
+                ops.push(self.nodes[id].clone());
             }
         }
         for i in 0..suf {
@@ -434,7 +431,7 @@ fn name_of(tag: &str) -> String {
     {
         k += 1;
     }
-    if chars.len() < 1 {
+    if chars.is_empty() {
         return String::new();
     }
     chars[1.min(chars.len())..k.min(chars.len())].iter().collect()
@@ -516,16 +513,7 @@ fn parse(xml: &str) -> Vec<Desired> {
                 if tag.starts_with("</office:binary-data") {
                     in_binary = false;
                 }
-            } else if tag.starts_with("<?") || tag.starts_with("<!") {
-                let idx = arena.len();
-                arena.push(Item::El {
-                    tag,
-                    self_closing: true,
-                    children: Vec::new(),
-                });
-                let p = *stack.last().unwrap();
-                add_child(&mut arena, p, idx);
-            } else if tag.ends_with("/>") {
+            } else if tag.starts_with("<?") || tag.starts_with("<!") || tag.ends_with("/>") {
                 let idx = arena.len();
                 arena.push(Item::El {
                     tag,
@@ -677,7 +665,7 @@ mod tests {
     fn json_ignores_unknown_and_defaults() {
         let json = r#"{"device":"d","clock":0,"nodes":[{"id":"1:d","parent":"","left":"","kind":"c","payload":"a","lamport":1,"dev":"d","extra":42}]}"#;
         let s: State = serde_json::from_str(json).unwrap();
-        assert_eq!(s.nodes[0].deleted, false);
+        assert!(!s.nodes[0].deleted);
         assert_eq!(s.nodes[0].name, "");
         assert_eq!(s.nodes[0].attr_lamport, 0);
     }

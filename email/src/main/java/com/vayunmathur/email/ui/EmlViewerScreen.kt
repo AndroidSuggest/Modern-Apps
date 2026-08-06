@@ -183,6 +183,7 @@ fun EmlViewerScreen(
 @Composable
 private fun EmlAttachmentItem(attachment: EmlAttachment) {
     val context = LocalContext.current
+    val cannotOpenMsg = stringResource(R.string.no_app_can_open_this_file)
     var opening by remember(attachment.fileName) { mutableStateOf(false) }
 
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -194,7 +195,7 @@ private fun EmlAttachmentItem(attachment: EmlAttachment) {
                 opening = true
                 openEmlAttachment(context, attachment) { success ->
                     opening = false
-                    if (!success) AppMessages.show(context.getString(R.string.no_app_can_open_this_file))
+                    if (!success) AppMessages.show(cannotOpenMsg)
                 }
             })
         }
@@ -225,8 +226,9 @@ private fun openEmlAttachment(context: Context, att: EmlAttachment, onResult: (B
 
 private fun humanSize(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
+    val locale = java.util.Locale.getDefault()
     val kb = bytes / 1024.0
-    if (kb < 1024) return String.format("%.1f KB", kb)
+    if (kb < 1024) return String.format(locale, "%.1f KB", kb)
     val mb = kb / 1024.0
-    return String.format("%.1f MB", mb)
+    return String.format(locale, "%.1f MB", mb)
 }

@@ -7,6 +7,7 @@ import com.vayunmathur.fooddelivery.R
 import kotlin.uuid.Uuid
 import android.content.Context
 import android.location.Geocoder
+import androidx.core.content.edit
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -141,7 +142,7 @@ fun AccountScreen() {
 
     BitesApi.onTokenUpdated = { tokenJson ->
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_TOKEN, tokenJson).apply()
+            .edit { putString(KEY_TOKEN, tokenJson) }
     }
 
     Scaffold { padding ->
@@ -363,7 +364,7 @@ fun AccountScreen() {
                                     confirmDelete = false
                                     if (BitesApi.deleteCustomer()) {
                                         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                                            .edit().remove(KEY_TOKEN).apply()
+                                            .edit { remove(KEY_TOKEN) }
                                         BitesApi.clearToken()
                                         loggedIn = false
                                         customer = null
@@ -387,7 +388,7 @@ fun AccountScreen() {
                 OutlinedButton(
                     onClick = {
                         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                            .edit().remove(KEY_TOKEN).apply()
+                            .edit { remove(KEY_TOKEN) }
                         BitesApi.clearToken()
                         loggedIn = false
                         customer = null

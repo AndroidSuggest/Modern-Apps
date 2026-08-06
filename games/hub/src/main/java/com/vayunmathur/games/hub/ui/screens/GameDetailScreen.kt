@@ -111,7 +111,7 @@ fun GameDetailScreen(
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(text = formatRelativeTime(session.startTime), style = MaterialTheme.typography.bodySmall)
-                            Text(text = session.durationMs?.let { formatDurationMs(it) } ?: stringResource(R.string.in_progress), style = MaterialTheme.typography.labelSmall)
+                            Text(text = session.durationMs?.let { formatDurationMs(it) } ?: stringResource(R.string.session_in_progress), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }

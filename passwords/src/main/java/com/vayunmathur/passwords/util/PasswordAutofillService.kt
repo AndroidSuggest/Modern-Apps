@@ -151,8 +151,9 @@ class PasswordAutofillService : AutofillService() {
                     val inlineBuilder = InlineSuggestionUi.newContentBuilder(attributionIntent)
                         .setTitle(text)
                         .setStartIcon(Icon.createWithResource(applicationContext, R.drawable.key_24px))
+                    val inlineContent: UiVersions.Content = inlineBuilder.build()
                     builder.setInlinePresentation(
-                        InlinePresentation(inlineBuilder.build().slice, inlineSpec, false)
+                        InlinePresentation(inlineContent.slice, inlineSpec, false)
                     )
                 }
             } catch (e: Exception) {

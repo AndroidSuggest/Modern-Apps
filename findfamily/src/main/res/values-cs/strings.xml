@@ -112,6 +112,4 @@
     <string name="az">azm:</string>
     <string name="el">el:</string>
     <string name="point_the_back_of_your_phone_toward_your">Namiřte zadní část telefonu směrem ke kontaktu</string>
-    <string name="pqc_unprotected_message">Nechráněno proti kvantovým počítačům: tato osoba si musí aktualizovat aplikaci.</string>
-    <string name="pqc_unprotected_title">Kvantová ochrana</string>
 </resources>

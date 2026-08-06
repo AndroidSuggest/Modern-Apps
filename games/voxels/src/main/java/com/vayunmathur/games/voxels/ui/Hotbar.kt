@@ -32,6 +32,8 @@ import com.vayunmathur.library.ui.Text
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+internal val voxelsJson = Json { ignoreUnknownKeys = true }
+
 @Serializable
 data class InvSlot(val id: Int, val count: Int)
 
@@ -250,7 +252,7 @@ fun Hotbar(
     onOpenInventory: () -> Unit = {}
 ) {
     val state = try {
-        Json { ignoreUnknownKeys = true }.decodeFromString<InventoryState>(inventoryJson)
+        voxelsJson.decodeFromString<InventoryState>(inventoryJson)
     } catch (_: Exception) {
         InventoryState()
     }
@@ -315,7 +317,7 @@ data class HealthJson(val hp: Float = 20f, val max: Float = 20f, val absorb: Flo
 @Composable
 fun GlideIndicator(healthJson: String, modifier: Modifier = Modifier) {
     val hj = remember(healthJson) {
-        try { Json { ignoreUnknownKeys = true }.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
+        try { voxelsJson.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
     }
     if (!hj.elytra) return
     val (label, tint) = if (hj.gliding) "Gliding" to Color(0xFF7CE0FF) else "Tap ▲ mid-air to glide" to Color.White.copy(0.75f)
@@ -327,7 +329,7 @@ fun GlideIndicator(healthJson: String, modifier: Modifier = Modifier) {
 @Composable
 fun BossBar(healthJson: String, modifier: Modifier = Modifier) {
     val hj = remember(healthJson) {
-        try { Json { ignoreUnknownKeys = true }.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
+        try { voxelsJson.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
     }
     if (hj.boss < 0f) return
     val wither = hj.bossName == "The Wither"
@@ -358,7 +360,7 @@ private fun roman(n: Int) = when (n) { 0 -> ""; 1 -> " II"; 2 -> " III"; 3 -> " 
 @Composable
 fun HealthOverlay(healthJson: String, modifier: Modifier = Modifier) {
     val h = remember(healthJson) {
-        try { Json { ignoreUnknownKeys = true }.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
+        try { voxelsJson.decodeFromString<HealthJson>(healthJson) } catch (_: Exception) { HealthJson() }
     }
     Column(modifier, horizontalAlignment = Alignment.Start) {
         // Effects (above the hearts).

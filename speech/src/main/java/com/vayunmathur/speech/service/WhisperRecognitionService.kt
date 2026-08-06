@@ -1,6 +1,8 @@
 package com.vayunmathur.speech.service
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -87,6 +89,9 @@ class WhisperRecognitionService : RecognitionService() {
         @Volatile private var partialPending = false
 
         fun start() {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                finishError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS); return
+            }
             val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
             if (minBuf <= 0) { finishError(SpeechRecognizer.ERROR_AUDIO); return }
             val rec = try {

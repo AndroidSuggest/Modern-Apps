@@ -1,13 +1,9 @@
 use crate::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct FontStyle {
     pub(crate) bold: bool,
     pub(crate) italic: bool,
-}
-
-impl Default for FontStyle {
-    fn default() -> Self { Self { bold: false, italic: false } }
 }
 
 pub(crate) struct FontInfo {
@@ -59,18 +55,18 @@ pub(crate) struct Type3Font {
     pub(crate) resources: Option<Dictionary>,
 }
 
+/// Whether `cp` is a space-like codepoint for `Tw` word-spacing detection.
 fn is_space_codepoint(cp: u32, decoded_text: Option<&str>) -> bool {
     // Core ASCII + NBSP + full-width ideographic space 0x3000 + other
     // commonly-checked unicode spaces relevant for Tw detection.
     matches!(
         cp,
-        32 |       // ASCII space
-        0x00A0 |   // NBSP
-        0x2000..=0x200A | // En quad .. hair space
-        0x2002 | 0x2003 | // En/em space
-        0x2009 | 0x202F | // Thin/narrow NBSP
+        32 |              // ASCII space
+        0x00A0 |          // NBSP
+        0x2000..=0x200A | // En quad .. hair space (covers en/em/thin space)
+        0x202F |          // Narrow NBSP
         0x205F |          // Medium mathematical space
-        0x3000             // Ideographic space (CJK full-width)
+        0x3000            // Ideographic space (CJK full-width)
     ) || decoded_text.map(|s| s.chars().any(|c| c.is_whitespace())).unwrap_or(false)
 }
 
@@ -209,8 +205,8 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
 
     // WMode: 0 horizontal (default), 1 vertical. Detect from Type0 font dict and descendant.
     let wmode: u8 = font.get(b"WMode").ok().and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(0) as u8;
-    let desc_wmode: u8 = font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::Array(a) => a.first(), _ => None }).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()).and_then(|d| d.get(b"WMode").ok()).and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(wmode as u8) as u8;
-    let effective_wmode = desc_wmode.max(wmode as u8).max(cmap_wmode);
+    let desc_wmode: u8 = font.get(b"DescendantFonts").ok().and_then(|o| deref(doc, o)).and_then(|o| match o { Object::Array(a) => a.first(), _ => None }).and_then(|o| deref(doc, o)).and_then(|o| o.as_dict().ok()).and_then(|d| d.get(b"WMode").ok()).and_then(num).map(|v| if v >= 1.0 { 1 } else { 0 }).unwrap_or(wmode);
+    let effective_wmode = desc_wmode.max(wmode).max(cmap_wmode);
 
     // CIDToGIDMap
     let cid_to_gid: Option<HashMap<u32, u16>> = {
@@ -621,7 +617,7 @@ pub(crate) fn type1_builtin_encoding(doc: &Document, font: &lopdf::Dictionary) -
 fn parse_type1_encoding_text(bytes: &[u8]) -> HashMap<u32, char> {
     let mut map = HashMap::new();
     let s = String::from_utf8_lossy(bytes);
-    for line in s.split(|c| c == '\n' || c == '\r') {
+    for line in s.split(['\n', '\r']) {
         // Tokens: dup <code> /<name> put
         let mut it = line.split_whitespace();
         loop {
@@ -673,7 +669,6 @@ pub(crate) fn cff_builtin_encoding(doc: &Document, font: &lopdf::Dictionary) -> 
 /// malformed font data can never panic.
 pub(crate) mod ttf {
     use std::collections::HashMap;
-use std::io::Cursor;
 
     fn u16b(b: &[u8], o: usize) -> u16 {
         ((*b.get(o).unwrap_or(&0) as u16) << 8) | *b.get(o + 1).unwrap_or(&0) as u16
@@ -819,14 +814,14 @@ use std::io::Cursor;
                             break;
                         }
                         let gid = if range == 0 {
-                            (c.wrapping_add(delta)) & 0xFFFF
+                            c.wrapping_add(delta)
                         } else {
                             let addr = range_o + i * 2 + range as usize + 2 * (c - start) as usize;
                             let g = u16b(b, addr);
                             if g == 0 {
                                 0
                             } else {
-                                (g.wrapping_add(delta)) & 0xFFFF
+                                g.wrapping_add(delta)
                             }
                         };
                         if gid != 0 {
@@ -1061,7 +1056,6 @@ pub(crate) mod encoding {
     use super::{deref, num, Object};
     use lopdf::Document;
     use std::collections::HashMap;
-use std::io::Cursor;
 
     /// Build a `code -> unicode char` map for a simple font: start from the base
     /// encoding (WinAnsi / MacRoman / Standard, or Symbol / ZapfDingbats for
@@ -1420,7 +1414,6 @@ mod type1_tests {
 
 pub(crate) mod cmap {
     use std::collections::HashMap;
-use std::io::Cursor;
 
     enum Token {
         Hex(Vec<u8>),

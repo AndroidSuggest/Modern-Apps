@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 import com.vayunmathur.photos.util.PhotosNative
 
 enum class LiquifyTool { Push, Twirl, Pucker, Bloat, Reconstruct }
@@ -25,7 +26,7 @@ fun LiquifyParams.applyToBitmap(bitmap: Bitmap): Bitmap {
     val src = IntArray(w * h)
     bitmap.getPixels(src, 0, w, 0, 0, w, h)
 
-    val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val output = createBitmap(w, h)
     if (isIdentity() || w == 0 || h == 0) {
         output.setPixels(src, 0, w, 0, 0, w, h)
         return output

@@ -8,6 +8,8 @@
     <string name="recipes">Recepty (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
     <string name="used_in">Použito v (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
     <plurals name="locked_recipes">
+        <item quantity="one">+ <xliff:g id="locked_count" example="1">%1$d</xliff:g> uzamčený recept.</item>
+        <item quantity="few">+ <xliff:g id="locked_count" example="3">%1$d</xliff:g> uzamčené recepty.</item>
         <item quantity="many">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> uzamčených receptů.</item>
         <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> uzamčených receptů.</item>
     </plurals>
@@ -18,6 +20,8 @@
     <string name="id">ID: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
     <string name="item_discovered">Předmět nalezen!</string>
     <plurals name="items_discovered">
+        <item quantity="one"><xliff:g id="count" example="1">%1$s</xliff:g> předmět nalezen!</item>
+        <item quantity="few"><xliff:g id="count" example="3">%1$s</xliff:g> předměty nalezeny!</item>
         <item quantity="many"><xliff:g id="count" example="3">%1$s</xliff:g> předmětů nalezeno!</item>
         <item quantity="other"><xliff:g id="count" example="3">%1$s</xliff:g> předmětů nalezeno!</item>
     </plurals>

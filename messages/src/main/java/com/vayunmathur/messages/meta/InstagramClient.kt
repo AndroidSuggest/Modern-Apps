@@ -137,7 +137,6 @@ object InstagramClient {
                         is MetaMqttClient.ConnectionState.Connecting -> {
                             _state.value = State.Connecting
                         }
-                        else -> {}
                     }
                 }
             }

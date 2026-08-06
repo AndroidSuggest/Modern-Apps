@@ -66,8 +66,6 @@
     <string name="open">Open</string>
     <!-- Annotation type: yellow sticky note -->
     <string name="sticky_note">Sticky note</string>
-    <!-- Toast: text copied to clipboard -->
-    <string name="copied">Copied</string>
     <!-- Error shown after wrong password entered -->
     <string name="incorrect_password">Incorrect password</string>
     <!-- Dialog title/prompt asking for password -->

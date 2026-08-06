@@ -25,7 +25,7 @@ internal class YoutubeShowRendererInfoItemExtractor(
                 throw ParsingException("Could not get uploader name")
             }
         }
-        return name!!
+        return name
     }
 
     @Throws(ParsingException::class)

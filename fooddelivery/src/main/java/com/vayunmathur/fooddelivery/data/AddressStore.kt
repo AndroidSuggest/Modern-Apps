@@ -1,6 +1,7 @@
 package com.vayunmathur.fooddelivery.data
 
 import android.content.Context
+import androidx.core.content.edit
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -43,8 +44,6 @@ object AddressStore {
 
     private fun write(context: Context, list: List<SavedAddress>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY, json.encodeToString(list))
-            .apply()
+            .edit { putString(KEY, json.encodeToString(list)) }
     }
 }

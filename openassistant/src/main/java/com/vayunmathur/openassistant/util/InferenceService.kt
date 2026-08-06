@@ -189,11 +189,18 @@ class InferenceService : Service() {
             .setOngoing(true)
             .build()
 
+        // FOREGROUND_SERVICE_TYPE_SPECIAL_USE only exists from API 34. Below that the platform has
+        // no notion of the type, and an untyped foreground start is the equivalent.
+        val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        } else {
+            0
+        }
         androidx.core.app.ServiceCompat.startForeground(
             this,
             1,
             notification,
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            serviceType,
         )
     }
 

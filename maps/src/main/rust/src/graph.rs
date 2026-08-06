@@ -238,10 +238,9 @@ impl Graph {
 
         // --- Derived tables (identical formulas to the C++ init) ---
         let mut lon_to_mm_scale = [0u32; 4096];
-        for i in 0..4096usize {
+        for (i, scale) in lon_to_mm_scale.iter_mut().enumerate() {
             let lat_deg = (((i as i64 - 2048) << 19) as f64) / 1e7;
-            lon_to_mm_scale[i] =
-                ((111_139_000.0 / 1e7) * (lat_deg * DEG_TO_RAD).cos() * 1024.0) as u32;
+            *scale = ((111_139_000.0 / 1e7) * (lat_deg * DEG_TO_RAD).cos() * 1024.0) as u32;
         }
 
         let calc_scale =
@@ -255,8 +254,8 @@ impl Graph {
         time_scale_fixed[PUBLIC_TRANSIT as usize] = calc_scale(80.0 / 3.6);
 
         let mut edge_time_multipliers = [[0u64; 16]; 4];
-        for m in 0..4usize {
-            for r in 0..16usize {
+        for (m, row) in edge_time_multipliers.iter_mut().enumerate() {
+            for (r, multiplier) in row.iter_mut().enumerate() {
                 let speed_m_s = if m == DRIVING as usize {
                     match r as u8 {
                         1 => 105.0 / 3.6, // MOTORWAY
@@ -271,8 +270,7 @@ impl Graph {
                 } else {
                     WALK_SPEED_M_S
                 };
-                edge_time_multipliers[m][r] =
-                    ((100.0 / (speed_m_s * 1000.0)) * 4_294_967_296.0) as u64;
+                *multiplier = ((100.0 / (speed_m_s * 1000.0)) * 4_294_967_296.0) as u64;
             }
         }
 

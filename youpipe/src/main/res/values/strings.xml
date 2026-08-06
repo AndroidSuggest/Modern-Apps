@@ -107,14 +107,12 @@
     <!-- TopAppBar title for watch history. Noun -->
     <string name="title_history">History</string>
     <!-- Selection mode badge: number selected (lowercase s in this variant). %1$s = count e.g. 3 -->
-    <string name="selected"><xliff:g id="count" example="3">%1$s</xliff:g> selected</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$s</xliff:g> selected</string>
     <!-- Dialog title: clear watch history confirmation. Verb phrase -->
     <string name="clear_history">Clear History</string>
     <!-- Confirmation body text for clearing all watch history -->
     <string name="are_you_sure_you_want_to_clear_all_watch">Are you sure you want to clear all watch history?</string>
 
-    <!-- TopAppBar title for offline downloads list (when not selecting). Noun plural -->
-    <string name="downloads">Downloads</string>
     <!-- Selection badge: number selected with capital S (DownloadsPage variant). %1$s = count -->
     <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Selected</string>
 

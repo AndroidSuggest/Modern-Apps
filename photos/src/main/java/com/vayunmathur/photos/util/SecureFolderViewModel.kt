@@ -238,7 +238,6 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
     }
 
     override fun onCleared() {
-        super.onCleared()
         // Clear _thumbnails first so Compose no longer holds references, then recycle
         _thumbnails.value = emptyMap()
         synchronized(thumbCache) {

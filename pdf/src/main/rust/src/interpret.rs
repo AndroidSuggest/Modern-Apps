@@ -91,8 +91,7 @@ pub(crate) fn interpret_page(doc: &Document, page_id: ObjectId) -> Result<PageDa
     let res = resources_dict(doc, page_id);
 
     let mut prims = Vec::new();
-    let mut init = GraphicsState::default();
-    init.ctm = base;
+    let init = GraphicsState { ctm: base, ..Default::default() };
     interpret_content(
         doc,
         &content.operations,
@@ -115,7 +114,6 @@ pub(crate) fn interpret_page(doc: &Document, page_id: ObjectId) -> Result<PageDa
 /// drawing primitives, starting from `init` graphics state. Reused for page
 /// content, form XObjects (`Do`), and annotation appearance streams. `depth`
 /// bounds recursion through nested form XObjects.
-
 pub(crate) fn interpret_content(
     doc: &Document,
     ops: &[lopdf::content::Operation],
@@ -340,7 +338,7 @@ pub(crate) fn interpret_content(
                             gs.overprint_mode = (v as i64).clamp(0, 1) as u8;
                         }
                         // Soft mask: /SMask /None clears; dict may have /G as Ref OR direct Stream (P0 fix)
-                        if let Some(sm_raw) = dict.get(b"SMask").ok() {
+                        if let Ok(sm_raw) = dict.get(b"SMask") {
                             if let Ok(n) = sm_raw.as_name() {
                                 if n == b"None" { gs.soft_mask = None; }
                             } else if let Some(sm) = deref(doc, sm_raw).or(Some(sm_raw)) {
@@ -613,14 +611,12 @@ pub(crate) fn interpret_content(
                                     .cloned();
                                 // Transparency group detection per Phase 4: /Group << /S /Transparency /I bool /K bool >>
                                 let (is_transparency_group, isolated, knockout) = {
-                                    if let Some(gobj) = stream.dict.get(b"Group").ok().and_then(|o| deref(doc,o).or(Some(o))).cloned() {
-                                        if let Object::Dictionary(gdict) = gobj {
-                                            let s = gdict.get(b"S").ok().and_then(|o| o.as_name().ok());
-                                            if s == Some(b"Transparency") {
-                                                let i = gdict.get(b"I").ok().and_then(|o| match o { Object::Boolean(b) => Some(*b), _=> None }).unwrap_or(false);
-                                                let k = gdict.get(b"K").ok().and_then(|o| match o { Object::Boolean(b) => Some(*b), _=> None }).unwrap_or(false);
-                                                (true, i, k)
-                                            } else { (false,false,false) }
+                                    if let Some(Object::Dictionary(gdict)) = stream.dict.get(b"Group").ok().and_then(|o| deref(doc,o).or(Some(o))).cloned() {
+                                        let s = gdict.get(b"S").ok().and_then(|o| o.as_name().ok());
+                                        if s == Some(b"Transparency") {
+                                            let i = gdict.get(b"I").ok().and_then(|o| match o { Object::Boolean(b) => Some(*b), _=> None }).unwrap_or(false);
+                                            let k = gdict.get(b"K").ok().and_then(|o| match o { Object::Boolean(b) => Some(*b), _=> None }).unwrap_or(false);
+                                            (true, i, k)
                                         } else { (false,false,false) }
                                     } else { (false,false,false) }
                                 };
@@ -633,16 +629,14 @@ pub(crate) fn interpret_content(
                                     && !text_only
                                     && !oc_stack.last().copied().unwrap_or(false)
                                     && prims.len() < crate::MAX_PRIMITIVES
-                                    && depth < crate::MAX_PATTERN_RECURSION as u32;
+                                    && depth < crate::MAX_PATTERN_RECURSION;
                                 let sm_start = prims.len();
-                                let should_emit_group = is_transparency_group && !use_smask && !text_only && !oc_stack.last().copied().unwrap_or(false) && depth < crate::MAX_PATTERN_RECURSION as u32;
-                                if should_emit_group {
-                                    if prims.len() < crate::MAX_PRIMITIVES && group_depth < 32 {
-                                        // The nonstroking constant alpha (ca) applies to the
-                                        // group as a whole when it is painted; NOT ca*CA.
-                                        prims.push(Prim::GroupPush { isolated, knockout, alpha: gs.alpha_fill as f32, blend: gs.blend_mode });
-                                        group_depth+=1;
-                                    }
+                                let should_emit_group = is_transparency_group && !use_smask && !text_only && !oc_stack.last().copied().unwrap_or(false) && depth < crate::MAX_PATTERN_RECURSION;
+                                if should_emit_group && prims.len() < crate::MAX_PRIMITIVES && group_depth < 32 {
+                                    // The nonstroking constant alpha (ca) applies to the
+                                    // group as a whole when it is painted; NOT ca*CA.
+                                    prims.push(Prim::GroupPush { isolated, knockout, alpha: gs.alpha_fill as f32, blend: gs.blend_mode });
+                                    group_depth+=1;
                                 }
                                 // Form content shall be clipped to /BBox (transformed by
                                 // /Matrix), per PDF 8.10.1, so it can't bleed past its box.
@@ -670,7 +664,7 @@ pub(crate) fn interpret_content(
                                         }
                                     }
                                 }
-                                if let Ok(sub) = Content::decode(&stream_data_with_doc(doc, &stream)) {
+                                if let Ok(sub) = Content::decode(&stream_data_with_doc(doc, stream)) {
                                         let mut sub_gs = gs.clone();
                                         sub_gs.ctm = form_ctm;
                                         // A soft mask does not re-apply to nested Do's inside the
@@ -918,11 +912,9 @@ pub(crate) fn interpret_content(
             }
             "ET" => {
                 // If the text object added glyphs to the clip (Tr 4-7), apply it.
-                if text_clip_used && !text_only && !oc_stack.last().copied().unwrap_or(false) {
-                    if prims.len() < MAX_PRIMITIVES {
-                        prims.push(Prim::TextClipApply);
-                        clip_depth += 1;
-                    }
+                if text_clip_used && !text_only && !oc_stack.last().copied().unwrap_or(false) && prims.len() < MAX_PRIMITIVES {
+                    prims.push(Prim::TextClipApply);
+                    clip_depth += 1;
                 }
                 text_clip_used = false;
             }
@@ -1170,7 +1162,7 @@ pub(crate) fn render_soft_mask_group(
     prims: &mut Vec<Prim>,
     depth: u32,
 ) {
-    if depth >= MAX_PATTERN_RECURSION as u32 || prims.len() >= MAX_PRIMITIVES {
+    if depth >= MAX_PATTERN_RECURSION || prims.len() >= MAX_PRIMITIVES {
         return;
     }
     let mstream = match doc.get_object(mask.group_id) {
@@ -1210,12 +1202,14 @@ pub(crate) fn render_soft_mask_group(
         }
     }
     if let Ok(msub) = Content::decode(&stream_data_with_doc(doc, &mstream)) {
-        let mut mgs = GraphicsState::default();
-        mgs.ctm = group_ctm;
-        mgs.soft_mask = None;
-        mgs.blend_mode = BlendMode::Normal;
-        mgs.alpha_fill = 1.0;
-        mgs.alpha_stroke = 1.0;
+        let mgs = GraphicsState {
+            ctm: group_ctm,
+            soft_mask: None,
+            blend_mode: BlendMode::Normal,
+            alpha_fill: 1.0,
+            alpha_stroke: 1.0,
+            ..Default::default()
+        };
         let mres_ref = mres.as_ref().or(resources);
         interpret_content(doc, &msub.operations, mres_ref, mgs, prims, depth + 1, false);
     }

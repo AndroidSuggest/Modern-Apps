@@ -188,8 +188,8 @@ fun ShortNavigationBarItem(
     selected: Boolean,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
-    label: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
+    label: (@Composable () -> Unit)? = null,
     enabled: Boolean = true,
 ) = androidx.compose.material3.ShortNavigationBarItem(
     selected = selected, onClick = onClick, icon = icon, label = label, modifier = modifier, enabled = enabled,
@@ -203,7 +203,7 @@ fun TabRow(
     containerColor: Color = TabRowDefaults.primaryContainerColor,
     contentColor: Color = TabRowDefaults.primaryContentColor,
     tabs: @Composable () -> Unit,
-) = androidx.compose.material3.TabRow(
+) = androidx.compose.material3.SecondaryTabRow(
     selectedTabIndex = selectedTabIndex, modifier = modifier,
     containerColor = containerColor, contentColor = contentColor, tabs = tabs,
 )

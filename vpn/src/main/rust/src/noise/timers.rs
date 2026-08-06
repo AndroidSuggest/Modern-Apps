@@ -145,11 +145,9 @@ impl<R: rand::RngCore + Send> Tunn<R> {
                 self.timers.persistent_keepalive_due = false;
                 self.timers[TimePersistentKeepalive] = time;
             }
-            TimeLastDataPacketSent => {
-                if self.timers.want_handshake.is_none() {
-                    self.timers.new_handshake_timeout = self.sample_timer(|p| &p.new_handshake_timeout);
-                    self.timers.want_handshake = Some(time);
-                }
+            TimeLastDataPacketSent if self.timers.want_handshake.is_none() => {
+                self.timers.new_handshake_timeout = self.sample_timer(|p| &p.new_handshake_timeout);
+                self.timers.want_handshake = Some(time);
             }
             _ => {}
         }

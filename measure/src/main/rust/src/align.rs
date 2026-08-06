@@ -87,7 +87,7 @@ pub fn align_visual_inertial(
             a[(row + k, g_col + k)] = -0.5 * dt * dt;
             a[(row + k, s_col)] = dp[k];
         }
-        let rdp = r_i * pre.delta_p.clone();
+        let rdp = r_i * pre.delta_p;
         for k in 0..3 {
             b[row + k] = rdp[k];
         }
@@ -100,7 +100,7 @@ pub fn align_visual_inertial(
             a[(row + k, 3 * (i + 1) + k)] = 1.0;
             a[(row + k, g_col + k)] = -dt;
         }
-        let rdv = r_i * pre.delta_v.clone();
+        let rdv = r_i * pre.delta_v;
         for k in 0..3 {
             b[row + k] = rdv[k];
         }

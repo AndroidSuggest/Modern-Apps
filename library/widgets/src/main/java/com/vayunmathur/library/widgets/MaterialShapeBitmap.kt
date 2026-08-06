@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import androidx.annotation.ColorInt
+import androidx.core.graphics.createBitmap
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
 import kotlin.math.max
@@ -37,6 +38,6 @@ fun RoundedPolygon.toWidgetBitmap(sizePx: Int, @ColorInt color: Int): Bitmap {
     }
 
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
-    return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    return createBitmap(sizePx, sizePx)
         .also { Canvas(it).drawPath(path, paint) }
 }

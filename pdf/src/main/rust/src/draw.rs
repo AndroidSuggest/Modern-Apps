@@ -191,7 +191,7 @@ pub(crate) fn show_string(
                 };
                 // Real embedded outline for pure paint modes (0/1/2). Clip modes
                 // (4-7) keep the substitute-glyph path so Kotlin can build the clip.
-                let outline = if has_program && matches!(gs.render_mode, 0 | 1 | 2) {
+                let outline = if has_program && matches!(gs.render_mode, 0..=2) {
                     crate::outlines::glyph_outline(fi, code)
                 } else {
                     None

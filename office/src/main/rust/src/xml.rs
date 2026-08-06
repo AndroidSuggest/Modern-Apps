@@ -105,7 +105,7 @@ impl<'a> XmlParser<'a> {
             .map(|a| a.value.as_str())
     }
 
-    pub fn next(&mut self) -> Event {
+    pub fn next_event(&mut self) -> Event {
         if self.pending_depth_decrement {
             self.depth -= 1;
             self.pending_depth_decrement = false;
@@ -168,7 +168,7 @@ impl<'a> XmlParser<'a> {
             }
             QEvent::Eof => self.event = Event::EndDocument,
             // Comments, declarations, doctypes and PIs are not content; skip to the next event.
-            _ => return self.next(),
+            _ => return self.next_event(),
         }
         self.event
     }
@@ -205,7 +205,7 @@ impl<'a> XmlParser<'a> {
     pub fn read_element_text(&mut self, end_tag: &str) -> String {
         let depth = self.depth;
         let mut out = String::new();
-        let mut e = self.next();
+        let mut e = self.next_event();
         while !(e == Event::EndTag && self.depth == depth && self.name == end_tag) {
             if e == Event::Text {
                 out.push_str(&self.text);
@@ -213,7 +213,7 @@ impl<'a> XmlParser<'a> {
             if e == Event::EndDocument {
                 break;
             }
-            e = self.next();
+            e = self.next_event();
         }
         out
     }
@@ -222,12 +222,12 @@ impl<'a> XmlParser<'a> {
     pub fn skip_element(&mut self) {
         let depth = self.depth;
         let name = self.name.clone();
-        let mut e = self.next();
+        let mut e = self.next_event();
         while !(e == Event::EndTag && self.depth == depth && self.name == name) {
             if e == Event::EndDocument {
                 break;
             }
-            e = self.next();
+            e = self.next_event();
         }
     }
 
@@ -238,7 +238,7 @@ impl<'a> XmlParser<'a> {
     /// the parser, exactly as the Kotlin `forEachChild` does.
     pub fn for_each_child<F: FnMut(&mut Self, &str)>(&mut self, end_tag: &str, mut on_start: F) {
         let depth = self.depth;
-        let mut e = self.next();
+        let mut e = self.next_event();
         while !(e == Event::EndTag && self.depth == depth && self.name == end_tag) {
             if e == Event::EndDocument {
                 break;
@@ -247,7 +247,7 @@ impl<'a> XmlParser<'a> {
                 let name = self.name.clone();
                 on_start(self, &name);
             }
-            e = self.next();
+            e = self.next_event();
         }
     }
 }
@@ -296,7 +296,7 @@ mod tests {
         let mut p = XmlParser::new(xml);
         let mut out = Vec::new();
         loop {
-            let e = p.next();
+            let e = p.next_event();
             if e == Event::EndDocument {
                 break;
             }
@@ -338,7 +338,7 @@ mod tests {
         let mut p = XmlParser::new(
             r#"<w:p xmlns:w="urn:w" xmlns:r="urn:r" w:id="1" r:id="rId7" val="x"/>"#,
         );
-        assert_eq!(p.next(), Event::StartTag);
+        assert_eq!(p.next_event(), Event::StartTag);
         assert_eq!(p.name(), "p");
         assert_eq!(p.attr("val"), Some("x"));
         // Local name alone is ambiguous here; namespace disambiguates.
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn xmlns_declarations_are_not_attributes() {
         let mut p = XmlParser::new(r#"<a xmlns="urn:d" xmlns:w="urn:w" real="1"/>"#);
-        p.next();
+        p.next_event();
         assert_eq!(p.attr("xmlns"), None);
         assert_eq!(p.attr("w"), None);
         assert_eq!(p.attr("real"), Some("1"));
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn entities_are_decoded_in_text_and_attributes() {
         let mut p = XmlParser::new(r#"<t v="a &amp; b">x &lt; y &amp;&#38; z</t>"#);
-        p.next();
+        p.next_event();
         assert_eq!(p.attr("v"), Some("a & b"));
         assert_eq!(p.read_element_text("t"), "x < y && z");
     }
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn cdata_is_text() {
         let mut p = XmlParser::new("<t><![CDATA[raw <not markup>]]></t>");
-        p.next();
+        p.next_event();
         assert_eq!(p.read_element_text("t"), "raw <not markup>");
     }
 
@@ -381,28 +381,28 @@ mod tests {
     #[test]
     fn read_element_text_gathers_nested_runs() {
         let mut p = XmlParser::new("<si><r><t>Hello </t></r><r><t>world</t></r></si>");
-        p.next();
+        p.next_event();
         assert_eq!(p.read_element_text("si"), "Hello world");
     }
 
     #[test]
     fn skip_element_lands_on_the_matching_close() {
         let mut p = XmlParser::new("<root><skip><deep><skip/></deep></skip><after/></root>");
-        p.next();
+        p.next_event();
         assert_eq!(p.name(), "root");
-        p.next();
+        p.next_event();
         assert_eq!(p.name(), "skip");
         p.skip_element();
         // A nested element of the same name must not end the skip early.
         assert_eq!(p.depth(), 2);
-        assert_eq!(p.next(), Event::StartTag);
+        assert_eq!(p.next_event(), Event::StartTag);
         assert_eq!(p.name(), "after");
     }
 
     #[test]
     fn for_each_child_visits_direct_and_nested_starts() {
         let mut p = XmlParser::new("<row><c r=\"A1\"/><c r=\"B1\"><v>5</v></c></row>");
-        p.next();
+        p.next_event();
         let mut seen = Vec::new();
         p.for_each_child("row", |parser, name| {
             seen.push(format!("{name}:{}", parser.attr("r").unwrap_or("")));
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn for_each_child_lets_the_callback_consume_a_subtree() {
         let mut p = XmlParser::new("<row><c><v>5</v></c><c><v>6</v></c></row>");
-        p.next();
+        p.next_event();
         let mut values = Vec::new();
         p.for_each_child("row", |parser, name| {
             if name == "c" {

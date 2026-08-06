@@ -1,6 +1,6 @@
 package com.vayunmathur.messages.signal.auth
 
-import android.content.Context
+import android.app.Application
 import android.net.Uri
 import android.util.Base64
 import android.util.Log
@@ -62,7 +62,7 @@ object Provisioning {
         put("usernameChangeSyncMessage", true)
     }
 
-    fun startProvisioning(context: Context, allowBackup: Boolean = true, deviceName: String = "Android"): Flow<ProvisioningEvent> = channelFlow {
+    fun startProvisioning(context: Application, allowBackup: Boolean = true, deviceName: String = "Android"): Flow<ProvisioningEvent> = channelFlow {
         val ws = SignalWebSocket(context)
         try {
             val cipher = ProvisioningCipher()

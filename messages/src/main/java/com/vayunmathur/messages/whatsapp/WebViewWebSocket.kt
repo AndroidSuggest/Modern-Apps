@@ -4,10 +4,12 @@ package com.vayunmathur.messages.whatsapp
 
 import kotlin.concurrent.atomics.*
 import android.annotation.SuppressLint
-import android.content.Context
+import android.app.Application
 import android.util.Base64
 import android.util.Log
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.CoroutineScope
@@ -33,7 +35,7 @@ import kotlinx.coroutines.withContext
  * Reference: whatsmeow/handshake.go, socket/framesocket.go
  */
 class WebViewWebSocket(
-    private val context: Context,
+    private val context: Application,
     private val authData: WhatsAppAuthData?,
     // Registration key material for the QR-pairing handshake (used when [authData] is null).
     // Carries the noise key pair whose public half is embedded in the QR, plus the companion
@@ -157,12 +159,13 @@ class WebViewWebSocket(
                         }
 
                         override fun onReceivedError(
-                            view: WebView?, errorCode: Int, description: String?, failingUrl: String?
+                            view: WebView, request: WebResourceRequest, error: WebResourceError
                         ) {
-                            super.onReceivedError(view, errorCode, description, failingUrl)
-                            Log.e(TAG, "WebView error: $errorCode $description")
+                            super.onReceivedError(view, request, error)
+                            if (!request.isForMainFrame) return
+                            Log.e(TAG, "WebView error: ${error.errorCode} ${error.description}")
                             scope.launch {
-                                _connectionState.emit(ConnectionState.Disconnected("WebView error: $description"))
+                                _connectionState.emit(ConnectionState.Disconnected("WebView error: ${error.description}"))
                             }
                         }
                     }

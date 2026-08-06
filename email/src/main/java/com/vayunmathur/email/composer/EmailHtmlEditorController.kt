@@ -6,11 +6,11 @@ import kotlin.uuid.Uuid
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.text.Spanned
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.core.graphics.drawable.toDrawable
 import com.vayunmathur.library.ui.HtmlEditorController
 
 /**
@@ -68,7 +68,7 @@ class EmailHtmlEditorController(
         val cid = "${Uuid.random()}@inline.local"
 
         val bitmap = decodeSampledBitmap(context, sourceUri, 1024) ?: return null
-        val drawable = BitmapDrawable(context.resources, bitmap)
+        val drawable = bitmap.toDrawable(context.resources)
 
         val maxWidth = 1024
         var w = bitmap.width

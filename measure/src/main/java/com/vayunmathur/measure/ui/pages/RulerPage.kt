@@ -17,7 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -38,13 +38,13 @@ import com.vayunmathur.measure.ui.RulerUiState
 @Composable
 fun RulerPage(backStack: NavBackStack<Route>, viewModel: MeasureViewModel) {
     val state by viewModel.ruler.collectAsState()
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     // ydpi is the display's reported *physical* vertical pixel density, which is a
     // better basis for a real-world scale than density * 160 — the latter is a
     // rendering bucket rounded to a standard step, not a measurement.
-    LaunchedEffect(context) {
-        val metrics = context.resources.displayMetrics
+    LaunchedEffect(resources) {
+        val metrics = resources.displayMetrics
         val dpi = metrics.ydpi.takeIf { it > 1f } ?: (metrics.density * 160f)
         viewModel.setPixelsPerMm(dpi / Units.MM_PER_INCH.toFloat())
     }

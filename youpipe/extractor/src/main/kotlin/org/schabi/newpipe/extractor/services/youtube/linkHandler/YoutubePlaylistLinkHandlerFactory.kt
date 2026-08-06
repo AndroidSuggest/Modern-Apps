@@ -19,7 +19,7 @@ class YoutubePlaylistLinkHandlerFactory private constructor() : ListLinkHandlerF
     }
 
     @Throws(ParsingException::class)
-    override fun getUrl(id: String, contentFilters: List<String>, sortFilter: String): String {
+    override fun getUrl(id: String, contentFilter: List<String>, sortFilter: String): String {
         return "https://www.youtube.com/playlist?list=$id"
     }
 

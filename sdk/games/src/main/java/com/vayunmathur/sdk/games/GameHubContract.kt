@@ -1,6 +1,7 @@
 package com.vayunmathur.sdk.games
 
 import android.net.Uri
+import androidx.core.net.toUri
 
 /**
  * Contract for the Games Hub ContentProvider.
@@ -16,8 +17,8 @@ object GameHubContract {
     const val HUB_PACKAGE = "com.vayunmathur.games.hub"
     const val LEGACY_HUB_PACKAGE = "com.vayunmathur.games"
 
-    val BASE_URI: Uri = Uri.parse("content://$AUTHORITY")
-    val LEGACY_BASE_URI: Uri = Uri.parse("content://$LEGACY_AUTHORITY")
+    val BASE_URI: Uri = "content://$AUTHORITY".toUri()
+    val LEGACY_BASE_URI: Uri = "content://$LEGACY_AUTHORITY".toUri()
 
     object Games {
         const val GAME_ID = "game_id"

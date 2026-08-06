@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.text.HtmlCompat
+import androidx.core.text.parseAsHtml
 import com.vayunmathur.library.ui.RichEditText
 
 /**
@@ -55,8 +56,7 @@ fun EmailHtmlEditor(
                 setOnFocusChangeListener { _, hasFocus -> controller.updateFocus(hasFocus) }
                 controller.updating = true
                 setText(
-                    HtmlCompat.fromHtml(
-                        controller.html,
+                    controller.html.parseAsHtml(
                         HtmlCompat.FROM_HTML_MODE_COMPACT,
                         null,
                         controller.tagHandler,
@@ -81,8 +81,7 @@ fun EmailHtmlEditor(
                 val prevSel = et.selectionStart.coerceAtLeast(0)
                 controller.updating = true
                 et.setText(
-                    HtmlCompat.fromHtml(
-                        controller.html,
+                    controller.html.parseAsHtml(
                         HtmlCompat.FROM_HTML_MODE_COMPACT,
                         null,
                         controller.tagHandler,

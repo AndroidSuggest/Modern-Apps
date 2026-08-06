@@ -214,7 +214,7 @@ class InstallCoordinator(
             //  - continuity with the installed copy (InstallVerifier, always)
             val expectedHashes = files.mapNotNull { f ->
                 val name = f.name.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                f.sha256?.takeIf { it.isNotBlank() }?.let { name to it }
+                f.sha256.takeIf { it.isNotBlank() }?.let { name to it }
             }.toMap()
 
             val requirement = InstallRequirement(

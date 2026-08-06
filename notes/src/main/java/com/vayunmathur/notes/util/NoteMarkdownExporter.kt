@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import androidx.core.content.FileProvider
+import androidx.core.graphics.scale
 import com.vayunmathur.library.ink.SerializedStroke
 import com.vayunmathur.notes.data.Note
 import com.vayunmathur.notes.data.NoteBlock
@@ -111,7 +112,7 @@ private fun scaleToMax(bitmap: Bitmap, max: Int): Bitmap {
     val ratio = max.toFloat() / longest
     val width = (bitmap.width * ratio).roundToInt().coerceAtLeast(1)
     val height = (bitmap.height * ratio).roundToInt().coerceAtLeast(1)
-    return Bitmap.createScaledBitmap(bitmap, width, height, true)
+    return bitmap.scale(width, height)
 }
 
 /** A drawing as an inline `<svg>`, one `<path>` per stroke, using the raw point coordinates. */

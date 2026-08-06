@@ -18,12 +18,12 @@ pub type TrafficSpeeds = HashMap<u64, u8>;
 pub fn is_mode_allowed(road_type: u8, mode: i32) -> bool {
     let ty = road_type & 0x7F;
     if mode == DRIVING {
-        return ty >= MOTORWAY && ty <= LIVING_STREET;
+        return (MOTORWAY..=LIVING_STREET).contains(&ty);
     }
     if mode == PUBLIC_TRANSIT {
-        return (road_type & TRANSIT_FLAG != 0) || (ty >= MOTORWAY && ty <= STEPS);
+        return (road_type & TRANSIT_FLAG != 0) || (MOTORWAY..=STEPS).contains(&ty);
     }
-    ty >= MOTORWAY && ty <= STEPS
+    (MOTORWAY..=STEPS).contains(&ty)
 }
 
 /// Fast equirectangular distance in millimetres (octagonal `max/min` approx),
@@ -206,7 +206,7 @@ pub fn get_maneuver(prev_bearing: f64, next_bearing: f64) -> i32 {
     while angle_diff > 180.0 {
         angle_diff -= 360.0;
     }
-    if angle_diff > 155.0 || angle_diff < -155.0 {
+    if !(-155.0..=155.0).contains(&angle_diff) {
         return 3;
     }
     if angle_diff < -100.0 {

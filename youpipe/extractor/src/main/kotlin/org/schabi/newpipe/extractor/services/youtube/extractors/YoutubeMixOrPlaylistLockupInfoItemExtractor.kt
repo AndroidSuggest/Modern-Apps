@@ -175,6 +175,6 @@ open class YoutubeMixOrPlaylistLockupInfoItemExtractor(
             throw ParsingException("Could not get playlist ID")
         }
 
-        return id!!
+        return id
     }
 }

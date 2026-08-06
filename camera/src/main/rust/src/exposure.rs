@@ -16,15 +16,6 @@ const BL_HEIGHT: i32 = 32;
 const NR_FILTER_ITER: usize = 2;
 
 #[inline]
-fn luma(c: [u8; 4]) -> f64 {
-    // OpenCV GainCompensator uses norm(r) = Vec<u8,3> norm; for RGB it's sqrt(R^2+G^2+B^2) or L2?
-    // Actually I accumulation sums norm(r1[x]) where r is Vec<u8,3> – but OpenCV norm(Vec3b) is L2 norm.
-    // We approximate with Rec.601 luma scaled? Plan says BlocksGainCompensator formula uses I mean intensity.
-    // Original code used luma; keep but ensure skip logic matches.
-    0.299 * c[0] as f64 + 0.587 * c[1] as f64 + 0.114 * c[2] as f64
-}
-
-#[inline]
 fn luma_norm(c: [u8; 4]) -> f64 {
     // More accurate OpenCV norm(r) = L2 norm of Vec3b: sqrt(r0^2+r1^2+r2^2)
     let r = c[0] as f64;
@@ -33,7 +24,7 @@ fn luma_norm(c: [u8; 4]) -> f64 {
     (r * r + g * g + b * b).sqrt()
 }
 
-fn sep_filter_025_05_025(src: &mut Vec<f32>, w: usize, h: usize) {
+fn sep_filter_025_05_025(src: &mut [f32], w: usize, h: usize) {
     // Separable kernel [0.25 0.5 0.25] applied horizontally then vertically
     // OpenCV sepFilter2D with ker [0.25 0.5 0.25] both directions, 2 iterations
     let mut tmp = vec![0f32; w * h];

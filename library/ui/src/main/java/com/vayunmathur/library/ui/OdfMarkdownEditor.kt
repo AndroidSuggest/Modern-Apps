@@ -10,8 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.FormatIndentDecrease
-import androidx.compose.material.icons.filled.FormatIndentIncrease
+import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
+import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.DropdownMenu
@@ -78,7 +78,7 @@ fun rememberOdfMarkdownEditorController(
 @Composable
 fun OdfMarkdownEditorField(
     controller: OdfMarkdownEditorController,
-    modifier: Modifier = Modifier.fillMaxWidth(),
+    modifier: Modifier = Modifier,
     fontSizeMultiplier: Float = 1f,
 ) {
     val doc by controller.editor.document.collectAsState()
@@ -201,10 +201,10 @@ private fun OdfMarkdownToolbar(
         FormatIconButton(Icons.Filled.CheckBox, "Checkbox", active = isCheckbox) {
             if (focusedPara >= 0) state.toggleCheckbox(focusedPara)
         }
-        FormatIconButton(Icons.Filled.FormatIndentIncrease, "Increase nesting") {
+        FormatIconButton(Icons.AutoMirrored.Filled.FormatIndentIncrease, "Increase nesting") {
             if (focusedPara >= 0) state.changeListLevel(focusedPara, 1)
         }
-        FormatIconButton(Icons.Filled.FormatIndentDecrease, "Decrease nesting") {
+        FormatIconButton(Icons.AutoMirrored.Filled.FormatIndentDecrease, "Decrease nesting") {
             if (focusedPara >= 0) state.changeListLevel(focusedPara, -1)
         }
 

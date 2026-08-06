@@ -26,7 +26,6 @@
     <string name="failed_to_save_pdf">Échec de l’enregistrement du PDF</string>
     <string name="line_width">Épaisseur du trait : %1$s</string>
     <string name="callout">Légende</string>
-    <string name="copied">Copié</string>
     <string name="style">Style</string>
     <string name="searchable_ocr">Avec recherche de texte (OCR)</string>
     <string name="password_required">Mot de passe requis</string>

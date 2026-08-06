@@ -16,6 +16,8 @@
     <string name="artist_info_format">%1$d brani • %2$s</string>
     <string name="label_playlist">Playlist</string>
     <plurals name="num_songs_format">
+        <item quantity="one">%1$d brano</item>
+        <item quantity="many">%1$d di brani</item>
         <item quantity="other">%1$d brani</item>
     </plurals>
     <string name="label_play">Riproduci</string>

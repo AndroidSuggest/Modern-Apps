@@ -92,7 +92,7 @@ open class YoutubeStreamInfoItemExtractor(
         val title = videoInfo.getObject("title")
         val name = getTextFromObject(title)
         if (!isNullOrEmpty(name)) {
-            return name!!
+            return name
         }
         if (title != null && !title.containsKey("runs") && title.isNotEmpty()) {
             return ""
@@ -156,7 +156,7 @@ open class YoutubeStreamInfoItemExtractor(
                 }
             }
         }
-        return name!!
+        return name
     }
 
     @Throws(ParsingException::class)
@@ -187,7 +187,7 @@ open class YoutubeStreamInfoItemExtractor(
             }
         }
 
-        return url!!
+        return url
     }
 
     @Throws(ParsingException::class)
@@ -268,7 +268,7 @@ open class YoutubeStreamInfoItemExtractor(
         val viewCountText = getTextFromObject(videoInfo.getObject("viewCountText"))
         if (!isNullOrEmpty(viewCountText)) {
             try {
-                return getViewCountFromViewCountText(viewCountText!!, false)
+                return getViewCountFromViewCountText(viewCountText, false)
             } catch (ignored: Exception) {
             }
         }
@@ -296,7 +296,7 @@ open class YoutubeStreamInfoItemExtractor(
             try {
                 val shortViewCountText = getTextFromObject(videoInfo.getObject("shortViewCountText"))
                 if (!isNullOrEmpty(shortViewCountText)) {
-                    return getViewCountFromViewCountText(shortViewCountText!!, true)
+                    return getViewCountFromViewCountText(shortViewCountText, true)
                 }
             } catch (ignored: Exception) {
             }
@@ -322,7 +322,7 @@ open class YoutubeStreamInfoItemExtractor(
         val videoInfoTitleAccessibilityData = videoInfo.getObject("title").orEmptyObject()
             .getObject("accessibility").orEmptyObject()
             .getObject("accessibilityData").orEmptyObject()
-            .getString("label", "") ?: ""
+            .getString("label", "")
 
         if (videoInfoTitleAccessibilityData.lowercase().endsWith(NO_VIEWS_LOWERCASE)) {
             return 0

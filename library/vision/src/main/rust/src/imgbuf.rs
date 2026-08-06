@@ -245,9 +245,9 @@ fn harris_response(g: &Gray, x: usize, y: usize) -> f32 {
     let mut ix2: i32 = 0;
     let mut iy2: i32 = 0;
     let mut ixy: i32 = 0;
-    let r = 3;
-    for dy in -(r as i32)..=(r as i32) {
-        for dx in -(r as i32)..=(r as i32) {
+    let r: i32 = 3;
+    for dy in -r..=r {
+        for dx in -r..=r {
             let xx = (x as i32 + dx).clamp(1, g.w as i32 - 2) as usize;
             let yy = (y as i32 + dy).clamp(1, g.h as i32 - 2) as usize;
             let xm = if xx > 0 { xx - 1 } else { xx };

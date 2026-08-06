@@ -308,7 +308,7 @@ fun CenterAlignedTopAppBar(
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
-    colors: TopAppBarColors = TopAppBarDefaults.centerAlignedTopAppBarColors(),
+    colors: TopAppBarColors = TopAppBarDefaults.topAppBarColors(),
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) = androidx.compose.material3.CenterAlignedTopAppBar(
     title = title, modifier = modifier, navigationIcon = navigationIcon, actions = actions,
@@ -668,8 +668,8 @@ fun ListItem(
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
     colors: ListItemColors = ListItemDefaults.colors(),
-    tonalElevation: Dp = ListItemDefaults.Elevation,
-    shadowElevation: Dp = ListItemDefaults.Elevation,
+    tonalElevation: Dp = 0.dp,
+    shadowElevation: Dp = 0.dp,
 ) = SafeListItemLayout(
     // See the overload above; elevation is accepted for source compatibility
     // but nothing sets it away from zero.

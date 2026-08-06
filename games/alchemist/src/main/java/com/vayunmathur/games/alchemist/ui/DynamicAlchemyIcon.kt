@@ -22,7 +22,7 @@ import com.vayunmathur.games.alchemist.R
 
 @SuppressLint("DiscouragedApi")
 @Composable
-fun DynamicAlchemyIcon(iconId: Long, undiscovered: Boolean = false, modifier: Modifier = Modifier) {
+fun DynamicAlchemyIcon(iconId: Long, modifier: Modifier = Modifier, undiscovered: Boolean = false) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val name = "icon_${iconId.toString().padStart(3, '0')}"

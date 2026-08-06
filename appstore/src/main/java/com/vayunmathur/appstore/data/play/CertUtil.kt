@@ -2,7 +2,6 @@ package com.vayunmathur.appstore.data.play
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import java.security.MessageDigest
 import android.util.Base64
 
@@ -26,28 +25,16 @@ object CertUtil {
 
     private fun getCertificateHashes(context: Context, packageName: String): List<ByteArray> {
         val pm = context.packageManager
-        val packageInfo = if (Build.VERSION.SDK_INT >= 28) {
-            pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-        }
+        val packageInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
 
-        val signingInfo = if (Build.VERSION.SDK_INT >= 28) {
-            packageInfo.signingInfo
-        } else null
+        val signingInfo = packageInfo.signingInfo
 
-        val signatures = if (Build.VERSION.SDK_INT >= 28) {
-            val si = signingInfo
-            if (si == null) emptyArray()
-            else if (si.hasMultipleSigners()) {
-                si.apkContentsSigners
-            } else {
-                si.signingCertificateHistory
-            }
+        val signatures = if (signingInfo == null) {
+            emptyArray()
+        } else if (signingInfo.hasMultipleSigners()) {
+            signingInfo.apkContentsSigners
         } else {
-            @Suppress("DEPRECATION")
-            packageInfo.signatures ?: emptyArray()
+            signingInfo.signingCertificateHistory
         }
 
         return signatures.mapNotNull { sig ->

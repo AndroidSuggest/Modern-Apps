@@ -1,6 +1,7 @@
 package com.vayunmathur.camera.util
 
 import android.media.MediaFormat
+import androidx.annotation.OptIn
 import androidx.camera.video.ExperimentalMimeTypeApi
 import androidx.camera.video.Recorder
 
@@ -10,9 +11,9 @@ import androidx.camera.video.Recorder
  * this device — instead of scraping [android.media.MediaCodecList] directly. A mime appearing here
  * means it's safe to request via `Recorder.Builder.setVideoMimeType`.
  */
+@OptIn(ExperimentalMimeTypeApi::class)
 object CodecSupport {
 
-    @OptIn(ExperimentalMimeTypeApi::class)
     private val supportedVideoMimeTypes: List<String> by lazy {
         try {
             Recorder.getSupportedVideoMimeTypes()

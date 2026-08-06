@@ -10,10 +10,8 @@ use crate::sphere::WarpedTile;
 
 // OpenCV GraphCutSeamFinder defaults: terminal 10000, bad_region 1000, COST_COLOR
 const TERMINAL_COST: i64 = 10000;
-const BAD_REGION_PENALTY: i64 = 1000;
 const INF: i64 = 1 << 40; // internal max for BFS cap, still larger than terminal
 const MAX_CUT_NODES: usize = 150_000;
-const GAP: i32 = 10; // OpenCV findInPair gap=10 subimages roi+2*gap
 
 pub fn seam_masks(tiles: &[WarpedTile]) -> Vec<Vec<u8>> {
     graph_cut_masks(tiles).unwrap_or_else(|| voronoi_masks(tiles))
@@ -161,7 +159,7 @@ fn graph_cut_masks(tiles: &[WarpedTile]) -> Option<Vec<Vec<u8>>> {
                 // Keep scaling factor to keep capacities integer and avoid tiny weights.
                 let grad_sum = (gp + gq + 1).max(1) as f32;
                 let color_sum = (cp + cq) as f32 + 1.0;
-                let mut cap_f = color_sum / grad_sum + 1.0;
+                let cap_f = color_sum / grad_sum + 1.0;
                 // Bad region penalty: if either tile's alpha zero? In overlap both are opaque, but for safety
                 // If gradient zero (flat), weight ~color_sum which is high – prefers seam in textured areas? Actually COLOR_GRAD divides, so high gradient lowers cost -> prefers textured.
                 // Clamp and scale to int
@@ -262,7 +260,7 @@ fn neighbors(x: usize, y: usize, w: usize, h: usize) -> Vec<(usize, usize)> {
 }
 
 fn covered_by(t: &WarpedTile, gx: i32, gy: i32) -> bool {
-    tile_at(t, gx, gy).map_or(false, |c| c[3] != 0)
+    tile_at(t, gx, gy).is_some_and(|c| c[3] != 0)
 }
 
 fn tile_at(t: &WarpedTile, gx: i32, gy: i32) -> Option<[u8; 4]> {
@@ -272,12 +270,6 @@ fn tile_at(t: &WarpedTile, gx: i32, gy: i32) -> Option<[u8; 4]> {
         return None;
     }
     Some(t.img.get(lx as usize, ly as usize))
-}
-
-fn diff(a: [u8; 4], b: [u8; 4]) -> i64 {
-    ((a[0] as i64 - b[0] as i64).abs()
-        + (a[1] as i64 - b[1] as i64).abs()
-        + (a[2] as i64 - b[2] as i64).abs())
 }
 
 fn diff_l2(a: [u8; 4], b: [u8; 4]) -> i64 {

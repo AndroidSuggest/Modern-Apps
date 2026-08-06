@@ -203,7 +203,7 @@ fun ChestOverlay(containerJson: String, inventoryJson: String, onClose: () -> Un
     }
     val inv = remember(inventoryJson) {
         try {
-            kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            voxelsJson
                 .decodeFromString<InventoryState>(inventoryJson)
         } catch (_: Exception) { InventoryState() }
     }

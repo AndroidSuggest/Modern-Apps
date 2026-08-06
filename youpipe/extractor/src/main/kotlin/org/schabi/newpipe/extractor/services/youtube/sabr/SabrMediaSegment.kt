@@ -8,6 +8,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InterruptedIOException
 import java.io.RandomAccessFile
+import java.util.concurrent.locks.Condition
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class SabrMediaSegment private constructor(
     val header: SabrMediaHeader,
@@ -106,71 +109,76 @@ class SabrMediaSegment private constructor(
     internal fun getFile(): File? = file
 
     private class ProgressiveFileState(private val expectedLength: Int) {
+        private val lock = ReentrantLock()
+        private val stateChanged: Condition = lock.newCondition()
         private var bytesWritten: Int = 0
         private var complete: Boolean = false
         private var failure: IOException? = null
 
-        @Synchronized
         fun onBytesWritten(count: Int) {
-            if (count <= 0 || complete || failure != null) {
-                return
+            lock.withLock {
+                if (count <= 0 || complete || failure != null) {
+                    return
+                }
+                bytesWritten += count
+                stateChanged.signalAll()
             }
-            bytesWritten += count
-            (this as java.lang.Object).notifyAll()
         }
 
-        @Synchronized
         fun complete() {
-            if (failure == null) {
-                complete = true
+            lock.withLock {
+                if (failure == null) {
+                    complete = true
+                }
+                stateChanged.signalAll()
             }
-            (this as java.lang.Object).notifyAll()
         }
 
-        @Synchronized
         fun fail(exception: IOException) {
-            if (!complete && failure == null) {
-                failure = exception
+            lock.withLock {
+                if (!complete && failure == null) {
+                    failure = exception
+                }
+                stateChanged.signalAll()
             }
-            (this as java.lang.Object).notifyAll()
         }
 
-        @Synchronized
-        fun isComplete(): Boolean = complete
+        fun isComplete(): Boolean = lock.withLock { complete }
 
-        @Synchronized
-        fun hasFailed(): Boolean = failure != null
+        fun hasFailed(): Boolean = lock.withLock { failure != null }
 
-        @Synchronized
         @Throws(IOException::class)
         fun awaitAvailable(position: Long, reader: ProgressiveFileInputStream): Int {
-            var readable = readableBytes(position)
-            while (readable <= 0 && !complete && failure == null && !reader.isClosed()) {
-                try {
-                    (this as java.lang.Object).wait()
-                } catch (e: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    val interrupted = InterruptedIOException(
-                        "Interrupted waiting for SABR media bytes"
-                    )
-                    interrupted.initCause(e)
-                    throw interrupted
+            return lock.withLock {
+                var readable = readableBytes(position)
+                while (readable <= 0 && !complete && failure == null && !reader.isClosed()) {
+                    try {
+                        stateChanged.await()
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        val interrupted = InterruptedIOException(
+                            "Interrupted waiting for SABR media bytes"
+                        )
+                        interrupted.initCause(e)
+                        throw interrupted
+                    }
+                    readable = readableBytes(position)
                 }
-                readable = readableBytes(position)
+                if (reader.isClosed()) {
+                    throw InterruptedIOException("SABR media stream was closed")
+                }
+                failure?.let { throw it }
+                if (complete) Math.max(0, bytesWritten - position).toInt() else readable
             }
-            if (reader.isClosed()) {
-                throw InterruptedIOException("SABR media stream was closed")
-            }
-            failure?.let { throw it }
-            return if (complete) Math.max(0, bytesWritten - position).toInt() else readable
         }
 
-        @Synchronized
         @Throws(IOException::class)
         fun available(position: Long): Int {
-            failure?.let { throw it }
-            return if (complete) Math.max(0, bytesWritten - position).toInt()
-            else readableBytes(position)
+            return lock.withLock {
+                failure?.let { throw it }
+                if (complete) Math.max(0, bytesWritten - position).toInt()
+                else readableBytes(position)
+            }
         }
 
         private fun readableBytes(position: Long): Int {
@@ -185,15 +193,13 @@ class SabrMediaSegment private constructor(
             return available
         }
 
-        @Synchronized
         fun signalReaders() {
-            (this as java.lang.Object).notifyAll()
+            lock.withLock { stateChanged.signalAll() }
         }
 
-        @Synchronized
         @Throws(IOException::class)
         fun throwIfFailed() {
-            failure?.let { throw it }
+            lock.withLock { failure?.let { throw it } }
         }
     }
 

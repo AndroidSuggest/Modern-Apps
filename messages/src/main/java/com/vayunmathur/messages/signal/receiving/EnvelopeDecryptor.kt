@@ -78,7 +78,7 @@ object EnvelopeDecryptor {
         // store; everything else uses the ACI store. Falls back to ACI when no PNI store is supplied.
         val isPniDestination = selfPni.isNotEmpty() && pniPreKeyStore != null &&
             (destinationServiceId == "PNI:$selfPni" || destinationServiceId == selfPni)
-        val effectivePreKeyStore = if (isPniDestination) pniPreKeyStore!! else preKeyStore
+        val effectivePreKeyStore = if (isPniDestination) pniPreKeyStore else preKeyStore
         val effectiveSignedPreKeyStore = if (isPniDestination) pniSignedPreKeyStore!! else signedPreKeyStore
         val effectiveKyberPreKeyStore = if (isPniDestination) pniKyberPreKeyStore!! else kyberPreKeyStore
 

@@ -4,8 +4,8 @@ import kotlin.time.Duration.Companion.hours
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.Uri
 import android.os.Build
+import androidx.core.net.toUri
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -192,7 +192,7 @@ object MapTileCache {
             modified: String,
             offlineUsage: Boolean,
         ): Loaded {
-            val uri = runCatching { Uri.parse(resourceUrl) }.getOrNull()
+            val uri = runCatching { resourceUrl.toUri() }.getOrNull()
             val host = uri?.host?.lowercase().orEmpty()
             val querySize = runCatching { uri?.queryParameterNames?.size ?: 0 }.getOrDefault(0)
             val url = HttpRequestUrl.buildResourceUrl(host, resourceUrl, querySize, offlineUsage)

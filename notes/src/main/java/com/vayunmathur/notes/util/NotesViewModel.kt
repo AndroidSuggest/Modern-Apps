@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.AnnotatedString
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -239,7 +240,7 @@ class NotesViewModel(
     suspend fun readExternal(uriString: String): ExternalNoteContent? = withContext(Dispatchers.IO) {
         val ctx = getApplication<Application>()
         try {
-            val uri = Uri.parse(uriString)
+            val uri = uriString.toUri()
             val content = ctx.contentResolver.openInputStream(uri)
                 ?.bufferedReader()?.use { it.readText() } ?: return@withContext null
             val name = IntentHelper.getFileName(ctx, uri) ?: "Untitled"
@@ -259,7 +260,7 @@ class NotesViewModel(
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 try {
-                    ctx.contentResolver.openOutputStream(Uri.parse(uriString), "wt")?.use {
+                    ctx.contentResolver.openOutputStream(uriString.toUri(), "wt")?.use {
                         it.write(content.toByteArray())
                     } ?: return@withContext false
                     true

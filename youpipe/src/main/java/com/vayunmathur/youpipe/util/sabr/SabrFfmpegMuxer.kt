@@ -24,6 +24,10 @@ internal object SabrFfmpegMuxer {
     private const val TAG = "SabrFfmpegMuxer"
     private const val INITIAL_BUFFER_SIZE = 2 * 1024 * 1024 // 2 MB
 
+    // MediaExtractor.SAMPLE_FLAG_* and MediaCodec.BUFFER_FLAG_* are distinct constant spaces.
+    private fun bufferFlagsFor(sampleFlags: Int): Int =
+        if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+
     @Throws(IOException::class)
     fun mux(videoInput: File, audioInput: File, output: File) {
         Log.d(TAG, "remux video=${videoInput.length()} audio=${audioInput.length()} -> ${output.name}")
@@ -154,7 +158,7 @@ internal object SabrFfmpegMuxer {
                         }
                     }
                     val bufferInfo = MediaCodec.BufferInfo().apply {
-                        set(0, sampleSize, vExtractor.sampleTime, vExtractor.sampleFlags)
+                        set(0, sampleSize, vExtractor.sampleTime, bufferFlagsFor(vExtractor.sampleFlags))
                     }
                     mMuxer.writeSampleData(videoMuxerTrackIndex, videoBuffer, bufferInfo)
                     vExtractor.advance()
@@ -175,7 +179,7 @@ internal object SabrFfmpegMuxer {
                         }
                     }
                     val bufferInfo = MediaCodec.BufferInfo().apply {
-                        set(0, sampleSize, aExtractor.sampleTime, aExtractor.sampleFlags)
+                        set(0, sampleSize, aExtractor.sampleTime, bufferFlagsFor(aExtractor.sampleFlags))
                     }
                     mMuxer.writeSampleData(audioMuxerTrackIndex, audioBuffer, bufferInfo)
                     aExtractor.advance()

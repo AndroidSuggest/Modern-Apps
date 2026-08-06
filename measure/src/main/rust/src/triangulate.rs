@@ -23,7 +23,7 @@ impl CameraPose {
     /// Camera centre in world coordinates: `C = -Rᵀ t`.
     pub fn center(&self) -> Vector3<f64> {
         let rt = self.r.transpose();
-        -(rt * self.t.clone())
+        -(rt * self.t)
     }
 }
 
@@ -55,7 +55,7 @@ pub fn triangulate(views: &[(CameraPose, NPt)]) -> Option<Vector3<f64>> {
 
 /// Reprojection error of a world point in one view, in calibrated units.
 pub fn reprojection_error(pose: &CameraPose, world: &Vector3<f64>, observed: NPt) -> f64 {
-    let c = &pose.r * world.clone() + pose.t.clone();
+    let c = pose.r * *world + pose.t;
     if c[2].abs() < 1e-9 {
         return f64::MAX;
     }
@@ -67,7 +67,7 @@ pub fn reprojection_error(pose: &CameraPose, world: &Vector3<f64>, observed: NPt
 /// True when the point sits in front of every camera that saw it.
 pub fn is_in_front_of_all(views: &[(CameraPose, NPt)], world: &Vector3<f64>) -> bool {
     views.iter().all(|(pose, _)| {
-        let c = &pose.r * world.clone() + pose.t.clone();
+        let c = pose.r * *world + pose.t;
         c[2] > 0.0
     })
 }
@@ -80,8 +80,8 @@ pub fn is_in_front_of_all(views: &[(CameraPose, NPt)], world: &Vector3<f64>) -> 
 pub fn parallax_angle(a: &CameraPose, b: &CameraPose, world: &Vector3<f64>) -> f64 {
     let ca = a.center();
     let cb = b.center();
-    let ra = world.clone() - ca;
-    let rb = world.clone() - cb;
+    let ra = *world - ca;
+    let rb = *world - cb;
     let na = ra.norm();
     let nb = rb.norm();
     if na < 1e-12 || nb < 1e-12 {
@@ -125,7 +125,7 @@ mod tests {
     use vision_core::camera::rodrigues_to_mat;
 
     fn project(pose: &CameraPose, p: Vector3<f64>) -> NPt {
-        let c = &pose.r * p + pose.t.clone();
+        let c = pose.r * p + pose.t;
         (c[0] / c[2], c[1] / c[2])
     }
 
@@ -173,7 +173,7 @@ mod tests {
         };
         let c = pose.center();
         // Projecting the centre back through the pose should land at the origin.
-        let back = &pose.r * c + pose.t.clone();
+        let back = pose.r * c + pose.t;
         assert!(back.norm() < 1e-9);
     }
 

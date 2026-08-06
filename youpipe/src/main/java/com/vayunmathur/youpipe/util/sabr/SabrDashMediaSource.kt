@@ -1,13 +1,15 @@
 package com.vayunmathur.youpipe.util.sabr
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
+import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.StreamKey
 import androidx.media3.common.Timeline
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.LoadingInfo
@@ -30,6 +32,7 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.util.Locale
 
+@OptIn(UnstableApi::class)
 class SabrDashMediaSource
 @Throws(IOException::class)
 constructor(
@@ -129,6 +132,7 @@ constructor(
 
     override fun releaseSourceInternal() {
         Log.d(TAG, "release source video=${spec.videoId}")
+        super.releaseSourceInternal()
         sessionHandle.close()
     }
 
@@ -349,7 +353,7 @@ constructor(
                 "</Period></MPD>"
             try {
                 return DashManifestParser().parse(
-                    Uri.parse("sabr://${spec.videoId}"),
+                    "sabr://${spec.videoId}".toUri(),
                     ByteArrayInputStream(mpd.toByteArray(Charsets.UTF_8))
                 )
             } catch (e: IOException) {

@@ -57,7 +57,7 @@ open class YoutubeReelInfoItemExtractor(
     override fun getViewCount(): Long {
         val viewCountText = getTextFromObject(reelInfo.getObject("viewCountText"))
         if (!isNullOrEmpty(viewCountText)) {
-            if (viewCountText!!.lowercase().contains("no views")) {
+            if (viewCountText.lowercase().contains("no views")) {
                 return 0
             }
             return Utils.mixedNumberWordToLong(viewCountText)

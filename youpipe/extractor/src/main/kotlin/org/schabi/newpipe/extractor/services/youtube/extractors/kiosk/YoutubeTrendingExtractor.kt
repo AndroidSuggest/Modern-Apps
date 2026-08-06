@@ -63,7 +63,7 @@ class YoutubeTrendingExtractor(
         if (isNullOrEmpty(name)) {
             throw ParsingException("Could not get Trending name")
         }
-        return name!!
+        return name
     }
 
     @Throws(ParsingException::class)
@@ -122,12 +122,10 @@ class YoutubeTrendingExtractor(
             .getArray("tabs").orEmptyArray()
             .filterIsInstance<JsonObject>()
             .map { it.getObject("tabRenderer").orEmptyObject() }
-            .filter { it.getObject("selected")?.let { sel -> 
-                // selected is boolean
-                (sel as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBoolean() ?: false
-            } ?: (it["selected"] as? kotlinx.serialization.json.JsonPrimitive)?.let { p -> 
-                try { p.content.toBoolean() } catch(e:Exception){ false } 
-            } ?: false }
+            .filter { tab ->
+                (tab["selected"] as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.content?.toBoolean() ?: false
+            }
             .filter { it.containsKey("content") }
             .firstOrNull() ?: throw ParsingException("Could not get \"Now\" or \"Videos\" trending tab")
     }

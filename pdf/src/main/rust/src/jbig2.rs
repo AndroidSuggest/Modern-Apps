@@ -79,7 +79,7 @@ pub fn decode_jbig2(data: &[u8], globals: Option<&[u8]>, _max_w: u32, _max_h: u3
         if w == 0 || h == 0 || w > 20000 || h > 20000 {
             return None;
         }
-        if (w as usize).checked_mul(h as usize).unwrap_or(usize::MAX) > 16 * 1024 * 1024 {
+        if (w as usize).saturating_mul(h as usize) > 16 * 1024 * 1024 {
             return None;
         }
         let mut decoder = SimpleRgbaDecoder::new(w as usize, h as usize);

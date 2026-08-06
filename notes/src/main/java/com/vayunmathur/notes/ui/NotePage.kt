@@ -103,6 +103,8 @@ fun NotePage(
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    val shareNoteLabel = stringResource(R.string.share_note)
+    val noteClipLabel = stringResource(R.string.note)
 
     // Local, editable copy of the note body: an ordered list of inline blocks
     // (text / image / ink). Every change is written back to [note], which persists
@@ -151,7 +153,7 @@ fun NotePage(
                 }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_note)))
+            context.startActivity(Intent.createChooser(intent, shareNoteLabel))
         }
     }
 
@@ -237,7 +239,7 @@ fun NotePage(
                         // (TransactionTooLargeException), so for large notes copy a
                         // URI to the exported .md instead of the raw text.
                         if (markdown.length < 100_000) {
-                            ClipData.newPlainText(context.getString(R.string.note), markdown)
+                            ClipData.newPlainText(noteClipLabel, markdown)
                         } else {
                             val uri = markdownCacheUri(context, note, markdown)
                             ClipData.newUri(context.contentResolver, "note", uri)

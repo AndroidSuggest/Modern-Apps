@@ -3,7 +3,6 @@
     <string name="app_name">计算器</string>
     <string name="history">历史记录</string>
     <string name="no_calculations_yet">尚无计算。</string>
-    <string name="graph">图形</string>
     <string name="add_function">添加函数</string>
     <string name="feature_root">根</string>
     <string name="feature_y_intercept">y 轴截距</string>

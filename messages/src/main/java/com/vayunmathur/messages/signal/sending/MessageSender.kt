@@ -363,7 +363,7 @@ class MessageSender(
         var sentUnidentified = false
         val response = if (useSealed) {
             sentUnidentified = true
-            val accessKey = deriveAccessKey(profileKey!!)
+            val accessKey = deriveAccessKey(profileKey)
             unauthedWs!!.sendRequest(
                 "PUT",
                 "/v1/messages/$recipientAci",

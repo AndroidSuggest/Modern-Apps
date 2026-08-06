@@ -9,7 +9,7 @@
     <string name="used_in">Używane w (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
     <string name="locked_description">Odblokuj wszystkie wyniki tych receptur, aby je wyświetlić.</string>
     <string name="collection">Kolekcja</string>
-    <string name="discovered_counter">Odkryte: <xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">\\%2$d</xliff:g></string>
+    <string name="discovered_counter">Odkryte: <xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
     <string name="hide_maxed_elements">Ukryj elementy zmaksymalizowane</string>
     <string name="id">ID: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
     <string name="item_discovered">Przedmiot odkryto!</string>

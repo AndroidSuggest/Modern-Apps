@@ -7,6 +7,7 @@
 //! per level. Keeps single-scale fallback for tiny inputs.
 
 use crate::imgbuf::{Gray, harris_scores};
+use std::cmp::Reverse;
 
 pub struct KeyPoint {
     pub x: f32,
@@ -95,8 +96,8 @@ fn is_corner(g: &Gray, x: i32, y: i32, t: i32) -> bool {
         let mut all_d = true;
         for j in 0..9 {
             let v = vals[(start + j) % 16];
-            if !(v > c + t) { all_b = false; }
-            if !(v < c - t) { all_d = false; }
+            if v <= c + t { all_b = false; }
+            if v >= c - t { all_d = false; }
         }
         if all_b || all_d {
             return true;
@@ -148,7 +149,7 @@ fn detect_level(g: &Gray, threshold: i32, edge_thresh: i32, max_per_level: usize
     let mut filtered: Vec<(i32, i32)> = Vec::new();
     // Sort by fast_score for grid distribution
     let mut with_score: Vec<(i32, i32, i32)> = cand.iter().map(|&(x, y)| (x, y, fast_score(g, x, y))).collect();
-    with_score.sort_by(|a, b| b.2.cmp(&a.2));
+    with_score.sort_by_key(|&(_, _, s)| Reverse(s));
     for (x, y, _s) in with_score {
         let cx = x / cell;
         let cy = y / cell;
@@ -185,10 +186,10 @@ pub fn detect_and_describe(g: &Gray, max_features: usize, threshold: i32) -> Fea
 /// internally; max_features caps at input value (3000), distributed.
 pub fn detect_and_describe_orb(g: &Gray, max_features: usize, threshold: i32) -> Features {
     let (orig_w, orig_h) = (g.w, g.h);
-    let fast_thr = threshold.max(1).min(100) as i32; // use caller's threshold but clamp
+    let fast_thr = threshold.clamp(1, 100); // use caller's threshold but clamp
 
     // Build pyramid: level 0 = original, each level downscaled by scaleFactor
-    let nlevels = ORB_NLEVELS.min(8).max(1);
+    let nlevels = ORB_NLEVELS.clamp(1, 8);
     let scale_factor = ORB_SCALE_FACTOR;
 
     let mut pyramid: Vec<Gray> = Vec::with_capacity(nlevels);
@@ -233,7 +234,7 @@ pub fn detect_and_describe_orb(g: &Gray, max_features: usize, threshold: i32) ->
         nfeatures_per_level.push(cnt);
         sum += cnt;
     }
-    let last = if nfeatures > sum { nfeatures - sum } else { 0 };
+    let last = nfeatures.saturating_sub(sum);
     nfeatures_per_level.push(last);
 
     // Detect per level

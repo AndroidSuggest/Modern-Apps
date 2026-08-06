@@ -4,6 +4,7 @@ import com.vayunmathur.games.voxels.R
 import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -14,7 +15,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vayunmathur.games.voxels.ui.*
@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
                 var sneaking by remember { mutableStateOf(false) }
                 var inventoryOpen by remember { mutableStateOf(false) }
                 var paused by remember { mutableStateOf(false) }
-                val activity = LocalContext.current as? android.app.Activity
+                val activity = LocalActivity.current
                 var invStartTab by remember { mutableStateOf(0) }
                 var recipesJson by remember { mutableStateOf("[]") }
                 var blessingsJson by remember { mutableStateOf("""{"slots":[]}""") }
@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity() {
                                         furnaceOpen = true
                                     }
                                     13 -> { // jukebox: play the held disc (or stop)
-                                        val inv = try { kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<com.vayunmathur.games.voxels.ui.InventoryState>(inventoryJson) } catch (_: Exception) { null }
+                                        val inv = try { com.vayunmathur.games.voxels.ui.voxelsJson.decodeFromString<com.vayunmathur.games.voxels.ui.InventoryState>(inventoryJson) } catch (_: Exception) { null }
                                         val held = inv?.slots?.getOrNull(inv.selected)?.id ?: 0
                                         com.vayunmathur.games.voxels.util.MusicFx.toggle(this@MainActivity, com.vayunmathur.games.voxels.ui.discTrack[held])
                                     }

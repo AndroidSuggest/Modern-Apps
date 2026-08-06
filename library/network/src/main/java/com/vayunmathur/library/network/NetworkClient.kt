@@ -430,7 +430,7 @@ object NetworkClient {
                 out = Triple(status, respHeaders, finalStream)
             }
 
-            out!!
+            out
         }
     }
 

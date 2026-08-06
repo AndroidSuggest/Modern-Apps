@@ -100,12 +100,12 @@ class YoutubeService(id: Int) : StreamingService(
         }
     }
 
-    override fun getSearchExtractor(query: SearchQueryHandler): SearchExtractor {
-        val contentFilters = query.contentFilters
+    override fun getSearchExtractor(queryHandler: SearchQueryHandler): SearchExtractor {
+        val contentFilters = queryHandler.contentFilters
         return if (contentFilters.isNotEmpty() && contentFilters[0].startsWith("music_")) {
-            YoutubeMusicSearchExtractor(this, query)
+            YoutubeMusicSearchExtractor(this, queryHandler)
         } else {
-            YoutubeSearchExtractor(this, query)
+            YoutubeSearchExtractor(this, queryHandler)
         }
     }
 
@@ -207,8 +207,8 @@ class YoutubeService(id: Int) : StreamingService(
         YoutubeCommentsLinkHandlerFactory.getInstance()
 
     @Throws(ExtractionException::class)
-    override fun getCommentsExtractor(urlIdHandler: ListLinkHandler): CommentsExtractor =
-        YoutubeCommentsExtractor(this, urlIdHandler)
+    override fun getCommentsExtractor(linkHandler: ListLinkHandler): CommentsExtractor =
+        YoutubeCommentsExtractor(this, linkHandler)
 
     override fun getSupportedLocalizations(): List<Localization> = SUPPORTED_LANGUAGES
 

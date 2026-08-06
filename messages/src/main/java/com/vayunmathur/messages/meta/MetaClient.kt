@@ -153,7 +153,6 @@ object MetaClient {
                         is MetaMqttClient.ConnectionState.Connecting -> {
                             _state.value = State.Connecting
                         }
-                        else -> {}
                     }
                 }
             }

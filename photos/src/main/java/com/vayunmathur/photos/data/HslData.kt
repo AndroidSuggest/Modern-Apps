@@ -2,6 +2,7 @@ package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
 import androidx.annotation.StringRes
+import androidx.core.graphics.createBitmap
 import com.vayunmathur.photos.R
 import kotlin.math.abs
 
@@ -103,7 +104,7 @@ fun HslAdjustments.applyHslToBitmap(bitmap: Bitmap): Bitmap {
         val rgb = hslToRgb(hue, sat, lum)
         pixels[i] = (a shl 24) or (rgb[0] shl 16) or (rgb[1] shl 8) or rgb[2]
     }
-    val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val result = createBitmap(w, h)
     result.setPixels(pixels, 0, w, 0, 0, w, h)
     return result
 }

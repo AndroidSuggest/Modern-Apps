@@ -356,11 +356,11 @@ object YoutubeParsingHelper {
             throw ParsingException("Video id could not be determined from empty playlist id")
         } else if (isYoutubeMyMixId(playlistId)) {
             return playlistId.substring(4)
-        } else if (isYoutubeMusicMixId(playlistId!!)) {
+        } else if (isYoutubeMusicMixId(playlistId)) {
             return playlistId.substring(6)
-        } else if (isYoutubeGenreMixId(playlistId!!)) {
+        } else if (isYoutubeGenreMixId(playlistId)) {
             throw ParsingException("Video id could not be determined from genre mix id: $playlistId")
-        } else if (isYoutubeMixId(playlistId!!)) {
+        } else if (isYoutubeMixId(playlistId)) {
             if (playlistId.length != 13) {
                 throw ParsingException("Video id could not be determined from mix id: $playlistId")
             }
@@ -375,11 +375,11 @@ object YoutubeParsingHelper {
     fun extractPlaylistTypeFromPlaylistId(playlistId: String?): PlaylistInfo.PlaylistType {
         if (isNullOrEmpty(playlistId)) {
             throw ParsingException("Could not extract playlist type from empty playlist id")
-        } else if (isYoutubeMusicMixId(playlistId!!)) {
+        } else if (isYoutubeMusicMixId(playlistId)) {
             return PlaylistInfo.PlaylistType.MIX_MUSIC
-        } else if (isYoutubeGenreMixId(playlistId!!)) {
+        } else if (isYoutubeGenreMixId(playlistId)) {
             return PlaylistInfo.PlaylistType.MIX_GENRE
-        } else if (isYoutubeMixId(playlistId!!)) {
+        } else if (isYoutubeMixId(playlistId)) {
             return PlaylistInfo.PlaylistType.MIX_STREAM
         } else {
             return PlaylistInfo.PlaylistType.NORMAL
@@ -755,7 +755,7 @@ object YoutubeParsingHelper {
                     if (nav != null) {
                         val url = getUrlFromNavigationEndpoint(nav)
                         if (!isNullOrEmpty(url)) {
-                            text = "<a href=\"" + escapeHtml(url!!) + "\">" +
+                            text = "<a href=\"" + escapeHtml(url) + "\">" +
                                     escapeHtml(text) + "</a>"
                         }
                     }
@@ -1284,7 +1284,7 @@ object YoutubeParsingHelper {
             throw ParsingException("Could not get visitorData")
         }
 
-        return visitorData!!
+        return visitorData
     }
 
     @JvmStatic

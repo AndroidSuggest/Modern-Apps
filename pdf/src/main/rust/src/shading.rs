@@ -440,8 +440,8 @@ fn parse_type6_7(
             if pts.len() < 12 {
                 break;
             }
-            let mut c2 = None;
-            let mut c3 = None;
+            let c2;
+            let c3;
             if let Some(c) = read_color(&mut br) { c2 = Some(c); } else { break; }
             if let Some(c) = read_color(&mut br) { c3 = Some(c); } else { break; }
             cols.push(shared_c0);
@@ -592,8 +592,8 @@ fn fill_tri(
     let (x2, y2) = (v2.x, v2.y);
     let bw = bounds[2] - bounds[0];
     let bh = bounds[3] - bounds[1];
-    let to_px = |x: f64| ((x - bounds[0]) / bw * w as f64);
-    let to_py = |y: f64| ((y - bounds[1]) / bh * h as f64);
+    let to_px = |x: f64| (x - bounds[0]) / bw * w as f64;
+    let to_py = |y: f64| (y - bounds[1]) / bh * h as f64;
     let min_x = x0.min(x1).min(x2);
     let max_x = x0.max(x1).max(x2);
     let min_y = y0.min(y1).min(y2);

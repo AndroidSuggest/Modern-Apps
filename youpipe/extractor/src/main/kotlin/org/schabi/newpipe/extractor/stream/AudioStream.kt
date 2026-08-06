@@ -82,9 +82,6 @@ class AudioStream : Stream {
             if (content == null) throw IllegalStateException(
                 "The content of the audio stream has been not set or is null. Please specify a non-null one with setContent."
             )
-            if (deliveryMethod == null) throw IllegalStateException(
-                "The delivery method of the audio stream has been set as null, which is not allowed. Pass a valid one instead with setDeliveryMethod."
-            )
         }
     }
 
@@ -115,12 +112,12 @@ class AudioStream : Stream {
         this.audioTrackType = builder.audioTrackType
     }
 
-    override fun equalStats(cmp: Stream?): Boolean {
-        return super.equalStats(cmp) && cmp is AudioStream
-                && averageBitrate == cmp.averageBitrate
-                && audioTrackId == cmp.audioTrackId
-                && audioTrackType == cmp.audioTrackType
-                && audioLocale == cmp.audioLocale
+    override fun equalStats(other: Stream?): Boolean {
+        return super.equalStats(other) && other is AudioStream
+                && averageBitrate == other.averageBitrate
+                && audioTrackId == other.audioTrackId
+                && audioTrackType == other.audioTrackType
+                && audioLocale == other.audioLocale
     }
 
     fun getAverageBitrate(): Int = averageBitrate

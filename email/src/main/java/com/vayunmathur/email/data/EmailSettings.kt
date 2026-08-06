@@ -1,6 +1,7 @@
 package com.vayunmathur.email.data
 
 import android.content.Context
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +36,7 @@ class EmailSettings private constructor(context: Context) {
     val loadRemoteImages: StateFlow<Boolean> = _loadRemoteImages.asStateFlow()
 
     fun setLoadRemoteImages(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_LOAD_REMOTE_IMAGES, enabled).apply()
+        prefs.edit { putBoolean(KEY_LOAD_REMOTE_IMAGES, enabled) }
         _loadRemoteImages.value = enabled
     }
 

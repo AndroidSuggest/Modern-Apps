@@ -1,5 +1,7 @@
 package com.vayunmathur.sdk.games
 
+import androidx.core.net.toUri
+
 /**
  * Legacy wrapper preserving old GameCenter API surface.
  * Achievements delegate to [GameHubClient]; scores are no-ops since leaderboards removed.
@@ -30,7 +32,7 @@ class GameCenterLegacy(private val context: android.content.Context, private val
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (!client.isHubInstalled()) return@withContext emptyList()
             val authority = "com.vayunmathur.games.provider"
-            val baseUri = android.net.Uri.parse("content://$authority")
+            val baseUri = "content://$authority".toUri()
             val resolver = context.contentResolver
             val uri = android.net.Uri.withAppendedPath(baseUri, "achievements/$gameId")
             val results = mutableListOf<AchievementStatus>()

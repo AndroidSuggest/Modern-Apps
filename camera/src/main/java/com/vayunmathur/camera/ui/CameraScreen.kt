@@ -11,7 +11,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
-import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Patterns
 import android.util.Log
@@ -129,6 +129,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -259,7 +260,13 @@ fun CameraScreen(
     LaunchedEffect(availableZoomLevels) {
         Log.d("NightPreview", "CameraScreen availableZoomLevels changed=$availableZoomLevels currentZoom=${zoomRatio} useNightPreview=$useNightPreview – vendor NIGHT often reports only [1x], making zoom bar appear to 'disappear' except 1x")
     }
-    val bokehShader = remember { lazy { RuntimeShader(BOKEH_SHADER) } }
+    // RuntimeShader and the runtime-shader RenderEffect are API 33+. On older
+    // releases the portrait preview renders without the background blur.
+    val bokehShader = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        remember { lazy { RuntimeShader(BOKEH_SHADER) } }
+    } else {
+        null
+    }
 
     val panoSweeping by viewModel.panoramaEngine.isSweeping.collectAsState()
     val panoStitching by viewModel.panoramaEngine.isStitching.collectAsState()
@@ -558,11 +565,16 @@ fun CameraScreen(
                                     Modifier.graphicsLayer {
                                         var effect: RenderEffect? = null
 
-                                        if (hasBokeh) {
+                                        if (hasBokeh &&
+                                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                                        ) {
                                             val localMask = currentMask
-                                            if (localMask != null && !localMask.isRecycled && size.width > 0 && size.height > 0) {
+                                            val shader = bokehShader?.value
+                                            if (shader != null && localMask != null &&
+                                                !localMask.isRecycled &&
+                                                size.width > 0 && size.height > 0
+                                            ) {
                                                 try {
-                                                    val shader = bokehShader.value
                                                     val maskShader = BitmapShader(localMask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
                                                     val matrix = Matrix()
                                                     matrix.setScale(size.width / localMask.width, size.height / localMask.height)
@@ -1522,7 +1534,7 @@ private fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Contex
             if (isFidoUri || Patterns.WEB_URL.matcher(text).matches()) {
                 Button(onClick = {
                     val url = if (!isFidoUri && !text.startsWith("http")) "https://$text" else text
-                    val uri = Uri.parse(url).normalizeScheme()
+                    val uri = url.toUri().normalizeScheme()
                     try {
                         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                     } catch (e: ActivityNotFoundException) {

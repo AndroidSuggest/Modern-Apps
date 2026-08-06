@@ -3,7 +3,6 @@ package com.vayunmathur.library.image.decoders
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.os.Build
 import android.graphics.ImageDecoder
 import com.vayunmathur.library.image.ImageRequest
 import java.nio.ByteBuffer
@@ -28,28 +27,22 @@ object BitmapDecoder {
         val targetH = reqSize?.height ?: -1
 
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val source = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
-                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                    val w = info.size.width
-                    val h = info.size.height
-                    if (targetW > 0 && targetH > 0 && (w > targetW || h > targetH)) {
-                        val ratio = maxOf(w.toFloat() / targetW, h.toFloat() / targetH)
-                        if (ratio > 1f) {
-                            decoder.setTargetSize((w / ratio).toInt().coerceAtLeast(1), (h / ratio).toInt().coerceAtLeast(1))
-                        }
-                    } else if (targetW > 0 && targetH > 0) {
-                        // still set to avoid upscaling surprises – only downscale
-                    }
-                    decoder.isUnpremultipliedRequired = false
-                    if (!allowHardware) {
-                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    } else {
-                        decoder.allocator = ImageDecoder.ALLOCATOR_DEFAULT
+            val source = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                val w = info.size.width
+                val h = info.size.height
+                if (targetW > 0 && targetH > 0 && (w > targetW || h > targetH)) {
+                    val ratio = maxOf(w.toFloat() / targetW, h.toFloat() / targetH)
+                    if (ratio > 1f) {
+                        decoder.setTargetSize((w / ratio).toInt().coerceAtLeast(1), (h / ratio).toInt().coerceAtLeast(1))
                     }
                 }
-            } else {
-                decodeWithBitmapFactory(bytes, targetW, targetH, allowHardware)
+                decoder.isUnpremultipliedRequired = false
+                decoder.allocator = if (allowHardware) {
+                    ImageDecoder.ALLOCATOR_DEFAULT
+                } else {
+                    ImageDecoder.ALLOCATOR_SOFTWARE
+                }
             }
         } catch (_: Exception) {
             try { decodeWithBitmapFactory(bytes, targetW, targetH, allowHardware) } catch (_: Exception) { null }
@@ -83,8 +76,8 @@ object BitmapDecoder {
         }
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
             ?: throw IllegalArgumentException("BitmapFactory failed")
-        // If hardware requested and we can convert, do so roughly by copying with HARDWARE if API 26+
-        if (allowHardware && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        // If hardware requested, convert roughly by copying with HARDWARE.
+        if (allowHardware) {
             return try {
                 bmp.copy(Bitmap.Config.HARDWARE, false) ?: bmp
             } catch (_: Exception) { bmp }

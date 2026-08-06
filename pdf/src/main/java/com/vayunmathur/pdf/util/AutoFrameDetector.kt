@@ -2,6 +2,7 @@ package com.vayunmathur.pdf.util
 
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Offset
+import androidx.core.graphics.scale
 import com.vayunmathur.pdf.model.Quadrilateral
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -21,7 +22,7 @@ object AutoFrameDetector {
         val scale = if (maxDim > MAX_DIM) MAX_DIM.toFloat() / maxDim else 1f
         val w = (bitmap.width * scale).roundToInt().coerceAtLeast(10)
         val h = (bitmap.height * scale).roundToInt().coerceAtLeast(10)
-        val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, w, h, true) else bitmap
+        val scaled = if (scale < 1f) bitmap.scale(w, h) else bitmap
 
         return try {
             val pixels = IntArray(w * h)

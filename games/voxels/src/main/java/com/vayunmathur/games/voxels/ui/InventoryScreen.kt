@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.voxels.util.VoxelsNative
 import com.vayunmathur.library.util.AchievementsManager
 import com.vayunmathur.library.ui.Text
-import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 
 private data class DragState(val from: Int, val pos: Offset, val id: Int, val count: Int)
@@ -46,7 +45,7 @@ fun InventoryOverlay(
     worldAchievements: AchievementsManager? = null,
 ) {
     val inv = remember(inventoryJson) {
-        try { Json { ignoreUnknownKeys = true }.decodeFromString<InventoryState>(inventoryJson) } catch (_: Exception) { InventoryState() }
+        try { voxelsJson.decodeFromString<InventoryState>(inventoryJson) } catch (_: Exception) { InventoryState() }
     }
     val slots = inv.slots
     // 0 Inventory, 1 Outfit, 2 Crafting, 3 Blessings, 4 Achievements

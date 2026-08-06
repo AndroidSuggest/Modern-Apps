@@ -87,7 +87,7 @@ fun ProfileScreen(
     var selectedAvatar by remember { mutableStateOf<String?>(null) }
 
     if (showEditDialog && editName.isEmpty() && state.playerName != null) {
-        editName = state.playerName ?: ""
+        editName = state.playerName
         selectedAvatar = state.avatarSymbol
     }
 

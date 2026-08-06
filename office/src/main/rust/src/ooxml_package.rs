@@ -135,7 +135,7 @@ pub fn parse_rels(xml: &str, part_path: &str) -> HashMap<String, Rel> {
     let mut out = HashMap::new();
     let mut p = XmlParser::new(xml);
     loop {
-        match p.next() {
+        match p.next_event() {
             Event::EndDocument => break,
             Event::StartTag if p.name() == "Relationship" => {
                 let id = p.attr("Id").map(str::to_string);
@@ -164,7 +164,7 @@ pub fn parse_content_types(xml: &str) -> ContentTypes {
     let mut types = ContentTypes::default();
     let mut p = XmlParser::new(xml);
     loop {
-        match p.next() {
+        match p.next_event() {
             Event::EndDocument => break,
             Event::StartTag => match p.name() {
                 "Default" => {

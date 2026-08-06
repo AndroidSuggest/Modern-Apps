@@ -81,7 +81,6 @@ class TranslateViewModel(app: Application) : AndroidViewModel(app) {
     fun stopSpeaking() = tts.stop()
 
     override fun onCleared() {
-        super.onCleared()
         ocr.close()
         (translator as? Small100Translator)?.close()
         tts.shutdown()

@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -51,14 +52,23 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="market" />
             </intent-filter>
-            <intent-filter>
+            <!-- autoVerify="false": these are third-party domains, so we can never host
+                 assetlinks.json for them; this is a chooser entry, not an App Link. -->
+            <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="play.google.com" android:pathPrefix="/store/apps/details" />
-                <data android:scheme="https" android:host="f-droid.org" android:pathPrefix="/packages/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="f-droid.org" />
+                <data android:pathPrefix="/packages/" />
                 <!-- f-droid.org also serves localised listing URLs (/en/packages/...). -->
-                <data android:scheme="https" android:host="f-droid.org" android:pathPattern="/.*/packages/.*" />
+                <data android:pathPattern="/.*/packages/.*" />
             </intent-filter>
         </activity>
 

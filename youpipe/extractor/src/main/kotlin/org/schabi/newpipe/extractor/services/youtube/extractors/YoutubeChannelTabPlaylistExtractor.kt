@@ -105,7 +105,7 @@ class YoutubeChannelTabPlaylistExtractor @Throws(
         }
 
         val channelId = originalLinkHandler.id
-        if (isNullOrEmpty(channelId) || !channelId!!.startsWith("UC")) {
+        if (isNullOrEmpty(channelId) || !channelId.startsWith("UC")) {
             throw IllegalArgumentException("Invalid channel ID")
         }
 

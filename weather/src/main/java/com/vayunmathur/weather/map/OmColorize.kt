@@ -1,9 +1,9 @@
 package com.vayunmathur.weather.map
 
-import android.graphics.Bitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.createBitmap
 import com.vayunmathur.weather.util.ColorStop
 
 /**
@@ -18,7 +18,7 @@ fun colorizeToBitmap(values: FloatArray, w: Int, h: Int, ramp: List<ColorStop>):
     for (i in values.indices) {
         pixels[i] = rampColor(values[i], ramp)
     }
-    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(w, h)
     bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
     return bitmap.asImageBitmap()
 }

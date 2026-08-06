@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.core.net.toUri
 import com.vayunmathur.library.image.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,7 +35,7 @@ object VideoFrameDecoder {
                         }
                     }
                     is String -> {
-                        val uri = try { Uri.parse(data) } catch (_: Exception) { null }
+                        val uri = try { data.toUri() } catch (_: Exception) { null }
                         when {
                             uri != null && uri.scheme == "content" -> retriever.setDataSource(ctx, uri)
                             data.startsWith("/") || data.startsWith("file://") -> {

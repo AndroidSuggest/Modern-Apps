@@ -130,16 +130,7 @@ abstract class YoutubeChartsBaseKioskExtractor(
         override fun getDuration(): Long {
             return (videoObject["videoDuration"] as? kotlinx.serialization.json.JsonPrimitive)?.let {
                 it.content.toLongOrNull() ?: -1L
-            } ?: (videoObject.getObject("videoDuration")?.let { -1L } ?: -1L) ?: run {
-                // Try compat extension getInt
-                videoObject.let { obj ->
-                    try {
-                        (obj["videoDuration"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLong() ?: -1L
-                    } catch (e: Exception) {
-                        -1L
-                    }
-                }
-            }
+            } ?: (videoObject.getObject("videoDuration")?.let { -1L } ?: -1L)
         }
 
         override fun getViewCount(): Long = -1

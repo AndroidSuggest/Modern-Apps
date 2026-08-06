@@ -28,7 +28,6 @@
     <string name="listening_for_new_mail">In attesa di nuove email</string>
     <string name="drafts">Bozze</string>
     <string name="email_widget_description">I messaggi recenti dalla tua casella unificata — tocca per aprire Email</string>
-    <string name="sign_in_with_microsoft">Accedi con Microsoft</string>
     <string name="account_added">Account aggiunto</string>
     <string name="username">Nome utente</string>
     <string name="username_is_not_my_email">Il nome utente non è la mia email</string>
@@ -77,10 +76,8 @@
     <string name="generating_summary">Generazione riepilogo…</string>
     <string name="block_sender">Blocca mittente</string>
     <string name="added"><xliff:g id="email" example="user@example.com">%1$s</xliff:g> aggiunto</string>
-    <string name="microsoft_sign_in_failed">Accesso con Microsoft non riuscito</string>
     <string name="choose_your_email_provider">Scegli il tuo provider di email</string>
     <string name="enter_imap_smtp_server_details_manually">Inserisci manualmente i dettagli del server IMAP/SMTP</string>
-    <string name="oauth2">oauth2</string>
     <string name="app_password">Password dell\'app</string>
     <string name="password">Password</string>
     <string name="hide">Nascondi</string>
@@ -100,6 +97,8 @@
     <string name="from">Da <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
     <string name="to_1">A <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
     <plurals name="retrying_pending_messages">
+        <item quantity="one">Nuovo tentativo per <xliff:g id="count" example="1">%1$s</xliff:g> messaggio in attesa…</item>
+        <item quantity="many">Nuovo tentativo per <xliff:g id="count" example="1000000">%1$s</xliff:g> di messaggi in attesa…</item>
         <item quantity="other">Nuovo tentativo per <xliff:g id="count" example="3">%1$s</xliff:g> messaggi in attesa…</item>
     </plurals>
     <string name="unblock">Sblocca</string>
@@ -115,6 +114,8 @@
     <string name="unsubscribing">Disiscrizione…</string>
     <string name="failed">Fallito: <xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
     <plurals name="attempts">
+        <item quantity="one"><xliff:g id="count" example="1">%1$s</xliff:g> tentativo</item>
+        <item quantity="many"><xliff:g id="count" example="1000000">%1$s</xliff:g> di tentativi</item>
         <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> tentativi</item>
     </plurals>
     <string name="cd_insert_image">Inserisci immagine</string>

@@ -44,7 +44,7 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
     Scaffold(topBar = {
         TopAppBar(
             title = {
-                if (inSelectionMode) Text(stringResource(R.string.selected, selectedIds.size))
+                if (inSelectionMode) Text(stringResource(R.string.selected_count, selectedIds.size))
             },
             navigationIcon = {
                 if (inSelectionMode) {

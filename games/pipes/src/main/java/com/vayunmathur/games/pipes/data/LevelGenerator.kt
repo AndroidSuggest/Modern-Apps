@@ -2,6 +2,7 @@ package com.vayunmathur.games.pipes.data
 
 import kotlin.math.roundToInt
 import kotlin.random.Random
+import java.util.Locale
 
 object LevelGenerator {
 
@@ -155,7 +156,7 @@ object LevelGenerator {
         seed: Long
     ): List<LevelData> = (0 until levelCount).mapNotNull { i ->
         val currentSeed = seed + i * 100
-        val id = "${name.replace("×", "x").replace(" ", "_")}_${String.format("%03d", i + 1)}"
+        val id = "${name.replace("×", "x").replace(" ", "_")}_${String.format(Locale.ROOT, "%03d", i + 1)}"
         generateLevel(cells, adjacency, maxFlows, currentSeed, id)
     }
 }

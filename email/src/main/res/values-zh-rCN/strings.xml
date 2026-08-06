@@ -40,7 +40,6 @@
     <string name="password">密码</string>
     <string name="show_quoted_text">显示引用文本</string>
     <string name="from">发件人：<xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
-    <string name="sign_in_with_microsoft">使用 Microsoft 登录</string>
     <string name="app_password">应用密码</string>
     <string name="accounts">账号</string>
     <string name="unread">未读</string>
@@ -95,7 +94,6 @@
     <string name="this_evening_6_pm">今晚（下午 6 点）</string>
     <string name="no_subject">（无主题）</string>
     <string name="no_app_can_open_this_file">没有应用可以打开此文件</string>
-    <string name="oauth2">OAuth 2.0</string>
     <string name="hide_quoted_text">隐藏引用文本</string>
     <string name="block_sender">屏蔽发件人</string>
     <string name="conversation">对话</string>
@@ -117,7 +115,6 @@
     <string name="signature_saved">签名已保存</string>
     <string name="unsubscribe">取消订阅</string>
     <string name="failed">失败：<xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
-    <string name="microsoft_sign_in_failed">Microsoft 登录失败</string>
     <string name="normal">普通</string>
     <string name="heading_1">标题 1</string>
     <string name="heading_2">标题 2</string>

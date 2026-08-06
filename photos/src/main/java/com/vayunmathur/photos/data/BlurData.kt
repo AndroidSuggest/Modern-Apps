@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 import com.vayunmathur.photos.util.PhotosNative
 
 enum class BlurMode { Radial, Linear, Lens }
@@ -23,7 +24,7 @@ fun BlurParams.applyBlurToBitmap(bitmap: Bitmap): Bitmap {
     val pixels = IntArray(w * h)
     bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
     val out = PhotosNative.blurParams(pixels, w, h, mode.ordinal, centerX, centerY, radius, intensity, feather, angle)
-    return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(out, 0, w, 0, 0, w, h) }
+    return createBitmap(w, h).apply { setPixels(out, 0, w, 0, 0, w, h) }
 }
 
 // --- Full-image filter blurs ----------------------------------------------------
@@ -48,5 +49,5 @@ fun FilterBlur.applyToBitmap(bitmap: Bitmap): Bitmap {
     val src = IntArray(w * h)
     bitmap.getPixels(src, 0, w, 0, 0, w, h)
     val out = PhotosNative.filterBlur(src, w, h, mode.ordinal, amount, angle, centerX, centerY)
-    return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { setPixels(out, 0, w, 0, 0, w, h) }
+    return createBitmap(w, h).apply { setPixels(out, 0, w, 0, 0, w, h) }
 }

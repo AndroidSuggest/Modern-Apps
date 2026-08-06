@@ -311,7 +311,7 @@ fn next_non_space_is_seconds(chars: &[char], from: usize) -> bool {
     while i < chars.len() && (chars[i] == ':' || chars[i] == ' ') {
         i += 1;
     }
-    i < chars.len() && chars[i].to_ascii_lowercase() == 's'
+    i < chars.len() && chars[i].eq_ignore_ascii_case(&'s')
 }
 
 fn starts_with_ignore_case(chars: &[char], at: usize, needle: &str) -> bool {
@@ -322,7 +322,7 @@ fn starts_with_ignore_case(chars: &[char], at: usize, needle: &str) -> bool {
     chars[at..at + needle.len()]
         .iter()
         .zip(needle.iter())
-        .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+        .all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
 /// `[$USD-409]` → `USD`; otherwise the first bare currency sign present.

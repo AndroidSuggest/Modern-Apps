@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -67,11 +66,7 @@ class NavigationService : Service() {
         startForeground(
             NOTIFICATION_ID,
             buildNotification(NavigationSessionManager.state.value),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            } else {
-                0
-            }
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         )
 
         // One collector for the lifetime of the service: pushes state into
@@ -212,9 +207,7 @@ class NavigationService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(0, getString(R.string.nav_action_end), stopIntent)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-        }
+        builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
 
         progressPercent?.let { p -> builder.setProgress(100, p, false) }
         return builder.build()
@@ -308,12 +301,7 @@ class NavigationService : Service() {
 
     private fun stopSelfAndSession() {
         NavigationSessionManager.stop()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 

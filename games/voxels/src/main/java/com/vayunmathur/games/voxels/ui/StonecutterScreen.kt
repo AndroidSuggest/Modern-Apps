@@ -44,7 +44,7 @@ fun StonecutterOverlay(cutsJson: String, inventoryJson: String, onClose: () -> U
     val cuts = remember(cutsJson) { parseCuts(cutsJson) }
     val inv = remember(inventoryJson) {
         try {
-            kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            voxelsJson
                 .decodeFromString<InventoryState>(inventoryJson)
         } catch (_: Exception) { InventoryState() }
     }

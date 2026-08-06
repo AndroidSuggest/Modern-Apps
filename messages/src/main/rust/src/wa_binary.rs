@@ -240,16 +240,16 @@ impl Encoder {
     fn write_packed(&mut self, value: &str, data_type: u8) {
         self.push(data_type);
         let chars: Vec<char> = value.chars().collect();
-        let rounded = (chars.len() + 1) / 2;
+        let rounded = chars.len().div_ceil(2);
         // The high bit flags an odd length, whose final nibble is padding.
-        let flag = if chars.len() % 2 != 0 { rounded | 128 } else { rounded };
+        let flag = if chars.len().is_multiple_of(2) { rounded } else { rounded | 128 };
         self.push(flag as u8);
 
         let pack = |c: char| if data_type == NIBBLE_8 { pack_nibble(c) } else { pack_hex(c) };
         for i in 0..chars.len() / 2 {
             self.push((pack(chars[2 * i]) << 4) | pack(chars[2 * i + 1]));
         }
-        if chars.len() % 2 != 0 {
+        if !chars.len().is_multiple_of(2) {
             self.push((pack(chars[chars.len() - 1]) << 4) | 15);
         }
     }

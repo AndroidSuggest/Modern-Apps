@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.provider.ContactsContract
 import android.util.Log
 import androidx.collection.LruCache
+import androidx.core.graphics.scale
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.contacts.data.Address
@@ -625,7 +626,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     fun setEditDraftPhotoFromBitmap(bitmap: Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {
             val scaled = if (bitmap.width != 1024 || bitmap.height != 1024) {
-                Bitmap.createScaledBitmap(bitmap, 1024, 1024, true)
+                bitmap.scale(1024, 1024)
             } else bitmap
             val baos = java.io.ByteArrayOutputStream()
             scaled.compress(Bitmap.CompressFormat.JPEG, 100, baos)

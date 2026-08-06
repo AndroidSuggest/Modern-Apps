@@ -19,6 +19,8 @@ import kotlinx.serialization.json.longOrNull
 
 object LightspeedDecoder {
 
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+
     enum class StepType(val value: Int) {
         BLOCK(1),
         LOAD(2),
@@ -874,8 +876,7 @@ object LightspeedDecoder {
 
     fun decodePublishResponse(payload: String, sp: List<String>): List<DecodedEvent> {
         return try {
-            val lsData = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-                .decodeFromString<LightSpeedData>(payload)
+            val lsData = json.decodeFromString<LightSpeedData>(payload)
             // Resolve against the FULL SP_TABLE (not just the response's declared sp): a response can
             // call a stored procedure — e.g. insertBlobAttachment for a photo — that its own sp list
             // omits, which would silently drop that row. SP_TABLE is authoritative and superset-safe.

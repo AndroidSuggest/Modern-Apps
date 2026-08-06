@@ -73,7 +73,7 @@ import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.RecordType
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.health.util.displayString
 import com.vayunmathur.library.ui.IconArrowForward
@@ -496,7 +496,7 @@ fun BarChartDetailsScreen(
                                 dataState.secondaryAverage != null && config.isDualSeries -> stringResource(
                                     R.string.slash_value_format,
                                     formatVal(dataState.dailyAverage),
-                                    formatVal(dataState.secondaryAverage!!)
+                                    formatVal(dataState.secondaryAverage)
                                 )
                                 else -> formatVal(dataState.dailyAverage)
                             }
@@ -657,8 +657,7 @@ fun GenericLineChart(
     val xAxisHeight = 24.dp
     val sideLabelWidth = 44.dp
 
-    val context = LocalContext.current
-    val resources = context.resources
+    val resources = LocalResources.current
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -796,8 +795,7 @@ fun GenericBarChart(
     val sideLabelWidth = 44.dp
     val tooltipHeight = 20.dp
 
-    val context = LocalContext.current
-    val resources = context.resources
+    val resources = LocalResources.current
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()

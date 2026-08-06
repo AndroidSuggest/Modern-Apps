@@ -32,7 +32,7 @@ import kotlin.random.Random
 
 /**
  * Thin wrapper around `android.ranging.RangingManager` (the public AOSP
- * ranging API introduced in Android 15 / API 35).
+ * ranging API introduced in Android 16 / API 36).
  *
  * This API is the on-device, third-party-callable replacement for the
  * legacy `androidx.core.uwb` library, which only ever shipped a GMS-mediated
@@ -41,8 +41,11 @@ import kotlin.random.Random
  * One instance per ranging session — call [openController] OR [openControlee]
  * to generate the local FiRa params, then [stream] to actually start ranging
  * once the peer's params have been exchanged out-of-band.
+ *
+ * Every entry point into this class is gated by
+ * [com.vayunmathur.findfamily.util.UwbSessionManager.isSupportedSdk].
  */
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)  // API 35 / Android 15
+@RequiresApi(Build.VERSION_CODES.BAKLAVA)  // API 36 / Android 16
 class UwbController(context: Context) {
 
     private val manager: RangingManager? =
@@ -397,7 +400,9 @@ class UwbController(context: Context) {
         val sessionConfig = SessionConfig.Builder()
             .setAngleOfArrivalNeeded(true)
             .apply {
-                if (tier >= 2) {
+                // setAntennaMode only exists from API 37; below that tier 2
+                // degrades to the same config as tier 1.
+                if (tier >= 2 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
                     runCatching { setAntennaMode(SessionConfig.ANTENNA_MODE_DIRECTIONAL) }
                         .onFailure { Log.w(TAG, "setAntennaMode unavailable: ${it.message}") }
                 }

@@ -29,7 +29,6 @@ pub struct MatchInfo {
     pub inliers: Vec<(Pt, Pt)>, // (src pt, dst pt) in original image coords
     pub confidence: f64,
     pub num_inliers: usize,
-    pub num_matches: usize,
 }
 
 /// Match one ordered pair (src -> dst). Returns None if too weak.
@@ -121,7 +120,6 @@ fn match_pair(src: usize, dst: usize, fs: &Features, fd: &Features) -> Option<Ma
         inliers,
         confidence,
         num_inliers,
-        num_matches: combined.len(),
     })
 }
 
@@ -164,7 +162,7 @@ pub fn match_all(feats: &[Features], yaw: &[f32], pitch: &[f32], max_angle: f32)
 pub fn biggest_component(n: usize, matches: &[MatchInfo], conf_thresh: f64) -> Vec<usize> {
     // union-find
     let mut parent: Vec<usize> = (0..n).collect();
-    fn find(parent: &mut Vec<usize>, x: usize) -> usize {
+    fn find(parent: &mut [usize], x: usize) -> usize {
         let mut r = x;
         while parent[r] != r {
             r = parent[r];

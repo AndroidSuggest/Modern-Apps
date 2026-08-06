@@ -17,6 +17,7 @@
     <string name="artist_info_format">%1$d Songs • %2$s</string>
     <string name="label_playlist">Wiedergabeliste</string>
     <plurals name="num_songs_format">
+        <item quantity="one">%1$d Song</item>
         <item quantity="other">%1$d Songs</item>
     </plurals>
     <string name="label_play">Abspielen</string>

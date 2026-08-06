@@ -29,8 +29,7 @@ object ExtractorHelper {
         return try {
             val collector = extractor.getRelatedItems() ?: return emptyList()
             info.addAllErrors(collector.getErrors())
-            @Suppress("UNCHECKED_CAST")
-            collector.getItems() as List<InfoItem>
+            collector.getItems()
         } catch (e: Exception) {
             info.addError(e)
             emptyList()

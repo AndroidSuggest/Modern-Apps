@@ -12,6 +12,7 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.os.Build
 import android.os.ParcelUuid
 import com.vayunmathur.things.MainActivity
 import java.util.UUID
@@ -94,7 +95,16 @@ class BleManager(private val activity: MainActivity) {
             val char = service.getCharacteristic(CHAR_UUID) ?: return
             g.setCharacteristicNotification(char, true)
             char.getDescriptor(CCCD_UUID)?.let {
-                g.writeDescriptor(it, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                // The (descriptor, value) overload is API 33+; below that the
+                // value has to be staged on the descriptor first.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    g.writeDescriptor(it, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    @Suppress("DEPRECATION")
+                    g.writeDescriptor(it)
+                }
             }
         }
 

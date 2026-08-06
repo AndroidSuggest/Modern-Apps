@@ -258,21 +258,21 @@
     <!-- WhatsAppLoginScreen: Title -->
     <string name="connect_whatsapp">Connect WhatsApp</string>
     <!-- WhatsAppLoginScreen: Preparing status -->
-    <string name="preparing_to_connect">Preparing to connect...</string>
+    <string name="preparing_to_connect">Preparing to connect…</string>
     <!-- WhatsAppLoginScreen: Instruction to scan QR with phone -->
     <string name="scan_this_qr_code_with_whatsapp_on_your">Scan this QR code with WhatsApp on your phone</string>
     <!-- WhatsAppLoginScreen: Detailed path instruction -->
     <string name="open_whatsapp_settings_linked_devices_li">Open WhatsApp &gt; Settings &gt; Linked Devices &gt; Link a Device</string>
     <!-- WhatsAppLoginScreen: Waiting for user to scan -->
-    <string name="waiting_for_scan">Waiting for scan...</string>
+    <string name="waiting_for_scan">Waiting for scan…</string>
     <!-- WhatsAppLoginScreen: Connecting after scan -->
-    <string name="connecting_to_whatsapp">Connecting to WhatsApp...</string>
+    <string name="connecting_to_whatsapp">Connecting to WhatsApp…</string>
     <!-- WhatsAppLoginScreen: Success -->
     <string name="connected_successfully">Connected successfully!</string>
     <!-- WhatsAppLoginScreen: Failure -->
     <string name="connection_failed">Connection failed</string>
     <!-- WhatsAppLoginScreen: Initializing SDK -->
-    <string name="initializing">Initializing...</string>
+    <string name="initializing">Initializing…</string>
     <!-- WhatsAppLoginScreen: Error generating QR -->
     <string name="failed_to_generate_qr_code">Failed to generate QR code</string>
 

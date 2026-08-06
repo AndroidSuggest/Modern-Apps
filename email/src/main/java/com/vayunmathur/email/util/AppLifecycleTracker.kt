@@ -1,5 +1,7 @@
 package com.vayunmathur.email.util
 
+import androidx.core.content.edit
+
 /**
  * Simple process-wide flag indicating whether the email app is currently in
  * the foreground (any activity at or above STARTED). Set from `MainActivity`'s
@@ -27,7 +29,7 @@ object AppLifecycleTracker {
         // Clear pending first to avoid loops, attempt start
         val started = com.vayunmathur.email.data.ImapIdleService.start(context)
         if (started) {
-            prefs.edit().remove(com.vayunmathur.email.util.BootReceiver.KEY_PENDING).apply()
+            prefs.edit { remove(com.vayunmathur.email.util.BootReceiver.KEY_PENDING) }
         } else {
             // Schedule retry worker if direct start failed
             try {

@@ -17,7 +17,7 @@
     <!-- Notification channel name for foreground AI inference service. Noun phrase -->
     <string name="inference_service">Inference Service</string>
     <!-- Foreground notification content while AI is working. Shown in notification shade -->
-    <string name="processing_ai_inference">Processing AI inference...</string>
+    <string name="processing_ai_inference">Processing AI inference…</string>
     <!-- Chat error: prefix for AI failure inserted as assistant message. %1$s = error detail, keep "Error:" prefix -->
     <string name="error_prefix">Error: <xliff:g id="error" example="Timeout">%1$s</xliff:g></string>
     <!-- InferenceService: Error returned via ResultReceiver when intent request has waited >45s in queue and is dropped -->

@@ -141,8 +141,8 @@ fn pyr_down_3ch(src: &Img3) -> Img3 {
         }
     }
     // downsample (w+1)/2
-    let nw = (w + 1) / 2;
-    let nh = (h + 1) / 2;
+    let nw = w.div_ceil(2);
+    let nh = h.div_ceil(2);
     if nw == 0 || nh == 0 {
         return Img3 { w: 0, h: 0, data: Vec::new() };
     }
@@ -191,8 +191,8 @@ fn pyr_down_1ch(src: &WMap) -> WMap {
             blurred[y * w + x] = acc;
         }
     }
-    let nw = (w + 1) / 2;
-    let nh = (h + 1) / 2;
+    let nw = w.div_ceil(2);
+    let nh = h.div_ceil(2);
     if nw == 0 || nh == 0 {
         return WMap { w: 0, h: 0, data: Vec::new() };
     }
@@ -243,35 +243,6 @@ fn pyr_up_3ch(src: &Img3, dst_w: usize, dst_h: usize) -> Img3 {
         }
     }
     Img3 { w: dst_w, h: dst_h, data }
-}
-
-fn pyr_up_1ch(src: &WMap, dst_w: usize, dst_h: usize) -> WMap {
-    if src.w == 0 || src.h == 0 || dst_w == 0 || dst_h == 0 {
-        return WMap { w: dst_w, h: dst_h, data: vec![0f32; dst_w * dst_h] };
-    }
-    let mut data = vec![0f32; dst_w * dst_h];
-    let src_w = src.w as f32;
-    let src_h = src.h as f32;
-    let dw = dst_w as f32;
-    let dh = dst_h as f32;
-    for y in 0..dst_h {
-        let fy = if dst_h == 1 { 0.0 } else { (y as f32 + 0.5) * src_h / dh - 0.5 };
-        let fy = fy.clamp(0.0, src_h - 1.0);
-        let y0 = fy.floor() as usize;
-        let y1 = (y0 + 1).min(src.h - 1);
-        let ay = fy - y0 as f32;
-        for x in 0..dst_w {
-            let fx = if dst_w == 1 { 0.0 } else { (x as f32 + 0.5) * src_w / dw - 0.5 };
-            let fx = fx.clamp(0.0, src_w - 1.0);
-            let x0 = fx.floor() as usize;
-            let x1 = (x0 + 1).min(src.w - 1);
-            let ax = fx - x0 as f32;
-            let top = src.data[y0 * src.w + x0] * (1.0 - ax) + src.data[y0 * src.w + x1] * ax;
-            let bot = src.data[y1 * src.w + x0] * (1.0 - ax) + src.data[y1 * src.w + x1] * ax;
-            data[y * dst_w + x] = top * (1.0 - ay) + bot * ay;
-        }
-    }
-    WMap { w: dst_w, h: dst_h, data }
 }
 
 // ---------------------------------------------------------------------------
@@ -384,8 +355,8 @@ pub fn multiband_blend(tiles: &[WarpedTile], masks: &[Vec<u8>], gain_maps: &[Vec
 
     // OpenCV MultiBandBlender prepare logic
     let max_len = cw.max(ch) as f64;
-    let mut nb = if max_len > 1.0 { (max_len.log2().ceil() as usize) } else { 1 };
-    nb = nb.min(5).max(1); // actual_num_bands=5
+    let mut nb = if max_len > 1.0 { max_len.log2().ceil() as usize } else { 1 };
+    nb = nb.clamp(1, 5); // actual_num_bands=5
     let num_bands = nb;
 
     // Padded size divisible by 1<<num_bands
@@ -405,8 +376,8 @@ pub fn multiband_blend(tiles: &[WarpedTile], masks: &[Vec<u8>], gain_maps: &[Vec
     global_ws.push(bw);
     global_hs.push(bh);
     for _ in 0..num_bands {
-        bw = (bw + 1) / 2;
-        bh = (bh + 1) / 2;
+        bw = bw.div_ceil(2);
+        bh = bh.div_ceil(2);
         global_ws.push(bw);
         global_hs.push(bh);
     }

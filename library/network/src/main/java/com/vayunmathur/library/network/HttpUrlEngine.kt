@@ -199,6 +199,6 @@ internal object HttpUrlEngine {
             result = InternalResult(status, msg, respHeaders, bytes, finalUrl)
         }
 
-        result!!
+        result
     }
 }

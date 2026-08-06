@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,6 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 /**
  * Sources are fixed and not user-editable — see [DefaultRepos] for why. This page shows
@@ -139,6 +139,7 @@ private fun SourceCard(
     pins: Set<String>,
     lastSync: Long,
 ) {
+    val locale = LocalConfiguration.current.locales[0]
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -164,7 +165,7 @@ private fun SourceCard(
                 Text(
                     stringResource(
                         R.string.last_sync,
-                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", locale)
                             .format(Date(lastSync)),
                     ),
                     style = MaterialTheme.typography.labelSmall,

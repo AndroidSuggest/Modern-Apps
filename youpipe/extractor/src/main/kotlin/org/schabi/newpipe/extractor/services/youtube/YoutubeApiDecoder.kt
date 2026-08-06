@@ -193,7 +193,7 @@ object YoutubeApiDecoder {
         val uncachedNs: MutableList<String> = ArrayList()
 
         if (hasSigs) {
-            for (sig in signatureParams!!) {
+            for (sig in signatureParams) {
                 val cachedResult = DECODE_CACHE["$playerId:sig:$sig"]
                 if (cachedResult != null) {
                     sigResults[sig] = cachedResult
@@ -204,7 +204,7 @@ object YoutubeApiDecoder {
         }
 
         if (hasNs) {
-            for (n in nParams!!) {
+            for (n in nParams) {
                 val cachedResult = DECODE_CACHE["$playerId:n:$n"]
                 if (cachedResult != null) {
                     nResults[n] = cachedResult

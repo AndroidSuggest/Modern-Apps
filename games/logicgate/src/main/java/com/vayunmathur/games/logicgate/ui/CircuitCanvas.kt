@@ -113,9 +113,9 @@ private fun buildGateBody(shape: GateShape, left: Float, w: Float, h: Float): Pa
         }
         GateShape.ORSHAPE -> {
             p.moveTo(left, 0f)
-            p.quadraticBezierTo(left + w * 0.30f, h * 0.5f, left, h)   // concave back
-            p.quadraticBezierTo(left + w * 0.72f, h, left + w, h * 0.5f) // bottom to tip
-            p.quadraticBezierTo(left + w * 0.72f, 0f, left, 0f)          // tip to top
+            p.quadraticTo(left + w * 0.30f, h * 0.5f, left, h)   // concave back
+            p.quadraticTo(left + w * 0.72f, h, left + w, h * 0.5f) // bottom to tip
+            p.quadraticTo(left + w * 0.72f, 0f, left, 0f)          // tip to top
             p.close()
         }
         GateShape.TRIANGLE -> {
@@ -144,7 +144,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGate(style: Gat
     if (style.doubleBack) {
         val back = Path().apply {
             moveTo(0f, 0f)
-            quadraticBezierTo(bodyW * 0.30f, h * 0.5f, 0f, h)
+            quadraticTo(bodyW * 0.30f, h * 0.5f, 0f, h)
         }
         drawPath(back, stroke, style = Stroke(strokeW))
     }
@@ -191,6 +191,7 @@ fun CircuitCanvas(
     onGateMoveFinished: (id: String, x: Float, y: Float) -> Unit,
     onInputTermMoveFinished: (idx: Int, x: Float, y: Float) -> Unit,
     onOutputTermMoveFinished: (idx: Int, x: Float, y: Float) -> Unit,
+    modifier: Modifier = Modifier,
     onGateMove: (id: String, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onInputTermMove: (idx: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     onOutputTermMove: (idx: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
@@ -202,7 +203,6 @@ fun CircuitCanvas(
     inputValues: Map<Int, Int> = emptyMap(),
     desiredOutputValues: Map<Int, Int> = emptyMap(),
     outputValues: Map<Int, Int> = emptyMap(),
-    modifier: Modifier = Modifier,
     isCompact: Boolean = false,
     onToggleInput: (Int) -> Unit = {},
     inputOnMap: Map<Int, Boolean> = emptyMap(),

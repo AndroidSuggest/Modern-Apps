@@ -70,7 +70,7 @@ class YoutubeMusicSongOrVideoInfoItemExtractor(
     override fun getUploaderName(): String? {
         val name = descriptionElements.getObject(0).orEmptyObject().getString("text")
         if (!isNullOrEmpty(name)) {
-            return name!!
+            return name
         }
         throw ParsingException("Could not get uploader name")
     }

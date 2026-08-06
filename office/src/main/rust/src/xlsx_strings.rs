@@ -17,7 +17,7 @@ pub fn parse_shared_strings(xml: &str) -> Vec<String> {
     let mut p = XmlParser::new(xml);
 
     loop {
-        match p.next() {
+        match p.next_event() {
             Event::EndDocument => break,
             Event::StartTag if p.name() == "si" => out.push(read_shared_string(&mut p)),
             _ => {}
@@ -33,7 +33,7 @@ fn read_shared_string(p: &mut XmlParser<'_>) -> String {
     // Depth of an enclosing <rPh>, or -1 when not inside one.
     let mut phonetic_depth = -1i32;
 
-    let mut event = p.next();
+    let mut event = p.next_event();
     while !(event == Event::EndTag && p.depth() == depth && p.name() == "si") {
         if event == Event::EndDocument {
             break;
@@ -47,7 +47,7 @@ fn read_shared_string(p: &mut XmlParser<'_>) -> String {
             }
             _ => {}
         }
-        event = p.next();
+        event = p.next_event();
     }
     text
 }

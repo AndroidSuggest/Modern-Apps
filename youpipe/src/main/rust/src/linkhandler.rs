@@ -28,8 +28,11 @@ fn is_channel_id(candidate: &str) -> bool {
     candidate.starts_with("UC") && candidate.len() >= 20
 }
 
+/// Host, path segments, and query pairs of a parsed URL.
+type UrlParts = (String, Vec<String>, Vec<(String, String)>);
+
 /// Splits a URL into (host, path segments, query pairs) without a URL crate.
-fn split_url(url: &str) -> Option<(String, Vec<String>, Vec<(String, String)>)> {
+fn split_url(url: &str) -> Option<UrlParts> {
     let rest = url
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
@@ -148,10 +151,10 @@ pub fn stream_id(url: &str) -> Option<String> {
 
 /// Playlist id from a URL, or from a bare id.
 pub fn playlist_id(url: &str) -> Option<String> {
-    if url.starts_with("PL") || url.starts_with("UU") || url.starts_with("OL") || url.starts_with("RD") {
-        if !url.contains('/') {
-            return Some(url.to_string());
-        }
+    if (url.starts_with("PL") || url.starts_with("UU") || url.starts_with("OL") || url.starts_with("RD"))
+        && !url.contains('/')
+    {
+        return Some(url.to_string());
     }
     let (_, _, params) = split_url(url)?;
     params

@@ -2,6 +2,7 @@ package com.vayunmathur.games.solitaire.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -58,7 +59,7 @@ class SolitaireStatsRepository(context: Context) {
     }
 
     private fun saveStats(mode: GameMode, variant: String, stats: GameStats) {
-        prefs.edit().putString(key(mode, variant), json.encodeToString(stats)).apply()
+        prefs.edit { putString(key(mode, variant), json.encodeToString(stats)) }
     }
 
     fun recordGamePlayed(mode: GameMode, variant: String) {

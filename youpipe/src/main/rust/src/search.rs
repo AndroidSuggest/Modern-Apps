@@ -205,11 +205,7 @@ fn parse_stream(renderer: &Value) -> std::result::Result<StreamItem, String> {
     // Live streams carry a badge and no duration.
     let is_live = renderer.arr("badges").iter().any(|b| {
         b.obj("metadataBadgeRenderer").str("style") == Some("BADGE_STYLE_TYPE_LIVE_NOW")
-    }) || renderer
-        .obj("thumbnailOverlays")
-        .is_blank()
-        .then_some(false)
-        .unwrap_or(false);
+    });
 
     let duration_seconds = text_from_object(renderer.obj("lengthText"))
         .as_deref()

@@ -27,7 +27,7 @@ import com.vayunmathur.education.R
 
 /** A row of up to [max] stars, [stars] of them filled. */
 @Composable
-fun StarRow(stars: Int, max: Int = 3, modifier: Modifier = Modifier) {
+fun StarRow(stars: Int, modifier: Modifier = Modifier, max: Int = 3) {
     val filled = MaterialTheme.colorScheme.tertiary
     val empty = MaterialTheme.colorScheme.outlineVariant
     Row(modifier) {

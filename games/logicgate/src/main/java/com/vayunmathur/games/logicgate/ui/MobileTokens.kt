@@ -2,7 +2,8 @@ package com.vayunmathur.games.logicgate.ui
 
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -128,13 +129,14 @@ fun BoxWithConstraintsScope.rememberResponsiveFromConstraints(): ResponsiveInfo 
 }
 
 /**
- * Alternative helper using LocalConfiguration for places outside BoxWithConstraints
+ * Alternative helper using the window container size for places outside BoxWithConstraints
  */
 @Composable
 fun rememberResponsiveFromConfig(): ResponsiveInfo {
-    val cfg = LocalConfiguration.current
-    val w = cfg.screenWidthDp.dp
-    val h = cfg.screenHeightDp.dp
+    val containerSize = LocalWindowInfo.current.containerSize
+    val density = LocalDensity.current
+    val w = with(density) { containerSize.width.toDp() }
+    val h = with(density) { containerSize.height.toDp() }
     val isCompact = w < 600.dp
     val isPortrait = h > w
     val isTablet = w >= 600.dp

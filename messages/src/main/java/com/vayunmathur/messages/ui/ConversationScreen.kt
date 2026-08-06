@@ -22,6 +22,7 @@ import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -640,7 +641,7 @@ private fun AttachmentView(att: MessageAttachment) {
 
     fun open(url: String?) {
         val target = url ?: return
-        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
+        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) }
     }
 
     when (att.attachmentType) {

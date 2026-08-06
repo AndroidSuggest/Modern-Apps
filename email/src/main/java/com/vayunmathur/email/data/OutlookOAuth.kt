@@ -5,6 +5,8 @@ import android.net.Uri
 import android.util.Base64
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.vayunmathur.email.BuildConfig
 import com.vayunmathur.email.EmailAccount
 import java.net.HttpURLConnection
@@ -63,15 +65,15 @@ object OutlookOAuth {
         val challenge = codeChallenge(verifier)
         val state = randomUrlSafe(24)
 
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("verifier", verifier)
-            .putString("state", state)
-            .putString("emailHint", emailHint)
-            .apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+            putString("verifier", verifier)
+            putString("state", state)
+            putString("emailHint", emailHint)
+        }
 
         val redirectUri = BuildConfig.OUTLOOK_REDIRECT_URI.ifBlank { BuildConfig.OAUTH_REDIRECT_URI.ifBlank { "com.vayunmathur.email://oauth" } }
 
-        val url = Uri.parse(AUTH_ENDPOINT).buildUpon()
+        val url = AUTH_ENDPOINT.toUri().buildUpon()
             .appendQueryParameter("client_id", BuildConfig.OUTLOOK_OAUTH_CLIENT_ID)
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("redirect_uri", redirectUri)
@@ -129,7 +131,7 @@ object OutlookOAuth {
             val err = redirect.getQueryParameter("error") ?: extractQueryParam(rawStr, "error")
             val desc = redirect.getQueryParameter("error_description") ?: extractQueryParam(rawStr, "error_description")
             Log.e(TAG, "No code, error=$err desc=$desc raw=$rawStr")
-            if (err != null) prefs.edit().clear().apply()
+            if (err != null) prefs.edit { clear() }
             val reason = err ?: "No authorization code from Microsoft"
             return OAuthResult.Failure(reason, err, desc)
         }
@@ -137,7 +139,7 @@ object OutlookOAuth {
         val returnedState = redirect.getQueryParameter("state") ?: extractQueryParam(rawStr, "state")
         if (expectedState != null && returnedState != null && returnedState != expectedState) {
             Log.e(TAG, "State mismatch exp=$expectedState got=$returnedState")
-            prefs.edit().clear().apply()
+            prefs.edit { clear() }
             return OAuthResult.Failure("State mismatch — possible CSRF, please retry", "state_mismatch", "expected=$expectedState got=$returnedState")
         }
 
@@ -154,12 +156,12 @@ object OutlookOAuth {
         val tokens = exchangeResult.tokens
         if (tokens == null) {
             Log.e(TAG, "Token exchange failed: ${exchangeResult.error} desc=${exchangeResult.errorDescription} raw=${exchangeResult.rawBody}")
-            prefs.edit().clear().apply()
+            prefs.edit { clear() }
             val reason = exchangeResult.error ?: "Token exchange failed"
             return OAuthResult.Failure(reason, exchangeResult.error, exchangeResult.errorDescription ?: exchangeResult.rawBody)
         }
 
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
 
         val email = tokens.idTokenEmail ?: emailHintSaved.takeIf { it.contains("@") }
         if (email.isNullOrBlank()) {

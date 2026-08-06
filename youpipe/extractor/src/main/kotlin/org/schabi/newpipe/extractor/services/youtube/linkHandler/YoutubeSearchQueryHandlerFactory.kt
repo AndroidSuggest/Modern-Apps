@@ -43,15 +43,15 @@ class YoutubeSearchQueryHandlerFactory private constructor() : SearchQueryHandle
     }
 
     @Throws(ParsingException::class)
-    override fun getUrl(searchString: String, contentFilters: List<String>, sortFilter: String): String {
-        val contentFilter = if (contentFilters.isNotEmpty()) contentFilters[0] else ""
-        return when (contentFilter) {
-            VIDEOS -> SEARCH_URL + encodeUrlUtf8(searchString) + "&sp=EgIQAfABAQ%253D%253D"
-            CHANNELS -> SEARCH_URL + encodeUrlUtf8(searchString) + "&sp=EgIQAvABAQ%253D%253D"
-            PLAYLISTS -> SEARCH_URL + encodeUrlUtf8(searchString) + "&sp=EgIQA_ABAQ%253D%253D"
+    override fun getUrl(id: String, contentFilter: List<String>, sortFilter: String): String {
+        val filter = if (contentFilter.isNotEmpty()) contentFilter[0] else ""
+        return when (filter) {
+            VIDEOS -> SEARCH_URL + encodeUrlUtf8(id) + "&sp=EgIQAfABAQ%253D%253D"
+            CHANNELS -> SEARCH_URL + encodeUrlUtf8(id) + "&sp=EgIQAvABAQ%253D%253D"
+            PLAYLISTS -> SEARCH_URL + encodeUrlUtf8(id) + "&sp=EgIQA_ABAQ%253D%253D"
             MUSIC_SONGS, MUSIC_VIDEOS, MUSIC_ALBUMS, MUSIC_PLAYLISTS, MUSIC_ARTISTS ->
-                MUSIC_SEARCH_URL + encodeUrlUtf8(searchString)
-            else -> SEARCH_URL + encodeUrlUtf8(searchString) + "&sp=8AEB"
+                MUSIC_SEARCH_URL + encodeUrlUtf8(id)
+            else -> SEARCH_URL + encodeUrlUtf8(id) + "&sp=8AEB"
         }
     }
 

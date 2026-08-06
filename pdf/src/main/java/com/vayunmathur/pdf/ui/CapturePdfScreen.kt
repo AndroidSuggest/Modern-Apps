@@ -71,6 +71,8 @@ fun CapturePdfScreen(
     onPdfCreated: (Uri) -> Unit,
 ) {
     val context = LocalContext.current
+    val pdfSavedMsg = stringResource(R.string.pdf_saved)
+    val pdfSaveFailedMsg = stringResource(R.string.failed_to_save_pdf)
     val images by viewModel.capturedImages.collectAsState()
     var selectedIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var isCropping by rememberSaveable { mutableStateOf(false) }
@@ -113,10 +115,10 @@ fun CapturePdfScreen(
             if (pending != null && result.targetUri == pending) {
                 pendingTargetUri.value = null
                 if (result.success) {
-                    AppMessages.show(context.getString(R.string.pdf_saved))
+                    AppMessages.show(pdfSavedMsg)
                     onPdfCreated(result.targetUri)
                 } else {
-                    AppMessages.show(context.getString(R.string.failed_to_save_pdf))
+                    AppMessages.show(pdfSaveFailedMsg)
                 }
             }
         }

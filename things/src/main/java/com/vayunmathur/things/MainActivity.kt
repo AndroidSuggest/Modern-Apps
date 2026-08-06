@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.content.edit
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.things.ui.ThingsApp
 import com.vayunmathur.things.util.BleManager
@@ -40,10 +41,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun saveTotal() {
-        prefs.edit()
-            .putString("date", today())
-            .putInt("total_ml", totalMl.intValue)
-            .apply()
+        prefs.edit {
+            putString("date", today())
+            putInt("total_ml", totalMl.intValue)
+        }
     }
 
     /** Called from the BLE callback when the cup reports a drink (mL). */

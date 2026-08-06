@@ -34,9 +34,7 @@
     <!-- Microsoft OAuth (only Outlook) + app-password toasts -->
     <string name="account_added">Account added</string>
     <string name="added">Added <xliff:g id="email" example="user@example.com">%1$s</xliff:g></string>
-    <string name="sign_in_with_microsoft">Sign in with Microsoft</string>
     <string name="oauth_sign_in">OAuth sign-in</string>
-    <string name="oauth_sign_in_failed">Microsoft sign-in failed — check Azure redirect com.vayunmathur.email://oauth</string>
     <string name="sign_in_with">Sign in with <xliff:g id="provider" example="Microsoft">%1$s</xliff:g></string>
     <string name="email_address_optional">Email address (optional)</string>
     <string name="use_app_password_instead">Use app password instead</string>

@@ -2,6 +2,7 @@ package com.vayunmathur.everysync.auth
 
 import android.accounts.Account
 import android.accounts.AccountManager
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.library.util.DataStoreUtils
@@ -15,7 +16,7 @@ import kotlinx.serialization.json.Json
  * sync. All EverySync accounts share the account type `com.vayunmathur.everysync`
  * (see [ACCOUNT_TYPE]) so the sync-adapter framework can drive them.
  */
-class AccountStore private constructor(private val context: Context) {
+class AccountStore private constructor(private val context: Application) {
     private val ds = DataStoreUtils.getInstance(context)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -85,7 +86,7 @@ class AccountStore private constructor(private val context: Context) {
 
         fun getInstance(context: Context): AccountStore =
             instance ?: synchronized(this) {
-                instance ?: AccountStore(context.applicationContext).also { instance = it }
+                instance ?: AccountStore(context.applicationContext as Application).also { instance = it }
             }
     }
 }

@@ -19,8 +19,8 @@ class YoutubeCommentsLinkHandlerFactory private constructor() : ListLinkHandlerF
     }
 
     @Throws(ParsingException::class)
-    override fun getId(urlString: String): String {
-        return YoutubeStreamLinkHandlerFactory.getInstance().getId(urlString)
+    override fun getId(url: String): String {
+        return YoutubeStreamLinkHandlerFactory.getInstance().getId(url)
     }
 
     @Throws(FoundAdException::class)

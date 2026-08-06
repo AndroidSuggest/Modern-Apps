@@ -60,19 +60,17 @@ class SessionInstaller(private val context: Context) {
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
                 if (computedSize > 0) setSize(computedSize)
                 setAppPackageName(packageName)
-                setInstallerPackageName(context.packageName)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    // API 34+. Below that the system fills the installer package
+                    // in from the calling UID anyway.
+                    setInstallerPackageName(context.packageName)
                     setRequestUpdateOwnership(true)
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE)
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    setInstallLocation(android.content.pm.PackageInfo.INSTALL_LOCATION_AUTO)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    setOriginatingUid(Process.myUid())
-                }
+                setInstallLocation(android.content.pm.PackageInfo.INSTALL_LOCATION_AUTO)
+                setOriginatingUid(Process.myUid())
             }
 
             val sessionId = installer.createSession(params)
@@ -97,11 +95,7 @@ class SessionInstaller(private val context: Context) {
             val intent = Intent(context, InstallStatusReceiver::class.java).apply {
                 action = InstallStatusReceiver.ACTION_INSTALL_STATUS
             }
-            val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
+            val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             val pendingIntent = PendingIntent.getBroadcast(
                 context, sessionId, intent, pendingFlags
             )

@@ -1,5 +1,6 @@
 package com.vayunmathur.appstore.util
 
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -42,7 +43,7 @@ import kotlinx.coroutines.launch
  * their flows into per-screen state and turning taps into calls.
  */
 class AppStoreViewModel(
-    private val context: Context,
+    private val context: Application,
     db: AppDatabase,
 ) : ViewModel(), HomeActions, SearchActions, AppDetailActions, UpdatesActions, LibraryActions {
 
@@ -669,5 +670,5 @@ class AppStoreViewModelFactory(
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        AppStoreViewModel(context.applicationContext, db) as T
+        AppStoreViewModel(context.applicationContext as Application, db) as T
 }

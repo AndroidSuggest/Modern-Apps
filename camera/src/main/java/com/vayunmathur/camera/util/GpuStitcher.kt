@@ -11,6 +11,7 @@ import android.opengl.GLES20
 import android.opengl.GLES30
 import android.opengl.GLUtils
 import android.util.Log
+import androidx.core.graphics.createBitmap
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -267,7 +268,7 @@ object GpuStitcher {
             val pixels = ByteBuffer.allocateDirect(est.canvasW * est.canvasH * 4).order(ByteOrder.nativeOrder())
             GLES30.glReadPixels(0, 0, est.canvasW, est.canvasH, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
 
-            val full = Bitmap.createBitmap(est.canvasW, est.canvasH, Bitmap.Config.ARGB_8888)
+            val full = createBitmap(est.canvasW, est.canvasH)
             pixels.rewind()
             full.copyPixelsFromBuffer(pixels)
 

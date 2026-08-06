@@ -1,6 +1,7 @@
 package com.vayunmathur.health.util
 
 import android.content.Context
+import android.os.storage.StorageManager
 import com.vayunmathur.health.data.NutritionData
 import com.vayunmathur.library.room.loadSqlCipher
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.serialization.json.Json
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.brotli.dec.BrotliInputStream
 import java.io.File
+import java.io.IOException
 
 /**
  * The nutrition database the recipe builder searches, shipped inside the APK.
@@ -576,7 +578,7 @@ object FoodDatabase {
             // The decompressed asset and the database it builds are both on
             // disk at once, and the database runs appreciably larger.
             val needed = asset.bytes * 3
-            val free = appContext.filesDir.usableSpace
+            val free = allocateForDatabase(needed)
             if (free in 1 until needed) {
                 return@withLock fail("Not enough free space for the food database")
             }
@@ -624,6 +626,23 @@ object FoodDatabase {
                 }
                 fail(e.message ?: "Couldn't prepare the food database")
             }
+        }
+    }
+
+    /**
+     * Free bytes we can actually use, reserving them up front. `File.usableSpace` ignores
+     * clearable caches, so it under-reports and rejects installs the device could serve.
+     */
+    private fun allocateForDatabase(needed: Long): Long {
+        val sm = appContext.getSystemService(StorageManager::class.java)
+            ?: return appContext.filesDir.usableSpace
+        return try {
+            val uuid = sm.getUuidForPath(appContext.filesDir)
+            val allocatable = sm.getAllocatableBytes(uuid)
+            if (allocatable >= needed) sm.allocateBytes(uuid, needed)
+            allocatable
+        } catch (_: IOException) {
+            appContext.filesDir.usableSpace
         }
     }
 

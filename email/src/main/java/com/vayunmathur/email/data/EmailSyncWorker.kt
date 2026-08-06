@@ -2,6 +2,7 @@ package com.vayunmathur.email.data
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import androidx.work.*
 import com.vayunmathur.email.imap.ImapClient
 import com.vayunmathur.email.imapServer
@@ -85,9 +86,9 @@ class EmailSyncWorker(appContext: Context, workerParams: WorkerParameters) :
                                 }
                                 val maxUid = messages.maxOf { it.id }
                                 if (maxUid > lastSeen) {
-                                    lastSeenPrefs(applicationContext).edit()
-                                        .putLong(lastSeenKey(account.email, folder.fullName), maxUid)
-                                        .apply()
+                                    lastSeenPrefs(applicationContext).edit {
+                                        putLong(lastSeenKey(account.email, folder.fullName), maxUid)
+                                    }
                                 }
                             }
                         }

@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.util.Log
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import com.vayunmathur.photos.data.AdjustmentLayer
 import com.vayunmathur.photos.data.DrawingLayer
 import com.vayunmathur.photos.data.EditDocument
@@ -328,7 +330,7 @@ class LayerCompositor {
     }
 
     private fun renderTextPixels(layer: TextLayer, document: EditDocument, w: Int, h: Int): IntArray {
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(w, h)
         val canvas = Canvas(bmp)
         val refWidth = document.canvasWidth.takeIf { it > 0 }?.toFloat() ?: w.toFloat()
         canvas.drawTextElement(layer.textElement, w, h, refWidth)
@@ -339,7 +341,7 @@ class LayerCompositor {
     }
 
     private fun renderStrokePixels(layer: DrawingLayer, w: Int, h: Int): IntArray {
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(w, h)
         Canvas(bmp).drawSerializedStrokes(layer.strokes, layer.sourceWidth, layer.sourceHeight, w, h)
         val out = IntArray(w * h)
         bmp.getPixels(out, 0, w, 0, 0, w, h)
@@ -398,7 +400,7 @@ class LayerCompositor {
         if (bitmap.width == w && bitmap.height == h) {
             bitmap.getPixels(arr, 0, w, 0, 0, w, h)
         } else {
-            val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+            val scaled = bitmap.scale(w, h)
             scaled.getPixels(arr, 0, w, 0, 0, w, h)
             if (scaled !== bitmap) scaled.recycleSafely()
         }
@@ -419,7 +421,7 @@ class LayerCompositor {
     }
 
     private fun bitmapFromInts(pixels: IntArray, w: Int, h: Int): Bitmap {
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(w, h)
         bmp.setPixels(pixels, 0, w, 0, 0, w, h)
         return bmp
     }

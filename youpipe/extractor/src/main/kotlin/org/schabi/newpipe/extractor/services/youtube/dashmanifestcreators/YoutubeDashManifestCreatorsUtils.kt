@@ -153,7 +153,7 @@ object YoutubeDashManifestCreatorsUtils {
             setAttribute(adaptationSetElement, doc, "id", "0")
 
             val mediaFormat = itagItem.mediaFormat
-            if (mediaFormat == null || isNullOrEmpty(mediaFormat.mimeType)) {
+            if (isNullOrEmpty(mediaFormat.mimeType)) {
                 throw CreationException.couldNotAddElement(
                     ADAPTATION_SET,
                     "the MediaFormat or its mime type is null or empty"
@@ -230,7 +230,7 @@ object YoutubeDashManifestCreatorsUtils {
                     "the codec value of the ItagItem is null or empty"
                 )
             }
-            setAttribute(representationElement, doc, "codecs", codec!!)
+            setAttribute(representationElement, doc, "codecs", codec)
             setAttribute(representationElement, doc, "startWithSAP", "1")
             setAttribute(representationElement, doc, "maxPlayoutRate", "1")
 
@@ -391,9 +391,9 @@ object YoutubeDashManifestCreatorsUtils {
 
         val downloader = NewPipe.getDownloader()
         if (isHtml5StreamingUrl) {
-            val mimeTypeExpected = itagItem.mediaFormat?.mimeType
+            val mimeTypeExpected = itagItem.mediaFormat.mimeType
             if (!isNullOrEmpty(mimeTypeExpected)) {
-                return getStreamingWebUrlWithoutRedirects(downloader, baseStreamingUrl, mimeTypeExpected!!)
+                return getStreamingWebUrlWithoutRedirects(downloader, baseStreamingUrl, mimeTypeExpected)
             }
         } else if (isAndroidStreamingUrl(baseStreamingUrl)) {
             try {
@@ -404,7 +404,7 @@ object YoutubeDashManifestCreatorsUtils {
                 )
             } catch (e: Exception) {
                 // Preserve original exception types for message
-                throw CreationException("Could not get the ANDROID streaming URL response", e as? Exception ?: Exception(e))
+                throw CreationException("Could not get the ANDROID streaming URL response", e)
             }
         } else if (isIosStreamingUrl(baseStreamingUrl)) {
             try {
@@ -414,7 +414,7 @@ object YoutubeDashManifestCreatorsUtils {
                     "".toByteArray(Charsets.UTF_8)
                 )
             } catch (e: Exception) {
-                throw CreationException("Could not get the IOS streaming URL response", e as? Exception ?: Exception(e))
+                throw CreationException("Could not get the IOS streaming URL response", e)
             }
         } else if (isVisionOsStreamingUrl(baseStreamingUrl)) {
             try {
@@ -424,14 +424,14 @@ object YoutubeDashManifestCreatorsUtils {
                     "".toByteArray(Charsets.UTF_8)
                 )
             } catch (e: Exception) {
-                throw CreationException("Could not get the VISIONOS streaming URL response", e as? Exception ?: Exception(e))
+                throw CreationException("Could not get the VISIONOS streaming URL response", e)
             }
         }
 
         try {
             return downloader.get(baseStreamingUrl)
         } catch (e: Exception) {
-            throw CreationException("Could not get the streaming URL response", e as? Exception ?: Exception(e))
+            throw CreationException("Could not get the streaming URL response", e)
         }
     }
 
@@ -522,7 +522,7 @@ object YoutubeDashManifestCreatorsUtils {
         } catch (e: Exception) {
             throw CreationException(
                 "Could not get the streaming URL response of a HTML5 client",
-                e as? Exception ?: Exception(e)
+                e
             )
         }
     }

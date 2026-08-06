@@ -40,7 +40,6 @@
     <string name="password">Mot de passe</string>
     <string name="show_quoted_text">Afficher le texte cité</string>
     <string name="from">De <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
-    <string name="sign_in_with_microsoft">Se connecter avec Microsoft</string>
     <string name="app_password">Mot de passe d’application</string>
     <string name="accounts">Comptes</string>
     <string name="unread">Non lu</string>
@@ -99,7 +98,6 @@
     <string name="this_evening_6_pm">Ce soir (18 h)</string>
     <string name="no_subject">(sans objet)</string>
     <string name="no_app_can_open_this_file">Aucune application ne peut ouvrir ce fichier</string>
-    <string name="oauth2">OAuth 2.0</string>
     <string name="hide_quoted_text">Masquer le texte cité</string>
     <string name="block_sender">Bloquer l’expéditeur</string>
     <string name="conversation">Conversation</string>
@@ -121,7 +119,6 @@
     <string name="signature_saved">Signature enregistrée</string>
     <string name="unsubscribe">Se désabonner</string>
     <string name="failed">Échec : %1$s</string>
-    <string name="microsoft_sign_in_failed">Échec de la connexion avec Microsoft</string>
     <string name="normal">Normal</string>
     <string name="heading_1">Titre 1</string>
     <string name="heading_2">Titre 2</string>

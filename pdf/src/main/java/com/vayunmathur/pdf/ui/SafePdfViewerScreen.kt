@@ -428,6 +428,9 @@ private data class TextSession(
 fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val sharePdfLabel = stringResource(R.string.share_pdf)
+    val pdfSavedMsg = stringResource(R.string.pdf_saved)
+    val pdfSaveErrorMsg = stringResource(R.string.pdf_save_error)
 
     // Password handling for encrypted PDFs.
     var password by remember(uri) { mutableStateOf<String?>(null) }
@@ -755,7 +758,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        ExternalIntents.launch(context, Intent.createChooser(intent, context.getString(R.string.share_pdf)))
+        ExternalIntents.launch(context, Intent.createChooser(intent, sharePdfLabel))
     }
 
     // "Save": overwrite the original file in place.
@@ -767,8 +770,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 val ok = bytes != null && runCatching {
                     context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } != null
                 }.getOrDefault(false)
-                AppMessages.show(if (ok) context.getString(R.string.pdf_saved)
-                    else context.getString(R.string.pdf_save_error))
+                AppMessages.show(if (ok) pdfSavedMsg else pdfSaveErrorMsg)
             }
         }
     }
@@ -1634,7 +1636,7 @@ private fun selectionText(g: List<SelGlyph>, r: IntRange): String {
  */
 @Composable
 private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float, ocr: OcrEngine?) {
-    val context = LocalContext.current
+    val textClipLabel = stringResource(R.string.text)
     val clipboard = androidx.compose.ui.platform.LocalClipboard.current
     val scope = rememberCoroutineScope()
     val textToolbar = LocalTextToolbar.current
@@ -1705,7 +1707,7 @@ private fun TextSelectionLayer(page: SafePdfPage, ch: Float, scale: Float, ocr: 
                     scope.launch {
                         clipboard.setClipEntry(
                             androidx.compose.ui.platform.ClipEntry(
-                                android.content.ClipData.newPlainText(context.getString(R.string.text), text)
+                                android.content.ClipData.newPlainText(textClipLabel, text)
                             )
                         )
                     }
@@ -2305,16 +2307,16 @@ private fun EditToolbar(
             Modifier.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            toolButton({ IconSelect(tint = it) }, tool == EditTool.SELECT) { onTool(EditTool.SELECT) }
-            toolButton({ IconTextTool(tint = it) }, tool == EditTool.TEXT) { onTool(EditTool.TEXT) }
-            markupMenuButton(markup = markup, active = tool == EditTool.MARKUP, onMarkup = onMarkup)
-            toolButton({ IconDraw(tint = it) }, tool == EditTool.DRAW) { onTool(EditTool.DRAW) }
-            shapeMenuButton(shape = shape, active = tool == EditTool.SHAPE, onShape = onShape)
-            linesMenuButton(tool = tool, onTool = onTool)
-            toolButton({ IconNote(tint = it) }, tool == EditTool.NOTE) { onTool(EditTool.NOTE) }
-            toolButton({ IconCallout(tint = it) }, tool == EditTool.CALLOUT) { onTool(EditTool.CALLOUT) }
-            toolButton({ IconRedact(tint = it) }, tool == EditTool.REDACT) { onTool(EditTool.REDACT) }
-            toolButton({ IconImage(tint = it) }, tool == EditTool.IMAGE) { onTool(EditTool.IMAGE) }
+            ToolButton({ IconSelect(tint = it) }, tool == EditTool.SELECT) { onTool(EditTool.SELECT) }
+            ToolButton({ IconTextTool(tint = it) }, tool == EditTool.TEXT) { onTool(EditTool.TEXT) }
+            MarkupMenuButton(markup = markup, active = tool == EditTool.MARKUP, onMarkup = onMarkup)
+            ToolButton({ IconDraw(tint = it) }, tool == EditTool.DRAW) { onTool(EditTool.DRAW) }
+            ShapeMenuButton(shape = shape, active = tool == EditTool.SHAPE, onShape = onShape)
+            LinesMenuButton(tool = tool, onTool = onTool)
+            ToolButton({ IconNote(tint = it) }, tool == EditTool.NOTE) { onTool(EditTool.NOTE) }
+            ToolButton({ IconCallout(tint = it) }, tool == EditTool.CALLOUT) { onTool(EditTool.CALLOUT) }
+            ToolButton({ IconRedact(tint = it) }, tool == EditTool.REDACT) { onTool(EditTool.REDACT) }
+            ToolButton({ IconImage(tint = it) }, tool == EditTool.IMAGE) { onTool(EditTool.IMAGE) }
 
             for (c in listOf(Color.Red, Color.Yellow, Color.Blue, Color.Black)) {
                 Box(
@@ -2347,7 +2349,7 @@ private fun EditToolbar(
 
 /** Dropdown for text-markup tools (highlight, underline, strikeout, squiggly). */
 @Composable
-private fun markupMenuButton(
+private fun MarkupMenuButton(
     markup: MarkupKind,
     active: Boolean,
     onMarkup: (MarkupKind) -> Unit,
@@ -2380,7 +2382,7 @@ private fun markupMenuButton(
 /** A single toolbar button whose icon reflects the selected [shape]; tapping it
  * opens a dropdown to pick a rectangle/ellipse (outline or filled). */
 @Composable
-private fun shapeMenuButton(
+private fun ShapeMenuButton(
     shape: ShapeKind,
     active: Boolean,
     onShape: (ShapeKind) -> Unit,
@@ -2413,7 +2415,7 @@ private fun shapeMenuButton(
 /** Dropdown for the line tools (straight line, polyline, Bézier). The button
  * icon reflects the active line tool. */
 @Composable
-private fun linesMenuButton(
+private fun LinesMenuButton(
     tool: EditTool,
     onTool: (EditTool) -> Unit,
 ) {
@@ -2450,7 +2452,7 @@ private fun linesMenuButton(
 }
 
 @Composable
-private fun toolButton(
+private fun ToolButton(
     icon: @Composable (tint: Color) -> Unit,
     selected: Boolean,
     onClick: () -> Unit,
@@ -2543,8 +2545,7 @@ private fun BlendMode.toCompose(): androidx.compose.ui.graphics.BlendMode = when
     BlendMode.Luminosity -> androidx.compose.ui.graphics.BlendMode.Luminosity
 }
 
-/** The API 29+ [android.graphics.BlendMode] for a renderer [BlendMode]. */
-@androidx.annotation.RequiresApi(29)
+/** The [android.graphics.BlendMode] for a renderer [BlendMode]. */
 private fun BlendMode.toAndroid(): android.graphics.BlendMode = when (this) {
     BlendMode.Normal -> android.graphics.BlendMode.SRC_OVER
     BlendMode.Multiply -> android.graphics.BlendMode.MULTIPLY
@@ -2564,23 +2565,9 @@ private fun BlendMode.toAndroid(): android.graphics.BlendMode = when (this) {
     BlendMode.Luminosity -> android.graphics.BlendMode.LUMINOSITY
 }
 
-/** Pre-29 Porter-Duff fallback for the separable blend modes; null otherwise. */
-private fun BlendMode.toPorterDuffOrNull(): android.graphics.PorterDuff.Mode? = when (this) {
-    BlendMode.Multiply -> android.graphics.PorterDuff.Mode.MULTIPLY
-    BlendMode.Screen -> android.graphics.PorterDuff.Mode.SCREEN
-    BlendMode.Darken -> android.graphics.PorterDuff.Mode.DARKEN
-    BlendMode.Lighten -> android.graphics.PorterDuff.Mode.LIGHTEN
-    else -> null
-}
-
 /** Set (or clear) the blend mode on a reused native [android.graphics.Paint]. */
 private fun android.graphics.Paint.setBlend(blend: BlendMode) {
-    if (android.os.Build.VERSION.SDK_INT >= 29) {
-        blendMode = if (blend == BlendMode.Normal) null else blend.toAndroid()
-    } else {
-        xfermode = if (blend == BlendMode.Normal) null
-        else blend.toPorterDuffOrNull()?.let { android.graphics.PorterDuffXfermode(it) }
-    }
+    blendMode = if (blend == BlendMode.Normal) null else blend.toAndroid()
 }
 
 /**
@@ -2870,56 +2857,13 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                 // approximated as non-knockout.
                 val alpha = prim.alpha.coerceIn(0f,1f)
                 val blend = prim.blend
-                // saveLayer with alpha
-                // Use saveLayerAlpha for simple alpha, and Paint.blendMode for blend (API 29+)
                 try {
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        val paint = android.graphics.Paint()
-                        paint.alpha = (alpha*255).toInt()
-                        if (blend != BlendMode.Normal) {
-                            // Map blend to Android BlendMode
-                            val androidBlend = when(blend) {
-                                BlendMode.Multiply -> android.graphics.BlendMode.MULTIPLY
-                                BlendMode.Screen -> android.graphics.BlendMode.SCREEN
-                                BlendMode.Overlay -> android.graphics.BlendMode.OVERLAY
-                                BlendMode.Darken -> android.graphics.BlendMode.DARKEN
-                                BlendMode.Lighten -> android.graphics.BlendMode.LIGHTEN
-                                BlendMode.ColorDodge -> android.graphics.BlendMode.COLOR_DODGE
-                                BlendMode.ColorBurn -> android.graphics.BlendMode.COLOR_BURN
-                                BlendMode.HardLight -> android.graphics.BlendMode.HARD_LIGHT
-                                BlendMode.SoftLight -> android.graphics.BlendMode.SOFT_LIGHT
-                                BlendMode.Difference -> android.graphics.BlendMode.DIFFERENCE
-                                BlendMode.Exclusion -> android.graphics.BlendMode.EXCLUSION
-                                BlendMode.Hue -> android.graphics.BlendMode.HUE
-                                BlendMode.Saturation -> android.graphics.BlendMode.SATURATION
-                                BlendMode.Color -> android.graphics.BlendMode.COLOR
-                                BlendMode.Luminosity -> android.graphics.BlendMode.LUMINOSITY
-                                else -> null
-                            }
-                            if (androidBlend != null) {
-                                paint.blendMode = androidBlend
-                            }
-                        }
-                        nativeCanvas.saveLayer(null, paint)
-                    } else {
-                        // API < 29: map the Porter-Duff-expressible separable blend
-                        // modes via PorterDuffXfermode; non-separable modes
-                        // (Hue/Saturation/Color/Luminosity) and unavailable ones
-                        // fall back to Normal.
-                        val paint = android.graphics.Paint()
-                        paint.alpha = (alpha*255).toInt()
-                        val pd = when (blend) {
-                            BlendMode.Multiply -> android.graphics.PorterDuff.Mode.MULTIPLY
-                            BlendMode.Screen -> android.graphics.PorterDuff.Mode.SCREEN
-                            BlendMode.Darken -> android.graphics.PorterDuff.Mode.DARKEN
-                            BlendMode.Lighten -> android.graphics.PorterDuff.Mode.LIGHTEN
-                            else -> null
-                        }
-                        if (pd != null) {
-                            paint.xfermode = android.graphics.PorterDuffXfermode(pd)
-                        }
-                        nativeCanvas.saveLayer(null, paint)
+                    val paint = android.graphics.Paint()
+                    paint.alpha = (alpha*255).toInt()
+                    if (blend != BlendMode.Normal) {
+                        paint.blendMode = blend.toAndroid()
                     }
+                    nativeCanvas.saveLayer(null, paint)
                     groupSaveCount++
                     // Also track in saveCount for balanced restore? Keep separate.
                 } catch (t: Throwable) {
@@ -2952,12 +2896,7 @@ internal fun DrawScope.drawSafePage(page: SafePdfPage) {
                     // The mask layer composites onto the content layer with
                     // DST_IN, so the content is kept only where the mask has alpha.
                     val maskPaint = android.graphics.Paint()
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        maskPaint.blendMode = android.graphics.BlendMode.DST_IN
-                    } else {
-                        maskPaint.xfermode =
-                            android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
-                    }
+                    maskPaint.blendMode = android.graphics.BlendMode.DST_IN
                     nativeCanvas.saveLayer(null, maskPaint)
                     frame.maskLayers = 1
                     // Luminosity masks: convert the mask's luminance to alpha

@@ -8,6 +8,7 @@ package com.vayunmathur.findfamily.util
 import kotlin.uuid.Uuid
 import kotlin.concurrent.atomics.*
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -34,10 +35,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * Process-global UWB ranging session owner.
  *
- * Built on the public `android.ranging.RangingManager` API (Android 15+).
+ * Built on the public `android.ranging.RangingManager` API (Android 16+).
  * This is the only on-device UWB API that works on GrapheneOS — the legacy
  * `androidx.core.uwb` only ships a GMS-mediated backend that sandboxed Play
- * Services can't fulfil. Accordingly the entire UWB feature requires API 35.
+ * Services can't fulfil. Accordingly the entire UWB feature requires API 36.
  *
  * Hoisting the session out of the (activity-scoped) ViewModel into a
  * service-scoped singleton lets the existing foreground `LocationTrackingService`
@@ -56,7 +57,7 @@ object UwbSessionManager {
         data object WaitingForPeer : UwbSessionState
         data class Ranging(val sample: RangingSample) : UwbSessionState
         data object PeerDisconnected : UwbSessionState
-        data class Unsupported(val reason: String) : UwbSessionState
+        data class Unsupported(val reason: String? = null) : UwbSessionState
         data class Failed(val reason: String) : UwbSessionState
     }
 
@@ -67,9 +68,26 @@ object UwbSessionManager {
     private val _peerUserId: MutableStateFlow<Long?> = MutableStateFlow(null)
     val peerUserId: StateFlow<Long?> = _peerUserId.asStateFlow()
 
-    /** True iff this device's API level supports the AOSP ranging API. */
+    /**
+     * True iff this device's API level supports the AOSP ranging API. The
+     * whole `android.ranging` package landed in Android 16 / API 36; on
+     * earlier releases the classes simply aren't on the boot classpath.
+     *
+     * Kept as a bare `SDK_INT` comparison so lint recognises it as a version
+     * check and can validate the `@RequiresApi(BAKLAVA)` internals it guards.
+     * Use [isAvailable] for the UI-facing gate.
+     */
     val isSupportedSdk: Boolean get() =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA
+
+    /**
+     * The single availability gate for the Find Nearby (UWB) feature: the
+     * ranging API must exist *and* the device must actually have a UWB radio.
+     * Entry points in the UI should hide themselves when this is false.
+     */
+    fun isAvailable(context: Context): Boolean =
+        isSupportedSdk &&
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_UWB)
 
     private const val TAG = "UwbSessionManager"
     private const val TIMEOUT_MS = 60_000L
@@ -86,11 +104,11 @@ object UwbSessionManager {
     private var currentSessionId: String? = null
 
     /**
-     * Wire up the manager. No-op on devices below API 35. Safe to call
+     * Wire up the manager. No-op on devices below API 36. Safe to call
      * multiple times — only the first call has effect.
      */
     fun init(context: Context, userDao: UserDao) {
-        if (!isSupportedSdk) { Log.i(TAG, "init: SDK ${Build.VERSION.SDK_INT} < 35, UWB disabled"); return }
+        if (!isSupportedSdk) { Log.i(TAG, "init: SDK ${Build.VERSION.SDK_INT} < 36, UWB disabled"); return }
         if (!initialized.compareAndSet(false, true)) { Log.i(TAG, "init: already initialized"); return }
         Log.i(TAG, "init: hooking up UwbInbox subscriber")
         appContext = context.applicationContext
@@ -129,9 +147,8 @@ object UwbSessionManager {
     fun startAsInitiator(peerUserId: Long) {
         Log.i(TAG, "startAsInitiator(peer=$peerUserId) entered. isSupportedSdk=$isSupportedSdk initialized=${initialized.load()} state=${_state.value}")
         if (!isSupportedSdk) {
-            _state.value = UwbSessionState.Unsupported(
-                "Find Nearby (UWB) requires Android 15 or newer."
-            )
+            // UI renders R.string.uwb_status_unsupported for a null reason.
+            _state.value = UwbSessionState.Unsupported()
             return
         }
         if (!initialized.load()) { Log.w(TAG, "startAsInitiator: NOT INITIALIZED — service hasn't called init() yet"); return }
@@ -227,6 +244,7 @@ object UwbSessionManager {
      * controlee, ship accessoryData in the REQUEST, and park waiting for
      * iOS's shareableConfigurationData reply.
      */
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     private suspend fun beginCrossPlatformInitiateToIos(peerUserId: Long, sessionId: String) {
         val ctrl = UwbController(appContext)
         controller = ctrl
@@ -337,6 +355,7 @@ object UwbSessionManager {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     private suspend fun beginCrossPlatformAsAccessory(request: UwbEnvelope) {
         val ctrl = UwbController(appContext)
         controller = ctrl
@@ -394,7 +413,7 @@ object UwbSessionManager {
     // Common: drive the RangingResult flow into the state machine
     // -----------------------------------------------------------------
 
-    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     private fun startRangingStream(
         ctrl: UwbController,
         role: UwbController.Role,
@@ -477,7 +496,9 @@ object UwbSessionManager {
     private fun stopLocal() {
         streamJob?.cancel(); streamJob = null
         waitJob?.cancel(); waitJob = null
-        controller?.stop(); controller = null
+        // `controller` is only ever assigned behind an isSupportedSdk gate.
+        if (isSupportedSdk) controller?.stop()
+        controller = null
         currentSessionId = null
         _peerUserId.value = null
         _state.value = UwbSessionState.Idle

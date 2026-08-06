@@ -274,7 +274,7 @@ object YoutubeChannelHelper {
                         .getObject("navigationEndpoint")
                         ?.getObject(BROWSE_ENDPOINT)
                         ?.getString(BROWSE_ID)
-                    if (!isNullOrEmpty(navigationC4TabChannelId)) return navigationC4TabChannelId!!
+                    if (!isNullOrEmpty(navigationC4TabChannelId)) return navigationC4TabChannelId
                 }
                 ChannelHeader.HeaderType.CAROUSEL -> {
                     val navigationCarouselChannelId = channelHeader.json.getObject(HEADER)
@@ -286,7 +286,7 @@ object YoutubeChannelHelper {
                         ?.getObject("navigationEndpoint")
                         ?.getObject(BROWSE_ENDPOINT)
                         ?.getString(BROWSE_ID)
-                    if (!isNullOrEmpty(navigationCarouselChannelId)) return navigationCarouselChannelId!!
+                    if (!isNullOrEmpty(navigationCarouselChannelId)) return navigationCarouselChannelId
                 }
                 else -> {}
             }
@@ -295,9 +295,9 @@ object YoutubeChannelHelper {
         val externalChannelId = jsonResponse.getObject("metadata")
             ?.getObject("channelMetadataRenderer")
             ?.getString("externalChannelId")
-        if (!isNullOrEmpty(externalChannelId)) return externalChannelId!!
+        if (!isNullOrEmpty(externalChannelId)) return externalChannelId
 
-        if (!isNullOrEmpty(fallbackChannelId)) return fallbackChannelId!!
+        if (!isNullOrEmpty(fallbackChannelId)) return fallbackChannelId
 
         throw ParsingException("Could not get channel ID")
     }
@@ -312,13 +312,13 @@ object YoutubeChannelHelper {
         if (channelAgeGateRenderer != null) {
             val title = channelAgeGateRenderer.getString("channelTitle")
             if (isNullOrEmpty(title)) throw ParsingException("Could not get channel name")
-            return title!!
+            return title
         }
 
         val metadataRendererTitle = jsonResponse.getObject("metadata")
             ?.getObject("channelMetadataRenderer")
             ?.getString(TITLE)
-        if (!isNullOrEmpty(metadataRendererTitle)) return metadataRendererTitle!!
+        if (!isNullOrEmpty(metadataRendererTitle)) return metadataRendererTitle
 
         val headerName: String? = channelHeader?.let { header ->
             val channelJson = header.json
@@ -338,13 +338,13 @@ object YoutubeChannelHelper {
             }
         }
 
-        if (!isNullOrEmpty(headerName)) return headerName!!
+        if (!isNullOrEmpty(headerName)) return headerName
 
         val microformatTitle = jsonResponse.getObject("microformat")
             ?.getObject("microformatDataRenderer")
             ?.getString(TITLE)
 
-        if (!isNullOrEmpty(microformatTitle)) return microformatTitle!!
+        if (!isNullOrEmpty(microformatTitle)) return microformatTitle
 
         throw ParsingException("Could not get channel name")
     }

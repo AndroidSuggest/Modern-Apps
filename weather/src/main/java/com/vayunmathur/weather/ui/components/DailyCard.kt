@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.util.localizedDayOfWeekNames
@@ -140,7 +141,7 @@ private fun DailyItem(
 private fun dayLabel(dateStr: String?): String {
     if (dateStr == null) return "-"
     val date = runCatching { LocalDate.parse(dateStr) }.getOrNull() ?: return dateStr
-    val locale = java.util.Locale.getDefault()
+    val locale = LocalConfiguration.current.locales[0]
     return try {
         val isoNum = when (date.dayOfWeek) {
             kotlinx.datetime.DayOfWeek.MONDAY -> 1

@@ -254,7 +254,6 @@ open class StreamInfo : Info {
             if (streamType == StreamType.NONE
                 || Utils.isNullOrEmpty(url)
                 || Utils.isNullOrEmpty(id)
-                || name == null
                 || ageLimit == -1
             ) {
                 throw ExtractionException("Some important stream information was not given.")

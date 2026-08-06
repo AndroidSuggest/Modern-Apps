@@ -15,7 +15,7 @@ abstract class Stream : Serializable {
         @JvmStatic
         fun containSimilarStream(stream: Stream, streamList: List<Stream>?): Boolean {
             if (Utils.isNullOrEmpty(streamList)) return false
-            for (cmpStream in streamList!!) {
+            for (cmpStream in streamList) {
                 if (stream.equalStats(cmpStream)) return true
             }
             return false
@@ -59,7 +59,7 @@ abstract class Stream : Serializable {
 
     open fun equalStats(other: Stream?): Boolean {
         return other != null && mediaFormat != null && other.mediaFormat != null
-                && mediaFormat.id == other.mediaFormat!!.id
+                && mediaFormat.id == other.mediaFormat.id
                 && deliveryMethod == other.deliveryMethod
                 && isUrl == other.isUrl
     }

@@ -135,7 +135,6 @@ fn do_estimate(s: &Session) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::imgbuf::Rgba;
 
     fn load(path: &str) -> Vec<u8> {
         std::fs::read(path).expect("read image bytes")
@@ -164,7 +163,7 @@ mod tests {
             }
         }
         let mut border_black = 0usize;
-        let mut count_px = |x: usize, y: usize, acc: &mut usize| {
+        let count_px = |x: usize, y: usize, acc: &mut usize| {
             let i = (y * out.w + x) * 4;
             if out.px[i] == 0 && out.px[i + 1] == 0 && out.px[i + 2] == 0 {
                 *acc += 1;
@@ -235,12 +234,11 @@ mod tests {
                 assert!(v.is_finite(), "non-finite rotation entry");
             }
             let gain = f32::from_le_bytes(blob[base + 100..base + 104].try_into().unwrap());
-            assert!(gain.is_finite() && gain >= 0.5 && gain <= 2.0, "bad gain {gain}");
+            assert!(gain.is_finite() && (0.5..=2.0).contains(&gain), "bad gain {gain}");
         }
     }
 }
 
-#[cfg(not(test))]
 mod jni_bindings {
     use super::*;
     use jni::objects::{JByteArray, JClass};
@@ -278,7 +276,7 @@ mod jni_bindings {
         if bytes.is_empty() {
             return;
         }
-        if let Some(s) = registry().lock().unwrap().get_mut(&(handle as i64)) {
+        if let Some(s) = registry().lock().unwrap().get_mut(&handle) {
             s.frames.push(bytes);
             s.yaw.push(yaw);
             s.pitch.push(pitch);
@@ -310,7 +308,7 @@ mod jni_bindings {
         handle: jlong,
     ) -> jbyteArray {
         let null = std::ptr::null_mut();
-        let session = match registry().lock().unwrap().get_mut(&(handle as i64)) {
+        let session = match registry().lock().unwrap().get_mut(&handle) {
             Some(s) => Session {
                 sphere: s.sphere,
                 frames: std::mem::take(&mut s.frames),
@@ -321,7 +319,7 @@ mod jni_bindings {
         };
         let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_estimate(&session)))
             .unwrap_or(None);
-        if let Some(s) = registry().lock().unwrap().get_mut(&(handle as i64)) {
+        if let Some(s) = registry().lock().unwrap().get_mut(&handle) {
             s.frames = session.frames;
             s.yaw = session.yaw;
             s.pitch = session.pitch;
@@ -369,7 +367,7 @@ mod jni_bindings {
             return;
         }
         let frame = Rgba::from_bytes(w, h, bytes);
-        if let Some(v) = night_registry().lock().unwrap().get_mut(&(handle as i64)) {
+        if let Some(v) = night_registry().lock().unwrap().get_mut(&handle) {
             v.push(frame);
         }
     }
@@ -382,7 +380,7 @@ mod jni_bindings {
     ) -> jbyteArray {
         let null = std::ptr::null_mut();
         let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            do_merge_night_rgba(handle as i64)
+            do_merge_night_rgba(handle)
         }))
         .unwrap_or(None);
         match bytes {
@@ -400,8 +398,8 @@ mod jni_bindings {
         _class: JClass<'l>,
         handle: jlong,
     ) {
-        night_registry().lock().unwrap().remove(&(handle as i64));
-        registry().lock().unwrap().remove(&(handle as i64));
+        night_registry().lock().unwrap().remove(&handle);
+        registry().lock().unwrap().remove(&handle);
     }
 
     #[no_mangle]
@@ -410,13 +408,13 @@ mod jni_bindings {
         _class: JClass<'l>,
         handle: jlong,
     ) {
-        registry().lock().unwrap().remove(&(handle as i64));
-        night_registry().lock().unwrap().remove(&(handle as i64));
+        registry().lock().unwrap().remove(&handle);
+        night_registry().lock().unwrap().remove(&handle);
     }
 
     fn run_and_return(env: JNIEnv, handle: jlong, panorama: bool) -> jbyteArray {
         let null = std::ptr::null_mut();
-        let mut session = match registry().lock().unwrap().get_mut(&(handle as i64)) {
+        let mut session = match registry().lock().unwrap().get_mut(&handle) {
             Some(s) => Session {
                 sphere: s.sphere,
                 frames: std::mem::take(&mut s.frames),

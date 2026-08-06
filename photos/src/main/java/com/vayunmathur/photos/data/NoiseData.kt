@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.data
 
 import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 
 data class NoiseParams(
     val amount: Float = 0f,
@@ -43,7 +44,7 @@ fun NoiseParams.applyToBitmap(bitmap: Bitmap): Bitmap {
         output[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
-    val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val result = createBitmap(w, h)
     result.setPixels(output, 0, w, 0, 0, w, h)
     return result
 }

@@ -73,7 +73,7 @@ object YoutubeOtfDashManifestCreator {
                 segmentsArray
             }
         } catch (e: Exception) {
-            throw CreationException("Could not get segment durations", e as? Exception ?: Exception(e))
+            throw CreationException("Could not get segment durations", e)
         }
 
         val streamDuration: Long = try {

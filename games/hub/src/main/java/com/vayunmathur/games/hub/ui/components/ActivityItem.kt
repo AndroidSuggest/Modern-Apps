@@ -21,8 +21,8 @@ import com.vayunmathur.library.ui.Text
 @Composable
 fun ActivityItemCard(
     event: ActivityEventEntity,
-    onGameClick: ((String) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onGameClick: ((String) -> Unit)? = null
 ) {
     Card(
         onClick = { event.gameId?.let { onGameClick?.invoke(it) } },

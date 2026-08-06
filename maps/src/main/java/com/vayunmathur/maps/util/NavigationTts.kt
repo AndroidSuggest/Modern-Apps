@@ -11,7 +11,6 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -176,29 +175,19 @@ object NavigationTts {
 
     private fun requestFocus(): Boolean {
         val am = audioManager ?: return false
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .build().also { focusRequest = it }
-            am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            @Suppress("DEPRECATION")
-            am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
+        val req = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .build().also { focusRequest = it }
+        return am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
     private fun abandonFocus() {
         val am = audioManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            focusRequest?.let { am.abandonAudioFocusRequest(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            am.abandonAudioFocus(null)
-        }
+        focusRequest?.let { am.abandonAudioFocusRequest(it) }
     }
 }

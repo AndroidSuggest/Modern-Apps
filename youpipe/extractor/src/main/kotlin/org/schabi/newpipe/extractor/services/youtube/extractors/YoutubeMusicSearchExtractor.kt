@@ -176,7 +176,7 @@ class YoutubeMusicSearchExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getPage(page: Page): InfoItemsPage<InfoItem> {
-        if (page == null || isNullOrEmpty(page.url)) {
+        if (isNullOrEmpty(page.url)) {
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 
@@ -233,7 +233,7 @@ class YoutubeMusicSearchExtractor(
             .map { it.getObject("musicResponsiveListItemRenderer") }
             .filter { it != null }
             .forEach { infoItem ->
-                val displayPolicy = infoItem!!.getString("musicItemRendererDisplayPolicy", "") ?: ""
+                val displayPolicy = infoItem!!.getString("musicItemRendererDisplayPolicy", "")
                 if (displayPolicy == "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT") {
                     return@forEach
                 }

@@ -1961,7 +1961,7 @@ object GMessagesClient {
         for (name in readByStr.split(", ").map { it.trim() }) {
             val ids = nameToIds[name] ?: continue
             if (ids.isNotEmpty()) {
-                newReadBy.add(ids.removeFirst())
+                newReadBy.add(ids.removeAt(0))
             }
         }
         // Emit read receipts for newly-added readers

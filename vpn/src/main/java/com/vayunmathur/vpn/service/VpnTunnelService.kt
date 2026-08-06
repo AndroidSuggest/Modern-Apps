@@ -68,11 +68,9 @@ class VpnTunnelService : VpnService() {
         super.onCreate()
         try { VpnNative.init() } catch (_: Throwable) {}
         val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm?.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, getString(R.string.vpn_channel_name), NotificationManager.IMPORTANCE_LOW)
-            )
-        }
+        nm?.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, getString(R.string.vpn_channel_name), NotificationManager.IMPORTANCE_LOW)
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

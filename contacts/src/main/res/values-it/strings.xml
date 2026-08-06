@@ -55,6 +55,8 @@
     <string name="grant_calendar_permissions">Concedi autorizzazioni del calendario</string>
     <string name="delete_selected_contacts_title">Elimina i contatti selezionati</string>
     <plurals name="delete_selected_contacts_confirm">
+        <item quantity="one">Sicuro di volere eliminare il %1$d contatto selezionato? Questa operazione è irreversibile.</item>
+        <item quantity="many">Sicuro di volere eliminare i %1$d di contatti selezionati? Questa operazione è irreversibile.</item>
         <item quantity="other">Sicuro di volere eliminare i %1$d contatti selezionati? Questa operazione è irreversibile.</item>
     </plurals>
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> selezionati</string>
@@ -78,6 +80,8 @@
     <string name="delete_group_confirm">Sei sicuro di voler eliminare questo gruppo? I contatti non verranno eliminati.</string>
     <string name="no_groups_found">Nessun gruppo trovato. Creane uno nella scheda Gruppi.</string>
     <plurals name="contacts_count">
+        <item quantity="one">%1$d contatto</item>
+        <item quantity="many">%1$d di contatti</item>
         <item quantity="other">%1$d contatti</item>
     </plurals>
 </resources>

@@ -75,7 +75,7 @@ object YoutubeMetaInfoHelper {
             if (isNullOrEmpty(metaInfoLinkText)) {
                 throw ParsingException("Could not get metadata info link text.")
             }
-            metaInfo.addUrlText(metaInfoLinkText!!)
+            metaInfo.addUrlText(metaInfoLinkText)
         }
 
         return metaInfo
@@ -112,7 +112,7 @@ object YoutubeMetaInfoHelper {
             if (isNullOrEmpty(metaInfoLinkText)) {
                 throw ParsingException("Could not get metadata info link text.")
             }
-            metaInfo.addUrlText(metaInfoLinkText!!)
+            metaInfo.addUrlText(metaInfoLinkText)
         }
 
         val secondaryEndpoint = clarificationRenderer.getObject("secondaryEndpoint")

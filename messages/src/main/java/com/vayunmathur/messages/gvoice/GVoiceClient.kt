@@ -3,6 +3,7 @@
 package com.vayunmathur.messages.gvoice
 
 import kotlin.concurrent.atomics.*
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.messages.data.MessageSource
@@ -62,7 +63,7 @@ object GVoiceClient {
     private val initialized = AtomicBoolean(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private lateinit var appContext: Context
+    private lateinit var appContext: Application
     @Volatile private var rpc: GVoiceRpcClient? = null
     @Volatile private var waaSigner: WaaSigner? = null
     private var realtime: RealtimeChannel? = null
@@ -102,7 +103,7 @@ object GVoiceClient {
 
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
-        appContext = context.applicationContext
+        appContext = context.applicationContext as Application
         Log.i(TAG, "init")
         scope.launch {
             val auth = VoiceAuthData.load(appContext)

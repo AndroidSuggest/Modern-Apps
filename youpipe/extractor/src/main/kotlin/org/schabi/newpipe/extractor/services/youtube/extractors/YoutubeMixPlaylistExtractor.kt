@@ -104,7 +104,7 @@ class YoutubeMixPlaylistExtractor(
         if (isNullOrEmpty(name)) {
             throw ParsingException("Could not get playlist name")
         }
-        return name!!
+        return name
     }
 
     override fun getThumbnails(): List<Image> {
@@ -183,7 +183,7 @@ class YoutubeMixPlaylistExtractor(
     @Throws(IOException::class, ExtractionException::class)
     @Suppress("UNCHECKED_CAST")
     override fun getPage(page: Page): ListExtractor.InfoItemsPage<StreamInfoItem> {
-        if (page == null || isNullOrEmpty(page.url)) {
+        if (isNullOrEmpty(page.url)) {
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
         if (page.cookies?.containsKey(COOKIE_NAME) != true) {
@@ -207,7 +207,7 @@ class YoutubeMixPlaylistExtractor(
         ).toList()
 
         collectStreamsFrom(collector, newStreams)
-        return ListExtractor.InfoItemsPage(collector, getNextPageFrom(playlistJson, page.cookies!!))
+        return ListExtractor.InfoItemsPage(collector, getNextPageFrom(playlistJson, page.cookies))
     }
 
     private fun collectStreamsFrom(

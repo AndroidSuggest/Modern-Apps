@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.util.Log
+import androidx.core.graphics.createBitmap
 import com.vayunmathur.library.ocr.OcrEngine
 import com.vayunmathur.pdf.model.CapturedImage
 import com.vayunmathur.pdf.model.Quadrilateral
@@ -58,7 +59,7 @@ suspend fun savePdfToUri(
                 val targetHeight = (cropHeight * scale).toInt().coerceAtLeast(1)
 
                 // Render the (warped/cropped/full) source into a page-sized bitmap.
-                val pageBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                val pageBitmap = createBitmap(targetWidth, targetHeight)
                 val pageCanvas = Canvas(pageBitmap)
                 pageCanvas.drawColor(Color.WHITE)
                 when {
@@ -178,7 +179,7 @@ fun warpQuadToBitmap(src: Bitmap, quad: Quadrilateral, width: Int, height: Int):
     )
     val matrix = Matrix()
     return if (matrix.setPolyToPoly(srcPoints, 0, dstPoints, 0, 4)) {
-        Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888).also {
+        createBitmap(targetWidth, targetHeight).also {
             Canvas(it).drawBitmap(src, matrix, null)
         }
     } else {

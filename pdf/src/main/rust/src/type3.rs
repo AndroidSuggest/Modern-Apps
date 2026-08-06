@@ -40,7 +40,7 @@ pub fn parse_type3_font(doc: &Document, dict: &Dictionary) -> Option<Type3Info> 
     let font_matrix = dict.get(b"FontMatrix").ok()
         .and_then(|o| deref(doc,o))
         .and_then(|o| o.as_array().ok())
-        .and_then(|arr| read_matrix_from_array(&arr, doc))
+        .and_then(|arr| read_matrix_from_array(arr, doc))
         .unwrap_or([0.001,0.0,0.0,0.001,0.0,0.0]);
 
     let bbox = dict.get(b"FontBBox").ok()

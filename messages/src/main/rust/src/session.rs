@@ -103,10 +103,6 @@ impl Buf {
     fn fixed(&mut self, x: &[u8]) {
         self.v.extend_from_slice(x);
     }
-    fn blob(&mut self, x: &[u8]) {
-        self.u32(x.len() as u32);
-        self.v.extend_from_slice(x);
-    }
 }
 
 struct Cur<'a> {

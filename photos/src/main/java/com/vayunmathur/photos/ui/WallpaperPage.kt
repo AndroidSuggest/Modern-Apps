@@ -49,6 +49,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -95,6 +96,8 @@ fun WallpaperPage(
     uri: String?,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
+    val wallpaperSetSuccessMsg = stringResource(R.string.wallpaper_set_success)
     val app = context.applicationContext as Application
     val viewModel: WallpaperViewModel = viewModel(factory = WallpaperViewModelFactory(app))
 
@@ -448,12 +451,12 @@ fun WallpaperPage(
                                     when (result) {
                                         is WallpaperUtil.SetResult.Success -> {
                                             snackbarHostState.showSnackbar(
-                                                context.getString(R.string.wallpaper_set_success),
+                                                wallpaperSetSuccessMsg,
                                             )
                                             backStack.pop()
                                         }
                                         is WallpaperUtil.SetResult.Failure -> {
-                                            val msg = context.getString(
+                                            val msg = resources.getString(
                                                 R.string.wallpaper_set_failed,
                                                 result.exception.message ?: "Unknown",
                                             )

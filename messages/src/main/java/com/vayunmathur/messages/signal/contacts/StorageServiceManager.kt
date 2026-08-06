@@ -173,7 +173,7 @@ class StorageServiceManager(
             listOf(c.givenName, c.familyName)
                 .filter { it.isNotBlank() }.joinToString(" ")
                 .takeIf { it.isNotBlank() }
-        } else existing?.profileName
+        } else existing.profileName
 
         // Contact name from system given/family name (always update when present)
         val contactName = listOf(c.systemGivenName, c.systemFamilyName)

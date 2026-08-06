@@ -179,8 +179,7 @@ object MimeParser {
                 return
             }
             val cid = part.contentId
-            val isInline = cid != null && (part.contentType.isImage || part.disposition?.isInline == true)
-            if (isInline && cid != null) {
+            if (cid != null && (part.contentType.isImage || part.disposition?.isInline == true)) {
                 val dir = File(context.cacheDir, "eml_cid/$syntheticId").also { it.mkdirs() }
                 val rawName = part.disposition?.filename ?: "${cid.hashCode()}.bin"
                 val safeName = rawName.replace(Regex("[/\\\\]"), "_").take(80).ifBlank { "${cid.hashCode()}.bin" }

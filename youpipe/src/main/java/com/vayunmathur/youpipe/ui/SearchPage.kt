@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.image.compose.AsyncImage
@@ -73,6 +74,7 @@ fun SearchPage(
     val deArrowCache by youPipeViewModel.deArrowCache.collectAsState()
     val progressById = remember(history) { history.associate { it.id to it.progress } }
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     LaunchedEffect(Unit) {
         youPipeViewModel.loadRecommendations()
@@ -104,7 +106,7 @@ fun SearchPage(
                         channelID = item.channelID,
                         name = item.name,
                         avatarURL = item.avatar,
-                        subscribers = context.getString(
+                        subscribers = resources.getString(
                             R.string.subscribers_count,
                             countString(context, item.subscribers),
                         ),

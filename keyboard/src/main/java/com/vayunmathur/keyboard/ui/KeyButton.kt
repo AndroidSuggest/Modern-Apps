@@ -38,8 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -110,7 +110,7 @@ fun RowScope.CharKey(
     var keyWidth by remember { mutableFloatStateOf(0f) }
 
     val density = LocalDensity.current
-    val screenWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val screenWidth = LocalWindowInfo.current.containerSize.width.toFloat()
     val itemWidth = with(density) { AlternateWidth.toPx() }
 
     // Where the popup's left edge sits relative to the key's: centred on the key, then

@@ -2,9 +2,9 @@ package com.vayunmathur.contacts.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.core.net.toUri
+import androidx.core.graphics.scale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -154,7 +154,7 @@ fun CropPhotoScreen(
                             .coerceIn(1, min(bmp.width - cx, bmp.height - cy))
 
                         val cropped = Bitmap.createBitmap(bmp, cx, cy, cs, cs)
-                        val scaled = Bitmap.createScaledBitmap(cropped, 1024, 1024, true)
+                        val scaled = cropped.scale(1024, 1024)
                         if (cropped !== scaled) cropped.recycle()
                         onCropComplete(scaled)
                     }) { Text(stringResource(UiR.string.done)) }

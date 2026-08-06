@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.weather.R
@@ -202,7 +203,7 @@ private fun formatDayLabel(epochSec: Long, nowEpochSec: Long): String {
         today -> stringResource(R.string.today_short)
         tomorrow -> stringResource(R.string.tomorrow_short)
         else -> {
-            val locale = java.util.Locale.getDefault()
+            val locale = LocalConfiguration.current.locales[0]
             try {
                 val isoNum = when (date.dayOfWeek) {
                     kotlinx.datetime.DayOfWeek.MONDAY -> 1

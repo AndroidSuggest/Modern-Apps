@@ -91,6 +91,7 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
     val instance = state.instance
 
     val context = LocalContext.current
+    val openLocationLabel = stringResource(R.string.open_location_in_navigation)
 
     val isEditable = calendar.canModify
     var showDeleteMenu by remember { mutableStateOf(false) }
@@ -173,7 +174,7 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
                     ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
                     val chooser = Intent.createChooser(
                         intent,
-                        context.getString(R.string.open_location_in_navigation)
+                        openLocationLabel
                     ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
                     try {
                         context.startActivity(chooser)

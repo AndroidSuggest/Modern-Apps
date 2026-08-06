@@ -62,6 +62,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
     val activity = context as? Activity
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val needActivityMsg = stringResource(R.string.need_activity_to_grant_vpn_permission)
 
     // The only way to add a tunnel is opening a .conf file via SAF.
     val filePicker = rememberLauncherForActivityResult(
@@ -90,7 +91,7 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
             } else {
                 if (activity != null) vm.startVpn(activity, cfg)
                 else scope.launch {
-                    snackbar.showSnackbar(context.getString(R.string.need_activity_to_grant_vpn_permission))
+                    snackbar.showSnackbar(needActivityMsg)
                 }
             }
         },

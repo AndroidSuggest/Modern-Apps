@@ -180,8 +180,6 @@
     <!-- Units: Millimeters of mercury for blood pressure. Abbreviation -->
     <string name="label_blood_pressure_unit">mmHg</string>
 
-    <!-- NutritionDetailsPage: TopAppBar title. Noun phrase -->
-    <string name="label_nutrition_details">Nutrition Details</string>
     <!-- NutritionDetailsPage: TopAppBar title for full breakdown screen. Noun phrase -->
     <string name="nutrition_breakdown">Nutrition breakdown</string>
 

@@ -1264,7 +1264,7 @@ fun LetterChooser(
 
                         SurfaceText(Modifier
                             .align(Alignment.Center)
-                            .offset(x, y)
+                            .offset { IntOffset(x.roundToPx(), y.roundToPx()) }
                             .onGloballyPositioned { coordinates ->
                                 onLetterPositioned(chooserLetter.id, coordinates.localToRoot(Offset.Zero))
                             }

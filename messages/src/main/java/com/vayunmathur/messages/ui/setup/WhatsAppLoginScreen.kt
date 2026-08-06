@@ -31,6 +31,8 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 import androidx.compose.ui.res.stringResource
 
 @Composable
@@ -172,13 +174,10 @@ private fun QrCodeImage(data: String, modifier: Modifier = Modifier) {
         )
         val width = bitMatrix.width
         val height = bitMatrix.height
-        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+        val bmp = createBitmap(width, height, Bitmap.Config.RGB_565)
         for (x in 0 until width) {
             for (y in 0 until height) {
-                bmp.setPixel(
-                    x, y,
-                    if (bitMatrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE
-                )
+                bmp[x, y] = if (bitMatrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE
             }
         }
         bmp.asImageBitmap()

@@ -27,7 +27,7 @@ fn build(pairs: &[(u32, u32)]) -> HashMap<u32, char> {
 
 /// MacRomanEncoding as a full `code -> Unicode` map.
 pub fn mac_roman() -> HashMap<u32, char> {
-    build(&MAC_ROMAN_HIGH)
+    build(MAC_ROMAN_HIGH)
 }
 
 /// Symbol font encoding (Adobe Symbol) as `code -> Unicode`.

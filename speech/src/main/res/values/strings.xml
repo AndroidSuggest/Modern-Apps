@@ -10,8 +10,6 @@
     <string name="test_microphone">Test microphone</string>
     <string name="try_the_voice">Try the voice</string>
     <string name="speak_sample">Speak sample</string>
-    <string name="offline_on_device_speech_whisper_recogni">Offline, on-device speech (Whisper recognition + Piper voice, ~99 languages) for </string>
     <string name="heard">Heard: %1$s</string>
     <string name="download_model_113_mb">Download model (~113 MB)</string>
-    <string name="download_voice_64_mb">Download voice (~64 MB)</string>
 </resources>

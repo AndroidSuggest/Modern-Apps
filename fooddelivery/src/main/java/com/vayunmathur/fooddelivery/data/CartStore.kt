@@ -1,6 +1,7 @@
 package com.vayunmathur.fooddelivery.data
 
 import android.content.Context
+import androidx.core.content.edit
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -29,15 +30,11 @@ object CartStore {
 
     fun save(context: Context, items: List<CartItem>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY, json.encodeToString(items))
-            .apply()
+            .edit { putString(KEY, json.encodeToString(items)) }
     }
 
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY)
-            .apply()
+            .edit { remove(KEY) }
     }
 }

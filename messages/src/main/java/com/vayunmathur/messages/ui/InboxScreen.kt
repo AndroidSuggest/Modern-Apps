@@ -550,4 +550,4 @@ private fun formatTimestamp(context: Context, ts: Long): String {
 
 // Small helper so we can call Modifier.background() at the call sites
 // without adding a separate import everywhere it's used in this file.
-private fun Modifier.background(color: Color): Modifier = this then foundationBackground(color)
+private fun Modifier.background(color: Color): Modifier = foundationBackground(color)

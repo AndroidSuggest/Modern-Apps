@@ -86,7 +86,7 @@ inline fun <reified T : RoomDatabase> Context.buildDatabase(
 
         val db = builder.build()
         databases[T::class] = db
-        return db as T
+        return db
     }
 }
 

@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import com.vayunmathur.email.EmailAccount
 import com.vayunmathur.email.EmailFolder
 import com.vayunmathur.email.EmailManager
@@ -232,7 +233,7 @@ class ImapIdleService : Service() {
             EmailNotifications.postForNewMessages(ctx, accountEmail, notifiable)
         }
         val maxUid = messages.maxOfOrNull { it.id } ?: lastSeen
-        if (maxUid > lastSeen) prefs.edit().putLong("$accountEmail::INBOX", maxUid).apply()
+        if (maxUid > lastSeen) prefs.edit { putLong("$accountEmail::INBOX", maxUid) }
         try { EmailWidget().updateAll(ctx) } catch (t: Throwable) { Log.w(TAG, "widget fail ${t.message}") }
     }
 
@@ -292,7 +293,7 @@ class ImapIdleService : Service() {
         fun start(context: Context): Boolean {
             return try {
                 val intent = Intent(context, ImapIdleService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
+                context.startForegroundService(intent)
                 true
             } catch (e: Exception) {
                 Log.w(TAG, "start failed: ${e.message}", e); false

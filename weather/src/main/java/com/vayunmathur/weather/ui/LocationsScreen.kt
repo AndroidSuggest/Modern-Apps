@@ -1,7 +1,7 @@
 package com.vayunmathur.weather.ui
 
 import android.Manifest
-import android.content.Context
+import android.content.res.Resources
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -57,6 +57,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
@@ -96,6 +97,9 @@ internal fun rememberRequestDeviceLocation(
     val context = LocalContext.current
     val messenger = rememberMessenger()
     val scope = rememberCoroutineScope()
+    val currentLocationLabel = stringResource(R.string.current_location)
+    val couldntDetermineMsg = stringResource(R.string.couldn_t_determine_location)
+    val permissionDeniedMsg = stringResource(R.string.location_permission_denied)
     var loading by remember { mutableStateOf(false) }
 
     val fetchLocation: () -> Unit = {
@@ -103,9 +107,9 @@ internal fun rememberRequestDeviceLocation(
         scope.launch {
             val loc = LocationProvider.currentLocation(context)
             if (loc != null) {
-                viewModel.setCurrentLocation(context.getString(R.string.current_location), loc.latitude, loc.longitude)
+                viewModel.setCurrentLocation(currentLocationLabel, loc.latitude, loc.longitude)
             } else {
-                messenger.show(context.getString(R.string.couldn_t_determine_location))
+                messenger.show(couldntDetermineMsg)
             }
             loading = false
         }
@@ -117,7 +121,7 @@ internal fun rememberRequestDeviceLocation(
         if (granted.values.any { it }) {
             fetchLocation()
         } else {
-            messenger.show(context.getString(R.string.location_permission_denied))
+            messenger.show(permissionDeniedMsg)
         }
     }
 
@@ -137,7 +141,7 @@ internal fun rememberRequestDeviceLocation(
 /**
  * Binds [WeatherViewModel] and the back stack to the stateless [LocationsScreen].
  *
- * The per-row "Last updated 4m ago" line is built here because it needs both a [Context]
+ * The per-row "Last updated 4m ago" line is built here because it needs both a [Resources]
  * for the string and a clock; the screen only ever sees the finished text.
  */
 @Composable
@@ -150,7 +154,7 @@ fun LocationsPage(
 ) {
     val locations = viewModel.savedLocations.collectAsState().value.orEmpty()
     val forecasts by viewModel.forecasts.collectAsState()
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     // Ticks every 30s so the "Last updated Xm ago" labels advance over time
     // rather than being frozen at whatever they read when the drawer opened.
@@ -170,8 +174,8 @@ fun LocationsPage(
             location = loc,
             description = state?.fetchedAtEpochMs
                 ?.takeIf { it > 0L }
-                ?.let { context.getString(R.string.last_updated, formatAgo(context, it, nowMs)) }
-                ?: context.getString(R.string.no_data_yet),
+                ?.let { resources.getString(R.string.last_updated, formatAgo(resources, it, nowMs)) }
+                ?: resources.getString(R.string.no_data_yet),
             weatherCode = state?.forecast?.current?.weatherCode,
             isDay = (state?.forecast?.current?.isDay ?: 1) == 1,
         )
@@ -365,13 +369,13 @@ fun LocationsScreen(
 }
 
 /** Format a "X ago" delta from [nowMs] to the given epoch ms. */
-private fun formatAgo(context: Context, epochMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+private fun formatAgo(resources: Resources, epochMs: Long, nowMs: Long = System.currentTimeMillis()): String {
     val deltaSec = ((nowMs - epochMs) / 1000L).coerceAtLeast(0L)
     return when {
-        deltaSec < 60 -> context.getString(R.string.just_now)
-        deltaSec < 3600 -> context.getString(R.string.minutes_ago, (deltaSec / 60).toInt())
-        deltaSec < 86_400 -> context.getString(R.string.hours_ago, (deltaSec / 3600).toInt())
-        else -> context.getString(R.string.days_ago, (deltaSec / 86_400).toInt())
+        deltaSec < 60 -> resources.getString(R.string.just_now)
+        deltaSec < 3600 -> resources.getString(R.string.minutes_ago, (deltaSec / 60).toInt())
+        deltaSec < 86_400 -> resources.getString(R.string.hours_ago, (deltaSec / 3600).toInt())
+        else -> resources.getString(R.string.days_ago, (deltaSec / 86_400).toInt())
     }
 }
 

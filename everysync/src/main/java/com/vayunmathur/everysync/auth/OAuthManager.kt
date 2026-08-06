@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.net.toUri
 import com.vayunmathur.everysync.provider.ProviderRegistry
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.util.DataStoreUtils
@@ -40,7 +41,7 @@ object OAuthManager {
         DataStoreUtils.getInstance(context)
             .setString(PENDING_KEY, json.encodeToString(Pending(providerId, verifier, state)))
 
-        val url = Uri.parse(config.authEndpoint).buildUpon()
+        val url = config.authEndpoint.toUri().buildUpon()
             .appendQueryParameter("client_id", config.clientId)
             .appendQueryParameter("redirect_uri", config.redirectUri)
             .appendQueryParameter("response_type", "code")

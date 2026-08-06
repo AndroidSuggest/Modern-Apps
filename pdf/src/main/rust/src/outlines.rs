@@ -176,14 +176,17 @@ pub(crate) fn build_glyph_program(
 
 fn font_file_stream(doc: &lopdf::Document, fd: &lopdf::Dictionary, key: &[u8]) -> Option<Vec<u8>> {
     match fd.get(key).ok().and_then(|o| crate::deref(doc, o)) {
-        Some(lopdf::Object::Stream(s)) => Some(crate::stream_data(&s)),
+        Some(lopdf::Object::Stream(s)) => Some(crate::stream_data(s)),
         _ => None,
     }
 }
 
+/// Flattened glyph contours in font units, paired with the font's units-per-em.
+pub(crate) type GlyphContours = (Vec<Vec<(f64, f64)>>, f64);
+
 /// Return the flattened outline (font-unit contours) and units-per-em for `code`.
 /// `code` is the raw content-stream code (CID for Type0, byte for simple fonts).
-pub(crate) fn glyph_outline(fi: &FontInfo, code: u32) -> Option<(Vec<Vec<(f64, f64)>>, f64)> {
+pub(crate) fn glyph_outline(fi: &FontInfo, code: u32) -> Option<GlyphContours> {
     let program = fi.glyph_program.as_ref()?;
     match program {
         GlyphProgram::Type1(t1) => {

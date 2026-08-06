@@ -8,7 +8,6 @@
 //! panoramas) with per-image focal + rotation warped onto a common sphere.
 
 use crate::imgbuf::Rgba;
-use crate::warp::feather_weights;
 use crate::linalg::{Matrix3, Vector3};
 
 /// OpenCV `focalsFromHomography` (autocalib.cpp): recover the two focal-length
@@ -97,21 +96,6 @@ pub(crate) fn orthonormalize(m: &Matrix3<f64>) -> Matrix3<f64> {
     }
 }
 
-/// Chain per-image rotations from consecutive homographies `pair[i]` = H_{i->i-1}
-/// (rotation-only model H = K R_{i-1} R_iᵀ K⁻¹). R_0 = I.
-pub fn estimate_rotations(pairs: &[Matrix3<f64>], k: &Matrix3<f64>) -> Vec<Matrix3<f64>> {
-    let n = pairs.len();
-    let k_inv = k.try_inverse().unwrap_or_else(Matrix3::identity);
-    let mut rots = vec![Matrix3::<f64>::identity(); n];
-    for i in 1..n {
-        // M_i = K^-1 H_{i->i-1} K = R_{i-1} R_iᵀ  =>  R_i = M_iᵀ R_{i-1}
-        let m = k_inv * pairs[i] * k;
-        let r = m.transpose() * rots[i - 1];
-        rots[i] = orthonormalize(&r);
-    }
-    rots
-}
-
 /// SphericalProjector state for one image: r_kinv = R K⁻¹, k_rinv = K Rᵀ, rinv = Rᵀ, k.
 /// Matches OpenCV ProjectorBase setCameraParams: rinv = R.t(), r_kinv = R*K.inv(), k_rinv = K*Rinv
 pub struct Proj {
@@ -171,7 +155,7 @@ impl Proj {
 fn tile_bounds(proj: &Proj, w: usize, h: usize) -> (f64, f64, f64, f64) {
     let (mut u0, mut v0, mut u1, mut v1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     let step = 1usize.max(w.min(h) / 100);
-    let mut consider = |x: usize, y: usize, u0: &mut f64, v0: &mut f64, u1: &mut f64, v1: &mut f64| {
+    let consider = |x: usize, y: usize, u0: &mut f64, v0: &mut f64, u1: &mut f64, v1: &mut f64| {
         let (u, v) = proj.forward(x as f64, y as f64);
         if u.is_finite() && v.is_finite() {
             *u0 = u0.min(u);
@@ -271,21 +255,14 @@ pub struct WarpedTile {
 /// for better edge quality in spheres.
 fn sample_reflect_101(frame: &Rgba, fx: f32, fy: f32) -> Option<[f32; 4]> {
     // Mirror index reflect without repeating border
-    let w = frame.w as f32;
-    let h = frame.h as f32;
-    let mut x = fx;
-    let mut y = fy;
-    // For outside range slightly, reflect
-    // We'll attempt bilinear with reflect for all 4 corners
-    // Enumeration
-    let x0_f = x.floor();
-    let y0_f = y.floor();
+    let x0_f = fx.floor();
+    let y0_f = fy.floor();
     let x0 = x0_f as isize;
     let y0 = y0_f as isize;
     let x1 = x0 + 1;
     let y1 = y0 + 1;
-    let ax = x - x0_f;
-    let ay = y - y0_f;
+    let ax = fx - x0_f;
+    let ay = fy - y0_f;
 
     fn refl(i: isize, n: usize) -> usize {
         let m = n as isize;
@@ -355,128 +332,4 @@ pub fn warp_one(frame: &Rgba, k: &Matrix3<f64>, r: &Matrix3<f64>, scale: f64) ->
         }
     }
     Some(WarpedTile { img, corner_x: cx, corner_y: cy })
-}
-
-/// Warp all frames onto the common sphere and gain-compensated feather-blend.
-/// `rotations[i]` and shared `k`/`scale` come from the estimator. Returns the
-/// cropped panorama.
-pub fn warp_spherical_and_blend(
-    frames: &[Rgba],
-    rotations: &[Matrix3<f64>],
-    k: &Matrix3<f64>,
-    scale: f64,
-    gains: &[f32],
-    max_canvas: usize,
-) -> Option<Rgba> {
-    if frames.is_empty() || frames.len() != rotations.len() {
-        return None;
-    }
-    let projs: Vec<Proj> = frames
-        .iter()
-        .zip(rotations.iter())
-        .filter_map(|(_, r)| Proj::new(k, r, scale))
-        .collect();
-    if projs.len() != frames.len() {
-        return None;
-    }
-
-    // Global sphere bounds.
-    let (mut gu0, mut gv0, mut gu1, mut gv1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    let mut tiles = Vec::with_capacity(frames.len());
-    for (f, p) in frames.iter().zip(projs.iter()) {
-        let b = tile_bounds(p, f.w, f.h);
-        tiles.push(b);
-        gu0 = gu0.min(b.0);
-        gv0 = gv0.min(b.1);
-        gu1 = gu1.max(b.2);
-        gv1 = gv1.max(b.3);
-    }
-    if !gu0.is_finite() || !gu1.is_finite() {
-        return None;
-    }
-    let cw = (gu1 - gu0).ceil() as i64 + 1;
-    let ch = (gv1 - gv0).ceil() as i64 + 1;
-    if cw <= 0 || ch <= 0 || cw as usize > max_canvas || ch as usize > max_canvas {
-        return None;
-    }
-    let cw = cw as usize;
-    let ch = ch as usize;
-
-    let mut acc = vec![0f32; cw * ch * 3];
-    let mut accw = vec![0f32; cw * ch];
-
-    for (fi, f) in frames.iter().enumerate() {
-        let p = &projs[fi];
-        let gain = gains.get(fi).copied().unwrap_or(1.0);
-        let wt = feather_weights(f.w, f.h);
-        let (tu0, tv0, tu1, tv1) = tiles[fi];
-        let x0 = ((tu0 - gu0).floor() as i64).max(0) as usize;
-        let y0 = ((tv0 - gv0).floor() as i64).max(0) as usize;
-        let x1 = (((tu1 - gu0).ceil() as i64).min(cw as i64 - 1)).max(0) as usize;
-        let y1 = (((tv1 - gv0).ceil() as i64).min(ch as i64 - 1)).max(0) as usize;
-
-        for cy in y0..=y1 {
-            for cx in x0..=x1 {
-                let u = cx as f64 + gu0;
-                let v = cy as f64 + gv0;
-                let (sx, sy) = match p.backward(u, v) {
-                    Some(s) => s,
-                    None => continue,
-                };
-                if let Some(c) = f.sample(sx as f32, sy as f32) {
-                    if c[3] < 8.0 {
-                        continue;
-                    }
-                    let ix = (sx as usize).min(f.w - 1);
-                    let iy = (sy as usize).min(f.h - 1);
-                    let w = wt[iy * f.w + ix];
-                    if w <= 0.0 {
-                        continue;
-                    }
-                    let idx = cy * cw + cx;
-                    acc[idx * 3] += (c[0] * gain).min(255.0) * w;
-                    acc[idx * 3 + 1] += (c[1] * gain).min(255.0) * w;
-                    acc[idx * 3 + 2] += (c[2] * gain).min(255.0) * w;
-                    accw[idx] += w;
-                }
-            }
-        }
-    }
-
-    // Resolve + crop to covered bbox.
-    let (mut minx, mut miny, mut maxx, mut maxy) = (cw, ch, 0usize, 0usize);
-    let mut any = false;
-    for y in 0..ch {
-        for x in 0..cw {
-            if accw[y * cw + x] > 0.0 {
-                any = true;
-                minx = minx.min(x);
-                miny = miny.min(y);
-                maxx = maxx.max(x);
-                maxy = maxy.max(y);
-            }
-        }
-    }
-    if !any {
-        return None;
-    }
-    let ow = maxx - minx + 1;
-    let oh = maxy - miny + 1;
-    let mut out = Rgba::new(ow, oh);
-    for y in 0..oh {
-        for x in 0..ow {
-            let sidx = (y + miny) * cw + (x + minx);
-            let w = accw[sidx];
-            let didx = (y * ow + x) * 4;
-            if w > 0.0 {
-                out.px[didx] = (acc[sidx * 3] / w).round().clamp(0.0, 255.0) as u8;
-                out.px[didx + 1] = (acc[sidx * 3 + 1] / w).round().clamp(0.0, 255.0) as u8;
-                out.px[didx + 2] = (acc[sidx * 3 + 2] / w).round().clamp(0.0, 255.0) as u8;
-                out.px[didx + 3] = 255;
-            } else {
-                out.px[didx + 3] = 0;
-            }
-        }
-    }
-    Some(out)
 }

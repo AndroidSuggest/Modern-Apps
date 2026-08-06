@@ -375,6 +375,21 @@ mod tests {
     }
 
     #[test]
+    fn test_send_rejects_counter_at_reject_after_messages() {
+        let session = test_session();
+
+        session.set_sending_key_counter(REJECT_AFTER_MESSAGES - 1);
+        assert!(session
+            .format_packet_data(Packet::from_bytes(BytesMut::zeroed(8)))
+            .is_ok());
+
+        // The counter has now reached the limit, so no further packet may be encapsulated.
+        assert!(session
+            .format_packet_data(Packet::from_bytes(BytesMut::zeroed(8)))
+            .is_err());
+    }
+
+    #[test]
     fn test_replay_counter() {
         let mut c: ReceivingKeyCounterValidator = Default::default();
 

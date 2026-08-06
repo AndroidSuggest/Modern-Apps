@@ -349,7 +349,7 @@ object VcfUtils {
                 i++
             }
         }
-        return out.toString(charset(charsetName))
+        return String(out.toByteArray(), charset(charsetName))
     }
 
     private data class TypedLabel(val type: Int, val label: String)

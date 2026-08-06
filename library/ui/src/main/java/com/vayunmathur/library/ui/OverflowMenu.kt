@@ -39,7 +39,7 @@ class OverflowMenuScope internal constructor(private val dismiss: () -> Unit) {
 
     /** One menu entry. The menu closes before [onClick] runs. */
     @Composable
-    fun item(
+    fun Item(
         text: String,
         enabled: Boolean = true,
         leadingIcon: @Composable (() -> Unit)? = null,

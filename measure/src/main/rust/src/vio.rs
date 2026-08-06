@@ -230,7 +230,7 @@ impl VioSession {
         let new_pose = CameraPose {
             r: rel.r * last.r,
             // Translation is a unit direction until alignment fixes the scale.
-            t: rel.r * last.t.clone() + rel.t,
+            t: rel.r * last.t + rel.t,
         };
 
         let imu = preintegrate(&self.pending_imu, self.gyro_bias, self.accel_bias);
@@ -290,7 +290,7 @@ impl VioSession {
 
         // Rescale every keyframe translation into metres.
         for k in self.keyframes.iter_mut() {
-            k.pose.t = k.pose.t.clone() * scale;
+            k.pose.t = k.pose.t * scale;
         }
         self.pose = self.keyframes.last().unwrap().pose.clone();
 
@@ -346,7 +346,7 @@ impl VioSession {
         world
             .iter()
             .map(|p| {
-                let c = &self.pose.r * p.clone() + self.pose.t.clone();
+                let c = self.pose.r * *p + self.pose.t;
                 if c[2] <= 1e-6 {
                     return (0.0, 0.0, false);
                 }
@@ -390,14 +390,14 @@ impl VioSession {
         let unit = dir_world / dn;
         let mut best: Option<(f64, Vector3<f64>)> = None;
         for lm in &self.landmarks {
-            let v = lm.clone() - origin.clone();
+            let v = *lm - origin;
             let along = v.dot(&unit);
             if along <= 0.0 {
                 continue;
             }
-            let perp = (v - unit.clone() * along).norm();
+            let perp = (v - unit * along).norm();
             if best.as_ref().is_none_or(|(d, _)| perp < *d) {
-                best = Some((perp, lm.clone()));
+                best = Some((perp, *lm));
             }
         }
         best.map(|(_, p)| (p, false))

@@ -137,9 +137,9 @@ class PlayHttpClient : IHttpClient {
                 } catch (_: Exception) {
                     ByteArray(0)
                 } finally {
-                    try { lastConn?.inputStream?.close() } catch (_: Exception) {}
-                    try { lastConn?.errorStream?.close() } catch (_: Exception) {}
-                    lastConn?.disconnect()
+                    try { lastConn.inputStream?.close() } catch (_: Exception) {}
+                    try { lastConn.errorStream?.close() } catch (_: Exception) {}
+                    lastConn.disconnect()
                 }
 
                 val isSuccessful = code in 200..299
@@ -159,7 +159,7 @@ class PlayHttpClient : IHttpClient {
                     type = ct
                 )
             }
-            result!!
+            result
         } catch (e: Exception) {
             PlayResponse(
                 isSuccessful = false,

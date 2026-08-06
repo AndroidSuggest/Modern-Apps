@@ -179,13 +179,13 @@ fun ContinuousParagraphEditor(
     fontSizeMultiplier: Float,
     onSelectionChange: (Int, Int, Int, Int) -> Unit,
     onTextChange: (Int, Int, String) -> Unit,
+    modifier: Modifier = Modifier,
     onEnter: (gPos: Int) -> Int? = { null },
     onBackspace: (gPos: Int) -> Int? = { null },
     onToggleCheckbox: ((globalParaIndex: Int) -> Unit)? = null,
     onFocusChangedCb: (Boolean) -> Unit = {},
     onDeletePrevBlock: () -> Unit = {},
     remoteCarets: List<RemoteCaret> = emptyList(),
-    modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     val paras = (start..endInclusive).mapNotNull { (doc.content[it] as? OdfContentBlock.Paragraph)?.paragraph }
     val plainText = paras.joinToString("\n") { p -> p.spans.joinToString("") { it.text } }

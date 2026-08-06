@@ -53,8 +53,8 @@ class YoutubeStreamLinkHandlerFactory private constructor() : LinkHandlerFactory
     }
 
     @Throws(ParsingException::class)
-    override fun getId(theUrlString: String): String {
-        var urlString = theUrlString
+    override fun getId(url: String): String {
+        var urlString = url
         try {
             val uri = URI(urlString)
             val scheme = uri.scheme
@@ -76,21 +76,21 @@ class YoutubeStreamLinkHandlerFactory private constructor() : LinkHandlerFactory
         } catch (ignored: URISyntaxException) {
         }
 
-        val url: URL
+        val parsedUrl: URL
         try {
-            url = Utils.stringToURL(urlString)
+            parsedUrl = Utils.stringToURL(urlString)
         } catch (e: MalformedURLException) {
             throw ParsingException("The given URL is not valid", e)
         }
 
-        val host = url.host
-        var path = url.path
+        val host = parsedUrl.host
+        var path = parsedUrl.path
         if (path.isNotEmpty()) {
             path = path.substring(1)
         }
 
-        if (!Utils.isHTTP(url) || !(isYoutubeURL(url) || isYoutubeServiceURL(url) ||
-                    isHooktubeURL(url) || isInvidiousURL(url) || isY2ubeURL(url))
+        if (!Utils.isHTTP(parsedUrl) || !(isYoutubeURL(parsedUrl) || isYoutubeServiceURL(parsedUrl) ||
+                    isHooktubeURL(parsedUrl) || isInvidiousURL(parsedUrl) || isY2ubeURL(parsedUrl))
         ) {
             if (host.equals("googleads.g.doubleclick.net", ignoreCase = true)) {
                 throw FoundAdException("Error: found ad: $urlString")
@@ -111,7 +111,7 @@ class YoutubeStreamLinkHandlerFactory private constructor() : LinkHandlerFactory
 
             "YOUTUBE.COM", "WWW.YOUTUBE.COM", "M.YOUTUBE.COM", "MUSIC.YOUTUBE.COM" -> {
                 if (path == "attribution_link") {
-                    val uQueryValue = Utils.getQueryValue(url, "u")
+                    val uQueryValue = Utils.getQueryValue(parsedUrl, "u")
 
                     val decodedURL: URL
                     try {
@@ -129,12 +129,12 @@ class YoutubeStreamLinkHandlerFactory private constructor() : LinkHandlerFactory
                     return maybeId
                 }
 
-                val viewQueryValue = Utils.getQueryValue(url, "v")
+                val viewQueryValue = Utils.getQueryValue(parsedUrl, "v")
                 return assertIsId(viewQueryValue)
             }
 
             "Y2U.BE", "YOUTU.BE" -> {
-                val viewQueryValue = Utils.getQueryValue(url, "v")
+                val viewQueryValue = Utils.getQueryValue(parsedUrl, "v")
                 if (viewQueryValue != null) {
                     return assertIsId(viewQueryValue)
                 }
@@ -171,7 +171,7 @@ class YoutubeStreamLinkHandlerFactory private constructor() : LinkHandlerFactory
             "YT.CYBERHOST.UK",
             "Y.COM.CM" -> {
                 if (path == "watch") {
-                    val viewQueryValue = Utils.getQueryValue(url, "v")
+                    val viewQueryValue = Utils.getQueryValue(parsedUrl, "v")
                     if (viewQueryValue != null) {
                         return assertIsId(viewQueryValue)
                     }
@@ -181,7 +181,7 @@ class YoutubeStreamLinkHandlerFactory private constructor() : LinkHandlerFactory
                     return maybeId
                 }
 
-                val viewQueryValue = Utils.getQueryValue(url, "v")
+                val viewQueryValue = Utils.getQueryValue(parsedUrl, "v")
                 if (viewQueryValue != null) {
                     return assertIsId(viewQueryValue)
                 }

@@ -191,13 +191,21 @@ private fun WheelPicker(
             contentPadding = PaddingValues(vertical = 60.dp),
             userScrollEnabled = enabled
         ) { page ->
-            val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-            val absOffset = abs(pageOffset)
-            
+            // currentPageOffsetFraction changes every frame while scrolling: read it in the
+            // graphicsLayer block (draw phase) and, for the composition-phase bold flag, behind
+            // derivedStateOf so recomposition only happens when the flag actually flips.
+            val isFocused by remember(pagerState, page) {
+                derivedStateOf {
+                    abs((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction) < 0.5f
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
+                        val absOffset =
+                            abs((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction)
                         val scale = 1f - (absOffset * 0.2f).coerceIn(0f, 0.4f)
                         scaleX = scale
                         scaleY = scale
@@ -208,7 +216,7 @@ private fun WheelPicker(
                 Text(
                     text = items.getOrNull(page) ?: "",
                     style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = if (absOffset < 0.5f) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
                         fontSize = 18.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface

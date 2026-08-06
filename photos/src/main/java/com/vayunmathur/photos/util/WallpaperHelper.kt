@@ -8,6 +8,8 @@ import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Rect
 import android.util.Log
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -72,7 +74,6 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun onCleared() {
-        super.onCleared()
         _bitmap.value?.recycle()
         _bitmap.value = null
     }
@@ -154,12 +155,12 @@ object WallpaperUtil {
             }.getOrElse { Rect(0, 0, source.width, source.height) }
 
             val cropBmp = Bitmap.createBitmap(source, cropped.left, cropped.top, cropped.width(), cropped.height())
-            val finalBmp = Bitmap.createScaledBitmap(cropBmp, targetWidth, targetHeight, true)
+            val finalBmp = cropBmp.scale(targetWidth, targetHeight)
             if (cropBmp !== finalBmp) cropBmp.recycle()
 
             // PNG alpha → black background (wallpaper does not support alpha)
             val opaqueBmp = if (finalBmp.hasAlpha()) {
-                val opaque = Bitmap.createBitmap(finalBmp.width, finalBmp.height, Bitmap.Config.ARGB_8888)
+                val opaque = createBitmap(finalBmp.width, finalBmp.height)
                 Canvas(opaque).apply {
                     drawColor(0xFF000000.toInt())
                     drawBitmap(finalBmp, 0f, 0f, null)

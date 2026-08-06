@@ -216,7 +216,8 @@ private suspend fun runDownloadsCore(
             // missing file; checksum failure above cleared the id, but a FAILED id may
             // still be queryable and cause "download doesn't work" UI freeze.
             val status = dm.query(DownloadManager.Query().setFilterById(existingId))?.use { c ->
-                if (c.moveToFirst()) c.getInt(c.getColumnIndex(DownloadManager.COLUMN_STATUS)) else -1
+                val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                if (statusIdx >= 0 && c.moveToFirst()) c.getInt(statusIdx) else -1
             } ?: -1
             if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
                 existingId

@@ -3,6 +3,7 @@ package com.vayunmathur.youpipe.util.sabr
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Debug
+import androidx.core.content.edit
 import java.util.Locale
 
 object SabrPlaybackDiagnostics {
@@ -54,7 +55,7 @@ object SabrPlaybackDiagnostics {
             pssKb,
             holder.session.getMemoryDiagnosticSummary()
         )
-        preferences(context).edit().putString(KEY_LAST_SNAPSHOT, snapshot).apply()
+        preferences(context).edit { putString(KEY_LAST_SNAPSHOT, snapshot) }
     }
 
     @JvmStatic

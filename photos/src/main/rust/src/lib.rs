@@ -278,12 +278,12 @@ mod tests {
         for mode in [1, 2] {
             let out = stylize::stylize(&src, w, h, mode);
             assert_eq!(out.len(), w * h);
-            for i in 0..w * h {
+            for px in &out {
                 // Alpha preserved; result is grayscale (R==G==B).
-                assert_eq!((out[i] as u32) >> 24, 0xFF, "alpha preserved");
-                let r = (out[i] >> 16) & 0xFF;
-                let g = (out[i] >> 8) & 0xFF;
-                let b = out[i] & 0xFF;
+                assert_eq!((*px as u32) >> 24, 0xFF, "alpha preserved");
+                let r = (px >> 16) & 0xFF;
+                let g = (px >> 8) & 0xFF;
+                let b = px & 0xFF;
                 assert_eq!(r, g);
                 assert_eq!(g, b);
             }

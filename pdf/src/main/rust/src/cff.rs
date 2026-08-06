@@ -589,17 +589,6 @@ pub fn parse_type2_charstring(data: &[u8]) -> Option<Vec<Type2Op>> {
             b0 as u16
         };
 
-        // Width handling for first operator with odd stack
-        let mut check_width = |stack: &mut Vec<f64>, width_parsed: &mut bool| {
-            if !*width_parsed && !stack.is_empty() && (stack.len() % 2 == 1) {
-                // first value is width, discard
-                stack.remove(0);
-                *width_parsed = true;
-            } else if !stack.is_empty() && *width_parsed == false {
-                // Alternative: if this is first moveto and we have odd count, treat as width
-            }
-        };
-
         const DIV_OP: u16 = 1212;
         const HFLEX_OP: u16 = 1234;
         const FLEX_OP: u16 = 1235;
@@ -621,7 +610,7 @@ pub fn parse_type2_charstring(data: &[u8]) -> Option<Vec<Type2Op>> {
                     stack.remove(0);
                     width_parsed = true;
                 }
-                if stack.len() >= 1 {
+                if !stack.is_empty() {
                     let dy = stack[0];
                     y += dy;
                     ops.push(Type2Op::MoveTo(x, y));
@@ -633,7 +622,7 @@ pub fn parse_type2_charstring(data: &[u8]) -> Option<Vec<Type2Op>> {
                     stack.remove(0);
                     width_parsed = true;
                 }
-                if stack.len() >=1 {
+                if !stack.is_empty() {
                     let dx = stack[0];
                     x += dx;
                     ops.push(Type2Op::MoveTo(x, y));
@@ -761,7 +750,7 @@ pub fn parse_type2_charstring(data: &[u8]) -> Option<Vec<Type2Op>> {
                 // can have optional dx/dy start? For simplicity handle 4 args per curve with alternating
                 while idx +3 < stack.len() {
                     // vvcurveto: dx1? Actually spec: if even count, args are dx1? Let's simplify as vertical
-                    let dx1 = if stack.len() %2 ==1 && idx==0 { stack[idx]; idx+=1; stack[idx-1] } else { 0.0 };
+                    let dx1 = if stack.len() %2 ==1 && idx==0 { let v = stack[idx]; idx+=1; v } else { 0.0 };
                     if idx +3 >= stack.len() { break; }
                     let dy1 = stack[idx]; let dx2 = stack[idx+1]; let dy2 = stack[idx+2]; let dy3 = stack[idx+3];
                     // second dx3? Actually vvcurveto args: dx1? + dy1 dx2 dy2 dy3 etc.
@@ -778,7 +767,7 @@ pub fn parse_type2_charstring(data: &[u8]) -> Option<Vec<Type2Op>> {
             27 => { // hhcurveto
                 let mut idx=0;
                 while idx +3 < stack.len() {
-                    let dy1 = if stack.len() %2 ==1 && idx==0 { 0.0 } else { 0.0 };
+                    let dy1 = 0.0;
                     if idx +3 >= stack.len() { break; }
                     let dx1 = stack[idx]; let dx2 = stack[idx+1]; let dy2 = stack[idx+2]; let dx3 = stack[idx+3];
                     let x1 = x + dx1; let y1 = y + dy1;
@@ -848,7 +837,7 @@ pub fn parse_type2_charstring(data: &[u8]) -> Option<Vec<Type2Op>> {
                 stem_count += stack.len()/2;
                 stack.clear();
                 // mask bytes
-                let mask_len = (stem_count +7)/8;
+                let mask_len = stem_count.div_ceil(8);
                 if pos + mask_len <= data.len() {
                     pos += mask_len;
                 }

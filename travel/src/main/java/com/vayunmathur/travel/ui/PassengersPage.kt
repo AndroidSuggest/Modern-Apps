@@ -162,6 +162,9 @@ private fun PassengerForm(
     }
 
     fun importFromContacts() {
+        // The picker only exists from API 37; the guard is repeated here (the button is already
+        // hidden below that) so the API-37-only extras are never read on an older platform.
+        if (android.os.Build.VERSION.SDK_INT < 37) return
         val intent = android.content.Intent(
             android.provider.ContactsPickerSessionContract.ACTION_PICK_CONTACTS
         ).apply {

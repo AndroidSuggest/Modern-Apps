@@ -62,7 +62,7 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            SettingsSection(stringResource(R.string.music_folder)) {
+            SettingsSection(title = stringResource(R.string.music_folder)) {
                 SettingsRow(
                     title = stringResource(R.string.choose_folder),
                     supportingText = state.folderName
@@ -91,7 +91,7 @@ fun SettingsScreen(
                     },
                 )
             }
-            SettingsSection(stringResource(R.string.downloads)) {
+            SettingsSection(title = stringResource(R.string.downloads)) {
                 SettingsSwitchRow(
                     title = stringResource(R.string.embed_cover_art),
                     checked = state.embedCoverArt,

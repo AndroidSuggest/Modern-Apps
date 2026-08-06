@@ -10,11 +10,16 @@ class VideoStream : Stream {
         const val RESOLUTION_UNKNOWN = ""
     }
 
+    private val resolutionValue: String
+    private val videoOnly: Boolean
+
     @Deprecated("Use getResolution() instead.")
     val resolution: String
+        get() = resolutionValue
 
     @Deprecated("Use isVideoOnly() instead.")
     val isVideoOnly: Boolean
+        get() = videoOnly
 
     private var itag: Int = ITAG_NOT_AVAILABLE_OR_NOT_APPLICABLE
     private var bitrate: Int = 0
@@ -58,9 +63,6 @@ class VideoStream : Stream {
             if (content == null) throw IllegalStateException(
                 "The content of the video stream has been not set or is null. Please specify a non-null one with setContent."
             )
-            if (deliveryMethod == null) throw IllegalStateException(
-                "The delivery method of the video stream has been set as null, which is not allowed. Pass a valid one instead with setDeliveryMethod."
-            )
             if (isVideoOnly == null) throw IllegalStateException(
                 "The video stream has been not set as a video-only stream or as a video stream with embedded audio. Please specify this information with setIsVideoOnly."
             )
@@ -100,14 +102,14 @@ class VideoStream : Stream {
             this.quality = itagItem.quality
             this.fps = itagItem.fps
         }
-        this.resolution = resolution
-        this.isVideoOnly = isVideoOnly
+        this.resolutionValue = resolution
+        this.videoOnly = isVideoOnly
     }
 
-    override fun equalStats(cmp: Stream?): Boolean {
-        return super.equalStats(cmp) && cmp is VideoStream
-                && resolution == cmp.resolution
-                && isVideoOnly == cmp.isVideoOnly
+    override fun equalStats(other: Stream?): Boolean {
+        return super.equalStats(other) && other is VideoStream
+                && resolutionValue == other.resolutionValue
+                && videoOnly == other.videoOnly
     }
 
     fun getItag(): Int = itag

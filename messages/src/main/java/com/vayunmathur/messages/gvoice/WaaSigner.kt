@@ -4,10 +4,12 @@ package com.vayunmathur.messages.gvoice
 
 import kotlin.concurrent.atomics.*
 import android.annotation.SuppressLint
-import android.content.Context
+import android.app.Application
 import android.util.Base64
 import android.util.Log
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.CompletableDeferred
@@ -48,7 +50,7 @@ import java.util.concurrent.ConcurrentHashMap
  * to the legacy "!" tracking data if signing returns null.
  */
 class WaaSigner(
-    private val context: Context,
+    private val context: Application,
     private val createWaa: suspend () -> Waa.CreatedWaa?,
 ) {
     private companion object {
@@ -202,13 +204,13 @@ class WaaSigner(
                 }
 
                 override fun onReceivedError(
-                    view: WebView?,
-                    errorCode: Int,
-                    description: String?,
-                    failingUrl: String?,
+                    view: WebView,
+                    request: WebResourceRequest,
+                    error: WebResourceError,
                 ) {
-                    super.onReceivedError(view, errorCode, description, failingUrl)
-                    Log.w(TAG, "WebView error $errorCode: $description")
+                    super.onReceivedError(view, request, error)
+                    if (!request.isForMainFrame) return
+                    Log.w(TAG, "WebView error ${error.errorCode}: ${error.description}")
                     readyWaiter?.complete(false)
                 }
             }

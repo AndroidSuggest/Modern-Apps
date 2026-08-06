@@ -32,7 +32,7 @@ pub unsafe extern "C" fn pqc_free(ptr: *mut u8, len: usize) {
     if ptr.is_null() {
         return;
     }
-    let _ = Box::from_raw(slice::from_raw_parts_mut(ptr, len));
+    let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len));
 }
 
 /// Best-effort secure zero of a buffer (for private keys / shared secrets).
@@ -307,16 +307,16 @@ pub unsafe extern "C" fn pqc_kem_decaps(
 // AES key is sharedSecret = SHA256(BE32(1)||rawSS) identical to Kotlin's concat_kdf.
 // ---------------------------------------------------------------------------
 
-/// NOTE: The high-level encrypt/decrypt that does AES is implemented on the Kotlin/Swift side
-/// because it needs AES-GCM (CryptoKit / javax.crypto). This crate exposes only KEM primitives
-/// via C. Swift's PQCCrypto will reproduce E2ee.aesEncrypt layout for full compatibility.
-///
-/// For iOS convenience we also expose these direct-derivation helpers that perform the full
-/// PQC seal/unseal if the caller provides an AES implementation, or we do AES here using
-/// a pure-Rust software AES if `aes-gcm` were added. To keep deps minimal, we use the same
-/// AES-GCM as in Kotlin: iv prepended. This requires adding `aes-gcm` + `aead`. To avoid
-/// new deps in this PR, we leave AES to the Swift layer — so we expose no aes-containing
-/// extern here, only KEM.
+// NOTE: The high-level encrypt/decrypt that does AES is implemented on the Kotlin/Swift side
+// because it needs AES-GCM (CryptoKit / javax.crypto). This crate exposes only KEM primitives
+// via C. Swift's PQCCrypto will reproduce E2ee.aesEncrypt layout for full compatibility.
+//
+// For iOS convenience we also expose these direct-derivation helpers that perform the full
+// PQC seal/unseal if the caller provides an AES implementation, or we do AES here using
+// a pure-Rust software AES if `aes-gcm` were added. To keep deps minimal, we use the same
+// AES-GCM as in Kotlin: iv prepended. This requires adding `aes-gcm` + `aead`. To avoid
+// new deps in this PR, we leave AES to the Swift layer — so we expose no aes-containing
+// extern here, only KEM.
 
 /// Signs with DSA private DER.
 #[no_mangle]

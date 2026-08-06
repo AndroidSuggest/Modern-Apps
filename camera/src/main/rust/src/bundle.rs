@@ -150,10 +150,7 @@ pub fn bundle_adjust(cams: &mut Vec<CameraParams>, matches: &[MatchInfo]) {
                     jtr[g1] += s;
                     for c2 in 0..8 {
                         let g2 = gcol[c2];
-                        let mut s2 = 0.0;
-                        for t in 0..m {
-                            s2 += jb[c1][t] * jb[c2][t];
-                        }
+                        let s2: f64 = jb[c1].iter().zip(&jb[c2]).map(|(a, b)| a * b).sum();
                         jtj[(g1, g2)] += s2;
                     }
                 }

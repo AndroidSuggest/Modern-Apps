@@ -340,15 +340,11 @@ pub(crate) fn oc_object_hidden(doc: &Document, obj: &Object) -> bool {
             }
             !is_ocg_visible(doc, *id)
         }
-        Object::Dictionary(d) => {
-            if d.get(b"Type").ok().and_then(|o| o.as_name().ok()) == Some(b"OCMD") {
-                ocmd_hidden(doc, d)
-            } else {
-                // Inline OCG dict without an object id can't be matched against the
-                // ON/OFF lists; default to visible.
-                false
-            }
+        Object::Dictionary(d) if d.get(b"Type").ok().and_then(|o| o.as_name().ok()) == Some(b"OCMD") => {
+            ocmd_hidden(doc, d)
         }
+        // Inline OCG dict without an object id can't be matched against the
+        // ON/OFF lists; default to visible.
         _ => false,
     }
 }
@@ -462,7 +458,7 @@ fn image_samples_to_rgba(
     if let CsKind::Indexed { base, lookup, base_ncomp, .. } = &kind {
         let bn = *base_ncomp as usize;
         let maxidx = if bpc >= 8 { 255usize } else { (1usize << bpc) - 1 };
-        let hival = if bn > 0 { (lookup.len() / bn).saturating_sub(1) } else { 0 };
+        let hival = lookup.len().checked_div(bn).map_or(0, |v| v.saturating_sub(1));
         let mut palette = vec![0xFF00_0000u32; hival + 1];
         for (i, slot) in palette.iter_mut().enumerate() {
             let off = i * bn;
@@ -560,7 +556,7 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
     if w == 0 || h == 0 || w > MAX_IMAGE_DIM || h > MAX_IMAGE_DIM {
         return None;
     }
-    if (w as usize).checked_mul(h as usize).unwrap_or(usize::MAX) > MAX_IMAGE_PIXELS {
+    if (w as usize).saturating_mul(h as usize) > MAX_IMAGE_PIXELS {
         return None;
     }
     if stream.content.len() > MAX_IMAGE_BYTES * 4 {
@@ -621,10 +617,8 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
         // Also check dict's own DecodeParms may be array with first dict containing globals
         if globals_bytes.is_none() {
             if let Some(Object::Dictionary(d)) = dict.get(b"DecodeParms").ok().and_then(|o| deref(doc,o)) {
-                if let Some(obj) = d.get(b"JBIG2Globals").ok().and_then(|o| deref(doc,o).or(Some(o))).cloned() {
-                    if let Object::Stream(s) = obj {
-                        globals_bytes = Some(s.decompressed_content().unwrap_or_else(|_| s.content.clone()));
-                    }
+                if let Some(Object::Stream(s)) = d.get(b"JBIG2Globals").ok().and_then(|o| deref(doc,o).or(Some(o))).cloned() {
+                    globals_bytes = Some(s.decompressed_content().unwrap_or_else(|_| s.content.clone()));
                 }
             }
         }
@@ -702,7 +696,7 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
             let out_w = columns as u32;
             let out_h = rows_est as u32;
             if (out_w as usize) * (out_h as usize) > MAX_IMAGE_PIXELS { return None; }
-            let row_bytes = (columns + 7) / 8;
+            let row_bytes = columns.div_ceil(8);
             let mut rgba = vec![255u8; (out_w * out_h * 4) as usize]; // white init
             for y in 0..rows_est {
                 for x in 0..columns {
@@ -800,7 +794,7 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
         let fg = ((fill_argb >> 8) & 0xFF) as u8;
         let fb = (fill_argb & 0xFF) as u8;
         // Use unpack for 1-bit
-        let row_bytes = ((w + 7) / 8) as usize;
+        let row_bytes = w.div_ceil(8) as usize;
         // If lopdf decompressed with predictor, row may have predictor overhead - for simplicity try direct
         for y in 0..h as usize {
             for x in 0..w as usize {
@@ -821,12 +815,7 @@ pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u
     // Ensure samples unpacked according to BPC
     // First try generic unpack for BPC 1,2,4,8,12,16
     let unpacked = unpack_samples_to_bytes(&samples, w as usize, h as usize, ncomp as usize, bpc);
-    let decoded_comps = if let Some(u) = unpacked {
-        u
-    } else {
-        // Unsupported BPC path -> None
-        return None;
-    };
+    let decoded_comps = unpacked?;
 
     // Now decoded_comps is w*h*ncomp bytes (0..255)
     let w_us = w as usize;
@@ -877,7 +866,7 @@ pub(crate) fn extract_inline_image(doc: &Document, stream: &lopdf::Stream, _fill
     // Support filter chain for inline BI: may have Flate, AHx, A85 etc.
     let specs = filters::filter_specs_from_dict(doc, dict);
     let raw = stream.content.clone();
-    let mut samples = filters::decode_stream_chain(raw.clone(), &specs, doc).unwrap_or(raw.clone());
+    let samples = filters::decode_stream_chain(raw.clone(), &specs, doc).unwrap_or(raw.clone());
 
     // DCT inline
     let legacy_filters = filter_names(doc, dict);
@@ -935,7 +924,7 @@ pub(crate) fn radial_shading_param(coords: &[f64], e0: bool, e1: bool, fx: f64, 
         // The interpolated circle radius must be non-negative.
         if r0 + s*dr < 0.0 { return; }
         // Respect the shading domain unless extended past an end.
-        let in_range = (s >= 0.0 && s <= 1.0) || (s < 0.0 && e0) || (s > 1.0 && e1);
+        let in_range = (0.0..=1.0).contains(&s) || (s < 0.0 && e0) || (s > 1.0 && e1);
         if !in_range { return; }
         best = Some(match best { Some(cur) if cur >= s => cur, _ => s });
     };
@@ -1066,8 +1055,7 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                     if len2<1e-12 {
                         0.0
                     } else {
-                        let t = ((fx - x0)*dx + (fy - y0)*dy)/len2;
-                        t
+                        ((fx - x0)*dx + (fy - y0)*dy)/len2
                     }
                 } else { 0.0 }
             } else {
@@ -1075,7 +1063,7 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                 if coords.len()>=6 {
                     radial_shading_param(
                         &coords,
-                        extend.get(0).copied().unwrap_or(false),
+                        extend.first().copied().unwrap_or(false),
                         extend.get(1).copied().unwrap_or(false),
                         fx, fy,
                     ).unwrap_or(f64::NAN)
@@ -1089,7 +1077,7 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
 
             // Extend handling
             let t_clamped = if t<0.0 {
-                if extend.get(0).copied().unwrap_or(false) { 0.0 } else {
+                if extend.first().copied().unwrap_or(false) { 0.0 } else {
                     // background outside
                     // pixel stays background/transparent
                     let idx = (y*w as usize + x)*4;
@@ -1131,7 +1119,7 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                     rgba[idx+3]=255;
                 } else {
                     // fallback gray for comps
-                    let v = (comps.get(0).copied().unwrap_or(0.0)*255.0) as u8;
+                    let v = (comps.first().copied().unwrap_or(0.0)*255.0) as u8;
                     rgba[idx]=v; rgba[idx+1]=v; rgba[idx+2]=v; rgba[idx+3]=255;
                 }
             } else {
@@ -1236,7 +1224,7 @@ pub(crate) fn apply_color_key_mask(rgba: &mut [u8], mask_ranges: &Option<Vec<(u8
                 r >= mn && r <= mx
             }
             3 => {
-                let (r0,r1)=ranges.get(0).copied().unwrap_or((0,0));
+                let (r0,r1)=ranges.first().copied().unwrap_or((0,0));
                 let (g0,g1)=ranges.get(1).copied().unwrap_or((0,0));
                 let (b0,b1)=ranges.get(2).copied().unwrap_or((0,0));
                 r>=r0 && r<=r1 && g>=g0 && g<=g1 && b>=b0 && b<=b1
@@ -1488,7 +1476,7 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
     if bpc==1 {
         // 1 bit per component -> 0/255
         let row_bits = total_comps;
-        let row_bytes = (row_bits+7)/8;
+        let row_bytes = row_bits.div_ceil(8);
         if samples.len() < h*row_bytes { return None; }
         let mut out = vec![0u8; h*total_comps];
         for y in 0..h {
@@ -1502,7 +1490,7 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
     }
     if bpc==2 {
         let row_bits = total_comps *2;
-        let row_bytes = (row_bits+7)/8;
+        let row_bytes = row_bits.div_ceil(8);
         if samples.len() < h*row_bytes { return None; }
         let mut out = vec![0u8; h*total_comps];
         for y in 0..h {
@@ -1512,14 +1500,14 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
                 let bit_in_byte = bit_off %8; // 0,2,4,6
                 let shift = 6 - bit_in_byte;
                 let val = (samples[byte_idx] >> shift) & 0x3;
-                out[y*total_comps + x] = (val * 85) as u8; // 255/3=85
+                out[y*total_comps + x] = val * 85; // 255/3=85
             }
         }
         return Some(out);
     }
     if bpc==4 {
         let row_bits = total_comps*4;
-        let row_bytes = (row_bits+7)/8;
+        let row_bytes = row_bits.div_ceil(8);
         if samples.len() < h*row_bytes { return None; }
         let mut out = vec![0u8; h*total_comps];
         for y in 0..h {
@@ -1528,7 +1516,7 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
                 let byte_idx = y*row_bytes + bit_off/8;
                 let shift = if bit_off%8==0 {4} else {0};
                 let val = (samples[byte_idx] >> shift) & 0xF;
-                out[y*total_comps + x] = (val * 17) as u8; // 255/15=17
+                out[y*total_comps + x] = val * 17; // 255/15=17
             }
         }
         return Some(out);
@@ -1539,7 +1527,7 @@ pub(crate) fn unpack_samples_to_bytes(samples: &[u8], w: usize, h: usize, ncomp:
         // If bpc==12: need to handle packing: 2 samples =3 bytes. To simplify, use bit reader for generic
         // Implement bit reader
         let row_bits = total_comps * bpc as usize;
-        let row_bytes = (row_bits+7)/8;
+        let row_bytes = row_bits.div_ceil(8);
         if samples.len() < h*row_bytes { return None; }
         let mut out = vec![0u8; h*total_comps];
         for y in 0..h {
@@ -1641,7 +1629,7 @@ fn decode_mask_stream_gray(doc: &Document, s: &lopdf::Stream, sw: usize, sh: usi
         let chain = filters::decode_stream_chain(raw.clone(), &specs, doc).unwrap_or(raw);
         if let Some(packed) = filters::decode_ccitt(&chain, sw as u32, sh as u32, &params) {
             // packed 1-bit: expand to 0/255
-            let row_bytes = (sw + 7) / 8;
+            let row_bytes = sw.div_ceil(8);
             let mut gray = vec![255u8; sw * sh];
             for y in 0..sh {
                 for x in 0..sw {
@@ -1676,7 +1664,7 @@ fn decode_mask_stream_gray(doc: &Document, s: &lopdf::Stream, sw: usize, sh: usi
     // Plain bit path (1-bit masks without compression)
     if sbpc == 1 {
         let data = stream_data(s);
-        let row_bytes = (sw + 7) / 8;
+        let row_bytes = sw.div_ceil(8);
         let mut gray = vec![255u8; sw * sh];
         for y in 0..sh {
             for x in 0..sw {
@@ -1696,7 +1684,7 @@ fn decode_mask_stream_gray(doc: &Document, s: &lopdf::Stream, sw: usize, sh: usi
         let data = stream_data(s);
         let bpp = sbpc as usize;
         let row_bits = sw * bpp;
-        let row_bytes = (row_bits + 7) / 8;
+        let row_bytes = row_bits.div_ceil(8);
         let mut gray = vec![255u8; sw * sh];
         for y in 0..sh {
             let base = y * row_bytes;
@@ -1850,7 +1838,7 @@ mod mask_tests {
             0xFF, 0xC0, 0x00, 0x11, // SOF0, len=17
             0x08, 0x00, 0x01, 0x00, 0x01, 0x03, // prec, h, w, ncomp=3
         ];
-        data.extend(std::iter::repeat(0u8).take(9)); // 3 component specs
+        data.extend(std::iter::repeat_n(0u8, 9)); // 3 component specs
         assert_eq!(jpeg_num_components(&data), Some(3));
     }
 
@@ -1923,6 +1911,6 @@ mod radial_tests {
         let coords = [0.0, 0.0, 10.0, 100.0, 0.0, 10.0];
         // On the segment between centers, near the start circle boundary.
         let s = radial_shading_param(&coords, true, true, 10.0, 0.0).unwrap();
-        assert!(s >= 0.0 && s <= 1.0, "s={s}");
+        assert!((0.0..=1.0).contains(&s), "s={s}");
     }
 }

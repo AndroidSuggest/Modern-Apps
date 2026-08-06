@@ -11,6 +11,7 @@ import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
+import androidx.core.text.htmlEncode
 import com.vayunmathur.library.ui.EmailAlignmentSpan
 import com.vayunmathur.library.ui.EmailBlockQuoteSpan
 import com.vayunmathur.library.ui.FontFamilySpan
@@ -237,7 +238,7 @@ private fun buildInlineHtml(spanned: Spanned, start: Int, end: Int): String {
         }
         val nextChange = findNextSpanBoundary(spanned, i, end)
         val slice = spanned.subSequence(i, nextChange).toString()
-        var piece = android.text.TextUtils.htmlEncode(slice)
+        var piece = slice.htmlEncode()
 
         // Determine active inline spans at i
         val hasCode = spanned.getSpans(i, i + 1, InlineCodeSpan::class.java).any {
@@ -299,8 +300,9 @@ private fun buildInlineHtml(spanned: Spanned, start: Int, end: Int): String {
         }
         if (sizeSpan != null) {
             val factor = sizeSpan.sizeChange
-            // Emit em-based size, clamp for email safety
-            val sizeStr = "${String.format("%.2f", factor)}em"
+            // Emit em-based size, clamp for email safety. Locale.ROOT: this is a CSS
+            // value, a comma decimal separator would make it invalid.
+            val sizeStr = "${String.format(java.util.Locale.ROOT, "%.2f", factor)}em"
             piece = "<span style=\"font-size:$sizeStr\">$piece</span>"
         }
         if (bgSpan != null) {

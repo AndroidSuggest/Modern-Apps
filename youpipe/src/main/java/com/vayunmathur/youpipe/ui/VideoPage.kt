@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -138,6 +139,7 @@ fun VideoPage(
     videoID: Long,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val downloadedFlow = remember(videoID) { ypvm.downloadedById(videoID) }
     val downloadedVideo by downloadedFlow.collectAsState(initial = null)
     val videoState by ypvm.videoState.collectAsState()
@@ -217,7 +219,7 @@ fun VideoPage(
             loaded = videoData != null,
             title = videoData?.title.orEmpty(),
             byline = videoData?.let {
-                context.getString(
+                resources.getString(
                     R.string.video_info_format,
                     it.author,
                     countString(context, it.views),

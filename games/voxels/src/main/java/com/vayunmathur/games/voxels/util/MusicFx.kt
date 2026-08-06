@@ -1,6 +1,7 @@
 package com.vayunmathur.games.voxels.util
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.media.MediaPlayer
 
 // Background music manager. Cycles the track playlist ambiently at a low volume; a jukebox disc
@@ -9,16 +10,16 @@ object MusicFx {
     private var ambient: MediaPlayer? = null
     private var disc: MediaPlayer? = null
     private var currentDisc: String? = null
-    private var ctx: Context? = null
+    private var assets: AssetManager? = null
     private var idx = 0
     private val playlist = listOf(
         "mcl_forest.ogg", "mcl_piano.ogg", "mcl_winter.ogg", "mcl_gift.ogg",
         "golden.ogg", "mcl_mining.ogg", "lullaby.ogg"
     )
 
-    private fun make(c: Context, asset: String, loop: Boolean, vol: Float, onDone: (() -> Unit)?): MediaPlayer? {
+    private fun make(assets: AssetManager, asset: String, loop: Boolean, vol: Float, onDone: (() -> Unit)?): MediaPlayer? {
         return try {
-            val afd = c.assets.openFd("music/$asset")
+            val afd = assets.openFd("music/$asset")
             val p = MediaPlayer()
             p.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
             afd.close()
@@ -33,16 +34,16 @@ object MusicFx {
     }
 
     fun startAmbient(c: Context) {
-        ctx = c.applicationContext
+        assets = c.applicationContext.assets
         if (ambient == null && disc == null) playNextAmbient()
     }
 
     private fun playNextAmbient() {
-        val c = ctx ?: return
+        val a = assets ?: return
         val asset = playlist[idx % playlist.size]
         idx++
         ambient?.let { try { it.release() } catch (_: Throwable) {} }
-        ambient = make(c, asset, loop = false, vol = 0.45f, onDone = { playNextAmbient() })
+        ambient = make(a, asset, loop = false, vol = 0.45f, onDone = { playNextAmbient() })
     }
 
     // Jukebox: same disc again -> stop and resume ambient; a new disc -> take over; null -> resume.
@@ -50,7 +51,7 @@ object MusicFx {
         if (asset == null || asset == currentDisc) { stopDisc(); resumeAmbient(); return }
         stopDisc()
         try { ambient?.pause() } catch (_: Throwable) {}
-        disc = make(c, asset, loop = true, vol = 0.8f, onDone = null)
+        disc = make(c.applicationContext.assets, asset, loop = true, vol = 0.8f, onDone = null)
         currentDisc = asset
     }
 

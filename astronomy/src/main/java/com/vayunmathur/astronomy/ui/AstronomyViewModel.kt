@@ -390,5 +390,5 @@ class AstronomyViewModel(app: Application) : AndroidViewModel(app), SkyMapAction
         return results
     }
 
-    override fun onCleared() { super.onCleared(); orientationMgr.stop(); tickerJob?.cancel(); locationJob?.cancel() }
+    override fun onCleared() { orientationMgr.stop(); tickerJob?.cancel(); locationJob?.cancel() }
 }

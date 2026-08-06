@@ -106,7 +106,7 @@ pub fn filter_specs_from_dict(doc: &Document, dict: &Dictionary) -> Vec<(FilterK
                 let d_opt = deref(doc, el)
                     .and_then(|o| o.as_dict().ok())
                     .or_else(|| el.as_dict().ok())
-                    .map(|d| d.clone());
+                    .cloned();
                 decode_parms.push(d_opt);
             }
             while decode_parms.len() < filter_objs.len() { decode_parms.push(None); }
@@ -165,7 +165,7 @@ pub fn decode_ascii85(data: &[u8]) -> Result<Vec<u8>, String> {
             continue;
         }
         if b.is_ascii_whitespace() { continue; }
-        if b < b'!' || b > b'u' { break; }
+        if !(b'!'..=b'u').contains(&b) { break; }
         buffer = buffer.checked_mul(85).ok_or("mul overflow")? + (b - b'!') as u32;
         count+=1;
         if count==5 { out.extend_from_slice(&buffer.to_be_bytes()); buffer=0; count=0; }
@@ -193,7 +193,7 @@ pub fn decode_runlength(data: &[u8]) -> Vec<u8> {
             if i>=data.len() { break; }
             let repeat = (257 - len as i32) as usize;
             let b=data[i]; i+=1;
-            out.extend(std::iter::repeat(b).take(repeat));
+            out.extend(std::iter::repeat_n(b, repeat));
         }
     }
     out
@@ -226,7 +226,7 @@ fn lzw_decode_std(data: &[u8], early_change: bool) -> Option<Vec<u8>> {
     let mut data_pos = 0usize;
     let mut prev: Option<Vec<u8>> = None;
 
-    let mut read_code = |bit_buf: &mut u32, bits_in_buf: &mut usize, data: &[u8], pos: &mut usize, bits: usize| -> Option<u32> {
+    let read_code = |bit_buf: &mut u32, bits_in_buf: &mut usize, data: &[u8], pos: &mut usize, bits: usize| -> Option<u32> {
         while *bits_in_buf < bits {
             if *pos >= data.len() { return None; }
             *bit_buf = (*bit_buf << 8) | data[*pos] as u32;
@@ -303,11 +303,11 @@ pub fn parse_ccitt_params(doc: &Document, dict_opt: Option<&Dictionary>) -> Ccit
         if let Some(Object::Boolean(b)) = dict.get(b"EndOfBlock").ok().and_then(|o| deref(doc,o)).or_else(|| dict.get(b"EndOfBlock").ok()) { p.end_of_block = *b; }
         if let Some(Object::Boolean(b)) = dict.get(b"BlackIs1").ok().and_then(|o| deref(doc,o)).or_else(|| dict.get(b"BlackIs1").ok()) { p.black_is1 = *b; }
         // also check boolean via reference variant for BlackIs1 through deref returning Object::Boolean
-        if let Some(obj) = dict.get(b"BlackIs1").ok().and_then(|o| deref(doc,o)) {
-            if let Object::Boolean(b)=obj { p.black_is1=*b; }
+        if let Some(Object::Boolean(b)) = dict.get(b"BlackIs1").ok().and_then(|o| deref(doc,o)) {
+            p.black_is1 = *b;
         }
         if let Some(v)=try_num(b"DamagedRowsBeforeError") { p.damaged_rows_before_error=v as u32; }
-        if let Some(Object::Boolean(b)) = dict.get(b"EncodedByteAlign").ok().and_then(|o| deref(doc,o)).or_else(|| dict.get(b"EncodedByteAlign").ok()) { p.encoded_byte_align=*b; }
+        if let Some(Object::Boolean(b)) = dict.get(b"EncodedByteAlign").ok().and_then(|o| deref(doc,o)).or_else(|| dict.get(b"EncodedByteAlign").ok()) { p.encoded_byte_align = *b; }
     }
     p
 }
@@ -324,7 +324,7 @@ pub fn decode_ccitt(data: &[u8], w: u32, h: u32, params: &CcittParams) -> Option
     let rows_us = rows as usize;
     let cols_us = columns as usize;
     if cols_us == 0 || rows_us == 0 || cols_us > 20000 || rows_us > 20000 { return None; }
-    let row_bytes = (cols_us + 7) / 8;
+    let row_bytes = cols_us.div_ceil(8);
     if (cols_us * rows_us) > 16 * 1024 * 1024 { return None; }
     let mut packed = vec![0u8; row_bytes * rows_us];
 
@@ -482,7 +482,7 @@ fn apply_tiff_predictor2(mut data: Vec<u8>, cols: usize, colors: usize, bpc: usi
     }
     let samples_per_row = cols * colors;
     let row_bits = samples_per_row * bpc;
-    let row_bytes = (row_bits + 7) / 8;
+    let row_bytes = row_bits.div_ceil(8);
     if row_bytes == 0 {
         return data;
     }

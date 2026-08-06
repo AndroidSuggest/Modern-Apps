@@ -4,7 +4,6 @@ import com.vayunmathur.library.ui.R as UiR
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
@@ -85,9 +84,7 @@ class CableActivity : FragmentActivity() {
         val needed = buildList {
             add(Manifest.permission.BLUETOOTH_ADVERTISE)
             add(Manifest.permission.BLUETOOTH_CONNECT)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            }
+            add(Manifest.permission.POST_NOTIFICATIONS)
         }.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }

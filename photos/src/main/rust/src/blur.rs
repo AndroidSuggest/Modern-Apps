@@ -9,10 +9,10 @@ pub fn gaussian_kernel(radius: i32) -> Vec<f32> {
     let mut kernel = vec![0f32; size];
     let sigma = radius as f32 / 3f32;
     let mut sum = 0f32;
-    for i in 0..size {
+    for (i, k) in kernel.iter_mut().enumerate() {
         let x = (i as i32 - radius) as f32;
-        kernel[i] = (-(x * x) / (2f32 * sigma * sigma)).exp();
-        sum += kernel[i];
+        *k = (-(x * x) / (2f32 * sigma * sigma)).exp();
+        sum += *k;
     }
     for k in &mut kernel {
         *k /= sum;

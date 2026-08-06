@@ -8,6 +8,9 @@ use crate::matching::MatchInfo;
 use crate::sphere::{estimate_focal, k_matrix, orthonormalize};
 use crate::linalg::Matrix3;
 
+/// `node -> [(neighbour, num_inliers, confidence, H_node->neighbour)]`.
+type Adjacency = Vec<Vec<(usize, usize, f64, Matrix3<f64>)>>;
+
 pub fn estimate_cameras(n: usize, w: usize, h: usize, matches: &[MatchInfo]) -> Vec<CameraParams> {
     let hs: Vec<Matrix3<f64>> = matches.iter().map(|m| m.h).collect();
     let focal = estimate_focal(&hs, w, h);
@@ -18,7 +21,7 @@ pub fn estimate_cameras(n: usize, w: usize, h: usize, matches: &[MatchInfo]) -> 
 
     // adjacency: node -> Vec<(neighbor, num_inliers, confidence, H_node->neighbor)>
     // Weight for MST is num_inliers (GraphEdge), confidence as tie-breaker – per plan
-    let mut adj: Vec<Vec<(usize, usize, f64, Matrix3<f64>)>> = vec![Vec::new(); n];
+    let mut adj: Adjacency = vec![Vec::new(); n];
     for m in matches {
         adj[m.src].push((m.dst, m.num_inliers, m.confidence, m.h));
         if let Some(hinv) = m.h.try_inverse() {

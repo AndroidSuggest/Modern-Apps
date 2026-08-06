@@ -3,8 +3,8 @@ package com.vayunmathur.email.util
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
+import androidx.core.content.edit
 import com.vayunmathur.email.data.EmailSyncWorker
 import com.vayunmathur.email.data.ImapIdleService
 import com.vayunmathur.email.data.OutboxSendWorker
@@ -42,21 +42,11 @@ class BootReceiver : BroadcastReceiver() {
                         EmailSyncWorker.runOneOffSync(appContext)
                         OutboxSendWorker.runNow(appContext)
 
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            // Do NOT start FGS from boot on S+ — it will crash with
-                            // ForegroundServiceStartNotAllowedException for dataSync.
-                            appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                                .edit().putBoolean(KEY_PENDING, true).apply()
-                            Log.d(TAG, "S+ boot: deferred IDLE start, set $KEY_PENDING=true")
-                        } else {
-                            try {
-                                ImapIdleService.start(appContext)
-                            } catch (t: Throwable) {
-                                Log.w(TAG, "Boot IDLE start failed (pre-S): ${t.message}", t)
-                                appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                                    .edit().putBoolean(KEY_PENDING, true).apply()
-                            }
-                        }
+                        // Do NOT start the FGS from boot — it would crash with
+                        // ForegroundServiceStartNotAllowedException for dataSync.
+                        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                            .edit { putBoolean(KEY_PENDING, true) }
+                        Log.d(TAG, "Boot: deferred IDLE start, set $KEY_PENDING=true")
                     } catch (t: Throwable) {
                         Log.w(TAG, "BootReceiver failed: ${t.message}", t)
                     } finally {

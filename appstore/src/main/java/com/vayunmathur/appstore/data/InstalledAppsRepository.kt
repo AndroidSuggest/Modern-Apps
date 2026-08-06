@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
-import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,7 +54,7 @@ class InstalledAppsRepository(private val context: Context) {
             packageName = ai.packageName,
             name = getApplicationLabel(ai).toString(),
             versionName = pi.versionName,
-            versionCode = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else @Suppress("DEPRECATION") pi.versionCode.toLong(),
+            versionCode = pi.longVersionCode,
             lastUpdateTime = pi.lastUpdateTime,
         )
     } catch (_: Exception) {

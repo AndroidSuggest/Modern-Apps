@@ -328,17 +328,5 @@
     <!-- Booking action: loading state booking hotel -->
     <string name="book_with_test_balance">Book with test balance</string>
 
-    <!-- CD: remove flight leg icon. Verb phrase for TalkBack -->
-    <string name="cd_remove_flight">Remove flight</string>
-    <!-- CD: selected checkmark for change option. Adjective -->
-    <string name="cd_selected">Selected</string>
-    <!-- CD: fewer guests/rooms decrement button. Adjective comparative -->
-    <string name="cd_fewer">Fewer</string>
-    <!-- CD: back navigation arrow. Noun, navigation -->
-    <string name="cd_back">Back</string>
-    <!-- CD: remove item icon (customer, FF number). Verb -->
-    <string name="cd_remove">Remove</string>
-    <!-- CD: more guests/rooms increment button. Adjective comparative -->
-    <string name="cd_more">More</string>
     <string name="destination_or_hotel">Destination or hotel</string>
 </resources>

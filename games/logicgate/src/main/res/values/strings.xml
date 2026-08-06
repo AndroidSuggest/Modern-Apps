@@ -1,11 +1,9 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- Screens / MainActivity / launcher: App name. Noun, proper, title of logic gate puzzle game -->
     <string name="app_name">Logic Gate</string>
-    <!-- GameScreen top bar: Button to redo after undo. Verb -->
-    <string name="redo">Redo</string>
 
     <!-- MainActivity: Loading state when level data not yet ready from DataStore. Verb progressive -->
-    <string name="loading">Loading...</string>
+    <string name="loading">Loading…</string>
     <!-- GameScreen win dialog: Title shown when the level is solved. Noun phrase -->
     <string name="level_complete_title">Level Complete!</string>
     <!-- GameScreen win dialog: Body. %1$s = level name, e.g. XOR. Sentence -->
@@ -16,12 +14,6 @@
     <string name="back_to_map">Back to Map</string>
     <!-- GameScreen win dialog: Button to dismiss the dialog and keep editing the current level. Verb phrase -->
     <string name="keep_editing">Keep Editing</string>
-    <!-- GameScreen: Status line showing current level hint. %1$s = hint text from level definition, e.g. NAND(in,in)=NOT. Noun with value -->
-    <string name="hint_1">Hint: <xliff:g id="hint_text" example="NAND(in,in)=NOT">%1$s</xliff:g></string>
-    <!-- GameScreen: Button to cancel active wire connection when user started wiring. Verb phrase -->
-    <string name="cancel_wire">Cancel Wire</string>
-    <!-- GameScreen: Counter chip showing number of gates placed. %1$s = gate count integer as string e.g. 5. Noun with count, preserves surrounding spaces -->
-    <string name="gates"> <xliff:g id="gate_count" example="5">%1$s</xliff:g> gates </string>
     <!-- ProgressionScreen: Subtitle describing game progression from NAND to computer. Sentence -->
     <string name="start_with_nand_end_with_a_computer">Start with NAND. End with a computer.</string>
     <!-- ProgressionScreen: Second subtitle explaining tap to play, dependency lines, total levels. Sentence fragment -->
@@ -35,22 +27,8 @@
     <string name="done">DONE</string>
     <!-- ProgressionScreen: LevelNode action when level available to play. Verb uppercase -->
     <string name="play">PLAY</string>
-    <!-- TruthTableView: Error when target chip definition not found. %1$s = target chip ID string, e.g. AND. Sentence -->
-    <string name="unknown_target_chip">Unknown target chip <xliff:g id="chip_id" example="AND">%1$s</xliff:g></string>
-    <!-- TruthTableView: Header showing bit widths and target. %1$s=displayName e.g. AND, %2$s=total input bits e.g. 2, %3$s=input widths csv e.g. 1,1, %4$s=total output bits e.g. 1, %5$s=output widths csv e.g. 1, %6$s=target display name e.g. AND. Technical spec header -->
-    <string name="b_in_b_out_target"><xliff:g id="name" example="AND">%1$s</xliff:g> • <xliff:g id="in_bits" example="2">%2$s</xliff:g>b in [<xliff:g id="in_widths" example="1,1">%3$s</xliff:g>] → <xliff:g id="out_bits" example="1">%4$s</xliff:g>b out [<xliff:g id="out_widths" example="1">%5$s</xliff:g>] • target <xliff:g id="target_name" example="AND">%6$s</xliff:g></string>
-    <!-- TruthTableView: Note when inputs >10 bits sampling limited. %1$s = display limit e.g. 64, %2$s = total comb e.g. 1024. Note explanatory -->
-    <string name="sampled_cases_bus_needs_join_8_split_8">Sampled <xliff:g id="display_limit" example="64">%1$s</xliff:g> / <xliff:g id="total_cases" example="1024">%2$s</xliff:g>+ cases (bus needs JOIN_8/SPLIT_8)</string>
-    <!-- TruthTableView: Footer error showing failing test cases and suggesting bus width check. %1$s = failing rows count e.g. 3. Error hint -->
-    <string name="failing_check_wiring_width_match_join_8"><xliff:g id="failing_count" example="3">%1$s</xliff:g> failing • check wiring width match JOIN_8/SPLIT_8</string>
-    <!-- TruthTableView: Special-case note for SR latch level explaining feedback cycle expected and structural pass enabled. Technical sentence -->
-    <string name="sr_latch_2_nor_cross_coupled_feedback_cy">SR latch: 2 NOR cross-coupled feedback – cycle expected, structural pass enabled</string>
     <!-- InventoryBar: Title explaining inventory colors and action. Sentence with bus color coding and drag instruction -->
 
-    <!-- MainActivity: Top bar button to hide truth table when visible. Verb phrase abbreviation -->
-    <string name="hide_tt">Hide TT</string>
-    <!-- MainActivity: Top bar button to show truth table when hidden. Verb phrase abbreviation -->
-    <string name="show_tt">Show TT</string>
 
     <!-- Screens: Content description (accessibility) for GameCenter star icon linking achievements. Noun -->
     <string name="cd_achievements">Achievements</string>

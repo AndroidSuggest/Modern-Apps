@@ -7,6 +7,8 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.util.Log
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import com.vayunmathur.ncnn.FaceDetector
 import com.vayunmathur.ncnn.FaceEmbedder
 import java.nio.ByteBuffer
@@ -165,7 +167,7 @@ object FaceRecognizer {
             val matrix = Matrix()
             if (matrix.setPolyToPoly(srcPts, 0, dstPts, 0, 2)) {
                 return try {
-                    val outBmp = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
+                    val outBmp = createBitmap(INPUT_SIZE, INPUT_SIZE)
                     Canvas(outBmp).drawBitmap(src, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
                     outBmp
                 } catch (_: Exception) { null }
@@ -173,7 +175,7 @@ object FaceRecognizer {
         }
         return try {
             val crop = Bitmap.createBitmap(src, box.left, box.top, box.width(), box.height())
-            val scaled = Bitmap.createScaledBitmap(crop, INPUT_SIZE, INPUT_SIZE, true)
+            val scaled = crop.scale(INPUT_SIZE, INPUT_SIZE)
             if (scaled != crop) crop.recycle()
             scaled
         } catch (_: Exception) { null }

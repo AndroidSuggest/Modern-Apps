@@ -6,10 +6,11 @@ import android.content.Context
 import android.content.IntentSender
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -241,7 +242,7 @@ class PhotoEditViewModel(
         val doc = _document.value
         val w = doc.canvasWidth.coerceAtLeast(1)
         val h = doc.canvasHeight.coerceAtLeast(1)
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bmp = createBitmap(w, h)
         updateDocument { it.addLayer(PixelLayer(BitmapReference(bmp), name = "Layer")) }
     }
 
@@ -389,7 +390,7 @@ class PhotoEditViewModel(
         val out = edited.copy(Bitmap.Config.ARGB_8888, true)
         val orig = IntArray(w * h)
         val origScaled = if (original.width == w && original.height == h) original
-        else Bitmap.createScaledBitmap(original, w, h, true)
+        else original.scale(w, h)
         origScaled.getPixels(orig, 0, w, 0, 0, w, h)
         val edt = IntArray(w * h)
         out.getPixels(edt, 0, w, 0, 0, w, h)
@@ -492,7 +493,7 @@ class PhotoEditViewModel(
         val layer = doc.layers.getOrNull(index) as? PixelLayer ?: return
         viewModelScope.launch(Dispatchers.Default) {
             val src = layer.bitmapRef.bitmap
-            val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+            val out = createBitmap(src.width, src.height)
             val m = corners.toMatrix(src.width.toFloat(), src.height.toFloat())
             android.graphics.Canvas(out).drawBitmap(src, m, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
             withContext(Dispatchers.Main) {
@@ -606,7 +607,6 @@ class PhotoEditViewModel(
     }
 
     override fun onCleared() {
-        super.onCleared()
         previewJob?.cancel()
         _compositedPreview.value?.recycle()
         _baseBitmap.value?.recycle()
@@ -666,11 +666,8 @@ class PhotoEditViewModel(
             } catch (e: Exception) {
                 Log.d(TAG, "Direct write failed, falling back to createWriteRequest", e)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pendingIntent = MediaStore.createWriteRequest(resolver, listOf(uri))
-                return WriteResult.NeedsPermission(pendingIntent.intentSender, bytes, uri)
-            }
-            return WriteResult.Error(Exception("createWriteRequest requires API 30+"))
+            val pendingIntent = MediaStore.createWriteRequest(resolver, listOf(uri))
+            return WriteResult.NeedsPermission(pendingIntent.intentSender, bytes, uri)
         }
     }
 }

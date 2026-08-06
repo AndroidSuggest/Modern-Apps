@@ -92,9 +92,8 @@
     <string name="loading_recent_subscriptions">Chargement des abonnements récents</string>
     <string name="download_options">Options de téléchargement</string>
     <string name="clear_history">Effacer l’historique</string>
-    <string name="downloads">Téléchargements</string>
     <string name="off">Désactivé</string>
-    <string name="selected">%1$s sélectionné(s)</string>
+    <string name="selected_count">%1$s sélectionné(s)</string>
     <string name="selected_1">%1$s sélectionné(s)</string>
     <string name="download">Télécharger</string>
     <string name="language">Langue</string>

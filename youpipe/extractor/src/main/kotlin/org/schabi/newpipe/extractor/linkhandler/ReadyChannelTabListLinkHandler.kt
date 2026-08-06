@@ -8,7 +8,7 @@ import javax.annotation.Nonnull
 class ReadyChannelTabListLinkHandler(
     url: String,
     channelId: String,
-    @param:Nonnull channelTab: String,
+    @Nonnull channelTab: String,
     private val extractorBuilder: ChannelTabExtractorBuilder
 ) : ListLinkHandler(url, url, channelId, listOf(channelTab), "") {
 

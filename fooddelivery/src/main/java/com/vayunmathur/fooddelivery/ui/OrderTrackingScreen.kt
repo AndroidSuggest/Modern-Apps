@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,7 +65,6 @@ import com.vayunmathur.fooddelivery.data.OrderStage
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
@@ -255,6 +255,7 @@ private fun MapPin(
 @Composable
 private fun StageHeader(order: Order) {
     val stage = order.stage
+    val locale = LocalConfiguration.current.locales[0]
     Column {
         Text(stage.label, style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold)
@@ -265,7 +266,7 @@ private fun StageHeader(order: Order) {
             Spacer(Modifier.height(4.dp))
             Text(
                 if (minutes > 0) stringResource(R.string.eta_minutes, minutes,
-                    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(eta)))
+                    SimpleDateFormat("h:mm a", locale).format(Date(eta)))
                 else stringResource(R.string.eta_any_moment),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,

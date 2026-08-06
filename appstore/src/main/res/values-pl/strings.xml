@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="updates">Aktualizacje</string>
-    <string name="update_all">Aktualizuj wszystko (%1$s)</string>
+    <string name="update_all">Aktualizuj wszystko (%1$d)</string>
     <string name="last_sync">Ostatnia synchronizacja: %1$s</string>
     <string name="installed">Zainstalowano</string>
     <string name="all_apps_up_to_date">Wszystkie aplikacje aktualne</string>

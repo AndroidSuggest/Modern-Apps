@@ -66,9 +66,9 @@
     <string name="create_new_calendar_option">Créer un nouveau calendrier</string>
     <string name="no_events_found">Aucun événement trouvé</string>
     <plurals name="import_summary">
-        <item quantity="one">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événement prêt à être importé</item>
-        <item quantity="many">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événements prêts à être importés</item>
-        <item quantity="other">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événements prêts à être importés</item>
+        <item quantity="one">%1$d événement est prêt à être importé</item>
+        <item quantity="many">%1$d d’événements sont prêts à être importés</item>
+        <item quantity="other">%1$d événements sont prêts à être importés</item>
     </plurals>
     <plurals name="rrule_every_months">
         <item quantity="one">À intervalles de &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; mois</item>

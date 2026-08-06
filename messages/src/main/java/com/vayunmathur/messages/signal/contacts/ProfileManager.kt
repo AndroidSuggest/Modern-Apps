@@ -105,11 +105,11 @@ class ProfileManager(
             }
 
             val json = JSONObject(String(response.body.toByteArray()))
-            val encryptedName = json.optString("name", null)
-            val encryptedAbout = json.optString("about", null)
-            val encryptedAboutEmoji = json.optString("aboutEmoji", null)
-            val rawAvatar = json.optString("avatar", null)
-            val credentialBase64 = json.optString("credential", null)
+            val encryptedName = if (json.has("name")) json.optString("name") else null
+            val encryptedAbout = if (json.has("about")) json.optString("about") else null
+            val encryptedAboutEmoji = if (json.has("aboutEmoji")) json.optString("aboutEmoji") else null
+            val rawAvatar = if (json.has("avatar")) json.optString("avatar") else null
+            val credentialBase64 = if (json.has("credential")) json.optString("credential") else null
             val credential = credentialBase64?.takeIf { it.isNotEmpty() }?.let {
                 android.util.Base64.decode(it, android.util.Base64.NO_WRAP)
             }

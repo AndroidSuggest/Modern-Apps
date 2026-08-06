@@ -26,6 +26,8 @@
     <string name="model_downloading_description">Le téléchargement du modèle d\'IA est en cours. Cela peut prendre quelques minutes, selon votre connexion.</string>
     <string name="resolution">Résolution : %1$d × %2$d</string>
     <plurals name="people_photo_count">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="many">%1$d de photos</item>
         <item quantity="other">%1$d photos</item>
     </plurals>
     <string name="view_360">Vue à 360°</string>
@@ -225,7 +227,6 @@
     <string name="wallpaper_home">Écran d’accueil</string>
     <string name="wallpaper_lock">Écran de verrouillage</string>
     <string name="wallpaper_both">Les deux</string>
-    <string name="wallpaper_static">Fixe</string>
     <string name="wallpaper_scrollable">Défilant</string>
     <string name="wallpaper_scrollable_desc">Les fonds d’écran défilants sont plus larges et se déplacent lorsque vous balayez l’écran pour passer d’un écran d’accueil à l’autre</string>
     <string name="set_wallpaper">Définir le fond d’écran</string>

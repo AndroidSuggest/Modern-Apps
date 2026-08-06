@@ -223,7 +223,6 @@
     <string name="wallpaper_home">主屏幕</string>
     <string name="wallpaper_lock">锁定屏幕</string>
     <string name="wallpaper_both">两者</string>
-    <string name="wallpaper_static">静态</string>
     <string name="wallpaper_scrollable">可滚动</string>
     <string name="wallpaper_scrollable_desc">可滚动壁纸更宽，当您在主屏幕之间滑动时会移动</string>
     <string name="set_wallpaper">设置壁纸</string>

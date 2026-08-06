@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.util.Log
+import androidx.core.graphics.withSave
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import com.vayunmathur.library.ink.SerializedStroke
 import com.vayunmathur.library.ink.deserialize
@@ -41,11 +42,11 @@ fun Canvas.drawTextElement(
         typeface = android.graphics.Typeface.create(text.fontFamily, style)
     }
     val fm = paint.fontMetrics
-    save()
-    translate(text.x * canvasWidth, text.y * canvasHeight)
-    rotate(text.rotation)
-    drawText(text.text, 0f, -fm.ascent, paint)
-    restore()
+    withSave {
+        translate(text.x * canvasWidth, text.y * canvasHeight)
+        rotate(text.rotation)
+        drawText(text.text, 0f, -fm.ascent, paint)
+    }
 }
 
 /** Draws serialized ink [strokes] (authored at [sourceWidth]x[sourceHeight]) scaled to this canvas. */
@@ -59,14 +60,14 @@ fun Canvas.drawSerializedStrokes(
 ) {
     if (strokes.isEmpty() || sourceWidth <= 0f || sourceHeight <= 0f) return
     val identity = Matrix()
-    save()
-    scale(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
-    strokes.forEach { serialized ->
-        try {
-            renderer.draw(this, serialized.deserialize(), identity)
-        } catch (e: Exception) {
-            Log.w(OVERLAY_TAG, "Failed to render stroke", e)
+    withSave {
+        scale(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
+        strokes.forEach { serialized ->
+            try {
+                renderer.draw(this, serialized.deserialize(), identity)
+            } catch (e: Exception) {
+                Log.w(OVERLAY_TAG, "Failed to render stroke", e)
+            }
         }
     }
-    restore()
 }

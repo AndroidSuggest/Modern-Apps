@@ -89,7 +89,7 @@ pub fn align_and_merge(frames: &[Rgba]) -> Option<Rgba> {
         }
     }
 
-    for (i, f) in frames.iter().enumerate().skip(1) {
+    for f in frames.iter().skip(1) {
         // Feature detection at reduced resolution.
         let (cur_small, s) = if ref_s < 0.999 {
             let rw = ((f.w as f64 * ref_s).round() as usize).max(1);

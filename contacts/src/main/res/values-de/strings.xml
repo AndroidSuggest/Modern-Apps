@@ -56,6 +56,7 @@
     <string name="grant_calendar_permissions">Erlaube Kalenderberechtigung</string>
     <string name="delete_selected_contacts_title">Ausgewählte Kontake löschen</string>
     <plurals name="delete_selected_contacts_confirm">
+        <item quantity="one">Sind Sie sich sicher, dass sie den %1$d ausgewählten Kontakt löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.</item>
         <item quantity="other">Sind Sie sich sicher, dass sie die %1$d ausgewählten Kontake löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.</item>
     </plurals>
     <string name="selected_count">%1$d ausgewählt</string>
@@ -76,6 +77,7 @@
     <string name="delete_group_confirm">Sind Sie sich sicher, dass sie diese Gruppe löschen wollen? Die Kontakte werden nicht gelöscht.</string>
     <string name="no_groups_found">Keine Gruppen gefunden. Erstelle eine im Gruppen-Tab.</string>
     <plurals name="contacts_count">
+        <item quantity="one">%1$d Kontakt</item>
         <item quantity="other">%1$d Kontakte</item>
     </plurals>
     <string name="telegram">Telegram</string>

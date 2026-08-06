@@ -191,10 +191,10 @@ private fun CameraContent(viewModel: TranslateViewModel, onBack: () -> Unit) {
     }
 
     // `Context.getDisplay()` throws on a non-visual context, hence the guard.
-    fun displayRotation(): Int =
-        previewView.display?.rotation
-            ?: runCatching { context.display?.rotation }.getOrNull()
-            ?: Surface.ROTATION_0
+    fun displayRotation(): Int {
+        val display = previewView.display ?: runCatching { context.display }.getOrNull()
+        return display?.rotation ?: Surface.ROTATION_0
+    }
 
     // The activity handles `orientation` itself (see AndroidManifest configChanges), so
     // nothing recreates on rotation. Without this the analyser keeps reporting the

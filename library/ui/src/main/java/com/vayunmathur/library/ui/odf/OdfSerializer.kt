@@ -479,7 +479,7 @@ object OdfSerializer {
                 continue
             }
             val insWrap = span.changeKind == "insertion" && span.changeId != null
-            if (insWrap) sb.append("""<text:change-start text:change-id="${esc(span.changeId!!)}"/>""")
+            if (insWrap) sb.append("""<text:change-start text:change-id="${esc(span.changeId)}"/>""")
             val needsStyle = span.bold || span.italic || span.underline || span.strikethrough ||
                 span.color != null || span.fontSize != null || span.superscript || span.subscript || span.fontFamily != null ||
                 span.letterSpacing != null || span.textTransform != null || span.language != null
@@ -498,7 +498,7 @@ object OdfSerializer {
             } else {
                 sb.append(encodeText(span.text))
             }
-            if (insWrap) sb.append("""<text:change-end text:change-id="${esc(span.changeId!!)}"/>""")
+            if (insWrap) sb.append("""<text:change-end text:change-id="${esc(span.changeId)}"/>""")
         }
         sb.append("</$tag>")
     }
@@ -1225,7 +1225,7 @@ object OdfSerializer {
             if (gradNames[g] == null) {
                 val gn = "grad${gradNames.size + 1}"
                 gradNames[g] = gn
-                val ang = Math.round(g.angle * 10).toInt()  // ODF angle in 1/10 degree
+                val ang = Math.round(g.angle * 10)  // ODF angle in 1/10 degree
                 sb.append("""<draw:gradient draw:name="$gn" draw:style="${esc(g.style)}" draw:start-color="${formatColor(g.startColor)}" draw:end-color="${formatColor(g.endColor)}" draw:angle="$ang"/>""")
             }
         }

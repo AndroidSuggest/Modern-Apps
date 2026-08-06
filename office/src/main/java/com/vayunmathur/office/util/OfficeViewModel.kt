@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.library.util.AppMessages
@@ -179,11 +180,11 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun saveSettings(context: Context, autoSave: Boolean, autoSaveInterval: Int, defaultFontSize: Float) {
-        val prefs = context.getSharedPreferences("office_settings", Context.MODE_PRIVATE).edit()
-        prefs.putBoolean("auto_save", autoSave)
-        prefs.putInt("auto_save_interval", autoSaveInterval)
-        prefs.putFloat("default_font_size", defaultFontSize)
-        prefs.apply()
+        context.getSharedPreferences("office_settings", Context.MODE_PRIVATE).edit {
+            putBoolean("auto_save", autoSave)
+            putInt("auto_save_interval", autoSaveInterval)
+            putFloat("default_font_size", defaultFontSize)
+        }
         setAutoSave(autoSave, autoSaveInterval)
     }
 
@@ -276,13 +277,13 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         existing.removeAll { it.first == uri.toString() }
         existing.add(0, Pair(uri.toString(), name))
         if (existing.size > MAX_RECENT) existing.subList(MAX_RECENT, existing.size).clear()
-        val editor = prefs.edit()
-        editor.putInt("count", existing.size)
-        existing.forEachIndexed { i, (u, n) ->
-            editor.putString("uri_$i", u)
-            editor.putString("name_$i", n)
+        prefs.edit {
+            putInt("count", existing.size)
+            existing.forEachIndexed { i, (u, n) ->
+                putString("uri_$i", u)
+                putString("name_$i", n)
+            }
         }
-        editor.apply()
     }
 
     fun getRecentFiles(context: Context): List<Pair<String, String>> {
@@ -296,7 +297,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearRecentFiles(context: Context) {
-        context.getSharedPreferences("office_recent", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("office_recent", Context.MODE_PRIVATE).edit { clear() }
     }
 
     // --- Night mode ---

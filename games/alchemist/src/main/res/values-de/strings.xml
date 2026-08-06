@@ -7,6 +7,7 @@
     <string name="recipes">Rezepte (%1$d)</string>
     <string name="used_in">Genutzt in (%1$d)</string>
     <plurals name="locked_recipes">
+        <item quantity="one">+%1$d gesperrtes Rezept.</item>
         <item quantity="other">+%1$d gesperrte Rezepte.</item>
     </plurals>
     <string name="locked_description">Schalte alle Ausgänge dieser Rezepte frei, um sie anzusehen.</string>

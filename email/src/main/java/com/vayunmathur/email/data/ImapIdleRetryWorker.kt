@@ -2,6 +2,7 @@ package com.vayunmathur.email.data
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -27,7 +28,7 @@ class ImapIdleRetryWorker(appContext: Context, params: WorkerParameters) : Corou
                 Log.d(TAG, "ImapIdleRetryWorker: IDLE started")
                 // Clear pending flag on success
                 applicationContext.getSharedPreferences(BootReceiver.PREFS, Context.MODE_PRIVATE)
-                    .edit().remove(BootReceiver.KEY_PENDING).apply()
+                    .edit { remove(BootReceiver.KEY_PENDING) }
                 Result.success()
             } else {
                 Log.w(TAG, "ImapIdleRetryWorker: start returned false, retrying")

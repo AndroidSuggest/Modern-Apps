@@ -141,7 +141,7 @@ fn parse_encoding(cleartext: &[u8]) -> HashMap<u32, String> {
             j += 1;
         }
         if let Ok(name) = std::str::from_utf8(&cleartext[ns..j]) {
-            if code >= 0 && code < 256 {
+            if (0..256).contains(&code) {
                 enc.insert(code as u32, name.to_string());
             }
         }
@@ -500,7 +500,7 @@ impl<'a> Interp<'a> {
                     let b2 = *cs.get(i).unwrap_or(&0);
                     i += 1;
                     match b2 {
-                        0 | 1 | 2 => {
+                        0..=2 => {
                             // dotsection / vstem3 / hstem3: ignore
                             self.stack.clear();
                         }
@@ -681,7 +681,7 @@ impl<'a> Interp<'a> {
 }
 
 fn std_name(code: i32) -> Option<&'static str> {
-    if code < 0 || code > 255 {
+    if !(0..=255).contains(&code) {
         return None;
     }
     STANDARD_ENCODING.iter().find(|(c, _)| *c as i32 == code).map(|(_, n)| *n)

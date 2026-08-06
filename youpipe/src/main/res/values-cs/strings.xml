@@ -96,10 +96,9 @@
     <string name="chapter">Kapitola</string>
     <string name="cc">CC</string>
     <string name="loading_recent_subscriptions">Načítání nedávných odběrů</string>
-    <string name="selected"><xliff:g id="count" example="3">%1$s</xliff:g> vybraných</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$s</xliff:g> vybraných</string>
     <string name="clear_history">Smazat historii</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Jste si jistý, že chcete smazat veškerou historii sledování?</string>
-    <string name="downloads">Stažené</string>
     <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Vybraných</string>
     <string name="label_general">Obecné</string>
     <string name="label_default_page">Otevřít na</string>

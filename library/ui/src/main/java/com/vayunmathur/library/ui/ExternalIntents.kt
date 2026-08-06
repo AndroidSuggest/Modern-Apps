@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.getSystemService
+import androidx.core.net.toUri
 import com.vayunmathur.library.util.AppMessages
 
 /**
@@ -41,7 +42,7 @@ object ExternalIntents {
 
     /** Open a web or content URL in whichever app handles it. */
     fun openUrl(context: Context, url: String, failureMessage: String? = null): Boolean =
-        launch(context, Intent(Intent.ACTION_VIEW, Uri.parse(url)), failureMessage)
+        launch(context, Intent(Intent.ACTION_VIEW, url.toUri()), failureMessage)
 
     /** Open a file by content URI, granting read access to the receiving app. */
     fun openFile(
@@ -60,21 +61,21 @@ object ExternalIntents {
 
     /** Compose an SMS to [number]. */
     fun sendSms(context: Context, number: String, failureMessage: String? = null): Boolean =
-        launch(context, Intent(Intent.ACTION_SENDTO, Uri.parse("sms:$number")), failureMessage)
+        launch(context, Intent(Intent.ACTION_SENDTO, "sms:$number".toUri()), failureMessage)
 
     /** Compose an email to [address]. */
     fun sendEmail(context: Context, address: String, failureMessage: String? = null): Boolean =
-        launch(context, Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$address")), failureMessage)
+        launch(context, Intent(Intent.ACTION_SENDTO, "mailto:$address".toUri()), failureMessage)
 
     /** Dial [number] - the dialer, not a direct call, so no permission is needed. */
     fun dial(context: Context, number: String, failureMessage: String? = null): Boolean =
-        launch(context, Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")), failureMessage)
+        launch(context, Intent(Intent.ACTION_DIAL, "tel:$number".toUri()), failureMessage)
 
     /** Show [query] on a map. */
     fun openMap(context: Context, query: String, failureMessage: String? = null): Boolean =
         launch(
             context,
-            Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(query)}")),
+            Intent(Intent.ACTION_VIEW, "geo:0,0?q=${Uri.encode(query)}".toUri()),
             failureMessage,
         )
 

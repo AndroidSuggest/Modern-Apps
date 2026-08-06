@@ -154,7 +154,7 @@ object PdfExporter {
         val xrefOff = out.toString().toByteArray(Charsets.ISO_8859_1).size
         out.append("xref\n0 ${objs.size + 1}\n")
         out.append("0000000000 65535 f \n")
-        for (off in offsets) out.append(String.format("%010d 00000 n \n", off))
+        for (off in offsets) out.append(String.format(java.util.Locale.ROOT, "%010d 00000 n \n", off))
         out.append("trailer\n<< /Size ${objs.size + 1} /Root 1 0 R >>\nstartxref\n$xrefOff\n%%EOF\n")
 
         bos.write(out.toString().toByteArray(Charsets.ISO_8859_1))

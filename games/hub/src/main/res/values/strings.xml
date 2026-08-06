@@ -1,16 +1,12 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- DashboardScreen / launcher: App name. Noun, proper, displayed in TopAppBar -->
     <string name="app_name">GameHub</string>
-    <!-- MainActivity: Bottom nav content description for Home dashboard. Noun -->
-    <string name="tab_dashboard">Home</string>
     <!-- MainActivity / GamesListScreen: Tab title and content description for Games list. Noun -->
     <string name="tab_games">Games</string>
     <!-- ActivityFeedScreen / GameDetailScreen: Tab title for activity feed section. Noun -->
     <string name="tab_activity">Activity</string>
     <!-- SettingsScreen: TopAppBar title for Settings. Noun -->
     <string name="tab_settings">Settings</string>
-    <!-- ProfileScreen / MainActivity: Title for Profile screen. Noun -->
-    <string name="profile_title">Profile</string>
     <!-- StreakIndicator: Content description for streak icon. Noun -->
     <string name="streak">Streak</string>
     <!-- DashboardScreen: Section header for continue playing recent games list. Verb phrase -->
@@ -110,7 +106,7 @@
     <!-- GameDetailScreen: Play button including game name. %1$s = game display name e.g. Solitaire. Verb phrase CTA -->
     <string name="play_1">Play <xliff:g id="game_name" example="Solitaire">%1$s</xliff:g></string>
     <!-- GameDetailScreen: Badge for session currently in progress (no end time). Adjective phrase -->
-    <string name="in_progress">In progress</string>
+    <string name="session_in_progress">In progress</string>
     <!-- GamesListScreen: Empty state when search query matches no games. Sentence -->
     <string name="no_matching_games">No matching games</string>
     <!-- GamesListScreen: Empty hub message with line break. Two sentences: no games registered + instruction. Noun phrase with explanation -->
@@ -126,10 +122,6 @@
     <!-- XpProgressBar: Next level XP requirement. %1$s = XP amount for next level as string e.g. 2000. Noun phrase -->
     <string name="next_xp">Next: <xliff:g id="xp_needed" example="2000">%1$s</xliff:g> XP</string>
 
-    <!-- ProfileScreen: Content description (accessibility) for edit profile icon. Verb -->
-    <string name="cd_edit">Edit</string>
-    <!-- GamesListScreen: Content description for sort dropdown button. Verb -->
-    <string name="cd_sort">Sort</string>
     <string name="playtime">Playtime</string>
     <string name="sessions">Sessions</string>
     <string name="xp_2">XP</string>

@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
+import androidx.core.graphics.withTranslation
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -48,6 +49,7 @@ private class FinishedStrokesView(context: Context) : View(context) {
         style = Paint.Style.FILL
         color = android.graphics.Color.argb(40, 255, 255, 255)
     }
+    private val scratchRect = RectF()
 
     override fun onDraw(canvas: android.graphics.Canvas) {
         super.onDraw(canvas)
@@ -55,44 +57,42 @@ private class FinishedStrokesView(context: Context) : View(context) {
             renderer.draw(canvas, stroke, identityMatrix)
             if (selectedStrokeIndex == index) {
                 stroke.shape.computeBoundingBox()?.let { box ->
-                    val rect = RectF(box.xMin - 4f, box.yMin - 4f, box.xMax + 4f, box.yMax + 4f)
-                    canvas.drawRect(rect, selectionFillPaint)
-                    canvas.drawRect(rect, selectionPaint)
+                    scratchRect.set(box.xMin - 4f, box.yMin - 4f, box.xMax + 4f, box.yMax + 4f)
+                    canvas.drawRect(scratchRect, selectionFillPaint)
+                    canvas.drawRect(scratchRect, selectionPaint)
                 }
             }
         }
 
         textElements.forEachIndexed { index, elem ->
-            canvas.save()
-            canvas.translate(elem.x, elem.y)
-            canvas.rotate(elem.rotation)
+            canvas.withTranslation(elem.x, elem.y) {
+                rotate(elem.rotation)
 
-            textPaint.color = elem.color
-            textPaint.textSize = elem.fontSize * resources.displayMetrics.density
-            val style = when {
-                elem.bold && elem.italic -> android.graphics.Typeface.BOLD_ITALIC
-                elem.bold -> android.graphics.Typeface.BOLD
-                elem.italic -> android.graphics.Typeface.ITALIC
-                else -> android.graphics.Typeface.NORMAL
+                textPaint.color = elem.color
+                textPaint.textSize = elem.fontSize * resources.displayMetrics.density
+                val style = when {
+                    elem.bold && elem.italic -> android.graphics.Typeface.BOLD_ITALIC
+                    elem.bold -> android.graphics.Typeface.BOLD
+                    elem.italic -> android.graphics.Typeface.ITALIC
+                    else -> android.graphics.Typeface.NORMAL
+                }
+                textPaint.typeface = android.graphics.Typeface.create(elem.fontFamily, style)
+                textPaint.textAlign = when (elem.align) {
+                    1 -> Paint.Align.CENTER
+                    2 -> Paint.Align.RIGHT
+                    else -> Paint.Align.LEFT
+                }
+
+                drawText(elem.text, 0f, textPaint.textSize, textPaint)
+
+                if (selectedTextIndex == index) {
+                    val textWidth = textPaint.measureText(elem.text)
+                    val textHeight = textPaint.textSize
+                    scratchRect.set(-4f, -4f, textWidth + 4f, textHeight + 8f)
+                    drawRect(scratchRect, selectionFillPaint)
+                    drawRect(scratchRect, selectionPaint)
+                }
             }
-            textPaint.typeface = android.graphics.Typeface.create(elem.fontFamily, style)
-            textPaint.textAlign = when (elem.align) {
-                1 -> Paint.Align.CENTER
-                2 -> Paint.Align.RIGHT
-                else -> Paint.Align.LEFT
-            }
-
-            canvas.drawText(elem.text, 0f, textPaint.textSize, textPaint)
-
-            if (selectedTextIndex == index) {
-                val textWidth = textPaint.measureText(elem.text)
-                val textHeight = textPaint.textSize
-                val rect = RectF(-4f, -4f, textWidth + 4f, textHeight + 8f)
-                canvas.drawRect(rect, selectionFillPaint)
-                canvas.drawRect(rect, selectionPaint)
-            }
-
-            canvas.restore()
         }
     }
 }
@@ -110,13 +110,13 @@ fun InkCanvasView(
     currentBrush: Brush,
     finishedStrokes: List<Stroke>,
     onStrokeFinished: (Stroke) -> Unit,
+    modifier: Modifier = Modifier,
     onStrokeErased: ((Stroke) -> Unit)? = null,
     eraserMode: Boolean = false,
     enabled: Boolean = true,
     textElements: List<CanvasTextElement> = emptyList(),
     selectedStrokeIndex: Int? = null,
     selectedTextIndex: Int? = null,
-    modifier: Modifier = Modifier,
 ) {
     AndroidView(
         factory = { context ->

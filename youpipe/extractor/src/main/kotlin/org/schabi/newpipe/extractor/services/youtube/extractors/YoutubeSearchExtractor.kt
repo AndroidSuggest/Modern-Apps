@@ -153,7 +153,7 @@ class YoutubeSearchExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getPage(page: Page): InfoItemsPage<InfoItem> {
-        if (page == null || isNullOrEmpty(page.url)) {
+        if (isNullOrEmpty(page.url)) {
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 

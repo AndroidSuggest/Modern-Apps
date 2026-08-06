@@ -179,7 +179,7 @@ pub fn authenticate_owner_fallback(
     // The spec says O = encrypted user_pad. We try using unpad? Actually user_pad may contain PAD suffix.
     // Compute key using the recovered user pad truncated to valid length: try first n bytes? Safer to try the 32-byte user_pad directly.
     // Remove trailing PAD bytes heuristics: if last bytes match PAD pattern, trim.
-    let mut candidate_pw = user_pad.clone();
+    let candidate_pw = user_pad.clone();
     // Trim PAD suffix: find where PAD pattern ends
     // PDF pad is fixed 32-byte constant; if user_pad tail matches PAD tail, trim.
     // Simple heuristic: if candidate_pw length 32 and ends with PAD char not printable, still use it as-is for compute_key.
@@ -336,13 +336,6 @@ fn hash_2b(pw: &[u8], salt: &[u8], udata: &[u8]) -> Vec<u8> {
         }
     }
     k[..32].to_vec()
-}
-
-/// Authenticate against a V5 (AESV3) document; returns the 32-byte file key.
-/// `u`/`ue` are the 48-byte `/U` and 32-byte `/UE` entries. `rev` is 5 or 6.
-/// Critical fix: now also has owner variant; user path kept for compat.
-pub fn authenticate_v5(pw: &[u8], u: &[u8], ue: &[u8], rev: u8) -> Option<Vec<u8>> {
-    authenticate_v5_user(pw, u, ue, rev)
 }
 
 /// User-password path for AESV3 (R5/R6).

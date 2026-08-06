@@ -32,7 +32,7 @@ class YoutubeSuggestionExtractor(service: StreamingService) : SuggestionExtracto
             .get(url, headers, getExtractorLocalization())
 
         val contentTypeHeader = response.getHeader("Content-Type")
-        if (isNullOrEmpty(contentTypeHeader) || !contentTypeHeader!!.contains("application/json")) {
+        if (isNullOrEmpty(contentTypeHeader) || !contentTypeHeader.contains("application/json")) {
             throw ExtractionException(
                 "Invalid response type (got \"$contentTypeHeader\", excepted a JSON response) (response code ${response.responseCode()})"
             )

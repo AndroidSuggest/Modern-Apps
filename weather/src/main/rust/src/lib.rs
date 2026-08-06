@@ -333,7 +333,6 @@ fn resample(
 // JNI – armv8-only, no ureq, callback via OmRangeFetcher
 // ---------------------------------------------------------------------------
 
-#[cfg(not(test))]
 mod jni_bindings {
     use super::*;
     use jni::objects::{JClass, JString};

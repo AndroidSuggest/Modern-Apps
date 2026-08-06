@@ -168,7 +168,7 @@ class YoutubePlaylistExtractor(
     override fun getName(): String {
         val name = getTextFromObject(getPlaylistInfoObj().getObject(TITLE))
         if (!isNullOrEmpty(name)) {
-            return name!!
+            return name
         }
         return browseMetadataResponse!!.getObject(MICROFORMAT).orEmptyObject()
             .getObject("microformatDataRenderer").orEmptyObject()
@@ -336,7 +336,7 @@ class YoutubePlaylistExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getPage(page: Page): InfoItemsPage<StreamInfoItem> {
-        if (page == null || isNullOrEmpty(page.url)) {
+        if (isNullOrEmpty(page.url)) {
             throw IllegalArgumentException("Page doesn't contain an URL")
         }
 

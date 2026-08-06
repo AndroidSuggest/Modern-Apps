@@ -12,9 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
 import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
-import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
@@ -86,7 +86,7 @@ private fun baseIcon(format: EditorFormat): Pair<ImageVector, String> = when (fo
     EditorFormat.ITALIC -> Icons.Filled.FormatItalic to "Italic"
     EditorFormat.UNDERLINE -> Icons.Filled.FormatUnderlined to "Underline"
     EditorFormat.STRIKETHROUGH -> Icons.Filled.FormatStrikethrough to "Strikethrough"
-    EditorFormat.BULLET -> Icons.Filled.FormatListBulleted to "Bulleted list"
+    EditorFormat.BULLET -> Icons.AutoMirrored.Filled.FormatListBulleted to "Bulleted list"
     EditorFormat.ORDERED_LIST -> Icons.Filled.FormatListNumbered to "Numbered list"
     EditorFormat.INDENT -> Icons.AutoMirrored.Filled.FormatIndentIncrease to "Indent"
     EditorFormat.OUTDENT -> Icons.AutoMirrored.Filled.FormatIndentDecrease to "Outdent"

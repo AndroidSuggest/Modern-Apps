@@ -243,7 +243,7 @@ class MeasureViewModel(app: Application) : AndroidViewModel(app),
             id = nextMeasurementId++,
             label = label.ifBlank { "Measurement" },
             kind = kind,
-            value = value ?: return,
+            value = value,
             recordedAtEpochMs = System.currentTimeMillis(),
         )
         _saved.value = _saved.value.copy(measurements = _saved.value.measurements + m)

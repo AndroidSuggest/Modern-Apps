@@ -26,7 +26,6 @@
     <string name="failed_to_save_pdf">无法保存 PDF</string>
     <string name="line_width">线宽 <xliff:g id="width" example="2">%1$s</xliff:g></string>
     <string name="callout">标注</string>
-    <string name="copied">已复制</string>
     <string name="style">样式</string>
     <string name="searchable_ocr">可搜索（OCR）</string>
     <string name="password_required">需要密码</string>

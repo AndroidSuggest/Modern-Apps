@@ -137,7 +137,7 @@ pub fn generate_traffic_tile(
                 }
 
                 let mut feat_buf: Vec<u8> = Vec::new();
-                write_varint(&mut feat_buf, ((3 << 3) | 0) as u64); // field 3 (id), wiretype 0
+                write_varint(&mut feat_buf, (3 << 3) as u64); // field 3 (id), wiretype 0
                 write_varint(&mut feat_buf, 2);
 
                 let mut geom_buf: Vec<u8> = Vec::new();

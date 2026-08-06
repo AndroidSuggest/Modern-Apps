@@ -194,7 +194,6 @@ class AssistantViewModel(
     override fun onCleared() {
         audioRecorder?.stop()
         audioRecorder = null
-        super.onCleared()
     }
 
     /**

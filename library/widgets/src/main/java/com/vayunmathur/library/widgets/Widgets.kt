@@ -122,9 +122,16 @@ class WidgetPreviewWorker(
             @Suppress("UNCHECKED_CAST")
             val receiverClass = Class.forName(className).kotlin as KClass<out GlanceAppWidgetReceiver>
             Log.d(TAG, "Setting widget previews for $className (SDK=${Build.VERSION.SDK_INT})")
-            GlanceAppWidgetManager(applicationContext).setWidgetPreviews(receiverClass)
-            Log.d(TAG, "Successfully set widget previews for $className")
-            Result.success()
+            when (GlanceAppWidgetManager(applicationContext).setWidgetPreviews(receiverClass)) {
+                GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_RATE_LIMITED -> {
+                    Log.w(TAG, "Rate limited setting widget previews for $className, will retry")
+                    Result.retry()
+                }
+                else -> {
+                    Log.d(TAG, "Successfully set widget previews for $className")
+                    Result.success()
+                }
+            }
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to set widget previews for $className", t)
             Result.failure()

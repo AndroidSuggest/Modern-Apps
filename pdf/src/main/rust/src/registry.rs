@@ -6,7 +6,6 @@ use indexmap::IndexMap;
 //
 // Lock ordering policy (documented to avoid deadlock):
 //   - Always acquire `registry()` lock BEFORE `index_cache()` lock when both are needed.
-//   - `invalidate_search_handle` only locks index_cache (no registry) — safe.
 //   - `next_handle` only locks NEXT static — independent.
 //   - `open_document_pw`, `close_document`, `page_count` follow registry -> index_cache order.
 //   - `search.rs::ensure_index` must also respect registry -> index_cache (audit fix):
@@ -22,14 +21,6 @@ const MAX_PDF_BYTES: usize = 200 * 1024 * 1024;
 pub(crate) fn registry() -> &'static Mutex<IndexMap<i64, Document>> {
     static REG: OnceLock<Mutex<IndexMap<i64, Document>>> = OnceLock::new();
     REG.get_or_init(|| Mutex::new(IndexMap::new()))
-}
-
-pub(crate) fn invalidate_search_handle(handle: i64) {
-    // Handle poisoning: recover inner even if poisoned, to avoid aborting JVM.
-    let mut cache = index_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.remove(&handle);
 }
 
 pub(crate) fn next_handle() -> i64 {
@@ -55,10 +46,10 @@ pub(crate) fn open_document_pw(bytes: &[u8], password: &[u8]) -> i64 {
         Ok(d) => d,
         Err(_) => return 0,
     };
-    if doc.trailer.get(b"Encrypt").is_ok() {
-        if decrypt_in_place(&mut doc, password) != DecryptStatus::Ok {
-            return 0;
-        }
+    if doc.trailer.get(b"Encrypt").is_ok()
+        && decrypt_in_place(&mut doc, password) != DecryptStatus::Ok
+    {
+        return 0;
     }
     let handle = next_handle();
     // Lock ordering: registry first, then index_cache if eviction needed.

@@ -175,7 +175,7 @@ private fun KdbxSyncSection() {
 
     Spacer(Modifier.height(24.dp))
 
-    SettingsSection(stringResource(R.string.sync_section)) {
+    SettingsSection(title = stringResource(R.string.sync_section)) {
         SettingsSwitchRow(
             title = stringResource(R.string.sync_enable),
             supportingText = stringResource(R.string.sync_enable_description),

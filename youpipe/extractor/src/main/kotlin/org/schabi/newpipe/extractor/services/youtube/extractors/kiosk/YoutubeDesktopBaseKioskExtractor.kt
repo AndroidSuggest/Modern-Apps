@@ -95,7 +95,7 @@ abstract class YoutubeDesktopBaseKioskExtractor(
 
     @Throws(IOException::class, ExtractionException::class)
     override fun getPage(page: Page): InfoItemsPage<StreamInfoItem> {
-        if (page == null || page.body == null) {
+        if (page.body == null) {
             throw IllegalArgumentException("Page is null or doesn't contain a body")
         }
 

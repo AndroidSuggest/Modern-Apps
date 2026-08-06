@@ -44,7 +44,7 @@
     <string name="delete_this_event">Diesen Termin löschen</string>
     <string name="delete_all_events">Alle Termine löschen</string>
     <string name="create_new_calendar">+ Neuen Kalender erstellen</string>
-    <string name="default_layout">Standart Ansicht</string>
+    <string name="default_layout">Standardansicht</string>
     <string name="twelve_am">00:00</string>
     <string name="twelve_pm">12:00</string>
     <string name="add_reminder">Erinnerung hinzufügen</string>

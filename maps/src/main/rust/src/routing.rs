@@ -143,11 +143,7 @@ pub fn find_nearest_edge(g: &Graph, lat: f64, lon: f64, mode: i32) -> SnappedEdg
                             let dist_to_proj_seg_mm =
                                 fast_dist_mm(g, p1.lat_e7, p1.lon_e7, proj.lat_e7, proj.lon_e7);
                             best.dist_a_mm = current_dist_from_start_mm + dist_to_proj_seg_mm;
-                            best.dist_b_mm = if e.dist_mm > best.dist_a_mm {
-                                e.dist_mm - best.dist_a_mm
-                            } else {
-                                0
-                            };
+                            best.dist_b_mm = e.dist_mm.saturating_sub(best.dist_a_mm);
                         }
                         current_dist_from_start_mm +=
                             fast_dist_mm(g, p1.lat_e7, p1.lon_e7, p2.lat_e7, p2.lon_e7);
@@ -278,13 +274,12 @@ pub fn perform_search_loop(
                 continue;
             }
 
-            let travel_time: u32;
             let v_state: i32 = if mode == PUBLIC_TRANSIT && (edge.type_ & TRANSIT_FLAG) != 0 {
                 1
             } else {
                 0
             };
-            if v_state == 1 {
+            let travel_time: u32 = if v_state == 1 {
                 let is_boarding = (u_last_type & TRANSIT_FLAG) == 0;
                 let is_transfer = !is_boarding && (edge.name_offset != u_last_name_off);
 
@@ -305,7 +300,7 @@ pub fn perform_search_loop(
                 if tt == 0xFFFF_FFFF {
                     continue;
                 }
-                travel_time = tt;
+                tt
             } else {
                 // Only alight from transit at recognized transit stops.
                 if mode == PUBLIC_TRANSIT && (u_last_type & TRANSIT_FLAG) != 0 {
@@ -314,9 +309,8 @@ pub fn perform_search_loop(
                         continue;
                     }
                 }
-                travel_time =
-                    get_edge_time_10ms(g, traffic, i, edge.dist_mm, edge.type_, edge.speed_limit, mode);
-            }
+                get_edge_time_10ms(g, traffic, i, edge.dist_mm, edge.type_, edge.speed_limit, mode)
+            };
 
             let v = edge.target;
             let new_g = u_cost.wrapping_add(travel_time);

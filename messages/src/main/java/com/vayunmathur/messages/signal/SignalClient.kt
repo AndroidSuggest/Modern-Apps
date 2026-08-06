@@ -3,6 +3,7 @@
 package com.vayunmathur.messages.signal
 
 import kotlin.concurrent.atomics.*
+import android.app.Application
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -88,7 +89,7 @@ object SignalClient {
     private val initialized = AtomicBoolean(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private lateinit var appContext: Context
+    private lateinit var appContext: Application
     private var authData: SignalAuthData? = null
     private var webSocket: SignalWebSocket? = null
     private var unauthedWebSocket: SignalWebSocket? = null
@@ -145,7 +146,7 @@ object SignalClient {
 
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
-        appContext = context.applicationContext
+        appContext = context.applicationContext as Application
         Log.i(TAG, "init")
         scope.launch {
             val auth = SignalAuthData.load(appContext)
@@ -714,7 +715,7 @@ object SignalClient {
         val pniKeyPair = try { IdentityKeyPair(Base64.decode(auth.pniIdentityKeyPair, Base64.NO_WRAP)) } catch (_: Exception) { null }
         val aciKeyPair = try { IdentityKeyPair(Base64.decode(auth.aciIdentityKeyPair, Base64.NO_WRAP)) } catch (_: Exception) { null }
         if (acctRecord?.phoneNumberSharingMode == com.vayunmathur.messages.signal.proto.AccountRecord.PhoneNumberSharingMode.EVERYBODY
-            && pniKeyPair != null && aciKeyPair != null && auth.pni != null) {
+            && pniKeyPair != null && aciKeyPair != null) {
             val sig = pniKeyPair.privateKey.calculateSignature(aciKeyPair.publicKey.serialize())
             val pniBytes = MessageSender.uuidToBytes(auth.pni)
             contentBuilder.setPniSignatureMessage(

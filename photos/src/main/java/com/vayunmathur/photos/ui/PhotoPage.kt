@@ -13,6 +13,7 @@ import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -73,6 +74,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
@@ -578,6 +580,7 @@ fun PhotoDetailView(
     }
 }
 
+@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayer(
         modifier: Modifier,

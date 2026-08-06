@@ -2,6 +2,7 @@ package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.graphics.createBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -73,7 +74,7 @@ object NightCaptureEngine {
         if (merged != null && merged !== source) {
             merged.recycle()
         }
-        Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+        createBitmap(w, h).apply {
             setPixels(px, 0, w, 0, 0, w, h)
         }
     }

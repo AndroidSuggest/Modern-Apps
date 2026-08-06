@@ -57,8 +57,6 @@
     <string name="library_empty_title">Nothing matches this filter</string>
     <string name="library_empty_message">Apps you install are listed here, grouped by the source that offers them.</string>
 
-    <!-- Updates. -->
-    <string name="updates">Updates</string>
     <string name="update_all">Update all (%1$d)</string>
     <string name="action_check_again">Check again</string>
     <string name="all_apps_up_to_date">Everything is up to date</string>

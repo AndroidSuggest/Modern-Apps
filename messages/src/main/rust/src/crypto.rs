@@ -109,7 +109,7 @@ pub fn aes_cbc_encrypt(key: &[u8; 32], iv: &[u8; 16], plaintext: &[u8]) -> Vec<u
     let pad = 16 - (plaintext.len() % 16);
     let mut buf = Vec::with_capacity(plaintext.len() + pad);
     buf.extend_from_slice(plaintext);
-    buf.extend(std::iter::repeat(pad as u8).take(pad));
+    buf.extend(std::iter::repeat_n(pad as u8, pad));
 
     let mut prev = *iv;
     for chunk in buf.chunks_mut(16) {
@@ -125,7 +125,7 @@ pub fn aes_cbc_encrypt(key: &[u8; 32], iv: &[u8; 16], plaintext: &[u8]) -> Vec<u
 }
 
 pub fn aes_cbc_decrypt(key: &[u8; 32], iv: &[u8; 16], ciphertext: &[u8]) -> Result<Vec<u8>> {
-    if ciphertext.is_empty() || ciphertext.len() % 16 != 0 {
+    if ciphertext.is_empty() || !ciphertext.len().is_multiple_of(16) {
         return Err(CryptoError("ciphertext is not a whole number of AES blocks"));
     }
     let cipher = Aes256::new(GenericArray::from_slice(key));

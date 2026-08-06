@@ -28,7 +28,7 @@
     <!-- ObjectDetailPage: transit time row. %1$s = time string, ?: is placeholder for unknown optional part -->
     <string name="transit_1">Transit: <xliff:g id="time" example="21:30">%1$s</xliff:g> ?: </string>
     <!-- ObjectDetailPage: shown while rise/set times are being computed -->
-    <string name="calculating">Calculating...</string>
+    <string name="calculating">Calculating…</string>
     <!-- ObjectDetailPage: equatorial coordinates. %1$s = RA value, %2$s = Dec value -->
     <string name="ra_dec">RA: <xliff:g id="ra" example="5.5">%1$s</xliff:g>° Dec: <xliff:g id="dec" example="-8.2">%2$s</xliff:g>°</string>
     <!-- ObjectDetailPage: empty state when object never rises at observer location -->

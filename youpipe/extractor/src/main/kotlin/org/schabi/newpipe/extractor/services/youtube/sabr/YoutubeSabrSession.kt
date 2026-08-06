@@ -14,6 +14,8 @@ import java.util.Collections
 import java.util.Deque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class YoutubeSabrSession {
 
@@ -158,7 +160,8 @@ class YoutubeSabrSession {
 
     private val segmentCache = ConcurrentHashMap<String, SabrMediaSegment>()
     private val inFlightSegments = ConcurrentHashMap<String, SabrMediaSegment>()
-    private val segmentAvailable = Object()
+    private val segmentAvailable = ReentrantLock()
+    private val segmentAvailableCondition = segmentAvailable.newCondition()
 
     private var serverAbrStreamingUrl: String
     private var requestNumber: Int = 0
@@ -185,7 +188,7 @@ class YoutubeSabrSession {
     @Volatile private var cacheClosed: Boolean = false
     @Volatile private var traceEnabled: Boolean = false
 
-    private val traceLock = Object()
+    private val traceLock = Any()
     private var traceResponseBytes: Long = 0
     private var traceMediaPayloadBytes: Long = 0
     private var traceControlPayloadBytes: Long = 0
@@ -226,7 +229,7 @@ class YoutubeSabrSession {
         this.poTokenProvider = poTokenProvider
         this.segmentSpoolDirectory = segmentSpoolDirectory
         this.sessionPolicyHost = sessionPolicyHost
-        this.serverAbrStreamingUrl = info.serverAbrStreamingUrl!!
+        this.serverAbrStreamingUrl = info.serverAbrStreamingUrl
     }
 
     constructor(
@@ -481,7 +484,7 @@ class YoutubeSabrSession {
         val fresh = YoutubeSabrProbe.fetchSabrInfo(info.videoId, info.profile, localization, contentCountry)
         if (fresh.serverAbrStreamingUrl.isNullOrEmpty()) return false
         info = fresh
-        serverAbrStreamingUrl = fresh.serverAbrStreamingUrl!!
+        serverAbrStreamingUrl = fresh.serverAbrStreamingUrl
         redirectCount = 0
         return true
     }
@@ -775,10 +778,10 @@ class YoutubeSabrSession {
         val previous = segmentCache.putIfAbsent(key, segment)
         if (previous != null && previous !== segment) {
             segment.delete()
-            synchronized(segmentAvailable) { (segmentAvailable as Object).notifyAll() }
+            segmentAvailable.withLock { segmentAvailableCondition.signalAll() }
             return
         }
-        synchronized(segmentAvailable) { (segmentAvailable as Object).notifyAll() }
+        segmentAvailable.withLock { segmentAvailableCondition.signalAll() }
         if (previous == null && !segment.header.isInitSegment()) {
             cacheOrder.addLast(key)
             cachedBytes += segment.length
@@ -801,7 +804,7 @@ class YoutubeSabrSession {
         val key = cacheKey(segment)
         val previous = inFlightSegments.put(key, segment)
         if (previous != null && previous !== segment) previous.delete()
-        synchronized(segmentAvailable) { (segmentAvailable as Object).notifyAll() }
+        segmentAvailable.withLock { segmentAvailableCondition.signalAll() }
         addDiagnosticEvent("segment_started itag=${segment.header.itag} seq=${segment.header.sequenceNumber} bytes=${segment.length}")
     }
 
@@ -812,7 +815,7 @@ class YoutubeSabrSession {
             segment.delete()
         }
         inFlightSegments.clear()
-        synchronized(segmentAvailable) { (segmentAvailable as Object).notifyAll() }
+        segmentAvailable.withLock { segmentAvailableCondition.signalAll() }
     }
 
     fun setPlayHeadMs(ms: Long) {
@@ -912,10 +915,10 @@ class YoutubeSabrSession {
     fun awaitCachedSegment(request: SabrSegmentRequest, timeoutMs: Long): SabrMediaSegment? {
         var segment = getCachedSegment(request)
         if (segment != null || timeoutMs <= 0) return segment
-        synchronized(segmentAvailable) {
+        segmentAvailable.withLock {
             segment = getCachedSegment(request)
             if (segment == null) {
-                (segmentAvailable as Object).wait(timeoutMs)
+                segmentAvailableCondition.await(timeoutMs, TimeUnit.MILLISECONDS)
                 segment = getCachedSegment(request)
             }
         }
@@ -926,10 +929,10 @@ class YoutubeSabrSession {
     fun awaitReadableSegment(request: SabrSegmentRequest, timeoutMs: Long): SabrMediaSegment? {
         var segment = getReadableSegment(request)
         if (segment != null || timeoutMs <= 0) return segment
-        synchronized(segmentAvailable) {
+        segmentAvailable.withLock {
             segment = getReadableSegment(request)
             if (segment == null) {
-                (segmentAvailable as Object).wait(timeoutMs)
+                segmentAvailableCondition.await(timeoutMs, TimeUnit.MILLISECONDS)
                 segment = getReadableSegment(request)
             }
         }

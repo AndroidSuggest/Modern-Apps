@@ -1,7 +1,6 @@
 package com.vayunmathur.contacts.ui
 
 import androidx.compose.ui.res.pluralStringResource
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
@@ -31,7 +31,7 @@ fun ImportVcfScreen(
     backStack: NavBackStack<Route>,
     uris: List<String>,
 ) {
-    val uriList = remember(uris) { uris.map { Uri.parse(it) } }
+    val uriList = remember(uris) { uris.map { it.toUri() } }
     val parsedContacts by viewModel.parsedVcfContacts.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

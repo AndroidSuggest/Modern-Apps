@@ -39,6 +39,7 @@ import com.vayunmathur.camera.util.CodecSupport
 import com.vayunmathur.camera.util.VideoCodec
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
+import com.vayunmathur.library.ui.ExposedDropdownMenuAnchorType
 import com.vayunmathur.library.ui.ExposedDropdownMenuBox
 import com.vayunmathur.library.ui.ExposedDropdownMenuDefaults
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -93,7 +94,7 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 8.dp)
-                                .menuAnchor(),
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                             label = { Text(stringResource(R.string.settings_video_codec_label)) }
                         )
                         ExposedDropdownMenu(

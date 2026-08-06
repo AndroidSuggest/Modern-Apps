@@ -2,7 +2,6 @@ package com.vayunmathur.office.ui
 
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -119,6 +118,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.vayunmathur.office.odf.*
@@ -578,6 +578,7 @@ fun TextDocumentView(
             when (val seg = segments[si]) {
                 is DocSegment.Paragraphs -> ContinuousParagraphEditor(
                     doc, seg.start, seg.endInclusive, fontSizeMultiplier, onRunSelectionChange, onRunTextChange,
+                    modifier = Modifier.fillMaxWidth(),
                     onEnter = { gPos -> onRunEnter(seg.start, seg.endInclusive, gPos) },
                     onBackspace = { gPos -> onRunBackspace(seg.start, seg.endInclusive, gPos) },
                     onToggleCheckbox = onToggleCheckbox,
@@ -756,7 +757,7 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
             @Suppress("DEPRECATION")
             ClickableText(text = annotatedString, style = scaledStyle, modifier = modifier, onClick = { offset ->
                 annotatedString.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { a ->
-                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.item))) } catch (_: Exception) {}; return@ClickableText
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, a.item.toUri())) } catch (_: Exception) {}; return@ClickableText
                 }
                 annotatedString.getStringAnnotations("ANNOTATION", offset, offset).firstOrNull()?.let { a ->
                     expandedAnnotation = if (expandedAnnotation == a.item) null else a.item
@@ -1770,6 +1771,7 @@ private fun SlideCanvas(
 ) {
     FloatingElementLayer(
         elements = slide.elements, refW = refW, refH = refH,
+        modifier = Modifier.fillMaxSize(),
         editMode = editMode, selectedIndex = selectedIndex, keyPrefix = slide.name,
         backgroundColor = slide.backgroundColor,
         onSelect = onSelect, onElementTextChange = onElementTextChange,
@@ -1790,7 +1792,7 @@ fun FloatingElementLayer(
     editMode: Boolean,
     selectedIndex: Int,
     keyPrefix: String,
-    modifier: Modifier = Modifier.fillMaxSize(),
+    modifier: Modifier = Modifier,
     backgroundColor: Long? = null,
     interactiveBackground: Boolean = true,
     onSelect: (Int) -> Unit = {},

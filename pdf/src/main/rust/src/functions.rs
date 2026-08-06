@@ -283,16 +283,16 @@ impl PdfFunction {
         }
         // Encode each input to a continuous grid coordinate e in [0, size-1].
         let mut e = Vec::with_capacity(n_in);
-        for i in 0..n_in {
+        for (i, sz) in size.iter().enumerate().take(n_in) {
             let d = domain.get(i).copied().unwrap_or([0.0, 1.0]);
-            let enc = encode.get(i).copied().unwrap_or([0.0, (size[i] as f64 - 1.0).max(0.0)]);
+            let enc = encode.get(i).copied().unwrap_or([0.0, (*sz as f64 - 1.0).max(0.0)]);
             let x = inputs.get(i).copied().unwrap_or(0.0).clamp(d[0], d[1]);
             let ev = if (d[1] - d[0]).abs() < 1e-12 {
                 enc[0]
             } else {
                 enc[0] + (x - d[0]) * (enc[1] - enc[0]) / (d[1] - d[0])
             };
-            e.push(ev.clamp(0.0, (size[i] as f64 - 1.0).max(0.0)));
+            e.push(ev.clamp(0.0, (*sz as f64 - 1.0).max(0.0)));
         }
         // Multilinear interpolation over the 2^n_in surrounding grid corners.
         let max_val = if bps >= 32 { u32::MAX as f64 } else { ((1u64 << bps) - 1) as f64 };
@@ -323,18 +323,18 @@ impl PdfFunction {
                 flat += grid[i] * stride;
                 stride *= size[i].max(1);
             }
-            for j in 0..n_out {
+            for (j, o) in out.iter_mut().enumerate() {
                 let sample_idx = flat * n_out + j;
                 let raw = read_sample(samples, sample_idx, bps);
-                out[j] += weight * (raw / max_val);
+                *o += weight * (raw / max_val);
             }
         }
         // Decode from [0,1] to Decode range, then clamp to Range.
-        for j in 0..n_out {
+        for (j, o) in out.iter_mut().enumerate() {
             let dec = decode.get(j).copied().unwrap_or([0.0, 1.0]);
-            out[j] = dec[0] + out[j] * (dec[1] - dec[0]);
+            *o = dec[0] + *o * (dec[1] - dec[0]);
             if let Some(r) = range.get(j) {
-                out[j] = out[j].clamp(r[0], r[1]);
+                *o = o.clamp(r[0], r[1]);
             }
         }
         out

@@ -49,7 +49,7 @@ internal open class YoutubeShortsLockupInfoItemExtractor(
         }
 
         try {
-            return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(videoId!!)
+            return YoutubeStreamLinkHandlerFactory.getInstance().getUrl(videoId)
         } catch (e: Exception) {
             throw ParsingException("Could not get URL", e)
         }
@@ -82,7 +82,7 @@ internal open class YoutubeShortsLockupInfoItemExtractor(
             .getObject("secondaryText").orEmptyObject()
             .getString("content")
         if (!isNullOrEmpty(viewCountText)) {
-            if (viewCountText!!.contains("✪")) {
+            if (viewCountText.contains("✪")) {
                 return -1
             }
             if (viewCountText.lowercase().contains("no views")) {

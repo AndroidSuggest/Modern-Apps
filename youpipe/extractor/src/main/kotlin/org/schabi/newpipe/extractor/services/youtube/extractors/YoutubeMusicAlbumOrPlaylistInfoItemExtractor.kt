@@ -52,7 +52,7 @@ class YoutubeMusicAlbumOrPlaylistInfoItemExtractor(
         )
 
         if (!isNullOrEmpty(name)) {
-            return name!!
+            return name
         }
 
         throw ParsingException("Could not get name")
@@ -92,7 +92,7 @@ class YoutubeMusicAlbumOrPlaylistInfoItemExtractor(
         val name = descriptionElementUploader.getString("text")
 
         if (!isNullOrEmpty(name)) {
-            return name!!
+            return name
         }
 
         throw ParsingException("Could not get uploader name")
