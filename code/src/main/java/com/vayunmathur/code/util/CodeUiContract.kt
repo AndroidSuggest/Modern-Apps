@@ -58,6 +58,8 @@ data class CodeUiState(
     val autoCloseBrackets: Boolean = true,
     val searchResults: List<SearchResult> = emptyList(),
     val isSearching: Boolean = false,
+    val completions: List<Completion> = emptyList(),
+    val showCompletions: Boolean = false,
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
 }
@@ -99,6 +101,17 @@ interface CodeActions {
 
     /** Delete the line(s) the selection touches. */
     fun deleteLine() {}
+
+    // ---- Autocomplete ----
+
+    /** Recompute completions for the current caret position. */
+    fun requestCompletions() {}
+
+    /** Accept a completion, replacing the current word (or expanding a snippet). */
+    fun acceptCompletion(item: Completion) {}
+
+    /** Hide the completion popup. */
+    fun dismissCompletions() {}
 
     /** Move the selection without recording an undo step (used by find navigation). */
     fun setSelection(range: TextRange) {}

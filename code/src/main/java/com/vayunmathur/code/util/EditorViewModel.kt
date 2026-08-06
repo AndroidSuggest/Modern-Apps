@@ -150,6 +150,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         private set
     private var searchJob: Job? = null
 
+    // ---- Autocomplete ----
+    val completions = mutableStateListOf<Completion>()
+    var showCompletions by mutableStateOf(false)
+        private set
+
     /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
     val uiState: CodeUiState
         get() = CodeUiState(
@@ -181,6 +186,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             autoCloseBrackets = autoCloseBrackets,
             searchResults = searchResults.toList(),
             isSearching = isSearching,
+            completions = completions.toList(),
+            showCompletions = showCompletions,
         )
 
     init {
@@ -473,6 +480,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun selectTab(index: Int) {
         if (index in tabs.indices) {
             currentIndex = index
+            dismissCompletions()
             saveSession()
         }
     }
@@ -499,6 +507,49 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         if (processed.text != tab.value.text) tab.pushUndo(tab.value)
         tab.value = processed
         if (autoSave) scheduleAutoSave()
+        updateCompletions()
+    }
+
+    // ---- Autocomplete ----
+
+    override fun requestCompletions() = updateCompletions()
+
+    /** Recomputes the completion list from the caret's word prefix and the open buffers. */
+    private fun updateCompletions() {
+        val tab = currentTab
+        if (tab == null || !tab.value.selection.collapsed) {
+            dismissCompletions()
+            return
+        }
+        val prefix = currentWordPrefix(tab.value.text, tab.value.selection.start)
+        if (prefix.length < MIN_COMPLETION_PREFIX) {
+            dismissCompletions()
+            return
+        }
+        val buffers = tabs.map { it.value.text }
+        val list = computeCompletions(prefix, tab.language, buffers, MAX_COMPLETIONS)
+        completions.clear()
+        completions.addAll(list)
+        showCompletions = list.isNotEmpty()
+    }
+
+    override fun acceptCompletion(item: Completion) {
+        val tab = currentTab ?: return
+        val v = tab.value
+        val caret = v.selection.start
+        val prefix = currentWordPrefix(v.text, caret)
+        val start = caret - prefix.length
+        val newText = v.text.substring(0, start) + item.insertText + v.text.substring(caret)
+        val newCaret = (start + item.caretOffset).coerceIn(0, newText.length)
+        tab.pushUndo(v)
+        tab.value = TextFieldValue(newText, TextRange(newCaret))
+        dismissCompletions()
+        if (autoSave) scheduleAutoSave()
+    }
+
+    override fun dismissCompletions() {
+        if (completions.isNotEmpty()) completions.clear()
+        showCompletions = false
     }
 
     /** Debounced auto-save: writes the current tab a short idle period after the last edit. */
@@ -726,6 +777,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     private companion object {
         const val AUTO_SAVE_DELAY_MS = 1500L
+        const val MIN_COMPLETION_PREFIX = 1
+        const val MAX_COMPLETIONS = 50
         const val MAX_SEARCH_RESULTS = 500
         const val MAX_MATCHES_PER_FILE = 50
         const val MAX_SEARCH_FILE_SIZE = 500_000

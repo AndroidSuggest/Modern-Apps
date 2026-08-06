@@ -2,14 +2,18 @@ package com.vayunmathur.code.ui
 
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.code.R
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,15 +29,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.vayunmathur.code.syntax.SyntaxTransformation
 import com.vayunmathur.code.syntax.rememberSyntaxColors
 import com.vayunmathur.code.util.CodeActions
+import com.vayunmathur.code.util.Completion
 import com.vayunmathur.code.util.TabUiState
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
@@ -44,6 +54,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
+import kotlin.math.roundToInt
 
 /**
  * The editing surface: an optional find/replace bar above a scroll-synced line-number gutter
@@ -61,6 +72,8 @@ fun CodeEditor(
     fontSize: Int = 14,
     /** Preview seam: the query the find bar starts on. The app always starts it empty. */
     initialQuery: String = "",
+    completions: List<Completion> = emptyList(),
+    showCompletions: Boolean = false,
 ) {
     // Find/replace state is per-tab, so it resets when switching files. Keyed on the file
     // name rather than the tab value: the latter is rebuilt on every keystroke, which would
@@ -163,22 +176,85 @@ fun CodeEditor(
         val verticalScroll = rememberScrollState()
         val horizontalScroll = rememberScrollState()
         val lineCount = remember(text) { text.count { it == '\n' } + 1 }
+        var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
         Row(Modifier.fillMaxSize()) {
             LineGutter(lineCount, verticalScroll, editorStyle)
-            BasicTextField(
-                value = tab.value,
-                onValueChange = actions::onEditorChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .verticalScroll(verticalScroll)
-                    .then(if (softWrap) Modifier else Modifier.horizontalScroll(horizontalScroll))
-                    .padding(horizontal = 8.dp),
-                textStyle = editorStyle,
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                visualTransformation = transformation,
-            )
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                BasicTextField(
+                    value = tab.value,
+                    onValueChange = actions::onEditorChange,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(verticalScroll)
+                        .then(if (softWrap) Modifier else Modifier.horizontalScroll(horizontalScroll))
+                        .padding(horizontal = 8.dp),
+                    textStyle = editorStyle,
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    visualTransformation = transformation,
+                    onTextLayout = { layoutResult = it },
+                )
+                val layout = layoutResult
+                if (showCompletions && completions.isNotEmpty() && caret >= 0 && layout != null) {
+                    CompletionPopup(
+                        completions = completions,
+                        layout = layout,
+                        caret = caret,
+                        hScroll = horizontalScroll.value,
+                        vScroll = verticalScroll.value,
+                        onAccept = { actions.acceptCompletion(it) },
+                        onDismiss = { actions.dismissCompletions() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The autocomplete list, anchored just below the caret. Positioned with [TextLayoutResult]'s
+ * cursor rect (offset mapping is identity, so no mapping is needed) minus the editor's scroll.
+ * The popup is non-focusable so typing keeps driving the text field and the list.
+ */
+@Composable
+private fun CompletionPopup(
+    completions: List<Completion>,
+    layout: TextLayoutResult,
+    caret: Int,
+    hScroll: Int,
+    vScroll: Int,
+    onAccept: (Completion) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val padPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+    val safeCaret = caret.coerceIn(0, layout.layoutInput.text.length)
+    val cursorRect = layout.getCursorRect(safeCaret)
+    val x = (cursorRect.left - hScroll + padPx).roundToInt()
+    val y = (cursorRect.bottom - vScroll).roundToInt()
+    Popup(
+        alignment = Alignment.TopStart,
+        offset = IntOffset(x, y),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = false),
+    ) {
+        Column(
+            Modifier
+                .width(240.dp)
+                .heightIn(max = 200.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            completions.forEach { completion ->
+                Text(
+                    text = completion.label,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onAccept(completion) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = TextStyle(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

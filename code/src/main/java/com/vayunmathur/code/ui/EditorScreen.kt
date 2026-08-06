@@ -170,6 +170,8 @@ fun EditorScreen(
                         onCloseFind = { showFind = false },
                         modifier = Modifier.weight(1f),
                         initialQuery = initialFind.orEmpty(),
+                        completions = state.completions,
+                        showCompletions = state.showCompletions,
                     )
                 }
             }
