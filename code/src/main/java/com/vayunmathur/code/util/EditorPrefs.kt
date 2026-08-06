@@ -40,6 +40,12 @@ class EditorPrefs(context: Context) {
     /** File path of the tab that was in the foreground, for session restore. */
     val sessionCurrent: Flow<String?> = appContext.editorDataStore.data.map { it[SESSION_CURRENT_KEY] }
 
+    // Git remote credentials + author. DataStore is not encrypted; acceptable for F-Droid/local.
+    val gitUsername: Flow<String> = appContext.editorDataStore.data.map { it[GIT_USERNAME_KEY] ?: "" }
+    val gitToken: Flow<String> = appContext.editorDataStore.data.map { it[GIT_TOKEN_KEY] ?: "" }
+    val gitAuthorName: Flow<String> = appContext.editorDataStore.data.map { it[GIT_AUTHOR_NAME_KEY] ?: "" }
+    val gitAuthorEmail: Flow<String> = appContext.editorDataStore.data.map { it[GIT_AUTHOR_EMAIL_KEY] ?: "" }
+
     suspend fun setFolderPath(path: String) {
         appContext.editorDataStore.edit { it[FOLDER_PATH_KEY] = path }
     }
@@ -85,6 +91,22 @@ class EditorPrefs(context: Context) {
         }
     }
 
+    suspend fun setGitUsername(value: String) {
+        appContext.editorDataStore.edit { it[GIT_USERNAME_KEY] = value }
+    }
+
+    suspend fun setGitToken(value: String) {
+        appContext.editorDataStore.edit { it[GIT_TOKEN_KEY] = value }
+    }
+
+    suspend fun setGitAuthorName(value: String) {
+        appContext.editorDataStore.edit { it[GIT_AUTHOR_NAME_KEY] = value }
+    }
+
+    suspend fun setGitAuthorEmail(value: String) {
+        appContext.editorDataStore.edit { it[GIT_AUTHOR_EMAIL_KEY] = value }
+    }
+
     companion object {
         const val DEFAULT_FONT_SIZE = 14
         const val DEFAULT_TAB_WIDTH = 4
@@ -102,5 +124,9 @@ class EditorPrefs(context: Context) {
         private val AUTO_SAVE_KEY = booleanPreferencesKey("auto_save")
         private val SESSION_PATHS_KEY = stringPreferencesKey("session_paths")
         private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")
+        private val GIT_USERNAME_KEY = stringPreferencesKey("git_username")
+        private val GIT_TOKEN_KEY = stringPreferencesKey("git_token")
+        private val GIT_AUTHOR_NAME_KEY = stringPreferencesKey("git_author_name")
+        private val GIT_AUTHOR_EMAIL_KEY = stringPreferencesKey("git_author_email")
     }
 }

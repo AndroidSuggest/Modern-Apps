@@ -155,6 +155,29 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     var showCompletions by mutableStateOf(false)
         private set
 
+    // ---- Git ----
+    var gitIsRepo by mutableStateOf(false)
+        private set
+    var gitStatus by mutableStateOf<GitStatus?>(null)
+        private set
+    val gitLog = mutableStateListOf<GitCommitInfo>()
+    val gitBranches = mutableStateListOf<String>()
+    var gitBusy by mutableStateOf(false)
+        private set
+    var gitMessage by mutableStateOf<String?>(null)
+        private set
+    var gitDiff by mutableStateOf<String?>(null)
+        private set
+
+    private val _gitUsername = mutableStateOf("")
+    val gitUsername: String get() = _gitUsername.value
+    private val _gitToken = mutableStateOf("")
+    val gitToken: String get() = _gitToken.value
+    private val _gitAuthorName = mutableStateOf("")
+    val gitAuthorName: String get() = _gitAuthorName.value
+    private val _gitAuthorEmail = mutableStateOf("")
+    val gitAuthorEmail: String get() = _gitAuthorEmail.value
+
     /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
     val uiState: CodeUiState
         get() = CodeUiState(
@@ -198,6 +221,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _autoIndent.value = prefs.autoIndent.first() }
         viewModelScope.launch { _autoCloseBrackets.value = prefs.autoCloseBrackets.first() }
         viewModelScope.launch { _autoSave.value = prefs.autoSave.first() }
+        viewModelScope.launch { _gitUsername.value = prefs.gitUsername.first() }
+        viewModelScope.launch { _gitToken.value = prefs.gitToken.first() }
+        viewModelScope.launch { _gitAuthorName.value = prefs.gitAuthorName.first() }
+        viewModelScope.launch { _gitAuthorEmail.value = prefs.gitAuthorEmail.first() }
         viewModelScope.launch {
             val stored = prefs.folderPath.first() ?: return@launch
             val dir = File(stored)
@@ -259,6 +286,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         rootName = dir.name
         nodes.clear()
         nodes.addAll(children.map { TreeNode(it, depth = 0) })
+        refreshGit()
     }
 
     /** Expands/collapses a directory row, or opens a file row in a tab. */
@@ -552,6 +580,122 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         showCompletions = false
     }
 
+    // ---- Git ----
+
+    /** Re-reads repo status, log and branches for the open folder (no-op if none is open). */
+    fun refreshGit() {
+        val dir = rootDir
+        if (dir == null) {
+            gitIsRepo = false
+            gitStatus = null
+            gitLog.clear()
+            gitBranches.clear()
+            return
+        }
+        viewModelScope.launch {
+            gitIsRepo = withContext(Dispatchers.IO) { GitRepo.isRepo(dir) }
+            if (gitIsRepo) {
+                runCatching { loadGitState(dir) }.onFailure { gitMessage = it.message ?: it.toString() }
+            } else {
+                gitStatus = null
+                gitLog.clear()
+                gitBranches.clear()
+            }
+        }
+    }
+
+    private suspend fun loadGitState(dir: File) {
+        val status = withContext(Dispatchers.IO) { GitRepo.status(dir) }
+        val log = withContext(Dispatchers.IO) { GitRepo.log(dir, GIT_LOG_LIMIT) }
+        val branches = withContext(Dispatchers.IO) { GitRepo.branches(dir) }
+        gitStatus = status
+        gitLog.clear(); gitLog.addAll(log)
+        gitBranches.clear(); gitBranches.addAll(branches)
+    }
+
+    /** Runs a git mutation off-main, surfacing failures in [gitMessage], then refreshes status. */
+    private fun gitOp(block: suspend (File) -> Unit) {
+        val dir = rootDir ?: return
+        viewModelScope.launch {
+            gitBusy = true
+            gitMessage = null
+            runCatching { withContext(Dispatchers.IO) { block(dir) } }
+                .onFailure { gitMessage = it.message ?: it.toString() }
+            gitIsRepo = withContext(Dispatchers.IO) { GitRepo.isRepo(dir) }
+            if (gitIsRepo) runCatching { loadGitState(dir) }
+            gitBusy = false
+        }
+    }
+
+    fun gitInit() = gitOp { GitRepo.init(it) }
+    fun gitStage(path: String) = gitOp { GitRepo.stage(it, path) }
+    fun gitUnstage(path: String) = gitOp { GitRepo.unstage(it, path) }
+    fun gitPull() = gitOp { GitRepo.pull(it, gitUsername, gitToken) }
+    fun gitPush() = gitOp { GitRepo.push(it, gitUsername, gitToken) }
+    fun gitCheckout(name: String) = gitOp { GitRepo.checkout(it, name) }
+
+    fun gitCreateBranch(name: String) = gitOp {
+        GitRepo.createBranch(it, name)
+        GitRepo.checkout(it, name)
+    }
+
+    fun gitCommit(message: String) = gitOp { dir ->
+        val name = gitAuthorName.ifBlank { "Code" }
+        val email = gitAuthorEmail.ifBlank { "code@localhost" }
+        GitRepo.commit(dir, message, name, email)
+    }
+
+    /** Clones [url] into [into] and, on success, opens it as the project. */
+    fun gitClone(url: String, into: File) {
+        viewModelScope.launch {
+            gitBusy = true
+            gitMessage = null
+            val result = runCatching {
+                withContext(Dispatchers.IO) { GitRepo.clone(url, into, gitUsername, gitToken) }
+            }
+            gitBusy = false
+            result.onSuccess { openFolder(into) }
+                .onFailure { gitMessage = it.message ?: it.toString() }
+        }
+    }
+
+    fun loadGitDiff(path: String, staged: Boolean) {
+        val dir = rootDir ?: return
+        viewModelScope.launch {
+            gitDiff = runCatching {
+                withContext(Dispatchers.IO) { GitRepo.diff(dir, path, staged) }
+            }.getOrDefault("")
+        }
+    }
+
+    fun clearGitDiff() {
+        gitDiff = null
+    }
+
+    fun clearGitMessage() {
+        gitMessage = null
+    }
+
+    fun setGitUsername(value: String) {
+        _gitUsername.value = value
+        viewModelScope.launch { prefs.setGitUsername(value) }
+    }
+
+    fun setGitToken(value: String) {
+        _gitToken.value = value
+        viewModelScope.launch { prefs.setGitToken(value) }
+    }
+
+    fun setGitAuthorName(value: String) {
+        _gitAuthorName.value = value
+        viewModelScope.launch { prefs.setGitAuthorName(value) }
+    }
+
+    fun setGitAuthorEmail(value: String) {
+        _gitAuthorEmail.value = value
+        viewModelScope.launch { prefs.setGitAuthorEmail(value) }
+    }
+
     /** Debounced auto-save: writes the current tab a short idle period after the last edit. */
     private fun scheduleAutoSave() {
         autoSaveJob?.cancel()
@@ -614,6 +758,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                 runCatching { FileFiles.writeText(file, textToSave) }.isSuccess
             }
             if (ok) tab.savedText = textToSave
+            if (ok && gitIsRepo) refreshGit()
         }
     }
 
@@ -779,6 +924,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         const val AUTO_SAVE_DELAY_MS = 1500L
         const val MIN_COMPLETION_PREFIX = 1
         const val MAX_COMPLETIONS = 50
+        const val GIT_LOG_LIMIT = 30
         const val MAX_SEARCH_RESULTS = 500
         const val MAX_MATCHES_PER_FILE = 50
         const val MAX_SEARCH_FILE_SIZE = 500_000

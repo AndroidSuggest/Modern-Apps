@@ -59,4 +59,25 @@
     <string name="delete_line">Delete line</string>
     <string name="auto_save">Auto-save</string>
     <string name="auto_save_desc">Save automatically a moment after you stop typing</string>
+    <string name="source_control">Source control</string>
+    <string name="not_a_git_repo">This folder is not a git repository.</string>
+    <string name="git_init">Initialize repository</string>
+    <string name="git_clone">Clone</string>
+    <string name="clone_url_hint">https://github.com/user/repo.git</string>
+    <string name="branch">Branch</string>
+    <string name="switch_branch">Switch</string>
+    <string name="new_branch">New branch</string>
+    <string name="git_pull">Pull</string>
+    <string name="git_push">Push</string>
+    <string name="commit">Commit</string>
+    <string name="commit_message">Commit message</string>
+    <string name="staged_changes">Staged changes</string>
+    <string name="changes">Changes</string>
+    <string name="no_changes">No changes</string>
+    <string name="diff">Diff</string>
+    <string name="git_credentials">Credentials (HTTPS + token)</string>
+    <string name="git_username">Username</string>
+    <string name="git_token">Personal access token</string>
+    <string name="git_author_name">Author name</string>
+    <string name="git_author_email">Author email</string>
 </resources>
