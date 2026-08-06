@@ -55,6 +55,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.MainNavigation
@@ -127,8 +128,10 @@ class MainActivity : FragmentActivity() {
                         .distinctUntilChanged()
                         .collect { dataStore.setLong(COLUMN_COUNT_KEY, it.toLong()) }
                 }
-                CompositionLocalProvider(LocalColumnCount provides columnCount) {
-                    PermissionsWrapper(viewUri = if (intent?.action == Intent.ACTION_VIEW) intent?.data else null)
+                OfflineAware {
+                    CompositionLocalProvider(LocalColumnCount provides columnCount) {
+                        PermissionsWrapper(viewUri = if (intent?.action == Intent.ACTION_VIEW) intent?.data else null)
+                    }
                 }
             }
         }
