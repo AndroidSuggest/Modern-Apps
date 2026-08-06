@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YouTube client. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       database  passwords-db   Room. The buildDatabase() default dbName is used because
+                                MainActivity calls buildDatabase<SubscriptionDatabase>() with
+                                no name; the file is per-app so the name is only confusing.
+                                Holds Subscription, SubscriptionVideo, HistoryVideo,
+                                DownloadedVideo, CachedRelatedVideo, RecommendationImpression
+                                and the recommendation/channel/keyword preference tables.
+       sharedpref sabr_*        PoToken caches and playback diagnostics. Session tokens bound
+                                to this device and install; useless and unsafe off-device.
+       file      datastore_default.preferences_pb
+                                Settings only: sponsorblock_enabled + categories,
+                                dearrow_enabled, youtube_language, default page.
+       file      sabr-cloud-policy.bin/.rev   Fetched playback policy, refetched on demand.
+       external  downloads/     Downloaded video files. Large and re-downloadable.
+
+     Cloud backup is an allowlist holding just the settings DataStore. Subscriptions are worth
+     restoring but sit in the same Room file as watch history and per-video recommendation
+     impressions, so the whole database is device-transfer only. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="external" path="downloads" />
+        <exclude domain="file" path="sabr-cloud-policy.bin" />
+        <exclude domain="file" path="sabr-cloud-policy.rev" />
+        <exclude domain="sharedpref" path="sabr_local_dom_video_token_cache.xml" />
+        <exclude domain="sharedpref" path="sabr_webpo_video_token_cache.xml" />
+        <exclude domain="sharedpref" path="sabr_playback_diagnostics.xml" />
+    </device-transfer>
+</data-extraction-rules>

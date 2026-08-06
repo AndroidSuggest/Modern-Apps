@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Calculator. Audited state: none. There is no Room database, no
+  SharedPreferences, no DataStore and no file I/O anywhere in the module. The
+  calculation history shown by HistoryDialog is held in Compose state
+  (remember / rememberSaveable) and is gone when the process dies, so there is
+  nothing on disk to back up today.
+
+  The rules are still declared explicitly rather than inherited so that the app
+  keeps "back up whatever exists" semantics on its own terms, and so that if
+  history or settings persistence is added later it is covered by default
+  instead of being silently dropped.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

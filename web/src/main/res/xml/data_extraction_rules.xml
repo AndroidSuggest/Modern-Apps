@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Browser. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       database  web-browser-db  Room: HistoryEntry, Bookmark, BookmarkFolder, SitePermission,
+                                 StorageInfo, DownloadEntry, InstalledSite (PWAs), ShieldSetting.
+       sharedpref web_prefs.xml  Browser + Brave Shields defaults AND the serialized open-tab
+                                 list (full URLs) for every window.
+       root       app_webview/   WebView profile: cookies, localStorage, IndexedDB, service
+                                 workers. Session credentials.
+       file       shields/       ~8 MB serialized adblock engine snapshot, rebuilt from the
+                                 bundled assets whenever it is missing or stale.
+       Downloads go to the public Downloads dir via DownloadManager, not app storage.
+
+     Cloud backup is denied outright, and not reflexively: bookmarks and shield settings are
+     worth restoring, but they are not separable from the data that must not leave the device.
+     Bookmarks/ShieldSetting share one Room file with browsing history, and the shield/browser
+     defaults share one SharedPreferences file with the open-tab URLs. Splitting bookmarks and
+     settings into their own stores is the prerequisite for a partial cloud allowlist here. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Exclude-only: everything not listed here transfers, which is correct for a
+             direct device-to-device migration that never reaches Google's servers. -->
+        <exclude domain="file" path="shields" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Local music player. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       database  passwords-db   Room (buildDatabase<MusicDatabase>() uses the default dbName).
+                                Music/Album/Artist rows are a mirror of MediaStore keyed by
+                                device-local content URIs; Playlist rows reference those same
+                                URIs. SyncWorker rebuilds the mirror from MediaStore.
+       file      datastore_default.preferences_pb
+                                Single key last_music_generation, the MediaStore generation
+                                marker SyncWorker compares against.
+       Album art is an in-process LruCache only; nothing is written to disk.
+
+     Nothing here survives a move to different hardware: every row points at a MediaStore URI
+     that will not exist on the new device, and restoring a stale last_music_generation would
+     make SyncWorker skip the rescan that repopulates the library. Cloud backup is therefore
+     denied, and device transfer carries the library so playlists survive a same-user
+     migration where the media files move too. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="passwords-db" />
+        <include domain="database" path="passwords-db-wal" />
+        <include domain="database" path="passwords-db-shm" />
+    </device-transfer>
+</data-extraction-rules>

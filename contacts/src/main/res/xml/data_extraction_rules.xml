@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       (no app-owned contact store) ContactViewModel reads and writes the system
+                              ContactsContract provider, which the OS backs up on its
+                              own. Nothing here should duplicate contact records.
+       file/datastore_default.preferences_pb  UI/account settings only: hidden_accounts,
+                              extra_accounts_set, last_account_name/type,
+                              calendar_sync_enabled, show_account_labels.
+       cache/*.vcf            share/export scratch files; Android never backs up cacheDir.
+
+     Only the settings file is allowlisted, so contact data is never duplicated into a
+     backup. It does carry account names, so cloud backup is gated on device encryption. -->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

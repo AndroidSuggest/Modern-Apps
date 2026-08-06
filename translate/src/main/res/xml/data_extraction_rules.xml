@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Translate. Audited state:
+    * externalFilesDir/small100/ — the SMaLL-100 ncnn translation model:
+      encoder.ncnn.bin, decoder.ncnn.bin, sentencepiece.bpe.model, vocab.txt,
+      pos_weights.f32.bin and the two .param files (Small100Model.FILES).
+    * filesDir/datastore/translate_settings.preferences_pb — last used source and
+      target language (TranslateSettings).
+    * filesDir/datastore_default.preferences_pb — per-file download progress.
+
+  The model is excluded from cloud backup: the fp16 weights are far past the
+  ~25 MB Auto Backup quota, and exceeding that quota fails the backup for the
+  whole app, which would take the language preferences down with it. It is also
+  fully regenerable — Small100Model downloads it mirror-only from
+  data.vayunmathur.com with SHA-256 pinning, and InitialModelDownloadChecker in
+  MainActivity re-fetches it automatically on first launch.
+
+  It is kept for device transfer. D2D has no quota and runs over a direct local
+  link, so carrying the already-downloaded model across saves the user a
+  multi-hundred-megabyte re-download on a brand new phone. This matches the
+  approach already taken in maps for its offline map data.
+
+  Language preferences are tiny and back up in both directions.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+        <!-- Downloaded SMaLL-100 weights: over the cloud quota and re-fetchable
+             with hash pinning. -->
+        <exclude domain="external" path="small100" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <!-- Model included: no quota on D2D, and it spares the user a large
+             re-download. -->
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

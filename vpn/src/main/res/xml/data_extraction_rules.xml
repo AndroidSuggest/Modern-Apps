@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allowlist. Overrides the permissive include-everything default in the shared :library
+  module. Both sections use <include>, so anything not named here is excluded.
+
+  ALLOWED: files/datastore_default.preferences_pb
+      For this app the DataStore holds exactly one key, "bypass_packages" (BypassList.kt),
+      the split-tunnel package allowlist. It is a plaintext user preference with no crypto
+      dependency, it is tedious to rebuild by hand, and it restores correctly. It does
+      reveal which apps are installed and which ones the user routes around the tunnel, so
+      the cloud-backup section sets disableIfNoEncryptionCapabilities="true" and that
+      fingerprint only leaves the device when Google's client-side end-to-end encryption
+      is available.
+
+  EXCLUDED (by omission from the allowlist):
+
+    databases/vpn-db (+ -wal/-shm/-journal)
+        VpnConfigEntity stores privateKey, peerPublicKey and peerPresharedKey as TEXT
+        columns: the WireGuard X25519 static private keys and PSKs. The same file also
+        holds ConnectionLogEntity, a per-flow log of resolved domains, package names and
+        byte counts, i.e. a complete browsing history. The file is SQLCipher-encrypted,
+        but the passphrase is wrapped by the non-exportable AndroidKeyStore key
+        "db_no_auth_key", so the ciphertext is neither safe to ship nor usable once
+        restored. Tunnel profile metadata (name, address, DNS, MTU, endpoint) lives in the
+        same row as the private key, so it cannot be split out at file granularity.
+    databases/vpn-db_temp
+        Transient staging file for the plaintext->SQLCipher migration. This is the one
+        file in the app that can contain private keys as PLAINTEXT SQLite if the process
+        dies mid-migration.
+    shared_prefs/secure_prefs.xml
+        Wrapped SQLCipher passphrase + IV. Restoring it without the Keystore key is worse
+        than not restoring it: DatabaseHelper.isKeyGenerated() sees the IV, reports the
+        key as present, and sends the app down the decrypt path with a missing key.
+    files/datastore_default.preferences_pb.tmp
+        DataStore's atomic-commit temp sibling. Not a named path in the allowlist, so it
+        is not backed up.
+
+  Device transfer carries the same single preference. It is not made more permissive than
+  cloud backup here, because D2D does not migrate AndroidKeyStore material either, so the
+  database would arrive unopenable. Kill switch / always-on / lockdown are system-owned
+  settings, not app storage, and are outside these rules entirely.
+-->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

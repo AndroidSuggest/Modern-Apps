@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Weather. Audited state:
+    * databases/weather-db — Room DB holding SavedLocation (the user's saved
+      places, genuinely worth restoring) and WeatherCache (forecast responses,
+      regenerable).
+    * secure_prefs.xml — SQLCipher passphrase for that DB.
+    * The Rust/NDK layer (src/main/rust) keeps its HTTP Range block cache in
+      memory only — Mutex<HashMap<u64, Vec<u8>>> in lib.rs. It writes nothing to
+      disk, so there is no native cache directory to exclude.
+
+  weather-db is excluded from both sections for the same reason as the other
+  buildDatabase() apps: it is SQLCipher-encrypted under a passphrase wrapped by
+  a non-exportable AndroidKeystore key. That key never leaves the device, so a
+  restored copy of this file cannot be opened — buildDatabase() mints a fresh
+  key and passphrase, encryptExistingDatabase() skips the already-encrypted
+  file, and Room throws SQLiteNotADatabaseException. Shipping it would trade a
+  clean first launch for a crash.
+
+  The saved locations still migrate: weather declares its own BackupAgent, which
+  uses SqlCipherDbCodec to export the DB to plaintext inside the backup payload
+  and re-encrypt it under the new device's key on restore. That path is the one
+  that works; the raw file copy would only get in its way.
+
+  Everything else — UI preferences, units, widget state — backs up normally.
+
+  SCOPE: weather declares android:backupAgent=".util.AppBackupAgent" and does
+  NOT set android:fullBackupOnly, so Android uses key/value backup here and the
+  <cloud-backup> section below is NOT consulted. Cloud content is exactly
+  AppBackupAgent's weatherDbConfigs(this) — weather-db, exported to plaintext by
+  SqlCipherDbCodec and re-encrypted on restore. That is the path that carries
+  SavedLocation across, and it works. The rules below govern <device-transfer>,
+  and are the correct control if the backupAgent is ever removed.
+
+  Worth knowing: because the codec exports to plaintext inside the payload, the
+  cloud copy includes WeatherCache rows (regenerable forecast data) as well as
+  saved locations. Trimming that would be a change to weatherDbConfigs, not to
+  this file.
+-->
+<data-extraction-rules>
+    <!-- Not consulted while android:backupAgent is declared; see SCOPE above. -->
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="weather-db" />
+        <exclude domain="database" path="weather-db-wal" />
+        <exclude domain="database" path="weather-db-shm" />
+        <exclude domain="database" path="weather-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="weather-db" />
+        <exclude domain="database" path="weather-db-wal" />
+        <exclude domain="database" path="weather-db-shm" />
+        <exclude domain="database" path="weather-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

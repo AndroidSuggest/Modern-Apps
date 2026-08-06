@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       external/piper/voices/**  Piper TTS voice archives and unpacked ncnn models
+                              (PiperVoiceRegistry). Hundreds of MB, re-downloadable.
+       external/<whisper dir>  Whisper recognition model files (WhisperModel). Same.
+       file/datastore_default.preferences_pb  download bookkeeping keyed per model
+                              (progress_*, dlid_*, speed_*), plus any app settings.
+       (no Room database, and no learned or adaptation data was found - neither the
+        recognition service nor the TTS service persists user speech or per-user models.)
+
+     Everything large here is a re-downloadable model, so nothing goes to cloud backup.
+     The DataStore is excluded from cloud backup too: it is download state with no restore
+     value, and its full key set could not be enumerated with certainty, so it defaults to
+     private. Device transfer carries it so any settings survive the move. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

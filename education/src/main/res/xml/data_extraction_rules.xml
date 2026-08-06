@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Education. Audited state:
+    * databases/education-db — Room DB with Learner, SkillProgress and Deadline
+      entities.
+    * No SharedPreferences or DataStore usage found; the DB is the app's only
+      persistent store.
+
+  education-db is excluded from both sections because it is SQLCipher-encrypted
+  via library:room buildDatabase(), and the passphrase is wrapped by an
+  AndroidKeystore key (DatabaseHelper alias db_no_auth_key) that is hardware-
+  bound and never leaves the device. A restored copy cannot be decrypted:
+  isKeyGenerated() returns false on the new device, a fresh key and passphrase
+  are minted, encryptExistingDatabase() skips the file because its header is
+  not "SQLite format 3", and Room then fails to open it. Including the file
+  would turn a clean install into a crash on launch.
+
+  secure_prefs.xml is excluded with it — it stores only the Keystore-wrapped
+  ciphertext of the passphrase, which is meaningless without the key.
+
+  Heads-up: education declares no android:backupAgent, so there is no
+  SqlCipherDbCodec re-keying path here. Learner progress therefore does not
+  migrate to a new device today. That is a pre-existing gap in the app, not
+  something these rules introduce, but it needs a BackupAgent to fix.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="education-db" />
+        <exclude domain="database" path="education-db-wal" />
+        <exclude domain="database" path="education-db-shm" />
+        <exclude domain="database" path="education-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="education-db" />
+        <exclude domain="database" path="education-db-wal" />
+        <exclude domain="database" path="education-db-shm" />
+        <exclude domain="database" path="education-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

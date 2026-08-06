@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Astronomy. Audited state: preferences only, via DataStoreUtils into
+  filesDir/datastore_default.preferences_pb (AstronomyViewModel) — the user's
+  observing location and display options. No Room database, no file I/O, nothing
+  on external storage. The constellation artwork (andromeda.png and friends) is
+  read-only APK/resource content.
+
+  Small and worth keeping: re-entering an observing location on a new phone is
+  exactly the kind of papercut backup should prevent. Back everything up.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

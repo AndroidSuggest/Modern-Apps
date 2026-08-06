@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Camera. Audited state: settings only, persisted through DataStoreUtils into
+  filesDir/datastore_default.preferences_pb (CameraViewModel) — capture mode,
+  ratio, flash, timer and similar.
+
+  Captured media is NOT app storage. Photos, videos and panoramas are written
+  through MediaStoreSaver / saveToMediaStore into DCIM/Camera on shared storage,
+  which lives outside the app sandbox entirely; the `external` domain only ever
+  covers getExternalFilesDir(). Verified there are no getExternalFilesDir()
+  writes anywhere in the module, so no captured media can reach a backup through
+  these rules. The user's photo library is Google Photos' problem, not this
+  app's.
+
+  Intermediate capture files (motion_*.mp4, VID_*.mp4, TL_*.mp4) go to cacheDir,
+  which the platform excludes from every backup on its own. erdnet.param /
+  erdnet.bin are bundled ncnn assets loaded from the APK by PortraitSegmenter,
+  not downloads.
+
+  Nothing large, nothing personal — back the settings up in both directions.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

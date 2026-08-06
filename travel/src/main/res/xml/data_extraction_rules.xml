@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Travel. Audited state:
+    * databases/travel-db — Room DB with RecentSearch, BookedTrip, FrequentFlyer
+      and Customer entities.
+    * secure_prefs.xml — SQLCipher passphrase for that DB.
+    * filesDir/datastore_default.preferences_pb — UI preferences (TravelViewModel).
+
+  travel-db is excluded from both sections. Two independent reasons:
+
+  1. Correctness. It is built with library:room buildDatabase(), so it is
+     SQLCipher-encrypted under a passphrase wrapped by an AndroidKeystore key
+     that is hardware-bound and never backed up. On the restored device
+     DatabaseHelper.isKeyGenerated() is false, a new key and passphrase are
+     generated, encryptExistingDatabase() leaves the already-encrypted file
+     alone, and Room opens it with the wrong key —
+     SQLiteNotADatabaseException. The restored file is unusable by
+     construction.
+
+  2. Sensitivity. Customer and FrequentFlyer rows are passenger PII (names,
+     loyalty numbers) and BookedTrip is an itinerary. Even if the encryption
+     problem were solved, this is not content to push to cloud backup casually.
+
+  Heads-up for whoever owns this app: unlike weather and games/hub, travel does
+  NOT declare an android:backupAgent, so there is currently no SqlCipherDbCodec
+  path either. That means bookings do not migrate to a new device at all today.
+  These rules do not cause that — they just stop the migration from failing
+  loudly at first launch instead of quietly. Fixing it needs a BackupAgent, not
+  a backup rule.
+
+  Preferences and the DataStore file still back up normally.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="travel-db" />
+        <exclude domain="database" path="travel-db-wal" />
+        <exclude domain="database" path="travel-db-shm" />
+        <exclude domain="database" path="travel-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="travel-db" />
+        <exclude domain="database" path="travel-db-wal" />
+        <exclude domain="database" path="travel-db-shm" />
+        <exclude domain="database" path="travel-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

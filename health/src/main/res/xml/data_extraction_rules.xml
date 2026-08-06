@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       database/passwords-db  HealthDatabase (Record/Ingredient/Recipe/ServingUnit/
+                              RecipeIngredient): health, nutrition, sleep and exercise
+                              records. Highly sensitive.
+       file/food.db, food.db.part, food.bin.part, food.bin.meta.json
+                              Open Food Facts index unpacked from a bundled asset.
+                              Large and fully regenerable.
+       file/datastore_default.preferences_pb  sync bookkeeping.
+       sharedpref/sync        declared in HealthAPI but never read or written.
+       sharedpref/secure_prefs  keystore-wrapped SQLCipher passphrase.
+
+     Health records must not reach Google's servers, so cloud backup is off entirely.
+     Device-to-device transfer never leaves the two devices, so records move with the
+     user; the regenerable food index and the keystore-bound passphrase do not. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Whole-domain include so the -wal/-shm sidecars travel with the database. -->
+        <include domain="database" path="." />
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

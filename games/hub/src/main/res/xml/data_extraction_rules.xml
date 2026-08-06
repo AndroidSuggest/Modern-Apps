@@ -1,16 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Games Hub. Audited state:
+    * databases/games-hub-db — Room DB (GamesHubDatabase) with play sessions,
+      achievement progress, player profile and a cross-app activity feed
+      aggregated from the other eight games.
+    * secure_prefs.xml — the SQLCipher passphrase for that DB.
+    * filesDir/datastore_default.preferences_pb — UI settings.
+
+  games-hub-db is excluded from BOTH sections, for a correctness reason before
+  a privacy one. It is built via library:room buildDatabase(), so it is
+  SQLCipher-encrypted with a random passphrase that DatabaseHelper wraps using
+  an AndroidKeystore key (alias db_no_auth_key). Keystore keys are hardware-bound
+  and are never backed up or transferred. On a restored device the alias is
+  gone, so DatabaseHelper.isKeyGenerated() returns false, buildDatabase()
+  generates a fresh key and a brand-new passphrase, and
+  encryptExistingDatabase() sees a non-plaintext header and leaves the file
+  alone — Room then opens the restored ciphertext with the wrong key and throws
+  SQLiteNotADatabaseException. Shipping the raw file doesn't restore the user's
+  data, it bricks first launch.
+
+  Migration is handled properly by the app's own BackupAgent instead: it uses
+  SqlCipherDbCodec to sqlcipher_export() to plaintext at backup time and
+  re-encrypt under the new device's key at restore time.
+
+  secure_prefs.xml goes with it — it holds only the Keystore-wrapped ciphertext
+  of the passphrase, which is undecryptable off-device and is regenerated on
+  first launch anyway.
+
+  SCOPE — READ BEFORE RELYING ON THE <cloud-backup> SECTION BELOW.
+  hub declares android:backupAgent=".util.AppBackupAgent" and does NOT set
+  android:fullBackupOnly, so Android uses key/value backup for this app and the
+  <cloud-backup> section here is NOT consulted. What actually leaves the device
+  for cloud is whatever AppBackupAgent lists: dbConfigs (games-hub-db, exported
+  by SqlCipherDbCodec) and datastoreNames (datastore_default). The rules below
+  govern <device-transfer>, and they are the correct control if the backupAgent
+  is ever removed.
+
+  Privacy note, corrected: hub's DB is a cross-app behavioural profile (what the
+  user plays and for how long, across eight apps). An earlier version of this
+  comment claimed the exclusion below keeps that profile off Google's servers.
+  That is WRONG. Because this app is key/value, the agent ships games-hub-db to
+  cloud regardless of this file — and SqlCipherDbCodec.exportDatabase()
+  sqlcipher_export()s it to PLAINTEXT inside the backup payload first. If that
+  profile should not leave the device, the fix is to drop DB_NAME from
+  AppBackupAgent.dbConfigs, not to edit this XML.
+-->
 <data-extraction-rules>
+    <!-- Not consulted while android:backupAgent is declared; see SCOPE above.
+         Kept correct so behaviour is right if the agent is ever removed. -->
     <cloud-backup>
         <include domain="root" path="." />
         <include domain="file" path="." />
         <include domain="database" path="." />
+        <exclude domain="database" path="games-hub-db" />
+        <exclude domain="database" path="games-hub-db-wal" />
+        <exclude domain="database" path="games-hub-db-shm" />
+        <exclude domain="database" path="games-hub-db-journal" />
         <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
     </cloud-backup>
     <device-transfer>
         <include domain="root" path="." />
         <include domain="file" path="." />
         <include domain="database" path="." />
+        <!-- Same Keystore problem applies to D2D: the wrapping key does not
+             leave the source device either. -->
+        <exclude domain="database" path="games-hub-db" />
+        <exclude domain="database" path="games-hub-db-wal" />
+        <exclude domain="database" path="games-hub-db-shm" />
+        <exclude domain="database" path="games-hub-db-journal" />
         <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
         <include domain="external" path="." />
     </device-transfer>
 </data-extraction-rules>

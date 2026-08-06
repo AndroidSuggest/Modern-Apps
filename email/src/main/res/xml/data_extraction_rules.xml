@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allowlist. Overrides the permissive include-everything default in the shared :library
+  module. Both sections use <include>, so anything not named here is excluded.
+
+  ALLOWED: shared_prefs/email_settings.xml
+      Holds one key, "load_remote_images" (EmailSettings.kt). It is an app-wide privacy
+      preference with no account scope, no PII and no crypto dependency, and it is the one
+      setting a user would notice silently reverting after a restore. The cloud-backup
+      section sets disableIfNoEncryptionCapabilities="true" so even this only leaves the
+      device under Google's client-side end-to-end encryption.
+
+  EXCLUDED (by omission from the allowlist):
+
+    databases/email-db (+ -wal/-shm/-journal), databases/email-db_temp
+        The EmailAccount table holds accessToken and refreshToken as PLAINTEXT columns
+        (EmailModels.kt:88-89) alongside passwordEncrypted/passwordIv wrapped by the
+        AndroidKeyStore alias "email_account_pw". The same table holds every account's
+        server config, and the EmailMessage table holds all cached message bodies. Account
+        config cannot be separated from the tokens: they are columns on the same row, in
+        the same file. The file is SQLCipher-encrypted under a passphrase wrapped by
+        "db_no_auth_key", and neither Keystore alias survives cloud backup or D2D, so a
+        restored database is unreadable as well as unsafe. email-db_temp is the plaintext
+        staging file from the plaintext->SQLCipher migration.
+    shared_prefs/secure_prefs.xml
+        Wrapped SQLCipher passphrase + IV. Restoring it without its Keystore key leaves
+        DatabaseHelper.isKeyGenerated() reporting a key that no longer exists.
+    shared_prefs/outlook_oauth.xml
+        In-flight PKCE "verifier" and "state" plus "emailHint". A restored verifier/state
+        pair is a stale CSRF token for an authorization request that no longer exists, and
+        emailHint is an account address. No value, real risk.
+    shared_prefs/email_notif_last_seen.xml
+        Keys are literally "<accountEmail>::<folderName>", so the file enumerates the
+        user's email addresses. The only benefit is suppressing one burst of duplicate
+        notifications, and since the accounts database is not restored there is nothing
+        for those UIDs to line up against.
+    shared_prefs/email_idle_state.xml
+        "idle_restart_pending" is transient runtime state. Restoring it true would enqueue
+        an IMAP IDLE restart on a device with no configured accounts.
+    files/outbox/<entryId>/ and files/outbox/<entryId>/inline/
+        Attachment and inline-image payloads for queued outgoing mail, stored as plaintext
+        files. Unsent user mail content; must not be uploaded.
+    files/ Glance widget state
+        androidx.glance.appwidget writes per-widget-id state files under files/. Widget ids
+        are not stable across installs, so the state is meaningless after a restore, and
+        the widget caches message subjects and senders. Regenerable.
+    databases/androidx.work.workdb (+ sidecars)
+        WorkManager scheduling state, including serialized worker input data. Regenerable.
+    cache/cid/, cache/eml_cid/, cache/inline/, cache/eml_attachments/
+        Decoded inline images and attachments from received mail. The framework never
+        backs up cacheDir, but they are named here so the audit is complete.
+
+  Device transfer carries the same single preference. It is not widened relative to cloud
+  backup, because D2D does not migrate AndroidKeyStore material and the accounts database
+  would arrive unopenable.
+-->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="sharedpref" path="email_settings.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="email_settings.xml" />
+    </device-transfer>
+</data-extraction-rules>

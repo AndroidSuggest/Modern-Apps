@@ -1,14 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Voxels. Audited state:
+    * "voxels_prefs" SharedPreferences (AppBackupAgent.prefNames) — settings.
+    * filesDir/worlds/<world-id>/ — one directory per world, containing
+      world.json (name, seed, timestamps), player.json (position/inventory) and
+      regions/c_<x>_<z>.dat, the saved chunks written by the Rust save layer
+      (src/main/rust/src/world/save.rs).
+    * cacheDir/*.wav — SoundFx generates its sound effects at runtime. The
+      platform already excludes cacheDir from every backup, so no rule needed.
+
+  Why regions/ is a problem for cloud backup: each chunk file is up to
+  SECTIONS_PER_CHUNK * ~12 KB, and chunk_map.rs keeps a render distance of 12,
+  so an explored world is easily hundreds of megabytes. Android Auto Backup has
+  a ~25 MB per-app quota, and blowing it doesn't just drop the big files — it
+  fails the backup for the entire app, silently taking voxels_prefs down with
+  it.
+
+  The rules format has no wildcards, so there is no way to keep
+  worlds/<id>/world.json while dropping worlds/<id>/regions. Excluding the whole
+  worlds tree from cloud-backup is the deliberate choice: a truncated world is
+  actively worse than no world, because decode_chunk() treats an unreadable
+  chunk as ungenerated and regenerates it from the seed, silently erasing
+  whatever the player built there.
+
+  Device transfer has no quota and runs over a direct local link, so worlds go
+  across intact — that is the path that actually preserves builds.
+
+  SCOPE: voxels declares android:backupAgent=".util.AppBackupAgent" and does NOT
+  set android:fullBackupOnly, so Android uses key/value backup here and the
+  <cloud-backup> section below is NOT consulted today. In practice the outcome
+  matches the intent anyway: AppBackupAgent lists only prefNames =
+  ["voxels_prefs"], so settings reach the cloud and saved worlds do not. The
+  exclusion below is kept so that stays true if the backupAgent is ever removed
+  and Auto Backup takes over. <device-transfer> IS governed by this file.
+-->
 <data-extraction-rules>
+    <!-- Not consulted while android:backupAgent is declared; see SCOPE above. -->
     <cloud-backup>
         <include domain="root" path="." />
         <include domain="file" path="." />
+        <!-- Saved worlds: far over the 25 MB cloud quota, and a partial restore
+             regenerates terrain from the seed and destroys player builds. -->
+        <exclude domain="file" path="worlds" />
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />
         <include domain="external" path="." />
     </cloud-backup>
     <device-transfer>
         <include domain="root" path="." />
+        <!-- Worlds included: no quota on D2D, and this is the only path that
+             migrates a player's builds. -->
         <include domain="file" path="." />
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />

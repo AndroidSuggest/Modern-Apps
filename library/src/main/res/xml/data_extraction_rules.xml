@@ -1,17 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Fail-safe fallback only. Every app in the repo currently ships its own
+  res/xml/data_extraction_rules.xml, which shadows this one, so nothing uses
+  this file today.
+
+  It denies cloud-backup on purpose. A new app that forgets to write its own
+  rules gets no cloud backup rather than silently uploading everything: this
+  file used to <include> root, file, database, sharedpref and external in both
+  sections, which meant any app inheriting it shipped its entire sandbox to
+  Google. Several apps store E2EE identity keys in files/datastore_default and
+  OAuth tokens in shared_prefs, so that default was the wrong way round.
+
+  If you are adding an app: write a real per-app rules file listing what is
+  genuinely worth restoring. Two things to know first.
+    - Room databases here are SQLCipher-encrypted with a passphrase wrapped by
+      a non-exportable AndroidKeyStore key, so a copied .db file cannot be
+      decrypted on the target device. Backing one up needs a BackupAgent that
+      re-keys it (see BaseBackupAgent + SqlCipherDbCodec), not a rule.
+    - If your app declares android:backupAgent without fullBackupOnly, it uses
+      key/value backup and the <cloud-backup> section below is not consulted.
+-->
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="root" path="." />
-        <include domain="file" path="." />
-        <include domain="database" path="." />
-        <include domain="sharedpref" path="." />
-        <include domain="external" path="." />
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
     </cloud-backup>
     <device-transfer>
-        <include domain="root" path="." />
         <include domain="file" path="." />
-        <include domain="database" path="." />
         <include domain="sharedpref" path="." />
-        <include domain="external" path="." />
     </device-transfer>
 </data-extraction-rules>

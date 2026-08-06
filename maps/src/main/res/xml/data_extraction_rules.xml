@@ -1,32 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Maps-specific backup/transfer rules. The shared library rules include
-  `external` storage, but for this module that domain holds tens to hundreds
-  of megabytes of downloaded offline data (zone_*.pmtiles map tiles, the
-  streamed-basemap disk cache under tilecache/, plus the single global routing
-  files nodes.bin, edges.bin, transit_voyages.bin, transit_attributes.bin,
-  amenities.db, metadata.bin, road_names.bin, intermediate.bin).
+  Maps. Audited state:
+    * externalFilesDir/zone_<id>.pmtiles — downloaded offline map zones.
+    * externalFilesDir/tilecache/ (falls back to filesDir/tilecache when there is
+      no external storage) — the streamed-basemap disk cache from MapTileCache.
+    * externalFilesDir/{nodes,edges,transit_voyages,transit_attributes,metadata,
+      road_names,intermediate}.bin — the global routing data set.
+    * externalFilesDir/amenities.db — the downloaded amenity/address database.
+    * databases/amenities.db — a SECOND copy. buildAmenityDatabase() uses Room's
+      createFromFile(), which copies the external file into the standard
+      databases/ directory on first open.
+    * filesDir/datastore_default.preferences_pb — Home and Work quick-access
+      places (SavedPlacesViewModel), plus zone download progress.
 
-  Cloud Auto Backup has a 25 MB quota; including these files would blow past
-  it on the first sync and silently disable backup for the whole app. They're
-  re-downloadable from data.vayunmathur.com (or re-streamed from protomaps) on
-  demand, so we exclude them.
+  All of the downloaded data is excluded from cloud backup. It runs to tens or
+  hundreds of megabytes against a ~25 MB Auto Backup quota, and going over does
+  not merely skip the big files — it fails the backup for the entire app,
+  silently taking Home/Work with it. Everything excluded here is re-downloadable
+  from data.vayunmathur.com or re-streamable from protomaps on demand.
+
+  The databases/amenities.db copy matters and is easy to miss: it sits in the
+  `database` domain, not `external`, so excluding external alone would still let
+  a large regenerable file through. It is excluded from device transfer too,
+  since Room rebuilds it from the external amenities.db via createFromFile() and
+  sending both copies would double the transfer for no gain.
+
+  Home and Work are the only personal data here (there is no persisted search or
+  location history — the search UI holds results in memory). They are a couple
+  of small JSON strings in the DataStore file and are exactly what a user wants
+  back on a new phone, so they stay in both sections.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="root" path="." />
         <include domain="file" path="." />
-        <!-- tilecache/ falls back to internal files when there's no external
-             storage; keep it out of the cloud-backup quota either way. -->
+        <!-- tilecache/ falls back to internal files when there is no external
+             storage; keep it out of the cloud quota either way. -->
         <exclude domain="file" path="tilecache" />
         <include domain="database" path="." />
+        <!-- Room's createFromFile() copy of the downloaded amenity DB. -->
+        <exclude domain="database" path="amenities.db" />
+        <exclude domain="database" path="amenities.db-wal" />
+        <exclude domain="database" path="amenities.db-shm" />
+        <exclude domain="database" path="amenities.db-journal" />
         <include domain="sharedpref" path="." />
-        <!-- external: deliberately excluded — see comment above. -->
+        <!-- external: holds the pmtiles zones, routing .bin set, tilecache and
+             amenities.db — all far past the cloud quota and all re-downloadable. -->
     </cloud-backup>
     <device-transfer>
         <include domain="root" path="." />
         <include domain="file" path="." />
         <include domain="database" path="." />
+        <!-- Rebuilt from the external amenities.db on first open; transferring
+             both copies would double the payload for nothing. -->
+        <exclude domain="database" path="amenities.db" />
+        <exclude domain="database" path="amenities.db-wal" />
+        <exclude domain="database" path="amenities.db-shm" />
+        <exclude domain="database" path="amenities.db-journal" />
         <include domain="sharedpref" path="." />
         <!-- external IS included for device transfer so a new phone gets the
              user's already-downloaded zones rather than re-downloading them. -->

@@ -1,13 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- App store client. Overrides the permissive default in the shared :library module, and
+     replaces an earlier rule set that cloud-backed the whole database and all preferences.
+
+     Storage audit:
+       database  appstore-db    Room. RepoEntity (the user's configured F-Droid repos),
+                                CachedAppEntity (the full index of every app in every enabled
+                                repo — multi-megabyte and refetched on demand) and
+                                PinnedStampEntity (trust-on-first-use signer pins).
+       file      datastore/play_auth.preferences_pb   A serialized Play AuthData: the
+                                dispensed anonymous account with its auth token, gsfId and
+                                device profile, plus the dispense timestamp. A live session
+                                credential with a max age, re-dispensed whenever it is absent.
+       sharedpref appstore-update-check.xml   The comma-joined package list from the last
+                                update notification, used only to suppress repeats. It is a
+                                list of the user's installed apps.
+       cache     <pkg>.apk, PlayDownloads/, fdroid-index/, fdroid-verified.json   Download and
+                                verification scratch under getCacheDir(), never backed up.
+
+     Cloud backup is denied. The repo list is the only non-regenerable state and it shares one
+     Room file with the bulk index cache and the TOFU signer pins; the update-check preference
+     is a regenerable inventory of installed apps; the Play auth blob is a session credential.
+     The Play credential is excluded from device transfer as well — it is bound to a gsfId and
+     device profile that do not survive the move, and a stale one just costs a round-trip. -->
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="sharedpref" path="." />
-        <exclude domain="sharedpref" path="device.xml" />
-        <include domain="database" path="." />
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
     </cloud-backup>
     <device-transfer>
-        <include domain="sharedpref" path="." />
-        <include domain="database" path="." />
-        <include domain="file" path="." />
+        <exclude domain="file" path="datastore/play_auth.preferences_pb" />
+        <exclude domain="external" path="." />
     </device-transfer>
 </data-extraction-rules>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       (no app-owned event store) CalendarViewModel reads and writes the system calendar
+                              provider, which the OS and the account sync adapters back
+                              up on their own.
+       file/datastore_default.preferences_pb  UI settings only: theme_mode,
+                              default_calendar_layout, last_selected_calendar_id.
+
+     Event content lives in the system provider, so the only thing worth restoring here
+     is the settings file. Everything else is excluded by the allowlist. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

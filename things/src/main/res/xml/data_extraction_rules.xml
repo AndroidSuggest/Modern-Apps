@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Things. Audited state: the "hydration" SharedPreferences file (MainActivity) —
+  the user's hydration goal and running intake log. No Room database, no
+  DataStore, no file I/O, nothing on external storage.
+
+  This is a small personal health-adjacent log, but it is also the entire
+  contents of the app: excluding it would make a restore indistinguishable from
+  a fresh install. It is a handful of counters rather than anything identifying,
+  so back it up in both directions.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

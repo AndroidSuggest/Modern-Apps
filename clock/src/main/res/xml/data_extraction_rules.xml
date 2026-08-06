@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Clock. Audited state:
+    * The Room DB (ClockDatabase: Timer, Alarm) is opened at every call site as
+      buildDatabase<ClockDatabase>(useDeviceProtectedStorage = true) — with no
+      dbName argument, so it takes the library default and the file is literally
+      named "passwords-db". Because it uses device-protected storage it lives in
+      the device_database domain, which the backup framework does not include by
+      default, so alarms and timers are already out of scope for both cloud
+      backup and D2D. Nothing to exclude there, and nothing to fix here.
+    * secure_prefs — SQLCipher passphrase; SqlCipher.kt migrates it into
+      device-protected storage on first run, but a credential-protected copy can
+      linger from before that migration.
+    * cities.bin is a read-only APK asset (timezone city list).
+
+  The one thing worth excluding is the stale credential-protected copy of
+  "passwords-db". buildDatabase() calls moveDatabaseFrom() to relocate an older
+  install's DB into device-protected storage, but until that runs — or if the
+  move ever fails — an encrypted leftover sits in databases/. Restoring it is
+  useless: it is SQLCipher ciphertext under a passphrase wrapped by a
+  non-exportable AndroidKeystore key, so the new device can never open it, and
+  a stale file there would be picked up by the next moveDatabaseFrom() and
+  shadow the real one.
+
+  Alarms and timers are also device-scheduled state — AlarmManager registrations
+  do not survive a migration regardless of what the file layer does — so there
+  is no user value being given up here.
+
+  Everything else backs up normally.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="passwords-db" />
+        <exclude domain="database" path="passwords-db-wal" />
+        <exclude domain="database" path="passwords-db-shm" />
+        <exclude domain="database" path="passwords-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="root" path="." />
+        <include domain="file" path="." />
+        <include domain="database" path="." />
+        <exclude domain="database" path="passwords-db" />
+        <exclude domain="database" path="passwords-db-wal" />
+        <exclude domain="database" path="passwords-db-shm" />
+        <exclude domain="database" path="passwords-db-journal" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

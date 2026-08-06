@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       database/passwords-db  PhotoDatabase (Photo/Person/PhotoFace): a derived index over
+                              MediaStore. EXIF, lat/long, OCR text of every image, CLIP
+                              embeddings and face-cluster centroids. No user edits are
+                              stored here - the cropped*/projection* columns are panorama
+                              projection metadata, and Person has no user-assigned name.
+                              Regenerable by re-running SyncWorker, and privacy-heavy.
+       database/vault-db      VaultDatabase for the secure folder, opened with a
+                              user-supplied password rather than the keystore passphrase.
+       file/secure_vault      the secure folder's stored photos. User content the user
+                              deliberately hid.
+       file/datastore_default.preferences_pb  grid column count and model-version markers.
+       cache/image_cache      Coil disk cache; Android never backs up cacheDir.
+
+     Cloud backup carries the grid preference only. The index is regenerable and would
+     ship OCR text, geotags and face vectors off the device; the secure folder is hidden
+     by intent and stays local. Device transfer carries both databases and the vault so a
+     new phone does not have to re-index the whole library, and so hidden photos survive
+     the move without passing through Google. -->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Whole-domain include so the -wal/-shm sidecars travel with each database. -->
+        <include domain="database" path="." />
+        <include domain="file" path="secure_vault" />
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MusicBrainz lookup and tagging client. Overrides the permissive default in the shared
+     :library module.
+
+     Storage audit:
+       file      datastore/musicbrainz.preferences_pb   Settings: music_folder_uri,
+                                                        fetch_lyrics, embed_cover_art.
+       database  musicbrainz-db                         Room, one LocalTrack table: the index
+                                                        LibraryScanner builds by walking the
+                                                        user's music folder. Rebuilt by a
+                                                        rescan, and it enumerates the user's
+                                                        audio files.
+       MusicBrainz API responses are cached in in-memory HashMaps only. Downloads are written
+       through SAF into the user's chosen folder, outside app storage.
+
+     Cloud backup allowlists the settings DataStore. The scan index is regenerable and
+     describes the user's music collection, so it is device-transfer only. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="datastore/musicbrainz.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore/musicbrainz.preferences_pb" />
+        <include domain="database" path="musicbrainz-db" />
+        <include domain="database" path="musicbrainz-db-wal" />
+        <include domain="database" path="musicbrainz-db-shm" />
+    </device-transfer>
+</data-extraction-rules>

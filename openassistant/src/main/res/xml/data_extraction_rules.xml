@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       database/passwords-db  AppDatabase (Conversation/Message/Memory): the full
+                              conversation history plus remembered facts. Free-form user
+                              text, so it can contain anything.
+       external/              on-demand model downloads in getExternalFilesDir(null):
+                              gemma4-2b.litertlm, the SigLIP2 ONNX encoders and
+                              tokenizer.model. Gigabytes, and re-downloadable.
+       file/datastore_default.preferences_pb  model download progress and version markers
+                              (progress_*, dlid_*, siglip_model_version). Meaningless once
+                              the models are gone.
+       cache/                 recordings and attachment scratch files; Android never backs
+                              up cacheDir.
+       sharedpref/secure_prefs  keystore-wrapped SQLCipher passphrase.
+
+     No API keys or remote credentials were found - inference runs on-device - so the only
+     secret-grade material is the keystore passphrase. Conversation history must not reach
+     Google's servers, and everything else here is regenerable, so cloud backup is off
+     entirely. Device transfer carries the history and nothing else. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Whole-domain include so the -wal/-shm sidecars travel with the database. -->
+        <include domain="database" path="." />
+    </device-transfer>
+</data-extraction-rules>

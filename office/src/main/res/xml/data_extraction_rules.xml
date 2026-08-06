@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Office document editor. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       sharedpref office_settings.xml   Editor preferences.
+       sharedpref office_recent.xml     Recently opened document URIs.
+       file      documents/             Documents the app itself created and owns. Not
+                                        regenerable, and the only true user data here.
+       file      datastore_default.preferences_pb
+                                        Shared DataStore. Holds the OfficeSync PqcIdentity
+                                        private key material (PqcIdentity.loadOrCreate writes
+                                        through DataStoreKeyStore), the officeDeviceId, the
+                                        online document index and the per-document CRDT trees.
+       cache     crdt_merge.fodt, online_*.fodt   Merge scratch and downloaded copies of
+                                        online docs; getCacheDir() is never backed up.
+
+     Cloud backup allowlists the editor settings and the owned documents. The DataStore is
+     excluded from cloud backup because the sync identity's private keys live in it — a second
+     device holding that key is a duplicated identity, not a restore. office_recent is left out
+     too: its URIs will not resolve after a cloud restore and it leaks document file names. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="office_settings.xml" />
+        <include domain="file" path="documents" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Exclude-only: the sync identity and CRDT state move with a direct migration,
+             which is exactly the retire-old-device case they are meant for. -->
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

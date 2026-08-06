@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       database/notes-db      NoteDatabase (Note): the user's note content. Also the
+                              legacy passwords-db, deleted after migration in MainActivity.
+       file/note_images       images embedded in notes (NoteImageStore). User content.
+       file/datastore_default.preferences_pb  app settings.
+       cache/shared_notes     markdown export scratch; Android never backs up cacheDir.
+       sharedpref/secure_prefs  keystore-wrapped SQLCipher passphrase.
+
+     Notes are user-authored content worth restoring on a new device, so both channels
+     carry the notes database and its images. Cloud backup is gated on device encryption
+     because note text can contain anything. Caches and the keystore-bound passphrase are
+     left out by the allowlist. -->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <!-- Whole-domain include so the -wal/-shm sidecars travel with the database. -->
+        <include domain="database" path="." />
+        <include domain="file" path="note_images" />
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+        <include domain="file" path="note_images" />
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

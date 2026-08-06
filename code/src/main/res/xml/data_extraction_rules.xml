@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Code editor. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       file  datastore/code_editor.preferences_pb   Two keys: soft_wrap and folder_uri, the
+                                                    SAF tree URI of the last opened project
+                                                    folder.
+       No database, no SharedPreferences, no app-private files or caches. Source files are
+       edited in place through SAF in storage the app does not own.
+
+     Both keys are settings, so the DataStore is allowlisted for cloud backup. folder_uri will
+     need re-granting after a restore but is harmless to carry. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="datastore/code_editor.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore/code_editor.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- File manager. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       sharedpref files_prefs.xml   sort_by, sort_ascending, view_mode, show_hidden,
+                                    has_prompted_notifications, and a bookmarks string-set of
+                                    on-device folder paths.
+       No database, no DataStore, no app-private files or caches. The files the app browses
+       live in shared storage it does not own and are never part of its backup set.
+
+     files_prefs is genuinely restorable UI state, so it is allowlisted for cloud backup. The
+     bookmark paths are the user's own directory names and carry no credentials. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="files_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="files_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

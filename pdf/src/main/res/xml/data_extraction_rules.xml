@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PDF viewer. Overrides the permissive default in the shared :library module.
+
+     Storage audit:
+       sharedpref pdf_viewer_state.xml   One int per document: the last first-visible page.
+                                         The key is "safe_page_<first 20 chars of the file
+                                         name>_<hash of the full URI>", so the file names of
+                                         every PDF the user has opened are embedded in it.
+       cache      <uuid>.jpg             Scanned page captures; the framework never backs up
+                                         getCacheDir(), so no rule is needed.
+       No database, no DataStore. The PDFs themselves are opened through SAF and live in
+       storage the app does not own.
+
+     The saved pages are keyed by content URIs that will not resolve after a cloud restore, so
+     backing them up buys nothing and ships a list of document file names to Google. Denied
+     for cloud, kept for device transfer where the same documents are still reachable. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="pdf_viewer_state.xml" />
+    </device-transfer>
+</data-extraction-rules>
