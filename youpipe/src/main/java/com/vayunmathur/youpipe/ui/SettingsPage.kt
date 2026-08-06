@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -26,6 +27,7 @@ import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.R as UiR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -128,6 +130,7 @@ fun SettingsPage(
     val recPrefs by ypvm.recommendationPreferences.collectAsState()
     val isLoading by ypvm.isImporting.collectAsState()
     val progress by ypvm.importProgress.collectAsState()
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
 
     val youtubeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) ypvm.importYouTubeTakeout(uri)
@@ -321,6 +324,20 @@ fun SettingsPage(
                 item { HorizontalDivider() }
                 item {
                     ListItem(
+                        content = { Text(stringResource(R.string.label_history)) }
+                    )
+                }
+                item {
+                    ListItem(
+                        content = { Text(stringResource(R.string.clear_history)) },
+                        modifier = Modifier.padding(start = 16.dp).clickable {
+                            showClearHistoryDialog = true
+                        }
+                    )
+                }
+                item { HorizontalDivider() }
+                item {
+                    ListItem(
                         content = { Text(stringResource(R.string.label_backup_restore)) }
                     )
                 }
@@ -362,6 +379,18 @@ fun SettingsPage(
                 CircularProgressIndicator({ progress }, modifier = Modifier.align(Alignment.Center))
             }
         }
+    }
+
+    if (showClearHistoryDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.clear_history),
+            message = stringResource(R.string.are_you_sure_you_want_to_clear_all_watch),
+            confirmLabel = stringResource(UiR.string.clear),
+            dismissLabel = stringResource(UiR.string.cancel),
+            onConfirm = { ypvm.clearHistory() },
+            onDismiss = { showClearHistoryDialog = false },
+            destructive = true,
+        )
     }
 }
 

@@ -1,20 +1,17 @@
 package com.vayunmathur.youpipe.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -22,11 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.IconDelete
-import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
-import com.vayunmathur.youpipe.R
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.youpipe.MAIN_BOTTOM_BAR_ITEMS
 import com.vayunmathur.youpipe.Route
@@ -39,32 +33,26 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
 
     var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
     val inSelectionMode = selectedIds.isNotEmpty()
-    var showClearAllDialog by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            title = {
-                if (inSelectionMode) Text(stringResource(R.string.selected_count, selectedIds.size))
-            },
-            navigationIcon = {
-                if (inSelectionMode) {
-                    IconNavigation { selectedIds = emptySet() }
-                }
-            },
-            actions = {
-                IconButton(onClick = {
-                    if (inSelectionMode) {
-                        youPipeViewModel.deleteHistoryVideos(selectedIds.toList())
-                        selectedIds = emptySet()
-                    } else {
-                        showClearAllDialog = true
-                    }
+    // Back is the only way out of a selection now that there is no top bar to
+    // host a cancel button.
+    BackHandler(enabled = inSelectionMode) { selectedIds = emptySet() }
+
+    // No top bar at all: clearing all history lives in Settings, and deleting a
+    // selection is a FAB, so the list keeps the full height of the screen.
+    Scaffold(
+        floatingActionButton = {
+            if (inSelectionMode) {
+                FloatingActionButton(onClick = {
+                    youPipeViewModel.deleteHistoryVideos(selectedIds.toList())
+                    selectedIds = emptySet()
                 }) {
                     IconDelete()
                 }
             }
-        )
-    }, bottomBar = { BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.History) }) { paddingValues ->
+        },
+        bottomBar = { BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.History) },
+    ) { paddingValues ->
         LazyColumn(Modifier.padding(paddingValues)) {
             items(history, key = { it.id }) { historyItem ->
                 val isSelected = historyItem.id in selectedIds
@@ -98,17 +86,5 @@ fun HistoryPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPipeViewMod
                 )
             }
         }
-    }
-
-    if (showClearAllDialog) {
-        ConfirmDialog(
-            title = stringResource(R.string.clear_history),
-            message = stringResource(R.string.are_you_sure_you_want_to_clear_all_watch),
-            confirmLabel = stringResource(UiR.string.clear),
-            dismissLabel = stringResource(UiR.string.cancel),
-            onConfirm = { youPipeViewModel.clearHistory() },
-            onDismiss = { showClearAllDialog = false },
-            destructive = true,
-        )
     }
 }

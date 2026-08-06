@@ -214,6 +214,9 @@
     <!-- Option: system default language entry in dropdown. Noun phrase -->
     <string name="label_system_default">System default</string>
 
+    <!-- Section header: watch history management in settings. Noun -->
+    <string name="label_history">History</string>
+
     <!-- Section header: backup and restore functionality. Noun phrase with ampersand -->
     <string name="label_backup_restore">Backup &amp; Restore</string>
     <!-- Button: restore subscriptions from YouPipe backup file. Verb phrase -->
