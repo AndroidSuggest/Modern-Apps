@@ -20,7 +20,15 @@ import java.io.File
  * Verification runs before the session is created, so rejected bytes are never written
  * into a PackageInstaller session at all.
  */
-class SessionInstaller(private val context: Context) {
+class SessionInstaller(
+    private val context: Context,
+    /**
+     * Whether updates to packages this store already owns may install without a per-app
+     * system prompt. Read at commit time so a toggle change takes effect on the next
+     * install without rebuilding the installer.
+     */
+    private val backgroundUpdateInstall: () -> Boolean = { false },
+) {
 
     companion object {
         private const val TAG = "SessionInstaller"
@@ -51,6 +59,10 @@ class SessionInstaller(private val context: Context) {
         return Outcome(started, verification)
     }
 
+    private fun isInstalled(packageName: String): Boolean = runCatching {
+        context.packageManager.getPackageInfo(packageName, 0)
+    }.isSuccess
+
     private fun commit(packageName: String, files: List<File>, totalSize: Long): Boolean {
         val computedSize = if (totalSize > 0) totalSize else files.sumOf { it.length() }
         return try {
@@ -68,6 +80,16 @@ class SessionInstaller(private val context: Context) {
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE)
+                }
+                // Silent install is only offered for updates: the OS honours
+                // USER_ACTION_NOT_REQUIRED when this app is the target's update owner, and
+                // a first-time install of a package owned by someone else would prompt
+                // anyway. First installs keep the confirmation dialog unconditionally.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    backgroundUpdateInstall() &&
+                    isInstalled(packageName)
+                ) {
+                    setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
                 }
                 setInstallLocation(android.content.pm.PackageInfo.INSTALL_LOCATION_AUTO)
                 setOriginatingUid(Process.myUid())

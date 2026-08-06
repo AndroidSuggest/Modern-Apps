@@ -15,6 +15,7 @@ import com.vayunmathur.appstore.data.CatalogRepository
 import com.vayunmathur.appstore.data.InstalledAppsRepository
 import com.vayunmathur.appstore.data.InstalledInfo
 import com.vayunmathur.appstore.data.PlayStoreLinks
+import com.vayunmathur.appstore.data.SettingsRepository
 import com.vayunmathur.appstore.data.SyncStep
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
@@ -50,7 +51,13 @@ class AppStoreViewModel(
     private val catalog = CatalogRepository(context, db, viewModelScope)
     private val play = PlayRepository(context)
     private val installedRepo = InstalledAppsRepository(context)
-    private val installer = InstallCoordinator(context, db, play) { ownSigningCertificates }
+    private val settings = SettingsRepository(context, viewModelScope)
+    private val installer = InstallCoordinator(context, db, play, { ownSigningCertificates }) {
+        settings.backgroundUpdateInstall.value
+    }
+
+    /** On-by-default: updates to store-owned apps install without a per-app prompt. */
+    val backgroundUpdateInstall: StateFlow<Boolean> = settings.backgroundUpdateInstall
 
     /** SHA-256 of this app's own signing certificate — the Modern Apps trust root. */
     val ownSigningCertificates: Set<String> by lazy { ApkCertificates.selfSigners(context) }
@@ -604,14 +611,20 @@ class AppStoreViewModel(
 
     override fun updateAll() {
         viewModelScope.launch {
-            // Sequential on purpose: PackageInstaller shows a confirmation dialog per app
-            // on most devices, and firing them concurrently buries the user in prompts.
+            // Sequential on purpose: when background install is off PackageInstaller shows a
+            // confirmation dialog per app on most devices, and firing them concurrently
+            // buries the user in prompts.
             for (app in updates.value) {
                 installer.install(app)
             }
             delay(INSTALL_SETTLE_MS)
             installedRepo.refresh()
         }
+    }
+
+    /** Turn silent background installation of updates on or off. */
+    fun setBackgroundUpdateInstall(enabled: Boolean) {
+        viewModelScope.launch { settings.setBackgroundUpdateInstall(enabled) }
     }
 
     // --- Library ------------------------------------------------------------------------
