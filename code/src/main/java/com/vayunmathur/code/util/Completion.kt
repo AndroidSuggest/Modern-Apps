@@ -23,6 +23,15 @@ private data class Snippet(val trigger: String, val template: String)
 
 private const val CARET_MARKER = "\u0000"
 
+/** The visible caret token users type in their own snippet templates (converted on expansion). */
+const val SNIPPET_CARET_TOKEN = "\$0"
+
+/**
+ * A user-defined snippet. [languageId] is a [Language] name (from `Language.name`), or null to
+ * offer the snippet in every language. Templates use [SNIPPET_CARET_TOKEN] for the caret position.
+ */
+data class UserSnippet(val trigger: String, val template: String, val languageId: String? = null)
+
 private val IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
 
 /** The identifier characters immediately before [caret] (the word being typed). */
@@ -49,13 +58,14 @@ fun computeCompletions(
     language: Language,
     bufferTexts: List<String>,
     limit: Int = 50,
+    userSnippets: List<UserSnippet> = emptyList(),
 ): List<Completion> {
     if (prefix.isEmpty()) return emptyList()
     val results = ArrayList<Completion>()
     val used = HashSet<String>()
 
-    // 1. Snippets whose trigger starts with the prefix.
-    for (s in snippetsFor(language)) {
+    // 1. Snippets whose trigger starts with the prefix (user snippets first, so they win ties).
+    for (s in userSnippetsFor(userSnippets, language) + snippetsFor(language)) {
         if (s.trigger.startsWith(prefix) && used.add("s:${s.trigger}")) {
             val caret = s.template.indexOf(CARET_MARKER).let { if (it < 0) s.template.length else it }
             val body = s.template.replace(CARET_MARKER, "")
@@ -81,6 +91,11 @@ fun computeCompletions(
 }
 
 // --- Per-language keyword and snippet tables (a focused subset; buffer words fill the rest) ---
+
+/** Maps user snippets that apply to [language] into the internal [Snippet] form. */
+private fun userSnippetsFor(list: List<UserSnippet>, language: Language): List<Snippet> =
+    list.filter { it.trigger.isNotEmpty() && (it.languageId == null || it.languageId == language.name) }
+        .map { Snippet(it.trigger, it.template.replace(SNIPPET_CARET_TOKEN, CARET_MARKER)) }
 
 private val C_LIKE_SNIPPETS = listOf(
     Snippet("if", "if ($CARET_MARKER) {\n}"),

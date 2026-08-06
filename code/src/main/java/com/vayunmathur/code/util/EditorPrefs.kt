@@ -11,6 +11,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.vayunmathur.code.syntax.EditorThemes
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.editorDataStore: DataStore<Preferences> by preferencesDataStore(name = "code_editor")
 
@@ -47,6 +49,10 @@ class EditorPrefs(context: Context) {
     val recentFiles: Flow<List<String>> = appContext.editorDataStore.data.map { prefs ->
         prefs[RECENT_FILES_KEY]?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
     }
+
+    /** User-defined snippets, stored as a JSON array. */
+    val userSnippets: Flow<List<UserSnippet>> =
+        appContext.editorDataStore.data.map { decodeSnippets(it[USER_SNIPPETS_KEY]) }
 
     // Git remote credentials + author. DataStore is not encrypted; acceptable for F-Droid/local.
     val gitUsername: Flow<String> = appContext.editorDataStore.data.map { it[GIT_USERNAME_KEY] ?: "" }
@@ -115,6 +121,41 @@ class EditorPrefs(context: Context) {
         }
     }
 
+    /** Persists the user-defined snippet list as JSON; clears the key when empty. */
+    suspend fun setUserSnippets(snippets: List<UserSnippet>) {
+        appContext.editorDataStore.edit { prefs ->
+            if (snippets.isEmpty()) prefs.remove(USER_SNIPPETS_KEY)
+            else prefs[USER_SNIPPETS_KEY] = encodeSnippets(snippets)
+        }
+    }
+
+    private fun encodeSnippets(snippets: List<UserSnippet>): String {
+        val array = JSONArray()
+        for (s in snippets) {
+            val obj = JSONObject()
+                .put("trigger", s.trigger)
+                .put("template", s.template)
+            if (s.languageId != null) obj.put("lang", s.languageId)
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    private fun decodeSnippets(raw: String?): List<UserSnippet> {
+        if (raw.isNullOrEmpty()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                UserSnippet(
+                    trigger = obj.optString("trigger"),
+                    template = obj.optString("template"),
+                    languageId = if (obj.has("lang")) obj.getString("lang") else null,
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
     suspend fun setGitToken(value: String) {
         appContext.editorDataStore.edit { it[GIT_TOKEN_KEY] = value }
     }
@@ -146,6 +187,7 @@ class EditorPrefs(context: Context) {
         private val SESSION_PATHS_KEY = stringPreferencesKey("session_paths")
         private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")
         private val RECENT_FILES_KEY = stringPreferencesKey("recent_files")
+        private val USER_SNIPPETS_KEY = stringPreferencesKey("user_snippets")
         private val GIT_USERNAME_KEY = stringPreferencesKey("git_username")
         private val GIT_TOKEN_KEY = stringPreferencesKey("git_token")
         private val GIT_AUTHOR_NAME_KEY = stringPreferencesKey("git_author_name")

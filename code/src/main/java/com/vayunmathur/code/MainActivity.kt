@@ -22,6 +22,7 @@ import com.vayunmathur.code.ui.GitPage
 import com.vayunmathur.code.ui.PreviewPage
 import com.vayunmathur.code.ui.SearchPage
 import com.vayunmathur.code.ui.SettingsPage
+import com.vayunmathur.code.ui.SnippetsPage
 import com.vayunmathur.code.ui.TerminalPage
 import com.vayunmathur.code.util.EditorPrefs
 import com.vayunmathur.code.util.EditorViewModel
@@ -131,6 +132,9 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Preview : Route
+
+    @Serializable
+    data object Snippets : Route
 }
 
 @Composable
@@ -156,5 +160,6 @@ fun Navigation(viewModel: EditorViewModel) {
         entry<Route.Git> { GitPage(viewModel, backStack) }
         entry<Route.Terminal> { TerminalPage(viewModel, backStack) }
         entry<Route.Preview> { PreviewPage(viewModel, backStack) }
+        entry<Route.Snippets> { SnippetsPage(viewModel, backStack) }
     }
 }

@@ -62,4 +62,22 @@ class CompletionTest {
         val result = computeCompletions("var", Language.PLAINTEXT, listOf(many), limit = 10)
         assertTrue(result.size <= 10)
     }
+
+    @Test
+    fun userSnippetsAreOfferedAndCaretConverted() {
+        val snippets = listOf(UserSnippet("log", "console.log($0)"))
+        val result = computeCompletions("lo", Language.JAVASCRIPT, emptyList(), userSnippets = snippets)
+        val snippet = result.first { it.kind == CompletionKind.SNIPPET && it.label.startsWith("log") }
+        assertEquals("console.log()", snippet.insertText)
+        assertEquals("console.log(".length, snippet.caretOffset)
+    }
+
+    @Test
+    fun userSnippetsRespectLanguageFilter() {
+        val snippets = listOf(UserSnippet("pyonly", "print()", Language.PYTHON.name))
+        val js = computeCompletions("py", Language.JAVASCRIPT, emptyList(), userSnippets = snippets)
+        assertTrue(js.none { it.label.startsWith("pyonly") })
+        val py = computeCompletions("py", Language.PYTHON, emptyList(), userSnippets = snippets)
+        assertTrue(py.any { it.label.startsWith("pyonly") })
+    }
 }

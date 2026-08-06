@@ -101,4 +101,14 @@
     <string name="keep_mine">Keep mine</string>
     <string name="exit_unsaved_title">Unsaved changes</string>
     <string name="exit_unsaved_message">You have unsaved changes. Save them before leaving?</string>
+    <string name="user_snippets">User snippets</string>
+    <string name="manage_snippets">Manage snippets</string>
+    <string name="add_snippet">Add snippet</string>
+    <string name="edit_snippet">Edit snippet</string>
+    <string name="no_snippets">No snippets yet. Add one to expand it while you type.</string>
+    <string name="snippet_trigger">Trigger</string>
+    <string name="snippet_template">Template</string>
+    <string name="snippet_caret_hint">Use $0 to mark where the caret should land.</string>
+    <string name="all_languages">All languages</string>
+    <string name="language">Language</string>
 </resources>

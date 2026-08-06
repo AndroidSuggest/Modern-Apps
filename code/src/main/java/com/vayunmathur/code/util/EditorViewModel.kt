@@ -171,6 +171,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     var showCompletions by mutableStateOf(false)
         private set
 
+    // ---- User snippets ----
+    val userSnippets = mutableStateListOf<UserSnippet>()
+
     // ---- Git ----
     var gitIsRepo by mutableStateOf(false)
         private set
@@ -260,6 +263,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _gitAuthorName.value = prefs.gitAuthorName.first() }
         viewModelScope.launch { _gitAuthorEmail.value = prefs.gitAuthorEmail.first() }
         viewModelScope.launch { recentPaths.addAll(prefs.recentFiles.first()) }
+        viewModelScope.launch { userSnippets.addAll(prefs.userSnippets.first()) }
         viewModelScope.launch {
             val stored = prefs.folderPath.first() ?: return@launch
             val dir = File(stored)
@@ -613,7 +617,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             return
         }
         val buffers = tabs.map { it.value.text }
-        val list = computeCompletions(prefix, tab.language, buffers, MAX_COMPLETIONS)
+        val list = computeCompletions(prefix, tab.language, buffers, MAX_COMPLETIONS, userSnippets.toList())
         completions.clear()
         completions.addAll(list)
         showCompletions = list.isNotEmpty()
@@ -636,6 +640,31 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun dismissCompletions() {
         if (completions.isNotEmpty()) completions.clear()
         showCompletions = false
+    }
+
+    // ---- User snippets ----
+
+    fun addSnippet(snippet: UserSnippet) {
+        userSnippets.add(snippet)
+        persistSnippets()
+    }
+
+    fun updateSnippet(index: Int, snippet: UserSnippet) {
+        if (index in userSnippets.indices) {
+            userSnippets[index] = snippet
+            persistSnippets()
+        }
+    }
+
+    fun deleteSnippet(index: Int) {
+        if (index in userSnippets.indices) {
+            userSnippets.removeAt(index)
+            persistSnippets()
+        }
+    }
+
+    private fun persistSnippets() {
+        viewModelScope.launch { prefs.setUserSnippets(userSnippets.toList()) }
     }
 
     // ---- Git ----

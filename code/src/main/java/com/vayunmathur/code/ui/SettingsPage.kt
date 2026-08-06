@@ -119,6 +119,14 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     onCheckedChange = viewModel::setAutoSave,
                 )
             }
+
+            SettingsSection(title = stringResource(R.string.user_snippets)) {
+                SettingsRow(
+                    title = stringResource(R.string.manage_snippets),
+                    supportingText = viewModel.userSnippets.size.toString(),
+                    onClick = { backStack.add(Route.Snippets) },
+                )
+            }
         }
     }
 
