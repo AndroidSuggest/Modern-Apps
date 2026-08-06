@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconDashboard
 import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.ui.IconSettings
@@ -64,7 +65,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                if (ready.value) Navigation(vm)
+                OfflineAware {
+                    if (ready.value) Navigation(vm)
+                }
             }
         }
     }
