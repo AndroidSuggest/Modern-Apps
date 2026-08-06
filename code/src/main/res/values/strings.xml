@@ -111,4 +111,6 @@
     <string name="snippet_caret_hint">Use $0 to mark where the caret should land.</string>
     <string name="all_languages">All languages</string>
     <string name="language">Language</string>
+    <string name="go_to_symbol">Go to symbol</string>
+    <string name="go_to_symbol_hint">Type a symbol name</string>
 </resources>

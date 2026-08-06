@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.CodeUiState
 import com.vayunmathur.code.util.EditorViewModel
+import com.vayunmathur.code.util.extractSymbols
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.ConfirmDialog
@@ -145,6 +146,7 @@ fun EditorScreen(
     var showGoToLine by remember { mutableStateOf(false) }
     var showQuickOpen by remember { mutableStateOf(false) }
     var showPalette by remember { mutableStateOf(false) }
+    var showOutline by remember { mutableStateOf(false) }
     var showExitGuard by remember { mutableStateOf(false) }
     val anyDirty = state.tabs.any { it.isDirty }
 
@@ -167,6 +169,14 @@ fun EditorScreen(
                             showQuickOpen = true
                         }
                         true
+                    }
+                    Key.O -> {
+                        if (event.isShiftPressed) {
+                            showOutline = true
+                            true
+                        } else {
+                            false
+                        }
                     }
                     else -> false
                 }
@@ -224,6 +234,7 @@ fun EditorScreen(
                             showQuickOpen = true
                         },
                         onOpenPalette = { showPalette = true },
+                        onOpenOutline = { showOutline = true },
                     )
                     HorizontalDivider()
                     if (tab.changedOnDisk) {
@@ -272,6 +283,7 @@ fun EditorScreen(
                     actions.refreshProjectFiles()
                     showQuickOpen = true
                 },
+                onOutline = { showOutline = true },
                 onOpenSearch = onOpenSearch,
                 onOpenGit = onOpenGit,
                 onOpenTerminal = onOpenTerminal,
@@ -287,6 +299,24 @@ fun EditorScreen(
         GoToLineDialog(
             onGo = { actions.goToLine(it) },
             onDismiss = { showGoToLine = false },
+        )
+    }
+    val outlineTab = state.currentTab
+    if (showOutline && outlineTab != null) {
+        val symbols = remember(outlineTab.value.text, outlineTab.language) {
+            extractSymbols(outlineTab.value.text, outlineTab.language)
+        }
+        FuzzyPickerDialog(
+            title = stringResource(R.string.go_to_symbol),
+            placeholder = stringResource(R.string.go_to_symbol_hint),
+            items = symbols.map { symbol ->
+                PickerItem(
+                    primary = symbol.name,
+                    secondary = "${symbol.kind.name.lowercase()} \u00B7 ${symbol.line}",
+                    matchKey = symbol.name,
+                ) { actions.goToLine(symbol.line) }
+            },
+            onDismiss = { showOutline = false },
         )
     }
     if (showExitGuard) {
@@ -407,6 +437,7 @@ private fun EditorToolbar(
     onOpenPreview: () -> Unit = {},
     onOpenQuickOpen: () -> Unit = {},
     onOpenPalette: () -> Unit = {},
+    onOpenOutline: () -> Unit = {},
 ) {
     val tab = state.currentTab ?: return
     Row(
@@ -427,6 +458,7 @@ private fun EditorToolbar(
         OverflowMenu(icon = { IconMoreVert() }) {
             Item(text = stringResource(R.string.command_palette)) { onOpenPalette() }
             Item(text = stringResource(R.string.quick_open)) { onOpenQuickOpen() }
+            Item(text = stringResource(R.string.go_to_symbol)) { onOpenOutline() }
             Item(text = stringResource(R.string.go_to_line)) { onGoToLine() }
             Item(text = stringResource(R.string.toggle_comment)) { actions.toggleComment() }
             Item(text = stringResource(R.string.duplicate_line)) { actions.duplicateLine() }
@@ -511,6 +543,7 @@ private fun editorCommands(
     onToggleFind: () -> Unit,
     onGoToLine: () -> Unit,
     onQuickOpen: () -> Unit,
+    onOutline: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenGit: () -> Unit,
     onOpenTerminal: () -> Unit,
@@ -524,6 +557,7 @@ private fun editorCommands(
     PickerItem(stringResource(R.string.save_all)) { actions.saveAll() },
     PickerItem(stringResource(R.string.find)) { onToggleFind() },
     PickerItem(stringResource(R.string.go_to_line)) { onGoToLine() },
+    PickerItem(stringResource(R.string.go_to_symbol)) { onOutline() },
     PickerItem(stringResource(R.string.toggle_comment)) { actions.toggleComment() },
     PickerItem(stringResource(R.string.duplicate_line)) { actions.duplicateLine() },
     PickerItem(stringResource(R.string.move_line_up)) { actions.moveLineUp() },
