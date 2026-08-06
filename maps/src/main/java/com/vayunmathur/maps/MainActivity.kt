@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.downloadservice.InitialDownloadChecker
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.MainNavigation
@@ -87,7 +88,9 @@ class MainActivity : ComponentActivity() {
                         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
                     }
                     PermissionsChecker(perms, getString(R.string.grant_location_permission)) {
-                        Navigation(db)
+                        OfflineAware {
+                            Navigation(db)
+                        }
                     }
                 }
             }
