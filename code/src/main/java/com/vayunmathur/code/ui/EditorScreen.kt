@@ -76,6 +76,7 @@ fun EditorPage(
     onOpenSearch: () -> Unit = {},
     onOpenFolder: () -> Unit = {},
     onOpenGit: () -> Unit = {},
+    onOpenTerminal: () -> Unit = {},
 ) {
     val fileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -89,6 +90,7 @@ fun EditorPage(
         onOpenSettings = onOpenSettings,
         onOpenSearch = onOpenSearch,
         onOpenGit = onOpenGit,
+        onOpenTerminal = onOpenTerminal,
     )
 }
 
@@ -109,6 +111,7 @@ fun EditorScreen(
     onOpenSettings: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
     onOpenGit: () -> Unit = {},
+    onOpenTerminal: () -> Unit = {},
     /**
      * Seeds for the screen's own UI-only state (is the drawer showing, is the find bar open
      * and on what query). The app always takes the defaults; previews set them so a given
@@ -163,6 +166,7 @@ fun EditorScreen(
                         onToggleFind = { showFind = !showFind },
                         onOpenSearch = onOpenSearch,
                         onOpenGit = onOpenGit,
+                        onOpenTerminal = onOpenTerminal,
                     )
                     HorizontalDivider()
                     CodeEditor(
@@ -271,6 +275,7 @@ private fun EditorToolbar(
     onToggleFind: () -> Unit,
     onOpenSearch: () -> Unit = {},
     onOpenGit: () -> Unit = {},
+    onOpenTerminal: () -> Unit = {},
 ) {
     val tab = state.currentTab ?: return
     var showGoToLine by remember { mutableStateOf(false) }
@@ -298,6 +303,7 @@ private fun EditorToolbar(
             Item(text = stringResource(R.string.delete_line)) { actions.deleteLine() }
             Item(text = stringResource(R.string.search_in_project)) { onOpenSearch() }
             Item(text = stringResource(R.string.source_control)) { onOpenGit() }
+            Item(text = stringResource(R.string.terminal)) { onOpenTerminal() }
         }
         Spacer(Modifier.width(8.dp))
         Text(

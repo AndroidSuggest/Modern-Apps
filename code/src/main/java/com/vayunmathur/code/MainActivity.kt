@@ -21,6 +21,7 @@ import com.vayunmathur.code.ui.FolderBrowserPage
 import com.vayunmathur.code.ui.GitPage
 import com.vayunmathur.code.ui.SearchPage
 import com.vayunmathur.code.ui.SettingsPage
+import com.vayunmathur.code.ui.TerminalPage
 import com.vayunmathur.code.util.EditorPrefs
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.library.ui.DynamicTheme
@@ -122,6 +123,9 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Git : Route
+
+    @Serializable
+    data object Terminal : Route
 }
 
 @Composable
@@ -137,11 +141,13 @@ fun Navigation(viewModel: EditorViewModel) {
                 onOpenSearch = { backStack.add(Route.Search) },
                 onOpenFolder = { backStack.add(Route.FolderBrowser) },
                 onOpenGit = { backStack.add(Route.Git) },
+                onOpenTerminal = { backStack.add(Route.Terminal) },
             )
         }
         entry<Route.Settings> { SettingsPage(viewModel, backStack) }
         entry<Route.Search> { SearchPage(viewModel, backStack) }
         entry<Route.FolderBrowser> { FolderBrowserPage(viewModel, backStack) }
         entry<Route.Git> { GitPage(viewModel, backStack) }
+        entry<Route.Terminal> { TerminalPage(viewModel, backStack) }
     }
 }

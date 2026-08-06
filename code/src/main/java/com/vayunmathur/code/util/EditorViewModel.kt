@@ -178,6 +178,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     private val _gitAuthorEmail = mutableStateOf("")
     val gitAuthorEmail: String get() = _gitAuthorEmail.value
 
+    // ---- Terminal ----
+    val terminalLines = mutableStateListOf<String>()
+    var terminalRunning by mutableStateOf(false)
+        private set
+    private var terminal: TerminalSession? = null
+
     /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
     val uiState: CodeUiState
         get() = CodeUiState(
@@ -696,6 +702,49 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { prefs.setGitAuthorEmail(value) }
     }
 
+    // ---- Terminal ----
+
+    /** Starts a shell in the open project directory if one isn't already running. */
+    fun startTerminal() {
+        if (terminal != null) return
+        val dir = rootDir ?: return
+        terminal = TerminalSession(
+            dir = dir,
+            onLine = { line -> appendTerminalLine(line) },
+            onExit = { terminalRunning = false },
+        )
+        terminalRunning = true
+    }
+
+    fun terminalSend(command: String) {
+        if (terminal == null) startTerminal()
+        appendTerminalLine("$ $command")
+        terminal?.send(command)
+    }
+
+    /** Line-based shells can't deliver a real SIGINT, so "stop" kills and restarts the shell. */
+    fun terminalInterrupt() {
+        terminal?.close()
+        terminal = null
+        terminalRunning = false
+        appendTerminalLine("^C")
+        startTerminal()
+    }
+
+    fun clearTerminal() {
+        terminalLines.clear()
+    }
+
+    private fun appendTerminalLine(line: String) {
+        terminalLines.add(line)
+        while (terminalLines.size > TERMINAL_SCROLLBACK) terminalLines.removeAt(0)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        terminal?.close()
+    }
+
     /** Debounced auto-save: writes the current tab a short idle period after the last edit. */
     private fun scheduleAutoSave() {
         autoSaveJob?.cancel()
@@ -925,6 +974,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         const val MIN_COMPLETION_PREFIX = 1
         const val MAX_COMPLETIONS = 50
         const val GIT_LOG_LIMIT = 30
+        const val TERMINAL_SCROLLBACK = 2000
         const val MAX_SEARCH_RESULTS = 500
         const val MAX_MATCHES_PER_FILE = 50
         const val MAX_SEARCH_FILE_SIZE = 500_000

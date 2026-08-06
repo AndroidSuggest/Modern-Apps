@@ -80,4 +80,7 @@
     <string name="git_token">Personal access token</string>
     <string name="git_author_name">Author name</string>
     <string name="git_author_email">Author email</string>
+    <string name="terminal">Terminal</string>
+    <string name="terminal_needs_folder">Open a folder to use the terminal.</string>
+    <string name="terminal_hint">Enter a command</string>
 </resources>
