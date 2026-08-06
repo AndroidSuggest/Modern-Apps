@@ -2317,35 +2317,44 @@ object OdfParser {
 
     fun parseCsv(text: String, fileName: String, delimiter: Char = ','): OdfDocument.Spreadsheet {
         val rows = mutableListOf<OdfRow>()
-        val lines = text.lines()
-        for (line in lines) {
-            if (line.isBlank()) continue
-            val cells = parseCsvLine(line, delimiter).map { OdfCell(text = it) }
-            rows.add(OdfRow(cells))
-        }
-        return OdfDocument.Spreadsheet(fileName, listOf(OdfSheet("Sheet 1", rows)))
-    }
-
-    private fun parseCsvLine(line: String, delimiter: Char = ','): List<String> {
         val fields = mutableListOf<String>()
         val sb = StringBuilder()
         var inQuotes = false
+
+        fun endRecord() {
+            fields.add(sb.toString()); sb.clear()
+            // Skip truly blank lines (mirrors the old per-line isBlank() skip) so trailing
+            // newlines and blank separators don't create empty rows. A row like ",," has
+            // multiple (empty) fields and is kept, matching the previous behavior.
+            if (!(fields.size == 1 && fields[0].isBlank())) {
+                rows.add(OdfRow(fields.map { OdfCell(text = it) }))
+            }
+            fields.clear()
+        }
+
+        // Single pass over the whole text so a quoted field can span commas AND newlines.
+        // RFC-4180 style: "" inside a quoted field is a literal quote; \r\n / \r / \n end a record.
         var i = 0
-        while (i < line.length) {
-            val c = line[i]
+        while (i < text.length) {
+            val c = text[i]
             when {
-                c == '"' && !inQuotes -> inQuotes = true
-                c == '"' && inQuotes -> {
-                    if (i + 1 < line.length && line[i + 1] == '"') { sb.append('"'); i++ }
-                    else inQuotes = false
+                inQuotes -> when {
+                    c == '"' && i + 1 < text.length && text[i + 1] == '"' -> { sb.append('"'); i++ }
+                    c == '"' -> inQuotes = false
+                    else -> sb.append(c) // newlines/commas inside quotes are literal content
                 }
-                c == delimiter && !inQuotes -> { fields.add(sb.toString()); sb.clear() }
+                c == '"' -> inQuotes = true
+                c == delimiter -> { fields.add(sb.toString()); sb.clear() }
+                c == '\r' -> { endRecord(); if (i + 1 < text.length && text[i + 1] == '\n') i++ }
+                c == '\n' -> endRecord()
                 else -> sb.append(c)
             }
             i++
         }
-        fields.add(sb.toString())
-        return fields
+        // Flush the final record when the file doesn't end with a newline.
+        if (sb.isNotEmpty() || fields.isNotEmpty()) endRecord()
+
+        return OdfDocument.Spreadsheet(fileName, listOf(OdfSheet("Sheet 1", rows)))
     }
 
     private const val LINK_COLOR = 0xFF0066CCL

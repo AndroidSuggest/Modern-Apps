@@ -1961,7 +1961,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         for (row in sheet.rows) {
             sb.appendLine(row.cells.joinToString(delimiter.toString()) { cell ->
                 val text = cell.text
-                if (text.contains(delimiter) || text.contains("\"") || text.contains("\n")) {
+                if (text.contains(delimiter) || text.contains('"') || text.contains('\n') || text.contains('\r')) {
                     "\"${text.replace("\"", "\"\"")}\""
                 } else text
             })
