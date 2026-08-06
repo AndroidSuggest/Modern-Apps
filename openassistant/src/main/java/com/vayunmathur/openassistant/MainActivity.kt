@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.downloadservice.InitialModelDownloadChecker
 import com.vayunmathur.library.downloadservice.ModelUrls
 import com.vayunmathur.library.util.DataStoreUtils
@@ -63,7 +64,9 @@ class MainActivity : ComponentActivity() {
                 InitialModelDownloadChecker(ds, ModelUrls.INITIAL) {
                     // Touching the assistantViewModel triggers init, which pre-warms
                     // the inference service and runs the legacy model-file cleanup.
-                    Navigation(assistantViewModel)
+                    OfflineAware {
+                        Navigation(assistantViewModel)
+                    }
                 }
             }
         }
