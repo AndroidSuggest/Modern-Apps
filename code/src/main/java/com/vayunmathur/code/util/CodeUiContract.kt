@@ -148,6 +148,9 @@ interface CodeActions {
     /** Pretty-print the current file if it is JSON or XML (single undo step). */
     fun formatDocument() {}
 
+    /** Replace the merge-conflict blocks in the current file with the chosen sides (single undo). */
+    fun resolveConflicts(resolutions: List<Resolution>) {}
+
     /** Move the selection without recording an undo step (used by find navigation). */
     fun setSelection(range: TextRange) {}
 

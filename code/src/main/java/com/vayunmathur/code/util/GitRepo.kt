@@ -104,6 +104,10 @@ object GitRepo {
         }
     }
 
+    /** The [diff] for [path] parsed into aligned rows for the side-by-side viewer. */
+    fun structuredDiff(dir: File, path: String, staged: Boolean): List<DiffRow> =
+        parseUnifiedDiff(diff(dir, path, staged))
+
     fun branches(dir: File): List<String> = withRepo(dir) { git ->
         git.branchList().call().map { it.name.removePrefix(Constants.R_HEADS) }
     }

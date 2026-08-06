@@ -147,6 +147,7 @@ fun EditorScreen(
     var showQuickOpen by remember { mutableStateOf(false) }
     var showPalette by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
+    var showMergeResolver by remember { mutableStateOf(false) }
     var showExitGuard by remember { mutableStateOf(false) }
     val anyDirty = state.tabs.any { it.isDirty }
 
@@ -235,6 +236,7 @@ fun EditorScreen(
                         },
                         onOpenPalette = { showPalette = true },
                         onOpenOutline = { showOutline = true },
+                        onResolveConflicts = { showMergeResolver = true },
                     )
                     HorizontalDivider()
                     if (tab.changedOnDisk) {
@@ -284,6 +286,7 @@ fun EditorScreen(
                     showQuickOpen = true
                 },
                 onOutline = { showOutline = true },
+                onResolveConflicts = { showMergeResolver = true },
                 onOpenSearch = onOpenSearch,
                 onOpenGit = onOpenGit,
                 onOpenTerminal = onOpenTerminal,
@@ -317,6 +320,14 @@ fun EditorScreen(
                 ) { actions.goToLine(symbol.line) }
             },
             onDismiss = { showOutline = false },
+        )
+    }
+    val conflictTab = state.currentTab
+    if (showMergeResolver && conflictTab != null) {
+        MergeResolverDialog(
+            text = conflictTab.value.text,
+            onResolve = { actions.resolveConflicts(it) },
+            onDismiss = { showMergeResolver = false },
         )
     }
     if (showExitGuard) {
@@ -438,6 +449,7 @@ private fun EditorToolbar(
     onOpenQuickOpen: () -> Unit = {},
     onOpenPalette: () -> Unit = {},
     onOpenOutline: () -> Unit = {},
+    onResolveConflicts: () -> Unit = {},
 ) {
     val tab = state.currentTab ?: return
     Row(
@@ -470,6 +482,7 @@ private fun EditorToolbar(
             Item(text = stringResource(R.string.terminal)) { onOpenTerminal() }
             Item(text = stringResource(R.string.preview)) { onOpenPreview() }
             Item(text = stringResource(R.string.format_document)) { actions.formatDocument() }
+            Item(text = stringResource(R.string.resolve_conflicts)) { onResolveConflicts() }
         }
         Spacer(Modifier.width(8.dp))
         Text(
@@ -544,6 +557,7 @@ private fun editorCommands(
     onGoToLine: () -> Unit,
     onQuickOpen: () -> Unit,
     onOutline: () -> Unit,
+    onResolveConflicts: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenGit: () -> Unit,
     onOpenTerminal: () -> Unit,
@@ -564,6 +578,7 @@ private fun editorCommands(
     PickerItem(stringResource(R.string.move_line_down)) { actions.moveLineDown() },
     PickerItem(stringResource(R.string.delete_line)) { actions.deleteLine() },
     PickerItem(stringResource(R.string.format_document)) { actions.formatDocument() },
+    PickerItem(stringResource(R.string.resolve_conflicts)) { onResolveConflicts() },
     PickerItem(stringResource(R.string.soft_wrap)) { actions.toggleSoftWrap() },
     PickerItem(stringResource(R.string.undo)) { actions.undo() },
     PickerItem(stringResource(R.string.redo)) { actions.redo() },

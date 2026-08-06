@@ -187,6 +187,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         private set
     var gitDiff by mutableStateOf<String?>(null)
         private set
+    var gitDiffRows by mutableStateOf<List<DiffRow>?>(null)
+        private set
 
     private val _gitUsername = mutableStateOf("")
     val gitUsername: String get() = _gitUsername.value
@@ -756,6 +758,20 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
+    /** Loads the side-by-side (aligned rows) diff for [path] into [gitDiffRows]. */
+    fun loadSideBySideDiff(path: String, staged: Boolean) {
+        val dir = rootDir ?: return
+        viewModelScope.launch {
+            gitDiffRows = runCatching {
+                withContext(Dispatchers.IO) { GitRepo.structuredDiff(dir, path, staged) }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    fun clearDiffRows() {
+        gitDiffRows = null
+    }
+
     fun clearGitDiff() {
         gitDiff = null
     }
@@ -869,6 +885,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         if (formatted == tab.value.text) return
         tab.pushUndo(tab.value)
         tab.value = TextFieldValue(formatted, TextRange(formatted.length))
+        if (autoSave) scheduleAutoSave()
+    }
+
+    override fun resolveConflicts(resolutions: List<Resolution>) {
+        val tab = currentTab ?: return
+        val resolved = applyResolutions(tab.value.text, resolutions)
+        if (resolved == tab.value.text) return
+        tab.pushUndo(tab.value)
+        tab.value = TextFieldValue(resolved, TextRange(resolved.length))
         if (autoSave) scheduleAutoSave()
     }
 

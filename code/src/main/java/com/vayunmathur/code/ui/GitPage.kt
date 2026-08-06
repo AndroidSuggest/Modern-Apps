@@ -38,6 +38,7 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconMerge
+import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconRefresh
 import com.vayunmathur.library.ui.IconRemove
 import com.vayunmathur.library.ui.MaterialTheme
@@ -99,6 +100,10 @@ fun GitPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
 
     viewModel.gitDiff?.let { diff ->
         DiffDialog(diff = diff, onDismiss = { viewModel.clearGitDiff() })
+    }
+
+    viewModel.gitDiffRows?.let { rows ->
+        SideBySideDiffDialog(rows = rows, onDismiss = { viewModel.clearDiffRows() })
     }
 }
 
@@ -249,6 +254,10 @@ private fun ChangeList(title: String, paths: List<String>, staged: Boolean, view
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(path, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            OverflowMenu(icon = { IconMoreVert() }) {
+                Item(text = stringResource(R.string.diff)) { viewModel.loadGitDiff(path, staged) }
+                Item(text = stringResource(R.string.side_by_side)) { viewModel.loadSideBySideDiff(path, staged) }
+            }
             if (staged) {
                 IconButton(onClick = { viewModel.gitUnstage(path) }) { IconRemove() }
             } else {
