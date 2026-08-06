@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.ListPage
@@ -73,7 +74,9 @@ class MainActivity : ComponentActivity() {
                 }
                 PermissionsChecker(perms, getString(R.string.permissions_post_notifications)) {
                     val db = remember { buildMessagesDatabase(this@MainActivity) }
-                    Navigation(db, pendingIntent)
+                    OfflineAware {
+                        Navigation(db, pendingIntent)
+                    }
                 }
             }
         }
