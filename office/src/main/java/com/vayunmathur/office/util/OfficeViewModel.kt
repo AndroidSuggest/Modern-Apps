@@ -2030,6 +2030,11 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     /** Documents in the "online" folder: created/shared by you or shared with you. */
     val onlineDocs: StateFlow<List<OfficeDocMeta>> = _onlineDocs.asStateFlow()
 
+    private val _pendingRequests = MutableStateFlow<List<OfficeSync.JoinRequest>>(emptyList())
+    /** Inbound join requests (from tapped share links) for documents this device owns. */
+    val pendingRequests: StateFlow<List<OfficeSync.JoinRequest>> = _pendingRequests.asStateFlow()
+    private val requestsMutex = Mutex()
+
     /** The online doc id/key of the currently open document, if it lives online. */
     private var currentDocId: String? = null
     private var currentDocKey: ByteArray? = null
@@ -2253,7 +2258,9 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
             if (!_onlineEnabled.value) _onlineEnabled.value = true
             runCatching {
                 OfficeSync.init(getApplication())
-                _onlineDocs.value = loadIndex(DataStoreUtils.getInstance(getApplication()))
+                val ds = DataStoreUtils.getInstance(getApplication())
+                _onlineDocs.value = loadIndex(ds)
+                _pendingRequests.value = loadRequests(ds)
             }
             refreshOnline()
         }
@@ -2269,6 +2276,67 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
         _onlineDocs.value = list
     }
 
+    private suspend fun loadRequests(ds: DataStoreUtils): List<OfficeSync.JoinRequest> =
+        ds.getString("officePendingRequests")
+            ?.let { runCatching { syncJson.decodeFromString<List<OfficeSync.JoinRequest>>(it) }.getOrNull() }
+            ?: emptyList()
+
+    private suspend fun saveRequests(ds: DataStoreUtils, list: List<OfficeSync.JoinRequest>) {
+        ds.setString("officePendingRequests", syncJson.encodeToString(list))
+        _pendingRequests.value = list
+    }
+
+    private suspend fun removePendingRequest(docId: String, requesterId: String) {
+        val ds = DataStoreUtils.getInstance(getApplication())
+        requestsMutex.withLock {
+            saveRequests(ds, loadRequests(ds).filterNot { it.docId == docId && it.requesterId == requesterId })
+        }
+    }
+
+    /** Builds a tappable invite link for a document this device owns (public ids only). */
+    fun shareLinkFor(docId: String): String = "office://join/$docId?owner=${OfficeSync.deviceId}"
+
+    /**
+     * Sends a PQC-sealed join request to [ownerId]'s inbox after ensuring this device is registered.
+     * Called when the user taps an `office://join` link. [onResult] receives whether it was delivered.
+     */
+    fun requestToJoin(docId: String, ownerId: String, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                if (!_onlineEnabled.value) _onlineEnabled.value = true
+                OfficeSync.init(getApplication())
+                OfficeSync.sendJoinRequest(ownerId, docId, OfficeSync.deviceId, myName())
+            }.getOrDefault(false)
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    /**
+     * Approves a pending join request by sealing the existing invite to the requester (reusing the
+     * stored [OfficeDocMeta], so the document need not be open) and recording them on the roster.
+     */
+    fun approveJoinRequest(docId: String, requesterId: String, name: String = "", onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                OfficeSync.init(getApplication())
+                val ds = DataStoreUtils.getInstance(getApplication())
+                val meta = indexMutex.withLock { loadIndex(ds) }.firstOrNull { it.docId == docId }
+                if (meta == null || !meta.owner) return@runCatching false
+                val key = Base64.decode(meta.keyB64)
+                // Record the new member on the owner-signed roster, then seal the invite to them.
+                writeMembers(docId, key, listOf(OfficeMember(requesterId, name, OfficeRoles.EDITOR)))
+                OfficeSync.sendInvite(requesterId, docId, key, meta.title, meta.charMode, OfficeRoles.EDITOR, meta.ownerKeyB64, meta.charKind)
+            }.getOrDefault(false)
+            if (ok) removePendingRequest(docId, requesterId)
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    /** Drops a pending join request locally without granting access. */
+    fun denyRequest(docId: String, requesterId: String) {
+        viewModelScope.launch(Dispatchers.IO) { removePendingRequest(docId, requesterId) }
+    }
+
     /** Pulls new invites from this device's inbox and merges them into the online list; refreshes titles. */
     fun refreshOnline() {
         if (!_onlineEnabled.value && !hasOnlineIdentity()) return
@@ -2277,7 +2345,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                 OfficeSync.init(getApplication())
                 val ds = DataStoreUtils.getInstance(getApplication())
                 val cursor = ds.getLong("officeInboxCursor")?.toInt() ?: 0
-                val res = OfficeSync.pullInvites(cursor)
+                val res = OfficeSync.pullInbox(cursor)
                 if (res.invites.isNotEmpty()) {
                     indexMutex.withLock {
                         val index = loadIndex(ds).associateBy { it.docId }.toMutableMap()
@@ -2285,6 +2353,19 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
                             if (!index.containsKey(inv.docId)) index[inv.docId] = officeDocMetaFromInvite(inv)
                         }
                         saveIndex(ds, index.values.toList())
+                    }
+                }
+                if (res.requests.isNotEmpty()) {
+                    // Only surface requests for docs this device owns; dedup by (docId, requesterId).
+                    val owned = indexMutex.withLock { loadIndex(ds) }.filter { it.owner }.map { it.docId }.toSet()
+                    requestsMutex.withLock {
+                        val existing = loadRequests(ds).toMutableList()
+                        for (r in res.requests) {
+                            if (r.docId in owned && existing.none { it.docId == r.docId && it.requesterId == r.requesterId }) {
+                                existing.add(r)
+                            }
+                        }
+                        saveRequests(ds, existing)
                     }
                 }
                 ds.setLong("officeInboxCursor", res.seq.toLong())
@@ -2538,6 +2619,12 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     /** Owner-signs and appends member records to the (encrypted) members channel. Owner only. */
     private suspend fun recordMembers(docId: String, key: ByteArray, members: List<OfficeMember>) {
         if (currentRole != OfficeRoles.OWNER) return
+        writeMembers(docId, key, members)
+    }
+
+    /** Signs + appends member records without the open-doc owner guard. Callers must be the owner
+     *  (e.g. verified via the stored meta's `owner` flag) since signing uses this device's key. */
+    private suspend fun writeMembers(docId: String, key: ByteArray, members: List<OfficeMember>) {
         runCatching {
             val items = members.map { m ->
                 val sig = Base64.encode(OfficeSync.sign(memberSigningBytes(docId, m)))

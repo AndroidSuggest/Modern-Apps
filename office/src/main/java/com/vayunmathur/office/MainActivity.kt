@@ -7,6 +7,7 @@ import android.print.PrintAttributes
 import android.print.PrintManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import com.vayunmathur.library.ui.R as UiR
@@ -54,6 +55,7 @@ import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconRedo
 import com.vayunmathur.library.ui.IconButton
@@ -162,7 +164,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         viewModel.loadSettings(this)
 
-        val intentUri: Uri? = intent.data
+        // office://join links request access to someone else's doc — handle them here and keep
+        // them out of the document-loading path (their scheme isn't content/file).
+        val joinLink = parseJoinLink(intent)
+        if (joinLink != null) handleJoinLink(joinLink)
+        val intentUri: Uri? = intent.data?.takeIf { joinLink == null }
 
         setContent {
             val startedWithIntent = intentUri != null
@@ -273,6 +279,35 @@ class MainActivity : ComponentActivity() {
         if (runCatching { contentResolver.takePersistableUriPermission(uri, readWrite) }.isFailure) {
             runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop: warm-start join links arrive here rather than through a fresh onCreate.
+        setIntent(intent)
+        parseJoinLink(intent)?.let { handleJoinLink(it) }
+    }
+
+    /** Fires a sealed join request to the owner and confirms with a toast. */
+    private fun handleJoinLink(link: Pair<String, String>) {
+        val (docId, ownerId) = link
+        Toast.makeText(this, getString(R.string.join_request_sending), Toast.LENGTH_SHORT).show()
+        viewModel.requestToJoin(docId, ownerId) { ok ->
+            Toast.makeText(
+                this,
+                getString(if (ok) R.string.join_request_sent else R.string.join_request_failed),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    /** Parses `office://join/<docId>?owner=<ownerDeviceId>`; null for any other intent. */
+    private fun parseJoinLink(intent: Intent?): Pair<String, String>? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "office" || data.host != "join") return null
+        val docId = data.lastPathSegment?.takeIf { it.isNotBlank() } ?: return null
+        val ownerId = data.getQueryParameter("owner")?.takeIf { it.isNotBlank() } ?: return null
+        return docId to ownerId
     }
 }
 
@@ -393,6 +428,7 @@ fun ShareOnlineDialog(
     initialName: String,
     myRole: String,
     members: List<com.vayunmathur.office.util.OfficeMember>,
+    shareLink: String? = null,
     onShare: (String, String, String, (String?) -> Unit) -> Unit,
     onSetRole: (String, String) -> Unit,
     onTransferOwner: (String) -> Unit,
@@ -410,6 +446,7 @@ fun ShareOnlineDialog(
     var status by remember { mutableStateOf<String?>(null) }
     var memberMenu by remember { mutableStateOf<String?>(null) }
     val clipboard = LocalClipboard.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -462,6 +499,19 @@ fun ShareOnlineDialog(
                             label = { Text(stringResource(R.string.document_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth()
                         )
                         TextButton(enabled = docName.isNotBlank() && docName.trim() != initialName, onClick = { onRename(docName.trim()) }) { Text(stringResource(UiR.string.rename)) }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    // Share sheet: sends office://join/<docId>?owner=<deviceId> (public ids only) so
+                    // the recipient can request access without you typing their device id.
+                    shareLink?.let { link ->
+                        OutlinedButton(
+                            onClick = { ExternalIntents.shareText(context, link, context.getString(R.string.share_link_chooser)) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            IconShare()
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.share_link))
+                        }
                         Spacer(Modifier.height(8.dp))
                     }
                     Text(stringResource(R.string.add_someone_by_device_id_copies_this_doc))
@@ -530,10 +580,12 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
     }
     OnlineInit(viewModel)
     val docs by viewModel.onlineDocs.collectAsState()
+    val requests by viewModel.pendingRequests.collectAsState()
     val deviceId = viewModel.syncDeviceId
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val online by rememberIsOnline()
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -556,16 +608,45 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
                 TextButton(onClick = { if (deviceId.isNotEmpty()) scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("device id", deviceId))) } }) { Text(stringResource(R.string.copy)) }
             }
             Spacer(Modifier.height(12.dp))
-            if (docs.isEmpty()) {
+            if (docs.isEmpty() && requests.isEmpty()) {
                 Text(stringResource(R.string.no_online_documents_yet_open_a_document),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(docs) { meta ->
+                    // Inbound join requests (from tapped share links) for docs you own.
+                    if (requests.isNotEmpty()) {
+                        item {
+                            Text(stringResource(R.string.requests_header),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary)
+                        }
+                        items(requests, key = { "req-${it.docId}-${it.requesterId}" }) { req ->
+                            val docTitle = docs.firstOrNull { it.docId == req.docId }?.title ?: req.docId.take(8)
+                            val requester = req.name.ifBlank { req.requesterId.take(8) }
+                            Card(Modifier.fillMaxWidth()) {
+                                ListItem(
+                                    content = { Text(stringResource(R.string.request_wants_to_join, requester, docTitle)) },
+                                    trailingContent = {
+                                        Row {
+                                            TextButton(onClick = { viewModel.approveJoinRequest(req.docId, req.requesterId, req.name) }) { Text(stringResource(R.string.approve)) }
+                                            TextButton(onClick = { viewModel.denyRequest(req.docId, req.requesterId) }) { Text(stringResource(R.string.deny)) }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    items(docs, key = { it.docId }) { meta ->
                         Card(Modifier.fillMaxWidth().clickable { onOpenDoc(meta) }) {
                             ListItem(
                                 content = { Text(meta.title) },
-                                supportingContent = { Text(if (meta.owner) stringResource(R.string.shared_by_you) else stringResource(R.string.shared_with_you)) }
+                                supportingContent = { Text(if (meta.owner) stringResource(R.string.shared_by_you) else stringResource(R.string.shared_with_you)) },
+                                trailingContent = {
+                                    // Owners can share a tappable invite link (public ids only).
+                                    if (meta.owner) IconButton(onClick = {
+                                        ExternalIntents.shareText(context, viewModel.shareLinkFor(meta.docId), context.getString(R.string.share_link_chooser))
+                                    }) { IconShare() }
+                                }
                             )
                         }
                     }
@@ -1113,6 +1194,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
             initialName = document.title,
             myRole = viewModel.currentDocRole(),
             members = members,
+            shareLink = if (isOnline) viewModel.currentOnlineDocId()?.let { viewModel.shareLinkFor(it) } else null,
             onShare = { recipientId, role, name, cb ->
                 viewModel.shareCurrentDocument(recipientId, role, name) { err ->
                     if (err == null) {

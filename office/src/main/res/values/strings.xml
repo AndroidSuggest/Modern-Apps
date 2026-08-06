@@ -212,6 +212,24 @@
     <string name="make_viewer">Make viewer</string>
     <!-- MainActivity: Menu share online with ellipsis alternative -->
     <string name="share_online_1">Share online…</string>
+    <!-- OnlineTab/ShareOnlineDialog: Button that opens the share sheet with a join link. Verb phrase -->
+    <string name="share_link">Share link</string>
+    <!-- OnlineTab/ShareOnlineDialog: Title of the share chooser for the join link. Noun phrase -->
+    <string name="share_link_chooser">Share Office invite</string>
+    <!-- OnlineTab: Header for the inbound join-requests section. Noun -->
+    <string name="requests_header">Requests</string>
+    <!-- OnlineTab: Button to approve a join request. Verb -->
+    <string name="approve">Approve</string>
+    <!-- OnlineTab: Button to deny a join request. Verb -->
+    <string name="deny">Deny</string>
+    <!-- OnlineTab: A join request line: %1$s = requester, %2$s = document title. Sentence -->
+    <string name="request_wants_to_join">%1$s wants to join \"%2$s\"</string>
+    <!-- MainActivity: Toast while a join request is being sent. Sentence -->
+    <string name="join_request_sending">Requesting access…</string>
+    <!-- MainActivity: Toast when a join request was delivered. Sentence -->
+    <string name="join_request_sent">Request sent — you\'ll get access once the owner approves.</string>
+    <!-- MainActivity: Toast when a join request could not be delivered. Sentence -->
+    <string name="join_request_failed">Couldn\'t send request — check your connection and try again.</string>
     <!-- MainActivity: Menu image with ellipsis -->
     <string name="image_1">Image…</string>
     <!-- MainActivity: Menu insert time field -->
