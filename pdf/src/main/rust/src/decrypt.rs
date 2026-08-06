@@ -84,7 +84,7 @@ pub(crate) fn ensure_trailer_id(doc: &mut Document, seed: &[u8]) -> Vec<u8> {
             return s.clone();
         }
     }
-    let h = rand_bytes(16, seed);
+    let h = rand_bytes::<16>(seed).to_vec();
     doc.trailer.set(
         "ID",
         Object::Array(vec![
@@ -249,11 +249,11 @@ pub(crate) fn decrypt_in_place(doc: &mut Document, password: &[u8]) -> DecryptSt
             }
             CryptMethod::AesV2 => {
                 let okey = crypto::object_key_aes(&key, id.0, id.1, n);
-                Box::new(move |d: &[u8]| crypto::aes_cbc_decrypt(&okey, d))
+                Box::new(move |d: &[u8]| crypto::aes_cbc_decrypt(&okey, d).unwrap_or_default())
             }
             CryptMethod::AesV3 => {
                 let k = key.clone();
-                Box::new(move |d: &[u8]| crypto::aes_cbc_decrypt(&k, d))
+                Box::new(move |d: &[u8]| crypto::aes_cbc_decrypt(&k, d).unwrap_or_default())
             }
         };
         if let Some(obj) = doc.objects.get_mut(&id) {
@@ -278,9 +278,9 @@ pub(crate) enum EncryptAlgo {
 /// Cryptographically-secure random bytes for salts/IVs, sourced from the OS
 /// CSPRNG. Falls back to md5-based mixing (seed + wall clock) only if the OS
 /// RNG is unavailable, preserving the no-panic invariant.
-fn rand_bytes(n: usize, seed: &[u8]) -> Vec<u8> {
+fn rand_bytes<const N: usize>(seed: &[u8]) -> [u8; N] {
     use rand::RngCore;
-    let mut out = vec![0u8; n];
+    let mut out = [0u8; N];
     if rand::rngs::OsRng.try_fill_bytes(&mut out).is_ok() {
         return out;
     }
@@ -289,18 +289,19 @@ fn rand_bytes(n: usize, seed: &[u8]) -> Vec<u8> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    out.clear();
     let mut ctr: u64 = 0;
-    while out.len() < n {
+    let mut filled = 0;
+    while filled < N {
         let mut m = Md5::new();
         m.update(seed);
         m.update(t.to_le_bytes());
         m.update(ctr.to_le_bytes());
         let d: [u8; 16] = m.finalize().into();
-        out.extend_from_slice(&d);
+        let take = d.len().min(N - filled);
+        out[filled..filled + take].copy_from_slice(&d[..take]);
+        filled += take;
         ctr += 1;
     }
-    out.truncate(n);
     out
 }
 
@@ -375,25 +376,25 @@ pub(crate) fn encrypt_doc_bytes(
                     let okey = crypto::object_key_aes(&key2, id.0, id.1, n);
                     let seed = seed.clone();
                     Box::new(move |d: &[u8]| {
-                        let iv = rand_bytes(16, &[&seed[..], d.get(..8).unwrap_or(d)].concat());
-                        // Build the IV directly from the random bytes (no hard-coded buffer).
-                        let iv16: [u8; 16] =
-                            iv[..16].try_into().expect("rand_bytes(16) yields 16 bytes");
-                        crypto::aes_cbc_encrypt(&okey, &iv16, d)
+                        let iv = rand_bytes::<16>(&[&seed[..], d.get(..8).unwrap_or(d)].concat());
+                        crypto::aes_cbc_encrypt(&okey, &iv, d).unwrap_or_default()
                     })
                 };
                 (enc, Box::new(make))
             }
             EncryptAlgo::Aes256 => {
                 let rev = 6u8;
-                let file_key = rand_bytes(32, &id0);
-                let salt_bytes = rand_bytes(32, &[&id0[..], b"salts"].concat());
+                let file_key = rand_bytes::<32>(&id0);
+                let salt_bytes = rand_bytes::<32>(&[&id0[..], b"salts"].concat());
                 // Split the random salt bytes into four 8-byte salts (derived from
                 // salt_bytes, so no hard-coded array flows into the KDF).
-                let salts: [[u8; 8]; 4] =
-                    std::array::from_fn(|i| salt_bytes[i * 8..i * 8 + 8].try_into().unwrap());
-                let (u, ue, o, oe) = crypto::compute_v5(user_pw, owner, &file_key, &salts, rev);
-                let perms = crypto::compute_perms_v5(&file_key, p);
+                let salts: [[u8; 8]; 4] = std::array::from_fn(|i| {
+                    let mut s = [0u8; 8];
+                    s.copy_from_slice(&salt_bytes[i * 8..i * 8 + 8]);
+                    s
+                });
+                let (u, ue, o, oe) = crypto::compute_v5(user_pw, owner, &file_key, &salts, rev)?;
+                let perms = crypto::compute_perms_v5(&file_key, p)?;
                 let mut cf = Dictionary::new();
                 let mut stdcf = Dictionary::new();
                 stdcf.set("CFM", name_obj("AESV3"));
@@ -413,17 +414,14 @@ pub(crate) fn encrypt_doc_bytes(
                 enc.set("OE", Object::String(oe, lopdf::StringFormat::Literal));
                 enc.set("UE", Object::String(ue, lopdf::StringFormat::Literal));
                 enc.set("Perms", Object::String(perms, lopdf::StringFormat::Literal));
-                let fk = file_key.clone();
+                let fk = file_key;
                 let seed = id0.clone();
                 let make = move |_id: ObjectId| -> CryptFn {
                     // AESV3 uses the file key directly (no per-object key).
-                    let fk = fk.clone();
                     let seed = seed.clone();
                     Box::new(move |d: &[u8]| {
-                        let iv = rand_bytes(16, &[&seed[..], d.get(..8).unwrap_or(d)].concat());
-                        let iv16: [u8; 16] =
-                            iv[..16].try_into().expect("rand_bytes(16) yields 16 bytes");
-                        crypto::aes_cbc_encrypt(&fk, &iv16, d)
+                        let iv = rand_bytes::<16>(&[&seed[..], d.get(..8).unwrap_or(d)].concat());
+                        crypto::aes_cbc_encrypt(&fk, &iv, d).unwrap_or_default()
                     })
                 };
                 (enc, Box::new(make))

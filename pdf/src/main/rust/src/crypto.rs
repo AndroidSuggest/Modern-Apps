@@ -196,18 +196,21 @@ pub fn authenticate_owner_fallback(
 
 /// AES-256-CBC encrypt without padding, IV = zeros (used to build /UE and /OE).
 /// Inlines `cbc` crate (tiny wrapper around `aes::Aes128/192/256`)
-pub fn aes256_cbc_encrypt_nopad_zeroiv(key: &[u8], data: &[u8]) -> Vec<u8> {
+pub fn aes256_cbc_encrypt_nopad_zeroiv(key: &[u8], data: &[u8]) -> Result<Vec<u8>, CbcError> {
     crate::pdf_cbc::enc_aes256_nopad_zeroiv(key, data)
 }
 
 /// The R5/R6 password hash (algorithm 2.B for R6, plain SHA-256 for R5).
-pub fn hash_v5(pw: &[u8], salt: &[u8], udata: &[u8], rev: u8) -> Vec<u8> {
+pub fn hash_v5(pw: &[u8], salt: &[u8], udata: &[u8], rev: u8) -> Option<Vec<u8>> {
     if rev >= 6 {
         hash_2b(pw, salt, udata)
     } else {
-        sha256(&[pw, salt, udata].concat())
+        Some(sha256(&[pw, salt, udata].concat()))
     }
 }
+
+/// The V5 (AESV3) `/U`, `/UE`, `/O`, `/OE` entries, in that order.
+pub type V5Entries = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
 
 /// Build the V5 (AESV3) `/U`,`/UE`,`/O`,`/OE` entries for `file_key` (32 bytes)
 /// given user/owner passwords and four 8-byte random salts
@@ -218,29 +221,29 @@ pub fn compute_v5(
     file_key: &[u8],
     salts: &[[u8; 8]; 4],
     rev: u8,
-) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+) -> Option<V5Entries> {
     // /U = hash(user_pw + uValSalt) || uValSalt || uKeySalt   (48 bytes)
-    let mut u = hash_v5(user_pw, &salts[0], &[], rev);
+    let mut u = hash_v5(user_pw, &salts[0], &[], rev)?;
     u.truncate(32);
     u.extend_from_slice(&salts[0]);
     u.extend_from_slice(&salts[1]);
     // /UE = AES-256(no pad, IV=0) of file_key with hash(user_pw + uKeySalt)
-    let ik_u = hash_v5(user_pw, &salts[1], &[], rev);
-    let ue = aes256_cbc_encrypt_nopad_zeroiv(&ik_u[..32], file_key);
+    let ik_u = hash_v5(user_pw, &salts[1], &[], rev)?;
+    let ue = aes256_cbc_encrypt_nopad_zeroiv(ik_u.get(..32)?, file_key).ok()?;
     // /O = hash(owner_pw + oValSalt + U) || oValSalt || oKeySalt
-    let mut o = hash_v5(owner_pw, &salts[2], &u, rev);
+    let mut o = hash_v5(owner_pw, &salts[2], &u, rev)?;
     o.truncate(32);
     o.extend_from_slice(&salts[2]);
     o.extend_from_slice(&salts[3]);
     // /OE = AES-256(no pad, IV=0) of file_key with hash(owner_pw + oKeySalt + U)
-    let ik_o = hash_v5(owner_pw, &salts[3], &u, rev);
-    let oe = aes256_cbc_encrypt_nopad_zeroiv(&ik_o[..32], file_key);
-    (u, ue, o, oe)
+    let ik_o = hash_v5(owner_pw, &salts[3], &u, rev)?;
+    let oe = aes256_cbc_encrypt_nopad_zeroiv(ik_o.get(..32)?, file_key).ok()?;
+    Some((u, ue, o, oe))
 }
 
 /// The 16-byte `/Perms` block for V5, encrypted with the file key (AES-256-ECB,
 /// i.e. CBC with a zero IV, no padding).
-pub fn compute_perms_v5(file_key: &[u8], p: i32) -> Vec<u8> {
+pub fn compute_perms_v5(file_key: &[u8], p: i32) -> Option<Vec<u8>> {
     let mut block = [0u8; 16];
     block[..4].copy_from_slice(&p.to_le_bytes());
     block[4..8].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
@@ -252,13 +255,14 @@ pub fn compute_perms_v5(file_key: &[u8], p: i32) -> Vec<u8> {
     block[13] = 0;
     block[14] = 0;
     block[15] = 0;
-    aes256_cbc_encrypt_nopad_zeroiv(&file_key[..32], &block)
+    aes256_cbc_encrypt_nopad_zeroiv(file_key.get(..32)?, &block).ok()
 }
 
 // ---------------------------------------------------------------------------
 // AES support (V4 AESV2 / V5 AESV3) – own CBC impl, cbc crate dropped
 // ---------------------------------------------------------------------------
 
+use crate::pdf_cbc::CbcError;
 use sha2::{Sha256, Sha384, Sha512};
 
 fn sha256(data: &[u8]) -> Vec<u8> {
@@ -279,23 +283,23 @@ fn sha512(data: &[u8]) -> Vec<u8> {
 
 /// AES-CBC decrypt with PKCS#7 padding; the 16-byte IV is prepended to `data`.
 /// Inlines cbc crate using aes crate only (single function wrapper)
-pub fn aes_cbc_decrypt(key: &[u8], data: &[u8]) -> Vec<u8> {
+pub fn aes_cbc_decrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>, CbcError> {
     crate::pdf_cbc::cbc_dec(key, data)
 }
 
 /// AES-CBC encrypt with PKCS#7 padding; a random 16-byte IV is prepended.
 /// Inlines cbc crate using aes crate only
-pub fn aes_cbc_encrypt(key: &[u8], iv: &[u8; 16], data: &[u8]) -> Vec<u8> {
+pub fn aes_cbc_encrypt(key: &[u8], iv: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, CbcError> {
     crate::pdf_cbc::cbc_enc(key, iv, data)
 }
 
 /// AES-256-CBC decrypt without padding, IV = zeros (used for /UE, /OE).
-fn aes256_cbc_decrypt_nopad_zeroiv(key: &[u8], ct: &[u8]) -> Vec<u8> {
+fn aes256_cbc_decrypt_nopad_zeroiv(key: &[u8], ct: &[u8]) -> Result<Vec<u8>, CbcError> {
     crate::pdf_cbc::dec_aes256_nopad_zeroiv(key, ct)
 }
 
 /// AES-128-CBC encrypt without padding (algorithm 2.B inner step).
-fn aes128_cbc_encrypt_nopad(key: &[u8], iv: &[u8], data: &[u8]) -> Vec<u8> {
+fn aes128_cbc_encrypt_nopad(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, CbcError> {
     crate::pdf_cbc::aes128_cbc_enc_nopad(key, iv, data)
 }
 
@@ -311,7 +315,7 @@ pub fn object_key_aes(key: &[u8], num: u32, gen: u16, n: usize) -> Vec<u8> {
 }
 
 /// Algorithm 2.B: the R6 hardened password hash.
-fn hash_2b(pw: &[u8], salt: &[u8], udata: &[u8]) -> Vec<u8> {
+fn hash_2b(pw: &[u8], salt: &[u8], udata: &[u8]) -> Option<Vec<u8>> {
     let mut k = sha256(&[pw, salt, udata].concat());
     let mut round = 0usize;
     loop {
@@ -323,8 +327,8 @@ fn hash_2b(pw: &[u8], salt: &[u8], udata: &[u8]) -> Vec<u8> {
         for _ in 0..64 {
             k1.extend_from_slice(&block);
         }
-        let e = aes128_cbc_encrypt_nopad(&k[0..16], &k[16..32], &k1);
-        let m = e[..16].iter().map(|b| *b as u32).sum::<u32>() % 3;
+        let e = aes128_cbc_encrypt_nopad(k.get(..16)?, k.get(16..32)?, &k1).ok()?;
+        let m = e.get(..16)?.iter().map(|b| *b as u32).sum::<u32>() % 3;
         k = match m {
             0 => sha256(&e),
             1 => sha384(&e),
@@ -335,7 +339,7 @@ fn hash_2b(pw: &[u8], salt: &[u8], udata: &[u8]) -> Vec<u8> {
             break;
         }
     }
-    k[..32].to_vec()
+    k.get(..32).map(|s| s.to_vec())
 }
 
 /// User-password path for AESV3 (R5/R6).
@@ -346,19 +350,19 @@ pub fn authenticate_v5_user(pw: &[u8], u: &[u8], ue: &[u8], rev: u8) -> Option<V
     let val_salt = &u[32..40];
     let key_salt = &u[40..48];
     let check = if rev >= 6 {
-        hash_2b(pw, val_salt, &[])
+        hash_2b(pw, val_salt, &[])?
     } else {
         sha256(&[pw, val_salt].concat())
     };
-    if check[..32] != u[..32] {
+    if check.len() < 32 || check[..32] != u[..32] {
         return None;
     }
     let ikey = if rev >= 6 {
-        hash_2b(pw, key_salt, &[])
+        hash_2b(pw, key_salt, &[])?
     } else {
         sha256(&[pw, key_salt].concat())
     };
-    let file_key = aes256_cbc_decrypt_nopad_zeroiv(&ikey, &ue[..32]);
+    let file_key = aes256_cbc_decrypt_nopad_zeroiv(&ikey, &ue[..32]).ok()?;
     if file_key.len() == 32 {
         Some(file_key)
     } else {
@@ -377,19 +381,19 @@ pub fn authenticate_v5_owner(pw: &[u8], o: &[u8], oe: &[u8], u: &[u8], rev: u8) 
     let o_key_salt = &o[40..48];
     // Owner validation hash: hash(owner_pw + oValSalt + U)
     let check = if rev >= 6 {
-        hash_2b(pw, o_val_salt, u)
+        hash_2b(pw, o_val_salt, u)?
     } else {
         sha256(&[pw, o_val_salt, u].concat())
     };
-    if check[..32] != o[..32] {
+    if check.len() < 32 || check[..32] != o[..32] {
         return None;
     }
     let ikey = if rev >= 6 {
-        hash_2b(pw, o_key_salt, u)
+        hash_2b(pw, o_key_salt, u)?
     } else {
         sha256(&[pw, o_key_salt, u].concat())
     };
-    let file_key = aes256_cbc_decrypt_nopad_zeroiv(&ikey, &oe[..32]);
+    let file_key = aes256_cbc_decrypt_nopad_zeroiv(&ikey, &oe[..32]).ok()?;
     if file_key.len() == 32 {
         Some(file_key)
     } else {
@@ -429,7 +433,28 @@ mod tests {
         let key = [7u8; 16];
         let iv = [3u8; 16];
         let data = b"AES-CBC round trip test payload!!";
-        let enc = aes_cbc_encrypt(&key, &iv, data);
-        assert_eq!(aes_cbc_decrypt(&key, &enc), data);
+        let enc = aes_cbc_encrypt(&key, &iv, data).expect("valid 16-byte key and IV");
+        assert_eq!(aes_cbc_decrypt(&key, &enc).expect("round-trips"), data);
+    }
+
+    #[test]
+    fn aes_cbc_decrypt_rejects_unaligned_and_short_input() {
+        let key = [7u8; 16];
+        let iv = [3u8; 16];
+        let mut enc = aes_cbc_encrypt(&key, &iv, b"payload").expect("encrypt");
+        enc.truncate(enc.len() - 6); // leave a partial trailing block
+        assert_eq!(
+            aes_cbc_decrypt(&key, &enc),
+            Err(CbcError::NotBlockAligned(10))
+        );
+        assert_eq!(aes_cbc_decrypt(&key, &[0u8; 4]), Err(CbcError::TooShort(4)));
+        assert_eq!(aes_cbc_decrypt(&[0u8; 7], &[0u8; 32]), Err(CbcError::KeyLen(7)));
+    }
+
+    #[test]
+    fn aes_cbc_decrypt_with_wrong_key_is_an_error() {
+        let iv = [3u8; 16];
+        let enc = aes_cbc_encrypt(&[7u8; 16], &iv, b"secret payload").expect("encrypt");
+        assert_eq!(aes_cbc_decrypt(&[8u8; 16], &enc), Err(CbcError::BadPadding));
     }
 }
