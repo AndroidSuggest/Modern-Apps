@@ -26,7 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.vayunmathur.games.voxels.util.WorldInfo
+import com.vayunmathur.games.voxels.util.VoxelsRoles
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.Button
@@ -34,6 +36,7 @@ import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconPlay
+import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -42,9 +45,16 @@ import com.vayunmathur.library.ui.Text
 @Composable
 fun MenuScreen(
     worlds: List<WorldInfo>,
+    onlineWorlds: List<WorldInfo>,
+    deviceId: String,
+    isOnline: Boolean,
     onPlay: (WorldInfo) -> Unit,
     onDelete: (WorldInfo) -> Unit,
     onCreate: () -> Unit,
+    onHostOnline: () -> Unit,
+    onRefresh: () -> Unit,
+    onCopyDeviceId: () -> Unit,
+    onShare: (WorldInfo) -> Unit,
 ) {
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopCenter) {
         Column(
@@ -55,44 +65,153 @@ fun MenuScreen(
             Text(stringResource(R.string.select_a_world), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(20.dp))
 
-            if (worlds.isEmpty()) {
-                EmptyState(
-                    title = stringResource(R.string.no_worlds_yet_create_one_to_start),
-                    modifier = Modifier.fillMaxWidth().height(220.dp),
-                )
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxWidth().weight(1f, fill = false),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+            LazyColumn(
+                Modifier.fillMaxWidth().weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (worlds.isEmpty()) {
+                    item {
+                        EmptyState(
+                            title = stringResource(R.string.no_worlds_yet_create_one_to_start),
+                            modifier = Modifier.fillMaxWidth().height(180.dp),
+                        )
+                    }
+                } else {
                     items(worlds, key = { it.id }) { world ->
-                        WorldRow(world = world, onPlay = { onPlay(world) }, onDelete = { onDelete(world) })
+                        WorldRow(world = world, enabled = true, requiresInternet = false,
+                            onPlay = { onPlay(world) }, onDelete = { onDelete(world) }, onShare = null)
                     }
                 }
-                Spacer(Modifier.height(16.dp))
-            }
 
-            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.create_new_world))
+                // --- Online worlds section ---
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.online_worlds), style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                        if (!isOnline) {
+                            Text(stringResource(R.string.requires_internet), style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                        OutlinedButton(onClick = onRefresh, enabled = isOnline) { Text(stringResource(R.string.refresh)) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    DeviceIdRow(deviceId = deviceId, onCopy = onCopyDeviceId)
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (onlineWorlds.isEmpty()) {
+                    item {
+                        Text(stringResource(R.string.no_online_worlds), style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                    }
+                } else {
+                    items(onlineWorlds, key = { it.id }) { world ->
+                        val owner = world.meta.role == VoxelsRoles.OWNER
+                        WorldRow(world = world, enabled = isOnline, requiresInternet = !isOnline,
+                            subtitle = if (owner) stringResource(R.string.hosted_by_you) else stringResource(R.string.shared_with_you),
+                            onPlay = { if (isOnline) onPlay(world) },
+                            onDelete = { onDelete(world) },
+                            onShare = if (owner) ({ onShare(world) }) else null)
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onCreate, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.create_new_world))
+                }
+                OutlinedButton(onClick = onHostOnline, enabled = isOnline, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.host_online_world))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun WorldRow(world: WorldInfo, onPlay: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable { onPlay() }) {
+private fun DeviceIdRow(deviceId: String, onCopy: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.your_device_id), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(deviceId.ifEmpty { "…" }, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = onCopy, enabled = deviceId.isNotEmpty()) { Text(stringResource(R.string.copy)) }
+        }
+    }
+}
+
+@Composable
+private fun WorldRow(
+    world: WorldInfo,
+    enabled: Boolean = true,
+    requiresInternet: Boolean = false,
+    subtitle: String? = null,
+    onPlay: () -> Unit,
+    onDelete: () -> Unit,
+    onShare: (() -> Unit)? = null,
+) {
+    val alpha = if (enabled) 1f else 0.5f
+    val cardModifier = Modifier.fillMaxWidth().let { if (enabled) it.clickable { onPlay() } else it }
+    Card(modifier = cardModifier) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text(world.meta.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                Text(world.meta.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
                 val last = DateUtils.getRelativeTimeSpanString(world.meta.lastPlayed).toString()
-                Text(stringResource(R.string.seed_2, world.meta.seed, last), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text(stringResource(R.string.seed_2, world.meta.seed, last), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f * alpha))
+                if (subtitle != null) {
+                    Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                }
+                if (requiresInternet) {
+                    Text(stringResource(R.string.requires_internet), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                }
             }
+            if (onShare != null) IconButton(onClick = onShare) { IconShare(tint = MaterialTheme.colorScheme.primary) }
             IconButton(onClick = onDelete) { IconDelete(tint = MaterialTheme.colorScheme.error) }
-            IconButton(onClick = onPlay) { IconPlay(tint = MaterialTheme.colorScheme.primary) }
+            IconButton(onClick = onPlay) { IconPlay(tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha)) }
+        }
+    }
+}
+
+// Owner-only dialog: invite a device by id, choosing whether they can build (editor) or only look
+// (viewer). Mirrors office's ShareOnlineDialog.
+@Composable
+fun ShareOnlineDialog(
+    world: WorldInfo,
+    onDismiss: () -> Unit,
+    onSend: (recipient: String, role: String) -> Unit,
+) {
+    var recipient by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf(VoxelsRoles.EDITOR) }
+    Dialog(onDismissRequest = onDismiss) {
+        Card(Modifier.fillMaxWidth().padding(8.dp)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.share_world), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                Text(world.meta.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                OutlinedTextField(
+                    value = recipient,
+                    onValueChange = { recipient = it },
+                    label = { Text(stringResource(R.string.recipient_device_id)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val editorSel = role == VoxelsRoles.EDITOR
+                    if (editorSel) Button(onClick = { role = VoxelsRoles.EDITOR }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_editor)) }
+                    else OutlinedButton(onClick = { role = VoxelsRoles.EDITOR }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_editor)) }
+                    if (!editorSel) Button(onClick = { role = VoxelsRoles.VIEWER }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_viewer)) }
+                    else OutlinedButton(onClick = { role = VoxelsRoles.VIEWER }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.role_viewer)) }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(UiR.string.cancel)) }
+                    Button(onClick = { onSend(recipient.trim(), role) }, enabled = recipient.isNotBlank(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.send_invite)) }
+                }
+            }
         }
     }
 }

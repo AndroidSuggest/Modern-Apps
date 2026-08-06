@@ -10,12 +10,19 @@ import java.io.File
 import kotlin.random.Random
 
 // On-disk metadata for a single world, stored as `world.json` inside the world's directory.
+// The `online` fields are absent on legacy single-player saves (defaults keep them loading).
 @Serializable
 data class WorldMeta(
     val name: String,
     val seed: Int,
     val created: Long,
     val lastPlayed: Long,
+    // --- Online multiplayer (see VoxelsSync). Empty/false on local single-player worlds. ---
+    val online: Boolean = false,
+    val worldId: String = "",
+    val ownerDeviceId: String = "",
+    val role: String = "",
+    val keyB64: String = "",
 )
 
 // A world plus its resolved id (directory name) and absolute save path. Not persisted directly.
@@ -63,6 +70,49 @@ object WorldManager {
         val dir = File(root, id).apply { mkdirs() }
         val displayName = name.trim().ifEmpty { "New World" }
         val meta = WorldMeta(name = displayName, seed = seed, created = now, lastPlayed = now)
+        File(dir, "world.json").writeText(json.encodeToString(WorldMeta.serializer(), meta))
+        return WorldInfo(id = id, dir = dir.absolutePath, meta = meta)
+    }
+
+    // Online worlds hosted or shared with this device. Local single-player worlds are excluded.
+    fun onlineWorlds(ctx: Context): List<WorldInfo> = listWorlds(ctx).filter { it.meta.online }
+
+    // Host a new online world: a normal local save (the host is the authority) tagged with the
+    // owner role + the AES content key it will share via PQC-sealed invites.
+    fun createOnlineWorld(
+        ctx: Context, name: String, seed: Int, worldId: String, keyB64: String,
+        ownerDeviceId: String, now: Long,
+    ): WorldInfo {
+        val root = worldsRoot(ctx)
+        var id = "w_$now"
+        var i = 1
+        while (File(root, id).exists()) { id = "w_${now}_$i"; i++ }
+        val dir = File(root, id).apply { mkdirs() }
+        val meta = WorldMeta(
+            name = name.trim().ifEmpty { "Online World" }, seed = seed, created = now, lastPlayed = now,
+            online = true, worldId = worldId, ownerDeviceId = ownerDeviceId,
+            role = VoxelsRoles.OWNER, keyB64 = keyB64,
+        )
+        File(dir, "world.json").writeText(json.encodeToString(WorldMeta.serializer(), meta))
+        return WorldInfo(id = id, dir = dir.absolutePath, meta = meta)
+    }
+
+    // Add (or return the existing entry for) a world shared with this device via an invite. Deduped
+    // by the shared worldId so re-accepting an invite doesn't create a second copy.
+    fun upsertSharedWorld(
+        ctx: Context, name: String, seed: Int, worldId: String, keyB64: String,
+        ownerDeviceId: String, role: String, now: Long,
+    ): WorldInfo {
+        listWorlds(ctx).firstOrNull { it.meta.online && it.meta.worldId == worldId }?.let { return it }
+        val root = worldsRoot(ctx)
+        var id = "w_$now"
+        var i = 1
+        while (File(root, id).exists()) { id = "w_${now}_$i"; i++ }
+        val dir = File(root, id).apply { mkdirs() }
+        val meta = WorldMeta(
+            name = name.trim().ifEmpty { "Shared World" }, seed = seed, created = now, lastPlayed = now,
+            online = true, worldId = worldId, ownerDeviceId = ownerDeviceId, role = role, keyB64 = keyB64,
+        )
         File(dir, "world.json").writeText(json.encodeToString(WorldMeta.serializer(), meta))
         return WorldInfo(id = id, dir = dir.absolutePath, meta = meta)
     }

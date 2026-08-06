@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+
 package com.vayunmathur.games.voxels
 
 import com.vayunmathur.games.voxels.R
@@ -20,10 +22,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.vayunmathur.games.voxels.ui.*
 import com.vayunmathur.games.voxels.util.VoxelsAchievements
 import com.vayunmathur.games.voxels.util.VoxelsNative
+import com.vayunmathur.games.voxels.util.VoxelsSync
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.GameHubComposeHook
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.io.encoding.Base64
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,10 +42,18 @@ class MainActivity : ComponentActivity() {
         // The world's directory name is its id (see WorldManager.createWorld). Deriving it here beats
         // widening the Intent contract MenuActivity already has.
         val worldId = java.io.File(worldDir).name
+        // Online multiplayer extras (absent for local single-player worlds).
+        val online = intent.getBooleanExtra("online", false)
+        val netRole = intent.getIntExtra("net_role", 0)
+        val sharedWorldId = intent.getStringExtra("world_id") ?: ""
+        val worldKeyB64 = intent.getStringExtra("world_key") ?: ""
+        val worldName = intent.getStringExtra("world_name") ?: ""
         if (VoxelsNative.isAvailable) {
             try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: Exception) {
                 android.util.Log.e("VoxelsMain", "nativeInit failed", e)
             }
+            // Put the engine in host/client mode before the render thread starts ticking.
+            if (online) try { VoxelsNative.nativeSetRole(netRole) } catch (_: Exception) {}
         }
         com.vayunmathur.games.voxels.util.SoundFx.init(this)
         com.vayunmathur.games.voxels.util.MusicFx.startAmbient(this)
@@ -68,6 +82,9 @@ class MainActivity : ComponentActivity() {
                 var stonecutterOpen by remember { mutableStateOf(false) }
                 var tradesJson by remember { mutableStateOf("{}") }
                 var tradeOpen by remember { mutableStateOf(false) }
+                // Online multiplayer HUD state.
+                var netConnected by remember { mutableStateOf(false) }
+                var peersJson by remember { mutableStateOf("[]") }
                 LaunchedEffect(Unit) { if (VoxelsNative.isAvailable) try { recipesJson = VoxelsNative.getRecipesJson(); smeltingJson = VoxelsNative.getSmeltingJson(); blessingCatalogJson = VoxelsNative.getBlessingCatalogJson(); cutsJson = VoxelsNative.getCutsJson() } catch (_: Exception) {} }
                 var achievements by remember { mutableStateOf<VoxelsAchievements?>(null) }
                 val newAchievement by (achievements?.newAchievement?.collectAsState() ?: remember { mutableStateOf(null) })
@@ -164,6 +181,61 @@ class MainActivity : ComponentActivity() {
                             } catch (_: Exception) {}
                         }
                         delay(150)
+                    }
+                }
+
+                // --- Online multiplayer pump: bridge the Rust net queues to the encrypted relay. ---
+                // Inbound (WebSocket) is decrypted and fed to netPushInbound; outbound is drained from
+                // the engine, wrapped with our sender id (to skip our own relay echoes), and sent —
+                // player transforms as ephemeral presence, everything else as world-log ops.
+                LaunchedEffect(online) {
+                    if (!online || !VoxelsNative.isAvailable) return@LaunchedEffect
+                    if (!VoxelsSync.init(this@MainActivity)) return@LaunchedEffect
+                    val myId = VoxelsSync.deviceId
+                    try { VoxelsNative.nativeSetDevice(myId) } catch (_: Exception) {}
+                    val key = runCatching { Base64.decode(worldKeyB64) }.getOrNull() ?: return@LaunchedEffect
+                    val channel = "world:$sharedWorldId"
+                    VoxelsSync.startLive(
+                        scope = this,
+                        channel = channel,
+                        onConnected = {
+                            // A client announces itself so the host streams the world + first snapshot.
+                            if (netRole == 2) {
+                                val join = JSONObject().put("type", "Join").put("device", myId).put("name", worldName).toString()
+                                val env = JSONObject().put("from", myId).put("m", JSONObject(join)).toString()
+                                VoxelsSync.liveAppend(channel, key, listOf(env))
+                            }
+                        },
+                        onMessage = { raw ->
+                            val msg = VoxelsSync.parseLive(raw)
+                            if (msg != null) when (msg.t) {
+                                "actions" -> for (b in msg.actions) {
+                                    val plain = VoxelsSync.decrypt(key, b)
+                                    if (plain != null) deliverInbound(myId, plain)
+                                }
+                                "presence" -> {
+                                    val plain = VoxelsSync.decrypt(key, msg.data)
+                                    if (plain != null) deliverInbound(myId, plain)
+                                }
+                            }
+                        },
+                    )
+                    while (isActive) {
+                        val out = try { VoxelsNative.netDrainOutbound() } catch (_: Exception) { "[]" }
+                        try {
+                            val arr = JSONArray(out)
+                            val ops = ArrayList<String>()
+                            for (i in 0 until arr.length()) {
+                                val o = arr.getJSONObject(i)
+                                val env = JSONObject().put("from", myId).put("m", o).toString()
+                                if (o.optString("type") == "PlayerTransform") VoxelsSync.sendPresence(channel, key, env)
+                                else ops.add(env)
+                            }
+                            if (ops.isNotEmpty()) VoxelsSync.liveAppend(channel, key, ops)
+                        } catch (_: Exception) {}
+                        netConnected = VoxelsSync.isLive
+                        peersJson = try { VoxelsNative.getPeersJson() } catch (_: Exception) { "[]" }
+                        delay(80)
                     }
                 }
 
@@ -305,6 +377,27 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Online HUD: how many players are here, plus a connection-lost indicator.
+                    if (online) {
+                        val peerCount = remember(peersJson) { runCatching { JSONArray(peersJson).length() }.getOrDefault(0) }
+                        Box(Modifier.align(Alignment.TopEnd).padding(top = 36.dp, end = 12.dp)) {
+                            Text(
+                                stringResource(R.string.players_online, peerCount + 1),
+                                color = Color.White,
+                                modifier = Modifier.background(Color(0x66000000)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                        if (!netConnected) {
+                            Box(Modifier.align(Alignment.TopCenter).padding(top = 8.dp)) {
+                                Text(
+                                    stringResource(R.string.connection_lost),
+                                    color = Color.White,
+                                    modifier = Modifier.background(Color(0xCCB00020)).padding(horizontal = 12.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+                    }
+
                     if (inventoryOpen && VoxelsNative.isAvailable) {
                         InventoryOverlay(
                             inventoryJson = inventoryJson, recipesJson = recipesJson,
@@ -361,7 +454,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         com.vayunmathur.games.voxels.util.MusicFx.stop()
-        if (VoxelsNative.isAvailable) { try { VoxelsNative.nativeOnDestroy() } catch (_: Exception) {} }
+        VoxelsSync.stopLive()
+        if (VoxelsNative.isAvailable) {
+            try { VoxelsNative.nativeSetRole(0) } catch (_: Exception) {}
+            try { VoxelsNative.nativeOnDestroy() } catch (_: Exception) {}
+        }
         super.onDestroy()
     }
+}
+
+// Unwrap a relayed envelope `{from, m}`; drop our own echoes, then hand the inner NetMsg to the
+// engine. Runs on the WebSocket IO thread — netPushInbound only touches a mutex-guarded queue.
+private fun deliverInbound(myId: String, plain: String) {
+    try {
+        val e = JSONObject(plain)
+        if (e.optString("from") == myId) return
+        val m = e.getJSONObject("m").toString()
+        if (VoxelsNative.isAvailable) VoxelsNative.netPushInbound(m)
+    } catch (_: Exception) {}
 }

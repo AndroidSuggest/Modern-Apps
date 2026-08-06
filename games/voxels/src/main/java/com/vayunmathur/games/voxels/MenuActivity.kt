@@ -1,7 +1,13 @@
+@file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+
 package com.vayunmathur.games.voxels
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,17 +17,28 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.vayunmathur.games.voxels.ui.MenuScreen
+import com.vayunmathur.games.voxels.ui.ShareOnlineDialog
 import com.vayunmathur.games.voxels.ui.WorldCreatorScreen
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.util.rememberIsOnline
+import com.vayunmathur.games.voxels.util.VoxelsRoles
+import com.vayunmathur.games.voxels.util.VoxelsSync
 import com.vayunmathur.games.voxels.util.WorldInfo
 import com.vayunmathur.games.voxels.util.WorldManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.io.encoding.Base64
+import kotlin.random.Random
 
 // Launcher screen: lists saved worlds and hosts the world creator. Playing a world starts
-// MainActivity (the game) with the world's save directory + seed passed as intent extras.
+// MainActivity (the game) with the world's save directory + seed passed as intent extras. Online
+// worlds add the shared world id + AES key + role so the game can start VoxelsSync in host/client mode.
 class MenuActivity : ComponentActivity() {
     // Bumped on each onResume so the world list reloads when returning from the game
     // (keeps last-played ordering fresh).
@@ -32,6 +49,9 @@ class MenuActivity : ComponentActivity() {
         resumeTick++
     }
 
+    private fun localWorlds() = WorldManager.listWorlds(this).filter { !it.meta.online }
+    private fun onlineWorldList() = WorldManager.onlineWorlds(this)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -39,38 +59,124 @@ class MenuActivity : ComponentActivity() {
             // Standard app theme (Material You / system colors), matching the other apps — the menu
             // isn't part of the in-game world so it shouldn't use the green Voxels palette.
             DynamicTheme {
+                val scope = rememberCoroutineScope()
+                val online by rememberIsOnline()
                 var creating by remember { mutableStateOf(false) }
-                var worlds by remember { mutableStateOf(WorldManager.listWorlds(this)) }
-                LaunchedEffect(resumeTick) { worlds = WorldManager.listWorlds(this@MenuActivity) }
+                var worlds by remember { mutableStateOf(localWorlds()) }
+                var onlineWorlds by remember { mutableStateOf(onlineWorldList()) }
+                var deviceId by remember { mutableStateOf("") }
+                var shareTarget by remember { mutableStateOf<WorldInfo?>(null) }
+
+                LaunchedEffect(resumeTick) {
+                    worlds = localWorlds()
+                    onlineWorlds = onlineWorldList()
+                }
+                // Provision the sync identity in the background so the device id shows and invites
+                // can be received even before hosting anything.
+                LaunchedEffect(Unit) {
+                    withContext(Dispatchers.IO) { runCatching { VoxelsSync.init(this@MenuActivity) } }
+                    deviceId = VoxelsSync.deviceId
+                }
+
+                fun reload() { worlds = localWorlds(); onlineWorlds = onlineWorldList() }
 
                 Surface(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxSize()) {
-                    if (creating) {
-                        WorldCreatorScreen(
-                            onBack = { creating = false },
-                            onCreate = { name, seedText ->
-                                val seed = WorldManager.resolveSeed(seedText)
-                                val world = WorldManager.createWorld(this@MenuActivity, name, seed, System.currentTimeMillis())
-                                worlds = WorldManager.listWorlds(this@MenuActivity)
-                                creating = false
-                                play(world)
-                            }
-                        )
-                    } else {
-                        MenuScreen(
-                            worlds = worlds,
-                            onPlay = { play(it) },
-                            onDelete = { world ->
-                                WorldManager.deleteWorld(this@MenuActivity, world.id)
-                                worlds = WorldManager.listWorlds(this@MenuActivity)
-                            },
-                            onCreate = { creating = true }
-                        )
+                    Box(Modifier.fillMaxSize()) {
+                        if (creating) {
+                            WorldCreatorScreen(
+                                onBack = { creating = false },
+                                onCreate = { name, seedText ->
+                                    val seed = WorldManager.resolveSeed(seedText)
+                                    val world = WorldManager.createWorld(this@MenuActivity, name, seed, System.currentTimeMillis())
+                                    reload()
+                                    creating = false
+                                    play(world)
+                                }
+                            )
+                        } else {
+                            MenuScreen(
+                                worlds = worlds,
+                                onlineWorlds = onlineWorlds,
+                                deviceId = deviceId,
+                                isOnline = online,
+                                onPlay = { play(it) },
+                                onDelete = { world ->
+                                    WorldManager.deleteWorld(this@MenuActivity, world.id)
+                                    reload()
+                                },
+                                onCreate = { creating = true },
+                                onHostOnline = {
+                                    scope.launch {
+                                        val ok = withContext(Dispatchers.IO) { runCatching { VoxelsSync.init(this@MenuActivity) }.getOrDefault(false) }
+                                        if (!ok) { toast(getString(R.string.invite_failed)); return@launch }
+                                        deviceId = VoxelsSync.deviceId
+                                        val worldId = VoxelsSync.newWorldId()
+                                        val keyB64 = Base64.encode(VoxelsSync.newWorldKey())
+                                        val world = WorldManager.createOnlineWorld(
+                                            this@MenuActivity, getString(R.string.host_online_world),
+                                            Random.nextInt(), worldId, keyB64, deviceId, System.currentTimeMillis(),
+                                        )
+                                        reload()
+                                        play(world)
+                                    }
+                                },
+                                onRefresh = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                VoxelsSync.init(this@MenuActivity)
+                                                // Pull the whole inbox and upsert; dedup is by shared worldId.
+                                                val res = VoxelsSync.pullInvites(0)
+                                                for (inv in res.invites) {
+                                                    WorldManager.upsertSharedWorld(
+                                                        this@MenuActivity, inv.name, inv.seed, inv.worldId,
+                                                        inv.key, inv.ownerDeviceId, inv.role, System.currentTimeMillis(),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        reload()
+                                    }
+                                },
+                                onCopyDeviceId = { copyToClipboard(deviceId) },
+                                onShare = { shareTarget = it },
+                            )
+                        }
+
+                        shareTarget?.let { world ->
+                            ShareOnlineDialog(
+                                world = world,
+                                onDismiss = { shareTarget = null },
+                                onSend = { recipient, role ->
+                                    shareTarget = null
+                                    scope.launch {
+                                        val ok = withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                VoxelsSync.init(this@MenuActivity)
+                                                VoxelsSync.sendInvite(
+                                                    recipient, world.meta.worldId, Base64.decode(world.meta.keyB64),
+                                                    world.meta.name, world.meta.seed, role,
+                                                    Base64.encode(VoxelsSync.publicBundle), deviceId,
+                                                )
+                                            }.getOrDefault(false)
+                                        }
+                                        toast(getString(if (ok) R.string.invite_sent else R.string.invite_failed))
+                                    }
+                                },
+                            )
+                        }
                     }
-                }
                 }
             }
         }
+    }
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+    private fun copyToClipboard(text: String) {
+        if (text.isEmpty()) return
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        cm.setPrimaryClip(ClipData.newPlainText("device id", text))
     }
 
     private fun play(world: WorldInfo) {
@@ -79,6 +185,14 @@ class MenuActivity : ComponentActivity() {
             putExtra("world_dir", world.dir)
             putExtra("world_seed", world.meta.seed)
             putExtra("world_name", world.meta.name)
+            if (world.meta.online) {
+                putExtra("online", true)
+                putExtra("world_id", world.meta.worldId)
+                putExtra("world_key", world.meta.keyB64)
+                putExtra("owner_device", world.meta.ownerDeviceId)
+                // Owner hosts (authority = 1); everyone else joins as a client (2).
+                putExtra("net_role", if (world.meta.role == VoxelsRoles.OWNER) 1 else 2)
+            }
         })
     }
 }

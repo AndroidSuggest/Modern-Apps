@@ -57,4 +57,23 @@
     <string name="charms_held">Charms you carry</string>
     <string name="no_charms">Craft a blessing charm from quicksilver to attune it.</string>
     <string name="blessing_tap_hint">Tap a charm to attune it, an attuned slot to release it.</string>
+    <!-- Online multiplayer -->
+    <string name="online_worlds">Online worlds</string>
+    <string name="host_online_world">Host online world</string>
+    <string name="your_device_id">Your device ID (share it so others can invite you):</string>
+    <string name="copy">Copy</string>
+    <string name="refresh">Refresh</string>
+    <string name="requires_internet">Requires internet</string>
+    <string name="no_online_worlds">No online worlds yet. Host one, or ask a friend to invite you.</string>
+    <string name="hosted_by_you">Hosted by you</string>
+    <string name="shared_with_you">Shared with you</string>
+    <string name="share_world">Share world</string>
+    <string name="recipient_device_id">Recipient device ID</string>
+    <string name="role_editor">Editor (can build)</string>
+    <string name="role_viewer">Viewer (read-only)</string>
+    <string name="send_invite">Send invite</string>
+    <string name="invite_sent">Invite sent.</string>
+    <string name="invite_failed">Couldn\'t send the invite — check the device ID and your connection.</string>
+    <string name="connection_lost">Connection lost — waiting to reconnect…</string>
+    <string name="players_online">%1$d online</string>
 </resources>
