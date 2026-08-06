@@ -14,4 +14,10 @@
     <string name="tap_the_globe_key_on_the_keyboard_to">Tap the globe key on the keyboard to switch between them</string>
     <string name="search_languages">Search languages</string>
     <string name="available_for_english_layouts_only">Available for English layouts only</string>
+    <string name="search_emoji">Search emoji</string>
+    <string name="emoji_you_use_show_up_here">Emoji you use show up here</string>
+    <string name="image">Image</string>
+    <string name="clear_clipboard">Clear all</string>
+    <string name="clear_clipboard_history">Clear clipboard history</string>
+    <string name="copied_text_shows_up_here">Copied text and images show up here</string>
 </resources>

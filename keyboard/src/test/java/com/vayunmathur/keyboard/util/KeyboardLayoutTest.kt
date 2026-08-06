@@ -58,6 +58,57 @@ class KeyboardLayoutTest {
         }
     }
 
+    /**
+     * Same rule for the shared symbol/digit maps, which are keyed off the symbol pages and
+     * the two punctuation keys beside the space bar rather than off a layout.
+     */
+    @Test
+    fun `symbol and digit alternates are keyed by characters those pages have`() {
+        val available = (Layouts.SYMBOL_ROWS + Layouts.MORE_SYMBOL_ROWS).joinToString("").toSet() +
+            setOf(',', '.')
+        for (base in Layouts.SYMBOL_ALTERNATES.keys) {
+            assertTrue(base in available, "no symbol page has the key '$base'")
+        }
+        val digits = Layouts.SYMBOL_ROWS[0].toSet()
+        for (base in Layouts.DIGIT_ALTERNATES.keys) {
+            assertTrue(base in digits, "no number row has the key '$base'")
+        }
+    }
+
+    /**
+     * Every alternate has to stay reachable. The popup gives each entry 44dp and prepends
+     * the key's own character, so seven alternates already fill a small phone's width.
+     */
+    @Test
+    fun `no alternate list is longer than the popup can show`() {
+        val lists = Layouts.LATIN_ALTERNATES.values + Layouts.SYMBOL_ALTERNATES.values +
+            Layouts.DIGIT_ALTERNATES.values + KeyboardLayouts.ALL.flatMap { it.alternates.values }
+        for (alternates in lists) {
+            assertTrue(alternates.length <= 7, "'$alternates' is too long to fit on screen")
+        }
+    }
+
+    /**
+     * The corner preview exists to show the user something they could not guess, so an
+     * accented form of the key's own letter is not worth printing — those keep the dot.
+     */
+    @Test
+    fun `the corner preview skips accents and anything already on the key`() {
+        assertEquals(null, Layouts.alternatePreview("éèêëēėę", "e"))
+        assertEquals(null, Layouts.alternatePreview("ÉÈÊË", "E"))
+        assertEquals("¡", Layouts.alternatePreview("¡", "!"))
+        assertEquals("<", Layouts.alternatePreview("<[{", "("))
+        assertEquals("…", Layouts.alternatePreview("…", "."))
+        // Distinct letters are worth showing; a smaller copy of the digit itself is not.
+        assertEquals("Ł", Layouts.alternatePreview("Ł", "L"))
+        assertEquals("½", Layouts.alternatePreview("¹½⅓¼⅛", "1"))
+        assertEquals(null, Layouts.alternatePreview("⁴", "4"))
+        // The digit is already drawn in the opposite corner; the accents behind it are not
+        // worth printing either, so this key falls back to the dot.
+        assertEquals(null, Layouts.alternatePreview("3éèêë", "e", skip = "3"))
+        assertEquals(null, Layouts.alternatePreview("", "q"))
+    }
+
     @Test
     fun `only English layouts claim the English dictionary`() {
         for (layout in KeyboardLayouts.ALL.filter { it.englishDictionary }) {

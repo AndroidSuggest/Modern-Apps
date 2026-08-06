@@ -1,7 +1,9 @@
 package com.vayunmathur.keyboard.util
 
+import java.text.Normalizer
+
 /** Which page of keys is currently shown. */
-enum class KeyboardPage { LETTERS, SYMBOLS, MORE_SYMBOLS, NUMERIC, PHONE, PHONE_SYMBOLS, EMOJI }
+enum class KeyboardPage { LETTERS, SYMBOLS, MORE_SYMBOLS, NUMERIC, PHONE, PHONE_SYMBOLS, EMOJI, CLIPBOARD }
 
 /** Shift/caps state for the letter page. */
 enum class ShiftState { OFF, SHIFTED, CAPS_LOCK }
@@ -44,18 +46,76 @@ object Layouts {
     )
 
     /**
-     * Long-press alternates shared by the Latin layouts: vowels (and ç/ñ) expose common
-     * accents. No digits here — there's a dedicated number row; an empty string = no
-     * alternate. Individual layouts override the keys their language cares about, so the
-     * Polish `a` gives `ą` rather than `à` (see [KeyboardLayouts]).
+     * Long-press alternates shared by the Latin layouts: roughly Gboard's Latin set, so a
+     * letter reaches every accent that letter takes in a European language. An empty string
+     * = no alternate. Individual layouts override the keys their language cares about, so
+     * the Polish `a` gives `ą` rather than `à` (see [KeyboardLayouts]).
+     *
+     * Each string stays at 7 characters or fewer. The popup gives every entry 44dp and puts
+     * the key's own character in front of them, so seven alternates is already 352dp — the
+     * full width of a small phone.
      */
     val LATIN_ALTERNATES: Map<Char, String> = mapOf(
-        'q' to "", 'w' to "", 'e' to "éèêë", 'r' to "", 't' to "",
-        'y' to "ÿ", 'u' to "úùûü", 'i' to "íìîï", 'o' to "óòôöø", 'p' to "",
-        'a' to "àáâäã", 's' to "ß", 'd' to "", 'f' to "", 'g' to "",
-        'h' to "", 'j' to "", 'k' to "", 'l' to "",
-        'z' to "", 'x' to "", 'c' to "ç", 'v' to "", 'b' to "", 'n' to "ñ", 'm' to "",
+        'q' to "", 'w' to "ŵ", 'e' to "éèêëēėę", 'r' to "ř", 't' to "ťţ",
+        'y' to "ÿý", 'u' to "ûüùúū", 'i' to "ìįíïîī", 'o' to "ôöòóœøõ", 'p' to "",
+        'a' to "àáâäæãå", 's' to "śšß", 'd' to "ď", 'f' to "", 'g' to "ğ",
+        'h' to "", 'j' to "", 'k' to "ķ", 'l' to "ł",
+        'z' to "žźż", 'x' to "", 'c' to "çćč", 'v' to "", 'b' to "", 'n' to "ñńň", 'm' to "",
     )
+
+    /**
+     * Long-press alternates for the punctuation and symbol keys.
+     *
+     * Deliberately separate from [LATIN_ALTERNATES] rather than merged into it: a layout's
+     * alternate map is keyed by characters that layout's letter rows actually contain (a key
+     * that isn't on the keyboard can never be long-pressed), and `!`, `?` and friends live on
+     * the symbol pages instead.
+     */
+    val SYMBOL_ALTERNATES: Map<Char, String> = mapOf(
+        '!' to "¡", '?' to "¿",
+        '(' to "<[{", ')' to ">]}",
+        '-' to "–—•", '_' to "–—",
+        '"' to "“”«»", '\'' to "‘’",
+        '$' to "€£¥¢",
+        '.' to "…", ',' to ";", ';' to ":",
+        '/' to "\\", '%' to "‰", '+' to "±", '=' to "≠≈", '*' to "†‡",
+        '&' to "§", '#' to "№",
+    )
+
+    /** Long-press alternates for the digits: superscripts and the common fractions. */
+    val DIGIT_ALTERNATES: Map<Char, String> = mapOf(
+        '1' to "¹½⅓¼⅛", '2' to "²⅔", '3' to "³¾⅜", '4' to "⁴", '5' to "⁵⅝",
+        '6' to "⁶", '7' to "⁷⅞", '8' to "⁸", '9' to "⁹", '0' to "⁰∅ⁿ",
+    )
+
+    /** The alternates for a symbol-page or number-row key, or "" if it has none. */
+    fun alternatesFor(c: Char): String = SYMBOL_ALTERNATES[c] ?: DIGIT_ALTERNATES[c] ?: ""
+
+    /**
+     * The alternate worth printing in the corner of a key, or null if there is nothing
+     * distinctive to show.
+     *
+     * Skipped: anything already drawn elsewhere on the key ([skip]), and any alternate that
+     * is only a typographic restyling of [label] — `e` -> `é`, `1` -> `¹`. Printing those
+     * would put a mark on every vowel and a smaller copy of every digit beside itself, so
+     * those keys fall back to a plain dot.
+     */
+    fun alternatePreview(alternates: String, label: String, skip: String? = null): String? {
+        val base = label.singleOrNull()
+        return alternates.firstOrNull { alt ->
+            alt.toString() != skip && (base == null || !isRestylingOf(alt, base))
+        }?.toString()
+    }
+
+    /** True when [alt] is [base] wearing a diacritic (`é`) or a different style (`¹`). */
+    private fun isRestylingOf(alt: Char, base: Char): Boolean {
+        val text = alt.toString()
+        // NFKD folds away superscripts and the like entirely; NFD leaves the combining
+        // marks behind, which is what distinguishes an accent from a separate letter.
+        if (Normalizer.normalize(text, Normalizer.Form.NFKD).equals(base.toString(), true)) return true
+        val decomposed = Normalizer.normalize(text, Normalizer.Form.NFD)
+        return decomposed.length > 1 && decomposed[0].equals(base, ignoreCase = true)
+    }
 
     /** Rows for the current character page, or null for pages the UI renders specially. */
     fun rowsFor(page: KeyboardPage): List<String>? = when (page) {
@@ -63,7 +123,9 @@ object Layouts {
         KeyboardPage.SYMBOLS -> SYMBOL_ROWS
         KeyboardPage.MORE_SYMBOLS -> MORE_SYMBOL_ROWS
         KeyboardPage.NUMERIC -> NUMERIC_ROWS
-        // Phone/emoji pages are laid out directly by the UI (special keys, hints, grid).
-        KeyboardPage.PHONE, KeyboardPage.PHONE_SYMBOLS, KeyboardPage.EMOJI -> null
+        // Phone/emoji/clipboard pages are laid out directly by the UI (special keys, grids, lists).
+        KeyboardPage.PHONE, KeyboardPage.PHONE_SYMBOLS,
+        KeyboardPage.EMOJI, KeyboardPage.CLIPBOARD,
+        -> null
     }
 }

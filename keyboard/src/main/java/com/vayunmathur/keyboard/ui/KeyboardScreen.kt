@@ -27,6 +27,7 @@ import com.vayunmathur.library.ui.IconBackspace
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconEmoji
 import com.vayunmathur.library.ui.IconLanguage
+import com.vayunmathur.library.ui.IconPaste
 import com.vayunmathur.library.ui.IconReturn
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconSend
@@ -58,6 +59,20 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
                 .fillMaxWidth()
                 .padding(bottom = bottomPad),
         ) {
+            val query = state.emojiQuery
+            if (query != null) {
+                // Search borrows the ordinary letter keys rather than shipping a second
+                // keyboard: the query bar and the results sit on top of LettersPage, and the
+                // service routes keystrokes into the query while this is showing.
+                EmojiSearchBar(height = StripHeight, query = query, onClose = actions::endEmojiSearch)
+                EmojiSearchResults(
+                    height = StripHeight,
+                    results = state.emojiResults,
+                    onPick = actions::commitEmoji,
+                )
+                LettersPage(state, actions, keyHeight)
+                return@Column
+            }
             // The strip belongs to text entry only; numeric/phone/emoji pages never compose
             // words, so (like FUTO) they show no strip. Nor do layouts that have nothing to
             // put in it: the one dictionary we ship is English.
@@ -65,18 +80,29 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
             val textPage = state.page == KeyboardPage.LETTERS ||
                 state.page == KeyboardPage.SYMBOLS ||
                 state.page == KeyboardPage.MORE_SYMBOLS
+            val clip = state.clipSuggestion
             when {
+                // A fresh clip outranks suggestions because the two never really compete:
+                // the chip is offered before anything has been typed and the service drops
+                // it on the first keypress, which is exactly when suggestions appear.
+                clip != null -> ClipboardStrip(
+                    height = StripHeight,
+                    item = clip,
+                    onOpen = { actions.setPage(KeyboardPage.CLIPBOARD) },
+                    onPaste = { actions.pasteClip(clip) },
+                    onDelete = { actions.deleteClip(clip) },
+                )
                 // Candidates are not a suggestion the user can decline — on a Chinese layout
                 // they are the only way a character gets typed — so the "show suggestions"
                 // preference does not apply to them.
                 textPage && layout.offersCandidates -> CandidateStrip(
-                    height = 44.dp,
+                    height = StripHeight,
                     candidates = state.suggestions,
                     onPick = actions::commitSuggestion,
                 )
                 textPage && layout.englishDictionary && state.settings.showSuggestions ->
                     SuggestionStrip(
-                        height = 44.dp,
+                        height = StripHeight,
                         suggestions = state.suggestions,
                         onPick = actions::commitSuggestion,
                     )
@@ -91,9 +117,22 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
                 KeyboardPage.PHONE -> PhonePage(state, actions, keyHeight)
                 KeyboardPage.PHONE_SYMBOLS -> PhoneSymbolsPage(state, actions, keyHeight)
                 KeyboardPage.EMOJI -> EmojiPage(
+                    data = state.emojiData,
+                    recents = state.recentEmoji,
                     keyHeight = keyHeight,
                     rows = 4,
-                    onEmoji = { actions.onChar(it) },
+                    onEmoji = actions::commitEmoji,
+                    onSearch = actions::startEmojiSearch,
+                    onBackspace = actions::onBackspace,
+                    onBack = { actions.setPage(state.basePage) },
+                )
+                KeyboardPage.CLIPBOARD -> ClipboardPage(
+                    clips = state.clips,
+                    keyHeight = keyHeight,
+                    rows = 4,
+                    onPaste = actions::pasteClip,
+                    onDelete = actions::deleteClip,
+                    onClearAll = actions::clearClips,
                     onBackspace = actions::onBackspace,
                     onBack = { actions.setPage(state.basePage) },
                 )
@@ -101,6 +140,9 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
         }
     }
 }
+
+/** Height of the strip above the keys, shared by everything that can occupy it. */
+private val StripHeight = 44.dp
 
 /**
  * The letter page for whichever layout is active. Rows differ in length between layouts
@@ -119,13 +161,24 @@ private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp
     val slack = { row: Int -> (layout.width - rows[row].length) / 2f }
     if (state.settings.numberRow && rows.size < 4) {
         Row(Modifier.fillMaxWidth()) {
-            "1234567890".forEach { SymbolKey(it, keyHeight, actions) }
+            DIGITS.forEach {
+                SymbolKey(it, keyHeight, actions, alternates = Layouts.DIGIT_ALTERNATES[it].orEmpty())
+            }
         }
     }
+    // With no persistent number row, the top letter row doubles as one under a long press.
+    // The two are mutually exclusive so a digit is never reachable two ways at once, and
+    // layouts with four rows already spend that row on their own script.
+    val topRowDigits = !state.settings.numberRow && rows.size < 4
     for (r in 0 until rows.size - 1) {
         Row(Modifier.fillMaxWidth()) {
             if (slack(r) > 0f) Spacer(Modifier.weight(slack(r)))
-            rows[r].forEachIndexed { i, c -> LetterKey(layout, r, i, c, shift, keyHeight, actions) }
+            rows[r].forEachIndexed { i, c ->
+                LetterKey(
+                    layout, r, i, c, shift, keyHeight, actions,
+                    digit = if (topRowDigits && r == 0 && i < 10) DIGITS[i].toString() else null,
+                )
+            }
             if (slack(r) > 0f) Spacer(Modifier.weight(slack(r)))
         }
     }
@@ -161,6 +214,9 @@ private fun LettersPage(state: KeyboardState, actions: ImeActions, keyHeight: Dp
  * One letter key. What shift produces is the layout's business — upper case for most, a
  * whole second character for Devanagari, Thai, Georgian and Turkish's dotted i — so the
  * label comes from [KeyboardLayout.charAt] rather than from `uppercaseChar()` here.
+ *
+ * [digit] is the number this key doubles as when there is no persistent number row. It goes
+ * first in the alternates so it lands under the finger the moment the popup opens.
  */
 @Composable
 private fun RowScope.LetterKey(
@@ -171,18 +227,25 @@ private fun RowScope.LetterKey(
     shift: ShiftState,
     keyHeight: Dp,
     actions: ImeActions,
+    digit: String? = null,
 ) {
     val shifted = shift != ShiftState.OFF
     val display = layout.charAt(row, col, shifted)
-    val alternates = layout.alternates[c].orEmpty().let { if (shifted) it.uppercase() else it }
+    // Per character, not String.uppercase(): that maps ß to "SS", which lengthens the
+    // string and puts a stray S in the popup where the ß the user wanted used to be.
+    val accents = layout.alternates[c].orEmpty()
+        .let { if (shifted) it.map(Char::uppercaseChar).joinToString("") else it }
     CharKey(
         label = display,
         height = keyHeight,
-        alternates = alternates,
+        cornerHint = digit,
+        alternates = digit.orEmpty() + accents,
         onClick = { actions.onChar(display) },
         onAlternate = actions::onChar,
     )
 }
+
+private const val DIGITS = "1234567890"
 
 @Composable
 private fun SymbolPage(
@@ -194,24 +257,37 @@ private fun SymbolPage(
     toggleLabel: String,
 ) {
     Row(Modifier.fillMaxWidth()) {
-        rows[0].forEach { SymbolKey(it, keyHeight, actions) }
+        rows[0].forEach { SymbolKey(it, keyHeight, actions, alternates = Layouts.alternatesFor(it)) }
     }
     Row(Modifier.fillMaxWidth()) {
-        rows[1].forEach { SymbolKey(it, keyHeight, actions) }
+        rows[1].forEach { SymbolKey(it, keyHeight, actions, alternates = Layouts.alternatesFor(it)) }
     }
     Row(Modifier.fillMaxWidth()) {
         SpecialKey(keyHeight, 1.5f, onClick = { actions.setPage(otherPage) }) {
             Text(toggleLabel, fontSize = 14.sp)
         }
-        rows[2].forEach { SymbolKey(it, keyHeight, actions) }
+        rows[2].forEach { SymbolKey(it, keyHeight, actions, alternates = Layouts.alternatesFor(it)) }
         RepeatKey(keyHeight, 1.5f, actions::onBackspace) { IconBackspace() }
     }
     BottomRow(state, actions, keyHeight, leftLabel = "ABC", leftTarget = state.basePage)
 }
 
 @Composable
-private fun RowScope.SymbolKey(c: Char, keyHeight: Dp, actions: ImeActions, weight: Float = 1f) {
-    CharKey(label = c.toString(), height = keyHeight, weight = weight, onClick = { actions.onChar(c.toString()) })
+private fun RowScope.SymbolKey(
+    c: Char,
+    keyHeight: Dp,
+    actions: ImeActions,
+    weight: Float = 1f,
+    alternates: String = "",
+) {
+    CharKey(
+        label = c.toString(),
+        height = keyHeight,
+        weight = weight,
+        alternates = alternates,
+        onClick = { actions.onChar(c.toString()) },
+        onAlternate = actions::onChar,
+    )
 }
 
 /**
@@ -372,11 +448,21 @@ private fun BottomRow(
             Text(leftLabel, fontSize = 14.sp)
         }
         SpecialKey(keyHeight, 1f, onClick = { actions.setPage(KeyboardPage.EMOJI) }) { IconEmoji() }
+        if (state.settings.clipboardEnabled) {
+            SpecialKey(keyHeight, 1f, onClick = { actions.setPage(KeyboardPage.CLIPBOARD) }) { IconPaste() }
+        }
         // The globe earns its place on the row only once there is somewhere to switch to.
         if (state.settings.layouts.size > 1) {
             SpecialKey(keyHeight, 1f, onClick = actions::nextLayout) { IconLanguage() }
         }
-        CharKey(commaChar, keyHeight, 1f, onClick = { actions.onChar(commaChar) })
+        CharKey(
+            label = commaChar,
+            height = keyHeight,
+            weight = 1f,
+            alternates = punctuationAlternates(commaChar),
+            onClick = { actions.onChar(commaChar) },
+            onAlternate = actions::onChar,
+        )
         SpaceKey(
             height = keyHeight,
             weight = 4f,
@@ -384,10 +470,25 @@ private fun BottomRow(
             onSpace = actions::onSpace,
             onLongPress = actions::switchToNextIme,
         )
-        CharKey(periodChar, keyHeight, 1f, onClick = { actions.onChar(periodChar) })
+        CharKey(
+            label = periodChar,
+            height = keyHeight,
+            weight = 1f,
+            alternates = punctuationAlternates(periodChar),
+            onClick = { actions.onChar(periodChar) },
+            onAlternate = actions::onChar,
+        )
         EnterKey(state, actions, keyHeight, 1.5f)
     }
 }
+
+/**
+ * Alternates for the two punctuation keys beside the space bar. A layout may put a
+ * multi-character string there (or the field flavour may swap in `@`/`/`), and only a
+ * single character can have alternates.
+ */
+private fun punctuationAlternates(label: String): String =
+    label.singleOrNull()?.let { Layouts.SYMBOL_ALTERNATES[it] }.orEmpty()
 
 @Composable
 private fun RowScope.EnterKey(state: KeyboardState, actions: ImeActions, keyHeight: Dp, weight: Float) {

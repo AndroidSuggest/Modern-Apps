@@ -3,6 +3,8 @@ package com.vayunmathur.keyboard.ime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.vayunmathur.keyboard.util.ClipItem
+import com.vayunmathur.keyboard.util.EmojiData
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.KeyboardSettings
 import com.vayunmathur.keyboard.util.ShiftState
@@ -58,6 +60,31 @@ class KeyboardState {
      * bottom by this value ourselves to keep the last row clear of the system bar.
      */
     var bottomInsetPx by mutableStateOf(0)
+
+    /** The emoji palette, replaced by the generated asset once the service has read it. */
+    var emojiData by mutableStateOf(EmojiData.BUILTIN)
+
+    /**
+     * What has been typed into emoji search, or null when not searching. While this is
+     * non-null the letter keys write here instead of into the target field — an IME cannot
+     * put a real text field on screen without stealing focus from the field being typed into.
+     */
+    var emojiQuery by mutableStateOf<String?>(null)
+
+    /** Matches for [emojiQuery], computed by the service so the UI stays a pure render. */
+    var emojiResults by mutableStateOf<List<String>>(emptyList())
+
+    /** Emoji picked most recently, newest first — the emoji page's first tab. */
+    var recentEmoji by mutableStateOf<List<String>>(emptyList())
+
+    /** Clipboard history, newest first. */
+    var clips by mutableStateOf<List<ClipItem>>(emptyList())
+
+    /**
+     * The just-copied clip offered as a chip in the strip, or null. Cleared once the user
+     * starts typing or enough time passes — it is an offer, not a permanent extra row.
+     */
+    var clipSuggestion by mutableStateOf<ClipItem?>(null)
 }
 
 /**
@@ -78,6 +105,20 @@ interface ImeActions {
     fun nextLayout()
     fun switchToNextIme()
 
+    /** Emoji search: the letter keys feed [KeyboardState.emojiQuery] until it ends. */
+    fun startEmojiSearch()
+    fun endEmojiSearch()
+
+    /** Commit an emoji, leaving search mode if it was picked from the results. */
+    fun commitEmoji(emoji: String)
+
+    fun pasteClip(item: ClipItem)
+    fun deleteClip(item: ClipItem)
+    fun clearClips()
+
+    /** Dismiss the strip chip without deleting the clip behind it. */
+    fun dismissClipSuggestion()
+
     companion object {
         /**
          * Does nothing. Lets `src/screenshotTest` render [
@@ -95,6 +136,13 @@ interface ImeActions {
             override fun commitSuggestion(word: String) {}
             override fun nextLayout() {}
             override fun switchToNextIme() {}
+            override fun startEmojiSearch() {}
+            override fun endEmojiSearch() {}
+            override fun commitEmoji(emoji: String) {}
+            override fun pasteClip(item: ClipItem) {}
+            override fun deleteClip(item: ClipItem) {}
+            override fun clearClips() {}
+            override fun dismissClipSuggestion() {}
         }
     }
 }

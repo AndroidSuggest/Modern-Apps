@@ -16,6 +16,8 @@ data class KeyboardSettings(
     val autoCorrect: Boolean = false,
     /** Show a persistent 1–0 number row above the letters. */
     val numberRow: Boolean = true,
+    /** Record what the user copies and offer it back. Off means capture nothing at all. */
+    val clipboardEnabled: Boolean = true,
     /** Multiplier on the base key height (0.8..1.4). */
     val keyHeightScale: Float = 1f,
     /** Ids of the layouts the user enabled, in the order the language key cycles them. */
@@ -40,6 +42,9 @@ data class KeyboardSettings(
         const val SHOW_SUGGESTIONS = "kb_show_suggestions"
         const val AUTO_CORRECT = "kb_auto_correct"
         const val NUMBER_ROW = "kb_number_row"
+        const val CLIPBOARD = "kb_clipboard"
+        const val CLIPS = "kb_clips"
+        const val EMOJI_RECENTS = "kb_emoji_recents"
         const val KEY_HEIGHT = "kb_key_height"
         const val LAYOUTS = "kb_layouts"
         const val ACTIVE_LAYOUT = "kb_active_layout"
@@ -65,6 +70,7 @@ data class KeyboardSettings(
             showSuggestions = ds.getBoolean(Keys.SHOW_SUGGESTIONS, true),
             autoCorrect = ds.getBoolean(Keys.AUTO_CORRECT, false),
             numberRow = ds.getBoolean(Keys.NUMBER_ROW, true),
+            clipboardEnabled = ds.getBoolean(Keys.CLIPBOARD, true),
             keyHeightScale = (ds.getDouble(Keys.KEY_HEIGHT) ?: 1.0).toFloat(),
             layoutIds = decodeLayouts(ds.getString(Keys.LAYOUTS)),
             activeLayoutId = ds.getString(Keys.ACTIVE_LAYOUT) ?: KeyboardLayouts.DEFAULT.id,

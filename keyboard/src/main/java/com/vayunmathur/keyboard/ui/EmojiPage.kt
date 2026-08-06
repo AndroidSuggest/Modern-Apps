@@ -1,7 +1,5 @@
 package com.vayunmathur.keyboard.ui
 
-import androidx.compose.ui.res.stringResource
-import com.vayunmathur.keyboard.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -20,41 +18,75 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vayunmathur.keyboard.util.Emojis
+import com.vayunmathur.keyboard.R
+import com.vayunmathur.keyboard.util.EmojiCategory
+import com.vayunmathur.keyboard.util.EmojiData
+import com.vayunmathur.keyboard.util.RecentEmoji
 import com.vayunmathur.library.ui.IconBackspace
+import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 
 /**
  * The emoji page: a scrollable grid of the selected category plus a bottom bar with the
- * category tabs, an "ABC" return key and a backspace. Emoji are committed as plain text.
+ * category tabs, a search key, an "ABC" return key and a backspace. Emoji are committed as
+ * plain text.
+ *
+ * [recents] is always the first tab, even while empty. Slotting it in only once it filled up
+ * would renumber every other tab under the user's finger the moment they picked their first
+ * emoji.
  */
 @Composable
 fun EmojiPage(
+    data: EmojiData,
+    recents: List<String>,
     keyHeight: Dp,
     rows: Int,
     onEmoji: (String) -> Unit,
+    onSearch: () -> Unit,
     onBackspace: () -> Unit,
     onBack: () -> Unit,
 ) {
-    var category by remember { mutableIntStateOf(0) }
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(8),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(keyHeight * rows),
-    ) {
-        items(Emojis.CATEGORIES[category].emojis) { emoji ->
-            Box(
-                modifier = Modifier
-                    .aspectRatio(1f)
-                    .clickable { onEmoji(emoji) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = emoji, fontSize = 24.sp)
+    val categories = remember(data, recents) {
+        listOf(EmojiCategory(RecentEmoji.TAB, recents)) + data.categories
+    }
+    // Land on recents when there are some, and on the first real tab when there are not.
+    // Not keyed on `recents`, so picking an emoji never yanks the tab out from under you.
+    var category by remember(data) { mutableIntStateOf(if (recents.isEmpty()) 1 else 0) }
+    val selected = categories.getOrNull(category) ?: categories.first()
+    if (selected.emojis.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(keyHeight * rows),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.emoji_you_use_show_up_here),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+            )
+        }
+    } else {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(8),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(keyHeight * rows),
+        ) {
+            items(selected.emojis) { emoji ->
+                Box(
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clickable { onEmoji(emoji) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = emoji, fontSize = 24.sp)
+                }
             }
         }
     }
@@ -62,17 +94,18 @@ fun EmojiPage(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SpecialKey(height = keyHeight, weight = 1.4f, onClick = onBack) {
+        SpecialKey(height = keyHeight, weight = 1.3f, onClick = onBack) {
             Text(stringResource(R.string.abc), color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
         }
-        Emojis.CATEGORIES.forEachIndexed { index, cat ->
+        SpecialKey(height = keyHeight, weight = 1f, onClick = onSearch) { IconSearch() }
+        categories.forEachIndexed { index, cat ->
             CategoryTab(
                 label = cat.label,
                 selected = index == category,
                 onClick = { category = index },
             )
         }
-        RepeatKey(height = keyHeight, weight = 1.4f, onRepeat = onBackspace) {
+        RepeatKey(height = keyHeight, weight = 1.3f, onRepeat = onBackspace) {
             IconBackspace()
         }
     }

@@ -37,6 +37,17 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+
+        <!-- Serves cached clipboard images back to the field being pasted into. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.vayunmathur.keyboard.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

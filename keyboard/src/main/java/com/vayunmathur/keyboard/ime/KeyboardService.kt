@@ -1,5 +1,7 @@
 package com.vayunmathur.keyboard.ime
 
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
 import android.os.SystemClock
@@ -14,6 +16,10 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.content.FileProvider
+import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.inputmethod.InputConnectionCompat
+import androidx.core.view.inputmethod.InputContentInfoCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -26,11 +32,15 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.vayunmathur.keyboard.ui.KeyboardScreen
+import com.vayunmathur.keyboard.util.ClipItem
+import com.vayunmathur.keyboard.util.ClipboardStore
 import com.vayunmathur.keyboard.util.ComposerKind
 import com.vayunmathur.keyboard.util.Dictionary
+import com.vayunmathur.keyboard.util.EmojiData
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.KeyboardSettings
 import com.vayunmathur.keyboard.util.PinyinDictionary
+import com.vayunmathur.keyboard.util.RecentEmoji
 import com.vayunmathur.keyboard.util.ShiftState
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
@@ -38,8 +48,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * The input method (IME). Renders the keyboard with Compose and turns key actions into edits
@@ -51,6 +63,9 @@ import kotlinx.coroutines.launch
  */
 /** Max gap between two shift taps to latch caps-lock. */
 private const val DOUBLE_TAP_MS = 300L
+
+/** How long a freshly copied clip is offered in the strip before the chip gives up the slot. */
+private const val CLIP_CHIP_MS = 60_000L
 
 class KeyboardService : InputMethodService(),
     LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner, ImeActions {
@@ -68,6 +83,12 @@ class KeyboardService : InputMethodService(),
     private lateinit var ds: DataStoreUtils
     private val kbState = KeyboardState()
     private var dictionary: Dictionary = Dictionary.EMPTY
+
+    private val clipboard by lazy { ClipboardStore(File(cacheDir, "clips")) }
+    private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+
+    /** Id of the clip the chip is currently offering, so a stale timeout can't clear a newer one. */
+    private var chipClipId = 0L
 
     /** The word currently being composed (underlined) on the letters page. */
     private val composing = StringBuilder()
@@ -105,6 +126,13 @@ class KeyboardService : InputMethodService(),
 
         // Load the dictionary off the main thread; suggestions stay empty until it is ready.
         scope.launch { dictionary = Dictionary.load(this@KeyboardService) }
+        scope.launch { kbState.emojiData = EmojiData.load(this@KeyboardService) }
+        kbState.recentEmoji = RecentEmoji.decode(ds.getString(KeyboardSettings.Keys.EMOJI_RECENTS))
+        scope.launch {
+            clipboard.restore(ds.getString(KeyboardSettings.Keys.CLIPS))
+            kbState.clips = clipboard.items
+        }
+        observeClipboard()
         syncComposer()
         observeSettings()
     }
@@ -119,6 +147,17 @@ class KeyboardService : InputMethodService(),
         scope.launch { ds.booleanFlow(keys.SHOW_SUGGESTIONS).collectLatest { update { copy(showSuggestions = it) } } }
         scope.launch { ds.booleanFlow(keys.AUTO_CORRECT).collectLatest { update { copy(autoCorrect = it) } } }
         scope.launch { ds.booleanFlow(keys.NUMBER_ROW).collectLatest { update { copy(numberRow = it) } } }
+        scope.launch {
+            ds.booleanFlow(keys.CLIPBOARD).collectLatest {
+                update { copy(clipboardEnabled = it) }
+                if (!it) forgetClips()
+            }
+        }
+        // Settings can wipe the history while the keyboard is running; an empty stored value
+        // is that request. Nothing here writes a blank string back, so this cannot loop.
+        scope.launch {
+            ds.stringFlow(keys.CLIPS).collectLatest { if (it.isBlank()) forgetClips() }
+        }
         scope.launch { ds.doubleFlow(keys.KEY_HEIGHT).collectLatest { update { copy(keyHeightScale = it.toFloat()) } } }
         scope.launch {
             ds.stringFlow(keys.LAYOUTS).collectLatest {
@@ -250,8 +289,14 @@ class KeyboardService : InputMethodService(),
         composer?.reset()
         configureForEditor(info)
         kbState.suggestions = emptyList()
+        kbState.emojiQuery = null
+        kbState.emojiResults = emptyList()
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         updateAutoCapShift()
+        // The listener only fires while we are bound, so anything copied while the keyboard
+        // was away is picked up here instead. It is not treated as a password-field copy:
+        // this clip predates the field, whoever it came from.
+        captureCurrentClip(inPasswordField = false)
     }
 
     override fun onWindowShown() {
@@ -290,6 +335,10 @@ class KeyboardService : InputMethodService(),
 
     override fun onDestroy() {
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        clipListener?.let {
+            getSystemService(ClipboardManager::class.java)?.removePrimaryClipChangedListener(it)
+        }
+        clipListener = null
         store.clear()
         scope.cancel()
         super.onDestroy()
@@ -377,6 +426,9 @@ class KeyboardService : InputMethodService(),
 
     override fun onChar(text: String) {
         feedback()
+        // The chip is an offer made before typing starts; the first keystroke declines it.
+        dismissClipSuggestion()
+        if (typeIntoSearch(text)) return
         val ic = currentInputConnection ?: return
         val engine = composer
         if (engine != null) {
@@ -407,6 +459,13 @@ class KeyboardService : InputMethodService(),
 
     override fun onBackspace() {
         feedback()
+        val query = kbState.emojiQuery
+        if (query != null) {
+            // Backspacing an empty query leaves search rather than deleting from the field
+            // the user cannot see.
+            if (query.isEmpty()) endEmojiSearch() else setQuery(query.dropLast(1))
+            return
+        }
         val ic = currentInputConnection ?: return
         val engine = composer
         if (engine != null) {
@@ -442,6 +501,10 @@ class KeyboardService : InputMethodService(),
 
     override fun onEnter() {
         feedback()
+        if (kbState.emojiQuery != null) {
+            endEmojiSearch()
+            return
+        }
         val ic = currentInputConnection ?: return
         // Finish the composing word first: performEditorAction hands control to the app,
         // which would otherwise read the field without the last (still-composing) word.
@@ -460,6 +523,8 @@ class KeyboardService : InputMethodService(),
 
     override fun onSpace() {
         feedback()
+        // Multi-word emoji names are common ("cat face"), so space is part of the query.
+        if (typeIntoSearch(" ")) return
         val ic = currentInputConnection ?: return
         val engine = composer
         if (engine != null) {
@@ -510,6 +575,10 @@ class KeyboardService : InputMethodService(),
 
     override fun setPage(page: KeyboardPage) {
         feedback()
+        if (kbState.emojiQuery != null) {
+            kbState.emojiQuery = null
+            kbState.emojiResults = emptyList()
+        }
         kbState.page = page
     }
 
@@ -559,6 +628,176 @@ class KeyboardService : InputMethodService(),
         if (!switched) {
             getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
         }
+    }
+
+    // --- Clipboard ---
+
+    /**
+     * Watch the system clipboard. An IME may read it while it is the active input method,
+     * which is what makes this possible on Android 10+ — but the callback only fires while
+     * we are bound, so [onStartInputView] also sweeps the current clip to catch copies made
+     * while the keyboard was hidden.
+     */
+    private fun observeClipboard() {
+        val manager = getSystemService(ClipboardManager::class.java) ?: return
+        val listener = ClipboardManager.OnPrimaryClipChangedListener {
+            captureCurrentClip(inPasswordField = kbState.passwordField)
+        }
+        manager.addPrimaryClipChangedListener(listener)
+        clipListener = listener
+    }
+
+    private fun captureCurrentClip(inPasswordField: Boolean) {
+        if (!kbState.settings.clipboardEnabled) return
+        val clip = getSystemService(ClipboardManager::class.java)?.primaryClip ?: return
+        scope.launch {
+            val item = clipboard.capture(this@KeyboardService, clip, inPasswordField)
+                ?: return@launch
+            val fresh = clipboard.add(item)
+            kbState.clips = clipboard.items
+            persistClips()
+            if (fresh != null) offerClip(fresh)
+        }
+    }
+
+    /** Show the chip for a newly copied clip, and take it back down after a while. */
+    private fun offerClip(item: ClipItem) {
+        chipClipId = item.id
+        kbState.clipSuggestion = item
+        scope.launch {
+            delay(CLIP_CHIP_MS)
+            if (chipClipId == item.id) dismissClipSuggestion()
+        }
+    }
+
+    private fun persistClips() {
+        val encoded = clipboard.serialize()
+        scope.launch { ds.setString(KeyboardSettings.Keys.CLIPS, encoded) }
+    }
+
+    /** Drop everything, in memory and on disk — what turning the setting off has to mean. */
+    private fun forgetClips() {
+        clipboard.clear()
+        kbState.clips = emptyList()
+        dismissClipSuggestion()
+        persistClips()
+    }
+
+    override fun pasteClip(item: ClipItem) {
+        feedback()
+        val ic = currentInputConnection ?: return
+        dismissClipSuggestion()
+        if (item.isImage) {
+            commitImage(ic, item)
+        } else {
+            finishComposition(ic)
+            commitCurrentWord(ic, autoCorrect = false)
+            ic.commitText(item.text, 1)
+            kbState.suggestions = emptyList()
+        }
+        updateAutoCapShift()
+    }
+
+    /**
+     * Hand an image clip to the field via `commitContent`. Most fields cannot take one, so
+     * the editor's accepted MIME types are checked first rather than committing into the void.
+     */
+    private fun commitImage(ic: InputConnection, item: ClipItem) {
+        val file = item.imageFile ?: return
+        val mime = item.mimeType ?: return
+        val editor = currentInputEditorInfo ?: return
+        val accepted = EditorInfoCompat.getContentMimeTypes(editor)
+        if (accepted.none { ClipDescription.compareMimeTypes(mime, it) }) return
+        val uri = runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        }.getOrNull() ?: return
+        val content = InputContentInfoCompat(uri, ClipDescription(item.preview, arrayOf(mime)), null)
+        InputConnectionCompat.commitContent(
+            ic,
+            editor,
+            content,
+            InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+            null,
+        )
+    }
+
+    /**
+     * Delete a clip. Deleting the newest one also empties the system clipboard: "delete what
+     * I just copied" has to mean the password is gone, not merely hidden from our own list.
+     */
+    override fun deleteClip(item: ClipItem) {
+        feedback()
+        val newest = clipboard.items.firstOrNull()?.id == item.id
+        clipboard.delete(item)
+        kbState.clips = clipboard.items
+        if (kbState.clipSuggestion?.id == item.id) dismissClipSuggestion()
+        if (newest) {
+            runCatching { getSystemService(ClipboardManager::class.java)?.clearPrimaryClip() }
+        }
+        persistClips()
+    }
+
+    override fun clearClips() {
+        feedback()
+        forgetClips()
+        runCatching { getSystemService(ClipboardManager::class.java)?.clearPrimaryClip() }
+    }
+
+    override fun dismissClipSuggestion() {
+        chipClipId = 0L
+        kbState.clipSuggestion = null
+    }
+
+    // --- Emoji search ---
+
+    override fun startEmojiSearch() {
+        feedback()
+        kbState.emojiQuery = ""
+        kbState.emojiResults = emptyList()
+        kbState.page = KeyboardPage.LETTERS
+        kbState.shift = ShiftState.OFF
+    }
+
+    override fun endEmojiSearch() {
+        feedback()
+        kbState.emojiQuery = null
+        kbState.emojiResults = emptyList()
+        kbState.page = KeyboardPage.EMOJI
+    }
+
+    override fun commitEmoji(emoji: String) {
+        if (kbState.emojiQuery != null) {
+            // Picking a result is the end of the search; leave the emoji page behind too,
+            // since the user came here to type one thing into their message.
+            kbState.emojiQuery = null
+            kbState.emojiResults = emptyList()
+            kbState.page = kbState.basePage
+        }
+        rememberEmoji(emoji)
+        onChar(emoji)
+    }
+
+    /** Keep the recents tab up to date so common emoji stop needing a search at all. */
+    private fun rememberEmoji(emoji: String) {
+        val recents = RecentEmoji.add(kbState.recentEmoji, emoji)
+        if (recents == kbState.recentEmoji) return
+        kbState.recentEmoji = recents
+        scope.launch {
+            ds.setString(KeyboardSettings.Keys.EMOJI_RECENTS, RecentEmoji.encode(recents))
+        }
+    }
+
+    /** Route a keystroke into the emoji query instead of the field. True if it was consumed. */
+    private fun typeIntoSearch(text: String): Boolean {
+        val query = kbState.emojiQuery ?: return false
+        setQuery(query + text)
+        return true
+    }
+
+    private fun setQuery(query: String) {
+        kbState.emojiQuery = query
+        kbState.emojiResults = kbState.emojiData.search(query)
+        consumeShift()
     }
 
     // --- Editing helpers ---

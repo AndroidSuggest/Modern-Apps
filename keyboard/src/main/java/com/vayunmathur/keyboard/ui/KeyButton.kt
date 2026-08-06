@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.vayunmathur.keyboard.util.Layouts
 import com.vayunmathur.keyboard.util.ShiftState
 import com.vayunmathur.library.ui.IconShift
 import com.vayunmathur.library.ui.LocalContentColor
@@ -86,7 +87,13 @@ fun pressedKeyColor(): Color = MaterialTheme.colorScheme.surfaceBright
  * A letter/symbol key: tap commits [label]; holding it opens the [alternates] — the accented
  * or related characters that key can also produce — and sliding onto one picks it, the way
  * every phone keyboard does accents. An optional [hint] draws a small secondary label beneath
- * the main one (the ABC/DEF letters on the phone dial-pad, matching FUTO's phone layout).
+ * the main one (the ABC/DEF letters on the phone dial-pad, matching FUTO's phone layout), and
+ * [cornerHint] draws one in the top-left corner instead (the digit a letter key doubles as
+ * when the persistent number row is off).
+ *
+ * The popup always opens with [label] itself as its leftmost entry, so a long press that
+ * turns out to have been a mistake can still be finished with the plain letter instead of
+ * forcing the user to release onto an accent and delete it.
  *
  * The whole thing is one gesture: press, hold, slide, release. Nothing has to dismiss the
  * popup, which matters in an IME — a focusable popup would take focus away from the very
@@ -98,6 +105,7 @@ fun RowScope.CharKey(
     height: Dp,
     weight: Float = 1f,
     hint: String? = null,
+    cornerHint: String? = null,
     alternates: String = "",
     onClick: () -> Unit,
     onAlternate: ((String) -> Unit)? = null,
@@ -111,13 +119,31 @@ fun RowScope.CharKey(
 
     val density = LocalDensity.current
     val screenWidth = LocalWindowInfo.current.containerSize.width.toFloat()
-    val itemWidth = with(density) { AlternateWidth.toPx() }
+
+    // What the popup actually offers: the key's own character first, then its alternates.
+    // Each entry has to be one character for the index maths below to hold, so the handful
+    // of layouts whose comma or period is a multi-character string keep the bare list.
+    val options = remember(label, alternates) {
+        when {
+            alternates.isEmpty() -> ""
+            label.length == 1 -> label + alternates
+            else -> alternates
+        }
+    }
+
+    // Every entry gets its full width unless the row would run off the screen, in which case
+    // they share what there is. Clamping the row's position alone is not enough: a long list
+    // on a narrow phone would put the last entries past the edge, where no finger can reach.
+    val itemWidth = remember(options, screenWidth, density) {
+        val full = with(density) { AlternateWidth.toPx() }
+        if (options.isEmpty()) full else minOf(full, screenWidth / options.length)
+    }
 
     // Where the popup's left edge sits relative to the key's: centred on the key, then
     // nudged back inside the screen. The drag-to-select maths below uses the same number,
     // so what the finger is over is always what is highlighted.
-    val popupOffset = remember(alternates, keyLeft, keyWidth) {
-        val total = itemWidth * alternates.length
+    val popupOffset = remember(options, itemWidth, keyLeft, keyWidth) {
+        val total = itemWidth * options.length
         val centred = keyLeft + (keyWidth - total) / 2f
         val clamped = centred.coerceIn(0f, (screenWidth - total).coerceAtLeast(0f))
         clamped - keyLeft
@@ -129,7 +155,8 @@ fun RowScope.CharKey(
     // See the note on `pointerInput(Unit)`.
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnAlternate by rememberUpdatedState(onAlternate)
-    val currentAlternates by rememberUpdatedState(alternates)
+    val currentOptions by rememberUpdatedState(options)
+    val currentItemWidth by rememberUpdatedState(itemWidth)
     val currentPopupOffset by rememberUpdatedState(popupOffset)
 
     Box(
@@ -168,23 +195,23 @@ fun RowScope.CharKey(
                             if (lifted.position.isInside(size)) currentOnClick()
                             continue
                         }
-                        val alts = currentAlternates
+                        val opts = currentOptions
                         val onAlt = currentOnAlternate
-                        if (alts.isEmpty() || onAlt == null) {
+                        if (opts.isEmpty() || onAlt == null) {
                             awaitPointerEventScope { waitForUpOrCancellation() }
                             continue
                         }
                         val picked = awaitPointerEventScope {
-                            selected = indexAt(down.position.x, currentPopupOffset, itemWidth, alts.length)
+                            selected = indexAt(down.position.x, currentPopupOffset, currentItemWidth, opts.length)
                             var change = down
                             while (change.pressed) {
                                 change = awaitPointerEvent().changes
                                     .firstOrNull { it.id == down.id } ?: break
-                                selected = indexAt(change.position.x, currentPopupOffset, itemWidth, alts.length)
+                                selected = indexAt(change.position.x, currentPopupOffset, currentItemWidth, opts.length)
                             }
                             selected
                         }
-                        onAlt(alts[picked].toString())
+                        onAlt(opts[picked].toString())
                     } finally {
                         // tryEmit, not emit: this also has to run on the cancellation path,
                         // where a suspending emit would itself be cancelled and leave the
@@ -204,20 +231,48 @@ fun RowScope.CharKey(
         } else {
             Text(text = label, color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp)
         }
-        // A small dot marks the keys that have something under a long press, so the
-        // accents are discoverable instead of folklore.
-        if (alternates.isNotEmpty()) {
-            Box(
+        if (cornerHint != null) {
+            Text(
+                text = cornerHint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 2.dp, start = 6.dp),
+            )
+        }
+        // What a long press gets you, previewed in the corner so the alternates are
+        // discoverable instead of folklore. Accented forms of the letter itself are not
+        // worth the clutter — every vowel would wear one and it tells you nothing you
+        // couldn't guess — so those fall back to a plain dot.
+        val altHint = remember(alternates, label, cornerHint) {
+            Layouts.alternatePreview(alternates, label, cornerHint)
+        }
+        when {
+            altHint != null -> Text(
+                text = altHint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 2.dp, end = 5.dp),
+            )
+            alternates.isNotEmpty() -> Box(
                 Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 4.dp, end = 5.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 5.dp, end = 5.dp)
                     .size(3.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.onSurfaceVariant),
             )
         }
         when {
-            selected >= 0 -> AlternatesPopup(alternates, selected, popupOffset.toInt())
+            selected >= 0 -> AlternatesPopup(
+                options = options,
+                selected = selected,
+                itemWidth = with(density) { itemWidth.toDp() },
+                offsetX = popupOffset.toInt(),
+            )
             // FUTO/AOSP-style preview: while held, balloon the character above the key so
             // the finger doesn't hide it. clippingEnabled=false lets it float above the
             // top row (outside the keyboard bounds).
@@ -233,9 +288,9 @@ private fun Offset.isInside(size: IntSize): Boolean =
 private fun indexAt(x: Float, popupOffset: Float, itemWidth: Float, count: Int): Int =
     (((x - popupOffset) / itemWidth).toInt()).coerceIn(0, count - 1)
 
-/** The row of alternates above a held key, with the one under the finger highlighted. */
+/** The row of options above a held key, with the one under the finger highlighted. */
 @Composable
-private fun AlternatesPopup(alternates: String, selected: Int, offsetX: Int) {
+private fun AlternatesPopup(options: String, selected: Int, itemWidth: Dp, offsetX: Int) {
     Popup(
         popupPositionProvider = remember(offsetX) { AlternatesPositionProvider(offsetX) },
         properties = PopupProperties(focusable = false, clippingEnabled = false),
@@ -246,10 +301,10 @@ private fun AlternatesPopup(alternates: String, selected: Int, offsetX: Int) {
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceBright),
         ) {
-            alternates.forEachIndexed { index, c ->
+            options.forEachIndexed { index, c ->
                 Box(
                     modifier = Modifier
-                        .width(AlternateWidth)
+                        .width(itemWidth)
                         .height(52.dp)
                         .background(
                             if (index == selected) {

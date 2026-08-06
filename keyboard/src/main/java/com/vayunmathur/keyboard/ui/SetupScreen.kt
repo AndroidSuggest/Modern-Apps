@@ -46,6 +46,7 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
@@ -103,6 +104,7 @@ fun SetupScreen() {
     var showSuggestions by remember { mutableStateOf(ds.getBoolean(keys.SHOW_SUGGESTIONS, true)) }
     var autoCorrect by remember { mutableStateOf(ds.getBoolean(keys.AUTO_CORRECT, false)) }
     var numberRow by remember { mutableStateOf(ds.getBoolean(keys.NUMBER_ROW, true)) }
+    var clipboardEnabled by remember { mutableStateOf(ds.getBoolean(keys.CLIPBOARD, true)) }
     var keyHeight by remember { mutableFloatStateOf((ds.getDouble(keys.KEY_HEIGHT) ?: 1.0).toFloat()) }
 
     var layoutIds by remember { mutableStateOf(KeyboardSettings.decodeLayouts(ds.getString(keys.LAYOUTS))) }
@@ -218,6 +220,24 @@ fun SetupScreen() {
             }
             SettingSwitch("Number row", numberRow) {
                 numberRow = it; scope.launch { ds.setBoolean(keys.NUMBER_ROW, it) }
+            }
+            SettingSwitch(
+                "Clipboard history",
+                clipboardEnabled,
+                "Remember what you copy and offer it back above the keys",
+            ) {
+                clipboardEnabled = it
+                scope.launch { ds.setBoolean(keys.CLIPBOARD, it) }
+            }
+            if (clipboardEnabled) {
+                // Blanking the stored value is the signal the running IME watches for; it
+                // wipes its in-memory history (including the sensitive clips that never
+                // reached disk) rather than letting this write be overwritten.
+                SettingsRow(
+                    title = stringResource(R.string.clear_clipboard_history),
+                    onClick = { scope.launch { ds.setString(keys.CLIPS, "") } },
+                    leadingContent = { IconDelete() },
+                )
             }
 
             Column {
