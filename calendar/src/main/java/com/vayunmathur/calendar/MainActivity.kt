@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.CalendarContract
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -119,7 +120,19 @@ class MainActivity : ComponentActivity() {
             if (it.action == Intent.ACTION_VIEW && it.type == "time/epoch") return
 
             val uris = IntentHelper.getUrisFromIntent(it)
-            if (uris.isNotEmpty()) {
+            // Decide here, before setContent, whether this is a real import: parse the
+            // file(s) and only route to the import screen when they contain events.
+            // Empty/eventless ICS files fall through and open the calendar on today,
+            // so the import screen never flashes.
+            val hasEvents = uris.any { uri ->
+                try {
+                    contentResolver.openInputStream(uri)?.use { iS -> parseICSFile(iS).isNotEmpty() } == true
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error reading ICS file: $uri", e)
+                    false
+                }
+            }
+            if (hasEvents) {
                 importUris.value = uris.map { uri -> uri.toString() }
             }
         }

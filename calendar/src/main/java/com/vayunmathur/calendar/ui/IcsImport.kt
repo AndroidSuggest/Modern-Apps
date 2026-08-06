@@ -1,44 +1,23 @@
 package com.vayunmathur.calendar.ui
-import android.content.Intent
-import android.os.Bundle
-import android.provider.CalendarContract
+
 import android.util.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
-import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
-import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.glance.LocalContext
-import com.vayunmathur.calendar.MainActivity
-import com.vayunmathur.calendar.data.Calendar
 import com.vayunmathur.calendar.data.Event
 import com.vayunmathur.calendar.util.AllDayFormat
 import com.vayunmathur.calendar.util.BasicIsoInstantFormat
 import com.vayunmathur.calendar.util.RRule
-import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.IconSave
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -49,73 +28,6 @@ import java.io.InputStream
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
-
-class ImportActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            var events by remember { mutableStateOf(listOf<Event>()) }
-            var calendars by remember { mutableStateOf(listOf<Calendar>()) }
-
-            LaunchedEffect(Unit) {
-                try {
-                    val (loadedCalendars, parsedEvents) = withContext(Dispatchers.IO) {
-                        val cals = Calendar.getAllCalendars(this@ImportActivity)
-                        val parsed = intent.data?.let { uri ->
-                            contentResolver.openInputStream(uri)?.use { parseICSFile(it) }
-                        } ?: emptyList()
-                        cals to parsed
-                    }
-                    calendars = loadedCalendars
-                    events = parsedEvents
-                } catch (e: Exception) {
-                    Log.e("ImportActivity", "Error during initial load of calendars or ICS file", e)
-                }
-            }
-
-            DynamicTheme {
-                ImportScreen(events, calendars) { selectedCalendarID ->
-                    try {
-                        val valuesList = events.map { it.toContentValues(selectedCalendarID) }.toTypedArray()
-                        contentResolver.bulkInsert(CalendarContract.Events.CONTENT_URI, valuesList)
-                        startActivity(Intent(this@ImportActivity, MainActivity::class.java))
-                        finish()
-                    } catch (e: Exception) {
-                        Log.e("ImportActivity", "Error during import of events", e)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ImportScreen(events: List<Event>, calendars: List<Calendar>, onImportClick: (Long) -> Unit) {
-    var selectedCalendar by remember { mutableStateOf<Calendar?>(null) }
-    Scaffold(
-        floatingActionButton = {
-            if (selectedCalendar != null) {
-                FloatingActionButton({ onImportClick(selectedCalendar!!.id) }) {
-                    IconSave()
-                }
-            }
-        }
-    ) { paddingValues ->
-        Column(Modifier.padding(paddingValues)) {
-            CalendarSelectorDropdown(
-                calendars = calendars,
-                selectedCalendar = selectedCalendar,
-                onSelect = { selectedCalendar = it },
-            )
-            Spacer(Modifier.height(16.dp))
-            LazyColumn {
-                items(events, key = { "${it.calendarID}|${it.start}|${it.title}" }) { event ->
-                    EventCard(event = event)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun EventCard(event: Event) {
@@ -215,7 +127,7 @@ fun parseICSFile(iS: InputStream): List<Event> {
                     startAllDay, rrule)
                 events.add(evt)
             } catch (e: Exception) {
-                Log.e("ImportActivity", "Error parsing VEVENT", e)
+                Log.e("IcsImport", "Error parsing VEVENT", e)
             }
             inEvent = false
             current = mutableMapOf()
@@ -300,7 +212,7 @@ private fun parseICSTime(propLeft: String?, value: String?): Triple<Long?, Boole
             }
         }
     } catch (e: Exception) {
-        Log.e("ImportActivity", "Error parsing ICS time: $value", e)
+        Log.e("IcsImport", "Error parsing ICS time: $value", e)
         Triple(null, false, null)
     }
 }
