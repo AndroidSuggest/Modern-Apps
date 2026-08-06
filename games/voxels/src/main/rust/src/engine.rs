@@ -311,6 +311,8 @@ pub fn destroy_engine() {
     let mut guard = match engine_lock().lock() { Ok(g) => g, Err(_) => return, };
     if let Some(mut state) = guard.take() {
         state.dim_pos[state.dim as usize] = state.player.pos;
+        // Only the host persists an online world; clients are transient mirrors of host state.
+        if crate::net::role() != crate::net::ROLE_CLIENT {
         let ps = crate::world::save::PlayerSave {
             x: state.player.pos.x,
             y: state.player.pos.y,
@@ -357,6 +359,7 @@ pub fn destroy_engine() {
         state.chunks.save_all();
         // Persist the stashed dimensions too (each writes to its own save subdir).
         for m in state.stored.iter().flatten() { m.save_all(); }
+        }
         if let Some(mut renderer) = state.renderer.take() {
             unsafe {
                 renderer.destroy();

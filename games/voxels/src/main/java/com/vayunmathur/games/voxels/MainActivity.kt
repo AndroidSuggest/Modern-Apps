@@ -23,6 +23,7 @@ import com.vayunmathur.games.voxels.ui.*
 import com.vayunmathur.games.voxels.util.VoxelsAchievements
 import com.vayunmathur.games.voxels.util.VoxelsNative
 import com.vayunmathur.games.voxels.util.VoxelsSync
+import com.vayunmathur.e2ee.Pqc
 import com.vayunmathur.library.ui.*
 import com.vayunmathur.library.util.GameHubComposeHook
 import kotlinx.coroutines.delay
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
         val netRole = intent.getIntExtra("net_role", 0)
         val sharedWorldId = intent.getStringExtra("world_id") ?: ""
         val worldKeyB64 = intent.getStringExtra("world_key") ?: ""
+        val ownerDevice = intent.getStringExtra("owner_device") ?: ""
         val worldName = intent.getStringExtra("world_name") ?: ""
         if (VoxelsNative.isAvailable) {
             try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: Exception) {
@@ -185,9 +187,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // --- Online multiplayer pump: bridge the Rust net queues to the encrypted relay. ---
-                // Inbound (WebSocket) is decrypted and fed to netPushInbound; outbound is drained from
-                // the engine, wrapped with our sender id (to skip our own relay echoes), and sent —
-                // player transforms as ephemeral presence, everything else as world-log ops.
+                // World-log ops are signed (SignedOp{author,sig,ops}) so peers can authenticate them;
+                // player transforms ride ephemeral, unsigned presence. Confidentiality comes from the
+                // world AES key (only members hold it); the relay only ever sees ciphertext.
                 LaunchedEffect(online) {
                     if (!online || !VoxelsNative.isAvailable) return@LaunchedEffect
                     if (!VoxelsSync.init(this@MainActivity)) return@LaunchedEffect
@@ -195,15 +197,58 @@ class MainActivity : ComponentActivity() {
                     try { VoxelsNative.nativeSetDevice(myId) } catch (_: Exception) {}
                     val key = runCatching { Base64.decode(worldKeyB64) }.getOrNull() ?: return@LaunchedEffect
                     val channel = "world:$sharedWorldId"
+                    // Owner bundle: the host is the owner; a client fetches it once to verify host ops.
+                    val ownerBundle: ByteArray? = if (netRole == 1) VoxelsSync.publicBundle else VoxelsSync.getKey(ownerDevice)
+                    // Host builds the editor/member sets from the owner-signed roster to gate edits.
+                    val editors = HashSet<String>().apply { add(ownerDevice); add(myId) }
+                    val members = HashSet<String>().apply { add(ownerDevice); add(myId) }
+                    if (netRole == 1) {
+                        runCatching { VoxelsSync.fetchRoster(sharedWorldId, key, VoxelsSync.publicBundle) }.getOrNull()?.forEach { (id, r) ->
+                            members.add(id)
+                            if (r == VoxelsRoles.OWNER || r == VoxelsRoles.EDITOR) editors.add(id)
+                        }
+                    }
+                    // Verify + gate an incoming signed op, then hand the inner NetMsg to the engine.
+                    fun handleSignedOp(plain: String) {
+                        try {
+                            val so = JSONObject(plain)
+                            val author = so.optString("author")
+                            val sig = so.optString("sig")
+                            val ops = so.optString("ops")
+                            if (author.isEmpty() || ops.isEmpty() || author == myId) return
+                            if (netRole == 2) {
+                                // Client applies only owner-signed authoritative state.
+                                if (author != ownerDevice) return
+                                val ob = ownerBundle ?: return
+                                val ok = runCatching { Pqc.verify(ob, ops.encodeToByteArray(), Base64.decode(sig)) }.getOrDefault(false)
+                                if (!ok) return
+                            } else {
+                                // Host gates by the owner-signed roster: viewers may join but not edit.
+                                val type = runCatching { JSONObject(ops).optString("type") }.getOrDefault("")
+                                val isEdit = type == "EditIntent" || type == "ChunkData" || type == "InvIntent" || type == "ContainerIntent"
+                                val allowed = if (isEdit) editors.contains(author) else members.contains(author)
+                                if (!allowed) return
+                            }
+                            VoxelsNative.netPushInbound(ops)
+                        } catch (_: Exception) {}
+                    }
+                    fun handlePresence(plain: String) {
+                        try {
+                            val e = JSONObject(plain)
+                            if (e.optString("from") == myId) return
+                            VoxelsNative.netPushInbound(e.getJSONObject("m").toString())
+                        } catch (_: Exception) {}
+                    }
                     VoxelsSync.startLive(
                         scope = this,
                         channel = channel,
                         onConnected = {
-                            // A client announces itself so the host streams the world + first snapshot.
+                            // A client announces itself (signed) so the host streams the world + snapshot.
                             if (netRole == 2) {
-                                val join = JSONObject().put("type", "Join").put("device", myId).put("name", worldName).toString()
-                                val env = JSONObject().put("from", myId).put("m", JSONObject(join)).toString()
-                                VoxelsSync.liveAppend(channel, key, listOf(env))
+                                val joinOps = JSONObject().put("type", "Join").put("device", myId).put("name", worldName).toString()
+                                val sig = Base64.encode(VoxelsSync.sign(joinOps.encodeToByteArray()))
+                                val signed = JSONObject().put("author", myId).put("sig", sig).put("ops", joinOps).toString()
+                                VoxelsSync.liveAppend(channel, key, listOf(signed))
                             }
                         },
                         onMessage = { raw ->
@@ -211,11 +256,11 @@ class MainActivity : ComponentActivity() {
                             if (msg != null) when (msg.t) {
                                 "actions" -> for (b in msg.actions) {
                                     val plain = VoxelsSync.decrypt(key, b)
-                                    if (plain != null) deliverInbound(myId, plain)
+                                    if (plain != null) handleSignedOp(plain)
                                 }
                                 "presence" -> {
                                     val plain = VoxelsSync.decrypt(key, msg.data)
-                                    if (plain != null) deliverInbound(myId, plain)
+                                    if (plain != null) handlePresence(plain)
                                 }
                             }
                         },
@@ -227,9 +272,14 @@ class MainActivity : ComponentActivity() {
                             val ops = ArrayList<String>()
                             for (i in 0 until arr.length()) {
                                 val o = arr.getJSONObject(i)
-                                val env = JSONObject().put("from", myId).put("m", o).toString()
-                                if (o.optString("type") == "PlayerTransform") VoxelsSync.sendPresence(channel, key, env)
-                                else ops.add(env)
+                                if (o.optString("type") == "PlayerTransform") {
+                                    val env = JSONObject().put("from", myId).put("m", o).toString()
+                                    VoxelsSync.sendPresence(channel, key, env)
+                                } else {
+                                    val opsJson = o.toString()
+                                    val sig = Base64.encode(VoxelsSync.sign(opsJson.encodeToByteArray()))
+                                    ops.add(JSONObject().put("author", myId).put("sig", sig).put("ops", opsJson).toString())
+                                }
                             }
                             if (ops.isNotEmpty()) VoxelsSync.liveAppend(channel, key, ops)
                         } catch (_: Exception) {}
@@ -461,15 +511,4 @@ class MainActivity : ComponentActivity() {
         }
         super.onDestroy()
     }
-}
-
-// Unwrap a relayed envelope `{from, m}`; drop our own echoes, then hand the inner NetMsg to the
-// engine. Runs on the WebSocket IO thread — netPushInbound only touches a mutex-guarded queue.
-private fun deliverInbound(myId: String, plain: String) {
-    try {
-        val e = JSONObject(plain)
-        if (e.optString("from") == myId) return
-        val m = e.getJSONObject("m").toString()
-        if (VoxelsNative.isAvailable) VoxelsNative.netPushInbound(m)
-    } catch (_: Exception) {}
 }

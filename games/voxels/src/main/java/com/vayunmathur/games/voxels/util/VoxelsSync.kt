@@ -137,6 +137,48 @@ object VoxelsSync {
         return InvitesResult(invites, p.seq)
     }
 
+    // --- Owner-signed roster on the (world-key-encrypted) members channel ---
+
+    /** Canonical bytes an owner signs for a member record (binds id + role to the world). */
+    fun memberSigningBytes(worldId: String, m: Member): ByteArray =
+        "$worldId|${m.id}|${m.role}".encodeToByteArray()
+
+    /** Appends AES-encrypted member records to `members:<worldId>` (owner writes these). */
+    suspend fun appendMembers(worldId: String, key: ByteArray, items: List<String>): Int? {
+        val blobs = items.map { Base64.encode(E2ee.aesEncrypt(key, it.encodeToByteArray())) }
+        return append("members:$worldId", blobs)
+    }
+
+    /** Pulls + decrypts all member records for a world (verification is the caller's job). */
+    suspend fun pullMembers(worldId: String, key: ByteArray): List<String> {
+        val p = pull("members:$worldId", 0) ?: return emptyList()
+        return p.actions.mapNotNull { b ->
+            runCatching { E2ee.aesDecrypt(key, Base64.decode(b)).decodeToString() }.getOrNull()
+        }
+    }
+
+    /** Owner-signs + records a set of member records (owner only; enforced by whoever holds the key). */
+    suspend fun recordMembers(worldId: String, key: ByteArray, members: List<Member>): Boolean {
+        val items = members.map { m ->
+            val sig = Base64.encode(sign(memberSigningBytes(worldId, m)))
+            json.encodeToString(SignedMember(m, sig))
+        }
+        return appendMembers(worldId, key, items) != null
+    }
+
+    /** Reads + verifies the roster: only records with a valid OWNER signature are honored. Returns
+     *  device id → role. */
+    suspend fun fetchRoster(worldId: String, key: ByteArray, ownerBundle: ByteArray): Map<String, String> {
+        val map = LinkedHashMap<String, String>()
+        for (item in pullMembers(worldId, key)) {
+            val sm = runCatching { json.decodeFromString<SignedMember>(item) }.getOrNull() ?: continue
+            if (verify(ownerBundle, memberSigningBytes(worldId, sm.member), Base64.decode(sm.sig))) {
+                map[sm.member.id] = sm.member.role
+            }
+        }
+        return map
+    }
+
     // --- Identity / signing helpers (roster + signed-op authorization live in the consumer) ---
 
     suspend fun securityCode(peerBundle: ByteArray): String? =

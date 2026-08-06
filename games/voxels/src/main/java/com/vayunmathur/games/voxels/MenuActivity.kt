@@ -153,11 +153,21 @@ class MenuActivity : ComponentActivity() {
                                         val ok = withContext(Dispatchers.IO) {
                                             runCatching {
                                                 VoxelsSync.init(this@MenuActivity)
-                                                VoxelsSync.sendInvite(
-                                                    recipient, world.meta.worldId, Base64.decode(world.meta.keyB64),
+                                                val key = Base64.decode(world.meta.keyB64)
+                                                val sent = VoxelsSync.sendInvite(
+                                                    recipient, world.meta.worldId, key,
                                                     world.meta.name, world.meta.seed, role,
                                                     Base64.encode(VoxelsSync.publicBundle), deviceId,
                                                 )
+                                                // Publish the owner-signed roster so the host can gate edits by role.
+                                                if (sent) VoxelsSync.recordMembers(
+                                                    world.meta.worldId, key,
+                                                    listOf(
+                                                        VoxelsSync.Member(deviceId, "", VoxelsRoles.OWNER),
+                                                        VoxelsSync.Member(recipient, "", role),
+                                                    ),
+                                                )
+                                                sent
                                             }.getOrDefault(false)
                                         }
                                         toast(getString(if (ok) R.string.invite_sent else R.string.invite_failed))
