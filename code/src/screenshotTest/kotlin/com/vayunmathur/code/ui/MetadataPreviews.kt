@@ -102,7 +102,7 @@ class MetadataPreviews {
             TreeRowUiState("DocumentStore.kt", depth = 3),
             TreeRowUiState("EditorPrefs.kt", depth = 3),
             TreeRowUiState("EditorViewModel.kt", depth = 3),
-            TreeRowUiState("SafFiles.kt", depth = 3),
+            TreeRowUiState("FileFiles.kt", depth = 3),
             TreeRowUiState("AndroidManifest.xml", depth = 2),
             TreeRowUiState("screenshotTest", depth = 1, isDirectory = true),
             TreeRowUiState("build.gradle.kts", depth = 0),
