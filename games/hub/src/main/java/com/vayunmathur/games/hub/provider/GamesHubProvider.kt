@@ -6,6 +6,8 @@ import android.content.UriMatcher
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Binder
+import android.os.Process
 import com.vayunmathur.games.hub.data.DB_NAME
 import com.vayunmathur.games.hub.data.GamesHubDatabase
 import com.vayunmathur.games.hub.data.entities.AchievementDefEntity
@@ -22,6 +24,8 @@ import kotlinx.coroutines.runBlocking
 open class GamesHubProvider : ContentProvider() {
 
     companion object {
+        private const val GAMES_PACKAGE_PREFIX = "com.vayunmathur.games"
+
         private const val CODE_GAMES = 1
         private const val CODE_GAME_ITEM = 2
         private const val CODE_ACH_DEFS = 10
@@ -70,7 +74,18 @@ open class GamesHubProvider : ContentProvider() {
 
     override fun onCreate(): Boolean = true
 
+    // The signature permission on this provider only proves "signed by the Modern Apps key",
+    // which every app in the repo is. Narrow that to the games namespace as well.
+    private fun enforceGamesCaller() {
+        if (Binder.getCallingUid() == Process.myUid()) return
+        val caller = callingPackage
+        if (caller != GAMES_PACKAGE_PREFIX && caller?.startsWith("$GAMES_PACKAGE_PREFIX.") != true) {
+            throw SecurityException("GamesHubProvider: caller $caller is outside the games namespace")
+        }
+    }
+
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
+        enforceGamesCaller()
         val v = values ?: return null
         return runBlocking(Dispatchers.IO) {
             val database = getDb()
@@ -183,6 +198,7 @@ open class GamesHubProvider : ContentProvider() {
     }
 
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
+        enforceGamesCaller()
         val v = values ?: return 0
         return runBlocking(Dispatchers.IO) {
             val database = getDb()
@@ -262,6 +278,7 @@ open class GamesHubProvider : ContentProvider() {
     }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? {
+        enforceGamesCaller()
         return runBlocking(Dispatchers.IO) {
             val database = getDb()
             try {
