@@ -73,6 +73,8 @@ import com.vayunmathur.library.ui.ModalDrawerSheet
 import com.vayunmathur.library.ui.ModalNavigationDrawer
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
+import com.vayunmathur.library.util.OfflineBanner
+import com.vayunmathur.library.util.rememberIsOnline
 import com.vayunmathur.library.ui.NavigationBar
 import com.vayunmathur.library.ui.NavigationBarItem
 import com.vayunmathur.library.ui.Card
@@ -531,6 +533,7 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
     val deviceId = viewModel.syncDeviceId
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
+    val online by rememberIsOnline()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -543,7 +546,9 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
             )
         }
     ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)) {
+        Column(Modifier.fillMaxSize().padding(pad)) {
+            OfflineBanner(online)
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             Text(stringResource(R.string.your_device_id_share_this_so_others_can),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -565,6 +570,7 @@ fun OnlineTab(viewModel: OfficeViewModel, onOpenDoc: (com.vayunmathur.office.uti
                         }
                     }
                 }
+            }
             }
         }
     }
