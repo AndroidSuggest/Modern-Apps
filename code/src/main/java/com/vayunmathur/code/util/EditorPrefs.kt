@@ -30,6 +30,15 @@ class EditorPrefs(context: Context) {
     val autoIndent: Flow<Boolean> = appContext.editorDataStore.data.map { it[AUTO_INDENT_KEY] ?: true }
     val autoCloseBrackets: Flow<Boolean> =
         appContext.editorDataStore.data.map { it[AUTO_CLOSE_KEY] ?: true }
+    val autoSave: Flow<Boolean> = appContext.editorDataStore.data.map { it[AUTO_SAVE_KEY] ?: false }
+
+    /** Open tab file paths, in order, for session restore. */
+    val sessionPaths: Flow<List<String>> = appContext.editorDataStore.data.map { prefs ->
+        prefs[SESSION_PATHS_KEY]?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
+    }
+
+    /** File path of the tab that was in the foreground, for session restore. */
+    val sessionCurrent: Flow<String?> = appContext.editorDataStore.data.map { it[SESSION_CURRENT_KEY] }
 
     suspend fun setFolderPath(path: String) {
         appContext.editorDataStore.edit { it[FOLDER_PATH_KEY] = path }
@@ -63,6 +72,19 @@ class EditorPrefs(context: Context) {
         appContext.editorDataStore.edit { it[AUTO_CLOSE_KEY] = enabled }
     }
 
+    suspend fun setAutoSave(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[AUTO_SAVE_KEY] = enabled }
+    }
+
+    /** Persists the open-tabs session; clears the keys when there is nothing open. */
+    suspend fun setSession(paths: List<String>, current: String?) {
+        appContext.editorDataStore.edit { prefs ->
+            if (paths.isEmpty()) prefs.remove(SESSION_PATHS_KEY)
+            else prefs[SESSION_PATHS_KEY] = paths.joinToString("\n")
+            if (current == null) prefs.remove(SESSION_CURRENT_KEY) else prefs[SESSION_CURRENT_KEY] = current
+        }
+    }
+
     companion object {
         const val DEFAULT_FONT_SIZE = 14
         const val DEFAULT_TAB_WIDTH = 4
@@ -77,5 +99,8 @@ class EditorPrefs(context: Context) {
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
         private val AUTO_INDENT_KEY = booleanPreferencesKey("auto_indent")
         private val AUTO_CLOSE_KEY = booleanPreferencesKey("auto_close_brackets")
+        private val AUTO_SAVE_KEY = booleanPreferencesKey("auto_save")
+        private val SESSION_PATHS_KEY = stringPreferencesKey("session_paths")
+        private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")
     }
 }

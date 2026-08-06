@@ -160,4 +160,98 @@ class EditorInputTest {
         val matches = findLineMatches(text, "(", caseSensitive = false, useRegex = true)
         assertEquals(emptyList(), matches.map { it.line })
     }
+
+    // ---- Line operations ----
+
+    @Test
+    fun duplicateLineCopiesCurrentLineBelow() {
+        val result = duplicateLine(TextFieldValue("foo\nbar", TextRange(1)))
+        assertEquals("foo\nfoo\nbar", result.text)
+        assertEquals(5, result.selection.start)
+    }
+
+    @Test
+    fun deleteLineRemovesCurrentLineAndNewline() {
+        val result = deleteLine(TextFieldValue("foo\nbar\nbaz", TextRange(5)))
+        assertEquals("foo\nbaz", result.text)
+        assertEquals(4, result.selection.start)
+    }
+
+    @Test
+    fun deleteLineOnLastLineDropsPrecedingNewline() {
+        val result = deleteLine(TextFieldValue("foo\nbar", TextRange(6)))
+        assertEquals("foo", result.text)
+        assertEquals(3, result.selection.start)
+    }
+
+    @Test
+    fun moveLineUpSwapsWithLineAbove() {
+        val result = moveLineUp(TextFieldValue("foo\nbar\nbaz", TextRange(5)))
+        assertEquals("bar\nfoo\nbaz", result.text)
+        assertEquals(1, result.selection.start)
+    }
+
+    @Test
+    fun moveLineUpOnFirstLineIsNoOp() {
+        val value = TextFieldValue("foo\nbar", TextRange(1))
+        val result = moveLineUp(value)
+        assertEquals("foo\nbar", result.text)
+        assertEquals(1, result.selection.start)
+    }
+
+    @Test
+    fun moveLineDownSwapsWithLineBelow() {
+        val result = moveLineDown(TextFieldValue("foo\nbar\nbaz", TextRange(1)))
+        assertEquals("bar\nfoo\nbaz", result.text)
+        assertEquals(5, result.selection.start)
+    }
+
+    @Test
+    fun moveLineDownOnLastLineIsNoOp() {
+        val value = TextFieldValue("foo\nbar", TextRange(5))
+        val result = moveLineDown(value)
+        assertEquals("foo\nbar", result.text)
+        assertEquals(5, result.selection.start)
+    }
+
+    // ---- Comment toggle ----
+
+    @Test
+    fun toggleCommentAddsPrefixWithSpace() {
+        val result = toggleLineComment(TextFieldValue("foo", TextRange(0)), "//")
+        assertEquals("// foo", result.text)
+    }
+
+    @Test
+    fun toggleCommentRemovesPrefixAndSpace() {
+        val result = toggleLineComment(TextFieldValue("// foo", TextRange(0)), "//")
+        assertEquals("foo", result.text)
+    }
+
+    @Test
+    fun toggleCommentPreservesIndent() {
+        val result = toggleLineComment(TextFieldValue("    foo", TextRange(4)), "//")
+        assertEquals("    // foo", result.text)
+    }
+
+    @Test
+    fun toggleCommentAcrossMultipleLines() {
+        val value = TextFieldValue("foo\nbar", TextRange(0, 7))
+        val result = toggleLineComment(value, "#")
+        assertEquals("# foo\n# bar", result.text)
+    }
+
+    @Test
+    fun toggleCommentUncommentsWhenAllCommented() {
+        val value = TextFieldValue("# foo\n# bar", TextRange(0, 11))
+        val result = toggleLineComment(value, "#")
+        assertEquals("foo\nbar", result.text)
+    }
+
+    @Test
+    fun toggleCommentLeavesBlankLinesAlone() {
+        val value = TextFieldValue("foo\n\nbar", TextRange(0, 8))
+        val result = toggleLineComment(value, "//")
+        assertEquals("// foo\n\n// bar", result.text)
+    }
 }

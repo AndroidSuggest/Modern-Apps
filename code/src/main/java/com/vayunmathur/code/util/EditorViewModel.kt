@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.vayunmathur.code.syntax.Language
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -139,6 +140,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     val autoIndent: Boolean get() = _autoIndent.value
     private val _autoCloseBrackets = mutableStateOf(true)
     val autoCloseBrackets: Boolean get() = _autoCloseBrackets.value
+    private val _autoSave = mutableStateOf(false)
+    val autoSave: Boolean get() = _autoSave.value
+    private var autoSaveJob: Job? = null
 
     // ---- Project search ----
     val searchResults = mutableStateListOf<SearchResult>()
@@ -186,6 +190,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _themeMode.value = prefs.themeMode.first() }
         viewModelScope.launch { _autoIndent.value = prefs.autoIndent.first() }
         viewModelScope.launch { _autoCloseBrackets.value = prefs.autoCloseBrackets.first() }
+        viewModelScope.launch { _autoSave.value = prefs.autoSave.first() }
         viewModelScope.launch {
             val stored = prefs.folderPath.first() ?: return@launch
             val dir = File(stored)
@@ -195,6 +200,32 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                 prefs.clearFolderPath()
             }
         }
+        viewModelScope.launch { restoreSession() }
+    }
+
+    /** Reopens the tabs from the previous session (files that still exist), off the main thread. */
+    private suspend fun restoreSession() {
+        val paths = prefs.sessionPaths.first()
+        if (paths.isEmpty()) return
+        val current = prefs.sessionCurrent.first()
+        for (path in paths) {
+            val file = File(path)
+            if (!file.isFile) continue
+            if (tabs.any { it.key == path }) continue
+            val text = withContext(Dispatchers.IO) {
+                runCatching { FileFiles.readText(file) }.getOrDefault("")
+            }
+            tabs.add(OpenTab(file = file, initialName = file.name, initialText = text, language = Language.fromFileName(file.name)))
+        }
+        currentIndex = tabs.indexOfFirst { it.file?.absolutePath == current }
+            .takeIf { it >= 0 } ?: if (tabs.isEmpty()) -1 else 0
+    }
+
+    /** Persists the current set of file-backed tabs and the foreground tab for session restore. */
+    private fun saveSession() {
+        val paths = tabs.mapNotNull { it.file?.absolutePath }
+        val current = currentTab?.file?.absolutePath
+        viewModelScope.launch { prefs.setSession(paths, current) }
     }
 
     // ---- Folder handling ----
@@ -357,6 +388,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                     tab.file = File(newPath + p.substring(oldPath.length))
                 }
             }
+            saveSession()
         }
     }
 
@@ -401,10 +433,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             }
             tabs.add(OpenTab(file = file, initialName = file.name, initialText = text, language = Language.fromFileName(file.name)))
             currentIndex = tabs.lastIndex
+            saveSession()
         }
     }
-
-    /** Handles a VIEW/EDIT intent that carries a single file URI. */
     fun openExternal(uri: Uri) {
         if (uri.scheme == "file") {
             uri.path?.let { openFile(File(it)) }
@@ -435,11 +466,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                 )
             )
             currentIndex = tabs.lastIndex
+            saveSession()
         }
     }
 
     override fun selectTab(index: Int) {
-        if (index in tabs.indices) currentIndex = index
+        if (index in tabs.indices) {
+            currentIndex = index
+            saveSession()
+        }
     }
 
     override fun closeTab(index: Int) {
@@ -452,6 +487,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             removingCurrent -> index.coerceAtMost(tabs.lastIndex)
             else -> currentIndex
         }
+        saveSession()
     }
 
     // ---- Editing ----
@@ -462,7 +498,40 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         val processed = applyEditorInput(tab.value, new, indentUnit, autoIndent, autoCloseBrackets)
         if (processed.text != tab.value.text) tab.pushUndo(tab.value)
         tab.value = processed
+        if (autoSave) scheduleAutoSave()
     }
+
+    /** Debounced auto-save: writes the current tab a short idle period after the last edit. */
+    private fun scheduleAutoSave() {
+        autoSaveJob?.cancel()
+        autoSaveJob = viewModelScope.launch {
+            delay(AUTO_SAVE_DELAY_MS)
+            if (currentTab?.isDirty == true) save()
+        }
+    }
+
+    /** Applies a pure whole-line edit as a single undo step. */
+    private fun applyLineEdit(transform: (TextFieldValue) -> TextFieldValue) {
+        val tab = currentTab ?: return
+        val next = transform(tab.value)
+        if (next.text == tab.value.text && next.selection == tab.value.selection) return
+        tab.pushUndo(tab.value)
+        tab.value = next
+        if (autoSave) scheduleAutoSave()
+    }
+
+    override fun toggleComment() {
+        val prefix = currentTab?.language?.lineCommentPrefix ?: return
+        applyLineEdit { toggleLineComment(it, prefix) }
+    }
+
+    override fun duplicateLine() = applyLineEdit(::duplicateLine)
+
+    override fun moveLineUp() = applyLineEdit(::moveLineUp)
+
+    override fun moveLineDown() = applyLineEdit(::moveLineDown)
+
+    override fun deleteLine() = applyLineEdit(::deleteLine)
 
     /** Moves the caret to the start of [line] (1-based), without recording an undo step. */
     override fun goToLine(line: Int) {
@@ -535,6 +604,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun setAutoCloseBrackets(enabled: Boolean) {
         _autoCloseBrackets.value = enabled
         viewModelScope.launch { prefs.setAutoCloseBrackets(enabled) }
+    }
+
+    fun setAutoSave(enabled: Boolean) {
+        _autoSave.value = enabled
+        viewModelScope.launch { prefs.setAutoSave(enabled) }
+        if (enabled) scheduleAutoSave()
     }
 
     // ---- Find & replace ----
@@ -645,10 +720,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             tabs.add(OpenTab(file = file, initialName = result.name, initialText = text, language = Language.fromFileName(result.name)))
             currentIndex = tabs.lastIndex
             goToLine(result.line)
+            saveSession()
         }
     }
 
     private companion object {
+        const val AUTO_SAVE_DELAY_MS = 1500L
         const val MAX_SEARCH_RESULTS = 500
         const val MAX_MATCHES_PER_FILE = 50
         const val MAX_SEARCH_FILE_SIZE = 500_000

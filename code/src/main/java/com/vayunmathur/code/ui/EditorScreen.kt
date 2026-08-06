@@ -284,6 +284,11 @@ private fun EditorToolbar(
         IconButton(onClick = { actions.insertText(" ".repeat(state.tabWidth)) }) { IconFormatIndentIncrease() }
         OverflowMenu(icon = { IconMoreVert() }) {
             Item(text = stringResource(R.string.go_to_line)) { showGoToLine = true }
+            Item(text = stringResource(R.string.toggle_comment)) { actions.toggleComment() }
+            Item(text = stringResource(R.string.duplicate_line)) { actions.duplicateLine() }
+            Item(text = stringResource(R.string.move_line_up)) { actions.moveLineUp() }
+            Item(text = stringResource(R.string.move_line_down)) { actions.moveLineDown() }
+            Item(text = stringResource(R.string.delete_line)) { actions.deleteLine() }
             Item(text = stringResource(R.string.search_in_project)) { onOpenSearch() }
         }
         Spacer(Modifier.width(8.dp))

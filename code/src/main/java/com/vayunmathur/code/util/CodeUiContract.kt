@@ -83,6 +83,23 @@ interface CodeActions {
     fun insertText(insert: String) {}
     fun onEditorChange(new: TextFieldValue) {}
 
+    // ---- Line editing ----
+
+    /** Toggle the line comment on the line(s) the selection touches (no-op if the language has none). */
+    fun toggleComment() {}
+
+    /** Duplicate the line(s) the selection touches. */
+    fun duplicateLine() {}
+
+    /** Move the line(s) the selection touches up one line. */
+    fun moveLineUp() {}
+
+    /** Move the line(s) the selection touches down one line. */
+    fun moveLineDown() {}
+
+    /** Delete the line(s) the selection touches. */
+    fun deleteLine() {}
+
     /** Move the selection without recording an undo step (used by find navigation). */
     fun setSelection(range: TextRange) {}
 

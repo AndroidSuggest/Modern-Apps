@@ -155,8 +155,9 @@ fun CodeEditor(
         )
         val syntaxColors = rememberSyntaxColors()
         val highlightMatches = if (showFind) matches else emptyList()
-        val transformation = remember(tab.language, syntaxColors, highlightMatches, activeMatch) {
-            SyntaxTransformation(tab.language.spec, syntaxColors, highlightMatches, activeMatch)
+        val caret = if (tab.value.selection.collapsed) tab.value.selection.start else -1
+        val transformation = remember(tab.language, syntaxColors, highlightMatches, activeMatch, caret) {
+            SyntaxTransformation(tab.language.spec, syntaxColors, highlightMatches, activeMatch, caret)
         }
 
         val verticalScroll = rememberScrollState()

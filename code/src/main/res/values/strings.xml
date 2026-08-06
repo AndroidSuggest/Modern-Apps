@@ -52,4 +52,11 @@
     <string name="storage_permission_rationale">Code needs all-files access to open your projects, run git and use the terminal on real file paths.</string>
     <string name="grant_access">Grant access</string>
     <string name="open_this_folder">Open this folder</string>
+    <string name="toggle_comment">Toggle comment</string>
+    <string name="duplicate_line">Duplicate line</string>
+    <string name="move_line_up">Move line up</string>
+    <string name="move_line_down">Move line down</string>
+    <string name="delete_line">Delete line</string>
+    <string name="auto_save">Auto-save</string>
+    <string name="auto_save_desc">Save automatically a moment after you stop typing</string>
 </resources>

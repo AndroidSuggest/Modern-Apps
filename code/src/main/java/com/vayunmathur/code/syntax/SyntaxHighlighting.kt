@@ -40,29 +40,29 @@ class LanguageSpec(private val parts: List<Pair<TokenKind, String>>) {
     }
 }
 
-enum class Language(val label: String) {
-    KOTLIN("Kotlin"),
-    JAVA("Java"),
-    JAVASCRIPT("JavaScript"),
-    TYPESCRIPT("TypeScript"),
-    PYTHON("Python"),
-    C("C"),
-    CPP("C++"),
-    RUST("Rust"),
-    GO("Go"),
-    SWIFT("Swift"),
-    RUBY("Ruby"),
-    PHP("PHP"),
+enum class Language(val label: String, val lineCommentPrefix: String? = null) {
+    KOTLIN("Kotlin", "//"),
+    JAVA("Java", "//"),
+    JAVASCRIPT("JavaScript", "//"),
+    TYPESCRIPT("TypeScript", "//"),
+    PYTHON("Python", "#"),
+    C("C", "//"),
+    CPP("C++", "//"),
+    RUST("Rust", "//"),
+    GO("Go", "//"),
+    SWIFT("Swift", "//"),
+    RUBY("Ruby", "#"),
+    PHP("PHP", "//"),
     JSON("JSON"),
     XML("XML"),
     MARKDOWN("Markdown"),
-    YAML("YAML"),
-    TOML("TOML"),
-    SHELL("Shell"),
+    YAML("YAML", "#"),
+    TOML("TOML", "#"),
+    SHELL("Shell", "#"),
     CSS("CSS"),
-    SQL("SQL"),
-    DOCKERFILE("Dockerfile"),
-    GRADLE("Gradle"),
+    SQL("SQL", "--"),
+    DOCKERFILE("Dockerfile", "#"),
+    GRADLE("Gradle", "//"),
     PLAINTEXT("Plain Text");
 
     /** The tokenizer for this language, or null for languages we render without colors. */
@@ -433,6 +433,8 @@ data class SyntaxColors(
     val annotation: Color,
     val match: Color,
     val activeMatch: Color,
+    val currentLine: Color,
+    val matchedBracket: Color,
 ) {
     fun colorFor(kind: TokenKind): Color = when (kind) {
         TokenKind.COMMENT -> comment
@@ -454,24 +456,79 @@ fun rememberSyntaxColors(): SyntaxColors {
         annotation = scheme.error,
         match = scheme.primary.copy(alpha = 0.30f),
         activeMatch = scheme.tertiary.copy(alpha = 0.55f),
+        currentLine = scheme.onSurface.copy(alpha = 0.06f),
+        matchedBracket = scheme.primary.copy(alpha = 0.35f),
     )
+}
+
+/** Index of the bracket matching the one at [index], or -1 if [index] isn't a bracket / unmatched. */
+private fun matchingBracketIndex(text: String, index: Int): Int {
+    if (index < 0 || index >= text.length) return -1
+    val c = text[index]
+    val openers = "([{"
+    val closers = ")]}"
+    val openIdx = openers.indexOf(c)
+    if (openIdx >= 0) {
+        val close = closers[openIdx]
+        var depth = 0
+        var i = index
+        while (i < text.length) {
+            val ch = text[i]
+            if (ch == c) depth++ else if (ch == close) {
+                depth--
+                if (depth == 0) return i
+            }
+            i++
+        }
+        return -1
+    }
+    val closeIdx = closers.indexOf(c)
+    if (closeIdx >= 0) {
+        val open = openers[closeIdx]
+        var depth = 0
+        var i = index
+        while (i >= 0) {
+            val ch = text[i]
+            if (ch == c) depth++ else if (ch == open) {
+                depth--
+                if (depth == 0) return i
+            }
+            i--
+        }
+        return -1
+    }
+    return -1
 }
 
 /**
  * A [VisualTransformation] that leaves the text unchanged (identity offset mapping) but
  * layers syntax spans and find-match backgrounds onto it. Highlighting is skipped for
  * very large documents to keep typing responsive.
+ *
+ * When [caret] is a valid collapsed offset, the caret's line gets a subtle background and, if
+ * the caret sits next to a bracket, that bracket and its match are highlighted.
  */
 class SyntaxTransformation(
     private val spec: LanguageSpec?,
     private val colors: SyntaxColors,
     private val matches: List<IntRange> = emptyList(),
     private val activeMatch: Int = -1,
+    private val caret: Int = -1,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
         val builder = AnnotatedString.Builder(text)
+
+        // Current-line background (drawn first so token colors sit on top).
+        if (caret in 0..raw.length) {
+            val lineStart = raw.lastIndexOf('\n', caret - 1) + 1
+            var lineEnd = raw.indexOf('\n', caret)
+            if (lineEnd < 0) lineEnd = raw.length
+            if (lineEnd > lineStart) {
+                builder.addStyle(SpanStyle(background = colors.currentLine), lineStart, lineEnd)
+            }
+        }
 
         if (spec != null && raw.length <= MAX_HIGHLIGHT_LENGTH) {
             for (match in spec.regex.findAll(raw)) {
@@ -481,6 +538,22 @@ class SyntaxTransformation(
                     match.range.first,
                     match.range.last + 1,
                 )
+            }
+        }
+
+        // Bracket matching: check the char before and at the caret.
+        if (caret in 0..raw.length) {
+            val candidate = when {
+                caret > 0 && raw[caret - 1] in "()[]{}" -> caret - 1
+                caret < raw.length && raw[caret] in "()[]{}" -> caret
+                else -> -1
+            }
+            if (candidate >= 0) {
+                val other = matchingBracketIndex(raw, candidate)
+                if (other >= 0) {
+                    builder.addStyle(SpanStyle(background = colors.matchedBracket), candidate, candidate + 1)
+                    builder.addStyle(SpanStyle(background = colors.matchedBracket), other, other + 1)
+                }
             }
         }
 

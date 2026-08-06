@@ -103,6 +103,13 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     checked = viewModel.softWrap,
                     onCheckedChange = { viewModel.toggleSoftWrap() },
                 )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = stringResource(R.string.auto_save),
+                    supportingText = stringResource(R.string.auto_save_desc),
+                    checked = viewModel.autoSave,
+                    onCheckedChange = viewModel::setAutoSave,
+                )
             }
         }
     }

@@ -82,6 +82,110 @@ fun applyEditorInput(
     return new
 }
 
+// ---- Line operations (pure; each is a single undo step at the call site) ----
+
+/**
+ * The `[start, end)` character range of the block of whole lines the selection touches: from
+ * the start of the line containing the selection start to the end (before the newline) of the
+ * line containing the selection end.
+ */
+private fun lineBlock(text: String, selMin: Int, selMax: Int): Pair<Int, Int> {
+    val start = text.lastIndexOf('\n', selMin - 1) + 1
+    var end = text.indexOf('\n', selMax)
+    if (end < 0) end = text.length
+    return start to end
+}
+
+/** Duplicates the line(s) the selection touches, placing the copy below and moving the caret to it. */
+fun duplicateLine(value: TextFieldValue): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    val block = text.substring(start, end)
+    val newText = text.substring(0, end) + "\n" + block + text.substring(end)
+    val shift = block.length + 1
+    val sel = value.selection
+    return TextFieldValue(newText, TextRange(sel.start + shift, sel.end + shift))
+}
+
+/** Deletes the line(s) the selection touches, along with one adjacent newline. */
+fun deleteLine(value: TextFieldValue): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    var removeStart = start
+    val removeEnd: Int
+    if (end < text.length) {
+        removeEnd = end + 1 // drop the trailing newline
+    } else {
+        removeEnd = end
+        if (start > 0) removeStart = start - 1 // last line: drop the preceding newline instead
+    }
+    val newText = text.substring(0, removeStart) + text.substring(removeEnd)
+    val caret = removeStart.coerceAtMost(newText.length)
+    return TextFieldValue(newText, TextRange(caret))
+}
+
+/** Swaps the line(s) the selection touches with the line above; a no-op on the first line. */
+fun moveLineUp(value: TextFieldValue): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    if (start == 0) return value
+    val prevStart = text.lastIndexOf('\n', start - 2) + 1
+    val prevLine = text.substring(prevStart, start - 1)
+    val block = text.substring(start, end)
+    val newText = text.substring(0, prevStart) + block + "\n" + prevLine + text.substring(end)
+    val shift = -(prevLine.length + 1)
+    val sel = value.selection
+    return TextFieldValue(newText, TextRange(sel.start + shift, sel.end + shift))
+}
+
+/** Swaps the line(s) the selection touches with the line below; a no-op on the last line. */
+fun moveLineDown(value: TextFieldValue): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    if (end >= text.length) return value
+    val nextStart = end + 1
+    var nextEnd = text.indexOf('\n', nextStart)
+    if (nextEnd < 0) nextEnd = text.length
+    val nextLine = text.substring(nextStart, nextEnd)
+    val block = text.substring(start, end)
+    val newText = text.substring(0, start) + nextLine + "\n" + block + text.substring(nextEnd)
+    val shift = nextLine.length + 1
+    val sel = value.selection
+    return TextFieldValue(newText, TextRange(sel.start + shift, sel.end + shift))
+}
+
+/**
+ * Toggles a line comment [prefix] (e.g. `//`, `#`, `--`) on every line the selection touches.
+ * If every non-blank line is already commented it uncomments; otherwise it comments, inserting
+ * `"$prefix "` at each line's first non-whitespace column. Blank lines are left alone. The
+ * returned selection spans the affected block.
+ */
+fun toggleLineComment(value: TextFieldValue, prefix: String): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    val block = text.substring(start, end)
+    val lines = block.split('\n')
+    val nonBlank = lines.filter { it.isNotBlank() }
+    val allCommented = nonBlank.isNotEmpty() && nonBlank.all { it.trimStart().startsWith(prefix) }
+
+    val newLines = lines.map { line ->
+        if (line.isBlank()) return@map line
+        val indentLen = line.indexOfFirst { it != ' ' && it != '\t' }.let { if (it < 0) 0 else it }
+        val indent = line.substring(0, indentLen)
+        val rest = line.substring(indentLen)
+        if (allCommented) {
+            var r = rest.removePrefix(prefix)
+            if (r.startsWith(" ")) r = r.substring(1)
+            indent + r
+        } else {
+            "$indent$prefix $rest"
+        }
+    }
+    val newBlock = newLines.joinToString("\n")
+    val newText = text.substring(0, start) + newBlock + text.substring(end)
+    return TextFieldValue(newText, TextRange(start, start + newBlock.length))
+}
+
 /** Char offset of the start of a 1-based [line] in [text], clamped to `0..text.length`. */
 fun lineStartOffset(text: String, line: Int): Int {
     val target = line.coerceAtLeast(1)
