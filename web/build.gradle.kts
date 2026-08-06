@@ -16,12 +16,23 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        val rustDir = layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        variant.sources.jniLibs?.addStaticSourceDirectory(rustDir)
+    }
+}
+
+// Brave Shields engine (Rust + adblock-rust). See web/src/main/rust/.
+rustNativeLib("web_shields", "shields")
+
 dependencies {
     implementRoom(libs)
     implementation(project(":library:room"))
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.brotli.dec) // shields filter lists ship brotli-compressed
     implementation(project(":library:image"))
     // Browser must allow all certs (any host + corp proxies via user CAs) — SYSTEM permissive, documents intent.
     implementation(project(":library:network"))

@@ -75,8 +75,10 @@ import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconSearch
+import com.vayunmathur.library.ui.IconShield
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.web.shields.ShieldsWebViewClient
 import com.vayunmathur.web.util.BrowserUtils
 import com.vayunmathur.web.util.PwaHelper
 import com.vayunmathur.web.util.PwaInfo
@@ -107,6 +109,11 @@ fun BrowserPage(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
     val isCurrentBookmarked = activeTab?.url?.let { url -> url.isNotBlank() && bookmarks.any { it.url == url } } ?: false
+
+    val shieldHost = activeTab?.url?.takeIf { it.startsWith("http") }?.let { BrowserUtils.hostFromUrl(it) }
+    // Navigating away from the site the panel describes has to close it, otherwise it would
+    // silently start editing a different host's settings.
+    LaunchedEffect(shieldHost) { viewModel.showShieldsPanel = false }
 
     val multiDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         viewModel.deliverFileChooserResult(uris.toTypedArray().takeIf { it.isNotEmpty() })
@@ -312,6 +319,9 @@ fun BrowserPage(
                     viewModel.omniboxFocused = true
                 },
                 onTabSwitcherClick = { viewModel.showTabSwitcher = true },
+                shieldHost = shieldHost,
+                blockedCount = activeTab?.let { viewModel.blockedCount(it.id) } ?: 0,
+                onShieldClick = { viewModel.showShieldsPanel = true },
                 onMenuClick = { showMenu = true },
                 menu = {
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -423,6 +433,26 @@ fun BrowserPage(
                 isIncognitoWindow = viewModel.incognito || viewModel.activeTab?.isPrivate == true,
                 onDismiss = { viewModel.showTabSwitcher = false },
                 modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        if (viewModel.showShieldsPanel && shieldHost != null) {
+            ShieldsPanel(
+                host = shieldHost,
+                blockedCount = activeTab?.let { viewModel.blockedCount(it.id) } ?: 0,
+                viewModel = viewModel,
+                onReload = {
+                    activeTab?.let { tab ->
+                        webViewPool[tab.id]?.let { webView ->
+                            // Re-register before reloading, not after: document-start scripts
+                            // only apply to documents that start loading after the call.
+                            (webView.webViewClient as? ShieldsWebViewClient)
+                                ?.installFarbling(webView, viewModel.farblingConfig())
+                            webView.reload()
+                        }
+                    }
+                },
+                onDismiss = { viewModel.showShieldsPanel = false },
             )
         }
 
@@ -551,6 +581,9 @@ fun BrowserChrome(
     onForward: () -> Unit = {},
     onOmniboxClick: () -> Unit = {},
     onTabSwitcherClick: () -> Unit = {},
+    shieldHost: String? = null,
+    blockedCount: Int = 0,
+    onShieldClick: () -> Unit = {},
     onMenuClick: () -> Unit = {},
     menu: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
@@ -573,6 +606,10 @@ fun BrowserChrome(
                         )
                     },
                     actions = {
+                        if (shieldHost != null) {
+                            ShieldChip(blockedCount = blockedCount, onClick = onShieldClick)
+                            Spacer(Modifier.width(4.dp))
+                        }
                         Surface(
                             shape = RoundedCornerShape(20.dp),
                             color = MaterialTheme.colorScheme.secondaryContainer,
@@ -599,6 +636,30 @@ fun BrowserChrome(
         },
         content = content,
     )
+}
+
+/**
+ * Toolbar shield. Shows the number of requests blocked on the current page, which is the
+ * only feedback the user gets that shields are doing anything.
+ */
+@Composable
+private fun ShieldChip(blockedCount: Int, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconShield(Modifier.size(18.dp))
+            if (blockedCount > 0) {
+                Spacer(Modifier.width(4.dp))
+                Text(blockedCount.toString(), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
 }
 
 @Composable

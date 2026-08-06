@@ -95,6 +95,10 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
             val rustSrc = file("src/main/rust").absolutePath
 
             environment("PATH", "$cargoBin:${System.getenv("PATH")}")
+            // A non-rustup rustc earlier on PATH (e.g. Homebrew's) has no
+            // aarch64-linux-android std, so cargo fails with "can't find crate for core".
+            // Pin the rustup shim explicitly.
+            environment("RUSTC", "$cargoBin/rustc")
             // The per-API NDK clang wrapper bakes in --target and the sysroot.
             environment("CC", clang)
             environment("AR", "$ndkBin/llvm-ar")

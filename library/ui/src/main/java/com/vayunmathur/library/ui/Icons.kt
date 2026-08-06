@@ -184,6 +184,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shuffle
@@ -1245,6 +1246,11 @@ fun IconArea(modifier: Modifier = Modifier, tint: Color = LocalContentColor.curr
 @Composable
 fun IconHealth(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.HealthAndSafety, "Health", modifier, tint)
+
+/** Plain shield — browser content blocking and tracking protection. */
+@Composable
+fun IconShield(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Shield, "Shields", modifier, tint)
 
 /** Pill bottle — prescriptions and pharmacy. */
 @Composable

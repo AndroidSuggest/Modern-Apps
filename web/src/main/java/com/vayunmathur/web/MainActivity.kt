@@ -25,6 +25,7 @@ import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.web.data.DB_NAME
 import com.vayunmathur.web.data.WebDatabase
+import com.vayunmathur.web.shields.ShieldsEngine
 import com.vayunmathur.web.ui.BookmarksPage
 import com.vayunmathur.web.ui.BrowserPage
 import com.vayunmathur.web.ui.HistoryPage
@@ -49,6 +50,8 @@ class MainActivity : ComponentActivity() {
         // SYSTEM permissive browser: any host + user CAs for MITM debug/corp proxies (per user exception)
         NetworkClient.init(this, TrustBundle.SYSTEM)
         enableEdgeToEdge()
+        // Parses ~8 MB of filter lists off the main thread. Shields fail open until it lands.
+        lifecycleScope.launch { ShieldsEngine.load(applicationContext) }
 
         // Each task (window) carries its own window id + incognito flag so it keeps an independent tab set.
         val windowId = intent?.getStringExtra(EXTRA_WINDOW_ID) ?: WebViewModel.DEFAULT_WINDOW_ID
@@ -66,9 +69,11 @@ class MainActivity : ComponentActivity() {
                 storageInfoDao = db.storageInfoDao(),
                 downloadDao = db.downloadDao(),
                 installedSiteDao = db.installedSiteDao(),
+                shieldSettingDao = db.shieldSettingDao(),
                 context = applicationContext,
                 windowId = windowId,
                 incognito = incognito,
+                initialShieldSettings = db.shieldSettingDao().all(),
             )
             withContext(Dispatchers.Main) {
                 factoryState = factory
@@ -193,6 +198,7 @@ sealed interface Route : NavKey {
     @Serializable data object Downloads : Route
     @Serializable data object SiteData : Route
     @Serializable data object InstalledSites : Route
+    @Serializable data object Shields : Route
 }
 
 @Composable
@@ -226,5 +232,6 @@ fun Navigation(viewModel: WebViewModel) {
         entry<Route.Downloads> { DownloadsPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.SiteData> { SiteDataPage(viewModel = viewModel, backStack = backStack) }
         entry<Route.InstalledSites> { com.vayunmathur.web.ui.InstalledSitesPage(viewModel = viewModel, backStack = backStack) }
+        entry<Route.Shields> { com.vayunmathur.web.ui.ShieldsPage(viewModel = viewModel, backStack = backStack) }
     }
 }

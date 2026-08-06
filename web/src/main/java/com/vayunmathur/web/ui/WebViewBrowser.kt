@@ -13,7 +13,6 @@ import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -30,8 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.vayunmathur.web.shields.FarblingConfig
+import com.vayunmathur.web.shields.ShieldsWebViewClient
 import com.vayunmathur.web.util.BrowserUtils
 import com.vayunmathur.web.util.PwaHelper
 import com.vayunmathur.web.util.SitePermissionType
@@ -57,6 +59,13 @@ fun WebViewBrowser(
 ) {
     val context = LocalContext.current
     val holder = remember(tabId) { WebViewHolder() }
+
+    // Observed so a shields change recomposes and re-registers the document-start script;
+    // the view model's own mirror is a plain map and would not trigger anything.
+    val siteShields by viewModel.shieldSettings.collectAsStateWithLifecycle()
+    val farblingConfig = remember(siteShields, viewModel.shields) {
+        FarblingConfig.of(viewModel.shields, siteShields.associate { it.host to it.toSettings() })
+    }
 
     var pendingSysPermissionRequest by remember { mutableStateOf<PermissionRequest?>(null) }
 
@@ -155,21 +164,16 @@ fun WebViewBrowser(
                     }
                 })
 
-                webViewClient = object : WebViewClient() {
-                    private val adHosts = setOf(
-                        "doubleclick.net", "googleadservices.com", "googlesyndication.com",
-                        "facebook.com/tr", "googletagmanager.com", "google-analytics.com",
-                        "hotjar.com", "mixpanel.com", "segment.com", "criteo.net"
-                    )
+                // The tab a WebView belongs to never changes, so capture privacy once instead
+                // of reading the Compose tab list from the render thread.
+                val isPrivateTab = viewModel.tabs.find { it.id == tabId }?.isPrivate == true
 
-                    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                        val host = request.url.host ?: ""
-                        if (adHosts.any { host.contains(it) }) {
-                            return WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
-                        }
-                        return super.shouldInterceptRequest(view, request)
-                    }
-
+                webViewClient = object : ShieldsWebViewClient(
+                    context = ctx,
+                    shieldsFor = { host -> viewModel.shieldsFor(host, isPrivateTab) },
+                    onBlocked = { _, _ -> viewModel.onRequestBlocked(tabId) },
+                    onNavigate = { _, rewritten -> viewModel.onTabUrlChange(tabId, rewritten) },
+                ) {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val scheme = request.url.scheme ?: return false
                         if (scheme !in setOf("http", "https", "about", "data", "blob", "javascript")) {
@@ -181,10 +185,12 @@ fun WebViewBrowser(
                                 true
                             } catch (_: Exception) { false }
                         }
-                        return false
+                        return super.shouldOverrideUrlLoading(view, request)
                     }
 
                     override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        viewModel.resetBlockedCount(tabId)
                         url?.let { viewModel.onTabUrlChange(tabId, it) }
                         viewModel.onTabCanGoBack(tabId, view.canGoBack())
                         viewModel.onTabCanGoForward(tabId, view.canGoForward())
@@ -362,6 +368,8 @@ fun WebViewBrowser(
                 }
 
                 val toLoad = if (initialUrl.isBlank()) "about:blank" else initialUrl
+                // Before the first load: document-start scripts do not apply retroactively.
+                (webViewClient as ShieldsWebViewClient).installFarbling(this, farblingConfig)
                 loadUrl(toLoad)
             }.also {
                 webViewPool[tabId] = it
@@ -380,6 +388,8 @@ fun WebViewBrowser(
                 }
             }
             applySettings(webView, viewModel)
+            (webView.webViewClient as? ShieldsWebViewClient)
+                ?.installFarbling(webView, farblingConfig)
             holder.webView = webView
         }
     )
@@ -426,7 +436,14 @@ private fun applySettings(webView: WebView, viewModel: WebViewModel) {
     settings.useWideViewPort = true
     settings.loadWithOverviewMode = true
 
-    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+    // Aggressive shields refuse plaintext subresources outright; otherwise stay permissive
+    // so pages with a few http:// images still render.
+    val globalShields = com.vayunmathur.web.util.EffectiveShields.resolve(viewModel.shields)
+    settings.mixedContentMode = if (globalShields.httpsOnly) {
+        WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    } else {
+        WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+    }
 
     // Geolocation DB persists across loads
     settings.setGeolocationEnabled(true)

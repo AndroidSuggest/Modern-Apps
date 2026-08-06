@@ -149,6 +149,28 @@ interface InstalledSiteDao {
     suspend fun clearAll()
 }
 
+@Dao
+interface ShieldSettingDao {
+    @Query("SELECT * FROM ShieldSetting ORDER BY host ASC")
+    fun allFlow(): Flow<List<ShieldSetting>>
+
+    /** One-shot read so the first page load already knows about site exceptions. */
+    @Query("SELECT * FROM ShieldSetting")
+    suspend fun all(): List<ShieldSetting>
+
+    @Query("SELECT * FROM ShieldSetting WHERE host = :host LIMIT 1")
+    suspend fun byHost(host: String): ShieldSetting?
+
+    @Upsert
+    suspend fun upsert(setting: ShieldSetting)
+
+    @Query("DELETE FROM ShieldSetting WHERE host = :host")
+    suspend fun deleteHost(host: String)
+
+    @Query("DELETE FROM ShieldSetting")
+    suspend fun clearAll()
+}
+
 @Database(
     entities = [
         HistoryEntry::class,
@@ -158,8 +180,9 @@ interface InstalledSiteDao {
         StorageInfo::class,
         DownloadEntry::class,
         InstalledSite::class,
+        ShieldSetting::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class WebDatabase : RoomDatabase() {
@@ -169,9 +192,10 @@ abstract class WebDatabase : RoomDatabase() {
     abstract fun storageInfoDao(): StorageInfoDao
     abstract fun downloadDao(): DownloadDao
     abstract fun installedSiteDao(): InstalledSiteDao
+    abstract fun shieldSettingDao(): ShieldSettingDao
 
     companion object : DatabaseMigrations {
-        override val migrations = listOf(MIGRATION_1_2)
+        override val migrations = listOf(MIGRATION_1_2, MIGRATION_2_3)
     }
 }
 
@@ -192,6 +216,23 @@ private val MIGRATION_1_2 = object : Migration(1, 2) {
                 `origin` TEXT NOT NULL,
                 `installedAt` INTEGER NOT NULL,
                 PRIMARY KEY(`id`)
+            )"""
+        )
+    }
+}
+
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `ShieldSetting` (
+                `host` TEXT NOT NULL,
+                `level` TEXT,
+                `blockTrackers` INTEGER,
+                `cosmeticFiltering` INTEGER,
+                `fingerprintProtection` INTEGER,
+                `httpsUpgrade` INTEGER,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`host`)
             )"""
         )
     }

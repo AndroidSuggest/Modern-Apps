@@ -123,8 +123,19 @@ fun SettingsPage(
 
             item {
                 ListItem(
-                    headlineContent = { Text(stringResource(R.string.ad_tracker_blocking)) },
-                    supportingContent = { Text(stringResource(R.string.blocks_doubleclick_googletagmanager_anal) + " — Always on") }
+                    headlineContent = { Text(stringResource(R.string.shields)) },
+                    supportingContent = {
+                        Text(
+                            stringResource(
+                                when (viewModel.shields.level) {
+                                    com.vayunmathur.web.util.ShieldLevel.OFF -> R.string.shields_level_off_desc
+                                    com.vayunmathur.web.util.ShieldLevel.STANDARD -> R.string.shields_level_standard_desc
+                                    else -> R.string.shields_level_aggressive_desc
+                                }
+                            )
+                        )
+                    },
+                    modifier = Modifier.clickable { backStack.add(Route.Shields) }
                 )
             }
 

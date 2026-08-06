@@ -24,8 +24,11 @@ import com.vayunmathur.web.data.InstalledSite
 import com.vayunmathur.web.data.InstalledSiteDao
 import com.vayunmathur.web.data.SitePermission
 import com.vayunmathur.web.data.SitePermissionDao
+import com.vayunmathur.web.data.ShieldSetting
+import com.vayunmathur.web.data.ShieldSettingDao
 import com.vayunmathur.web.data.StorageInfo
 import com.vayunmathur.web.data.StorageInfoDao
+import com.vayunmathur.web.shields.FarblingConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +45,11 @@ private const val P_JS_ENABLED = "web_js_enabled"
 private const val P_BLOCK_THIRD_PARTY = "web_block_third_party"
 private const val P_DESKTOP_MODE = "web_desktop_mode"
 private const val P_SEARCH_ENGINE = "web_search_engine"
+private const val P_SHIELD_LEVEL = "web_shield_level"
+private const val P_SHIELD_TRACKERS = "web_shield_trackers"
+private const val P_SHIELD_COSMETIC = "web_shield_cosmetic"
+private const val P_SHIELD_FINGERPRINT = "web_shield_fingerprint"
+private const val P_SHIELD_HTTPS = "web_shield_https"
 
 data class PermissionPrompt(
     val id: String = Uuid.random().toString(),
@@ -58,11 +66,18 @@ class WebViewModel(
     private val storageInfoDao: StorageInfoDao,
     private val downloadDao: DownloadDao,
     private val installedSiteDao: InstalledSiteDao,
+    private val shieldSettingDao: ShieldSettingDao,
     private val context: Context,
     /** Identifies this window's independent tab set; the default window keeps the legacy pref keys. */
     private val windowId: String = DEFAULT_WINDOW_ID,
     /** An incognito window: every tab is private and nothing is persisted. */
     val incognito: Boolean = false,
+    /**
+     * Site exceptions read before the UI was allowed to render. Seeding them here rather
+     * than waiting for [ShieldSettingDao.allFlow] is what stops the first page of a cold
+     * start from being farbled on a site the user turned shields off for.
+     */
+    initialShieldSettings: List<ShieldSetting> = emptyList(),
 ) : ViewModel() {
 
     companion object {
@@ -90,8 +105,10 @@ class WebViewModel(
     var jsEnabled by mutableStateOf(true)
     var blockThirdPartyCookies by mutableStateOf(false)
     var desktopMode by mutableStateOf(false)
-    /** Ad/tracker blocking is always enabled — cannot be disabled. */
-    val adBlockEnabled: Boolean = true
+
+    /** Global Brave Shields defaults; per-site overrides live in [shieldSettings]. */
+    var shields by mutableStateOf(ShieldsSettings.AGGRESSIVE_DEFAULTS)
+        private set
 
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks
@@ -113,6 +130,29 @@ class WebViewModel(
 
     private val _installedSites = MutableStateFlow<List<InstalledSite>>(emptyList())
     val installedSites: StateFlow<List<InstalledSite>> = _installedSites
+
+    private val _shieldSettings = MutableStateFlow(initialShieldSettings)
+    val shieldSettings: StateFlow<List<ShieldSetting>> = _shieldSettings
+
+    /**
+     * Per-host overrides mirrored synchronously because `shouldInterceptRequest` runs on the
+     * render thread and cannot wait on a coroutine or a database read.
+     */
+    private val shieldOverrides = java.util.concurrent.ConcurrentHashMap<String, ShieldsSettings>()
+        .apply { initialShieldSettings.forEach { put(it.host, it.toSettings()) } }
+
+    /**
+     * Blocked-request tallies. The counting side is hit from the render thread, so the
+     * authoritative totals live in a concurrent map and only the UI mirror is a snapshot
+     * state — writing Compose state off the main thread is not safe.
+     */
+    private val blockedTotals = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
+    private val blockedPublishPending = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    private val blockedCounts = mutableStateMapOf<String, Int>()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Whether the shields panel is open; the host it targets is always the active tab's. */
+    var showShieldsPanel by mutableStateOf(false)
 
     var pendingPermissionPrompt by mutableStateOf<PermissionPrompt?>(null)
         private set
@@ -149,7 +189,18 @@ class WebViewModel(
                     val js = sp.getBoolean(P_JS_ENABLED, true)
                     val blockThird = sp.getBoolean(P_BLOCK_THIRD_PARTY, false)
                     val desktop = sp.getBoolean(P_DESKTOP_MODE, false)
+                    val defaults = ShieldsSettings.AGGRESSIVE_DEFAULTS
+                    val savedShields = ShieldsSettings(
+                        level = sp.getString(P_SHIELD_LEVEL, null)
+                            ?.let { runCatching { ShieldLevel.valueOf(it) }.getOrNull() }
+                            ?: defaults.level,
+                        blockTrackers = sp.getBoolean(P_SHIELD_TRACKERS, true),
+                        cosmeticFiltering = sp.getBoolean(P_SHIELD_COSMETIC, true),
+                        fingerprintProtection = sp.getBoolean(P_SHIELD_FINGERPRINT, true),
+                        httpsUpgrade = sp.getBoolean(P_SHIELD_HTTPS, true),
+                    )
                     withContext(Dispatchers.Main) {
+                        shields = savedShields
                         cacheModeName?.let { runCatching { CacheMode.valueOf(it) }.getOrNull()?.let { cm -> cacheMode = cm } }
                         searchEngineName?.let { runCatching { SearchEngine.valueOf(it) }.getOrNull()?.let { se -> searchEngine = se } }
                         jsEnabled = js
@@ -243,7 +294,77 @@ class WebViewModel(
         viewModelScope.launch { storageInfoDao.allFlow().collect { _storageInfos.value = it } }
         viewModelScope.launch { downloadDao.allFlow().collect { _downloads.value = it } }
         viewModelScope.launch { installedSiteDao.allFlow().collect { _installedSites.value = it } }
+        viewModelScope.launch {
+            shieldSettingDao.allFlow().collect { settings ->
+                _shieldSettings.value = settings
+                shieldOverrides.clear()
+                settings.forEach { shieldOverrides[it.host] = it.toSettings() }
+            }
+        }
     }
+
+    // ---- Brave Shields ----
+
+    /**
+     * Resolved shields for [host]. Safe to call from the WebView render thread: it only
+     * touches the concurrent override map, never the Compose-backed tab list.
+     *
+     * @param isPrivate the owning tab is private, which forces the full aggressive preset
+     */
+    fun shieldsFor(host: String, isPrivate: Boolean = false): EffectiveShields {
+        if (isPrivate || incognito) {
+            return EffectiveShields.resolve(ShieldsSettings.AGGRESSIVE_DEFAULTS)
+        }
+        return EffectiveShields.resolve(shields, shieldOverrides[host])
+    }
+
+    /**
+     * Snapshot of the farbling decision for every site, for the document-start script.
+     * Changes to this are what force a script re-registration.
+     */
+    fun farblingConfig(): FarblingConfig = FarblingConfig.of(shields, shieldOverrides.toMap())
+
+    fun updateShields(settings: ShieldsSettings) {
+        shields = settings
+        persistPrefs()
+    }
+
+    fun updateSiteShields(host: String, settings: ShieldsSettings) {
+        if (host.isBlank()) return
+        // Mirror immediately so the next request sees it without waiting for Room.
+        if (settings.isEmpty) shieldOverrides.remove(host) else shieldOverrides[host] = settings
+        viewModelScope.launch {
+            if (settings.isEmpty) {
+                shieldSettingDao.deleteHost(host)
+            } else {
+                shieldSettingDao.upsert(ShieldSetting.from(host, settings))
+            }
+        }
+    }
+
+    fun clearSiteShields() {
+        shieldOverrides.clear()
+        viewModelScope.launch { shieldSettingDao.clearAll() }
+    }
+
+    /** Called from the render thread on every blocked request; coalesces UI updates. */
+    fun onRequestBlocked(tabId: String) {
+        blockedTotals.computeIfAbsent(tabId) { java.util.concurrent.atomic.AtomicInteger() }
+            .incrementAndGet()
+        if (blockedPublishPending.putIfAbsent(tabId, true) == null) {
+            mainHandler.post {
+                blockedPublishPending.remove(tabId)
+                blockedCounts[tabId] = blockedTotals[tabId]?.get() ?: 0
+            }
+        }
+    }
+
+    fun resetBlockedCount(tabId: String) {
+        blockedTotals.remove(tabId)
+        blockedCounts[tabId] = 0
+    }
+
+    fun blockedCount(tabId: String): Int = blockedCounts[tabId] ?: 0
 
     val activeTab: BrowserTab? get() = tabs.find { it.id == activeTabId }
 
@@ -317,6 +438,8 @@ class WebViewModel(
         tabCanGoBack.remove(tabId)
         tabCanGoForward.remove(tabId)
         tabCurrentUrl.remove(tabId)
+        blockedCounts.remove(tabId)
+        blockedTotals.remove(tabId)
         pwaInfos.remove(tabId)
         if (activeTabId == tabId) {
             activeTabId = when {
@@ -682,6 +805,11 @@ class WebViewModel(
                     .putBoolean(P_JS_ENABLED, jsEnabled)
                     .putBoolean(P_BLOCK_THIRD_PARTY, blockThirdPartyCookies)
                     .putBoolean(P_DESKTOP_MODE, desktopMode)
+                    .putString(P_SHIELD_LEVEL, shields.level?.name)
+                    .putBoolean(P_SHIELD_TRACKERS, shields.blockTrackers != false)
+                    .putBoolean(P_SHIELD_COSMETIC, shields.cosmeticFiltering != false)
+                    .putBoolean(P_SHIELD_FINGERPRINT, shields.fingerprintProtection != false)
+                    .putBoolean(P_SHIELD_HTTPS, shields.httpsUpgrade != false)
                     .apply()
             } catch (e: Exception) { Log.e(TAG, "persistPrefs failed", e) }
         }
@@ -700,14 +828,16 @@ class WebViewModelFactory(
     private val storageInfoDao: StorageInfoDao,
     private val downloadDao: DownloadDao,
     private val installedSiteDao: InstalledSiteDao,
+    private val shieldSettingDao: ShieldSettingDao,
     private val context: Context,
     private val windowId: String = WebViewModel.DEFAULT_WINDOW_ID,
     private val incognito: Boolean = false,
+    private val initialShieldSettings: List<ShieldSetting> = emptyList(),
 ) : androidx.lifecycle.ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WebViewModel::class.java)) {
-            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, installedSiteDao, context, windowId, incognito) as T
+            return WebViewModel(historyDao, bookmarkDao, sitePermissionDao, storageInfoDao, downloadDao, installedSiteDao, shieldSettingDao, context, windowId, incognito, initialShieldSettings) as T
         }
         throw IllegalArgumentException("Unknown ViewModel $modelClass")
     }

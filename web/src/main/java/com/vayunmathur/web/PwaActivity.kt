@@ -4,7 +4,6 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
@@ -16,7 +15,6 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,8 +32,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.web.shields.FarblingConfig
+import com.vayunmathur.web.shields.ShieldsEngine
+import com.vayunmathur.web.shields.ShieldsWebViewClient
 import com.vayunmathur.web.ui.applySystemDarkMode
+import com.vayunmathur.web.util.EffectiveShields
+import com.vayunmathur.web.util.ShieldsSettings
 
 class PwaActivity : ComponentActivity() {
 
@@ -50,6 +55,9 @@ class PwaActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Installed sites get the same shields as the browser; loading is a no-op if the
+        // engine is already up in this process.
+        lifecycleScope.launch { ShieldsEngine.load(applicationContext) }
         handleIntent(intent)
         setContent {
             DynamicTheme {
@@ -242,7 +250,12 @@ private fun PwaBrowser(
                         }
                     })
 
-                    webViewClient = object : android.webkit.WebViewClient() {
+                    webViewClient = object : ShieldsWebViewClient(
+                        context = ctx,
+                        // Installed sites have no shields panel, so they always run the
+                        // aggressive preset the browser ships with.
+                        shieldsFor = { EffectiveShields.resolve(ShieldsSettings.AGGRESSIVE_DEFAULTS) },
+                    ) {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val scheme = request.url.scheme ?: return false
                             if (scheme !in setOf("http", "https", "about", "data", "blob", "javascript")) {
@@ -255,11 +268,7 @@ private fun PwaBrowser(
                                 } catch (_: Exception) { false }
                             }
                             // For PWA: stay inside same origin; external origins still load but that is okay.
-                            return false
-                        }
-
-                        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                            // no-op
+                            return super.shouldOverrideUrlLoading(view, request)
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {
@@ -351,6 +360,9 @@ private fun PwaBrowser(
                         }
                     }
 
+                    // Before the first load: document-start scripts do not apply retroactively.
+                    (webViewClient as ShieldsWebViewClient)
+                        .installFarbling(this, FarblingConfig.of(ShieldsSettings.AGGRESSIVE_DEFAULTS, emptyMap()))
                     loadUrl(initialUrl)
                 }.also {
                     webViewRef = it

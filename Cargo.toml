@@ -15,6 +15,7 @@ members = [
   "measure/src/main/rust",
   "messages/src/main/rust",
   "youpipe/src/main/rust",
+  "web/src/main/rust",
   "third_party/om-file-format-sys",
 ]
 resolver = "2"
@@ -53,6 +54,10 @@ memchr = "2.8.3"
 # XML pull parsing for the OOXML/ODF importers. Only transitive dep is memchr, pinned above.
 quick-xml = { version = "0.37", default-features = false }
 serde_json = "1.0.149"
+
+# Brave Shields engine (:web). default-features off drops `single-thread` so `Engine` is
+# Send + Sync, which the WebView render thread requires.
+adblock = { version = "0.13.2", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
 
 # Imaging – image crate 0.25->moxcms/pxfm removed, use tiny jpeg-encoder/decoder (1 function per your rule)
 jpeg-decoder = { version = "0.3.2", default-features = false }

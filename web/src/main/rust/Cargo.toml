@@ -1,0 +1,18 @@
+[package]
+name = "web_shields"
+version = "0.1.0"
+edition = "2021"
+description = "Brave Shields engine (adblock-rust) for the :web browser — network blocking, cosmetic filtering and $removeparam rewrites over JNI"
+license = "MPL-2.0"
+
+[lib]
+name = "web_shields"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Root catalog pins the version + features (see /Cargo.toml). default-features = false
+# drops `single-thread`, so `Engine` is Send + Sync and the handle can be shared between
+# the render thread (shouldInterceptRequest) and the UI thread.
+adblock.workspace = true
+jni.workspace = true
+serde_json.workspace = true
