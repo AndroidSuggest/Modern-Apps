@@ -24,15 +24,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.vayunmathur.games.voxels.util.WorldInfo
 import com.vayunmathur.games.voxels.util.VoxelsRoles
+import com.vayunmathur.games.voxels.util.VoxelsSync
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconPlay
@@ -55,6 +58,9 @@ fun MenuScreen(
     onRefresh: () -> Unit,
     onCopyDeviceId: () -> Unit,
     onShare: (WorldInfo) -> Unit,
+    requests: List<VoxelsSync.JoinRequest> = emptyList(),
+    onApprove: (VoxelsSync.JoinRequest) -> Unit = {},
+    onDeny: (VoxelsSync.JoinRequest) -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopCenter) {
         Column(
@@ -113,6 +119,25 @@ fun MenuScreen(
                             onPlay = { if (isOnline) onPlay(world) },
                             onDelete = { onDelete(world) },
                             onShare = if (owner) ({ onShare(world) }) else null)
+                    }
+                }
+
+                // --- Inbound join requests (owners only) ---
+                if (requests.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(16.dp))
+                        Text(stringResource(R.string.requests_header), style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    items(requests, key = { "req-${it.worldId}-${it.requesterId}" }) { req ->
+                        val worldName = onlineWorlds.firstOrNull { it.meta.worldId == req.worldId }?.meta?.name ?: req.worldId.take(8)
+                        val requester = req.name.ifBlank { req.requesterId.take(8) }
+                        RequestRow(
+                            text = stringResource(R.string.request_wants_to_join, requester, worldName),
+                            onApprove = { onApprove(req) },
+                            onDeny = { onDeny(req) },
+                        )
                     }
                 }
             }
@@ -178,6 +203,19 @@ private fun WorldRow(
     }
 }
 
+@Composable
+private fun RequestRow(text: String, onApprove: () -> Unit, onDeny: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = onDeny) { Text(stringResource(R.string.deny)) }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onApprove) { Text(stringResource(R.string.approve)) }
+        }
+    }
+}
+
 // Owner-only dialog: invite a device by id. Voxels worlds have no viewers — everyone invited can
 // build — so there's no role choice. Mirrors office's ShareOnlineDialog.
 @Composable
@@ -187,11 +225,27 @@ fun ShareOnlineDialog(
     onSend: (recipient: String) -> Unit,
 ) {
     var recipient by remember { mutableStateOf("") }
+    val context = LocalContext.current
     Dialog(onDismissRequest = onDismiss) {
         Card(Modifier.fillMaxWidth().padding(8.dp)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.share_world), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                 Text(world.meta.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                // Share sheet: sends voxels://join/<worldId>?owner=<ownerId> (public ids only) so the
+                // invitee can request access without you typing their device id.
+                OutlinedButton(
+                    onClick = {
+                        val link = "voxels://join/${world.meta.worldId}?owner=${world.meta.ownerDeviceId}"
+                        ExternalIntents.shareText(context, link, context.getString(R.string.share_link_chooser))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    IconShare()
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.share_link))
+                }
+                Text(stringResource(R.string.or_add_by_device_id), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                 OutlinedTextField(
                     value = recipient,
                     onValueChange = { recipient = it },

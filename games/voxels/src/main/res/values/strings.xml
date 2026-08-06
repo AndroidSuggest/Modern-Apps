@@ -72,6 +72,24 @@
     <string name="send_invite">Send invite</string>
     <string name="invite_sent">Invite sent.</string>
     <string name="invite_failed">Couldn\'t send the invite — check the device ID and your connection.</string>
+    <!-- ShareOnlineDialog: Button that opens the share sheet with a join link. Verb phrase -->
+    <string name="share_link">Share link</string>
+    <!-- ShareOnlineDialog: Title of the share chooser for the join link. Noun phrase -->
+    <string name="share_link_chooser">Share Voxels invite</string>
+    <!-- ShareOnlineDialog: Separator before the manual device-id fallback. Phrase -->
+    <string name="or_add_by_device_id">Or add by device ID</string>
+    <!-- MenuScreen: Header for inbound join requests. Noun -->
+    <string name="requests_header">Requests</string>
+    <!-- MenuScreen: Button to approve a join request. Verb -->
+    <string name="approve">Approve</string>
+    <!-- MenuScreen: Button to deny a join request. Verb -->
+    <string name="deny">Deny</string>
+    <!-- MenuScreen: A join request line: %1$s = requester, %2$s = world name. Sentence -->
+    <string name="request_wants_to_join">%1$s wants to join \"%2$s\"</string>
+    <!-- MenuActivity: Toast while a join request is being sent. Sentence -->
+    <string name="requesting_access">Requesting access…</string>
+    <!-- MenuActivity: Toast when a join request was sent. Sentence -->
+    <string name="join_request_sent">Requested to join — you\'ll get access once the host approves.</string>
     <string name="connection_lost">Connection lost — waiting to reconnect…</string>
     <string name="players_online">%1$d online</string>
 </resources>

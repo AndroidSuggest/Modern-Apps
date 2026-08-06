@@ -136,4 +136,23 @@ object WorldManager {
         val tier = VoxelsAchievementsManager(ctx, json, "world_$id:")
         CoroutineScope(Dispatchers.IO).launch { tier.forgetAll() }
     }
+
+    // --- Handled join requests ---
+    //
+    // The inbox is always pulled from seq 0, so an approved/denied request would otherwise reappear
+    // on every refresh (its sealed blob lives in the log forever). We persist a small set of handled
+    // "worldId|requesterId" keys to suppress those, mirroring how shared worlds dedup by worldId.
+
+    private fun handledFile(ctx: Context): File = File(ctx.filesDir, "voxels_handled_requests.json")
+
+    fun handledRequests(ctx: Context): Set<String> {
+        val f = handledFile(ctx)
+        if (!f.exists()) return emptySet()
+        return try { json.decodeFromString<Set<String>>(f.readText()) } catch (_: Exception) { emptySet() }
+    }
+
+    fun markRequestHandled(ctx: Context, key: String) {
+        val updated = handledRequests(ctx) + key
+        runCatching { handledFile(ctx).writeText(json.encodeToString(updated)) }
+    }
 }

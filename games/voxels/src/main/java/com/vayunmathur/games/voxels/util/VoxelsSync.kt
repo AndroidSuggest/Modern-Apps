@@ -129,12 +129,43 @@ object VoxelsSync {
 
     /** Pulls + unseals invites addressed to this device from [since]. */
     suspend fun pullInvites(since: Int): InvitesResult {
-        val p = pull("inbox:$deviceId", since) ?: return InvitesResult(emptyList(), since)
-        val invites = p.actions.mapNotNull { b ->
-            val plain = runCatching { identity.decrypt(Base64.decode(b)) }.getOrNull() ?: return@mapNotNull null
-            runCatching { json.decodeFromString<Invite>(plain.decodeToString()) }.getOrNull()
+        val inbox = pullInbox(since)
+        return InvitesResult(inbox.invites, inbox.seq)
+    }
+
+    /**
+     * Sends a PQC-sealed join request to a world owner's inbox. Carries only public ids
+     * (never the AES world key); the host approves with one tap, which triggers the
+     * existing seal-to-recipient [sendInvite]. Rides the same `inbox:<ownerId>` channel
+     * as invites — distinguished by the `kind:"req"` discriminator (see [pullInbox]).
+     */
+    suspend fun sendJoinRequest(ownerId: String, worldId: String, requesterId: String, name: String): Boolean {
+        val ownerBundle = getKey(ownerId) ?: return false
+        val req = json.encodeToString(JoinRequest(worldId = worldId, requesterId = requesterId, name = name))
+        val blob = Base64.encode(Pqc.encryptTo(ownerBundle, req.encodeToByteArray()))
+        return append("inbox:$ownerId", listOf(blob)) != null
+    }
+
+    /**
+     * Tolerant inbox reader: decrypts each blob and sorts it into invites (default kind,
+     * for backward compatibility) vs join requests (`kind:"req"`). Unparseable/foreign
+     * blobs are skipped so one bad item never drops the batch.
+     */
+    suspend fun pullInbox(since: Int): InboxResult {
+        val p = pull("inbox:$deviceId", since) ?: return InboxResult(emptyList(), emptyList(), since)
+        val invites = mutableListOf<Invite>()
+        val requests = mutableListOf<JoinRequest>()
+        for (b in p.actions) {
+            val plain = runCatching { identity.decrypt(Base64.decode(b)) }.getOrNull() ?: continue
+            val text = plain.decodeToString()
+            val kind = runCatching { json.decodeFromString<InboxEnvelope>(text).kind }.getOrNull().orEmpty()
+            if (kind == "req") {
+                runCatching { json.decodeFromString<JoinRequest>(text) }.getOrNull()?.let { requests.add(it) }
+            } else {
+                runCatching { json.decodeFromString<Invite>(text) }.getOrNull()?.let { invites.add(it) }
+            }
         }
-        return InvitesResult(invites, p.seq)
+        return InboxResult(invites, requests, p.seq)
     }
 
     // --- Owner-signed roster on the (world-key-encrypted) members channel ---
@@ -312,6 +343,17 @@ object VoxelsSync {
         val ownerDeviceId: String = "",
     )
 
+    /** A request to join a world, sealed to the owner. Public ids only — no key. */
+    @Serializable data class JoinRequest(
+        val kind: String = "req",
+        val worldId: String,
+        val requesterId: String,
+        val name: String = "",
+    )
+
+    /** Peeks the discriminator on an inbox blob so invites and requests can share the channel. */
+    @Serializable private data class InboxEnvelope(val kind: String = "")
+
     /** An author-signed op/snapshot batch: author id, signature over [ops], and the ops JSON. */
     @Serializable data class SignedOp(val author: String, val sig: String, val ops: String)
 
@@ -322,6 +364,7 @@ object VoxelsSync {
     @Serializable data class SignedMember(val member: Member, val sig: String)
 
     class InvitesResult(val invites: List<Invite>, val seq: Int)
+    class InboxResult(val invites: List<Invite>, val requests: List<JoinRequest>, val seq: Int)
     class OpsResult(val items: List<String>, val seq: Int)
 
     @Serializable private data class SubMsg(val t: String, val channel: String)

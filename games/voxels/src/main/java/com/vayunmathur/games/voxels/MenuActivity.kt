@@ -44,9 +44,31 @@ class MenuActivity : ComponentActivity() {
     // (keeps last-played ordering fresh).
     private var resumeTick by mutableStateOf(0)
 
+    /**
+     * Pending `voxels://join/<worldId>?owner=<id>` link (worldId to ownerId), set on cold start and
+     * via [onNewIntent] for warm starts, consumed by a Compose effect that sends the join request.
+     */
+    private val pendingJoinLink = mutableStateOf<Pair<String, String>?>(null)
+
     override fun onResume() {
         super.onResume()
         resumeTick++
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop: warm-start join links land here rather than a fresh onCreate.
+        setIntent(intent)
+        parseJoinLink(intent)?.let { pendingJoinLink.value = it }
+    }
+
+    /** Parses `voxels://join/<worldId>?owner=<ownerDeviceId>`; null for any other intent. */
+    private fun parseJoinLink(intent: Intent?): Pair<String, String>? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "voxels" || data.host != "join") return null
+        val worldId = data.lastPathSegment?.takeIf { it.isNotBlank() } ?: return null
+        val ownerId = data.getQueryParameter("owner")?.takeIf { it.isNotBlank() } ?: return null
+        return worldId to ownerId
     }
 
     private fun localWorlds() = WorldManager.listWorlds(this).filter { !it.meta.online }
@@ -66,6 +88,35 @@ class MenuActivity : ComponentActivity() {
                 var onlineWorlds by remember { mutableStateOf(onlineWorldList()) }
                 var deviceId by remember { mutableStateOf("") }
                 var shareTarget by remember { mutableStateOf<WorldInfo?>(null) }
+                var requests by remember { mutableStateOf<List<VoxelsSync.JoinRequest>>(emptyList()) }
+
+                val ctx = this@MenuActivity
+                fun reload() { worlds = localWorlds(); onlineWorlds = onlineWorldList() }
+
+                // Pulls the inbox (from 0): folds invites into the shared-world list and surfaces
+                // join requests for worlds this device owns (minus already-approved/denied ones).
+                val refreshInbox: suspend () -> Unit = {
+                    val pending = withContext(Dispatchers.IO) {
+                        runCatching {
+                            VoxelsSync.init(ctx)
+                            val res = VoxelsSync.pullInbox(0)
+                            for (inv in res.invites) {
+                                WorldManager.upsertSharedWorld(
+                                    ctx, inv.name, inv.seed, inv.worldId,
+                                    inv.key, inv.ownerDeviceId, inv.role, System.currentTimeMillis(),
+                                )
+                            }
+                            val owned = WorldManager.onlineWorlds(ctx)
+                                .filter { it.meta.role == VoxelsRoles.OWNER }.map { it.meta.worldId }.toSet()
+                            val handled = WorldManager.handledRequests(ctx)
+                            res.requests
+                                .filter { it.worldId in owned && "${it.worldId}|${it.requesterId}" !in handled }
+                                .distinctBy { "${it.worldId}|${it.requesterId}" }
+                        }.getOrDefault(emptyList())
+                    }
+                    requests = pending
+                    reload()
+                }
 
                 LaunchedEffect(resumeTick) {
                     worlds = localWorlds()
@@ -76,9 +127,24 @@ class MenuActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     withContext(Dispatchers.IO) { runCatching { VoxelsSync.init(this@MenuActivity) } }
                     deviceId = VoxelsSync.deviceId
+                    runCatching { refreshInbox() }
                 }
-
-                fun reload() { worlds = localWorlds(); onlineWorlds = onlineWorldList() }
+                // A tapped voxels://join link sends a sealed join request to the host.
+                LaunchedEffect(pendingJoinLink.value) {
+                    val link = pendingJoinLink.value ?: return@LaunchedEffect
+                    pendingJoinLink.value = null
+                    val (worldId, ownerId) = link
+                    toast(getString(R.string.requesting_access))
+                    val ok = withContext(Dispatchers.IO) {
+                        runCatching {
+                            VoxelsSync.init(ctx)
+                            val myName = "Player " + VoxelsSync.deviceId.takeLast(4)
+                            VoxelsSync.sendJoinRequest(ownerId, worldId, VoxelsSync.deviceId, myName)
+                        }.getOrDefault(false)
+                    }
+                    if (deviceId.isEmpty()) deviceId = VoxelsSync.deviceId
+                    toast(getString(if (ok) R.string.join_request_sent else R.string.invite_failed))
+                }
 
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize()) {
@@ -121,25 +187,44 @@ class MenuActivity : ComponentActivity() {
                                     }
                                 },
                                 onRefresh = {
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) {
-                                            runCatching {
-                                                VoxelsSync.init(this@MenuActivity)
-                                                // Pull the whole inbox and upsert; dedup is by shared worldId.
-                                                val res = VoxelsSync.pullInvites(0)
-                                                for (inv in res.invites) {
-                                                    WorldManager.upsertSharedWorld(
-                                                        this@MenuActivity, inv.name, inv.seed, inv.worldId,
-                                                        inv.key, inv.ownerDeviceId, inv.role, System.currentTimeMillis(),
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        reload()
-                                    }
+                                    scope.launch { refreshInbox() }
                                 },
                                 onCopyDeviceId = { copyToClipboard(deviceId) },
                                 onShare = { shareTarget = it },
+                                requests = requests,
+                                onApprove = { req ->
+                                    scope.launch {
+                                        val ok = withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                VoxelsSync.init(ctx)
+                                                val world = WorldManager.onlineWorlds(ctx)
+                                                    .firstOrNull { it.meta.worldId == req.worldId && it.meta.role == VoxelsRoles.OWNER }
+                                                    ?: return@runCatching false
+                                                val key = Base64.decode(world.meta.keyB64)
+                                                val sent = VoxelsSync.sendInvite(
+                                                    req.requesterId, world.meta.worldId, key,
+                                                    world.meta.name, world.meta.seed, VoxelsRoles.EDITOR,
+                                                    Base64.encode(VoxelsSync.publicBundle), world.meta.ownerDeviceId,
+                                                )
+                                                if (sent) VoxelsSync.recordMembers(
+                                                    world.meta.worldId, key,
+                                                    listOf(
+                                                        VoxelsSync.Member(world.meta.ownerDeviceId, "", VoxelsRoles.OWNER),
+                                                        VoxelsSync.Member(req.requesterId, req.name, VoxelsRoles.EDITOR),
+                                                    ),
+                                                )
+                                                sent
+                                            }.getOrDefault(false)
+                                        }
+                                        if (ok) WorldManager.markRequestHandled(ctx, "${req.worldId}|${req.requesterId}")
+                                        requests = requests.filterNot { it.worldId == req.worldId && it.requesterId == req.requesterId }
+                                        toast(getString(if (ok) R.string.invite_sent else R.string.invite_failed))
+                                    }
+                                },
+                                onDeny = { req ->
+                                    WorldManager.markRequestHandled(ctx, "${req.worldId}|${req.requesterId}")
+                                    requests = requests.filterNot { it.worldId == req.worldId && it.requesterId == req.requesterId }
+                                },
                             )
                         }
 
