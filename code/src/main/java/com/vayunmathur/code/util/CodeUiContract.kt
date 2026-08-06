@@ -25,6 +25,12 @@ data class TabUiState(
     val isDirty: Boolean = false,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
+    /** True when the file changed on disk while this (dirty) tab held unsaved edits. */
+    val changedOnDisk: Boolean = false,
+    /** Charset name shown in the status area (e.g. "UTF-8"). */
+    val charsetName: String = "UTF-8",
+    /** Line-ending name shown in the status area ("LF" or "CRLF"). */
+    val lineEndingName: String = "LF",
 )
 
 /** One row of the flat, lazily-expanded file tree. */
@@ -95,6 +101,16 @@ interface CodeActions {
     fun undo() {}
     fun redo() {}
     fun save() {}
+
+    /** Save every dirty, file-backed tab (used by the exit guard and the palette). */
+    fun saveAll() {}
+
+    /** Reload the current tab from disk, discarding in-memory edits ("changed on disk" banner). */
+    fun reloadFromDisk() {}
+
+    /** Dismiss the "changed on disk" banner, keeping the in-memory edits. */
+    fun dismissDiskChange() {}
+
     fun toggleSoftWrap() {}
     fun insertText(insert: String) {}
     fun onEditorChange(new: TextFieldValue) {}

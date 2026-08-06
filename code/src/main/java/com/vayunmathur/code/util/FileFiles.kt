@@ -47,6 +47,12 @@ object FileFiles {
     /** Overwrites a file with [text] (truncating any previous contents). */
     fun writeText(file: File, text: String) = file.writeText(text, Charsets.UTF_8)
 
+    /** Reads a file's raw bytes, so encoding/BOM/line endings can be sniffed and preserved. */
+    fun readBytes(file: File): ByteArray = file.readBytes()
+
+    /** Overwrites a file with raw [bytes] (truncating any previous contents). */
+    fun writeBytes(file: File, bytes: ByteArray) = file.writeBytes(bytes)
+
     /**
      * Creates a new empty file (and any missing parent directories) under [parent]. Returns the
      * new [File], or null if it already exists or creation failed.

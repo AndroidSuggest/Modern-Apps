@@ -95,4 +95,10 @@
     <string name="save">Save</string>
     <string name="undo">Undo</string>
     <string name="redo">Redo</string>
+    <string name="save_all">Save all</string>
+    <string name="disk_changed">This file changed on disk.</string>
+    <string name="reload">Reload</string>
+    <string name="keep_mine">Keep mine</string>
+    <string name="exit_unsaved_title">Unsaved changes</string>
+    <string name="exit_unsaved_message">You have unsaved changes. Save them before leaving?</string>
 </resources>

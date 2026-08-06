@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         hasStoragePermission = Environment.isExternalStorageManager()
+        viewModel.checkExternalChanges()
     }
 
     override fun onNewIntent(intent: Intent) {

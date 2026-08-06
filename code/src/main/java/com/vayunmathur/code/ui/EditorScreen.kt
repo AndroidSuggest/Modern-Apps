@@ -2,6 +2,7 @@ package com.vayunmathur.code.ui
 
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.code.R
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -36,6 +37,8 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.util.CodeActions
@@ -90,6 +93,7 @@ fun EditorPage(
     val fileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(viewModel::openExternal) }
+    val activity = LocalContext.current as? android.app.Activity
 
     EditorScreen(
         state = viewModel.uiState,
@@ -101,6 +105,7 @@ fun EditorPage(
         onOpenGit = onOpenGit,
         onOpenTerminal = onOpenTerminal,
         onOpenPreview = onOpenPreview,
+        onExitApp = { activity?.finish() },
     )
 }
 
@@ -123,6 +128,7 @@ fun EditorScreen(
     onOpenGit: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
     onOpenPreview: () -> Unit = {},
+    onExitApp: () -> Unit = {},
     /**
      * Seeds for the screen's own UI-only state (is the drawer showing, is the find bar open
      * and on what query). The app always takes the defaults; previews set them so a given
@@ -139,6 +145,11 @@ fun EditorScreen(
     var showGoToLine by remember { mutableStateOf(false) }
     var showQuickOpen by remember { mutableStateOf(false) }
     var showPalette by remember { mutableStateOf(false) }
+    var showExitGuard by remember { mutableStateOf(false) }
+    val anyDirty = state.tabs.any { it.isDirty }
+
+    // Guard back/close when there are unsaved changes; offer Save all / Discard / Cancel.
+    BackHandler(enabled = anyDirty) { showExitGuard = true }
 
     Box(
         Modifier
@@ -215,6 +226,13 @@ fun EditorScreen(
                         onOpenPalette = { showPalette = true },
                     )
                     HorizontalDivider()
+                    if (tab.changedOnDisk) {
+                        DiskChangedBanner(
+                            onReload = { actions.reloadFromDisk() },
+                            onKeep = { actions.dismissDiskChange() },
+                        )
+                        HorizontalDivider()
+                    }
                     CodeEditor(
                         tab = tab,
                         actions = actions,
@@ -269,6 +287,28 @@ fun EditorScreen(
         GoToLineDialog(
             onGo = { actions.goToLine(it) },
             onDismiss = { showGoToLine = false },
+        )
+    }
+    if (showExitGuard) {
+        AlertDialog(
+            onDismissRequest = { showExitGuard = false },
+            title = { Text(stringResource(R.string.exit_unsaved_title)) },
+            text = { Text(stringResource(R.string.exit_unsaved_message)) },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { showExitGuard = false; onExitApp() }) {
+                        Text(stringResource(R.string.discard))
+                    }
+                    TextButton(onClick = { actions.saveAll(); showExitGuard = false; onExitApp() }) {
+                        Text(stringResource(R.string.save_all))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitGuard = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
     }
@@ -404,8 +444,35 @@ private fun EditorToolbar(
             text = tab.language.label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+        Text(
+            text = "${tab.charsetName} \u00B7 ${tab.lineEndingName}",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
+    }
+}
+
+/** A banner shown when the open file changed on disk under unsaved edits: reload or keep. */
+@Composable
+private fun DiskChangedBanner(onReload: () -> Unit, onKeep: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.disk_changed),
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onReload) { Text(stringResource(R.string.reload)) }
+        TextButton(onClick = onKeep) { Text(stringResource(R.string.keep_mine)) }
     }
 }
 
@@ -454,6 +521,7 @@ private fun editorCommands(
 ): List<PickerItem> = listOf(
     PickerItem(stringResource(R.string.quick_open)) { onQuickOpen() },
     PickerItem(stringResource(R.string.save)) { actions.save() },
+    PickerItem(stringResource(R.string.save_all)) { actions.saveAll() },
     PickerItem(stringResource(R.string.find)) { onToggleFind() },
     PickerItem(stringResource(R.string.go_to_line)) { onGoToLine() },
     PickerItem(stringResource(R.string.toggle_comment)) { actions.toggleComment() },

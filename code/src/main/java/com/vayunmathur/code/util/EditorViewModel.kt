@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.charset.Charset
 import kotlin.coroutines.coroutineContext
 
 /** One expandable row in the file-tree pane; the tree is stored as a flat, ordered list. */
@@ -55,6 +56,18 @@ class OpenTab(
         private set
     var canRedo by mutableStateOf(false)
         private set
+
+    // Fidelity metadata so a save round-trips the file byte-for-byte (see [TextEncoding]).
+    var charset: Charset = Charsets.UTF_8
+    var lineEnding: LineEnding = LineEnding.LF
+    var hadBom: Boolean = false
+
+    // Snapshot of the file on disk when it was last opened/saved, for external-change detection.
+    var diskModified: Long = 0L
+    var diskLength: Long = 0L
+
+    /** Set when the file changed on disk while this tab held unsaved edits (drives the banner). */
+    var changedOnDisk by mutableStateOf(false)
 
     private val undoStack = ArrayDeque<TextFieldValue>()
     private val redoStack = ArrayDeque<TextFieldValue>()
@@ -203,6 +216,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                     isDirty = it.isDirty,
                     canUndo = it.canUndo,
                     canRedo = it.canRedo,
+                    changedOnDisk = it.changedOnDisk,
+                    charsetName = it.charset.name(),
+                    lineEndingName = it.lineEnding.name,
                 )
             },
             currentIndex = currentIndex,
@@ -265,10 +281,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             val file = File(path)
             if (!file.isFile) continue
             if (tabs.any { it.key == path }) continue
-            val text = withContext(Dispatchers.IO) {
-                runCatching { FileFiles.readText(file) }.getOrDefault("")
-            }
-            tabs.add(OpenTab(file = file, initialName = file.name, initialText = text, language = Language.fromFileName(file.name)))
+            tabs.add(makeFileTab(file))
         }
         currentIndex = tabs.indexOfFirst { it.file?.absolutePath == current }
             .takeIf { it >= 0 } ?: if (tabs.isEmpty()) -1 else 0
@@ -483,10 +496,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             return
         }
         viewModelScope.launch {
-            val text = withContext(Dispatchers.IO) {
-                runCatching { FileFiles.readText(file) }.getOrDefault("")
-            }
-            tabs.add(OpenTab(file = file, initialName = file.name, initialText = text, language = Language.fromFileName(file.name)))
+            tabs.add(makeFileTab(file))
             currentIndex = tabs.lastIndex
             saveSession()
         }
@@ -524,6 +534,34 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             saveSession()
         }
     }
+
+    /** Reads + decodes [file] off the main thread into a fully-populated tab (empty on failure). */
+    private suspend fun makeFileTab(file: File, name: String = file.name): OpenTab {
+        val loaded = loadFile(file)
+        return OpenTab(
+            file = file,
+            initialName = name,
+            initialText = loaded.decoded.text,
+            language = Language.fromFileName(name),
+        ).apply {
+            charset = loaded.decoded.charset
+            lineEnding = loaded.decoded.lineEnding
+            hadBom = loaded.decoded.hadBom
+            diskModified = loaded.modified
+            diskLength = loaded.length
+        }
+    }
+
+    /** Reads [file]'s bytes and decodes them, capturing the on-disk snapshot; safe on failure. */
+    private suspend fun loadFile(file: File): LoadedFile = withContext(Dispatchers.IO) {
+        runCatching {
+            LoadedFile(TextEncoding.decode(FileFiles.readBytes(file)), file.lastModified(), file.length())
+        }.getOrDefault(
+            LoadedFile(DecodedText("", Charsets.UTF_8, false, LineEnding.LF), file.lastModified(), file.length()),
+        )
+    }
+
+    private class LoadedFile(val decoded: DecodedText, val modified: Long, val length: Long)
 
     override fun selectTab(index: Int) {
         if (index in tabs.indices) {
@@ -644,6 +682,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             gitIsRepo = withContext(Dispatchers.IO) { GitRepo.isRepo(dir) }
             if (gitIsRepo) runCatching { loadGitState(dir) }
             gitBusy = false
+            checkExternalChanges()
         }
     }
 
@@ -827,15 +866,79 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     override fun save() {
         val tab = currentTab ?: return
+        saveTab(tab)
+    }
+
+    override fun saveAll() {
+        for (tab in tabs) if (tab.file != null && tab.isDirty) saveTab(tab)
+    }
+
+    /** Encodes [tab] with its stored charset/BOM/line-ending and writes it, refreshing the snapshot. */
+    private fun saveTab(tab: OpenTab) {
         val file = tab.file ?: return // external read-only tabs have no save target
         val textToSave = tab.value.text
+        val bytes = TextEncoding.encode(textToSave, tab.charset, tab.lineEnding, tab.hadBom)
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
-                runCatching { FileFiles.writeText(file, textToSave) }.isSuccess
+                runCatching { FileFiles.writeBytes(file, bytes) }.isSuccess
             }
-            if (ok) tab.savedText = textToSave
-            if (ok && gitIsRepo) refreshGit()
+            if (ok) {
+                tab.savedText = textToSave
+                tab.changedOnDisk = false
+                val (modified, length) = withContext(Dispatchers.IO) { file.lastModified() to file.length() }
+                tab.diskModified = modified
+                tab.diskLength = length
+                if (gitIsRepo) refreshGit()
+            }
         }
+    }
+
+    /**
+     * Compares each open file-backed tab against its on-disk snapshot (called on ON_RESUME and after
+     * git actions). A clean tab is silently reloaded; a dirty tab raises its "changed on disk" banner.
+     */
+    fun checkExternalChanges() {
+        if (tabs.isEmpty()) return
+        viewModelScope.launch {
+            for (tab in tabs) {
+                val file = tab.file ?: continue
+                val snapshot = withContext(Dispatchers.IO) {
+                    if (file.exists()) file.lastModified() to file.length() else null
+                } ?: continue
+                if (snapshot.first == tab.diskModified && snapshot.second == tab.diskLength) continue
+                if (tab.isDirty) tab.changedOnDisk = true else applyReload(tab)
+            }
+        }
+    }
+
+    override fun reloadFromDisk() {
+        val tab = currentTab ?: return
+        viewModelScope.launch { applyReload(tab) }
+    }
+
+    override fun dismissDiskChange() {
+        val tab = currentTab ?: return
+        viewModelScope.launch {
+            val file = tab.file ?: return@launch
+            val (modified, length) = withContext(Dispatchers.IO) { file.lastModified() to file.length() }
+            tab.diskModified = modified
+            tab.diskLength = length
+            tab.changedOnDisk = false
+        }
+    }
+
+    /** Replaces [tab]'s buffer with the current disk contents and refreshes its snapshot. */
+    private suspend fun applyReload(tab: OpenTab) {
+        val file = tab.file ?: return
+        val loaded = loadFile(file)
+        tab.value = TextFieldValue(loaded.decoded.text)
+        tab.savedText = loaded.decoded.text
+        tab.charset = loaded.decoded.charset
+        tab.lineEnding = loaded.decoded.lineEnding
+        tab.hadBom = loaded.decoded.hadBom
+        tab.diskModified = loaded.modified
+        tab.diskLength = loaded.length
+        tab.changedOnDisk = false
     }
 
     /** Inserts [insert] at the caret, replacing any current selection (used by the Tab button). */
@@ -992,10 +1095,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         }
         val file = File(result.path)
         viewModelScope.launch {
-            val text = withContext(Dispatchers.IO) {
-                runCatching { FileFiles.readText(file) }.getOrDefault("")
-            }
-            tabs.add(OpenTab(file = file, initialName = result.name, initialText = text, language = Language.fromFileName(result.name)))
+            tabs.add(makeFileTab(file, result.name))
             currentIndex = tabs.lastIndex
             goToLine(result.line)
             saveSession()
