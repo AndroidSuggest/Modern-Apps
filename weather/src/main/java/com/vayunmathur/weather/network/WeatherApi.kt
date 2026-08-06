@@ -75,6 +75,9 @@ object WeatherApi {
                     "uv_index_max",
                     "precipitation_probability_max",
                     "precipitation_sum",
+                    "moon_phase",
+                    "moonrise",
+                    "moonset",
                 ).joinToString(",")
             )
             append("&minutely_15=precipitation")

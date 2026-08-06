@@ -18,6 +18,7 @@ import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.ui.components.blocks.AirQualityBlock
 import com.vayunmathur.weather.ui.components.blocks.CloudCoverBlock
 import com.vayunmathur.weather.ui.components.blocks.HumidityBlock
+import com.vayunmathur.weather.ui.components.blocks.MoonBlock
 import com.vayunmathur.weather.ui.components.blocks.PollenBlock
 import com.vayunmathur.weather.ui.components.blocks.PrecipitationBlock
 import com.vayunmathur.weather.ui.components.blocks.PressureBlock
@@ -49,6 +50,9 @@ fun WeatherBlocks(
     precipitationMm: Double?,
     precipitationNowcast: String?,
     daylightDurationSec: Double?,
+    moonPhase: Double?,
+    moonriseEpochSec: Long?,
+    moonsetEpochSec: Long?,
     onMetricSelected: (WeatherMetric) -> Unit,
     tempUnit: TemperatureUnit,
     windUnit: WindUnit,
@@ -84,6 +88,7 @@ fun WeatherBlocks(
         item { Graphable({ onMetricSelected(WeatherMetric.Pressure) }) { PressureBlock(current = current, pressureUnit = pressureUnit) } }
         item { Graphable({ onMetricSelected(WeatherMetric.Visibility) }) { VisibilityBlock(current = current, useMiles = windUnit == WindUnit.Mph) } }
         item { SunBlock(sunriseEpochSec = sunriseEpochSec, sunsetEpochSec = sunsetEpochSec, use24Hour = use24Hour, daylightDurationSec = daylightDurationSec, nowEpochSec = nowEpochSec) }
+        item { MoonBlock(moonPhase = moonPhase, moonriseEpochSec = moonriseEpochSec, moonsetEpochSec = moonsetEpochSec, use24Hour = use24Hour, nowEpochSec = nowEpochSec) }
         item { AirQualityBlock(air = air) }
         item { PollenBlock(air = air) }
     }

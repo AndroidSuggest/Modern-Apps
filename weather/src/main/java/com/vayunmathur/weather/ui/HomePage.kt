@@ -334,6 +334,8 @@ private fun ForecastColumn(
                 if (current != null && resolved != null) {
                     val sunriseEpoch = resolved.sunriseIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
                     val sunsetEpoch = resolved.sunsetIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
+                    val moonriseEpoch = resolved.moonriseIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
+                    val moonsetEpoch = resolved.moonsetIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
                     WeatherBlocks(
                         current = resolved.blockCurrent,
                         uvIndex = resolved.uvIndexMax,
@@ -343,6 +345,9 @@ private fun ForecastColumn(
                         precipitationMm = resolved.precipitationSum,
                         precipitationNowcast = precipitationNowcast,
                         daylightDurationSec = resolved.daylightDurationSec,
+                        moonPhase = resolved.moonPhase,
+                        moonriseEpochSec = moonriseEpoch,
+                        moonsetEpochSec = moonsetEpoch,
                         onMetricSelected = { graphMetric = it },
                         tempUnit = units.temperature,
                         windUnit = units.wind,

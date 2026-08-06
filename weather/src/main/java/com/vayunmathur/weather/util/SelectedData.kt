@@ -12,8 +12,9 @@ import kotlin.math.sqrt
 /**
  * Conditions resolved for whatever the user has selected (an hour, a day, or
  * nothing). The headline fields drive `CurrentWeatherCard`; [blockCurrent]
- * feeds the humidity/wind/pressure/visibility blocks; [uvIndexMax] and the
- * sunrise/sunset ISO strings feed the UV + Sun blocks.
+ * feeds the humidity/wind/pressure/visibility blocks; [uvIndexMax], the
+ * sunrise/sunset ISO strings and the moon fields feed the UV + Sun + Moon
+ * blocks.
  *
  * Resolution prefers hourly data for a selected hour (Open-Meteo exposes
  * apparent temp, humidity, dew point, wind, pressure, visibility and UV
@@ -31,6 +32,9 @@ data class ResolvedConditions(
     val sunsetIso: String?,
     val precipitationSum: Double?,
     val daylightDurationSec: Double?,
+    val moonPhase: Double?,
+    val moonriseIso: String?,
+    val moonsetIso: String?,
     val blockCurrent: Current,
 )
 
@@ -62,6 +66,9 @@ fun resolveConditions(
             sunsetIso = daily?.sunset?.firstOrNull(),
             precipitationSum = daily?.precipitationSum?.firstOrNull(),
             daylightDurationSec = daily?.daylightDuration?.firstOrNull(),
+            moonPhase = daily?.moonPhase?.firstOrNull(),
+            moonriseIso = daily?.moonrise?.firstOrNull(),
+            moonsetIso = daily?.moonset?.firstOrNull(),
             blockCurrent = current,
         )
 
@@ -101,6 +108,9 @@ fun resolveConditions(
                 sunsetIso = d?.let { daily?.sunset?.getOrNull(it) },
                 precipitationSum = hourly.precipitation.getOrNull(h),
                 daylightDurationSec = d?.let { daily?.daylightDuration?.getOrNull(it) },
+                moonPhase = d?.let { daily?.moonPhase?.getOrNull(it) },
+                moonriseIso = d?.let { daily?.moonrise?.getOrNull(it) },
+                moonsetIso = d?.let { daily?.moonset?.getOrNull(it) },
                 blockCurrent = hourCurrent,
             )
         }
@@ -122,6 +132,9 @@ fun resolveConditions(
                 sunsetIso = daily.sunset.getOrNull(d),
                 precipitationSum = daily.precipitationSum.getOrNull(d),
                 daylightDurationSec = daily.daylightDuration.getOrNull(d),
+                moonPhase = daily.moonPhase.getOrNull(d),
+                moonriseIso = daily.moonrise.getOrNull(d),
+                moonsetIso = daily.moonset.getOrNull(d),
                 // Humidity/wind/pressure/visibility/cloud have no daily summary
                 // field, so aggregate the day's hourly values instead.
                 blockCurrent = hourly?.let { aggregateDay(it, selected.isoDate, current) } ?: current,

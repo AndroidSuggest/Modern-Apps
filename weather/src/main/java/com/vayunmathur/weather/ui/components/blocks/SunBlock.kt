@@ -4,24 +4,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconClearNight
 import com.vayunmathur.library.ui.IconSchedule
 import com.vayunmathur.library.ui.IconSunny
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
-import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -114,19 +108,6 @@ fun SunBlock(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun RiseSetTimeRow(text: String, icon: @Composable (Modifier, Color) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        icon(Modifier.size(18.dp), MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.width(5.dp))
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.labelLarge,
-        )
     }
 }
 

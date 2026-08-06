@@ -154,6 +154,18 @@ private val SAMPLE_DAILY = Daily(
     uvIndexMax = listOf(6.4, 5.7, 6.8, 7.2, 7.0, 4.4, 5.6),
     precipitationProbabilityMax = listOf(15, 30, 5, 0, 0, 70, 25),
     precipitationSum = listOf(0.0, 0.8, 0.0, 0.0, 0.0, 5.4, 0.4),
+    // A real Open-Meteo lunation (waxing gibbous through full), relabelled onto
+    // the sample week. The moon is a 2%-lit sliver on these actual dates, which
+    // would render as an all-but-invisible disc in the store screenshot.
+    moonPhase = listOf(0.318, 0.35, 0.381, 0.412, 0.443, 0.474, 0.504),
+    moonrise = listOf(
+        "2026-07-15T13:52", "2026-07-16T15:06", "2026-07-17T16:19", "2026-07-18T17:33",
+        "2026-07-19T18:47", "2026-07-20T19:59", "2026-07-21T21:04",
+    ),
+    moonset = listOf(
+        "2026-07-15T01:27", "2026-07-16T01:38", "2026-07-17T01:49", "2026-07-18T02:02",
+        "2026-07-19T02:17", "2026-07-20T02:38", "2026-07-21T03:07",
+    ),
 )
 
 private val SAMPLE_FORECAST = ForecastResponse(

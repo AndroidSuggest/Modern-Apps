@@ -110,4 +110,10 @@ data class Daily(
     @SerialName("uv_index_max") val uvIndexMax: List<Double> = emptyList(),
     @SerialName("precipitation_probability_max") val precipitationProbabilityMax: List<Int> = emptyList(),
     @SerialName("precipitation_sum") val precipitationSum: List<Double> = emptyList(),
+    // 0/1 = new moon, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter.
+    @SerialName("moon_phase") val moonPhase: List<Double> = emptyList(),
+    // Nullable elements: the moon skips a rise or a set roughly once a month,
+    // since it comes up about 50 minutes later each day.
+    @SerialName("moonrise") val moonrise: List<String?> = emptyList(),
+    @SerialName("moonset") val moonset: List<String?> = emptyList(),
 )

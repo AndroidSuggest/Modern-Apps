@@ -104,6 +104,25 @@
     <string name="block_wind">Wind</string>
     <!-- Block title: air quality. Noun phrase -->
     <string name="block_air_quality">Air quality</string>
+    <!-- Block title: moon. Noun -->
+    <string name="block_moon">Moon</string>
+
+    <!-- Moon phase: the moon is unlit. Noun phrase -->
+    <string name="moon_phase_new">New Moon</string>
+    <!-- Moon phase: a growing sliver, less than a quarter lit. Noun phrase -->
+    <string name="moon_phase_waxing_crescent">Waxing Crescent</string>
+    <!-- Moon phase: half lit and growing. Noun phrase, named for the quarter of the cycle elapsed, not the fraction lit -->
+    <string name="moon_phase_first_quarter">First Quarter</string>
+    <!-- Moon phase: more than half lit and growing. Noun phrase -->
+    <string name="moon_phase_waxing_gibbous">Waxing Gibbous</string>
+    <!-- Moon phase: fully lit. Noun phrase -->
+    <string name="moon_phase_full">Full Moon</string>
+    <!-- Moon phase: more than half lit and shrinking. Noun phrase -->
+    <string name="moon_phase_waning_gibbous">Waning Gibbous</string>
+    <!-- Moon phase: half lit and shrinking. Noun phrase, named for the quarter of the cycle remaining, not the fraction lit -->
+    <string name="moon_phase_last_quarter">Last Quarter</string>
+    <!-- Moon phase: a shrinking sliver, less than a quarter lit. Noun phrase -->
+    <string name="moon_phase_waning_crescent">Waning Crescent</string>
 
     <!-- Card header: hourly forecast. Noun phrase -->
     <string name="hourly_forecast">Hourly forecast</string>
