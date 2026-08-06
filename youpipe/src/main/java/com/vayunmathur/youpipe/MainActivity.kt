@@ -22,6 +22,7 @@ import androidx.core.util.Consumer
 import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconList
@@ -103,7 +104,9 @@ class MainActivity : ComponentActivity() {
         youPipeViewModel
         setContent {
             DynamicTheme {
-                Navigation(resolveInitialBackStack(intent.data), youPipeViewModel)
+                OfflineAware {
+                    Navigation(resolveInitialBackStack(intent.data), youPipeViewModel)
+                }
             }
         }
     }
