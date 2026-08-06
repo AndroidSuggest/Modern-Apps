@@ -33,6 +33,7 @@ import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconPackage
@@ -75,13 +76,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                val factory = factoryState
-                if (factory == null) {
-                    Box(Modifier.fillMaxSize())
-                } else {
-                    val vm: AppStoreViewModel = viewModel(factory = factory)
-                    vmRef = vm
-                    AppRoot(vm, externalPkg) { externalPkg = null }
+                OfflineAware {
+                    val factory = factoryState
+                    if (factory == null) {
+                        Box(Modifier.fillMaxSize())
+                    } else {
+                        val vm: AppStoreViewModel = viewModel(factory = factory)
+                        vmRef = vm
+                        AppRoot(vm, externalPkg) { externalPkg = null }
+                    }
                 }
             }
         }
