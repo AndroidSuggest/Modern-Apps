@@ -35,6 +35,8 @@ import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.CodeUiState
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
@@ -43,15 +45,20 @@ import com.vayunmathur.library.ui.IconCode
 import com.vayunmathur.library.ui.IconFindReplace
 import com.vayunmathur.library.ui.IconFormatIndentIncrease
 import com.vayunmathur.library.ui.IconMenu
+import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconRedo
 import com.vayunmathur.library.ui.IconSave
+import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconUndo
 import com.vayunmathur.library.ui.IconWrapText
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.ModalDrawerSheet
 import com.vayunmathur.library.ui.ModalNavigationDrawer
+import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.OverflowMenu
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.ui.rememberDrawerState
 import kotlinx.coroutines.launch
@@ -63,7 +70,11 @@ import kotlinx.coroutines.launch
  * exactly what a `@Preview` cannot provide.
  */
 @Composable
-fun EditorPage(viewModel: EditorViewModel) {
+fun EditorPage(
+    viewModel: EditorViewModel,
+    onOpenSettings: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
+) {
     val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> uri?.let(viewModel::openFolder) }
@@ -77,6 +88,8 @@ fun EditorPage(viewModel: EditorViewModel) {
         actions = viewModel,
         onOpenFolder = { folderLauncher.launch(null) },
         onOpenFile = { fileLauncher.launch(arrayOf("*/*")) },
+        onOpenSettings = onOpenSettings,
+        onOpenSearch = onOpenSearch,
     )
 }
 
@@ -94,6 +107,8 @@ fun EditorScreen(
     actions: CodeActions,
     onOpenFolder: () -> Unit = {},
     onOpenFile: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
     /**
      * Seeds for the screen's own UI-only state (is the drawer showing, is the find bar open
      * and on what query). The app always takes the defaults; previews set them so a given
@@ -129,6 +144,9 @@ fun EditorScreen(
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) { IconMenu() }
                     },
+                    actions = {
+                        IconButton(onClick = onOpenSettings) { IconSettings() }
+                    },
                 )
             },
         ) { padding ->
@@ -139,12 +157,18 @@ fun EditorScreen(
                 } else {
                     TabStrip(state, actions)
                     HorizontalDivider()
-                    EditorToolbar(state = state, actions = actions, onToggleFind = { showFind = !showFind })
+                    EditorToolbar(
+                        state = state,
+                        actions = actions,
+                        onToggleFind = { showFind = !showFind },
+                        onOpenSearch = onOpenSearch,
+                    )
                     HorizontalDivider()
                     CodeEditor(
                         tab = tab,
                         actions = actions,
                         softWrap = state.softWrap,
+                        fontSize = state.fontSize,
                         showFind = showFind,
                         onCloseFind = { showFind = false },
                         modifier = Modifier.weight(1f),
@@ -183,6 +207,7 @@ private fun EmptyEditorState(onOpenFolder: () -> Unit, onOpenFile: () -> Unit) {
 /** Horizontally scrollable strip of open tabs, each with a dirty indicator and close button. */
 @Composable
 private fun TabStrip(state: CodeUiState, actions: CodeActions) {
+    var pendingCloseIndex by remember { mutableStateOf<Int?>(null) }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
         state.tabs.forEachIndexed { index, tab ->
             val selected = index == state.currentIndex
@@ -211,18 +236,40 @@ private fun TabStrip(state: CodeUiState, actions: CodeActions) {
                             .background(MaterialTheme.colorScheme.primary)
                     )
                 }
-                IconButton(onClick = { actions.closeTab(index) }, modifier = Modifier.size(32.dp)) {
+                IconButton(
+                    onClick = {
+                        if (tab.isDirty) pendingCloseIndex = index else actions.closeTab(index)
+                    },
+                    modifier = Modifier.size(32.dp),
+                ) {
                     IconClose(Modifier.size(16.dp))
                 }
             }
         }
     }
+
+    pendingCloseIndex?.let { index ->
+        ConfirmDialog(
+            title = stringResource(R.string.discard_changes_title),
+            confirmLabel = stringResource(R.string.discard),
+            dismissLabel = stringResource(R.string.cancel),
+            destructive = true,
+            onConfirm = { actions.closeTab(index) },
+            onDismiss = { pendingCloseIndex = null },
+        )
+    }
 }
 
-/** Undo/redo, save, find, soft-wrap, tab-insert and a language indicator. */
+/** Undo/redo, save, find, soft-wrap, tab-insert, an overflow menu and a language indicator. */
 @Composable
-private fun EditorToolbar(state: CodeUiState, actions: CodeActions, onToggleFind: () -> Unit) {
+private fun EditorToolbar(
+    state: CodeUiState,
+    actions: CodeActions,
+    onToggleFind: () -> Unit,
+    onOpenSearch: () -> Unit = {},
+) {
     val tab = state.currentTab ?: return
+    var showGoToLine by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
@@ -237,7 +284,11 @@ private fun EditorToolbar(state: CodeUiState, actions: CodeActions, onToggleFind
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = { actions.insertText("    ") }) { IconFormatIndentIncrease() }
+        IconButton(onClick = { actions.insertText(" ".repeat(state.tabWidth)) }) { IconFormatIndentIncrease() }
+        OverflowMenu(icon = { IconMoreVert() }) {
+            Item(text = stringResource(R.string.go_to_line)) { showGoToLine = true }
+            Item(text = stringResource(R.string.search_in_project)) { onOpenSearch() }
+        }
         Spacer(Modifier.width(8.dp))
         Text(
             text = tab.language.label,
@@ -246,4 +297,39 @@ private fun EditorToolbar(state: CodeUiState, actions: CodeActions, onToggleFind
             modifier = Modifier.padding(horizontal = 12.dp),
         )
     }
+
+    if (showGoToLine) {
+        GoToLineDialog(
+            onGo = { actions.goToLine(it) },
+            onDismiss = { showGoToLine = false },
+        )
+    }
+}
+
+/** A small dialog that reads a line number and jumps the caret to it. */
+@Composable
+private fun GoToLineDialog(onGo: (Int) -> Unit, onDismiss: () -> Unit) {
+    var value by remember { mutableStateOf("") }
+    val line = value.toIntOrNull()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.go_to_line)) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { new -> value = new.filter { it.isDigit() } },
+                singleLine = true,
+                label = { Text(stringResource(R.string.line)) },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { line?.let(onGo); onDismiss() },
+                enabled = line != null && line > 0,
+            ) { Text(stringResource(R.string.go)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }

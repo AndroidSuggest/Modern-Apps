@@ -3,6 +3,7 @@ package com.vayunmathur.code.util
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -14,9 +15,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.code.syntax.Language
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 /** One expandable row in the file-tree pane; the tree is stored as a flat, ordered list. */
 class TreeNode(val entry: DocEntry, val depth: Int) {
@@ -30,12 +34,14 @@ class TreeNode(val entry: DocEntry, val depth: Int) {
  * [canUndo]/[canRedo] mirror their emptiness as state so the toolbar buttons stay reactive.
  */
 class OpenTab(
-    val uri: Uri,
+    uri: Uri,
     initialName: String,
     initialText: String,
-    val language: Language,
+    language: Language,
 ) {
+    var uri by mutableStateOf(uri)
     var name by mutableStateOf(initialName)
+    var language by mutableStateOf(language)
     var value by mutableStateOf(TextFieldValue(initialText))
     var savedText by mutableStateOf(initialText)
     var canUndo by mutableStateOf(false)
@@ -96,6 +102,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         private set
     var rootName by mutableStateOf<String?>(null)
         private set
+    private var rootDocumentId: String? = null
     val nodes = mutableStateListOf<TreeNode>()
 
     // ---- Tabs ----
@@ -107,6 +114,22 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     // ---- Preferences ----
     var softWrap by mutableStateOf(false)
         private set
+    var fontSize by mutableStateOf(EditorPrefs.DEFAULT_FONT_SIZE)
+        private set
+    var tabWidth by mutableStateOf(EditorPrefs.DEFAULT_TAB_WIDTH)
+        private set
+    var themeMode by mutableStateOf(EditorPrefs.THEME_SYSTEM)
+        private set
+    var autoIndent by mutableStateOf(true)
+        private set
+    var autoCloseBrackets by mutableStateOf(true)
+        private set
+
+    // ---- Project search ----
+    val searchResults = mutableStateListOf<SearchResult>()
+    var isSearching by mutableStateOf(false)
+        private set
+    private var searchJob: Job? = null
 
     /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
     val uiState: CodeUiState
@@ -133,10 +156,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                     expanded = it.expanded,
                 )
             },
+            fontSize = fontSize,
+            tabWidth = tabWidth,
+            autoIndent = autoIndent,
+            autoCloseBrackets = autoCloseBrackets,
+            searchResults = searchResults.toList(),
+            isSearching = isSearching,
         )
 
     init {
         viewModelScope.launch { softWrap = prefs.softWrap.first() }
+        viewModelScope.launch { fontSize = prefs.fontSize.first() }
+        viewModelScope.launch { tabWidth = prefs.tabWidth.first() }
+        viewModelScope.launch { themeMode = prefs.themeMode.first() }
+        viewModelScope.launch { autoIndent = prefs.autoIndent.first() }
+        viewModelScope.launch { autoCloseBrackets = prefs.autoCloseBrackets.first() }
         viewModelScope.launch {
             val stored = prefs.folderUri.first() ?: return@launch
             val uri = stored.toUri()
@@ -160,6 +194,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     fun closeFolder() {
         treeUri = null
         rootName = null
+        rootDocumentId = null
         nodes.clear()
         viewModelScope.launch { prefs.clearFolderUri() }
     }
@@ -169,6 +204,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         val children = withContext(Dispatchers.IO) { SafFiles.listChildren(context, uri, root.documentId) }
         treeUri = uri
         rootName = root.name
+        rootDocumentId = root.documentId
         nodes.clear()
         nodes.addAll(children.map { TreeNode(it, depth = 0) })
     }
@@ -184,9 +220,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
         if (node.expanded) {
             node.expanded = false
-            while (index + 1 < nodes.size && nodes[index + 1].depth > node.depth) {
-                nodes.removeAt(index + 1)
-            }
+            removeDescendants(index)
         } else {
             node.expanded = true
             node.loading = true
@@ -200,6 +234,147 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                 if (at >= 0 && node.expanded) {
                     nodes.addAll(at + 1, children.map { TreeNode(it, node.depth + 1) })
                 }
+            }
+        }
+    }
+
+    // ---- File operations ----
+
+    /** Removes the rows that are descendants of the row at [index] (depth strictly greater). */
+    private fun removeDescendants(index: Int) {
+        val depth = nodes[index].depth
+        while (index + 1 < nodes.size && nodes[index + 1].depth > depth) {
+            nodes.removeAt(index + 1)
+        }
+    }
+
+    /**
+     * Re-lists the children of a folder and rebuilds that subtree in [nodes]. Expansion state
+     * and already-loaded descendant rows of immediate child folders are preserved by document id.
+     * [parentIndex] null refreshes the tree root.
+     */
+    private suspend fun refreshChildren(parentIndex: Int?) {
+        val tree = treeUri ?: return
+        val parentDocId = if (parentIndex == null) rootDocumentId ?: return
+        else nodes.getOrNull(parentIndex)?.entry?.documentId ?: return
+        val parentDepth = if (parentIndex == null) -1 else nodes[parentIndex].depth
+        val childDepth = parentDepth + 1
+
+        val blockStart = (parentIndex ?: -1) + 1
+        var blockEnd = blockStart
+        while (blockEnd < nodes.size && nodes[blockEnd].depth > parentDepth) blockEnd++
+
+        // Preserve existing immediate children (and their loaded subtrees) by document id.
+        val preservedNode = HashMap<String, TreeNode>()
+        val preservedSubtree = HashMap<String, List<TreeNode>>()
+        var i = blockStart
+        while (i < blockEnd) {
+            val child = nodes[i]
+            if (child.depth == childDepth) {
+                var j = i + 1
+                while (j < blockEnd && nodes[j].depth > childDepth) j++
+                preservedNode[child.entry.documentId] = child
+                preservedSubtree[child.entry.documentId] = nodes.subList(i + 1, j).toList()
+                i = j
+            } else {
+                i++
+            }
+        }
+
+        val entries = withContext(Dispatchers.IO) { SafFiles.listChildren(context, tree, parentDocId) }
+
+        val rebuilt = ArrayList<TreeNode>()
+        for (entry in entries) {
+            val existing = preservedNode[entry.documentId]
+            if (existing != null) {
+                rebuilt.add(existing)
+                rebuilt.addAll(preservedSubtree[entry.documentId].orEmpty())
+            } else {
+                rebuilt.add(TreeNode(entry, childDepth))
+            }
+        }
+
+        for (k in blockEnd - 1 downTo blockStart) nodes.removeAt(k)
+        nodes.addAll(blockStart, rebuilt)
+    }
+
+    /** Resolves the document id of a create target: the tree root, or a directory row. */
+    private fun parentDocId(parentIndex: Int?): String? =
+        if (parentIndex == null) rootDocumentId else nodes.getOrNull(parentIndex)?.entry?.documentId
+
+    override fun createFile(parentIndex: Int?, name: String) {
+        val tree = treeUri ?: return
+        val parentDoc = parentDocId(parentIndex) ?: return
+        viewModelScope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                SafFiles.createDocument(context, tree, parentDoc, name, SafFiles.mimeForFileName(name))
+            } ?: return@launch
+            nodes.getOrNull(parentIndex ?: -1)?.expanded = true
+            refreshChildren(parentIndex)
+            openFile(uri, name)
+        }
+    }
+
+    override fun createFolder(parentIndex: Int?, name: String) {
+        val tree = treeUri ?: return
+        val parentDoc = parentDocId(parentIndex) ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                SafFiles.createDocument(
+                    context, tree, parentDoc, name, DocumentsContract.Document.MIME_TYPE_DIR,
+                )
+            } ?: return@launch
+            nodes.getOrNull(parentIndex ?: -1)?.expanded = true
+            refreshChildren(parentIndex)
+        }
+    }
+
+    override fun renameNode(index: Int, newName: String) {
+        val node = nodes.getOrNull(index) ?: return
+        val oldUri = node.entry.uri
+        viewModelScope.launch {
+            val newUri = withContext(Dispatchers.IO) {
+                SafFiles.renameDocument(context, oldUri, newName)
+            } ?: return@launch
+            val newDocId = runCatching { DocumentsContract.getDocumentId(newUri) }
+                .getOrDefault(node.entry.documentId)
+            val at = nodes.indexOf(node)
+            if (at >= 0) {
+                // A renamed directory's descendant ids may shift; drop them so a re-expand re-lists.
+                if (node.entry.isDirectory) removeDescendants(at)
+                val newEntry = node.entry.copy(documentId = newDocId, name = newName, uri = newUri)
+                nodes[at] = TreeNode(newEntry, node.depth)
+            }
+            tabs.firstOrNull { it.uri == oldUri }?.let { tab ->
+                tab.uri = newUri
+                tab.name = newName
+                tab.language = Language.fromFileName(newName)
+            }
+        }
+    }
+
+    override fun deleteNode(index: Int) {
+        val node = nodes.getOrNull(index) ?: return
+        val uri = node.entry.uri
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { SafFiles.deleteDocument(context, uri) }
+            if (!ok) return@launch
+            val at = nodes.indexOf(node)
+            if (at >= 0) {
+                removeDescendants(at)
+                nodes.removeAt(at)
+            }
+            closeTabsUnder(uri)
+        }
+    }
+
+    /** Closes any open tab whose file is [uri] or lives beneath it (for a deleted directory). */
+    private fun closeTabsUnder(uri: Uri) {
+        val target = uri.toString()
+        for (i in tabs.indices.reversed()) {
+            val tabUri = tabs[i].uri.toString()
+            if (tabUri == target || tabUri.startsWith("$target%2F") || tabUri.startsWith("$target/")) {
+                closeTab(i)
             }
         }
     }
@@ -253,8 +428,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     override fun onEditorChange(new: TextFieldValue) {
         val tab = currentTab ?: return
-        if (new.text != tab.value.text) tab.pushUndo(tab.value)
-        tab.value = new
+        val indentUnit = " ".repeat(tabWidth)
+        val processed = applyEditorInput(tab.value, new, indentUnit, autoIndent, autoCloseBrackets)
+        if (processed.text != tab.value.text) tab.pushUndo(tab.value)
+        tab.value = processed
+    }
+
+    /** Moves the caret to the start of [line] (1-based), without recording an undo step. */
+    override fun goToLine(line: Int) {
+        val tab = currentTab ?: return
+        val offset = lineStartOffset(tab.value.text, line)
+        setSelection(TextRange(offset))
     }
 
     /** Moves the selection without recording an undo step (used by find navigation). */
@@ -297,6 +481,31 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { prefs.setSoftWrap(softWrap) }
     }
 
+    override fun setFontSize(size: Int) {
+        fontSize = size
+        viewModelScope.launch { prefs.setFontSize(size) }
+    }
+
+    override fun setTabWidth(width: Int) {
+        tabWidth = width
+        viewModelScope.launch { prefs.setTabWidth(width) }
+    }
+
+    override fun setThemeMode(mode: String) {
+        themeMode = mode
+        viewModelScope.launch { prefs.setThemeMode(mode) }
+    }
+
+    override fun setAutoIndent(enabled: Boolean) {
+        autoIndent = enabled
+        viewModelScope.launch { prefs.setAutoIndent(enabled) }
+    }
+
+    override fun setAutoCloseBrackets(enabled: Boolean) {
+        autoCloseBrackets = enabled
+        viewModelScope.launch { prefs.setAutoCloseBrackets(enabled) }
+    }
+
     // ---- Find & replace ----
 
     override fun replaceRange(range: IntRange, replacement: String) {
@@ -321,5 +530,99 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         }
         sb.append(text, last, text.length)
         onEditorChange(TextFieldValue(sb.toString(), TextRange(sb.length)))
+    }
+
+    private fun buildRegex(pattern: String, caseSensitive: Boolean): Regex =
+        Regex(pattern, if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE))
+
+    override fun replaceMatchRegex(range: IntRange, pattern: String, replacement: String, caseSensitive: Boolean) {
+        val tab = currentTab ?: return
+        val text = tab.value.text
+        if (range.first < 0 || range.last + 1 > text.length) return
+        val regex = runCatching { buildRegex(pattern, caseSensitive) }.getOrNull() ?: return
+        val sub = text.substring(range.first, range.last + 1)
+        val replaced = runCatching { regex.replace(sub, replacement) }.getOrNull() ?: return
+        replaceRange(range, replaced)
+    }
+
+    override fun replaceAllRegex(pattern: String, replacement: String, caseSensitive: Boolean) {
+        val tab = currentTab ?: return
+        val regex = runCatching { buildRegex(pattern, caseSensitive) }.getOrNull() ?: return
+        val text = tab.value.text
+        val newText = runCatching { regex.replace(text, replacement) }.getOrNull() ?: return
+        if (newText == text) return
+        onEditorChange(TextFieldValue(newText, TextRange(newText.length)))
+    }
+
+    // ---- Project search ----
+
+    override fun searchProject(query: String, caseSensitive: Boolean, useRegex: Boolean) {
+        val tree = treeUri ?: return
+        val rootId = rootDocumentId ?: return
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            searchResults.clear()
+            isSearching = false
+            return
+        }
+        isSearching = true
+        searchResults.clear()
+        searchJob = viewModelScope.launch {
+            val collected = withContext(Dispatchers.IO) {
+                val out = ArrayList<SearchResult>()
+                val stack = ArrayDeque<String>()
+                stack.addLast(rootId)
+                while (stack.isNotEmpty() && out.size < MAX_SEARCH_RESULTS) {
+                    coroutineContext.ensureActive()
+                    val dirId = stack.removeLast()
+                    val children = runCatching {
+                        SafFiles.listChildren(context, tree, dirId)
+                    }.getOrDefault(emptyList())
+                    for (child in children) {
+                        if (out.size >= MAX_SEARCH_RESULTS) break
+                        if (child.isDirectory) {
+                            if (child.name !in SKIP_DIRS) stack.addLast(child.documentId)
+                            continue
+                        }
+                        if (Language.fromFileName(child.name) == Language.PLAINTEXT) continue
+                        val text = runCatching { SafFiles.readText(context, child.uri) }.getOrNull() ?: continue
+                        if (text.length > MAX_SEARCH_FILE_SIZE) continue
+                        val matches = findLineMatches(text, query, caseSensitive, useRegex, MAX_MATCHES_PER_FILE)
+                        for (m in matches) {
+                            out.add(SearchResult(child.uri, child.name, m.line, m.preview))
+                            if (out.size >= MAX_SEARCH_RESULTS) break
+                        }
+                    }
+                }
+                out
+            }
+            searchResults.clear()
+            searchResults.addAll(collected)
+            isSearching = false
+        }
+    }
+
+    override fun openSearchResult(result: SearchResult) {
+        val existing = tabs.indexOfFirst { it.uri == result.uri }
+        if (existing >= 0) {
+            currentIndex = existing
+            goToLine(result.line)
+            return
+        }
+        viewModelScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching { SafFiles.readText(context, result.uri) }.getOrDefault("")
+            }
+            tabs.add(OpenTab(result.uri, result.name, text, Language.fromFileName(result.name)))
+            currentIndex = tabs.lastIndex
+            goToLine(result.line)
+        }
+    }
+
+    private companion object {
+        const val MAX_SEARCH_RESULTS = 500
+        const val MAX_MATCHES_PER_FILE = 50
+        const val MAX_SEARCH_FILE_SIZE = 500_000
+        val SKIP_DIRS = setOf(".git", "node_modules", "build", ".gradle", ".idea")
     }
 }

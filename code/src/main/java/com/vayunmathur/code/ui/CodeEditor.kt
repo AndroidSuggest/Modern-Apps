@@ -4,7 +4,6 @@ import androidx.compose.ui.res.stringResource
 import com.vayunmathur.code.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,6 +58,7 @@ fun CodeEditor(
     showFind: Boolean,
     onCloseFind: () -> Unit,
     modifier: Modifier = Modifier,
+    fontSize: Int = 14,
     /** Preview seam: the query the find bar starts on. The app always starts it empty. */
     initialQuery: String = "",
 ) {
@@ -68,12 +68,24 @@ fun CodeEditor(
     var query by remember(tab.name) { mutableStateOf(initialQuery) }
     var replacement by remember(tab.name) { mutableStateOf("") }
     var caseSensitive by remember(tab.name) { mutableStateOf(false) }
+    var useRegex by remember(tab.name) { mutableStateOf(false) }
     var activeMatch by remember(tab.name) { mutableStateOf(0) }
 
     val text = tab.value.text
-    val matches = remember(text, query, caseSensitive) {
+    val regexValid = remember(query, useRegex) {
+        !useRegex || query.isEmpty() || runCatching { Regex(query) }.isSuccess
+    }
+    val matches = remember(text, query, caseSensitive, useRegex) {
         if (query.isEmpty()) {
             emptyList()
+        } else if (useRegex) {
+            runCatching {
+                val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+                Regex(query, options).findAll(text)
+                    .map { it.range }
+                    .filter { !it.isEmpty() }
+                    .toList()
+            }.getOrDefault(emptyList())
         } else {
             val found = ArrayList<IntRange>()
             var i = text.indexOf(query, 0, ignoreCase = !caseSensitive)
@@ -104,19 +116,32 @@ fun CodeEditor(
                 query = query,
                 replacement = replacement,
                 caseSensitive = caseSensitive,
+                useRegex = useRegex,
+                regexValid = regexValid,
                 matchCount = matches.size,
                 activeMatch = activeMatch,
                 onQueryChange = { query = it; activeMatch = 0 },
                 onReplacementChange = { replacement = it },
                 onToggleCase = { caseSensitive = !caseSensitive },
+                onToggleRegex = { useRegex = !useRegex; activeMatch = 0 },
                 onNext = { goTo(activeMatch + 1) },
                 onPrev = { goTo(activeMatch - 1) },
                 onReplace = {
                     if (matches.isNotEmpty()) {
-                        actions.replaceRange(matches[activeMatch], replacement)
+                        if (useRegex) {
+                            actions.replaceMatchRegex(matches[activeMatch], query, replacement, caseSensitive)
+                        } else {
+                            actions.replaceRange(matches[activeMatch], replacement)
+                        }
                     }
                 },
-                onReplaceAll = { actions.replaceAll(matches, replacement) },
+                onReplaceAll = {
+                    if (useRegex) {
+                        actions.replaceAllRegex(query, replacement, caseSensitive)
+                    } else {
+                        actions.replaceAll(matches, replacement)
+                    }
+                },
                 onClose = onCloseFind,
             )
             HorizontalDivider()
@@ -124,8 +149,8 @@ fun CodeEditor(
 
         val editorStyle = TextStyle(
             fontFamily = FontFamily.Monospace,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
+            fontSize = fontSize.sp,
+            lineHeight = (fontSize * 1.4f).sp,
             color = MaterialTheme.colorScheme.onSurface,
         )
         val syntaxColors = rememberSyntaxColors()
@@ -184,11 +209,14 @@ private fun FindBar(
     query: String,
     replacement: String,
     caseSensitive: Boolean,
+    useRegex: Boolean,
+    regexValid: Boolean,
     matchCount: Int,
     activeMatch: Int,
     onQueryChange: (String) -> Unit,
     onReplacementChange: (String) -> Unit,
     onToggleCase: () -> Unit,
+    onToggleRegex: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onReplace: () -> Unit,
@@ -203,6 +231,12 @@ private fun FindBar(
                 modifier = Modifier.weight(1f),
                 placeholder = { Text(stringResource(R.string.find)) },
                 singleLine = true,
+                isError = !regexValid,
+                supportingText = if (!regexValid) {
+                    { Text(stringResource(R.string.invalid_regex)) }
+                } else {
+                    null
+                },
             )
             val label = if (matchCount == 0) "0/0" else "${activeMatch + 1}/$matchCount"
             Text(label, modifier = Modifier.padding(horizontal = 8.dp))
@@ -222,10 +256,29 @@ private fun FindBar(
             TextButton(onClick = onReplace, enabled = matchCount > 0) { Text(stringResource(R.string.replace)) }
             TextButton(onClick = onReplaceAll, enabled = matchCount > 0) { Text(stringResource(R.string.all)) }
         }
-        Box {
-            TextButton(onClick = onToggleCase) {
-                Text(if (caseSensitive) "Case: On" else "Case: Off")
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ToggleChip(
+                label = stringResource(R.string.match_case),
+                selected = caseSensitive,
+                onClick = onToggleCase,
+            )
+            ToggleChip(
+                label = stringResource(R.string.use_regex),
+                selected = useRegex,
+                onClick = onToggleRegex,
+            )
         }
+    }
+}
+
+/** A small text toggle that colours itself when active; used for the find-bar options. */
+@Composable
+private fun ToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Text(
+            label,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

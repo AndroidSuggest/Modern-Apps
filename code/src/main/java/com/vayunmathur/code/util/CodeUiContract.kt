@@ -2,6 +2,7 @@ package com.vayunmathur.code.util
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import android.net.Uri
 import com.vayunmathur.code.syntax.Language
 
 /**
@@ -34,6 +35,14 @@ data class TreeRowUiState(
     val expanded: Boolean = false,
 )
 
+/** One hit from a project-wide search: the file, the 1-based line and a preview of that line. */
+data class SearchResult(
+    val uri: Uri,
+    val name: String,
+    val line: Int,
+    val preview: String,
+)
+
 /** Everything the editor screen draws. */
 data class CodeUiState(
     val tabs: List<TabUiState> = emptyList(),
@@ -44,6 +53,12 @@ data class CodeUiState(
     /** False until a folder has been picked, which is when the tree replaces its empty state. */
     val folderOpen: Boolean = false,
     val nodes: List<TreeRowUiState> = emptyList(),
+    val fontSize: Int = 14,
+    val tabWidth: Int = 4,
+    val autoIndent: Boolean = true,
+    val autoCloseBrackets: Boolean = true,
+    val searchResults: List<SearchResult> = emptyList(),
+    val isSearching: Boolean = false,
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
 }
@@ -72,8 +87,47 @@ interface CodeActions {
     /** Move the selection without recording an undo step (used by find navigation). */
     fun setSelection(range: TextRange) {}
 
+    /** Move the caret to the start of [line] (1-based). */
+    fun goToLine(line: Int) {}
+
     fun replaceRange(range: IntRange, replacement: String) {}
     fun replaceAll(matches: List<IntRange>, replacement: String) {}
+
+    /** Replace the match at [range] using regex substitution (supports `$1` group refs). */
+    fun replaceMatchRegex(range: IntRange, pattern: String, replacement: String, caseSensitive: Boolean) {}
+
+    /** Replace every regex match in the current file (supports `$1` group refs). */
+    fun replaceAllRegex(pattern: String, replacement: String, caseSensitive: Boolean) {}
+
+    // ---- Project search ----
+
+    /** Search every text file under the open folder for [query]. */
+    fun searchProject(query: String, caseSensitive: Boolean, useRegex: Boolean) {}
+
+    /** Open the file for a search result and jump to its line. */
+    fun openSearchResult(result: SearchResult) {}
+
+    // ---- File operations ----
+
+    /** Create a file under the given parent row (null = tree root) and open it in a tab. */
+    fun createFile(parentIndex: Int?, name: String) {}
+
+    /** Create a folder under the given parent row (null = tree root). */
+    fun createFolder(parentIndex: Int?, name: String) {}
+
+    /** Rename the file/folder at [index]. */
+    fun renameNode(index: Int, newName: String) {}
+
+    /** Delete the file/folder at [index], closing any tabs it (or its descendants) backs. */
+    fun deleteNode(index: Int) {}
+
+    // ---- Settings ----
+
+    fun setFontSize(size: Int) {}
+    fun setTabWidth(width: Int) {}
+    fun setThemeMode(mode: String) {}
+    fun setAutoIndent(enabled: Boolean) {}
+    fun setAutoCloseBrackets(enabled: Boolean) {}
 
     companion object {
         val Noop: CodeActions = object : CodeActions {}

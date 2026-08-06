@@ -8,10 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import com.vayunmathur.code.ui.EditorPage
+import com.vayunmathur.code.ui.SearchPage
+import com.vayunmathur.code.ui.SettingsPage
+import com.vayunmathur.code.util.EditorPrefs
 import com.vayunmathur.code.util.EditorViewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 
@@ -23,7 +27,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleIntent(intent)
         setContent {
-            DynamicTheme {
+            val darkTheme = when (viewModel.themeMode) {
+                EditorPrefs.THEME_LIGHT -> false
+                EditorPrefs.THEME_DARK -> true
+                else -> null
+            }
+            DynamicTheme(darkTheme = darkTheme) {
                 Navigation(viewModel)
             }
         }
@@ -47,12 +56,28 @@ class MainActivity : ComponentActivity() {
 sealed interface Route : NavKey {
     @Serializable
     data object Editor : Route
+
+    @Serializable
+    data object Settings : Route
+
+    @Serializable
+    data object Search : Route
 }
 
 @Composable
 fun Navigation(viewModel: EditorViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Editor)
+    // Land on settings when opened from the system App Info page.
+    backStack.openSettingsIfRequested(Route.Settings)
     MainNavigation(backStack) {
-        entry<Route.Editor> { EditorPage(viewModel) }
+        entry<Route.Editor> {
+            EditorPage(
+                viewModel,
+                onOpenSettings = { backStack.add(Route.Settings) },
+                onOpenSearch = { backStack.add(Route.Search) },
+            )
+        }
+        entry<Route.Settings> { SettingsPage(viewModel, backStack) }
+        entry<Route.Search> { SearchPage(viewModel, backStack) }
     }
 }
