@@ -13,6 +13,7 @@ import com.vayunmathur.everysync.ui.DavLoginScreen
 import com.vayunmathur.everysync.ui.EverySyncViewModel
 import com.vayunmathur.everysync.ui.SettingsScreen
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.ListPage
@@ -29,7 +30,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {
-                Navigation(viewModel)
+                OfflineAware {
+                    Navigation(viewModel)
+                }
             }
         }
     }
