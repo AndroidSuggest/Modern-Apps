@@ -789,13 +789,13 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
 @Composable
 fun BatteryBar(percent: Float, width: Dp = 24.dp, height: Dp = 12.dp) {
     val color = when {
-        percent > 50 -> Color.Green
-        percent > 20 -> Color.Yellow
-        else -> Color.Red
+        percent > 50 -> MaterialTheme.colorScheme.primary
+        percent > 20 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.error
     }
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(Modifier.size(width, height).border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp))) {
+        Box(Modifier.size(width, height).border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(3.dp))) {
             Box(Modifier.fillMaxWidthFraction(percent).height(height).background(color, RoundedCornerShape(3.dp)))
         }
         Text(stringResource(R.string.battery_percentage, percent.toInt()), fontSize = 11.sp)

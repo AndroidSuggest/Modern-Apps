@@ -160,7 +160,7 @@ private fun HourlyItem(
         )
         Text(
             dayLabel,
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 10.sp,
         )
     }

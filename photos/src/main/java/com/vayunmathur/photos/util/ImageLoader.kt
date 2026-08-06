@@ -133,7 +133,7 @@ object ImageLoader {
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         ) {
-                            IconCheck(tint = Color.White)
+                            IconCheck(tint = MaterialTheme.colorScheme.onPrimary)
                         }
                     } else {
                         Surface(

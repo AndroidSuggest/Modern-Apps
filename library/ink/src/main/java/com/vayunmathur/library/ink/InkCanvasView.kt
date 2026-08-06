@@ -10,8 +10,11 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.core.graphics.withTranslation
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.ink.authoring.InProgressStrokesFinishedListener
 import androidx.ink.authoring.InProgressStrokesView
@@ -43,11 +46,19 @@ private class FinishedStrokesView(context: Context) : View(context) {
     private val selectionPaint = Paint().apply {
         style = Paint.Style.STROKE
         strokeWidth = 3f
-        color = android.graphics.Color.WHITE
     }
     private val selectionFillPaint = Paint().apply {
         style = Paint.Style.FILL
-        color = android.graphics.Color.argb(40, 255, 255, 255)
+    }
+
+    fun setSelectionColor(color: Int) {
+        selectionPaint.color = color
+        selectionFillPaint.color = android.graphics.Color.argb(
+            40,
+            android.graphics.Color.red(color),
+            android.graphics.Color.green(color),
+            android.graphics.Color.blue(color),
+        )
     }
     private val scratchRect = RectF()
 
@@ -117,6 +128,7 @@ fun InkCanvasView(
     textElements: List<CanvasTextElement> = emptyList(),
     selectedStrokeIndex: Int? = null,
     selectedTextIndex: Int? = null,
+    selectionColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     AndroidView(
         factory = { context ->
@@ -162,6 +174,7 @@ fun InkCanvasView(
             finishedStrokesView.textElements = textElements
             finishedStrokesView.selectedStrokeIndex = selectedStrokeIndex
             finishedStrokesView.selectedTextIndex = selectedTextIndex
+            finishedStrokesView.setSelectionColor(selectionColor.toArgb())
             finishedStrokesView.invalidate()
         },
         modifier = modifier.fillMaxSize(),

@@ -14,9 +14,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.ButtonDefaults
-import com.vayunmathur.library.ui.IconShuffle
+import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.ListItem
+import com.vayunmathur.library.ui.ListItemDefaults
+import com.vayunmathur.library.ui.IconShuffle
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
@@ -41,28 +42,26 @@ fun PlayShuffleRow(onPlay: () -> Unit, onShuffle: () -> Unit) {
             .padding(vertical = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Button(
+        FilledTonalButton(
             onClick = onPlay,
             modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.15f)),
             shape = RoundedCornerShape(50.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
         ) {
-            IconPlay(tint = Color.White)
+            IconPlay()
             Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.label_play), color = Color.White)
+            Text(stringResource(R.string.label_play))
         }
 
         Button(
             onClick = onShuffle,
             modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
             shape = RoundedCornerShape(50.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
         ) {
-            IconShuffle(tint = Color.Black)
+            IconShuffle()
             Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.label_shuffle), color = Color.Black)
+            Text(stringResource(R.string.label_shuffle))
         }
     }
 }
@@ -86,14 +85,22 @@ fun TrackListItem(
         content = {
             Text(
                 text = title,
-                color = if (isPlaying) MaterialTheme.colorScheme.primary else Color.Unspecified,
                 fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Normal,
             )
         },
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isPlaying) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
             .clickable(onClick = onClick),
+        colors = if (isPlaying) {
+            ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                trailingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        } else {
+            ListItemDefaults.colors(containerColor = Color.Transparent)
+        },
         trailingContent = trailing,
         leadingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {

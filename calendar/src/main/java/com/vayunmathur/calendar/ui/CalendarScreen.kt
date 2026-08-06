@@ -34,6 +34,7 @@ import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.HorizontalDivider
+import com.vayunmathur.library.ui.contentColorOn
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -414,11 +415,13 @@ fun SummaryEventItem(
     calendars: Map<Long, Calendar>,
     onEventClick: (Instance) -> Unit
 ) {
+    val eventColor = Color(ev.color ?: calendars[ev.calendarID]!!.color)
+    val onEventColor = contentColorOn(eventColor)
     Box(
         Modifier
             .padding(bottom = 2.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(ev.color ?: calendars[ev.calendarID]!!.color))
+            .background(eventColor)
             .fillMaxWidth()
             .clickable { onEventClick(instance) }
             .padding(horizontal = 6.dp, vertical = 4.dp)
@@ -426,7 +429,7 @@ fun SummaryEventItem(
         Column {
             Text(
                 ev.title.ifEmpty { context.getString(R.string.no_title) },
-                color = Color.White,
+                color = onEventColor,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 12.sp
@@ -435,7 +438,7 @@ fun SummaryEventItem(
                 val timeFmt = if(DateFormat.is24HourFormat(context)) timeFormat24 else timeFormat12
                 Text(
                     "${instance.startDateTime.time.format(timeFmt)} - ${instance.endDateTime.time.format(timeFmt)}",
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = onEventColor.copy(alpha = 0.8f),
                     fontSize = 9.sp,
                     lineHeight = 10.sp
                 )
@@ -743,11 +746,12 @@ private fun AllDayRow(
                     Column {
                         instances.forEach { instance ->
                             val ev = events[instance.eventID]!!
+                            val eventColor = Color(ev.color ?: calendars[ev.calendarID]!!.color)
                             Box(
                                 Modifier
                                     .padding(bottom = 4.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(ev.color ?: calendars[ev.calendarID]!!.color))
+                                    .background(eventColor)
                                     .height(28.dp)
                                     .clickable { onEventClick(instance) }
                                     .fillMaxWidth()
@@ -755,7 +759,7 @@ private fun AllDayRow(
                                 Text(
                                     ev.title.ifEmpty { stringResource(R.string.no_title) },
                                     Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                                    Color.White,
+                                    contentColorOn(eventColor),
                                     fontSize = 12.sp
                                 )
                             }
@@ -882,7 +886,7 @@ private fun HourlyGrid(
                                 Text(
                                     ev.title.ifEmpty { stringResource(R.string.no_title) },
                                     Modifier.padding(6.dp),
-                                    Color.White,
+                                    contentColorOn(Color(ev.color)),
                                     maxLines = 2,
                                     fontSize = 12.sp
                                 )

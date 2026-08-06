@@ -55,11 +55,12 @@ fun DynamicAlchemyIcon(iconId: Long, modifier: Modifier = Modifier, undiscovered
             }
         }
     } else {
-        Box(modifier = modifier.fillMaxSize().background(Color.Gray)) {
+        Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
             Text(
                 text = "???",
                 modifier = Modifier.align(Alignment.Center),
                 style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold
             )
         }

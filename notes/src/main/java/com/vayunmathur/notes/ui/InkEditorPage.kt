@@ -53,9 +53,15 @@ import com.vayunmathur.notes.R
 
 private enum class InkTool { Pen, Highlighter, Eraser }
 
-/** Preset ink colors offered by the drawing toolbar. */
+/**
+ * Preset ink colors offered by the drawing toolbar.
+ *
+ * Deliberately excludes pure black and pure white: strokes are serialized as
+ * fixed ARGB, so either one disappears against the themed canvas in one of the
+ * two themes. The greys at each end stay legible in both.
+ */
 private val inkColors = listOf(
-    Color.Black, Color.White, Color(0xFFE53935), Color(0xFFFB8C00),
+    Color(0xFF37474F), Color(0xFFB0BEC5), Color(0xFFE53935), Color(0xFFFB8C00),
     Color(0xFFFDD835), Color(0xFF43A047), Color(0xFF1E88E5), Color(0xFF8E24AA),
 )
 
@@ -75,7 +81,7 @@ fun InkEditor(
     val redoStack = remember { mutableStateListOf<Stroke>() }
 
     var tool by remember { mutableStateOf(InkTool.Pen) }
-    var color by remember { mutableStateOf(Color.Black) }
+    var color by remember { mutableStateOf(inkColors.first()) }
     var width by remember { mutableStateOf(6f) }
 
     val brush = remember(tool, color, width) {

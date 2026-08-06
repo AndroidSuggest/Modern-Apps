@@ -59,7 +59,8 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
                 K2BigTile(
                     emoji = "📺",
                     label = stringResource(com.vayunmathur.education.R.string.watch),
-                    color = Color(0xFF3B82F6),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     onClick = {
                         narrator?.stop()
                         backStack.add(Route.VideoPlayer(video.youtubeId, video.title))
@@ -70,7 +71,8 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
                 K2BigTile(
                     emoji = "🎮",
                     label = stringResource(com.vayunmathur.education.R.string.play),
-                    color = Color(0xFF22C55E),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     onClick = {
                         narrator?.stop()
                         backStack.add(Route.K2Quiz(exercise.id))
@@ -82,9 +84,9 @@ fun K2LessonPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, 
 }
 
 @Composable
-fun K2BigTile(emoji: String, label: String, color: Color, onClick: () -> Unit) {
+fun K2BigTile(emoji: String, label: String, color: Color, contentColor: Color, onClick: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = color),
+        colors = CardDefaults.cardColors(containerColor = color, contentColor = contentColor),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
@@ -100,7 +102,6 @@ fun K2BigTile(emoji: String, label: String, color: Color, onClick: () -> Unit) {
             Text(
                 label,
                 style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
                 textAlign = TextAlign.Center,
             )
         }

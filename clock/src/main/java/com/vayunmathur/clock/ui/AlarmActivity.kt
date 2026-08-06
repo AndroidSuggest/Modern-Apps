@@ -161,14 +161,14 @@ fun AlarmRingingScreen(
                         // Tighten letter spacing for that stringResource(R.string.label_clock) look
                         letterSpacing = (-2).sp
                     ),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 if (alarmName.isNotEmpty()) {
                     Text(
                         text = alarmName.uppercase(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -185,11 +185,11 @@ fun AlarmRingingScreen(
                 Surface(
                     modifier = Modifier.size(160.dp),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.05f)
+                    color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     IconAlarm(
                         modifier = Modifier.padding(40.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }

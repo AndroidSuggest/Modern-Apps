@@ -170,7 +170,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
 
 @Composable
 private fun ExplorerCourseCard(course: Course, onClick: () -> Unit) {
-    val color = subjectColor(course.subject)
+    val colors = subjectColors(course.subject)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -189,12 +189,12 @@ private fun ExplorerCourseCard(course: Course, onClick: () -> Unit) {
                 Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(color),
+                    .background(colors.container),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     stringResource(course.subject.displayNameRes).first().toString(),
-                    color = Color.White,
+                    color = colors.onContainer,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleLarge,
                 )
@@ -211,11 +211,18 @@ private fun ExplorerCourseCard(course: Course, onClick: () -> Unit) {
     }
 }
 
-/** Playful, stable accent color per subject for the Explorer shell. */
-fun subjectColor(subject: Subject): Color = when (subject) {
-    Subject.MATH -> Color(0xFF3B82F6)
-    Subject.SCIENCE -> Color(0xFF22C55E)
-    Subject.READING -> Color(0xFFF97316)
-    Subject.SOCIAL_STUDIES -> Color(0xFFA855F7)
-    Subject.COMPUTING -> Color(0xFF14B8A6)
+/** Accent pair per subject for the Explorer shell, drawn from the active theme. */
+data class SubjectColors(val container: Color, val onContainer: Color)
+
+@Composable
+fun subjectColors(subject: Subject): SubjectColors {
+    val scheme = MaterialTheme.colorScheme
+    return when (subject) {
+        Subject.MATH, Subject.SOCIAL_STUDIES ->
+            SubjectColors(scheme.primaryContainer, scheme.onPrimaryContainer)
+        Subject.SCIENCE, Subject.COMPUTING ->
+            SubjectColors(scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        Subject.READING ->
+            SubjectColors(scheme.secondaryContainer, scheme.onSecondaryContainer)
+    }
 }

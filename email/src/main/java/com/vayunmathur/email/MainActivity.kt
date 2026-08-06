@@ -273,13 +273,14 @@ fun EmailApp(viewModel: EmailViewModel) {
                                     scope.launch { drawerState.close() }
                                 },
                                 icon = {
+                                    val accountColor = Color(account.getColor())
                                     Surface(
                                         shape = androidx.compose.foundation.shape.CircleShape,
-                                        color = Color(account.getColor()),
+                                        color = accountColor,
                                         modifier = Modifier.size(24.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            IconMail(modifier = Modifier.size(16.dp), tint = Color.White)
+                                            IconMail(modifier = Modifier.size(16.dp), tint = contentColorOn(accountColor))
                                         }
                                     }
                                 },
@@ -997,7 +998,7 @@ fun MessageItem(
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = initial, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text(text = initial, color = contentColorOn(avatarColor), style = MaterialTheme.typography.titleMedium)
                 }
             }
             Column(
@@ -1160,7 +1161,7 @@ fun MessageItem(
             Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
                 Text(text = msg.date, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.End))
                 DetailItem(label = stringResource(R.string.from_label), name = senderName, email = senderEmail, avatarColor = avatarColor)
-                DetailItem(label = stringResource(R.string.to_label), name = "me", email = msg.to ?: "", avatarColor = Color.Gray)
+                DetailItem(label = stringResource(R.string.to_label), name = "me", email = msg.to ?: "", avatarColor = MaterialTheme.colorScheme.surfaceVariant)
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconInbox(modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1189,7 +1190,7 @@ fun DetailItem(label: String, name: String, email: String, avatarColor: Color) {
                 modifier = Modifier.size(32.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(text = name.take(1).uppercase(), color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                    Text(text = name.take(1).uppercase(), color = contentColorOn(avatarColor), style = MaterialTheme.typography.bodyLarge)
                 }
             }
             Column(modifier = Modifier.padding(start = 12.dp)) {

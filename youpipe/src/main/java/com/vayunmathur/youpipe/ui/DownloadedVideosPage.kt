@@ -191,7 +191,7 @@ fun SelectionIndicator(isSelected: Boolean) {
             .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
             .border(
                 width = 2.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center

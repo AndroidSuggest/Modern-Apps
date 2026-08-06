@@ -492,7 +492,7 @@ private val COLOR_IMAGE = Color(0xFF4CAF50)
 private val COLOR_VIDEO = Color(0xFF9C27B0)
 private val COLOR_AUDIO = Color(0xFFFF9800)
 private val COLOR_DOC = Color(0xFF2196F3)
-private val COLOR_ARCHIVE = Color(0xFFFFC107)
+private val COLOR_ARCHIVE = Color(0xFFB28500)
 private val COLOR_APK = Color(0xFF009688)
 private val COLOR_CODE = Color(0xFF607D8B)
 

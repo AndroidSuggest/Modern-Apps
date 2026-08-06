@@ -44,6 +44,7 @@ import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.BottomAppBar
 import com.vayunmathur.library.ui.Checkbox
+import com.vayunmathur.library.ui.CheckboxDefaults
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DrawerState
 import com.vayunmathur.library.ui.DrawerValue
@@ -1237,7 +1238,7 @@ fun SafePdfPageCanvas(
             .fillMaxWidth()
             .padding(4.dp)
             .aspectRatio(ratio)
-            .background(Color.White)
+            .background(if (page == null) MaterialTheme.colorScheme.surfaceVariant else Color.White)
             .clipToBounds()
     ) {
         if (page == null || page.width <= 0f) {
@@ -2247,6 +2248,13 @@ private fun FormFieldOverlay(
                             checked = it
                             scope.launch { document.setCheckbox(index, field.id, it); onEdited() }
                         },
+                        // The page behind this is a fixed white sheet, so the
+                        // control cannot follow the theme's on-surface roles.
+                        colors = CheckboxDefaults.colors(
+                            uncheckedColor = Color(0xFF49454F),
+                            checkedColor = Color(0xFF1F6FC0),
+                            checkmarkColor = Color.White,
+                        ),
                     )
                 }
             }
@@ -2279,7 +2287,7 @@ private fun FormFieldOverlay(
                 ) {
                     Text(stringResource(R.string.sign),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFF49454F),
                     )
                 }
             }

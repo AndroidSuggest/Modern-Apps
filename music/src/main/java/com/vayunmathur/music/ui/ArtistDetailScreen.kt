@@ -98,7 +98,7 @@ fun ArtistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicView
                     AlbumArt(albumsUris, Modifier
                         .size(260.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.DarkGray))
+                        .background(MaterialTheme.colorScheme.surfaceVariant))
 
                     Spacer(modifier = Modifier.height(24.dp))
 

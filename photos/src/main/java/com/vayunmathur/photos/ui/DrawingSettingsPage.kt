@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
@@ -73,7 +74,7 @@ fun DrawingSettingsPage(
             .fillMaxWidth()
             .padding(16.dp),
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF1C1C1E)
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Preview
@@ -83,13 +84,13 @@ fun DrawingSettingsPage(
                     .height(48.dp)
                     .padding(vertical = 12.dp)
                     .background(
-                        if (tool == DrawingTool.Eraser) Color.White.copy(alpha = 0.2f) else Color(color).copy(alpha = if (tool == DrawingTool.Highlighter) opacity else 1f),
+                        if (tool == DrawingTool.Eraser) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f) else Color(color).copy(alpha = if (tool == DrawingTool.Highlighter) opacity else 1f),
                         RoundedCornerShape(thickness / 2)
                     )
                     .height(thickness.dp)
             )
 
-            Text(stringResource(R.string.thickness), color = Color.White)
+            Text(stringResource(R.string.thickness), color = MaterialTheme.colorScheme.onSurface)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Slider(
                     value = thickness,
@@ -97,11 +98,11 @@ fun DrawingSettingsPage(
                     valueRange = if (tool == DrawingTool.Highlighter) 5f..80f else 1f..50f,
                     modifier = Modifier.weight(1f)
                 )
-                Text(thickness.roundToInt().toString(), color = Color.White, modifier = Modifier.padding(start = 8.dp))
+                Text(thickness.roundToInt().toString(), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(start = 8.dp))
             }
 
             if (tool == DrawingTool.Highlighter) {
-                Text(stringResource(R.string.opacity), color = Color.White)
+                Text(stringResource(R.string.opacity), color = MaterialTheme.colorScheme.onSurface)
                 Slider(
                     value = opacity,
                     onValueChange = { opacity = it },
@@ -110,7 +111,7 @@ fun DrawingSettingsPage(
             }
 
             if (tool != DrawingTool.Eraser && tool != DrawingTool.Pointer) {
-                Text(stringResource(R.string.color), color = Color.White)
+                Text(stringResource(R.string.color), color = MaterialTheme.colorScheme.onSurface)
                 val colors = listOf(
                     Color.Red, Color.Green, Color.Blue, Color.Yellow,
                     Color.Cyan, Color.Magenta, Color.White, Color.Black,
@@ -131,7 +132,7 @@ fun DrawingSettingsPage(
                                 .background(c, CircleShape)
                                 .border(
                                     if (isSelected) 2.dp else 0.dp,
-                                    Color.White,
+                                    MaterialTheme.colorScheme.primary,
                                     CircleShape
                                 )
                                 .clickable { color = c.toArgb() }

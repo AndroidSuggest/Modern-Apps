@@ -127,7 +127,7 @@ private fun InitialDownloadScreen(
             Text(
                 text = stringResource(R.string.downloading_required_components_for_this),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(32.dp))
@@ -386,7 +386,7 @@ fun FileProgressItem(
             Text(
                 text = if (isDone) stringResource(R.string.completed) else stringResource(R.string.downloading),
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Text(
@@ -402,7 +402,7 @@ fun FileProgressItem(
             progress = { animatedProgress },
             modifier = Modifier.fillMaxWidth().height(6.dp),
             strokeCap = StrokeCap.Round,
-            color = if (isDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+            color = if (isDone) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
         )
     }
 }

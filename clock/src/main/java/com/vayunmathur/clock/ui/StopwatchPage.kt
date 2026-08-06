@@ -125,6 +125,8 @@ fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, act
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // --- 1. CIRCULAR TIMER ---
+            val trackColor = MaterialTheme.colorScheme.surfaceVariant
+            val progressColor = MaterialTheme.colorScheme.primary
             Box(
                 modifier = Modifier
                     .padding(top = 40.dp, bottom = 40.dp)
@@ -133,14 +135,14 @@ fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, act
             ) {
                 // Background Track
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawCircle(color = Color.DarkGray.copy(alpha = 0.3f), style = Stroke(width = 8f))
+                    drawCircle(color = trackColor, style = Stroke(width = 8f))
                 }
 
                 // Sweeping Progress Arc (60-second loop)
                 val sweepAngle = ((countingTime.inWholeMilliseconds % 60000) / 60000f) * 360f
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawArc(
-                        color = Color.LightGray,
+                        color = progressColor,
                         startAngle = -90f,
                         sweepAngle = sweepAngle,
                         useCenter = false,
@@ -163,7 +165,7 @@ fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, act
                         Text(
                             text = stringResource(R.string.duration_ms_format, 0, centiseconds), // Reusing format for just centiseconds
                             style = MaterialTheme.typography.headlineMedium.copy(
-                                color = Color.Gray,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Light
                             )
                         )
@@ -187,7 +189,7 @@ fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, act
                         Text(stringResource(R.string.header_split), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge)
                         Text(stringResource(R.string.header_total), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge)
                     }
-                    HorizontalDivider(Modifier.padding(horizontal = 8.dp), color = Color.Gray.copy(alpha = 0.5f))
+                    HorizontalDivider(Modifier.padding(horizontal = 8.dp))
 
                     // Lap List
                     LazyColumn(modifier = Modifier.heightIn(max = 240.dp)) {
@@ -199,9 +201,9 @@ fun StopwatchScreen(backStack: NavBackStack<Route>, state: StopwatchUiState, act
                             val minLength = lapSplits.min()
 
                             LapRow(lapNumber, when(split) {
-                                minLength -> Color.Green
-                                maxLength -> Color.Red
-                                else -> Color.White
+                                minLength -> MaterialTheme.colorScheme.tertiary
+                                maxLength -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurface
                             }, split, currentTotal)
                         }
                     }

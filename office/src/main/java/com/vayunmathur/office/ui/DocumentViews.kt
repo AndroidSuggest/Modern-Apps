@@ -678,7 +678,10 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
     val hasLinks = paragraph.spans.any { it.href != null }
     val hasAnnotations = paragraph.spans.any { it.annotation != null }
     val context = LocalContext.current
-    val highlightColor = Color(0xFFFFEB3B)
+    val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+    val onHighlightColor = MaterialTheme.colorScheme.onTertiaryContainer
+    val annotationColor = MaterialTheme.colorScheme.secondaryContainer
+    val onAnnotationColor = MaterialTheme.colorScheme.onSecondaryContainer
 
     val annotatedString = buildAnnotatedString {
         if (prefix.isNotEmpty()) append(prefix)
@@ -686,7 +689,7 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
             val spanAnnotation = span.annotation
             if (spanAnnotation != null) {
                 val start = length
-                withStyle(SpanStyle(background = Color(0xFFFFF9C4))) { append(span.text) }
+                withStyle(SpanStyle(color = onAnnotationColor, background = annotationColor)) { append(span.text) }
                 addStringAnnotation("ANNOTATION", "${spanAnnotation.author ?: ""}\n${spanAnnotation.paragraphs.joinToString("\n") { p -> p.spans.joinToString("") { it.text } }}", start, length)
                 continue
             }
@@ -724,7 +727,7 @@ fun ParagraphView(paragraph: OdfParagraph, searchQuery: String = "", fontSizeMul
                     val idx = remaining.indexOf(searchQuery, ignoreCase = true)
                     if (idx < 0) { linkOrPlain(span, spanStyle, remaining); break }
                     if (idx > 0) linkOrPlain(span, spanStyle, remaining.substring(0, idx))
-                    withStyle(spanStyle.copy(background = highlightColor)) { append(remaining.substring(idx, idx + searchQuery.length)) }
+                    withStyle(spanStyle.copy(color = onHighlightColor, background = highlightColor)) { append(remaining.substring(idx, idx + searchQuery.length)) }
                     remaining = remaining.substring(idx + searchQuery.length)
                 }
             } else linkOrPlain(span, spanStyle, shownText)
@@ -1859,7 +1862,7 @@ fun FloatingElementLayer(
                     // Move handle (top center, above the box).
                     ElementHandle(
                         Modifier.align(Alignment.TopCenter).offset(y = (-22).dp),
-                        icon = { IconDragHandle(modifier = Modifier.size(12.dp), tint = Color.White) },
+                        icon = { IconDragHandle(modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onPrimary) },
                         onStart = { live = element.bounds() }, onEnd = { commit() }
                     ) { dx, dy ->
                         val c = startBounds()
@@ -1910,7 +1913,7 @@ private fun ElementHandle(modifier: Modifier, icon: (@Composable () -> Unit)? = 
     Box(
         modifier.size(18.dp)
             .background(MaterialTheme.colorScheme.primary, CircleShape)
-            .border(1.5.dp, Color.White, CircleShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { onStart() },

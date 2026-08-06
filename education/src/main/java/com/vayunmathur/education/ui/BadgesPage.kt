@@ -95,7 +95,8 @@ private fun BadgeRow(status: AchievementStatus) {
                 Text(
                     status.achievement.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (unlocked) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 val target = status.achievement.targetProgress
                 if (!unlocked && target > 1) {

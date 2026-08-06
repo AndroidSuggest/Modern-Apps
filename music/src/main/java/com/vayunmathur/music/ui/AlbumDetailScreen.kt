@@ -107,7 +107,7 @@ fun AlbumDetailContent(
                     AlbumArt(state.artUri, Modifier
                         .size(260.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.DarkGray))
+                        .background(MaterialTheme.colorScheme.surfaceVariant))
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -142,7 +142,7 @@ fun AlbumDetailContent(
                 ) {
                     Text(
                         text = stringResource(R.string.label_songs),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold
                     )

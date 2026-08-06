@@ -206,9 +206,9 @@ fun UserPicture(user: User, size: Dp, grayscale: Boolean = false, onClick: () ->
 
 @Composable
 fun GreenCircle(size: Dp, char: Char? = null, grayscale: Boolean = false, onClick: () -> Unit = {}) {
-    Box(Modifier.clip(CircleShape).size(size).border(2.dp, MaterialTheme.colorScheme.primary, CircleShape).background(if(grayscale)Color.Gray else Color.Green ).invisibleClickable(onClick)) {
+    Box(Modifier.clip(CircleShape).size(size).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape).background(if(grayscale) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer).invisibleClickable(onClick)) {
         char?.let {
-            Text(char.toString(), Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.primary)
+            Text(char.toString(), Modifier.align(Alignment.Center), color = if(grayscale) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer)
         }
     }
 }

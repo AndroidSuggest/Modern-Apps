@@ -1,5 +1,6 @@
 package com.vayunmathur.library.ui.odf
 
+import com.vayunmathur.library.ui.contentColorOn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -302,7 +303,7 @@ fun ContinuousParagraphEditor(
                             .offset(x = rect.left.toDp(), y = (rect.top - 14f).toDp())
                             .background(color)
                     ) {
-                        Text(rc.name, color = Color.White, fontSize = 8.sp, modifier = Modifier.padding(horizontal = 2.dp))
+                        Text(rc.name, color = contentColorOn(color), fontSize = 8.sp, modifier = Modifier.padding(horizontal = 2.dp))
                     }
                 }
             }

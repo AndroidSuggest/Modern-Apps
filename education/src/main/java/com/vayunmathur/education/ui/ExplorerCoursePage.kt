@@ -47,7 +47,8 @@ fun ExplorerCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewM
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val content = viewModel.content
     val course = content.course(courseId)
-    val accent = course?.let { subjectColor(it.subject) } ?: MaterialTheme.colorScheme.primary
+    val accent = course?.let { subjectColors(it.subject) }
+        ?: SubjectColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
 
     AppScaffold(
         title = course?.title ?: stringResource(R.string.topic),
@@ -101,7 +102,7 @@ private fun PathNode(
     number: Int,
     unit: CourseUnit,
     stars: Int,
-    accent: Color,
+    accent: SubjectColors,
     isNext: Boolean,
     dueEpochDay: Long?,
     onClick: () -> Unit,
@@ -118,12 +119,12 @@ private fun PathNode(
             Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(if (mastered) accent else accent.copy(alpha = 0.25f)),
+                .background(if (mastered) accent.container else MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 if (mastered) "★" else "$number",
-                color = if (mastered) Color.White else accent,
+                color = if (mastered) accent.onContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.titleMedium,
             )

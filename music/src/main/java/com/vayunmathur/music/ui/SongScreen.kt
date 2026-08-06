@@ -65,7 +65,6 @@ fun NowPlayingScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFF0A0A0A),
         topBar = {
             TopAppBar(
                 title = { },
@@ -91,8 +90,7 @@ fun NowPlayingScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    titleContentColor = Color.White
+                    containerColor = Color.Transparent
                 )
             )
         }
@@ -139,18 +137,18 @@ fun NowPlayingScreen(
                         state.title,
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         state.artist,
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 IconButton(onClick = {}) {
-                    IconMoreVert(tint = Color.White)
+                    IconMoreVert(tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -158,16 +156,11 @@ fun NowPlayingScreen(
             Column {
                 Slider(
                     value = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs.toFloat() else 0f,
-                    onValueChange = { actions.seekTo((it * state.durationMs).toLong()) },
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.White.copy(0.2f)
-                    )
+                    onValueChange = { actions.seekTo((it * state.durationMs).toLong()) }
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatDuration(state.positionMs), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                    Text(formatDuration(state.durationMs), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text(formatDuration(state.positionMs), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text(formatDuration(state.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -187,22 +180,23 @@ fun NowPlayingScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { actions.skipPrevious() }) {
-                        IconSkipPrevious(Modifier.size(40.dp), tint = Color.White)
+                        IconSkipPrevious(Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
                     Spacer(Modifier.width(16.dp))
                     Box(
                         Modifier
                             .size(72.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(0.1f))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
                             .clickable { actions.togglePlayPause() },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (state.isPlaying) IconPause() else IconPlay()
+                        val tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        if (state.isPlaying) IconPause(tint = tint) else IconPlay(tint = tint)
                     }
                     Spacer(Modifier.width(16.dp))
                     IconButton(onClick = { actions.skipNext() }) {
-                        IconSkipNext(Modifier.size(40.dp), tint = Color.White)
+                        IconSkipNext(Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
 
@@ -228,13 +222,13 @@ fun LyricsView(lyrics: List<LyricLine>, currentIndex: Int) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(16.dp)
     ) {
         if (lyrics.isEmpty()) {
             Text(
                 stringResource(R.string.no_lyrics_available),
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.Center),
                 textAlign = TextAlign.Center
             )
@@ -253,7 +247,7 @@ fun LyricsView(lyrics: List<LyricLine>, currentIndex: Int) {
                             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                             fontSize = if (isCurrent) 22.sp else 18.sp
                         ),
-                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f),
+                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )

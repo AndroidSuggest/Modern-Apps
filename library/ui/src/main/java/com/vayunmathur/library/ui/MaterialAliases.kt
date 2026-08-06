@@ -62,6 +62,8 @@ typealias TopAppBarDefaults = androidx.compose.material3.TopAppBarDefaults
 
 // --- Colors / elevation / shapes state ---
 typealias ListItemColors = androidx.compose.material3.ListItemColors
+typealias CheckboxColors = androidx.compose.material3.CheckboxColors
+typealias CheckboxDefaults = androidx.compose.material3.CheckboxDefaults
 typealias ListItemElevation = androidx.compose.material3.ListItemElevation
 typealias ColorScheme = androidx.compose.material3.ColorScheme
 typealias ButtonColors = androidx.compose.material3.ButtonColors

@@ -297,7 +297,7 @@ fun ChatInput(
                 if (isRecording) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), shape = RoundedCornerShape(12.dp)) {
                         Row(Modifier.padding(12.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.recording), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.recording), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                             IconButton(onCancelMedia) { IconClose() }
                         }
                     }
@@ -318,7 +318,7 @@ fun ChatInput(
                 )
                 val canSend = inputText.isNotBlank() || selectedImageUris.isNotEmpty() || isRecording
                 IconButton(enabled = canSend, onClick = onSend) {
-                    IconSend(tint = if (canSend) MaterialTheme.colorScheme.primary else Color.Gray)
+                    IconSend(tint = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
                 }
             }
         }

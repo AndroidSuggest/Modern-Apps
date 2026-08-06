@@ -63,6 +63,7 @@ import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
 import com.vayunmathur.library.ui.SnackbarHost
 import com.vayunmathur.library.ui.SnackbarHostState
 import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.TopAppBarDefaults
 import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
@@ -155,6 +156,11 @@ fun WallpaperPage(
             TopAppBar(
                 title = { Text(stringResource(R.string.set_as_wallpaper), color = Color.White) },
                 navigationIcon = { IconNavigation(backStack) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                ),
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

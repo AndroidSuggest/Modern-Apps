@@ -324,17 +324,18 @@ fun TimerKeypadContent(
 
 @Composable
 fun TimeUnitDisplay(value: String, unit: String, active: Boolean) {
+    val color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Row(verticalAlignment = Alignment.Bottom) {
         Text(
             text = value,
             style = MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp),
-            color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+            color = color,
             fontWeight = FontWeight.Light
         )
         Text(
             text = unit,
             style = MaterialTheme.typography.titleMedium,
-            color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+            color = color,
             modifier = Modifier.padding(bottom = 12.dp, start = 2.dp)
         )
     }

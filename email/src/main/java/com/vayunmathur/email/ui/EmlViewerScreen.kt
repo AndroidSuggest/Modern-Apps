@@ -37,6 +37,7 @@ import com.vayunmathur.email.util.ParsedEml
 import com.vayunmathur.library.ui.HtmlText
 import com.vayunmathur.library.ui.IconForward
 import com.vayunmathur.library.ui.IconNavigation
+import com.vayunmathur.library.ui.contentColorOn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -133,7 +134,7 @@ fun EmlViewerScreen(
                     Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = CircleShape, color = avatarColor, modifier = Modifier.size(40.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(text = initial, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                                Text(text = initial, color = contentColorOn(avatarColor), style = MaterialTheme.typography.titleMedium)
                             }
                         }
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {

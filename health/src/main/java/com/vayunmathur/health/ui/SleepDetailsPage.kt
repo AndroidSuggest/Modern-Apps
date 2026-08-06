@@ -208,6 +208,7 @@ fun SleepStageGraph(record: Record) {
                 )
             }
 
+            val gridColor = MaterialTheme.colorScheme.outlineVariant
             Canvas(
                 modifier = Modifier
                     .weight(1f)
@@ -222,7 +223,7 @@ fun SleepStageGraph(record: Record) {
                 for (i in 0..4) {
                     val y = i * levelHeight
                     drawLine(
-                        Color.LightGray.copy(alpha = 0.3f),
+                        gridColor,
                         Offset(0f, y),
                         Offset(canvasWidth, y),
                         strokeWidth = 1.dp.toPx()

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DropdownMenu
@@ -273,7 +274,7 @@ private fun ComposePageThumb(
                 .fillMaxWidth()
                 .aspectRatio(ratio)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color.White),
+                .background(if (current == null) MaterialTheme.colorScheme.surfaceVariant else Color.White),
         ) {
             if (current == null || current.width <= 0f) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -283,8 +284,9 @@ private fun ComposePageThumb(
         }
         IconButton(
             onClick = onDelete,
-            modifier = Modifier.align(Alignment.TopEnd),
-        ) { IconDelete() }
+            modifier = Modifier.align(Alignment.TopEnd)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+        ) { IconDelete(tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

@@ -964,7 +964,7 @@ fun LevelStepper(count: Int, current: Int, stars: List<Int>, onSelect: (Int) -> 
                 if (done && !isCurrent) {
                     Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
                         repeat(starCount) {
-                            Text("\u2605", fontSize = 9.sp, color = Color(0xFFFFC107))
+                            Text("\u2605", fontSize = 9.sp, color = fg)
                         }
                     }
                 } else {
@@ -987,7 +987,8 @@ private fun StarRow(stars: Int) {
             Text(
                 if (i <= stars) "\u2605" else "\u2606",
                 fontSize = 28.sp,
-                color = if (i <= stars) Color(0xFFFFC107) else Color.Gray
+                color = if (i <= stars) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
             )
         }
     }

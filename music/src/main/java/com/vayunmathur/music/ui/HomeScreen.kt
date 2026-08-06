@@ -90,18 +90,25 @@ fun SongsScreen(state: SongsUiState, actions: MusicActions, backStack: NavBackSt
         val isPlaying = song.id == state.playingSongId
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isPlaying) {
-                IconPlay(
-                    modifier = Modifier.size(24.dp).padding(end = 8.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                IconPlay(modifier = Modifier.size(24.dp).padding(end = 8.dp))
             }
             AlbumArt(song.uri.toUri(), Modifier.size(40.dp))
         }
     }, trailingContent = { song ->
         AddToPlaylistButton(backStack, song)
-    }, itemModifier = { song ->
-        if (song.id == state.playingSongId) Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.secondaryContainer)
-        else Modifier
+    }, itemModifier = { Modifier.clip(RoundedCornerShape(12.dp)) },
+    itemColors = { song ->
+        if (song.id == state.playingSongId) {
+            ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                trailingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                supportingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        } else {
+            ListItemDefaults.colors()
+        }
     }, searchEnabled = true, fab = {
         ShufflePlayFab(state.songs) {
             actions.playShuffled(state.songs, sourceId = SOURCE_ALL_SONGS, sourceName = SOURCE_ALL_SONGS_NAME)

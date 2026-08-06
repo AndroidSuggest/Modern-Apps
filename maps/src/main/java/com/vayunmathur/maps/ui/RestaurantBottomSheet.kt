@@ -92,8 +92,10 @@ fun RestaurantBottomSheet(viewModel: SelectedFeatureViewModel, inactiveNavigatio
             val closedStr = stringResource(R.string.closed_status)
             val closesAtStr = stringResource(R.string.closes_at, nextChangeTime.time.format(timeFormat))
             val opensAtStr = stringResource(R.string.opens_at, nextChangeTime.time.format(timeFormat))
+            val openColor = MaterialTheme.colorScheme.tertiary
+            val closedColor = MaterialTheme.colorScheme.error
             val text = AnnotatedString.Builder().apply {
-                if(isOpen) withStyle(SpanStyle(Color.Green)){append(openStr)} else withStyle(SpanStyle(Color.Red)){append(closedStr)}
+                if(isOpen) withStyle(SpanStyle(openColor)){append(openStr)} else withStyle(SpanStyle(closedColor)){append(closedStr)}
                 append(" • ")
                 if(isOpen) append(closesAtStr)
                 else append(opensAtStr)
@@ -172,8 +174,10 @@ fun RestaurantBottomSheet(viewModel: SelectedFeatureViewModel, inactiveNavigatio
             val closedStr = stringResource(R.string.closed_status)
             val closesAtStr = stringResource(R.string.closes_at, nextChangeTime.time.format(timeFormat))
             val opensAtStr = stringResource(R.string.opens_at, nextChangeTime.time.format(timeFormat))
+            val openColor = MaterialTheme.colorScheme.tertiary
+            val closedColor = MaterialTheme.colorScheme.error
             val text = AnnotatedString.Builder().apply {
-                if(isOpen) withStyle(SpanStyle(Color.Green)){append(openStr)} else withStyle(SpanStyle(Color.Red)){append(closedStr)}
+                if(isOpen) withStyle(SpanStyle(openColor)){append(openStr)} else withStyle(SpanStyle(closedColor)){append(closedStr)}
                 append(" • ")
                 if(isOpen) append(closesAtStr)
                 else append(opensAtStr)

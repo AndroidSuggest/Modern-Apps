@@ -184,7 +184,7 @@ private fun ConfigRow(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
                     Text(cfg.name.ifBlank { "Unnamed" }, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text(cfg.peerEndpoint, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(cfg.peerEndpoint, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (isConnecting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             }
@@ -195,7 +195,7 @@ private fun ConfigRow(
                 androidx.compose.material3.IconButton(onClick = onDelete) { IconDelete() }
             }
             if (isActive) {
-                Text(stringResource(R.string.connected_via_gotatun_wireguard), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.connected_via_gotatun_wireguard), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
             Text(stringResource(R.string.address, cfg.address), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             Text(stringResource(R.string.allowed, cfg.peerAllowedIPs), fontSize = 11.sp, fontFamily = FontFamily.Monospace)

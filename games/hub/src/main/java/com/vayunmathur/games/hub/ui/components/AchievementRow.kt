@@ -15,7 +15,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.hub.data.dao.AchievementWithProgress
-import com.vayunmathur.games.hub.util.tierColor
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.Icon
@@ -32,7 +31,6 @@ fun AchievementRow(
     showGameTag: Boolean = true
 ) {
     val isLocked = !item.isUnlocked
-    val tierCol = tierColor(item.tier)
 
     Card(
         modifier = modifier
@@ -52,7 +50,8 @@ fun AchievementRow(
                 painter = painterResource(id = android.R.drawable.btn_star_big_on),
                 contentDescription = null,
                 modifier = Modifier.size(40.dp),
-                tint = if (item.isUnlocked) tierCol else Color.Gray
+                tint = if (item.isUnlocked) MaterialTheme.colorScheme.onSecondaryContainer
+                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
             )
             Column(
                 modifier = Modifier
@@ -70,7 +69,8 @@ fun AchievementRow(
                     Text(
                         text = stringResource(R.string.xp_1, item.xpReward),
                         style = MaterialTheme.typography.labelSmall,
-                        color = tierCol
+                        color = if (item.isUnlocked) MaterialTheme.colorScheme.onSecondaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Text(

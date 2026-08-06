@@ -90,7 +90,7 @@ fun PlaylistDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicVi
                     Box(Modifier
                         .size(260.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.DarkGray),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
                         if (musicInPlaylist.isEmpty()) {

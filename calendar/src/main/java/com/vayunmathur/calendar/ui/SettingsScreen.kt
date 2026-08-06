@@ -271,7 +271,6 @@ fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
                             content = { Text(cal.displayName) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .then(if (isSelected) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier)
                                 .clickable {
                                     // select this calendar (or deselect if already selected)
                                     selectedCalendarId = if (isSelected) null else cal.id
