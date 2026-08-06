@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.room.buildDatabase
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.util.openSettingsIfRequested
@@ -84,12 +85,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                Box(Modifier.fillMaxSize()) {
-                    if (!readyState.value || factoryState == null) {
-                        Box(Modifier.fillMaxSize())
-                    } else {
-                        AppRoot(factoryState!!, externalUrlState.value) {
-                            externalUrlState.value = null
+                OfflineAware {
+                    Box(Modifier.fillMaxSize()) {
+                        if (!readyState.value || factoryState == null) {
+                            Box(Modifier.fillMaxSize())
+                        } else {
+                            AppRoot(factoryState!!, externalUrlState.value) {
+                                externalUrlState.value = null
+                            }
                         }
                     }
                 }
