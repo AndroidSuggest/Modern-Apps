@@ -88,4 +88,11 @@
     <string name="preview_no_file">Open a file to preview.</string>
     <string name="preview_unsupported">No preview for %1$s files.</string>
     <string name="format_document">Format document</string>
+    <string name="quick_open">Quick open</string>
+    <string name="quick_open_hint">Type a file name</string>
+    <string name="command_palette">Command palette</string>
+    <string name="command_palette_hint">Type a command</string>
+    <string name="save">Save</string>
+    <string name="undo">Undo</string>
+    <string name="redo">Redo</string>
 </resources>

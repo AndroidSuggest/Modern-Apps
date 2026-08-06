@@ -187,6 +187,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         private set
     private var terminal: TerminalSession? = null
 
+    // ---- Quick-open ----
+    val projectFiles = mutableStateListOf<ProjectFileEntry>()
+    private val recentPaths = mutableStateListOf<String>()
+    private var projectFilesJob: Job? = null
+
     /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
     val uiState: CodeUiState
         get() = CodeUiState(
@@ -221,6 +226,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             completions = completions.toList(),
             showCompletions = showCompletions,
             editorTheme = editorTheme,
+            projectFiles = projectFiles.toList(),
+            recentFiles = recentPaths.map { toProjectEntry(File(it)) },
         )
 
     init {
@@ -236,6 +243,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _gitToken.value = prefs.gitToken.first() }
         viewModelScope.launch { _gitAuthorName.value = prefs.gitAuthorName.first() }
         viewModelScope.launch { _gitAuthorEmail.value = prefs.gitAuthorEmail.first() }
+        viewModelScope.launch { recentPaths.addAll(prefs.recentFiles.first()) }
         viewModelScope.launch {
             val stored = prefs.folderPath.first() ?: return@launch
             val dir = File(stored)
@@ -467,6 +475,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     /** Opens [file] in a tab (focusing it if already open), reading its text off the main thread. */
     fun openFile(file: File) {
+        addRecentFile(file.absolutePath)
         val key = file.absolutePath
         val existing = tabs.indexOfFirst { it.key == key }
         if (existing >= 0) {
@@ -974,6 +983,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun openSearchResult(result: SearchResult) {
+        addRecentFile(result.path)
         val existing = tabs.indexOfFirst { it.key == result.path }
         if (existing >= 0) {
             currentIndex = existing
@@ -992,6 +1002,60 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
+    // ---- Quick-open ----
+
+    override fun openPath(path: String) = openFile(File(path))
+
+    /** Rebuilds the cached project-file list by walking the open folder off the main thread. */
+    override fun refreshProjectFiles() {
+        val root = rootDir ?: return
+        projectFilesJob?.cancel()
+        projectFilesJob = viewModelScope.launch {
+            val collected = withContext(Dispatchers.IO) {
+                val out = ArrayList<ProjectFileEntry>()
+                val rootPath = root.absolutePath
+                val stack = ArrayDeque<File>()
+                stack.addLast(root)
+                while (stack.isNotEmpty() && out.size < MAX_PROJECT_FILES) {
+                    coroutineContext.ensureActive()
+                    val dir = stack.removeLast()
+                    val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
+                    for (child in children) {
+                        if (out.size >= MAX_PROJECT_FILES) break
+                        if (child.isDirectory) {
+                            if (child.name !in SKIP_DIRS) stack.addLast(child.file)
+                            continue
+                        }
+                        out.add(toProjectEntry(child.file))
+                    }
+                }
+                out.sortedBy { it.relativePath.lowercase() }
+            }
+            projectFiles.clear()
+            projectFiles.addAll(collected)
+        }
+    }
+
+    /** Builds the display entry for [file], with a path relative to the open root when possible. */
+    private fun toProjectEntry(file: File): ProjectFileEntry {
+        val abs = file.absolutePath
+        val rootPath = rootDir?.absolutePath
+        val rel = if (rootPath != null && abs.startsWith(rootPath + File.separator)) {
+            abs.substring(rootPath.length + 1)
+        } else {
+            abs
+        }
+        return ProjectFileEntry(abs, file.name, rel)
+    }
+
+    /** Records [path] as the most-recently-opened file and persists the capped list. */
+    private fun addRecentFile(path: String) {
+        recentPaths.remove(path)
+        recentPaths.add(0, path)
+        while (recentPaths.size > MAX_RECENT_FILES) recentPaths.removeAt(recentPaths.lastIndex)
+        viewModelScope.launch { prefs.setRecentFiles(recentPaths.toList()) }
+    }
+
     private companion object {
         const val AUTO_SAVE_DELAY_MS = 1500L
         const val MIN_COMPLETION_PREFIX = 1
@@ -1001,6 +1065,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         const val MAX_SEARCH_RESULTS = 500
         const val MAX_MATCHES_PER_FILE = 50
         const val MAX_SEARCH_FILE_SIZE = 500_000
+        const val MAX_PROJECT_FILES = 5000
+        const val MAX_RECENT_FILES = 15
         val SKIP_DIRS = setOf(".git", "node_modules", "build", ".gradle", ".idea")
     }
 }

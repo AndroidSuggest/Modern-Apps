@@ -35,6 +35,14 @@ data class TreeRowUiState(
     val expanded: Boolean = false,
 )
 
+/** One file under the open project, used by quick-open and the recent-files list. */
+data class ProjectFileEntry(
+    val path: String,
+    val name: String,
+    /** Path relative to the project root, shown as the secondary line in quick-open. */
+    val relativePath: String,
+)
+
 /** One hit from a project-wide search: the file path, the 1-based line and a preview of that line. */
 data class SearchResult(
     val path: String,
@@ -62,6 +70,10 @@ data class CodeUiState(
     val completions: List<Completion> = emptyList(),
     val showCompletions: Boolean = false,
     val editorTheme: String = EditorThemes.DEFAULT,
+    /** All files under the open project, for quick-open (built lazily, cached in the ViewModel). */
+    val projectFiles: List<ProjectFileEntry> = emptyList(),
+    /** Most-recently-opened files, newest first, shown in quick-open when the query is empty. */
+    val recentFiles: List<ProjectFileEntry> = emptyList(),
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
 }
@@ -142,6 +154,14 @@ interface CodeActions {
 
     /** Open the file for a search result and jump to its line. */
     fun openSearchResult(result: SearchResult) {}
+
+    // ---- Quick-open ----
+
+    /** Open a file by absolute path (from quick-open or the recent-files list). */
+    fun openPath(path: String) {}
+
+    /** Rebuild the cached [CodeUiState.projectFiles] list (called when quick-open is shown). */
+    fun refreshProjectFiles() {}
 
     // ---- File operations ----
 

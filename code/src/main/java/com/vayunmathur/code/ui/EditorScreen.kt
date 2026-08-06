@@ -29,6 +29,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.util.CodeActions
@@ -48,6 +55,7 @@ import com.vayunmathur.library.ui.IconMenu
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconRedo
 import com.vayunmathur.library.ui.IconSave
+import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.IconUndo
 import com.vayunmathur.library.ui.IconWrapText
@@ -128,7 +136,31 @@ fun EditorScreen(
     )
     val scope = rememberCoroutineScope()
     var showFind by remember { mutableStateOf(initialFind != null) }
+    var showGoToLine by remember { mutableStateOf(false) }
+    var showQuickOpen by remember { mutableStateOf(false) }
+    var showPalette by remember { mutableStateOf(false) }
 
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.key) {
+                    Key.P -> {
+                        if (event.isShiftPressed) {
+                            showPalette = true
+                        } else {
+                            actions.refreshProjectFiles()
+                            showQuickOpen = true
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            },
+    ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -151,6 +183,10 @@ fun EditorScreen(
                         IconButton(onClick = { scope.launch { drawerState.open() } }) { IconMenu() }
                     },
                     actions = {
+                        IconButton(onClick = {
+                            actions.refreshProjectFiles()
+                            showQuickOpen = true
+                        }) { IconSearch() }
                         IconButton(onClick = onOpenSettings) { IconSettings() }
                     },
                 )
@@ -167,10 +203,16 @@ fun EditorScreen(
                         state = state,
                         actions = actions,
                         onToggleFind = { showFind = !showFind },
+                        onGoToLine = { showGoToLine = true },
                         onOpenSearch = onOpenSearch,
                         onOpenGit = onOpenGit,
                         onOpenTerminal = onOpenTerminal,
                         onOpenPreview = onOpenPreview,
+                        onOpenQuickOpen = {
+                            actions.refreshProjectFiles()
+                            showQuickOpen = true
+                        },
+                        onOpenPalette = { showPalette = true },
                     )
                     HorizontalDivider()
                     CodeEditor(
@@ -189,6 +231,46 @@ fun EditorScreen(
                 }
             }
         }
+    }
+
+    if (showQuickOpen) {
+        FuzzyPickerDialog(
+            title = stringResource(R.string.quick_open),
+            placeholder = stringResource(R.string.quick_open_hint),
+            items = quickOpenItems(state) { actions.openPath(it) },
+            emptyQueryItems = recentOpenItems(state) { actions.openPath(it) },
+            onDismiss = { showQuickOpen = false },
+        )
+    }
+    if (showPalette) {
+        FuzzyPickerDialog(
+            title = stringResource(R.string.command_palette),
+            placeholder = stringResource(R.string.command_palette_hint),
+            items = editorCommands(
+                actions = actions,
+                onToggleFind = { showFind = true },
+                onGoToLine = { showGoToLine = true },
+                onQuickOpen = {
+                    actions.refreshProjectFiles()
+                    showQuickOpen = true
+                },
+                onOpenSearch = onOpenSearch,
+                onOpenGit = onOpenGit,
+                onOpenTerminal = onOpenTerminal,
+                onOpenPreview = onOpenPreview,
+                onOpenSettings = onOpenSettings,
+                onOpenFolder = onOpenFolder,
+                onOpenFile = onOpenFile,
+            ),
+            onDismiss = { showPalette = false },
+        )
+    }
+    if (showGoToLine) {
+        GoToLineDialog(
+            onGo = { actions.goToLine(it) },
+            onDismiss = { showGoToLine = false },
+        )
+    }
     }
 }
 
@@ -278,13 +360,15 @@ private fun EditorToolbar(
     state: CodeUiState,
     actions: CodeActions,
     onToggleFind: () -> Unit,
+    onGoToLine: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
     onOpenGit: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
     onOpenPreview: () -> Unit = {},
+    onOpenQuickOpen: () -> Unit = {},
+    onOpenPalette: () -> Unit = {},
 ) {
     val tab = state.currentTab ?: return
-    var showGoToLine by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
@@ -301,7 +385,9 @@ private fun EditorToolbar(
         }
         IconButton(onClick = { actions.insertText(" ".repeat(state.tabWidth)) }) { IconFormatIndentIncrease() }
         OverflowMenu(icon = { IconMoreVert() }) {
-            Item(text = stringResource(R.string.go_to_line)) { showGoToLine = true }
+            Item(text = stringResource(R.string.command_palette)) { onOpenPalette() }
+            Item(text = stringResource(R.string.quick_open)) { onOpenQuickOpen() }
+            Item(text = stringResource(R.string.go_to_line)) { onGoToLine() }
             Item(text = stringResource(R.string.toggle_comment)) { actions.toggleComment() }
             Item(text = stringResource(R.string.duplicate_line)) { actions.duplicateLine() }
             Item(text = stringResource(R.string.move_line_up)) { actions.moveLineUp() }
@@ -319,13 +405,6 @@ private fun EditorToolbar(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 12.dp),
-        )
-    }
-
-    if (showGoToLine) {
-        GoToLineDialog(
-            onGo = { actions.goToLine(it) },
-            onDismiss = { showGoToLine = false },
         )
     }
 }
@@ -357,3 +436,40 @@ private fun GoToLineDialog(onGo: (Int) -> Unit, onDismiss: () -> Unit) {
         },
     )
 }
+
+/** The command-palette registry: named actions mapped to editor callbacks and nav destinations. */
+@Composable
+private fun editorCommands(
+    actions: CodeActions,
+    onToggleFind: () -> Unit,
+    onGoToLine: () -> Unit,
+    onQuickOpen: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenGit: () -> Unit,
+    onOpenTerminal: () -> Unit,
+    onOpenPreview: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenFolder: () -> Unit,
+    onOpenFile: () -> Unit,
+): List<PickerItem> = listOf(
+    PickerItem(stringResource(R.string.quick_open)) { onQuickOpen() },
+    PickerItem(stringResource(R.string.save)) { actions.save() },
+    PickerItem(stringResource(R.string.find)) { onToggleFind() },
+    PickerItem(stringResource(R.string.go_to_line)) { onGoToLine() },
+    PickerItem(stringResource(R.string.toggle_comment)) { actions.toggleComment() },
+    PickerItem(stringResource(R.string.duplicate_line)) { actions.duplicateLine() },
+    PickerItem(stringResource(R.string.move_line_up)) { actions.moveLineUp() },
+    PickerItem(stringResource(R.string.move_line_down)) { actions.moveLineDown() },
+    PickerItem(stringResource(R.string.delete_line)) { actions.deleteLine() },
+    PickerItem(stringResource(R.string.format_document)) { actions.formatDocument() },
+    PickerItem(stringResource(R.string.soft_wrap)) { actions.toggleSoftWrap() },
+    PickerItem(stringResource(R.string.undo)) { actions.undo() },
+    PickerItem(stringResource(R.string.redo)) { actions.redo() },
+    PickerItem(stringResource(R.string.search_in_project)) { onOpenSearch() },
+    PickerItem(stringResource(R.string.source_control)) { onOpenGit() },
+    PickerItem(stringResource(R.string.terminal)) { onOpenTerminal() },
+    PickerItem(stringResource(R.string.preview)) { onOpenPreview() },
+    PickerItem(stringResource(R.string.settings)) { onOpenSettings() },
+    PickerItem(stringResource(R.string.open_folder)) { onOpenFolder() },
+    PickerItem(stringResource(R.string.open_file)) { onOpenFile() },
+)

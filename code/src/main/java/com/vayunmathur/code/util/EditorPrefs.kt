@@ -43,6 +43,11 @@ class EditorPrefs(context: Context) {
     /** File path of the tab that was in the foreground, for session restore. */
     val sessionCurrent: Flow<String?> = appContext.editorDataStore.data.map { it[SESSION_CURRENT_KEY] }
 
+    /** Most-recently-opened file paths, newest first, for quick-open. */
+    val recentFiles: Flow<List<String>> = appContext.editorDataStore.data.map { prefs ->
+        prefs[RECENT_FILES_KEY]?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
+    }
+
     // Git remote credentials + author. DataStore is not encrypted; acceptable for F-Droid/local.
     val gitUsername: Flow<String> = appContext.editorDataStore.data.map { it[GIT_USERNAME_KEY] ?: "" }
     val gitToken: Flow<String> = appContext.editorDataStore.data.map { it[GIT_TOKEN_KEY] ?: "" }
@@ -102,6 +107,14 @@ class EditorPrefs(context: Context) {
         appContext.editorDataStore.edit { it[GIT_USERNAME_KEY] = value }
     }
 
+    /** Persists the recent-file list (newest first); clears the key when empty. */
+    suspend fun setRecentFiles(paths: List<String>) {
+        appContext.editorDataStore.edit { prefs ->
+            if (paths.isEmpty()) prefs.remove(RECENT_FILES_KEY)
+            else prefs[RECENT_FILES_KEY] = paths.joinToString("\n")
+        }
+    }
+
     suspend fun setGitToken(value: String) {
         appContext.editorDataStore.edit { it[GIT_TOKEN_KEY] = value }
     }
@@ -132,6 +145,7 @@ class EditorPrefs(context: Context) {
         private val EDITOR_THEME_KEY = stringPreferencesKey("editor_theme")
         private val SESSION_PATHS_KEY = stringPreferencesKey("session_paths")
         private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")
+        private val RECENT_FILES_KEY = stringPreferencesKey("recent_files")
         private val GIT_USERNAME_KEY = stringPreferencesKey("git_username")
         private val GIT_TOKEN_KEY = stringPreferencesKey("git_token")
         private val GIT_AUTHOR_NAME_KEY = stringPreferencesKey("git_author_name")
