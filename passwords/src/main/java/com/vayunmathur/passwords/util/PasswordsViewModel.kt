@@ -2,11 +2,14 @@ package com.vayunmathur.passwords.util
 
 import android.app.Application
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.PersistableBundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -142,7 +145,15 @@ class PasswordsViewModel(
     override fun copyToClipboard(label: String, text: String, feedback: String?) {
         val ctx = getApplication<Application>()
         val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+        val clip = ClipData.newPlainText(label, text)
+        // Tells the system UI (and any keyboard with a clipboard history) not to show this
+        // in the clear. Android 13+; older releases have no way to say it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            clip.description.extras = PersistableBundle().apply {
+                putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+            }
+        }
+        clipboard.setPrimaryClip(clip)
         if (feedback != null) {
             viewModelScope.launch { _copyEvents.emit(feedback) }
         }
