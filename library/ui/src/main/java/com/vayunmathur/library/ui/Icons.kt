@@ -119,6 +119,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.DarkMode
@@ -305,6 +306,10 @@ fun IconSearch(modifier: Modifier = Modifier, tint: Color = LocalContentColor.cu
 @Composable
 fun IconCopy(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.ContentCopy, "Copy", modifier, tint)
+
+@Composable
+fun IconPaste(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.ContentPaste, "Paste", modifier, tint)
 
 @Composable
 fun IconCrop(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
