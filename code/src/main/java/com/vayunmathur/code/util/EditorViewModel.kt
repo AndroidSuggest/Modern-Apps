@@ -3,14 +3,12 @@ package com.vayunmathur.code.util
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import android.provider.DocumentsContract
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.code.syntax.Language
@@ -20,10 +18,11 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.coroutines.coroutineContext
 
 /** One expandable row in the file-tree pane; the tree is stored as a flat, ordered list. */
-class TreeNode(val entry: DocEntry, val depth: Int) {
+class TreeNode(val entry: FileEntry, val depth: Int) {
     var expanded by mutableStateOf(false)
     var loading by mutableStateOf(false)
 }
@@ -32,14 +31,20 @@ class TreeNode(val entry: DocEntry, val depth: Int) {
  * One open file. Editor content lives in [value]; [savedText] is the last persisted text so
  * [isDirty] can drive the unsaved-dot. Undo/redo are plain deques (not observed directly);
  * [canUndo]/[canRedo] mirror their emptiness as state so the toolbar buttons stay reactive.
+ *
+ * Most tabs are backed by a real [file]. Files opened through a VIEW/EDIT intent from another
+ * app arrive as a `content://` [externalUri] instead and are [readOnly] (no `save` target).
  */
 class OpenTab(
-    uri: Uri,
+    file: File?,
+    externalUri: Uri? = null,
+    val readOnly: Boolean = false,
     initialName: String,
     initialText: String,
     language: Language,
 ) {
-    var uri by mutableStateOf(uri)
+    var file by mutableStateOf(file)
+    var externalUri by mutableStateOf(externalUri)
     var name by mutableStateOf(initialName)
     var language by mutableStateOf(language)
     var value by mutableStateOf(TextFieldValue(initialText))
@@ -51,6 +56,9 @@ class OpenTab(
 
     private val undoStack = ArrayDeque<TextFieldValue>()
     private val redoStack = ArrayDeque<TextFieldValue>()
+
+    /** Stable identity used to dedup tabs: the file path, or the external URI string. */
+    val key: String get() = file?.absolutePath ?: externalUri.toString()
 
     val isDirty: Boolean get() = value.text != savedText
 
@@ -91,6 +99,9 @@ class OpenTab(
  * It implements [CodeActions] and projects itself into a [CodeUiState] so the screens can be
  * rendered without it; reading [uiState] inside a composable subscribes to the same
  * `mutableStateOf`/`mutableStateListOf` members the screens used to read directly.
+ *
+ * The file backend is real [File] paths (the app holds `MANAGE_EXTERNAL_STORAGE`), so folder,
+ * tree and file operations all go through [FileFiles].
  */
 class EditorViewModel(application: Application) : AndroidViewModel(application), CodeActions {
 
@@ -98,11 +109,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     private val prefs = EditorPrefs(context)
 
     // ---- File tree ----
-    var treeUri by mutableStateOf<Uri?>(null)
+    var rootDir by mutableStateOf<File?>(null)
         private set
     var rootName by mutableStateOf<String?>(null)
         private set
-    private var rootDocumentId: String? = null
     val nodes = mutableStateListOf<TreeNode>()
 
     // ---- Tabs ----
@@ -114,16 +124,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     // ---- Preferences ----
     var softWrap by mutableStateOf(false)
         private set
-    var fontSize by mutableStateOf(EditorPrefs.DEFAULT_FONT_SIZE)
-        private set
-    var tabWidth by mutableStateOf(EditorPrefs.DEFAULT_TAB_WIDTH)
-        private set
-    var themeMode by mutableStateOf(EditorPrefs.THEME_SYSTEM)
-        private set
-    var autoIndent by mutableStateOf(true)
-        private set
-    var autoCloseBrackets by mutableStateOf(true)
-        private set
+
+    // These five are read as `fontSize`/`tabWidth`/... but written through the CodeActions
+    // `setFontSize`/`setTabWidth`/... methods. Backing them by a private MutableState (rather than
+    // a `var ... private set`) avoids a JVM signature clash between the generated property setter
+    // and the same-named interface method.
+    private val _fontSize = mutableStateOf(EditorPrefs.DEFAULT_FONT_SIZE)
+    val fontSize: Int get() = _fontSize.value
+    private val _tabWidth = mutableStateOf(EditorPrefs.DEFAULT_TAB_WIDTH)
+    val tabWidth: Int get() = _tabWidth.value
+    private val _themeMode = mutableStateOf(EditorPrefs.THEME_SYSTEM)
+    val themeMode: String get() = _themeMode.value
+    private val _autoIndent = mutableStateOf(true)
+    val autoIndent: Boolean get() = _autoIndent.value
+    private val _autoCloseBrackets = mutableStateOf(true)
+    val autoCloseBrackets: Boolean get() = _autoCloseBrackets.value
 
     // ---- Project search ----
     val searchResults = mutableStateListOf<SearchResult>()
@@ -147,7 +162,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             currentIndex = currentIndex,
             softWrap = softWrap,
             rootName = rootName,
-            folderOpen = treeUri != null,
+            folderOpen = rootDir != null,
             nodes = nodes.map {
                 TreeRowUiState(
                     name = it.entry.name,
@@ -166,45 +181,44 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     init {
         viewModelScope.launch { softWrap = prefs.softWrap.first() }
-        viewModelScope.launch { fontSize = prefs.fontSize.first() }
-        viewModelScope.launch { tabWidth = prefs.tabWidth.first() }
-        viewModelScope.launch { themeMode = prefs.themeMode.first() }
-        viewModelScope.launch { autoIndent = prefs.autoIndent.first() }
-        viewModelScope.launch { autoCloseBrackets = prefs.autoCloseBrackets.first() }
+        viewModelScope.launch { _fontSize.value = prefs.fontSize.first() }
+        viewModelScope.launch { _tabWidth.value = prefs.tabWidth.first() }
+        viewModelScope.launch { _themeMode.value = prefs.themeMode.first() }
+        viewModelScope.launch { _autoIndent.value = prefs.autoIndent.first() }
+        viewModelScope.launch { _autoCloseBrackets.value = prefs.autoCloseBrackets.first() }
         viewModelScope.launch {
-            val stored = prefs.folderUri.first() ?: return@launch
-            val uri = stored.toUri()
-            val loaded = runCatching { loadFolder(uri) }.isSuccess
-            if (!loaded) prefs.clearFolderUri()
+            val stored = prefs.folderPath.first() ?: return@launch
+            val dir = File(stored)
+            if (dir.isDirectory) {
+                runCatching { loadFolder(dir) }.onFailure { prefs.clearFolderPath() }
+            } else {
+                prefs.clearFolderPath()
+            }
         }
     }
 
     // ---- Folder handling ----
 
-    /** Persists read/write access to a freshly picked tree and loads its top level. */
-    fun openFolder(uri: Uri) {
-        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+    /** Opens [dir] as the project root and loads its top level, persisting it for relaunch. */
+    fun openFolder(dir: File) {
         viewModelScope.launch {
-            prefs.setFolderUri(uri.toString())
-            loadFolder(uri)
+            prefs.setFolderPath(dir.absolutePath)
+            runCatching { loadFolder(dir) }
         }
     }
 
     fun closeFolder() {
-        treeUri = null
+        rootDir = null
         rootName = null
-        rootDocumentId = null
         nodes.clear()
-        viewModelScope.launch { prefs.clearFolderUri() }
+        viewModelScope.launch { prefs.clearFolderPath() }
     }
 
-    private suspend fun loadFolder(uri: Uri) {
-        val root = withContext(Dispatchers.IO) { SafFiles.rootEntry(context, uri) }
-        val children = withContext(Dispatchers.IO) { SafFiles.listChildren(context, uri, root.documentId) }
-        treeUri = uri
-        rootName = root.name
-        rootDocumentId = root.documentId
+    private suspend fun loadFolder(dir: File) {
+        require(dir.isDirectory) { "Not a directory: $dir" }
+        val children = withContext(Dispatchers.IO) { FileFiles.listChildren(dir) }
+        rootDir = dir
+        rootName = dir.name
         nodes.clear()
         nodes.addAll(children.map { TreeNode(it, depth = 0) })
     }
@@ -213,10 +227,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun toggleNode(index: Int) {
         val node = nodes.getOrNull(index) ?: return
         if (!node.entry.isDirectory) {
-            openFile(node.entry.uri, node.entry.name)
+            openFile(node.entry.file)
             return
         }
-        val tree = treeUri ?: return
 
         if (node.expanded) {
             node.expanded = false
@@ -225,9 +238,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             node.expanded = true
             node.loading = true
             viewModelScope.launch {
-                val children = withContext(Dispatchers.IO) {
-                    SafFiles.listChildren(context, tree, node.entry.documentId)
-                }
+                val children = withContext(Dispatchers.IO) { FileFiles.listChildren(node.entry.file) }
                 node.loading = false
                 // The row may have been collapsed again while loading; only insert if still open.
                 val at = nodes.indexOf(node)
@@ -250,13 +261,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     /**
      * Re-lists the children of a folder and rebuilds that subtree in [nodes]. Expansion state
-     * and already-loaded descendant rows of immediate child folders are preserved by document id.
+     * and already-loaded descendant rows of immediate child folders are preserved by path.
      * [parentIndex] null refreshes the tree root.
      */
     private suspend fun refreshChildren(parentIndex: Int?) {
-        val tree = treeUri ?: return
-        val parentDocId = if (parentIndex == null) rootDocumentId ?: return
-        else nodes.getOrNull(parentIndex)?.entry?.documentId ?: return
+        val parentFile = if (parentIndex == null) rootDir ?: return
+        else nodes.getOrNull(parentIndex)?.entry?.file ?: return
         val parentDepth = if (parentIndex == null) -1 else nodes[parentIndex].depth
         val childDepth = parentDepth + 1
 
@@ -264,7 +274,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         var blockEnd = blockStart
         while (blockEnd < nodes.size && nodes[blockEnd].depth > parentDepth) blockEnd++
 
-        // Preserve existing immediate children (and their loaded subtrees) by document id.
+        // Preserve existing immediate children (and their loaded subtrees) by path.
         val preservedNode = HashMap<String, TreeNode>()
         val preservedSubtree = HashMap<String, List<TreeNode>>()
         var i = blockStart
@@ -273,22 +283,24 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             if (child.depth == childDepth) {
                 var j = i + 1
                 while (j < blockEnd && nodes[j].depth > childDepth) j++
-                preservedNode[child.entry.documentId] = child
-                preservedSubtree[child.entry.documentId] = nodes.subList(i + 1, j).toList()
+                val key = child.entry.file.absolutePath
+                preservedNode[key] = child
+                preservedSubtree[key] = nodes.subList(i + 1, j).toList()
                 i = j
             } else {
                 i++
             }
         }
 
-        val entries = withContext(Dispatchers.IO) { SafFiles.listChildren(context, tree, parentDocId) }
+        val entries = withContext(Dispatchers.IO) { FileFiles.listChildren(parentFile) }
 
         val rebuilt = ArrayList<TreeNode>()
         for (entry in entries) {
-            val existing = preservedNode[entry.documentId]
+            val key = entry.file.absolutePath
+            val existing = preservedNode[key]
             if (existing != null) {
                 rebuilt.add(existing)
-                rebuilt.addAll(preservedSubtree[entry.documentId].orEmpty())
+                rebuilt.addAll(preservedSubtree[key].orEmpty())
             } else {
                 rebuilt.add(TreeNode(entry, childDepth))
             }
@@ -298,32 +310,24 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         nodes.addAll(blockStart, rebuilt)
     }
 
-    /** Resolves the document id of a create target: the tree root, or a directory row. */
-    private fun parentDocId(parentIndex: Int?): String? =
-        if (parentIndex == null) rootDocumentId else nodes.getOrNull(parentIndex)?.entry?.documentId
+    /** Resolves the create target directory: the tree root, or a directory row. */
+    private fun parentFileFor(parentIndex: Int?): File? =
+        if (parentIndex == null) rootDir else nodes.getOrNull(parentIndex)?.entry?.file
 
     override fun createFile(parentIndex: Int?, name: String) {
-        val tree = treeUri ?: return
-        val parentDoc = parentDocId(parentIndex) ?: return
+        val parent = parentFileFor(parentIndex) ?: return
         viewModelScope.launch {
-            val uri = withContext(Dispatchers.IO) {
-                SafFiles.createDocument(context, tree, parentDoc, name, SafFiles.mimeForFileName(name))
-            } ?: return@launch
+            val file = withContext(Dispatchers.IO) { FileFiles.createFile(parent, name) } ?: return@launch
             nodes.getOrNull(parentIndex ?: -1)?.expanded = true
             refreshChildren(parentIndex)
-            openFile(uri, name)
+            openFile(file)
         }
     }
 
     override fun createFolder(parentIndex: Int?, name: String) {
-        val tree = treeUri ?: return
-        val parentDoc = parentDocId(parentIndex) ?: return
+        val parent = parentFileFor(parentIndex) ?: return
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                SafFiles.createDocument(
-                    context, tree, parentDoc, name, DocumentsContract.Document.MIME_TYPE_DIR,
-                )
-            } ?: return@launch
+            withContext(Dispatchers.IO) { FileFiles.createDirectory(parent, name) } ?: return@launch
             nodes.getOrNull(parentIndex ?: -1)?.expanded = true
             refreshChildren(parentIndex)
         }
@@ -331,81 +335,107 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     override fun renameNode(index: Int, newName: String) {
         val node = nodes.getOrNull(index) ?: return
-        val oldUri = node.entry.uri
+        val oldFile = node.entry.file
         viewModelScope.launch {
-            val newUri = withContext(Dispatchers.IO) {
-                SafFiles.renameDocument(context, oldUri, newName)
-            } ?: return@launch
-            val newDocId = runCatching { DocumentsContract.getDocumentId(newUri) }
-                .getOrDefault(node.entry.documentId)
+            val newFile = withContext(Dispatchers.IO) { FileFiles.rename(oldFile, newName) } ?: return@launch
             val at = nodes.indexOf(node)
             if (at >= 0) {
-                // A renamed directory's descendant ids may shift; drop them so a re-expand re-lists.
+                // A renamed directory's descendant paths shift; drop them so a re-expand re-lists.
                 if (node.entry.isDirectory) removeDescendants(at)
-                val newEntry = node.entry.copy(documentId = newDocId, name = newName, uri = newUri)
-                nodes[at] = TreeNode(newEntry, node.depth)
+                nodes[at] = TreeNode(FileEntry(newFile, newName, node.entry.isDirectory), node.depth)
             }
-            tabs.firstOrNull { it.uri == oldUri }?.let { tab ->
-                tab.uri = newUri
-                tab.name = newName
-                tab.language = Language.fromFileName(newName)
+            // Repoint open tabs backed by the renamed file (or living under a renamed directory).
+            val oldPath = oldFile.absolutePath
+            val newPath = newFile.absolutePath
+            for (tab in tabs) {
+                val p = tab.file?.absolutePath ?: continue
+                if (p == oldPath) {
+                    tab.file = newFile
+                    tab.name = newName
+                    tab.language = Language.fromFileName(newName)
+                } else if (p.startsWith(oldPath + File.separator)) {
+                    tab.file = File(newPath + p.substring(oldPath.length))
+                }
             }
         }
     }
 
     override fun deleteNode(index: Int) {
         val node = nodes.getOrNull(index) ?: return
-        val uri = node.entry.uri
+        val file = node.entry.file
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) { SafFiles.deleteDocument(context, uri) }
+            val ok = withContext(Dispatchers.IO) { FileFiles.delete(file) }
             if (!ok) return@launch
             val at = nodes.indexOf(node)
             if (at >= 0) {
                 removeDescendants(at)
                 nodes.removeAt(at)
             }
-            closeTabsUnder(uri)
+            closeTabsUnder(file)
         }
     }
 
-    /** Closes any open tab whose file is [uri] or lives beneath it (for a deleted directory). */
-    private fun closeTabsUnder(uri: Uri) {
-        val target = uri.toString()
+    /** Closes any open tab whose file is [file] or lives beneath it (for a deleted directory). */
+    private fun closeTabsUnder(file: File) {
+        val target = file.absolutePath
+        val prefix = target + File.separator
         for (i in tabs.indices.reversed()) {
-            val tabUri = tabs[i].uri.toString()
-            if (tabUri == target || tabUri.startsWith("$target%2F") || tabUri.startsWith("$target/")) {
-                closeTab(i)
-            }
+            val p = tabs[i].file?.absolutePath ?: continue
+            if (p == target || p.startsWith(prefix)) closeTab(i)
         }
     }
 
     // ---- Tab handling ----
 
-    /** Opens [uri] in a tab (focusing it if already open), reading its text off the main thread. */
-    fun openFile(uri: Uri, name: String? = null) {
-        val existing = tabs.indexOfFirst { it.uri == uri }
+    /** Opens [file] in a tab (focusing it if already open), reading its text off the main thread. */
+    fun openFile(file: File) {
+        val key = file.absolutePath
+        val existing = tabs.indexOfFirst { it.key == key }
         if (existing >= 0) {
             currentIndex = existing
             return
         }
         viewModelScope.launch {
-            val displayName = name
-                ?: withContext(Dispatchers.IO) { SafFiles.queryDisplayName(context, uri) }
-                ?: "untitled"
             val text = withContext(Dispatchers.IO) {
-                runCatching { SafFiles.readText(context, uri) }.getOrDefault("")
+                runCatching { FileFiles.readText(file) }.getOrDefault("")
             }
-            tabs.add(OpenTab(uri, displayName, text, Language.fromFileName(displayName)))
+            tabs.add(OpenTab(file = file, initialName = file.name, initialText = text, language = Language.fromFileName(file.name)))
             currentIndex = tabs.lastIndex
         }
     }
 
     /** Handles a VIEW/EDIT intent that carries a single file URI. */
     fun openExternal(uri: Uri) {
+        if (uri.scheme == "file") {
+            uri.path?.let { openFile(File(it)) }
+            return
+        }
         runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        openFile(uri)
+        val key = uri.toString()
+        val existing = tabs.indexOfFirst { it.key == key }
+        if (existing >= 0) {
+            currentIndex = existing
+            return
+        }
+        viewModelScope.launch {
+            val displayName = withContext(Dispatchers.IO) { FileFiles.queryDisplayName(context, uri) } ?: "untitled"
+            val text = withContext(Dispatchers.IO) {
+                runCatching { FileFiles.readTextFromUri(context, uri) }.getOrDefault("")
+            }
+            tabs.add(
+                OpenTab(
+                    file = null,
+                    externalUri = uri,
+                    readOnly = true,
+                    initialName = displayName,
+                    initialText = text,
+                    language = Language.fromFileName(displayName),
+                )
+            )
+            currentIndex = tabs.lastIndex
+        }
     }
 
     override fun selectTab(index: Int) {
@@ -457,10 +487,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     override fun save() {
         val tab = currentTab ?: return
+        val file = tab.file ?: return // external read-only tabs have no save target
         val textToSave = tab.value.text
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
-                runCatching { SafFiles.writeText(context, tab.uri, textToSave) }.isSuccess
+                runCatching { FileFiles.writeText(file, textToSave) }.isSuccess
             }
             if (ok) tab.savedText = textToSave
         }
@@ -482,27 +513,27 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun setFontSize(size: Int) {
-        fontSize = size
+        _fontSize.value = size
         viewModelScope.launch { prefs.setFontSize(size) }
     }
 
     override fun setTabWidth(width: Int) {
-        tabWidth = width
+        _tabWidth.value = width
         viewModelScope.launch { prefs.setTabWidth(width) }
     }
 
     override fun setThemeMode(mode: String) {
-        themeMode = mode
+        _themeMode.value = mode
         viewModelScope.launch { prefs.setThemeMode(mode) }
     }
 
     override fun setAutoIndent(enabled: Boolean) {
-        autoIndent = enabled
+        _autoIndent.value = enabled
         viewModelScope.launch { prefs.setAutoIndent(enabled) }
     }
 
     override fun setAutoCloseBrackets(enabled: Boolean) {
-        autoCloseBrackets = enabled
+        _autoCloseBrackets.value = enabled
         viewModelScope.launch { prefs.setAutoCloseBrackets(enabled) }
     }
 
@@ -557,8 +588,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     // ---- Project search ----
 
     override fun searchProject(query: String, caseSensitive: Boolean, useRegex: Boolean) {
-        val tree = treeUri ?: return
-        val rootId = rootDocumentId ?: return
+        val root = rootDir ?: return
         searchJob?.cancel()
         if (query.isBlank()) {
             searchResults.clear()
@@ -570,26 +600,24 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         searchJob = viewModelScope.launch {
             val collected = withContext(Dispatchers.IO) {
                 val out = ArrayList<SearchResult>()
-                val stack = ArrayDeque<String>()
-                stack.addLast(rootId)
+                val stack = ArrayDeque<File>()
+                stack.addLast(root)
                 while (stack.isNotEmpty() && out.size < MAX_SEARCH_RESULTS) {
                     coroutineContext.ensureActive()
-                    val dirId = stack.removeLast()
-                    val children = runCatching {
-                        SafFiles.listChildren(context, tree, dirId)
-                    }.getOrDefault(emptyList())
+                    val dir = stack.removeLast()
+                    val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
                     for (child in children) {
                         if (out.size >= MAX_SEARCH_RESULTS) break
                         if (child.isDirectory) {
-                            if (child.name !in SKIP_DIRS) stack.addLast(child.documentId)
+                            if (child.name !in SKIP_DIRS) stack.addLast(child.file)
                             continue
                         }
                         if (Language.fromFileName(child.name) == Language.PLAINTEXT) continue
-                        val text = runCatching { SafFiles.readText(context, child.uri) }.getOrNull() ?: continue
-                        if (text.length > MAX_SEARCH_FILE_SIZE) continue
+                        if (child.file.length() > MAX_SEARCH_FILE_SIZE) continue
+                        val text = runCatching { FileFiles.readText(child.file) }.getOrNull() ?: continue
                         val matches = findLineMatches(text, query, caseSensitive, useRegex, MAX_MATCHES_PER_FILE)
                         for (m in matches) {
-                            out.add(SearchResult(child.uri, child.name, m.line, m.preview))
+                            out.add(SearchResult(child.file.absolutePath, child.name, m.line, m.preview))
                             if (out.size >= MAX_SEARCH_RESULTS) break
                         }
                     }
@@ -603,17 +631,18 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun openSearchResult(result: SearchResult) {
-        val existing = tabs.indexOfFirst { it.uri == result.uri }
+        val existing = tabs.indexOfFirst { it.key == result.path }
         if (existing >= 0) {
             currentIndex = existing
             goToLine(result.line)
             return
         }
+        val file = File(result.path)
         viewModelScope.launch {
             val text = withContext(Dispatchers.IO) {
-                runCatching { SafFiles.readText(context, result.uri) }.getOrDefault("")
+                runCatching { FileFiles.readText(file) }.getOrDefault("")
             }
-            tabs.add(OpenTab(result.uri, result.name, text, Language.fromFileName(result.name)))
+            tabs.add(OpenTab(file = file, initialName = result.name, initialText = text, language = Language.fromFileName(result.name)))
             currentIndex = tabs.lastIndex
             goToLine(result.line)
         }

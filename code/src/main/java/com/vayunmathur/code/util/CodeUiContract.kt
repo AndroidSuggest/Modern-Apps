@@ -2,7 +2,6 @@ package com.vayunmathur.code.util
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import android.net.Uri
 import com.vayunmathur.code.syntax.Language
 
 /**
@@ -13,7 +12,7 @@ import com.vayunmathur.code.syntax.Language
  * generated from. It lives in `util` rather than `ui` so the dependency runs one way:
  * `ui` depends on `util`, and the ViewModel implements [CodeActions].
  *
- * Note that the URIs, undo stacks and SAF plumbing behind these values stay in `util`:
+ * Note that the file paths, undo stacks and IO plumbing behind these values stay in `util`:
  * nothing the UI draws needs them, and a preview could not supply them.
  */
 
@@ -35,9 +34,9 @@ data class TreeRowUiState(
     val expanded: Boolean = false,
 )
 
-/** One hit from a project-wide search: the file, the 1-based line and a preview of that line. */
+/** One hit from a project-wide search: the file path, the 1-based line and a preview of that line. */
 data class SearchResult(
-    val uri: Uri,
+    val path: String,
     val name: String,
     val line: Int,
     val preview: String,

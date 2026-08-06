@@ -15,14 +15,14 @@ private val Context.editorDataStore: DataStore<Preferences> by preferencesDataSt
 
 /**
  * Persists the small amount of state that should survive relaunches: the last opened folder
- * tree (so the file browser reopens where it was) and the editor preferences (soft-wrap, font
+ * path (so the file browser reopens where it was) and the editor preferences (soft-wrap, font
  * size, tab width, theme mode and the smart-input toggles).
  */
 class EditorPrefs(context: Context) {
 
     private val appContext = context.applicationContext
 
-    val folderUri: Flow<String?> = appContext.editorDataStore.data.map { it[FOLDER_URI_KEY] }
+    val folderPath: Flow<String?> = appContext.editorDataStore.data.map { it[FOLDER_PATH_KEY] }
     val softWrap: Flow<Boolean> = appContext.editorDataStore.data.map { it[SOFT_WRAP_KEY] ?: false }
     val fontSize: Flow<Int> = appContext.editorDataStore.data.map { it[FONT_SIZE_KEY] ?: DEFAULT_FONT_SIZE }
     val tabWidth: Flow<Int> = appContext.editorDataStore.data.map { it[TAB_WIDTH_KEY] ?: DEFAULT_TAB_WIDTH }
@@ -31,12 +31,12 @@ class EditorPrefs(context: Context) {
     val autoCloseBrackets: Flow<Boolean> =
         appContext.editorDataStore.data.map { it[AUTO_CLOSE_KEY] ?: true }
 
-    suspend fun setFolderUri(uri: String) {
-        appContext.editorDataStore.edit { it[FOLDER_URI_KEY] = uri }
+    suspend fun setFolderPath(path: String) {
+        appContext.editorDataStore.edit { it[FOLDER_PATH_KEY] = path }
     }
 
-    suspend fun clearFolderUri() {
-        appContext.editorDataStore.edit { it.remove(FOLDER_URI_KEY) }
+    suspend fun clearFolderPath() {
+        appContext.editorDataStore.edit { it.remove(FOLDER_PATH_KEY) }
     }
 
     suspend fun setSoftWrap(enabled: Boolean) {
@@ -70,7 +70,7 @@ class EditorPrefs(context: Context) {
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
 
-        private val FOLDER_URI_KEY = stringPreferencesKey("folder_uri")
+        private val FOLDER_PATH_KEY = stringPreferencesKey("folder_path")
         private val SOFT_WRAP_KEY = booleanPreferencesKey("soft_wrap")
         private val FONT_SIZE_KEY = intPreferencesKey("font_size")
         private val TAB_WIDTH_KEY = intPreferencesKey("tab_width")

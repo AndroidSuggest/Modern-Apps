@@ -48,4 +48,8 @@
     <string name="searching">Searching\u2026</string>
     <string name="no_results">No results</string>
     <string name="line_number">Line %1$d</string>
+    <string name="storage_permission_title">Storage access needed</string>
+    <string name="storage_permission_rationale">Code needs all-files access to open your projects, run git and use the terminal on real file paths.</string>
+    <string name="grant_access">Grant access</string>
+    <string name="open_this_folder">Open this folder</string>
 </resources>

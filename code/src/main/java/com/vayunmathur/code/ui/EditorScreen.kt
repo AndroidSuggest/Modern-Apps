@@ -74,11 +74,8 @@ fun EditorPage(
     viewModel: EditorViewModel,
     onOpenSettings: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    onOpenFolder: () -> Unit = {},
 ) {
-    val folderLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> uri?.let(viewModel::openFolder) }
-
     val fileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(viewModel::openExternal) }
@@ -86,7 +83,7 @@ fun EditorPage(
     EditorScreen(
         state = viewModel.uiState,
         actions = viewModel,
-        onOpenFolder = { folderLauncher.launch(null) },
+        onOpenFolder = onOpenFolder,
         onOpenFile = { fileLauncher.launch(arrayOf("*/*")) },
         onOpenSettings = onOpenSettings,
         onOpenSearch = onOpenSearch,
@@ -95,8 +92,8 @@ fun EditorPage(
 
 /**
  * Top-level editor scaffold: a navigation drawer holding the [FileTreePane], a top bar to
- * open it, then a tab strip, toolbar, optional find bar and the [CodeEditor] itself. The
- * folder/file pickers use the Storage Access Framework so no storage permissions are needed.
+ * open it, then a tab strip, toolbar, optional find bar and the [CodeEditor] itself. Opening a
+ * folder navigates to the in-app folder browser; single files still use the system file picker.
  *
  * No dependency on the ViewModel, so it can be rendered from a `@Preview` — see
  * `src/screenshotTest`, which is where the store listing images come from.

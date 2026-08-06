@@ -92,7 +92,7 @@ fun SearchPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
             }
 
             val groups = remember(state.searchResults) {
-                state.searchResults.groupBy { it.name to it.uri }
+                state.searchResults.groupBy { it.name to it.path }
             }
             LazyColumn(Modifier.fillMaxSize()) {
                 groups.forEach { (key, results) ->
