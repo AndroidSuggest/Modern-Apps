@@ -78,6 +78,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import com.vayunmathur.library.image.compose.AnimatedImage
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.IconDelete
@@ -408,27 +409,36 @@ fun PhotoDetailView(
                             }
     ) {
         if (photo.videoData == null) {
-            AsyncImage(
-                    model =
-                            ImageRequest.Builder(context)
-                                    .data(photo.uri.toUri())
-                                    .diskCacheKey("thumb_${photo.id}_${photo.dateModified}_$refreshKey")
-                                    .memoryCacheKey("thumb_${photo.id}_${photo.dateModified}_$refreshKey")
-                                    .build(),
-                    contentDescription = null,
-                    modifier =
-                            Modifier.fillMaxSize()
-                                    .onGloballyPositioned { layoutCoordinates ->
-                                        size = layoutCoordinates.size
-                                    }
-                                    .graphicsLayer {
-                                        scaleX = currentZoom.scale
-                                        scaleY = currentZoom.scale
-                                        translationX = currentZoom.offset.x
-                                        translationY = currentZoom.offset.y
-                                    },
-                    contentScale = ContentScale.Fit
-            )
+            val imageModifier =
+                    Modifier.fillMaxSize()
+                            .onGloballyPositioned { layoutCoordinates ->
+                                size = layoutCoordinates.size
+                            }
+                            .graphicsLayer {
+                                scaleX = currentZoom.scale
+                                scaleY = currentZoom.scale
+                                translationX = currentZoom.offset.x
+                                translationY = currentZoom.offset.y
+                            }
+            if (photo.isGif) {
+                AnimatedImage(
+                        uri = photo.uri.toUri(),
+                        contentDescription = null,
+                        modifier = imageModifier
+                )
+            } else {
+                AsyncImage(
+                        model =
+                                ImageRequest.Builder(context)
+                                        .data(photo.uri.toUri())
+                                        .diskCacheKey("thumb_${photo.id}_${photo.dateModified}_$refreshKey")
+                                        .memoryCacheKey("thumb_${photo.id}_${photo.dateModified}_$refreshKey")
+                                        .build(),
+                        contentDescription = null,
+                        modifier = imageModifier,
+                        contentScale = ContentScale.Fit
+                )
+            }
         } else {
             VideoPlayer(
                     modifier =

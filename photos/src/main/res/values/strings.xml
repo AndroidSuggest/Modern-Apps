@@ -1,6 +1,8 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- App name: launcher label and widget owner title -->
     <string name="app_name">Photos</string>
+    <!-- Badge on a gallery thumbnail marking an animated GIF. Keep as the uppercase file-format acronym -->
+    <string name="gif_badge">GIF</string>
     <!-- Glance widget description shown in widget picker. Full sentence describing rotating photo widget -->
     <string name="photo_widget_description">A rotating photo from your gallery - tap to shuffle</string>
 

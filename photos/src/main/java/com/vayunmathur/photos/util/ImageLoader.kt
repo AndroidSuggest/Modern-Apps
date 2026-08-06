@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.IconPlayCircle
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.vayunmathur.library.image.ImageLoader as LibImageLoader
@@ -31,6 +33,7 @@ import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.photos.data.Photo
+import com.vayunmathur.photos.R
 
 object ImageLoader {
     private lateinit var imageLoader: LibImageLoader
@@ -88,6 +91,21 @@ object ImageLoader {
                     IconPlayCircle(
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else if (photo.isGif) {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = Color.Black.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.gif_badge),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
             }

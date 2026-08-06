@@ -70,4 +70,10 @@ data class Photo(
     // True once this photo has been sent to the embedder (mirrors [ocrScanned]);
     // keeps the worker from re-embedding the same photo on every sync.
     val clipScanned: Boolean = false,
-) : DatabaseItem
+    // MediaStore MIME_TYPE. Null only on rows written before the column existed,
+    // which the next sync backfills.
+    val mimeType: String? = null,
+) : DatabaseItem {
+    /** True for an animated image, which plays rather than showing a single frame. */
+    val isGif: Boolean get() = mimeType.equals("image/gif", ignoreCase = true)
+}

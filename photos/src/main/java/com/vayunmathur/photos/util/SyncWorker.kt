@@ -65,7 +65,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         if (triggeredUris.isNotEmpty()) {
             syncPhotos(applicationContext, database, triggeredUris.toList())
         } else {
-            syncPhotos(applicationContext, database, null, lastGeneration)
+            // Rows predating the mimeType column are invisible to an incremental
+            // scan (their GENERATION_MODIFIED hasn't moved), so scan everything
+            // until they're all backfilled.
+            val needsMimeBackfill = database.photoDao().countMissingMimeType() > 0
+            syncPhotos(applicationContext, database, null, if (needsMimeBackfill) 0L else lastGeneration)
         }
         
         val photos = database.photoDao().getAll()
@@ -228,6 +232,7 @@ suspend fun syncPhotos(context: Context, database: PhotoDatabase, uris: List<Uri
         val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
         val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
         val isTrashedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_TRASHED)
+        val mimeTypeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
         val durationColumn = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
 
         val baseUri = if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
@@ -242,12 +247,13 @@ suspend fun syncPhotos(context: Context, database: PhotoDatabase, uris: List<Uri
                 val width = cursor.getInt(widthColumn)
                 val height = cursor.getInt(heightColumn)
                 val isTrashed = cursor.getInt(isTrashedColumn) == 1
+                val mimeType = cursor.getString(mimeTypeColumn)
                 val contentUri = ContentUris.withAppendedId(baseUri, id).toString()
                 val videoData = if (isVideo) VideoData(cursor.getLong(durationColumn)) else null
 
                 val existing = existingPhotos[id]
-                if (existing == null || existing.date != date || existing.uri != contentUri || existing.videoData != videoData || existing.width != width || existing.height != height || existing.dateModified != dateModified || existing.isTrashed != isTrashed) {
-                    newOrUpdatedPhotos += Photo(id, name, contentUri, date, width, height, dateModified, existing?.exifSet ?: false, existing?.lat, existing?.long, videoData, existing?.panoData, isTrashed, faceScanned = existing?.faceScanned ?: false, ocrText = existing?.ocrText, ocrScanned = existing?.ocrScanned ?: false)
+                if (existing == null || existing.date != date || existing.uri != contentUri || existing.videoData != videoData || existing.width != width || existing.height != height || existing.dateModified != dateModified || existing.isTrashed != isTrashed || existing.mimeType != mimeType) {
+                    newOrUpdatedPhotos += Photo(id, name, contentUri, date, width, height, dateModified, existing?.exifSet ?: false, existing?.lat, existing?.long, videoData, existing?.panoData, isTrashed, faceScanned = existing?.faceScanned ?: false, ocrText = existing?.ocrText, ocrScanned = existing?.ocrScanned ?: false, mimeType = mimeType)
                 }
             } catch (e: Exception) {
                 Log.e("SyncWorker", "Error processing photo/video from cursor", e)
@@ -262,7 +268,7 @@ suspend fun syncPhotos(context: Context, database: PhotoDatabase, uris: List<Uri
         }
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED, MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT, MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.IS_TRASHED),
+            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED, MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT, MediaStore.Images.Media.DATE_MODIFIED, MediaStore.Images.Media.IS_TRASHED, MediaStore.Images.Media.MIME_TYPE),
             bundle, null
         )?.use { processCursor(it, false) }
     } catch (e: Exception) {
@@ -276,7 +282,7 @@ suspend fun syncPhotos(context: Context, database: PhotoDatabase, uris: List<Uri
         }
         context.contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DATE_TAKEN, MediaStore.Video.Media.DATE_ADDED, MediaStore.Video.Media.WIDTH, MediaStore.Video.Media.HEIGHT, MediaStore.Video.Media.DURATION, MediaStore.Video.Media.DATE_MODIFIED, MediaStore.Video.Media.IS_TRASHED),
+            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DATE_TAKEN, MediaStore.Video.Media.DATE_ADDED, MediaStore.Video.Media.WIDTH, MediaStore.Video.Media.HEIGHT, MediaStore.Video.Media.DURATION, MediaStore.Video.Media.DATE_MODIFIED, MediaStore.Video.Media.IS_TRASHED, MediaStore.Video.Media.MIME_TYPE),
             bundle, null
         )?.use { processCursor(it, true) }
     } catch (e: Exception) {

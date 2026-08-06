@@ -15,7 +15,7 @@ interface PhotoDao {
     // UI never reads, so the first emission on cold start is fast (loading those
     // for a large library is what left the grid blank). Semantic search reads
     // embeddings via getClipEmbeddings(); OCR text is read via getAll().
-    @Query("SELECT id, name, uri, date, width, height, dateModified, exifSet, lat, `long`, duration, fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projectionType, isTrashed, faceScanned, ocrScanned, clipScanned FROM Photo")
+    @Query("SELECT id, name, uri, date, width, height, dateModified, exifSet, lat, `long`, duration, fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projectionType, isTrashed, faceScanned, ocrScanned, clipScanned, mimeType FROM Photo")
     fun getAllFlow(): Flow<List<Photo>>
 
     @Query("SELECT * FROM Photo WHERE id = :id")
@@ -87,6 +87,13 @@ interface PhotoDao {
 
     @Query("UPDATE Photo SET faceScanned = 0")
     suspend fun resetFaceScanned()
+
+    /**
+     * Rows predating the mimeType column. While any exist the sync falls back to a
+     * full MediaStore scan so they get backfilled.
+     */
+    @Query("SELECT count(*) FROM Photo WHERE mimeType IS NULL")
+    suspend fun countMissingMimeType(): Int
 }
 
 /** Lightweight projection of a photo's CLIP embedding for in-memory search. */
@@ -95,13 +102,13 @@ data class PhotoEmbedding(
     val clipEmbedding: ByteArray,
 )
 
-@Database(entities = [Photo::class, Person::class, PhotoFace::class], version = 12, exportSchema = false)
+@Database(entities = [Photo::class, Person::class, PhotoFace::class], version = 13, exportSchema = false)
 abstract class PhotoDatabase : RoomDatabase() {
     abstract fun photoDao(): PhotoDao
     abstract fun faceDao(): FaceDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
     }
 }
 
@@ -196,4 +203,11 @@ val MIGRATION_11_12 = Migration(11, 12) {
     it.execSQL("ALTER TABLE Photo ADD COLUMN projectionType TEXT")
     it.execSQL("UPDATE Photo SET projectionType = 'equirectangular' WHERE fullWidth IS NOT NULL")
     it.execSQL("UPDATE Photo SET exifSet = 0")
+}
+
+val MIGRATION_12_13 = Migration(12, 13) {
+    // Add MediaStore's MIME_TYPE, which tells animated GIFs apart from stills.
+    // Existing rows stay NULL until the next sync backfills them; see
+    // PhotoDao.countMissingMimeType.
+    it.execSQL("ALTER TABLE Photo ADD COLUMN mimeType TEXT")
 }
