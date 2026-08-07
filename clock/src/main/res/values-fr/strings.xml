@@ -6,24 +6,24 @@
     <string name="label_timer">Minuteur</string>
     <string name="label_stopwatch">Chronomètre</string>
     <string name="set_an_alarm">Configurer une alarme</string>
-    <string name="button_stop">STOP</string>
+    <string name="button_stop">ARRÊTER</string>
     <string name="button_snooze">REPORTER (5 MIN)</string>
-    <string name="alarm_notification_wake_up">Réveillez vous !</string>
+    <string name="alarm_notification_wake_up">Réveillez-vous !</string>
     <string name="alarm_ringing_notification_title">L\'alarme sonne</string>
     <string name="channel_ongoing_timers_name">Minuteurs actifs</string>
     <string name="channel_completed_timers_name">Minuteurs écoulés</string>
     <string name="channel_alarms_name">Alarmes</string>
     <string name="channel_alarms_description">Notifications pour les alarmes programmées</string>
     <string name="header_laps">Tours</string>
-    <string name="lap_number_format"># %1$d</string>
-    <string name="duration_ms_format">%1$d.%2$02d</string>
-    <string name="duration_m_s_ms_format">%1$d:%2$02d.%3$02d</string>
+    <string name="lap_number_format"># &lt;xliff:g id=\"lap_number\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="duration_ms_format">&lt;xliff:g id=\"seconds\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;,&lt;xliff:g id=\"centiseconds\" example=\"34\"&gt;%2$02d&lt;/xliff:g&gt;</string>
+    <string name="duration_m_s_ms_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"23\"&gt;%2$02d&lt;/xliff:g&gt;,&lt;xliff:g id=\"centiseconds\" example=\"45\"&gt;%3$02d&lt;/xliff:g&gt;</string>
     <string name="header_split">Diviser</string>
     <string name="header_total">Total</string>
-    <string name="stopwatch_time_format">%1$d:%2$02d</string>
-    <string name="button_add_minute">+ 1:00</string>
+    <string name="stopwatch_time_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"05\"&gt;%2$02d&lt;/xliff:g&gt;</string>
+    <string name="button_add_minute">+ 1 min</string>
     <string name="timer_finished_title">Minuteur écoulé</string>
-    <string name="timer_finished_text">Le minuteur %1$s est écoulé !</string>
+    <string name="timer_finished_text">Le minuteur « &lt;xliff:g id=\"timer_name\" example=\"Thé\"&gt;%1$s&lt;/xliff:g&gt; » est écoulé !</string>
     <string name="label_new_timer">Nouveau minuteur</string>
     <string name="field_label">Libellé</string>
     <string name="button_cancel">Annuler</string>
@@ -44,16 +44,16 @@
     <string name="action_cancel">Annuler</string>
     <string name="action_reset">Réinitialiser</string>
     <string name="action_lap">Tour</string>
-    <string name="action_stop">Stop</string>
+    <string name="action_stop">Arrêter</string>
     <string name="ringtone_custom">Personnalisé</string>
     <string name="ringtone_silent">Silencieux</string>
     <string name="ringtone_default">Par défaut</string>
-    <string name="defaults_for_new_alarms">Réglages par défaut des nouvelles alarmes</string>
+    <string name="defaults_for_new_alarms">Paramètres par défaut des nouvelles alarmes</string>
     <string name="gradual_off">Désactivé</string>
     <string name="alarm_settings">Paramètres des alarmes</string>
     <string name="timer_name_optional">Nom du minuteur (facultatif)</string>
     <string name="sound">Son</string>
-    <string name="vibrate">Vibreur</string>
-    <string name="snooze_length">Durée du rappel</string>
+    <string name="vibrate">Vibration</string>
+    <string name="snooze_length">Durée du report</string>
     <string name="gradually_increase_volume">Augmenter progressivement le volume</string>
 </resources>
