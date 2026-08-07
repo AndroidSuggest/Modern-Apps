@@ -92,9 +92,14 @@ data class CodeUiState(
     val projectFiles: List<ProjectFileEntry> = emptyList(),
     /** Most-recently-opened files, newest first, shown in quick-open when the query is empty. */
     val recentFiles: List<ProjectFileEntry> = emptyList(),
+    /** Diagnostics for the current tab (squiggles, gutter markers, problems panel). */
+    val diagnostics: List<Diagnostic> = emptyList(),
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
     val secondaryTab: TabUiState? get() = tabs.getOrNull(secondaryIndex)
+
+    val errorCount: Int get() = diagnostics.count { it.severity == DiagnosticSeverity.ERROR }
+    val warningCount: Int get() = diagnostics.count { it.severity == DiagnosticSeverity.WARNING }
 
     /** The tab the shared toolbar/find/navigation act on: the focused split pane's tab. */
     val activeTab: TabUiState? get() = if (focusedSecondary) secondaryTab ?: currentTab else currentTab

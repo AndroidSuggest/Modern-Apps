@@ -151,6 +151,7 @@ fun EditorScreen(
     var showPalette by remember { mutableStateOf(false) }
     var showOutline by remember { mutableStateOf(false) }
     var showMergeResolver by remember { mutableStateOf(false) }
+    var showProblems by remember { mutableStateOf(false) }
     var showExitGuard by remember { mutableStateOf(false) }
     val anyDirty = state.tabs.any { it.isDirty }
 
@@ -240,6 +241,7 @@ fun EditorScreen(
                         onOpenPalette = { showPalette = true },
                         onOpenOutline = { showOutline = true },
                         onResolveConflicts = { showMergeResolver = true },
+                        onOpenProblems = { showProblems = true },
                     )
                     HorizontalDivider()
                     if (tab.changedOnDisk) {
@@ -279,6 +281,7 @@ fun EditorScreen(
                                 initialQuery = initialFind.orEmpty(),
                                 completions = state.completions,
                                 showCompletions = state.showCompletions,
+                                diagnostics = state.diagnostics,
                             )
                         } else {
                             CodeEditor(
@@ -293,6 +296,7 @@ fun EditorScreen(
                                 completions = state.completions,
                                 showCompletions = state.showCompletions,
                                 editorTheme = state.editorTheme,
+                                diagnostics = state.diagnostics,
                             )
                         }
                     }
@@ -324,6 +328,7 @@ fun EditorScreen(
                 },
                 onOutline = { showOutline = true },
                 onResolveConflicts = { showMergeResolver = true },
+                onProblems = { showProblems = true },
                 onOpenSearch = onOpenSearch,
                 onOpenGit = onOpenGit,
                 onOpenTerminal = onOpenTerminal,
@@ -365,6 +370,20 @@ fun EditorScreen(
             text = conflictTab.value.text,
             onResolve = { actions.resolveConflicts(it) },
             onDismiss = { showMergeResolver = false },
+        )
+    }
+    if (showProblems) {
+        FuzzyPickerDialog(
+            title = stringResource(R.string.problems),
+            placeholder = stringResource(R.string.problems),
+            items = state.diagnostics.map { d ->
+                PickerItem(
+                    primary = d.message,
+                    secondary = "${d.severity.name.lowercase()} \u00B7 ${d.line + 1}",
+                    matchKey = d.message,
+                ) { actions.goToLine(d.line + 1) }
+            },
+            onDismiss = { showProblems = false },
         )
     }
     if (showExitGuard) {
@@ -451,6 +470,7 @@ private fun SplitEditors(
                     showCompletions = state.showCompletions && !focusSecondary,
                     editorTheme = state.editorTheme,
                     secondaryPane = false,
+                    diagnostics = state.diagnostics,
                 )
             }
         }
@@ -583,6 +603,7 @@ private fun EditorToolbar(
     onOpenPalette: () -> Unit = {},
     onOpenOutline: () -> Unit = {},
     onResolveConflicts: () -> Unit = {},
+    onOpenProblems: () -> Unit = {},
 ) {
     val tab = state.activeTab ?: return
     Row(
@@ -616,9 +637,21 @@ private fun EditorToolbar(
             Item(text = stringResource(R.string.preview)) { onOpenPreview() }
             Item(text = stringResource(R.string.format_document)) { actions.formatDocument() }
             Item(text = stringResource(R.string.resolve_conflicts)) { onResolveConflicts() }
+            Item(text = stringResource(R.string.problems)) { onOpenProblems() }
             Item(text = stringResource(R.string.split_view)) { actions.toggleSplit() }
         }
         Spacer(Modifier.width(8.dp))
+        if (state.diagnostics.isNotEmpty()) {
+            val errorColor = MaterialTheme.colorScheme.error
+            val warnColor = Color(0xFFFFB300)
+            TextButton(onClick = onOpenProblems) {
+                Text(
+                    text = "\u26A0 ${state.errorCount}/${state.warningCount}",
+                    color = if (state.errorCount > 0) errorColor else warnColor,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
         Text(
             text = tab.language.label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -692,6 +725,7 @@ private fun editorCommands(
     onQuickOpen: () -> Unit,
     onOutline: () -> Unit,
     onResolveConflicts: () -> Unit,
+    onProblems: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenGit: () -> Unit,
     onOpenTerminal: () -> Unit,
@@ -713,6 +747,7 @@ private fun editorCommands(
     PickerItem(stringResource(R.string.delete_line)) { actions.deleteLine() },
     PickerItem(stringResource(R.string.format_document)) { actions.formatDocument() },
     PickerItem(stringResource(R.string.resolve_conflicts)) { onResolveConflicts() },
+    PickerItem(stringResource(R.string.problems)) { onProblems() },
     PickerItem(stringResource(R.string.split_view)) { actions.toggleSplit() },
     PickerItem(stringResource(R.string.soft_wrap)) { actions.toggleSoftWrap() },
     PickerItem(stringResource(R.string.undo)) { actions.undo() },

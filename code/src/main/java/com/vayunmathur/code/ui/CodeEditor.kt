@@ -1,5 +1,7 @@
 package com.vayunmathur.code.ui
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
@@ -32,6 +35,8 @@ import com.vayunmathur.code.syntax.SyntaxTransformation
 import com.vayunmathur.code.syntax.rememberSyntaxColors
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.Completion
+import com.vayunmathur.code.util.Diagnostic
+import com.vayunmathur.code.util.DiagnosticSeverity
 import com.vayunmathur.code.util.TabUiState
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.MaterialTheme
@@ -57,6 +62,7 @@ fun CodeEditor(
     completions: List<Completion> = emptyList(),
     showCompletions: Boolean = false,
     editorTheme: String = com.vayunmathur.code.syntax.EditorThemes.DEFAULT,
+    diagnostics: List<Diagnostic> = emptyList(),
     /** True when this is the secondary split pane, so focus routes shared actions there. */
     secondaryPane: Boolean = false,
     /** When set, edits route here instead of [CodeActions.onEditorChange] (used by the second pane). */
@@ -148,7 +154,7 @@ fun CodeEditor(
         var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
         Row(Modifier.fillMaxSize()) {
-            LineGutter(lineCount, verticalScroll, editorStyle)
+            LineGutter(lineCount, verticalScroll, editorStyle, diagnostics)
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 BasicTextField(
                     value = tab.value,
@@ -187,20 +193,51 @@ fun CodeEditor(
 /**
  * The line-number column. Rendered as a single right-aligned [Text] (one number per line) so
  * it stays cheap for large files, and sharing [verticalScroll] keeps it locked to the editor.
+ * A thin overlay [Canvas] draws a severity dot beside any line with [diagnostics] (inline squiggles
+ * on a [BasicTextField] are impractical, so the classic editor shows gutter markers only).
  * With soft-wrap on, wrapped lines shift the text below their number — an accepted trade-off.
  */
 @Composable
-private fun LineGutter(lineCount: Int, verticalScroll: androidx.compose.foundation.ScrollState, style: TextStyle) {
+private fun LineGutter(
+    lineCount: Int,
+    verticalScroll: androidx.compose.foundation.ScrollState,
+    style: TextStyle,
+    diagnostics: List<Diagnostic> = emptyList(),
+) {
     val numbers = remember(lineCount) { (1..lineCount).joinToString("\n") }
     val width = (lineCount.toString().length * 10 + 16).dp
-    Text(
-        text = numbers,
-        modifier = Modifier
-            .verticalScroll(verticalScroll)
-            .width(width)
-            .padding(horizontal = 4.dp),
-        style = style,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Right,
-    )
+    val density = LocalDensity.current
+    val lineHeightPx = with(density) { style.lineHeight.toPx() }
+    val byLine = remember(diagnostics) { diagnostics.groupBy { it.line } }
+    val errorColor = MaterialTheme.colorScheme.error
+    val warningColor = Color(0xFFFFB300)
+    val infoColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Box(Modifier.width(width)) {
+        Text(
+            text = numbers,
+            modifier = Modifier
+                .verticalScroll(verticalScroll)
+                .fillMaxHeight()
+                .padding(horizontal = 4.dp),
+            style = style,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Right,
+        )
+        if (byLine.isNotEmpty() && lineHeightPx > 0f) {
+            Canvas(Modifier.matchParentSize()) {
+                val scroll = verticalScroll.value.toFloat()
+                for ((line, ds) in byLine) {
+                    val worst = ds.minByOrNull { it.severity.ordinal } ?: continue
+                    val cy = line * lineHeightPx - scroll + lineHeightPx / 2f
+                    if (cy < -lineHeightPx || cy > size.height + lineHeightPx) continue
+                    val color = when (worst.severity) {
+                        DiagnosticSeverity.ERROR -> errorColor
+                        DiagnosticSeverity.WARNING -> warningColor
+                        DiagnosticSeverity.INFO -> infoColor
+                    }
+                    drawCircle(color, radius = 3f, center = androidx.compose.ui.geometry.Offset(4f, cy))
+                }
+            }
+        }
+    }
 }

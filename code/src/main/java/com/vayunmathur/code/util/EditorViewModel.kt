@@ -198,6 +198,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     var showCompletions by mutableStateOf(false)
         private set
 
+    // ---- Diagnostics ----
+    val diagnostics = mutableStateListOf<Diagnostic>()
+    private var diagnosticsJob: Job? = null
+
     // ---- User snippets ----
     val userSnippets = mutableStateListOf<UserSnippet>()
 
@@ -286,6 +290,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             showMinimap = showMinimap,
             projectFiles = projectFiles.toList(),
             recentFiles = recentPaths.map { toProjectEntry(File(it)) },
+            diagnostics = diagnostics.toList(),
         )
 
     init {
@@ -342,6 +347,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         }
         currentIndex = tabs.indexOfFirst { it.file?.absolutePath == current }
             .takeIf { it >= 0 } ?: if (tabs.isEmpty()) -1 else 0
+        scheduleDiagnostics()
     }
 
     /** Persists the current set of file-backed tabs and the foreground tab for session restore. */
@@ -550,12 +556,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         val existing = tabs.indexOfFirst { it.key == key }
         if (existing >= 0) {
             currentIndex = existing
+            scheduleDiagnostics()
             return
         }
         viewModelScope.launch {
             tabs.add(makeFileTab(file))
             currentIndex = tabs.lastIndex
             saveSession()
+            scheduleDiagnostics()
         }
     }
     fun openExternal(uri: Uri) {
@@ -628,6 +636,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             focusedSecondary = false
             dismissCompletions()
             saveSession()
+            scheduleDiagnostics()
         }
     }
 
@@ -671,6 +680,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         tab.value = processed
         if (autoSave) scheduleAutoSave()
         if (isPrimary) updateCompletions()
+        scheduleDiagnostics()
     }
 
     /** Opens/closes the second editor pane, choosing an adjacent tab as the secondary. */
@@ -725,6 +735,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         tab.value = TextFieldValue(newText, TextRange(newCaret))
         dismissCompletions()
         if (autoSave) scheduleAutoSave()
+        scheduleDiagnostics()
     }
 
     override fun dismissCompletions() {
@@ -946,6 +957,25 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         if (new.text != tab.value.text) tab.pushUndo(tab.value)
         tab.value = new
         if (autoSave) scheduleAutoSave()
+        scheduleDiagnostics()
+    }
+
+    /** Debounced off-main recompute of diagnostics for the current tab. */
+    private fun scheduleDiagnostics() {
+        diagnosticsJob?.cancel()
+        val tab = currentTab
+        if (tab == null) {
+            diagnostics.clear()
+            return
+        }
+        val text = tab.value.text
+        val language = tab.language
+        diagnosticsJob = viewModelScope.launch {
+            delay(DIAGNOSTICS_DELAY_MS)
+            val result = withContext(Dispatchers.Default) { computeDiagnostics(text, language) }
+            diagnostics.clear()
+            diagnostics.addAll(result)
+        }
     }
 
     /** Applies a pure whole-line edit as a single undo step. */
@@ -956,6 +986,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         tab.pushUndo(tab.value)
         tab.value = next
         if (autoSave) scheduleAutoSave()
+        scheduleDiagnostics()
     }
 
     override fun toggleComment() {
@@ -982,6 +1013,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         tab.pushUndo(tab.value)
         tab.value = TextFieldValue(formatted, TextRange(formatted.length))
         if (autoSave) scheduleAutoSave()
+        scheduleDiagnostics()
     }
 
     override fun resolveConflicts(resolutions: List<Resolution>) {
@@ -991,6 +1023,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         tab.pushUndo(tab.value)
         tab.value = TextFieldValue(resolved, TextRange(resolved.length))
         if (autoSave) scheduleAutoSave()
+        scheduleDiagnostics()
     }
 
     /** Moves the caret to the start of [line] (1-based), without recording an undo step. */
@@ -1130,6 +1163,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         tab.diskModified = loaded.modified
         tab.diskLength = loaded.length
         tab.changedOnDisk = false
+        scheduleDiagnostics()
     }
 
     /** Inserts [insert] at the caret, replacing any current selection (used by the Tab button). */
@@ -1397,6 +1431,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     private companion object {
         const val AUTO_SAVE_DELAY_MS = 1500L
+        const val DIAGNOSTICS_DELAY_MS = 400L
         const val MIN_COMPLETION_PREFIX = 1
         const val MAX_COMPLETIONS = 50
         const val GIT_LOG_LIMIT = 30

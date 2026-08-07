@@ -57,6 +57,8 @@ import com.vayunmathur.code.syntax.SyntaxColors
 import com.vayunmathur.code.syntax.rememberSyntaxColors
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.Completion
+import com.vayunmathur.code.util.Diagnostic
+import com.vayunmathur.code.util.DiagnosticSeverity
 import com.vayunmathur.code.util.Edit
 import com.vayunmathur.code.util.EditorDocument
 import com.vayunmathur.code.util.TabUiState
@@ -94,6 +96,7 @@ fun CodeEditorView(
     initialQuery: String = "",
     completions: List<Completion> = emptyList(),
     showCompletions: Boolean = false,
+    diagnostics: List<Diagnostic> = emptyList(),
     secondaryPane: Boolean = false,
     onValueChangeOverride: ((TextFieldValue) -> Unit)? = null,
 ) {
@@ -105,6 +108,15 @@ fun CodeEditorView(
     val caretColor = MaterialTheme.colorScheme.primary
     val guideColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
     val extraCaretColor = MaterialTheme.colorScheme.tertiary
+    val errorColor = MaterialTheme.colorScheme.error
+    val warningColor = Color(0xFFFFB300)
+    val infoColor = gutterColor
+    fun severityColor(s: DiagnosticSeverity): Color = when (s) {
+        DiagnosticSeverity.ERROR -> errorColor
+        DiagnosticSeverity.WARNING -> warningColor
+        DiagnosticSeverity.INFO -> infoColor
+    }
+    val diagnosticsByLine = remember(diagnostics) { diagnostics.groupBy { it.line } }
     val spec = tab.language.spec
 
     val measurer = rememberTextMeasurer()
@@ -449,6 +461,21 @@ fun CodeEditorView(
                         drawRect(extraCaretColor, topLeft = Offset(cx, y), size = Size(2f, lineHeight))
                     }
                 }
+
+                // Diagnostics: squiggly underline per range + a severity dot in the gutter.
+                diagnosticsByLine[source]?.let { diags ->
+                    for (d in diags) {
+                        val a = d.startCol.coerceIn(0, lineLen)
+                        val b = (if (d.endCol > d.startCol) d.endCol else lineLen).coerceIn(a + 1, (lineLen + 1))
+                        val ax = gutterWidth + a * charWidth - scrollX
+                        val bx = gutterWidth + b * charWidth - scrollX
+                        drawSquiggle(ax, bx, y + lineHeight - 1f, severityColor(d.severity))
+                    }
+                    val worst = diags.minByOrNull { it.severity.ordinal }
+                    if (worst != null) {
+                        drawCircle(severityColor(worst.severity), radius = 3f, center = Offset(12f, y + lineHeight / 2f))
+                    }
+                }
             }
             } else {
                 // ---- Soft-wrap draw path: one measured layout per visible source line. ----
@@ -521,6 +548,22 @@ fun CodeEditorView(
                             if (extra in lineStart..(lineStart + lineLen)) {
                                 val rect = layout.getCursorRect((extra - lineStart).coerceIn(0, lineLen))
                                 drawRect(extraCaretColor, topLeft = Offset(gutterWidth + rect.left, lineTop + rect.top), size = Size(2f, rect.height))
+                            }
+                        }
+
+                        // Diagnostics: highlight the range (wrapped) + a gutter severity dot.
+                        diagnosticsByLine[source]?.let { diags ->
+                            for (d in diags) {
+                                val a = d.startCol.coerceIn(0, lineLen)
+                                val b = (if (d.endCol > d.startCol) d.endCol else lineLen).coerceIn(a + 1, lineLen + 1).coerceAtMost(lineLen)
+                                if (b > a) {
+                                    val path = layout.getPathForRange(a, b).apply { translate(Offset(gutterWidth, lineTop)) }
+                                    drawPath(path, severityColor(d.severity).copy(alpha = 0.20f))
+                                }
+                            }
+                            val worst = diags.minByOrNull { it.severity.ordinal }
+                            if (worst != null) {
+                                drawCircle(severityColor(worst.severity), radius = 3f, center = Offset(12f, lineTop + lineHeight / 2f))
                             }
                         }
                     }
@@ -849,5 +892,28 @@ private fun selectionOrWord(text: String, selection: TextRange): Pair<Int, Int>?
 }
 
 private fun Char.isJavaIdentifierChar(): Boolean = isLetterOrDigit() || this == '_'
+
+/** Draws a zigzag ("squiggle") underline from [ax] to [bx] at baseline [yBase]. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSquiggle(
+    ax: Float,
+    bx: Float,
+    yBase: Float,
+    color: Color,
+) {
+    if (bx <= ax) return
+    val step = 3f
+    val amp = 2f
+    var x = ax
+    var prev = Offset(ax, yBase)
+    var up = false
+    while (x < bx) {
+        val nx = (x + step).coerceAtMost(bx)
+        val ny = if (up) yBase - amp else yBase
+        drawLine(color, prev, Offset(nx, ny), strokeWidth = 1f)
+        prev = Offset(nx, ny)
+        x = nx
+        up = !up
+    }
+}
 
 private const val MAX_LINE_HIGHLIGHT = 2000

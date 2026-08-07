@@ -137,4 +137,6 @@
     <string name="show_minimap_desc">Show a code overview beside the experimental editor</string>
     <string name="fold_all">Fold all</string>
     <string name="unfold_all">Unfold all</string>
+    <string name="problems">Problems</string>
+    <string name="no_problems">No problems detected.</string>
 </resources>
