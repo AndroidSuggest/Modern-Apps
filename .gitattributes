@@ -1,0 +1,3 @@
+# Certificate DER files are binary; never apply EOL (LF<->CRLF) conversion,
+# which would corrupt the bytes and break TLS trust-bundle loading.
+*.der binary
