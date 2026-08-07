@@ -50,6 +50,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Constraints
 import kotlin.math.roundToInt
 import com.vayunmathur.code.syntax.LanguageSpec
 import com.vayunmathur.code.syntax.SyntaxColors
@@ -72,8 +73,8 @@ import com.vayunmathur.library.ui.MaterialTheme
  * [CodeActions.setSelection] — so undo/redo, auto-save and smart input keep working.
  *
  * Phase-8 additions: real line-hiding folds with gutter arrows, multi-cursor (Ctrl-D / Alt-tap),
- * indent guides, whitespace rendering, a minimap, and editor keyboard shortcuts. v1 limitations
- * (documented follow-ups): soft-keyboard IME and soft-wrap are not yet wired.
+ * indent guides, whitespace rendering, a minimap, and editor keyboard shortcuts. Find/replace,
+ * autocomplete and soft-wrap are now wired; the remaining v1 caveat is the soft-keyboard IME.
  */
 @Composable
 fun CodeEditorView(
@@ -83,6 +84,7 @@ fun CodeEditorView(
     editorTheme: String,
     modifier: Modifier = Modifier,
     tabWidth: Int = 4,
+    softWrap: Boolean = false,
     showWhitespace: Boolean = false,
     showIndentGuides: Boolean = false,
     showMinimap: Boolean = false,
@@ -146,10 +148,39 @@ fun CodeEditorView(
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     val focusRequester = remember { FocusRequester() }
 
-    val totalHeight = lineHeight * visibleLines.size
-    val totalWidth = gutterWidth + longestLine * charWidth + charWidth
+    // ---- Soft-wrap (Phase 5): each source line may span several visual rows. ----
+    val wrapping = softWrap && viewport.width > 0
+    val wrapWidthPx = (viewport.width - gutterWidth).coerceAtLeast(1f)
+    val wrapConstraints = Constraints(maxWidth = wrapWidthPx.toInt().coerceAtLeast(1))
+    // Wrapped-row count per source line (1 for empty lines / when not wrapping).
+    val wrapCounts = remember(text, wrapping, wrapWidthPx.toInt(), style) {
+        if (!wrapping) {
+            IntArray(lines.size) { 1 }
+        } else {
+            IntArray(lines.size) { i ->
+                val ln = lines[i]
+                if (ln.isEmpty()) 1
+                else measurer.measure(AnnotatedString(ln), style, constraints = wrapConstraints).lineCount.coerceAtLeast(1)
+            }
+        }
+    }
+    // Cumulative visual-row start for each visible source line (last entry = total visual rows).
+    val visualStarts = remember(visibleLines, wrapCounts, wrapping) {
+        IntArray(visibleLines.size + 1).also { arr ->
+            var acc = 0
+            for (k in visibleLines.indices) {
+                arr[k] = acc
+                acc += if (wrapping) wrapCounts[visibleLines[k]] else 1
+            }
+            arr[visibleLines.size] = acc
+        }
+    }
+    val totalVisualRows = visualStarts.last()
+
+    val totalHeight = lineHeight * totalVisualRows
+    val totalWidth = if (wrapping) viewport.width.toFloat() else gutterWidth + longestLine * charWidth + charWidth
     val maxScrollY = (totalHeight - viewport.height).coerceAtLeast(0f)
-    val maxScrollX = (totalWidth - viewport.width).coerceAtLeast(0f)
+    val maxScrollX = if (wrapping) 0f else (totalWidth - viewport.width).coerceAtLeast(0f)
     scrollY = scrollY.coerceIn(0f, maxScrollY)
     scrollX = scrollX.coerceIn(0f, maxScrollX)
 
@@ -194,9 +225,9 @@ fun CodeEditorView(
     LaunchedEffect(activeMatch, matches.size) {
         if (showFind && matches.isNotEmpty() && viewport.height > 0) {
             val r = matches[activeMatch.coerceIn(0, matches.size - 1)]
-            val row = visibleLines.indexOf(lineOfOffset(lineStarts, r.first))
-            if (row >= 0) {
-                val top = row * lineHeight
+            val k = visibleLines.indexOf(lineOfOffset(lineStarts, r.first))
+            if (k >= 0) {
+                val top = visualStarts[k] * lineHeight
                 if (top < scrollY) {
                     scrollY = top
                 } else if (top + lineHeight > scrollY + viewport.height) {
@@ -208,11 +239,38 @@ fun CodeEditorView(
 
     fun displayRowToSource(row: Int): Int? = visibleLines.getOrNull(row)
 
+    /** Largest visible-line index k with `visualStarts[k] <= visualRow` (soft-wrap row lookup). */
+    fun visualRowToVisibleIndex(visualRow: Int): Int {
+        if (visibleLines.isEmpty()) return 0
+        var lo = 0
+        var hi = visibleLines.size - 1
+        while (lo < hi) {
+            val mid = (lo + hi + 1) ushr 1
+            if (visualStarts[mid] <= visualRow) lo = mid else hi = mid - 1
+        }
+        return lo
+    }
+
     fun offsetAt(x: Float, y: Float): Int {
         val row = ((y + scrollY) / lineHeight).toInt()
         val source = displayRowToSource(row.coerceIn(0, (visibleLines.size - 1).coerceAtLeast(0))) ?: 0
         val col = (((x + scrollX) - gutterWidth) / charWidth).toInt().coerceIn(0, lines[source].length)
         return (lineStarts[source] + col).coerceIn(0, text.length)
+    }
+
+    /** Tap → text offset when soft-wrapping, using the tapped source line's wrapped layout. */
+    fun offsetAtWrapped(x: Float, y: Float): Int {
+        if (visibleLines.isEmpty()) return 0
+        val visualRow = ((y + scrollY) / lineHeight).toInt().coerceIn(0, (totalVisualRows - 1).coerceAtLeast(0))
+        val k = visualRowToVisibleIndex(visualRow)
+        val source = visibleLines[k]
+        val sub = (visualRow - visualStarts[k]).coerceAtLeast(0)
+        val layout = measurer.measure(annotatedLine(lines[source], spec, colors), style, constraints = wrapConstraints)
+        val localY = sub * lineHeight + lineHeight / 2f
+        val localX = (x - gutterWidth).coerceAtLeast(0f)
+        val local = runCatching { layout.getOffsetForPosition(Offset(localX, localY)) }
+            .getOrDefault(0).coerceIn(0, lines[source].length)
+        return (lineStarts[source] + local).coerceIn(0, text.length)
     }
 
     val editorCanvas: @Composable (Modifier) -> Unit = { canvasModifier ->
@@ -221,16 +279,29 @@ fun CodeEditorView(
                 .onSizeChanged { viewport = it }
                 .scrollable(vScroll, Orientation.Vertical)
                 .scrollable(hScroll, Orientation.Horizontal)
-                .pointerInput(text, visibleLines) {
+                .pointerInput(text, visibleLines, wrapping) {
                     detectTapGestures { pos ->
-                        val row = ((pos.y + scrollY) / lineHeight).toInt()
-                        val source = displayRowToSource(row)
-                        if (pos.x < gutterWidth && source != null && foldByHeader.containsKey(source)) {
-                            actions.toggleFold(source)
+                        if (wrapping) {
+                            val visualRow = ((pos.y + scrollY) / lineHeight).toInt()
+                                .coerceIn(0, (totalVisualRows - 1).coerceAtLeast(0))
+                            val source = visibleLines.getOrNull(visualRowToVisibleIndex(visualRow))
+                            if (pos.x < gutterWidth && source != null && foldByHeader.containsKey(source)) {
+                                actions.toggleFold(source)
+                            } else {
+                                actions.setSelection(TextRange(offsetAtWrapped(pos.x, pos.y)))
+                                extraCarets = emptyList()
+                                focusRequester.requestFocus()
+                            }
                         } else {
-                            actions.setSelection(TextRange(offsetAt(pos.x, pos.y)))
-                            extraCarets = emptyList()
-                            focusRequester.requestFocus()
+                            val row = ((pos.y + scrollY) / lineHeight).toInt()
+                            val source = displayRowToSource(row)
+                            if (pos.x < gutterWidth && source != null && foldByHeader.containsKey(source)) {
+                                actions.toggleFold(source)
+                            } else {
+                                actions.setSelection(TextRange(offsetAt(pos.x, pos.y)))
+                                extraCarets = emptyList()
+                                focusRequester.requestFocus()
+                            }
                         }
                     }
                 }
@@ -265,6 +336,7 @@ fun CodeEditorView(
             val selMin = value.selection.min
             val selMax = value.selection.max
 
+            if (!wrapping) {
             val firstRow = (scrollY / lineHeight).toInt().coerceAtLeast(0)
             val rowsInView = (size.height / lineHeight).toInt() + 2
             val lastRow = (firstRow + rowsInView).coerceAtMost(visibleLines.size - 1)
@@ -357,6 +429,72 @@ fun CodeEditorView(
                     }
                 }
             }
+            } else {
+                // ---- Soft-wrap draw path: one measured layout per visible source line. ----
+                val firstVisual = (scrollY / lineHeight).toInt().coerceAtLeast(0)
+                val rowsInView = (size.height / lineHeight).toInt() + 2
+                val lastVisual = (firstVisual + rowsInView).coerceAtMost((totalVisualRows - 1).coerceAtLeast(0))
+                if (totalVisualRows > 0) {
+                    val firstK = visualRowToVisibleIndex(firstVisual)
+                    val lastK = visualRowToVisibleIndex(lastVisual)
+                    for (k in firstK..lastK) {
+                        val source = visibleLines[k]
+                        val lineTop = visualStarts[k] * lineHeight - scrollY
+                        val lineStart = lineStarts[source]
+                        val lineText = lines[source]
+                        val lineLen = lineText.length
+                        val layout = measurer.measure(annotatedLine(lineText, spec, colors), style, constraints = wrapConstraints)
+                        val blockHeight = wrapCounts[source] * lineHeight
+
+                        if (caret in lineStart..(lineStart + lineLen)) {
+                            drawRect(colors.currentLine, topLeft = Offset(0f, lineTop), size = Size(size.width, blockHeight))
+                        }
+
+                        if (selMax > selMin) {
+                            val a = (selMin - lineStart).coerceIn(0, lineLen)
+                            val b = (selMax - lineStart).coerceIn(0, lineLen)
+                            if (b > a) {
+                                val path = layout.getPathForRange(a, b).apply { translate(Offset(gutterWidth, lineTop)) }
+                                drawPath(path, colors.match)
+                            }
+                        }
+
+                        if (highlightMatches.isNotEmpty()) {
+                            for ((mi, m) in highlightMatches.withIndex()) {
+                                val ms = m.first
+                                val me = m.last + 1
+                                if (me <= lineStart || ms >= lineStart + lineLen) continue
+                                val a = (ms - lineStart).coerceIn(0, lineLen)
+                                val b = (me - lineStart).coerceIn(0, lineLen)
+                                if (b > a) {
+                                    val path = layout.getPathForRange(a, b).apply { translate(Offset(gutterWidth, lineTop)) }
+                                    drawPath(path, if (mi == activeMatch) caretColor.copy(alpha = 0.35f) else colors.match)
+                                }
+                            }
+                        }
+
+                        val number = measurer.measure(AnnotatedString((source + 1).toString()), style)
+                        drawText(number, color = gutterColor, topLeft = Offset(gutterWidth - number.size.width - 6f, lineTop))
+                        if (foldByHeader.containsKey(source)) {
+                            val arrow = if (source in foldedHeaders) "\u25B8" else "\u25BE"
+                            drawText(measurer.measure(AnnotatedString(arrow), style), color = gutterColor, topLeft = Offset(2f, lineTop))
+                        }
+
+                        drawText(layout, topLeft = Offset(gutterWidth, lineTop))
+
+                        if (caret in lineStart..(lineStart + lineLen)) {
+                            val rect = layout.getCursorRect((caret - lineStart).coerceIn(0, lineLen))
+                            drawRect(caretColor, topLeft = Offset(gutterWidth + rect.left, lineTop + rect.top), size = Size(2f, rect.height))
+                        }
+                        for (extra in extraCarets) {
+                            if (extra in lineStart..(lineStart + lineLen)) {
+                                val rect = layout.getCursorRect((extra - lineStart).coerceIn(0, lineLen))
+                                drawRect(extraCaretColor, topLeft = Offset(gutterWidth + rect.left, lineTop + rect.top), size = Size(2f, rect.height))
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -422,11 +560,20 @@ fun CodeEditorView(
             val caretOffset = value.selection.start
             if (showCompletions && completions.isNotEmpty() && value.selection.collapsed) {
                 val src = lineOfOffset(lineStarts, caretOffset)
-                val row = visibleLines.indexOf(src)
-                if (row >= 0) {
+                val k = visibleLines.indexOf(src)
+                if (k >= 0) {
                     val col = caretOffset - lineStarts[src]
-                    val px = (gutterWidth + col * charWidth - scrollX).roundToInt()
-                    val py = (row * lineHeight - scrollY + lineHeight).roundToInt()
+                    val px: Int
+                    val py: Int
+                    if (wrapping) {
+                        val layout = measurer.measure(annotatedLine(lines[src], spec, colors), style, constraints = wrapConstraints)
+                        val rect = layout.getCursorRect(col.coerceIn(0, lines[src].length))
+                        px = (gutterWidth + rect.left).roundToInt()
+                        py = (visualStarts[k] * lineHeight - scrollY + rect.bottom).roundToInt()
+                    } else {
+                        px = (gutterWidth + col * charWidth - scrollX).roundToInt()
+                        py = (k * lineHeight - scrollY + lineHeight).roundToInt()
+                    }
                     CompletionPopup(
                         completions = completions,
                         offsetX = px,

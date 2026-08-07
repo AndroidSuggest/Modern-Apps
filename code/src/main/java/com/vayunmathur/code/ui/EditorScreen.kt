@@ -270,6 +270,7 @@ fun EditorScreen(
                                 editorTheme = state.editorTheme,
                                 modifier = Modifier.weight(1f),
                                 tabWidth = state.tabWidth,
+                                softWrap = state.softWrap,
                                 showWhitespace = state.showWhitespace,
                                 showIndentGuides = state.showIndentGuides,
                                 showMinimap = state.showMinimap,
