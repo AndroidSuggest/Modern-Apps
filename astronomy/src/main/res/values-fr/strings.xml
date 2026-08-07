@@ -47,4 +47,5 @@
     <string name="alt_az"></string>
     <string name="app_name"></string>
     <string name="rise_1"></string>
+    <string name="off">Désactivé</string>
 </resources>
