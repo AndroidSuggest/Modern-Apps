@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.Constraints
 import kotlin.math.roundToInt
 import com.vayunmathur.code.syntax.LanguageSpec
 import com.vayunmathur.code.syntax.SyntaxColors
+import com.vayunmathur.code.syntax.TsColorSpan
 import com.vayunmathur.code.syntax.rememberSyntaxColors
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.Completion
@@ -118,6 +119,8 @@ fun CodeEditorView(
     }
     val diagnosticsByLine = remember(diagnostics) { diagnostics.groupBy { it.line } }
     val spec = tab.language.spec
+    // Native tree-sitter spans (cached); null → the regex tokenizer in [annotatedLine] is used.
+    val tsSpans = remember(text, tab.language, colors) { treeSitterColorSpans(text, tab.language, colors) }
 
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -435,7 +438,7 @@ fun CodeEditorView(
                     drawText(arrowLayout, color = gutterColor, topLeft = Offset(2f, y))
                 }
 
-                val annotated = annotatedLine(lineText, spec, colors)
+                val annotated = annotatedLine(lineText, spec, colors, tsSpans, lineStart)
                 val layout = measurer.measure(annotated, style)
                 drawText(layout, topLeft = Offset(gutterWidth - scrollX, y))
 
@@ -491,7 +494,7 @@ fun CodeEditorView(
                         val lineStart = lineStarts[source]
                         val lineText = lines[source]
                         val lineLen = lineText.length
-                        val layout = measurer.measure(annotatedLine(lineText, spec, colors), style, constraints = wrapConstraints)
+                        val layout = measurer.measure(annotatedLine(lineText, spec, colors, tsSpans, lineStart), style, constraints = wrapConstraints)
                         val blockHeight = wrapCounts[source] * lineHeight
 
                         if (caret in lineStart..(lineStart + lineLen)) {
@@ -706,8 +709,43 @@ private fun Minimap(
 }
 
 /** Tokenizes a single line with [spec] and paints rainbow brackets; returns a colored string. */
-private fun annotatedLine(line: String, spec: LanguageSpec?, colors: SyntaxColors): AnnotatedString {
-    if (spec == null || line.isEmpty() || line.length > MAX_LINE_HIGHLIGHT) return AnnotatedString(line)
+private fun annotatedLine(
+    line: String,
+    spec: LanguageSpec?,
+    colors: SyntaxColors,
+    tsSpans: List<TsColorSpan>? = null,
+    lineStart: Int = 0,
+): AnnotatedString {
+    if (line.length > MAX_LINE_HIGHLIGHT) return AnnotatedString(line)
+    // Tree-sitter path: paint the spans that fall on this line (over rainbow brackets).
+    if (tsSpans != null && line.isNotEmpty()) {
+        val builder = AnnotatedString.Builder(line)
+        if (colors.brackets.isNotEmpty()) {
+            var depth = 0
+            val n = colors.brackets.size
+            for (i in line.indices) {
+                when (line[i]) {
+                    '(', '[', '{' -> {
+                        builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                        depth++
+                    }
+                    ')', ']', '}' -> {
+                        depth = (depth - 1).coerceAtLeast(0)
+                        builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                    }
+                }
+            }
+        }
+        val lineEnd = lineStart + line.length
+        for (s in tsSpans) {
+            if (s.end <= lineStart || s.start >= lineEnd) continue
+            val a = (s.start - lineStart).coerceIn(0, line.length)
+            val b = (s.end - lineStart).coerceIn(a, line.length)
+            if (b > a) builder.addStyle(SpanStyle(color = s.color), a, b)
+        }
+        return builder.toAnnotatedString()
+    }
+    if (spec == null || line.isEmpty()) return AnnotatedString(line)
     val builder = AnnotatedString.Builder(line)
     if (colors.brackets.isNotEmpty()) {
         var depth = 0

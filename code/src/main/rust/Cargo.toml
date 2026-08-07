@@ -1,0 +1,44 @@
+# Native tree-sitter highlighter for the `code` app (`libcode_ts.so`, arm64-v8a).
+#
+# This is a STANDALONE cargo workspace (note the empty `[workspace]` table below) so it keeps its
+# own Cargo.lock and does NOT join the repo-root workspace — the root's `cargo build --locked`
+# builds several other native modules and must not be perturbed by this crate.
+#
+# Building requires the Android NDK + `rustup target add aarch64-linux-android`, and is opt-in via
+# the `-PenableTreeSitter` Gradle property (see code/build.gradle.kts). When it isn't built, the app
+# still runs: `TreeSitterNative.isAvailable` is false and the editor uses the regex highlighter.
+#
+# The grammar crate versions below must be a set that mutually agree on the tree-sitter 0.22 ABI and
+# expose `LANGUAGE` (a `LanguageFn`) + a highlights query constant; run `cargo update` on a
+# toolchain-equipped machine to generate the matching Cargo.lock before an `--locked` build.
+[package]
+name = "code_ts"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "code_ts"
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = "0.21.1"
+tree-sitter = "0.22"
+tree-sitter-kotlin = "0.3"
+tree-sitter-java = "0.21"
+tree-sitter-javascript = "0.21"
+tree-sitter-typescript = "0.21"
+tree-sitter-python = "0.21"
+tree-sitter-rust = "0.21"
+tree-sitter-go = "0.21"
+tree-sitter-json = "0.21"
+tree-sitter-c = "0.21"
+tree-sitter-cpp = "0.22"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+
+# Detach from the repo-root workspace.
+[workspace]

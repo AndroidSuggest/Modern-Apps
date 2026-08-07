@@ -24,7 +24,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.vayunmathur.code.R
+import com.vayunmathur.code.syntax.Language
+import com.vayunmathur.code.syntax.SyntaxColors
+import com.vayunmathur.code.syntax.TsColorSpan
 import com.vayunmathur.code.util.Completion
+import com.vayunmathur.code.util.TreeSitterNative
+import com.vayunmathur.code.util.TsKind
+import androidx.compose.ui.graphics.Color
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconChevronRight
 import com.vayunmathur.library.ui.IconClose
@@ -186,3 +192,23 @@ private fun ToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
         )
     }
 }
+
+/** Maps a tree-sitter [TsKind] onto this theme's colours. */
+fun SyntaxColors.tsColor(kind: TsKind): Color = when (kind) {
+    TsKind.KEYWORD -> keyword
+    TsKind.STRING -> string
+    TsKind.NUMBER -> number
+    TsKind.COMMENT -> comment
+    TsKind.ANNOTATION -> annotation
+    TsKind.FUNCTION -> function
+    TsKind.TYPE -> type
+    TsKind.PROPERTY -> type
+}
+
+/**
+ * Native tree-sitter colour spans for [text] in [language] resolved against [colors], or null when
+ * tree-sitter is unavailable / the language is unsupported — signalling the regex fallback. Blocking
+ * (parses the whole file), so callers must cache it via `remember(text, language)`.
+ */
+fun treeSitterColorSpans(text: String, language: Language, colors: SyntaxColors): List<TsColorSpan>? =
+    TreeSitterNative.spans(text, language)?.map { TsColorSpan(it.start, it.end, colors.tsColor(it.kind)) }

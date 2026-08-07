@@ -562,12 +562,17 @@ private fun matchingBracketIndex(text: String, index: Int): Int {
  * When [caret] is a valid collapsed offset, the caret's line gets a subtle background and, if
  * the caret sits next to a bracket, that bracket and its match are highlighted.
  */
+/** A resolved colour span `[start, end)` from the native tree-sitter highlighter. */
+data class TsColorSpan(val start: Int, val end: Int, val color: Color)
+
 class SyntaxTransformation(
     private val spec: LanguageSpec?,
     private val colors: SyntaxColors,
     private val matches: List<IntRange> = emptyList(),
     private val activeMatch: Int = -1,
     private val caret: Int = -1,
+    /** Structure-aware colour spans from tree-sitter; when non-null they replace the regex pass. */
+    private val tsSpans: List<TsColorSpan>? = null,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -585,7 +590,33 @@ class SyntaxTransformation(
         }
 
         val highlight = spec != null && raw.length <= MAX_HIGHLIGHT_LENGTH
-        if (highlight) {
+        if (tsSpans != null) {
+            // Rainbow brackets first; tree-sitter colours paint on top.
+            if (colors.brackets.isNotEmpty()) {
+                var depth = 0
+                val n = colors.brackets.size
+                for (i in raw.indices) {
+                    when (raw[i]) {
+                        '(', '[', '{' -> {
+                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                            depth++
+                        }
+                        ')', ']', '}' -> {
+                            depth = (depth - 1).coerceAtLeast(0)
+                            builder.addStyle(SpanStyle(color = colors.brackets[depth % n]), i, i + 1)
+                        }
+                    }
+                }
+            }
+            for (s in tsSpans) {
+                val a = s.start.coerceIn(0, raw.length)
+                val b = s.end.coerceIn(a, raw.length)
+                if (b > a) builder.addStyle(SpanStyle(color = s.color), a, b)
+            }
+            for (m in TRAILING_WS_REGEX.findAll(raw)) {
+                builder.addStyle(SpanStyle(background = colors.trailingWhitespace), m.range.first, m.range.last + 1)
+            }
+        } else if (highlight) {
             // Rainbow brackets first, so string/comment spec spans repaint any brackets inside them.
             if (colors.brackets.isNotEmpty()) {
                 var depth = 0
