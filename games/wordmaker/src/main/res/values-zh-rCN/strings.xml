@@ -25,8 +25,4 @@
     <string name="cd_shuffle">随机排序</string>
     <string name="cd_submit">提交</string>
     <string name="cd_backspace">退格键</string>
-    <string name="daily_challenge"></string>
-    <string name="mode_daily"></string>
-    <string name="daily_come_back_tomorrow"></string>
-    <string name="daily_streak"></string>
 </resources>
