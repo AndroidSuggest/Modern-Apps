@@ -335,7 +335,7 @@ fun EditorScreen(
             onDismiss = { showGoToLine = false },
         )
     }
-    val outlineTab = state.currentTab
+    val outlineTab = state.activeTab
     if (showOutline && outlineTab != null) {
         val symbols = remember(outlineTab.value.text, outlineTab.language) {
             extractSymbols(outlineTab.value.text, outlineTab.language)
@@ -353,7 +353,7 @@ fun EditorScreen(
             onDismiss = { showOutline = false },
         )
     }
-    val conflictTab = state.currentTab
+    val conflictTab = state.activeTab
     if (showMergeResolver && conflictTab != null) {
         MergeResolverDialog(
             text = conflictTab.value.text,
@@ -411,9 +411,9 @@ private fun EmptyEditorState(onOpenFolder: () -> Unit, onOpenFile: () -> Unit) {
 }
 
 /**
- * Two editor panes side by side (or stacked when narrow). The primary pane is the current tab with
- * find/autocomplete; the secondary pane edits its own tab through [CodeActions.onSecondaryEditorChange].
- * Toolbar/tab-strip/find act on the primary pane (focused-pane routing is a Phase-7 follow-up).
+ * Two editor panes side by side (or stacked when narrow). Each pane edits its own tab and reports
+ * focus via [CodeActions.focusPane], so the shared toolbar/find/navigation act on the focused pane.
+ * The find bar is shown in whichever pane currently holds focus.
  */
 @Composable
 private fun SplitEditors(
@@ -426,6 +426,7 @@ private fun SplitEditors(
     initialQuery: String,
     modifier: Modifier = Modifier,
 ) {
+    val focusSecondary = state.focusedSecondary
     BoxWithConstraints(modifier) {
         val wide = maxWidth >= 640.dp
         val primaryPane: @Composable (Modifier) -> Unit = { paneModifier ->
@@ -436,13 +437,14 @@ private fun SplitEditors(
                     actions = actions,
                     softWrap = state.softWrap,
                     fontSize = state.fontSize,
-                    showFind = showFind,
+                    showFind = showFind && !focusSecondary,
                     onCloseFind = onCloseFind,
                     modifier = Modifier.weight(1f),
                     initialQuery = initialQuery,
                     completions = state.completions,
-                    showCompletions = state.showCompletions,
+                    showCompletions = state.showCompletions && !focusSecondary,
                     editorTheme = state.editorTheme,
+                    secondaryPane = false,
                 )
             }
         }
@@ -454,10 +456,11 @@ private fun SplitEditors(
                     actions = actions,
                     softWrap = state.softWrap,
                     fontSize = state.fontSize,
-                    showFind = false,
-                    onCloseFind = {},
+                    showFind = showFind && focusSecondary,
+                    onCloseFind = onCloseFind,
                     modifier = Modifier.weight(1f),
                     editorTheme = state.editorTheme,
+                    secondaryPane = true,
                     onValueChangeOverride = actions::onSecondaryEditorChange,
                 )
             }
@@ -575,7 +578,7 @@ private fun EditorToolbar(
     onOpenOutline: () -> Unit = {},
     onResolveConflicts: () -> Unit = {},
 ) {
-    val tab = state.currentTab ?: return
+    val tab = state.activeTab ?: return
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,

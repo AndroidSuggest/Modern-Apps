@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -78,6 +79,7 @@ fun CodeEditorView(
     showWhitespace: Boolean = false,
     showIndentGuides: Boolean = false,
     showMinimap: Boolean = false,
+    secondaryPane: Boolean = false,
     onValueChangeOverride: ((TextFieldValue) -> Unit)? = null,
 ) {
     val value = tab.value
@@ -184,6 +186,7 @@ fun CodeEditorView(
                 }
                 .focusRequester(focusRequester)
                 .focusable()
+                .onFocusChanged { if (it.isFocused) actions.focusPane(secondaryPane) }
                 .onPreviewKeyEvent { event ->
                     handleEditorKey(
                         event = event,

@@ -143,6 +143,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     var secondaryIndex by mutableStateOf<Int?>(null)
         private set
 
+    /** True when the secondary split pane holds focus, so shared actions target it instead. */
+    var focusedSecondary by mutableStateOf(false)
+        private set
+
+    /** The tab shared toolbar/find/navigation actions target: the focused pane's tab. */
+    private val activeTab: OpenTab?
+        get() = if (focusedSecondary) secondaryIndex?.let { tabs.getOrNull(it) } else currentTab
+
     // ---- Preferences ----
     var softWrap by mutableStateOf(false)
         private set
@@ -251,6 +259,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             },
             currentIndex = currentIndex,
             secondaryIndex = secondaryIndex ?: -1,
+            focusedSecondary = focusedSecondary,
             softWrap = softWrap,
             rootName = rootName,
             folderOpen = rootDir != null,
@@ -616,6 +625,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         if (index in tabs.indices) {
             currentIndex = index
             if (secondaryIndex == index) secondaryIndex = null // never show the same tab in both panes
+            focusedSecondary = false
             dismissCompletions()
             saveSession()
         }
@@ -638,6 +648,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                 else -> s
             }
         }?.takeIf { it in tabs.indices && it != currentIndex }
+        if (secondaryIndex == null) focusedSecondary = false
         saveSession()
     }
 
@@ -666,11 +677,17 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun toggleSplit() {
         if (secondaryIndex != null) {
             secondaryIndex = null
+            focusedSecondary = false
             return
         }
         if (tabs.size < 2 || currentIndex < 0) return
         val other = (currentIndex + 1).takeIf { it in tabs.indices } ?: (currentIndex - 1)
         secondaryIndex = other.takeIf { it in tabs.indices && it != currentIndex }
+    }
+
+    /** Records which split pane holds focus, so shared toolbar/find/nav actions target it. */
+    override fun focusPane(secondary: Boolean) {
+        focusedSecondary = secondary && secondaryIndex != null
     }
 
     // ---- Autocomplete ----
@@ -919,13 +936,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
             delay(AUTO_SAVE_DELAY_MS)
-            if (currentTab?.isDirty == true) save()
+            val tab = activeTab ?: return@launch
+            if (tab.isDirty) saveTab(tab)
         }
+    }
+
+    /** Commits a find/replace edit to [tab] as one undo step, bypassing smart input. */
+    private fun commitEdit(tab: OpenTab, new: TextFieldValue) {
+        if (new.text != tab.value.text) tab.pushUndo(tab.value)
+        tab.value = new
+        if (autoSave) scheduleAutoSave()
     }
 
     /** Applies a pure whole-line edit as a single undo step. */
     private fun applyLineEdit(transform: (TextFieldValue) -> TextFieldValue) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val next = transform(tab.value)
         if (next.text == tab.value.text && next.selection == tab.value.selection) return
         tab.pushUndo(tab.value)
@@ -934,7 +959,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun toggleComment() {
-        val prefix = currentTab?.language?.lineCommentPrefix ?: return
+        val prefix = activeTab?.language?.lineCommentPrefix ?: return
         applyLineEdit { toggleLineComment(it, prefix) }
     }
 
@@ -947,7 +972,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun deleteLine() = applyLineEdit(::deleteLine)
 
     override fun formatDocument() {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val formatted = when (tab.language) {
             Language.JSON -> formatJson(tab.value.text)
             Language.XML -> formatXml(tab.value.text)
@@ -960,7 +985,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun resolveConflicts(resolutions: List<Resolution>) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val resolved = applyResolutions(tab.value.text, resolutions)
         if (resolved == tab.value.text) return
         tab.pushUndo(tab.value)
@@ -970,21 +995,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     /** Moves the caret to the start of [line] (1-based), without recording an undo step. */
     override fun goToLine(line: Int) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val offset = lineStartOffset(tab.value.text, line)
         setSelection(TextRange(offset))
     }
 
     /** Moves the selection without recording an undo step (used by find navigation). */
     override fun setSelection(range: TextRange) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         tab.value = tab.value.copy(selection = range)
     }
 
     // ---- Folding (experimental editor) ----
 
     override fun toggleFold(headerLine: Int) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         tab.foldedHeaders =
             if (headerLine in tab.foldedHeaders) tab.foldedHeaders - headerLine
             else tab.foldedHeaders + headerLine
@@ -992,13 +1017,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun foldAllInTab() {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         tab.foldedHeaders = computeFoldRegions(tab.value.text).map { it.startLine }.toSet()
         persistFoldState(tab)
     }
 
     override fun unfoldAll() {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         tab.foldedHeaders = emptySet()
         persistFoldState(tab)
     }
@@ -1012,15 +1037,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun undo() {
-        currentTab?.undo()
+        activeTab?.undo()
     }
 
     override fun redo() {
-        currentTab?.redo()
+        activeTab?.redo()
     }
 
     override fun save() {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         saveTab(tab)
     }
 
@@ -1109,12 +1134,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
 
     /** Inserts [insert] at the caret, replacing any current selection (used by the Tab button). */
     override fun insertText(insert: String) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val v = tab.value
         val start = v.selection.min
         val end = v.selection.max
         val newText = v.text.substring(0, start) + insert + v.text.substring(end)
-        onEditorChange(TextFieldValue(newText, TextRange(start + insert.length)))
+        editTab(tab, TextFieldValue(newText, TextRange(start + insert.length)), isPrimary = tab === currentTab)
     }
 
     override fun toggleSoftWrap() {
@@ -1191,15 +1216,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     // ---- Find & replace ----
 
     override fun replaceRange(range: IntRange, replacement: String) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val text = tab.value.text
         if (range.first < 0 || range.last + 1 > text.length) return
         val newText = text.substring(0, range.first) + replacement + text.substring(range.last + 1)
-        onEditorChange(TextFieldValue(newText, TextRange(range.first + replacement.length)))
+        commitEdit(tab, TextFieldValue(newText, TextRange(range.first + replacement.length)))
     }
 
     override fun replaceAll(matches: List<IntRange>, replacement: String) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         if (matches.isEmpty()) return
         val text = tab.value.text
         val sb = StringBuilder(text.length)
@@ -1211,14 +1236,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             last = m.last + 1
         }
         sb.append(text, last, text.length)
-        onEditorChange(TextFieldValue(sb.toString(), TextRange(sb.length)))
+        commitEdit(tab, TextFieldValue(sb.toString(), TextRange(sb.length)))
     }
 
     private fun buildRegex(pattern: String, caseSensitive: Boolean): Regex =
         Regex(pattern, if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE))
 
     override fun replaceMatchRegex(range: IntRange, pattern: String, replacement: String, caseSensitive: Boolean) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val text = tab.value.text
         if (range.first < 0 || range.last + 1 > text.length) return
         val regex = runCatching { buildRegex(pattern, caseSensitive) }.getOrNull() ?: return
@@ -1228,12 +1253,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     override fun replaceAllRegex(pattern: String, replacement: String, caseSensitive: Boolean) {
-        val tab = currentTab ?: return
+        val tab = activeTab ?: return
         val regex = runCatching { buildRegex(pattern, caseSensitive) }.getOrNull() ?: return
         val text = tab.value.text
         val newText = runCatching { regex.replace(text, replacement) }.getOrNull() ?: return
         if (newText == text) return
-        onEditorChange(TextFieldValue(newText, TextRange(newText.length)))
+        commitEdit(tab, TextFieldValue(newText, TextRange(newText.length)))
     }
 
     // ---- Project search ----

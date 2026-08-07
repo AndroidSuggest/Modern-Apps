@@ -65,6 +65,8 @@ data class CodeUiState(
     val currentIndex: Int = -1,
     /** Index of the tab shown in the second split pane, or -1 when the editor is single-pane. */
     val secondaryIndex: Int = -1,
+    /** True when the secondary split pane holds focus, so shared actions target it. */
+    val focusedSecondary: Boolean = false,
     val softWrap: Boolean = false,
     /** Display name of the opened folder, shown as the file pane's header. */
     val rootName: String? = null,
@@ -93,6 +95,9 @@ data class CodeUiState(
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
     val secondaryTab: TabUiState? get() = tabs.getOrNull(secondaryIndex)
+
+    /** The tab the shared toolbar/find/navigation act on: the focused split pane's tab. */
+    val activeTab: TabUiState? get() = if (focusedSecondary) secondaryTab ?: currentTab else currentTab
 }
 
 /**
@@ -131,6 +136,9 @@ interface CodeActions {
 
     /** Open a second editor pane (or close it if already open). */
     fun toggleSplit() {}
+
+    /** Report that a split pane gained focus, so shared actions target it ([secondary] = the 2nd pane). */
+    fun focusPane(secondary: Boolean) {}
 
     // ---- Line editing ----
 

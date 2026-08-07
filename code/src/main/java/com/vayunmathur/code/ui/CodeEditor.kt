@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
@@ -75,6 +76,8 @@ fun CodeEditor(
     completions: List<Completion> = emptyList(),
     showCompletions: Boolean = false,
     editorTheme: String = com.vayunmathur.code.syntax.EditorThemes.DEFAULT,
+    /** True when this is the secondary split pane, so focus routes shared actions there. */
+    secondaryPane: Boolean = false,
     /** When set, edits route here instead of [CodeActions.onEditorChange] (used by the second pane). */
     onValueChangeOverride: ((androidx.compose.ui.text.input.TextFieldValue) -> Unit)? = null,
 ) {
@@ -189,6 +192,7 @@ fun CodeEditor(
                     onValueChange = onValueChangeOverride ?: actions::onEditorChange,
                     modifier = Modifier
                         .fillMaxSize()
+                        .onFocusChanged { if (it.isFocused) actions.focusPane(secondaryPane) }
                         .verticalScroll(verticalScroll)
                         .then(if (softWrap) Modifier else Modifier.horizontalScroll(horizontalScroll))
                         .padding(horizontal = 8.dp),
