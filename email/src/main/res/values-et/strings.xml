@@ -110,4 +110,42 @@
     <string name="added"><xliff:g id="email" example="kadri@toredomeen.ee">%1$s</xliff:g> konto on lisatud</string>
     <string name="total_attachment_size_exceeds_25_mb_many">Manuste kogumaht on üle 25 MB ja paljud teenusepakkujad selliseid kirju ei edasta.</string>
     <string name="outbox_is_empty">Saadetavate kirjade postkast on tühi</string>
+    <string name="center"></string>
+    <string name="text_color"></string>
+    <string name="font_size"></string>
+    <string name="heading_1"></string>
+    <string name="blockquote"></string>
+    <string name="load_remote_images"></string>
+    <string name="heading_2"></string>
+    <string name="oauth_sign_in"></string>
+    <string name="from"></string>
+    <string name="load_remote_images_summary"></string>
+    <string name="highlight"></string>
+    <string name="email_address_optional"></string>
+    <string name="normal"></string>
+    <string name="right"></string>
+    <string name="unified_inbox_label"></string>
+    <string name="clear_formatting"></string>
+    <string name="email_sync_channel_desc"></string>
+    <string name="extra_large"></string>
+    <string name="small"></string>
+    <string name="left"></string>
+    <string name="inline_code"></string>
+    <string name="justify"></string>
+    <string name="large"></string>
+    <string name="monospace"></string>
+    <plurals name="retrying_pending_messages">
+    </plurals>
+    <string name="horizontal_rule"></string>
+    <string name="sans"></string>
+    <string name="email_sync_channel_name"></string>
+    <string name="heading_3"></string>
+    <string name="reading"></string>
+    <string name="use_app_password_instead"></string>
+    <string name="serif"></string>
+    <string name="to_1"></string>
+    <string name="font_default"></string>
+    <string name="font_family"></string>
+    <string name="alignment"></string>
+    <string name="failed"></string>
 </resources>
