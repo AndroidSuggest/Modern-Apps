@@ -17,4 +17,20 @@
     <string name="view_in_play_store">Zobacz w Sklepie Play</string>
     <string name="installed_2">Zainstalowano %1$s</string>
     <string name="repositories">Repozytoria</string>
+    <string name="filter_all">Wszystko</string>
+    <string name="section_play_top_charts">Najpopularniejsze w Sklepie Play</string>
+    <string name="nav_library">Biblioteka</string>
+    <string name="nav_home">Dom</string>
+    <string name="source_chip_fdroid">F-Droid</string>
+    <string name="nav_search">Szukaj</string>
+    <string name="category_all">Wszystko</string>
+    <string name="source_chip_play">Sklep Play</string>
+    <string name="section_recently_updated_subtitle">Najnowsze kompilacje na F-Droid</string>
+    <string name="nav_updates">Aktualizacje</string>
+    <string name="section_modern_apps">Z Modern Apps</string>
+    <string name="sources_are_fixed">Te trzy źródła są wbudowane i nie można ich zmienić. Inne repozytoria F-Droid udostępniają pliki binarne stworzone przez kogoś innego, więc nie ma możliwości ich porównania.</string>
+    <string name="section_modern_apps_subtitle">Zbudowano w tym repozytorium i podpisano tym samym kluczem co ten sklep</string>
+    <string name="section_recently_updated">Nowe i zaktualizowane</string>
+    <string name="filter_with_count">%1$s (%2$d)</string>
+    <string name="source_chip_modern_apps">Modern Apps</string>
 </resources>
