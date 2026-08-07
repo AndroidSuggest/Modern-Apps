@@ -161,14 +161,14 @@ fun RowScope.CharKey(
     Box(
         modifier = Modifier
             .weight(weight)
-            .padding(KeyPadding)
-            .height(height)
+            // The whole weighted cell — including the KeyPadding gap — takes the touch, so
+            // there are no dead strips between keys. The gap is reinstated as padding further
+            // down, but only for the visual (clip + background), never for hit-testing.
+            .height(height + KeyPadding * 2)
             .onGloballyPositioned {
                 keyLeft = it.positionInWindow().x
                 keyWidth = it.size.width.toFloat()
             }
-            .clip(KeyShape)
-            .background(if (pressed) pressedKeyColor() else charKeyColor())
             // Written out rather than assembled from detectTapGestures because tap and
             // long-press are one continuous gesture here: the long press opens the popup
             // and the *same* touch goes on to choose from it.
@@ -219,7 +219,10 @@ fun RowScope.CharKey(
                         interaction.tryEmit(PressInteraction.Release(press))
                     }
                 }
-            },
+            }
+            .padding(KeyPadding)
+            .clip(KeyShape)
+            .background(if (pressed) pressedKeyColor() else charKeyColor()),
         contentAlignment = Alignment.Center,
     ) {
         if (hint != null) {
@@ -397,11 +400,11 @@ fun RowScope.SpecialKey(
     Box(
         modifier = Modifier
             .weight(weight)
+            .height(height + KeyPadding * 2)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(KeyPadding)
-            .height(height)
             .clip(KeyShape)
-            .background(if (pressed) pressedContainerColor else containerColor)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            .background(if (pressed) pressedContainerColor else containerColor),
         contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(
@@ -426,15 +429,15 @@ fun RowScope.SpaceKey(
     Box(
         modifier = Modifier
             .weight(weight)
-            .padding(KeyPadding)
-            .height(height)
-            .clip(KeyShape)
-            .background(if (pressed) pressedKeyColor() else charKeyColor())
+            .height(height + KeyPadding * 2)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 onClick = onSpace,
-            ),
+            )
+            .padding(KeyPadding)
+            .clip(KeyShape)
+            .background(if (pressed) pressedKeyColor() else charKeyColor()),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -461,10 +464,7 @@ fun RowScope.RepeatKey(
     Box(
         modifier = Modifier
             .weight(weight)
-            .padding(KeyPadding)
-            .height(height)
-            .clip(KeyShape)
-            .background(if (pressed) pressedKeyColor() else specialKeyColor())
+            .height(height + KeyPadding * 2)
             .pointerInput(Unit) {
                 detectTapGestures(onPress = { offset ->
                     val press = PressInteraction.Press(offset)
@@ -483,7 +483,10 @@ fun RowScope.RepeatKey(
                         if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press),
                     )
                 })
-            },
+            }
+            .padding(KeyPadding)
+            .clip(KeyShape)
+            .background(if (pressed) pressedKeyColor() else specialKeyColor()),
         contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) { content() }
@@ -514,10 +517,7 @@ fun RowScope.ShiftKey(
     Box(
         modifier = Modifier
             .weight(weight)
-            .padding(KeyPadding)
-            .height(height)
-            .clip(KeyShape)
-            .background(container)
+            .height(height + KeyPadding * 2)
             .pointerInput(Unit) {
                 // Fire on press-up immediately (no double-tap wait). Caps-lock is detected
                 // from tap timing in the service, so shift responds instantly.
@@ -532,7 +532,10 @@ fun RowScope.ShiftKey(
                         if (released) onShift()
                     },
                 )
-            },
+            }
+            .padding(KeyPadding)
+            .clip(KeyShape)
+            .background(container),
         contentAlignment = Alignment.Center,
     ) {
         IconShift(tint = content)
