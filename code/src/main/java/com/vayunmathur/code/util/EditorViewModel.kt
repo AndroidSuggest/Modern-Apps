@@ -136,6 +136,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         private set
     val currentTab: OpenTab? get() = tabs.getOrNull(currentIndex)
 
+    /** When set, a second pane shows this tab beside the current one (split view). */
+    var secondaryIndex by mutableStateOf<Int?>(null)
+        private set
+
     // ---- Preferences ----
     var softWrap by mutableStateOf(false)
         private set
@@ -227,6 +231,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                 )
             },
             currentIndex = currentIndex,
+            secondaryIndex = secondaryIndex ?: -1,
             softWrap = softWrap,
             rootName = rootName,
             folderOpen = rootDir != null,
@@ -572,6 +577,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun selectTab(index: Int) {
         if (index in tabs.indices) {
             currentIndex = index
+            if (secondaryIndex == index) secondaryIndex = null // never show the same tab in both panes
             dismissCompletions()
             saveSession()
         }
@@ -587,19 +593,46 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             removingCurrent -> index.coerceAtMost(tabs.lastIndex)
             else -> currentIndex
         }
+        secondaryIndex = secondaryIndex?.let { s ->
+            when {
+                s == index -> null
+                s > index -> s - 1
+                else -> s
+            }
+        }?.takeIf { it in tabs.indices && it != currentIndex }
         saveSession()
     }
 
     // ---- Editing ----
 
     override fun onEditorChange(new: TextFieldValue) {
-        val tab = currentTab ?: return
+        editTab(currentTab ?: return, new, isPrimary = true)
+    }
+
+    override fun onSecondaryEditorChange(new: TextFieldValue) {
+        val tab = secondaryIndex?.let { tabs.getOrNull(it) } ?: return
+        editTab(tab, new, isPrimary = false)
+    }
+
+    /** Applies smart input to [tab] as a single undo step; only the primary pane drives completions. */
+    private fun editTab(tab: OpenTab, new: TextFieldValue, isPrimary: Boolean) {
         val indentUnit = " ".repeat(tabWidth)
         val processed = applyEditorInput(tab.value, new, indentUnit, autoIndent, autoCloseBrackets)
         if (processed.text != tab.value.text) tab.pushUndo(tab.value)
         tab.value = processed
         if (autoSave) scheduleAutoSave()
-        updateCompletions()
+        if (isPrimary) updateCompletions()
+    }
+
+    /** Opens/closes the second editor pane, choosing an adjacent tab as the secondary. */
+    override fun toggleSplit() {
+        if (secondaryIndex != null) {
+            secondaryIndex = null
+            return
+        }
+        if (tabs.size < 2 || currentIndex < 0) return
+        val other = (currentIndex + 1).takeIf { it in tabs.indices } ?: (currentIndex - 1)
+        secondaryIndex = other.takeIf { it in tabs.indices && it != currentIndex }
     }
 
     // ---- Autocomplete ----

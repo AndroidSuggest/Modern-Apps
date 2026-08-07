@@ -10,9 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.CodeUiState
 import com.vayunmathur.code.util.EditorViewModel
+import com.vayunmathur.code.util.TabUiState
 import com.vayunmathur.code.util.extractSymbols
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.AlertDialog
@@ -246,19 +249,33 @@ fun EditorScreen(
                         )
                         HorizontalDivider()
                     }
-                    CodeEditor(
-                        tab = tab,
-                        actions = actions,
-                        softWrap = state.softWrap,
-                        fontSize = state.fontSize,
-                        showFind = showFind,
-                        onCloseFind = { showFind = false },
-                        modifier = Modifier.weight(1f),
-                        initialQuery = initialFind.orEmpty(),
-                        completions = state.completions,
-                        showCompletions = state.showCompletions,
-                        editorTheme = state.editorTheme,
-                    )
+                    val secondaryTab = state.secondaryTab
+                    if (secondaryTab != null) {
+                        SplitEditors(
+                            state = state,
+                            actions = actions,
+                            primary = tab,
+                            secondary = secondaryTab,
+                            showFind = showFind,
+                            onCloseFind = { showFind = false },
+                            initialQuery = initialFind.orEmpty(),
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        CodeEditor(
+                            tab = tab,
+                            actions = actions,
+                            softWrap = state.softWrap,
+                            fontSize = state.fontSize,
+                            showFind = showFind,
+                            onCloseFind = { showFind = false },
+                            modifier = Modifier.weight(1f),
+                            initialQuery = initialFind.orEmpty(),
+                            completions = state.completions,
+                            showCompletions = state.showCompletions,
+                            editorTheme = state.editorTheme,
+                        )
+                    }
                 }
             }
         }
@@ -379,6 +396,99 @@ private fun EmptyEditorState(onOpenFolder: () -> Unit, onOpenFile: () -> Unit) {
     }
 }
 
+/**
+ * Two editor panes side by side (or stacked when narrow). The primary pane is the current tab with
+ * find/autocomplete; the secondary pane edits its own tab through [CodeActions.onSecondaryEditorChange].
+ * Toolbar/tab-strip/find act on the primary pane (focused-pane routing is a Phase-7 follow-up).
+ */
+@Composable
+private fun SplitEditors(
+    state: CodeUiState,
+    actions: CodeActions,
+    primary: TabUiState,
+    secondary: TabUiState,
+    showFind: Boolean,
+    onCloseFind: () -> Unit,
+    initialQuery: String,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier) {
+        val wide = maxWidth >= 640.dp
+        val primaryPane: @Composable (Modifier) -> Unit = { paneModifier ->
+            Column(paneModifier) {
+                PaneHeader(primary.name, onClose = null)
+                CodeEditor(
+                    tab = primary,
+                    actions = actions,
+                    softWrap = state.softWrap,
+                    fontSize = state.fontSize,
+                    showFind = showFind,
+                    onCloseFind = onCloseFind,
+                    modifier = Modifier.weight(1f),
+                    initialQuery = initialQuery,
+                    completions = state.completions,
+                    showCompletions = state.showCompletions,
+                    editorTheme = state.editorTheme,
+                )
+            }
+        }
+        val secondaryPane: @Composable (Modifier) -> Unit = { paneModifier ->
+            Column(paneModifier) {
+                PaneHeader(secondary.name, onClose = { actions.toggleSplit() })
+                CodeEditor(
+                    tab = secondary,
+                    actions = actions,
+                    softWrap = state.softWrap,
+                    fontSize = state.fontSize,
+                    showFind = false,
+                    onCloseFind = {},
+                    modifier = Modifier.weight(1f),
+                    editorTheme = state.editorTheme,
+                    onValueChangeOverride = actions::onSecondaryEditorChange,
+                )
+            }
+        }
+        if (wide) {
+            Row(Modifier.fillMaxSize()) {
+                primaryPane(Modifier.weight(1f).fillMaxHeight())
+                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outline))
+                secondaryPane(Modifier.weight(1f).fillMaxHeight())
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                primaryPane(Modifier.weight(1f).fillMaxWidth())
+                HorizontalDivider()
+                secondaryPane(Modifier.weight(1f).fillMaxWidth())
+            }
+        }
+    }
+}
+
+/** A thin header above a split pane: the file name, plus an optional close (secondary) button. */
+@Composable
+private fun PaneHeader(name: String, onClose: (() -> Unit)?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(start = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            name,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        if (onClose != null) {
+            IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
+                IconClose(Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
 /** Horizontally scrollable strip of open tabs, each with a dirty indicator and close button. */
 @Composable
 private fun TabStrip(state: CodeUiState, actions: CodeActions) {
@@ -483,6 +593,7 @@ private fun EditorToolbar(
             Item(text = stringResource(R.string.preview)) { onOpenPreview() }
             Item(text = stringResource(R.string.format_document)) { actions.formatDocument() }
             Item(text = stringResource(R.string.resolve_conflicts)) { onResolveConflicts() }
+            Item(text = stringResource(R.string.split_view)) { actions.toggleSplit() }
         }
         Spacer(Modifier.width(8.dp))
         Text(
@@ -579,6 +690,7 @@ private fun editorCommands(
     PickerItem(stringResource(R.string.delete_line)) { actions.deleteLine() },
     PickerItem(stringResource(R.string.format_document)) { actions.formatDocument() },
     PickerItem(stringResource(R.string.resolve_conflicts)) { onResolveConflicts() },
+    PickerItem(stringResource(R.string.split_view)) { actions.toggleSplit() },
     PickerItem(stringResource(R.string.soft_wrap)) { actions.toggleSoftWrap() },
     PickerItem(stringResource(R.string.undo)) { actions.undo() },
     PickerItem(stringResource(R.string.redo)) { actions.redo() },

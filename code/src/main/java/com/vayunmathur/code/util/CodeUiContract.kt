@@ -61,6 +61,8 @@ data class SearchResult(
 data class CodeUiState(
     val tabs: List<TabUiState> = emptyList(),
     val currentIndex: Int = -1,
+    /** Index of the tab shown in the second split pane, or -1 when the editor is single-pane. */
+    val secondaryIndex: Int = -1,
     val softWrap: Boolean = false,
     /** Display name of the opened folder, shown as the file pane's header. */
     val rootName: String? = null,
@@ -82,6 +84,7 @@ data class CodeUiState(
     val recentFiles: List<ProjectFileEntry> = emptyList(),
 ) {
     val currentTab: TabUiState? get() = tabs.getOrNull(currentIndex)
+    val secondaryTab: TabUiState? get() = tabs.getOrNull(secondaryIndex)
 }
 
 /**
@@ -114,6 +117,12 @@ interface CodeActions {
     fun toggleSoftWrap() {}
     fun insertText(insert: String) {}
     fun onEditorChange(new: TextFieldValue) {}
+
+    /** Apply an edit to the secondary split pane's tab. */
+    fun onSecondaryEditorChange(new: TextFieldValue) {}
+
+    /** Open a second editor pane (or close it if already open). */
+    fun toggleSplit() {}
 
     // ---- Line editing ----
 

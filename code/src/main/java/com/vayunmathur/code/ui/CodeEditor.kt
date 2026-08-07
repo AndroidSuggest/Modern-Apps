@@ -75,6 +75,8 @@ fun CodeEditor(
     completions: List<Completion> = emptyList(),
     showCompletions: Boolean = false,
     editorTheme: String = com.vayunmathur.code.syntax.EditorThemes.DEFAULT,
+    /** When set, edits route here instead of [CodeActions.onEditorChange] (used by the second pane). */
+    onValueChangeOverride: ((androidx.compose.ui.text.input.TextFieldValue) -> Unit)? = null,
 ) {
     // Find/replace state is per-tab, so it resets when switching files. Keyed on the file
     // name rather than the tab value: the latter is rebuilt on every keystroke, which would
@@ -184,7 +186,7 @@ fun CodeEditor(
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 BasicTextField(
                     value = tab.value,
-                    onValueChange = actions::onEditorChange,
+                    onValueChange = onValueChangeOverride ?: actions::onEditorChange,
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(verticalScroll)

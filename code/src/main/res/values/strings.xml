@@ -122,4 +122,5 @@
     <string name="conflict_keep_ours">Ours</string>
     <string name="conflict_keep_theirs">Theirs</string>
     <string name="conflict_keep_both">Both</string>
+    <string name="split_view">Split view</string>
 </resources>
