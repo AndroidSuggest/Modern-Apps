@@ -25,4 +25,8 @@
     <string name="cd_shuffle">Zamíchat</string>
     <string name="cd_submit">Odeslat</string>
     <string name="cd_backspace">Backspace</string>
+    <string name="daily_challenge"></string>
+    <string name="mode_daily"></string>
+    <string name="daily_come_back_tomorrow"></string>
+    <string name="daily_streak"></string>
 </resources>
