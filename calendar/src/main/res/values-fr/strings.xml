@@ -17,7 +17,7 @@
     <string name="does_not_repeat">Ne pas répéter</string>
     <string name="repeats">Se répète</string>
     <string name="no_account">(Pas de compte)</string>
-    <string name="calendar_id_label">ID : &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="calendar_id_label">ID : &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="choose_calendar">Sélectionner le calendrier</string>
     <string name="local_account">(Local)</string>
     <string name="go_to_date">Aller à la date</string>
@@ -34,7 +34,7 @@
     <string name="change_color">Modifier la couleur</string>
     <string name="delete_calendar">Supprimer le calendrier</string>
     <string name="delete_calendar_confirm">Voulez-vous vraiment supprimer ce calendrier ? Cela supprimera tous les événements de ce calendrier.</string>
-    <string name="delete_calendar_name_confirm">Voulez-vous vraiment supprimer « &lt;xliff:g id=\"calendar_name\" example=\"Travail\"&gt;%1$s&lt;/xliff:g&gt; » ? Tous les événements de ce calendrier seront supprimés.</string>
+    <string name="delete_calendar_name_confirm">Voulez-vous vraiment supprimer « &lt;xliff:g id=\"calendar_name\" example=\"Travail\"&gt;%1$s&lt;/xliff:g&gt; » ? Tous les événements de ce calendrier seront supprimés.</string>
     <string name="rename_calendar">Renommer le calendrier</string>
     <string name="new_name">Nouveau nom</string>
     <string name="create_a_calendar">Créer un calendrier</string>
@@ -52,7 +52,7 @@
     <string name="default_layout">Affichage par défaut</string>
     <string name="open_location_in_navigation">Ouvrir l\'emplacement</string>
     <string name="add_reminder">Définir un rappel</string>
-    <string name="calendar_widget_description">Aperçu des événements à venir ― tapoter pour ouvrir le calendrier</string>
+    <string name="calendar_widget_description">Aperçu des événements à venir – appuyez pour ouvrir Calendrier</string>
     <string name="month_option_day_of_month">Le &lt;xliff:g id=\"day\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; du mois</string>
     <string name="month_option_last_weekday">Le dernier &lt;xliff:g id=\"weekday\" example=\"vendredi\"&gt;%1$s&lt;/xliff:g&gt; du mois</string>
     <string name="year_option_week">Le &lt;xliff:g id=\"weekday\" example=\"lundi\"&gt;%2$s&lt;/xliff:g&gt; de la semaine &lt;xliff:g id=\"week_num\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt; de l’année</string>
@@ -66,9 +66,9 @@
     <string name="create_new_calendar_option">Créer un nouveau calendrier</string>
     <string name="no_events_found">Aucun événement trouvé</string>
     <plurals name="import_summary">
-        <item quantity="one">%1$d événement est prêt à être importé</item>
-        <item quantity="many">%1$d d’événements sont prêts à être importés</item>
-        <item quantity="other">%1$d événements sont prêts à être importés</item>
+        <item quantity="one">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événement prêt à être importé</item>
+        <item quantity="many">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événements prêts à être importés</item>
+        <item quantity="other">&lt;xliff:g id=\"count\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; événements prêts à être importés</item>
     </plurals>
     <plurals name="rrule_every_months">
         <item quantity="one">À intervalles de &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; mois</item>
@@ -120,7 +120,7 @@
     <string name="rrule_until_suffix">, jusqu’au &lt;xliff:g id=\"date\" example=\"31 déc. 2025\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="reminder_at_time_of_event">Au moment de l’événement</string>
     <string name="layout_short_work_week">S5</string>
-    <string name="rrule_on_days">&lt;xliff:g id=\"frequency\" example=\"Hebdomadaire\"&gt;%1$s&lt;/xliff:g&gt; : &lt;xliff:g id=\"days\" example=\"lun., mer.\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="rrule_on_days">&lt;xliff:g id=\"frequency\" example=\"Hebdomadaire\"&gt;%1$s&lt;/xliff:g&gt; : &lt;xliff:g id=\"days\" example=\"lun., mer.\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="layout_short_work_week_summary">S5R</string>
     <string name="layout_month">Mois</string>
     <string name="rrule_daily">Chaque jour</string>
@@ -147,4 +147,8 @@
     <string name="widget_preview_event_2_time">12 h 30 – 13 h 30</string>
     <string name="widget_preview_event_3_title">Revue de conception</string>
     <string name="widget_preview_event_3_time">15 h – 16 h</string>
+    <string name="layout_full_week_compact">Semaine complète compacte</string>
+    <string name="layout_short_full_week_compact">S7C</string>
+    <string name="layout_short_work_week_compact">S5C</string>
+    <string name="layout_work_week_compact">Semaine de travail compacte</string>
 </resources>
