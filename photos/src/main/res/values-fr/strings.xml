@@ -26,9 +26,9 @@
     <string name="model_downloading_description">Le téléchargement du modèle d\'IA est en cours. Cela peut prendre quelques minutes, selon votre connexion.</string>
     <string name="resolution">Résolution : %1$d × %2$d</string>
     <plurals name="people_photo_count">
-        <item quantity="one">%1$d photo</item>
-        <item quantity="many">%1$d de photos</item>
-        <item quantity="other">%1$d photos</item>
+        <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
+        <item quantity="many"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
     </plurals>
     <string name="view_360">Vue à 360°</string>
     <plurals name="people_in_photo">
@@ -165,7 +165,7 @@
     <string name="editor_desc_free_transform">Redimensionner, faire pivoter, incliner ou déformer le calque en faisant glisser ses coins, ou le retourner.</string>
     <string name="show_mask">Afficher le masque</string>
     <string name="tool_filters">Filtres</string>
-    <string name="recent">Récentes</string>
+    <string name="recent">Récents</string>
     <string name="editor_desc_filter_fx">Appliquer un filtre photo directement aux pixels.</string>
     <string name="brush_size">Taille du pinceau</string>
     <string name="tool_selective_color">Couleur sélective</string>
@@ -236,4 +236,5 @@
     <string name="wallpaper_load_failed">Impossible de charger l’image</string>
     <string name="file_size">Taille : <xliff:g id="size" example="2,5 Mo">%1$s</xliff:g></string>
     <string name="edit_with_label">Modifier avec My App</string>
+    <string name="editor_desc_none">" "</string>
 </resources>
