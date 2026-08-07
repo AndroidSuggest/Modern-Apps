@@ -21,4 +21,12 @@
     <string name="competitive_time_limit">%1$d secondi per livello</string>
     <string name="competitive_solved">Risolto! +%1$d punti</string>
     <string name="competitive_timed_out">Tempo scaduto! %1$d punti</string>
+    <string name="cd_hint"></string>
+    <string name="cd_shuffle"></string>
+    <string name="cd_submit"></string>
+    <string name="cd_backspace"></string>
+    <string name="daily_challenge"></string>
+    <string name="mode_daily"></string>
+    <string name="daily_come_back_tomorrow"></string>
+    <string name="daily_streak"></string>
 </resources>
