@@ -97,8 +97,6 @@
     <string name="from">Da <xliff:g id="account" example="me@example.com">%1$s</xliff:g></string>
     <string name="to_1">A <xliff:g id="recipient" example="bob@example.com">%1$s</xliff:g></string>
     <plurals name="retrying_pending_messages">
-        <item quantity="one">Nuovo tentativo per <xliff:g id="count" example="1">%1$s</xliff:g> messaggio in attesa…</item>
-        <item quantity="many">Nuovo tentativo per <xliff:g id="count" example="1000000">%1$s</xliff:g> di messaggi in attesa…</item>
         <item quantity="other">Nuovo tentativo per <xliff:g id="count" example="3">%1$s</xliff:g> messaggi in attesa…</item>
     </plurals>
     <string name="unblock">Sblocca</string>
@@ -114,8 +112,6 @@
     <string name="unsubscribing">Disiscrizione…</string>
     <string name="failed">Fallito: <xliff:g id="error" example="Auth error">%1$s</xliff:g></string>
     <plurals name="attempts">
-        <item quantity="one"><xliff:g id="count" example="1">%1$s</xliff:g> tentativo</item>
-        <item quantity="many"><xliff:g id="count" example="1000000">%1$s</xliff:g> di tentativi</item>
         <item quantity="other"><xliff:g id="count" example="2">%1$s</xliff:g> tentativi</item>
     </plurals>
     <string name="cd_insert_image">Inserisci immagine</string>
@@ -137,4 +133,19 @@
     <string name="serif">Graziato</string>
     <string name="font_default">Predefinito</string>
     <string name="alignment">Allineamento</string>
+    <string name="text_color"></string>
+    <string name="font_size"></string>
+    <string name="load_remote_images"></string>
+    <string name="oauth_sign_in"></string>
+    <string name="load_remote_images_summary"></string>
+    <string name="highlight"></string>
+    <string name="email_address_optional"></string>
+    <string name="unified_inbox_label"></string>
+    <string name="clear_formatting"></string>
+    <string name="email_sync_channel_desc"></string>
+    <string name="horizontal_rule"></string>
+    <string name="email_sync_channel_name"></string>
+    <string name="reading"></string>
+    <string name="use_app_password_instead"></string>
+    <string name="font_family"></string>
 </resources>
