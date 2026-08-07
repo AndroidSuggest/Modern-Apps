@@ -26,7 +26,6 @@ import com.vayunmathur.library.ui.IconArrowForward
 import com.vayunmathur.library.ui.IconBackspace
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconEmoji
-import com.vayunmathur.library.ui.IconLanguage
 import com.vayunmathur.library.ui.IconPaste
 import com.vayunmathur.library.ui.IconReturn
 import com.vayunmathur.library.ui.IconSearch
@@ -450,10 +449,6 @@ private fun BottomRow(
         SpecialKey(keyHeight, 1f, onClick = { actions.setPage(KeyboardPage.EMOJI) }) { IconEmoji() }
         if (state.settings.clipboardEnabled) {
             SpecialKey(keyHeight, 1f, onClick = { actions.setPage(KeyboardPage.CLIPBOARD) }) { IconPaste() }
-        }
-        // The globe earns its place on the row only once there is somewhere to switch to.
-        if (state.settings.layouts.size > 1) {
-            SpecialKey(keyHeight, 1f, onClick = actions::switchKeyboard) { IconLanguage() }
         }
         CharKey(
             label = commaChar,

@@ -9,10 +9,7 @@
     <string name="theme">Theme</string>
     <string name="follows_the_system_light_dark_theme_and">Follows the system light/dark theme and Material You colors</string>
     <string name="try_the_keyboard_here">Try the keyboard here</string>
-    <string name="languages_and_layouts">Languages &amp; layouts</string>
-    <string name="add_a_language_or_layout">Add a language or layout</string>
-    <string name="tap_the_globe_key_on_the_keyboard_to">Tap the globe key on the keyboard to switch between them</string>
-    <string name="search_languages">Search languages</string>
+    <string name="keyboard_languages">Keyboard languages</string>
     <string name="available_for_english_layouts_only">Available for English layouts only</string>
     <string name="search_emoji">Search emoji</string>
     <string name="emoji_you_use_show_up_here">Emoji you use show up here</string>

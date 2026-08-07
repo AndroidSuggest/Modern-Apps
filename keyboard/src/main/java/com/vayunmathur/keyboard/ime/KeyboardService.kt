@@ -4,6 +4,7 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
 import android.media.AudioManager
+import android.os.Build
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -39,6 +40,7 @@ import com.vayunmathur.keyboard.util.ClipboardStore
 import com.vayunmathur.keyboard.util.ComposerKind
 import com.vayunmathur.keyboard.util.Dictionary
 import com.vayunmathur.keyboard.util.EmojiData
+import com.vayunmathur.keyboard.util.KeyboardLayouts
 import com.vayunmathur.keyboard.util.KeyboardPage
 import com.vayunmathur.keyboard.util.KeyboardSettings
 import com.vayunmathur.keyboard.util.PinyinDictionary
@@ -119,7 +121,7 @@ class KeyboardService : InputMethodService(),
     /** This IME's id in the framework, resolved once from [InputMethodManager.getInputMethodList]. */
     private var imeId: String? = null
 
-    /** Layout id -> the framework subtype registered for it, for [switchKeyboard]/lookup. */
+    /** Layout id -> the framework subtype registered for it, for subtype lookup. */
     private var subtypeByLayoutId: Map<String, InputMethodSubtype> = emptyMap()
 
     override fun onCreate() {
@@ -168,12 +170,6 @@ class KeyboardService : InputMethodService(),
             ds.stringFlow(keys.CLIPS).collectLatest { if (it.isBlank()) forgetClips() }
         }
         scope.launch { ds.doubleFlow(keys.KEY_HEIGHT).collectLatest { update { copy(keyHeightScale = it.toFloat()) } } }
-        scope.launch {
-            ds.stringFlow(keys.LAYOUTS).collectLatest {
-                update { copy(layoutIds = KeyboardSettings.decodeLayouts(it)) }
-                registerLayoutSubtypes()
-            }
-        }
         scope.launch {
             ds.stringFlow(keys.ACTIVE_LAYOUT).collectLatest {
                 update { copy(activeLayoutId = it) }
@@ -617,10 +613,18 @@ class KeyboardService : InputMethodService(),
     }
 
     /**
-     * Mirror the app's enabled layouts into the framework as additional input-method
-     * subtypes, one per layout, so the system switch key and other IMEs know about each
-     * keyboard. The layout id rides along in the subtype's extra value so
-     * [onCurrentInputMethodSubtypeChanged] can map a framework switch back to a layout.
+     * Register the whole layout catalog with the framework as additional input-method
+     * subtypes, so the user enables the ones they want in Android's own "Languages" screen
+     * and switches between them with the system globe. The layout id rides along in the
+     * subtype's extra value so [onCurrentInputMethodSubtypeChanged] can map a framework
+     * switch back to a layout.
+     *
+     * Several layouts can share a language (English alone has QWERTY, Dvorak, Colemak…), so
+     * each subtype needs a distinct name to be tellable apart in the enabler. Naming a
+     * subtype requires [InputMethodSubtypeBuilder.setSubtypeNameOverride], added in API 34;
+     * below that the extra same-language variants are not registered at all (rather than
+     * showing several indistinguishable "English" entries), so each language appears once
+     * via its primary variant.
      */
     private fun registerLayoutSubtypes() {
         val imm = getSystemService(InputMethodManager::class.java) ?: return
@@ -628,16 +632,25 @@ class KeyboardService : InputMethodService(),
             .firstOrNull { it.packageName == packageName }?.id
         if (id == null) return
         imeId = id
+        val nameable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        val layouts = if (nameable) {
+            KeyboardLayouts.ALL
+        } else {
+            // One layout per language code (first = primary variant, e.g. en_qwerty, tr_q).
+            KeyboardLayouts.ALL.groupBy { it.id.substringBefore('_') }.map { it.value.first() }
+        }
         val map = LinkedHashMap<String, InputMethodSubtype>()
-        for (layout in kbState.settings.layouts) {
-            val subtype = InputMethodSubtypeBuilder()
+        for (layout in layouts) {
+            val builder = InputMethodSubtypeBuilder()
                 .setSubtypeMode("keyboard")
                 .setLanguageTag(layout.id.substringBefore('_'))
                 .setSubtypeExtraValue("layoutId=${layout.id}")
                 .setSubtypeId(layout.id.hashCode())
                 .setSubtypeNameResId(0)
-                .build()
-            map[layout.id] = subtype
+            if (nameable) {
+                builder.setSubtypeNameOverride(layout.description)
+            }
+            map[layout.id] = builder.build()
         }
         subtypeByLayoutId = map
         imm.setAdditionalInputMethodSubtypes(id, map.values.toTypedArray())
@@ -652,7 +665,7 @@ class KeyboardService : InputMethodService(),
             ?.substringAfter('=')
         if (fromExtra != null && subtypeByLayoutId.containsKey(fromExtra)) return fromExtra
         val tag = subtype.languageTag
-        return kbState.settings.layouts.firstOrNull {
+        return KeyboardLayouts.ALL.firstOrNull {
             it.id.substringBefore('_') == tag
         }?.id
     }
@@ -679,31 +692,6 @@ class KeyboardService : InputMethodService(),
         syncComposer()
         scope.launch { ds.setString(KeyboardSettings.Keys.ACTIVE_LAYOUT, id) }
         updateAutoCapShift()
-    }
-
-    /**
-     * The globe/switch key (shown only when more than one keyboard is enabled): advance to
-     * the next enabled layout via its framework subtype, and once past the last one hand off
-     * to the next keyboard app.
-     */
-    override fun switchKeyboard() {
-        feedback()
-        val ids = kbState.settings.layouts.map { it.id }
-        val index = ids.indexOf(kbState.settings.activeLayout.id)
-        val id = imeId
-        val nextSubtype = ids.getOrNull(index + 1)?.let { subtypeByLayoutId[it] }
-        if (id != null && nextSubtype != null) {
-            switchInputMethod(id, nextSubtype)
-        } else {
-            switchToNextIme()
-        }
-    }
-
-    private fun switchToNextIme() {
-        val switched = switchToNextInputMethod(false)
-        if (!switched) {
-            getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
-        }
     }
 
     // --- Clipboard ---

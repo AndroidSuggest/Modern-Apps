@@ -166,20 +166,11 @@ class KeyboardLayoutTest {
     }
 
     @Test
-    fun `settings resolve layouts and fall back when ids go missing`() {
-        val settings = KeyboardSettings(layoutIds = listOf("ru", "nonsense"), activeLayoutId = "nonsense")
-        assertEquals(listOf("ru"), settings.layouts.map { it.id })
-        assertEquals("ru", settings.activeLayout.id)
-
-        val empty = KeyboardSettings(layoutIds = emptyList(), activeLayoutId = "gone")
-        assertEquals(KeyboardLayouts.DEFAULT.id, empty.activeLayout.id)
-    }
-
-    @Test
-    fun `layout ids round-trip through settings storage`() {
-        val ids = listOf("en_qwerty", "ru", "el")
-        assertEquals(ids, KeyboardSettings.decodeLayouts(KeyboardSettings.encodeLayouts(ids)))
-        assertEquals(listOf(KeyboardLayouts.DEFAULT.id), KeyboardSettings.decodeLayouts(null))
-        assertEquals(listOf(KeyboardLayouts.DEFAULT.id), KeyboardSettings.decodeLayouts(""))
+    fun `active layout resolves from the catalog and falls back for unknown ids`() {
+        assertEquals("ru", KeyboardSettings(activeLayoutId = "ru").activeLayout.id)
+        assertEquals(
+            KeyboardLayouts.DEFAULT.id,
+            KeyboardSettings(activeLayoutId = "nonsense").activeLayout.id,
+        )
     }
 }
