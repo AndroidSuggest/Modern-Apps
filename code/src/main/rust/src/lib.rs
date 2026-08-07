@@ -6,56 +6,56 @@
 //! The capture-kind ordinals are aligned with the Kotlin `TsKind` enum:
 //! `0 keyword, 1 string, 2 number, 3 comment, 4 annotation, 5 function, 6 type, 7 property`.
 //!
-//! Targets the tree-sitter 0.22 API (`LanguageFn`, streaming query iterators). Byte offsets are
-//! returned as-is; they line up with Kotlin string indices for ASCII/BMP text (the common case for
-//! source code) — full UTF-16 mapping for astral characters is a documented v1 limitation.
+//! Targets the tree-sitter 0.22 API. Byte offsets are returned as-is; they line up with Kotlin
+//! string indices for ASCII/BMP text (the common case for source code) — full UTF-16 mapping for
+//! astral characters is a documented v1 limitation.
 
 use jni::objects::{JClass, JString};
 use jni::sys::jintArray;
 use jni::JNIEnv;
-use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 /// Resolves a language id (see `TreeSitterNative.languageIdFor`) to its grammar + highlights query.
 fn grammar(id: &str) -> Option<(Language, &'static str)> {
     let entry: (Language, &'static str) = match id {
         "kotlin" => (
-            tree_sitter_kotlin::LANGUAGE.into(),
+            tree_sitter_kotlin::language(),
             tree_sitter_kotlin::HIGHLIGHTS_QUERY,
         ),
         "java" => (
-            tree_sitter_java::LANGUAGE.into(),
+            tree_sitter_java::language(),
             tree_sitter_java::HIGHLIGHTS_QUERY,
         ),
         "javascript" => (
-            tree_sitter_javascript::LANGUAGE.into(),
+            tree_sitter_javascript::language(),
             tree_sitter_javascript::HIGHLIGHT_QUERY,
         ),
         "typescript" => (
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            tree_sitter_typescript::language_typescript(),
             tree_sitter_typescript::HIGHLIGHTS_QUERY,
         ),
         "python" => (
-            tree_sitter_python::LANGUAGE.into(),
+            tree_sitter_python::language(),
             tree_sitter_python::HIGHLIGHTS_QUERY,
         ),
         "rust" => (
-            tree_sitter_rust::LANGUAGE.into(),
+            tree_sitter_rust::language(),
             tree_sitter_rust::HIGHLIGHTS_QUERY,
         ),
         "go" => (
-            tree_sitter_go::LANGUAGE.into(),
+            tree_sitter_go::language(),
             tree_sitter_go::HIGHLIGHTS_QUERY,
         ),
         "json" => (
-            tree_sitter_json::LANGUAGE.into(),
+            tree_sitter_json::language(),
             tree_sitter_json::HIGHLIGHTS_QUERY,
         ),
         "c" => (
-            tree_sitter_c::LANGUAGE.into(),
+            tree_sitter_c::language(),
             tree_sitter_c::HIGHLIGHT_QUERY,
         ),
         "cpp" => (
-            tree_sitter_cpp::LANGUAGE.into(),
+            tree_sitter_cpp::language(),
             tree_sitter_cpp::HIGHLIGHT_QUERY,
         ),
         _ => return None,
@@ -124,8 +124,7 @@ pub extern "system" fn Java_com_vayunmathur_code_util_TreeSitterNative_highlight
     let mut cursor = QueryCursor::new();
     let mut out: Vec<i32> = Vec::new();
 
-    let mut matches = cursor.matches(&query, tree.root_node(), bytes);
-    while let Some(m) = matches.next() {
+    for m in cursor.matches(&query, tree.root_node(), bytes) {
         for cap in m.captures {
             let name = names[cap.index as usize];
             let kind = kind_for(name);

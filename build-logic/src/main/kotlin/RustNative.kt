@@ -69,7 +69,12 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
             description = "Cross-compiles lib$crate for $abiDir."
             workingDir = file("src/main/rust")
 
-            val clang = "$ndkBin/$triple$androidApiLevel-clang"
+            // Windows hosts use the .cmd clang wrappers and .exe tool suffixes; Unix hosts none.
+            val isWindows = OperatingSystem.current().isWindows
+            val exeExt = if (isWindows) ".exe" else ""
+            val clangExt = if (isWindows) ".cmd" else ""
+            val clang = "$ndkBin/$triple$androidApiLevel-clang$clangExt"
+            val clangpp = "$ndkBin/$triple$androidApiLevel-clang++$clangExt"
             val linkerVar = "CARGO_TARGET_${triple.uppercase().replace('-', '_')}_LINKER"
             // Per-crate target (may exist from older isolated builds) and workspace root target
             // (current scheme since Cargo.toml workspace unified to root).
@@ -94,17 +99,20 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
             val cargoHome = System.getenv("CARGO_HOME") ?: "${System.getProperty("user.home")}/.cargo"
             val rustSrc = file("src/main/rust").absolutePath
 
-            environment("PATH", "$cargoBin:${System.getenv("PATH")}")
+            val pathSep = if (isWindows) ";" else ":"
+            environment("PATH", "$cargoBin$pathSep${System.getenv("PATH")}")
             // A non-rustup rustc earlier on PATH (e.g. Homebrew's) has no
             // aarch64-linux-android std, so cargo fails with "can't find crate for core".
             // Pin the rustup shim explicitly.
-            environment("RUSTC", "$cargoBin/rustc")
+            environment("RUSTC", "$cargoBin/rustc$exeExt")
             // The per-API NDK clang wrapper bakes in --target and the sysroot.
             environment("CC", clang)
-            environment("AR", "$ndkBin/llvm-ar")
+            environment("CXX", clangpp)
+            environment("AR", "$ndkBin/llvm-ar$exeExt")
             environment("SYSROOT", ndkSysroot)
             environment(linkerVar, clang)
-            environment("HOST_CC", "/usr/bin/clang")
+            // Force the system clang for host-side C on Unix; on Windows let cc locate MinGW gcc.
+            if (!isWindows) environment("HOST_CC", "/usr/bin/clang")
             // Pre-generated bindings (armv8-only): weather's om-file-format-sys no longer uses bindgen
             // (bindings_android.rs/host checked in), so BINDGEN_EXTRA_CLANG_ARGS is no longer needed for build.
             // Kept as comment for documentation if future C sys crates added.
@@ -126,7 +134,7 @@ fun Project.rustNativeLib(crate: String, remapLabel: String = crate) {
             }
             environment("CARGO_INCREMENTAL", "0")
 
-            commandLine("$cargoBin/cargo", "build", "--locked", "--release", "--target", triple)
+            commandLine("$cargoBin/cargo$exeExt", "build", "--locked", "--release", "--target", triple)
 
             doLast {
                 destSo.parentFile.mkdirs()
