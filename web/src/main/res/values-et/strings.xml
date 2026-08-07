@@ -71,17 +71,4 @@
     <string name="engine">Renderdusmootor: %1$s</string>
     <string name="wants_to_know_your_location">%1$s soovib teada sinu asukohta.</string>
     <string name="share_link">Jaga linki</string>
-    <string name="clear_browsing_data_2"></string>
-    <string name="clears_cookies_cache_storage_history_dow"></string>
-    <string name="accepted"></string>
-    <string name="your_choice_is_saved_per_site_change_it"></string>
-    <string name="shortcuts_launch_pwaactivity_standalone"></string>
-    <plurals name="pwas">
-    </plurals>
-    <string name="about"></string>
-    <string name="open_a_site_and_tap_menu_install_app_add"></string>
-    <string name="blank_new_tab_tap_the_address_pill_to_se"></string>
-    <string name="bookmarks_inside_will_also_be_deleted"></string>
-    <string name="no_site_data_yet_cookies_localstorage_in"></string>
-    <string name="allow_to_access"></string>
 </resources>
