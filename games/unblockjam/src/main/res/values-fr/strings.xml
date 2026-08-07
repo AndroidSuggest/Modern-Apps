@@ -9,4 +9,6 @@
     <string name="completed">Terminé</string>
     <string name="pack_selector">Sélection de packs</string>
     <string name="app_name">Débloquer Jam</string>
+    <string name="daily_challenge"></string>
+    <string name="daily_streak"></string>
 </resources>
