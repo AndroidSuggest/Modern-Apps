@@ -14,6 +14,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -937,7 +939,11 @@ fun DefinitionDialog(word: String, definition: List<String>, onDismiss: () -> Un
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = word.replaceFirstChar { it.uppercase() }) },
-        text = { Text(text = definition.joinToString("\n\n")) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(text = definition.joinToString("\n\n"))
+            }
+        },
         confirmButton = {
             Button(onClick = onDismiss) {
                 Text(stringResource(UiR.string.close))
