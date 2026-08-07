@@ -154,8 +154,4 @@
         <item quantity="many">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
         <item quantity="other">, <xliff:g id="count" example="1">%1$d</xliff:g> time</item>
     </plurals>
-    <string name="layout_full_week_compact"></string>
-    <string name="layout_short_full_week_compact"></string>
-    <string name="layout_short_work_week_compact"></string>
-    <string name="layout_work_week_compact"></string>
 </resources>
