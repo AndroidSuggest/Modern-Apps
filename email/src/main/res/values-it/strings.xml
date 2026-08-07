@@ -133,19 +133,4 @@
     <string name="serif">Graziato</string>
     <string name="font_default">Predefinito</string>
     <string name="alignment">Allineamento</string>
-    <string name="text_color"></string>
-    <string name="font_size"></string>
-    <string name="load_remote_images"></string>
-    <string name="oauth_sign_in"></string>
-    <string name="load_remote_images_summary"></string>
-    <string name="highlight"></string>
-    <string name="email_address_optional"></string>
-    <string name="unified_inbox_label"></string>
-    <string name="clear_formatting"></string>
-    <string name="email_sync_channel_desc"></string>
-    <string name="horizontal_rule"></string>
-    <string name="email_sync_channel_name"></string>
-    <string name="reading"></string>
-    <string name="use_app_password_instead"></string>
-    <string name="font_family"></string>
 </resources>
