@@ -31,7 +31,7 @@
     <string name="password_required">Mot de passe requis</string>
     <string name="green">Vert</string>
     <string name="red">Rouge</string>
-    <string name="outline">Contour</string>
+    <string name="outline">Plan</string>
     <string name="open">Ouvrir</string>
     <string name="append_pdf">Ajouter un PDF à la suite</string>
     <string name="append_image">Ajouter une image à la suite</string>
