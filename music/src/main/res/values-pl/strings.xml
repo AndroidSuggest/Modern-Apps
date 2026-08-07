@@ -36,6 +36,4 @@
     <string name="dialog_create_playlist">Utwórz listę odtwarzania</string>
     <string name="dialog_create">Utwórz</string>
     <string name="playlist_name_hint">Nazwa listy odtwarzania</string>
-    <plurals name="num_songs_format">
-    </plurals>
 </resources>
