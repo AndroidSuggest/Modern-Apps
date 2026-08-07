@@ -53,4 +53,12 @@
     <string name="sync_save"></string>
     <string name="sync_vault_password_set"></string>
     <string name="sync_cancel"></string>
+    <string name="passkey_last_used">Viimati kasutatud</string>
+    <string name="passkey_rp_name">Edastav osapool</string>
+    <string name="passkey_rp_id">Edastava osapoole tunnus (ID)</string>
+    <string name="passkey_user_name">Kasutajanimi</string>
+    <string name="passkey_user_display_name">Kuvatav nimi</string>
+    <string name="title_settings">Seadistused</string>
+    <string name="passkey_credential_id">Tuvastuskirje tunnus (ID)</string>
+    <string name="passkey_created">Loodud</string>
 </resources>
