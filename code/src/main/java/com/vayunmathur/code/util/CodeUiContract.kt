@@ -31,6 +31,8 @@ data class TabUiState(
     val charsetName: String = "UTF-8",
     /** Line-ending name shown in the status area ("LF" or "CRLF"). */
     val lineEndingName: String = "LF",
+    /** Fold header lines (0-based) currently collapsed; only the experimental editor draws folds. */
+    val foldedHeaders: Set<Int> = emptySet(),
 )
 
 /** One row of the flat, lazily-expanded file tree. */
@@ -171,6 +173,17 @@ interface CodeActions {
 
     /** Move the caret to the start of [line] (1-based). */
     fun goToLine(line: Int) {}
+
+    // ---- Folding (experimental editor) ----
+
+    /** Toggle the fold at [headerLine] (0-based) in the active tab. */
+    fun toggleFold(headerLine: Int) {}
+
+    /** Collapse every foldable region in the active tab. */
+    fun foldAllInTab() {}
+
+    /** Expand every folded region in the active tab. */
+    fun unfoldAll() {}
 
     fun replaceRange(range: IntRange, replacement: String) {}
     fun replaceAll(matches: List<IntRange>, replacement: String) {}

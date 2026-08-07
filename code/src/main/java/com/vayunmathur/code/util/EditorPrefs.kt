@@ -66,6 +66,10 @@ class EditorPrefs(context: Context) {
     val userSnippets: Flow<List<UserSnippet>> =
         appContext.editorDataStore.data.map { decodeSnippets(it[USER_SNIPPETS_KEY]) }
 
+    /** Per-file collapsed fold headers, keyed by absolute file path. */
+    val foldState: Flow<Map<String, List<Int>>> =
+        appContext.editorDataStore.data.map { decodeFoldState(it[FOLD_STATE_KEY]) }
+
     // Git remote credentials + author. DataStore is not encrypted; acceptable for F-Droid/local.
     val gitUsername: Flow<String> = appContext.editorDataStore.data.map { it[GIT_USERNAME_KEY] ?: "" }
     val gitToken: Flow<String> = appContext.editorDataStore.data.map { it[GIT_TOKEN_KEY] ?: "" }
@@ -192,6 +196,34 @@ class EditorPrefs(context: Context) {
         }.getOrDefault(emptyList())
     }
 
+    /** Persists the per-file fold state as JSON; clears the key when empty. */
+    suspend fun setFoldState(state: Map<String, List<Int>>) {
+        appContext.editorDataStore.edit { prefs ->
+            val nonEmpty = state.filterValues { it.isNotEmpty() }
+            if (nonEmpty.isEmpty()) prefs.remove(FOLD_STATE_KEY)
+            else prefs[FOLD_STATE_KEY] = encodeFoldState(nonEmpty)
+        }
+    }
+
+    private fun encodeFoldState(state: Map<String, List<Int>>): String {
+        val obj = JSONObject()
+        for ((path, lines) in state) obj.put(path, JSONArray(lines))
+        return obj.toString()
+    }
+
+    private fun decodeFoldState(raw: String?): Map<String, List<Int>> {
+        if (raw.isNullOrEmpty()) return emptyMap()
+        return runCatching {
+            val obj = JSONObject(raw)
+            buildMap {
+                for (key in obj.keys()) {
+                    val arr = obj.getJSONArray(key)
+                    put(key, (0 until arr.length()).map { arr.getInt(it) })
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
     suspend fun setGitToken(value: String) {
         appContext.editorDataStore.edit { it[GIT_TOKEN_KEY] = value }
     }
@@ -230,6 +262,7 @@ class EditorPrefs(context: Context) {
         private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")
         private val RECENT_FILES_KEY = stringPreferencesKey("recent_files")
         private val USER_SNIPPETS_KEY = stringPreferencesKey("user_snippets")
+        private val FOLD_STATE_KEY = stringPreferencesKey("fold_state")
         private val GIT_USERNAME_KEY = stringPreferencesKey("git_username")
         private val GIT_TOKEN_KEY = stringPreferencesKey("git_token")
         private val GIT_AUTHOR_NAME_KEY = stringPreferencesKey("git_author_name")

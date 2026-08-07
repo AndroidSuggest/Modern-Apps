@@ -52,6 +52,9 @@ class OpenTab(
     var language by mutableStateOf(language)
     var value by mutableStateOf(TextFieldValue(initialText))
     var savedText by mutableStateOf(initialText)
+
+    /** Fold header lines currently collapsed in this tab (persisted per file path). */
+    var foldedHeaders by mutableStateOf<Set<Int>>(emptySet())
     var canUndo by mutableStateOf(false)
         private set
     var canRedo by mutableStateOf(false)
@@ -190,6 +193,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     // ---- User snippets ----
     val userSnippets = mutableStateListOf<UserSnippet>()
 
+    /** Persisted per-file collapsed fold headers (absolute path -> header lines). */
+    private val foldStateByPath = HashMap<String, Set<Int>>()
+
     // ---- Git ----
     var gitIsRepo by mutableStateOf(false)
         private set
@@ -240,6 +246,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                     changedOnDisk = it.changedOnDisk,
                     charsetName = it.charset.name(),
                     lineEndingName = it.lineEnding.name,
+                    foldedHeaders = it.foldedHeaders,
                 )
             },
             currentIndex = currentIndex,
@@ -293,6 +300,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _gitAuthorEmail.value = prefs.gitAuthorEmail.first() }
         viewModelScope.launch { recentPaths.addAll(prefs.recentFiles.first()) }
         viewModelScope.launch { userSnippets.addAll(prefs.userSnippets.first()) }
+        viewModelScope.launch {
+            prefs.foldState.first().forEach { (path, lines) -> foldStateByPath[path] = lines.toSet() }
+            // Apply to any tabs already restored before the fold state finished loading.
+            for (tab in tabs) {
+                val path = tab.file?.absolutePath ?: continue
+                foldStateByPath[path]?.let { tab.foldedHeaders = it }
+            }
+        }
         viewModelScope.launch {
             val stored = prefs.folderPath.first() ?: return@launch
             val dir = File(stored)
@@ -582,6 +597,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             hadBom = loaded.decoded.hadBom
             diskModified = loaded.modified
             diskLength = loaded.length
+            foldStateByPath[file.absolutePath]?.let { foldedHeaders = it }
         }
     }
 
@@ -963,6 +979,36 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     override fun setSelection(range: TextRange) {
         val tab = currentTab ?: return
         tab.value = tab.value.copy(selection = range)
+    }
+
+    // ---- Folding (experimental editor) ----
+
+    override fun toggleFold(headerLine: Int) {
+        val tab = currentTab ?: return
+        tab.foldedHeaders =
+            if (headerLine in tab.foldedHeaders) tab.foldedHeaders - headerLine
+            else tab.foldedHeaders + headerLine
+        persistFoldState(tab)
+    }
+
+    override fun foldAllInTab() {
+        val tab = currentTab ?: return
+        tab.foldedHeaders = computeFoldRegions(tab.value.text).map { it.startLine }.toSet()
+        persistFoldState(tab)
+    }
+
+    override fun unfoldAll() {
+        val tab = currentTab ?: return
+        tab.foldedHeaders = emptySet()
+        persistFoldState(tab)
+    }
+
+    /** Records [tab]'s fold headers in the per-path store and persists it (file-backed tabs only). */
+    private fun persistFoldState(tab: OpenTab) {
+        val path = tab.file?.absolutePath ?: return
+        if (tab.foldedHeaders.isEmpty()) foldStateByPath.remove(path)
+        else foldStateByPath[path] = tab.foldedHeaders
+        viewModelScope.launch { prefs.setFoldState(foldStateByPath.mapValues { it.value.toList() }) }
     }
 
     override fun undo() {

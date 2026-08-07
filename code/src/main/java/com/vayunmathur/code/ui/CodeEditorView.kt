@@ -112,8 +112,8 @@ fun CodeEditorView(
     val longestLine = remember(text) { lines.maxOfOrNull { it.length } ?: 0 }
     val gutterWidth = with(density) { ((lines.size.toString().length * 10) + 28).dp.toPx() }
 
-    // Folding state, reset per file.
-    var foldedHeaders by remember(tab.name) { mutableStateOf(setOf<Int>()) }
+    // Folding state lives on the tab (persisted per file); multi-cursor is view-local.
+    val foldedHeaders = tab.foldedHeaders
     var extraCarets by remember(tab.name) { mutableStateOf(listOf<Int>()) }
 
     val foldByHeader = remember(text) { computeFoldRegions(text).associateBy { it.startLine } }
@@ -163,11 +163,6 @@ fun CodeEditorView(
         return (lineStarts[source] + col).coerceIn(0, text.length)
     }
 
-    fun toggleFoldAt(source: Int) {
-        if (!foldByHeader.containsKey(source)) return
-        foldedHeaders = if (source in foldedHeaders) foldedHeaders - source else foldedHeaders + source
-    }
-
     val editorCanvas: @Composable (Modifier) -> Unit = { canvasModifier ->
         Canvas(
             canvasModifier
@@ -179,7 +174,7 @@ fun CodeEditorView(
                         val row = ((pos.y + scrollY) / lineHeight).toInt()
                         val source = displayRowToSource(row)
                         if (pos.x < gutterWidth && source != null && foldByHeader.containsKey(source)) {
-                            toggleFoldAt(source)
+                            actions.toggleFold(source)
                         } else {
                             actions.setSelection(TextRange(offsetAt(pos.x, pos.y)))
                             extraCarets = emptyList()
@@ -200,15 +195,15 @@ fun CodeEditorView(
                         move = { actions.setSelection(it) },
                         onSave = { actions.save() },
                         onComment = { actions.toggleComment() },
-                        foldAll = { foldedHeaders = foldByHeader.keys.toSet() },
-                        unfoldAll = { foldedHeaders = emptySet() },
+                        foldAll = { actions.foldAllInTab() },
+                        unfoldAll = { actions.unfoldAll() },
                         toggleFoldAtCaret = { caret ->
                             val line = lineOfOffset(lineStarts, caret)
                             val header = foldByHeader.keys.filter { h ->
                                 val r = foldByHeader[h]!!
                                 line in r.startLine..r.endLine
                             }.maxOrNull()
-                            if (header != null) toggleFoldAt(header)
+                            if (header != null) actions.toggleFold(header)
                         },
                     )
                 },
