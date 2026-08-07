@@ -23,6 +23,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -179,7 +180,7 @@ private fun PwaBrowser(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
@@ -259,13 +260,10 @@ private fun PwaBrowser(
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val scheme = request.url.scheme ?: return false
                             if (scheme !in setOf("http", "https", "about", "data", "blob", "javascript")) {
-                                return try {
-                                    val intent = Intent(Intent.ACTION_VIEW, request.url).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    ctx.startActivity(intent)
-                                    true
-                                } catch (_: Exception) { false }
+                                return com.vayunmathur.web.util.openExternalUri(
+                                    ctx,
+                                    request.url.toString(),
+                                ) { fallback -> view.loadUrl(fallback) }
                             }
                             // For PWA: stay inside same origin; external origins still load but that is okay.
                             return super.shouldOverrideUrlLoading(view, request)

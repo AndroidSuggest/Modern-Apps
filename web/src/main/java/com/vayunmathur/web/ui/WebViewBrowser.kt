@@ -177,13 +177,10 @@ fun WebViewBrowser(
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val scheme = request.url.scheme ?: return false
                         if (scheme !in setOf("http", "https", "about", "data", "blob", "javascript")) {
-                            return try {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url).apply {
-                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                ctx.startActivity(intent)
-                                true
-                            } catch (_: Exception) { false }
+                            return com.vayunmathur.web.util.openExternalUri(
+                                ctx,
+                                request.url.toString(),
+                            ) { fallback -> view.loadUrl(fallback) }
                         }
                         return super.shouldOverrideUrlLoading(view, request)
                     }
