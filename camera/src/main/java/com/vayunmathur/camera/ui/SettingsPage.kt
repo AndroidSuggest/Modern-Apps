@@ -5,11 +5,8 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,17 +14,15 @@ import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.Switch
+import com.vayunmathur.library.ui.SettingsSection
+import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -37,13 +32,11 @@ import com.vayunmathur.camera.R
 import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.CodecSupport
 import com.vayunmathur.camera.util.VideoCodec
-import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExposedDropdownMenuAnchorType
 import com.vayunmathur.library.ui.ExposedDropdownMenuBox
 import com.vayunmathur.library.ui.ExposedDropdownMenuDefaults
 import com.vayunmathur.library.ui.OutlinedTextField
-import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 
@@ -70,7 +63,6 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-            .padding(16.dp)
         ) {
             val availableCodecs = remember {
                 buildList {
@@ -80,7 +72,7 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                 }
             }
             if (availableCodecs.size > 1) {
-                SettingsSection(stringResource(R.string.settings_video_codec)) {
+                SettingsSection(title = stringResource(R.string.settings_video_codec)) {
                     var expanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(
                         expanded = expanded,
@@ -93,7 +85,7 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
+                                .padding(horizontal = 16.dp)
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                             label = { Text(stringResource(R.string.settings_video_codec_label)) }
                         )
@@ -124,48 +116,27 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                 }
             }
 
-            SettingsSection(stringResource(R.string.settings_location)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        stringResource(R.string.settings_location_description),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = locationEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled) {
-                                val hasPermission = ContextCompat.checkSelfPermission(
-                                    context, Manifest.permission.ACCESS_FINE_LOCATION
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPermission) {
-                                    viewModel.setLocationEnabled(true)
-                                    viewModel.updateLocation()
-                                } else {
-                                    locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                                }
+            SettingsSection(title = stringResource(R.string.settings_location)) {
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_location_description),
+                    checked = locationEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) {
+                            val hasPermission = ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPermission) {
+                                viewModel.setLocationEnabled(true)
+                                viewModel.updateLocation()
                             } else {
-                                viewModel.setLocationEnabled(false)
+                                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }
+                        } else {
+                            viewModel.setLocationEnabled(false)
                         }
-                    )
-                }
+                    },
+                )
             }
         }
     }
-}
-
-@Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    content()
-    Spacer(modifier = Modifier.height(16.dp))
 }

@@ -19,7 +19,6 @@ import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.openSettingsIfRequested
-import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -74,7 +73,7 @@ class MainActivity : ComponentActivity() {
                                 onCaptureResult = if (captureForResult) ::finishWithCaptureResult else null
                             )
                         }
-                        entry<Route.Settings>(metadata = DialogPage()) {
+                        entry<Route.Settings> {
                             SettingsPage(backStack, viewModel)
                         }
                     }
