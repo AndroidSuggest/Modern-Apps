@@ -86,4 +86,5 @@
     <string name="uwb_status_peer_disconnected">Anderes Gerät verloren. Nähern Sie sich an.</string>
     <string name="uwb_status_unsupported">Find Nearby (UWB) ist auf diesem Gerät nicht unterstützt.</string>
     <string name="uwb_status_failed">Find Nearby (UWB) ist fehlgeschlagen.</string>
+    <string name="share_your_location"></string>
 </resources>
