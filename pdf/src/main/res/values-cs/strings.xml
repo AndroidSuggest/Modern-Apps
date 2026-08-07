@@ -43,4 +43,5 @@
     <string name="line_width">Tloušťka čáry <xliff:g id="width" example="2">%1$s</xliff:g></string>
     <string name="outline">Obsah</string>
     <string name="sign">Podepsat</string>
+    <string name="safe_pdf_not_a_pdf"></string>
 </resources>
