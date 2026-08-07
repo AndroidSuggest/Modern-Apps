@@ -37,4 +37,5 @@
     </plurals>
     <string name="page_title_music"></string>
     <string name="unknown_artist"></string>
+    <string name="nav_home">होम</string>
 </resources>
