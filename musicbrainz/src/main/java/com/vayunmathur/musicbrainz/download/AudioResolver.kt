@@ -16,6 +16,12 @@ data class ResolvedAudio(
     val mimeType: String,
     val bitrate: Int,
     val sourceTitle: String,
+    /**
+     * True when the stream is Opus in a WebM container and has to be remuxed to Ogg/Opus
+     * before it can be tagged and filed as a `.opus`. False for the `.m4a` fallback, which
+     * is already in the container [Mp4Tagger] writes to.
+     */
+    val needsRemux: Boolean = false,
 )
 
 /**
@@ -31,7 +37,15 @@ data class ResolvedAudio(
 object AudioResolver {
 
     private const val SEARCH_RESULTS_CONSIDERED = 8
-    private const val DURATION_TOLERANCE_SECONDS = 12L
+
+    // Two uploads within this many seconds are treated as an equal-length match, so YouTube's
+    // own relevance order breaks the tie rather than an insignificantly closer runtime.
+    private const val MATCH_TOLERANCE_SECONDS = 3L
+
+    // A candidate whose runtime differs from the catalogued length by more than this is taken
+    // to be a different thing - a compilation, an extended mix, a sped-up edit - and dropped,
+    // because synced lyrics timed to the real track would drift audibly against it.
+    private const val MAX_DURATION_DIFF_SECONDS = 15L
 
     /**
      * @param durationMs the MusicBrainz recording length, used to pick between candidates.
@@ -76,26 +90,32 @@ object AudioResolver {
     }
 
     /**
-     * Orders candidates by how close their runtime is to the catalogued one.
+     * Orders candidates by how close their runtime is to the catalogued one, dropping any
+     * that are too far off to be the same recording.
      *
-     * Anything within a few seconds is treated as equally good and left in YouTube's own
+     * Matches within a few seconds are treated as equally good and left in YouTube's own
      * relevance order, which is a better tie-breaker than an arbitrarily closer duration.
+     * Candidates beyond [MAX_DURATION_DIFF_SECONDS] are rejected outright so a compilation or
+     * a sped-up edit is never downloaded; only if nothing qualifies does the closest survive,
+     * so an unusual track still downloads rather than failing.
      */
     private fun rank(candidates: List<StreamInfoItem>, durationMs: Int?): List<StreamInfoItem> {
         if (durationMs == null || durationMs <= 0) return candidates
         val target = durationMs / 1000L
-        return candidates
-            .withIndex()
+        val scored = candidates.withIndex().map { (index, item) ->
+            val duration = item.getDuration()
+            val delta = if (duration > 0) abs(duration - target) else Long.MAX_VALUE
+            Triple(item, delta, index)
+        }
+        val close = scored.filter { it.second <= MAX_DURATION_DIFF_SECONDS }
+        return (if (close.isNotEmpty()) close else scored)
             .sortedWith(
                 compareBy(
-                    { (_, item) ->
-                        val delta = abs(item.getDuration() - target)
-                        if (delta <= DURATION_TOLERANCE_SECONDS) 0L else delta
-                    },
-                    { (index, _) -> index },
+                    { if (it.second <= MATCH_TOLERANCE_SECONDS) 0L else it.second },
+                    { it.third },
                 ),
             )
-            .map { it.value }
+            .map { it.first }
     }
 
     private fun audioFor(videoUrl: String): ResolvedAudio? = try {
@@ -106,11 +126,24 @@ object AudioResolver {
                 it.isUrl() &&
                 it.getContent().isNotBlank()
         }
-        // M4A first: it is an MP4 container, which is the one format the tag writer can
-        // annotate, so preferring it is what lets downloads carry their MusicBrainz IDs.
-        val best = progressive.filter { it.getFormat() == MediaFormat.M4A }
-            .maxByOrNull { it.effectiveBitrate() }
-            ?: progressive.maxByOrNull { it.effectiveBitrate() }
+        // Prefer the highest-bitrate Opus: YouTube's itag 251 Opus (~160 kbps) beats the
+        // best progressive AAC (itag 140, 128 kbps), and remuxing WebM/Opus to Ogg/Opus is
+        // a lossless stream copy. It arrives in a WebM container, so it needs remuxing
+        // before it can be tagged and filed as `.opus`.
+        val opus = progressive.filter { it.isOpus() }.maxByOrNull { it.effectiveBitrate() }
+        if (opus != null) {
+            return ResolvedAudio(
+                url = opus.getContent(),
+                suffix = "opus",
+                mimeType = "audio/ogg",
+                bitrate = opus.effectiveBitrate(),
+                sourceTitle = "",
+                needsRemux = true,
+            )
+        }
+        // Fallback: no Opus stream, so keep the best available and let the `.m4a` tagging
+        // path handle it. Transcoding to Opus would be lossy, so it is deliberately avoided.
+        val best = progressive.maxByOrNull { it.effectiveBitrate() }
         best?.let {
             val format = it.getFormat()
             ResolvedAudio(
@@ -124,6 +157,9 @@ object AudioResolver {
     } catch (_: Exception) {
         null
     }
+
+    private fun AudioStream.isOpus(): Boolean =
+        getFormat() == MediaFormat.OPUS || getFormat() == MediaFormat.WEBMA_OPUS
 
     private fun AudioStream.effectiveBitrate(): Int =
         getAverageBitrate().takeIf { it > 0 } ?: getBitrate()

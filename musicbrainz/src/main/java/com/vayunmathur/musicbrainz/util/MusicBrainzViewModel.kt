@@ -242,6 +242,7 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
                                     summary.disambiguation?.takeIf { it.isNotBlank() },
                                 ).joinToString(" \u00B7 ").ifEmpty { null },
                                 coverUrl = CoverArt.release(summary.id),
+                                fallbackCoverUrl = CoverArt.releaseGroup(id),
                             )
                         },
                 )
@@ -327,7 +328,7 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
             artist = track.artist,
             album = release.title,
             albumArtist = release.artistCredit.display() ?: track.artist,
-            date = release.date,
+            date = release.effectiveDate(),
             trackNumber = track.position,
             trackTotal = medium.trackCount.takeIf { it > 0 },
             discNumber = track.discNumber.takeIf { release.media.size > 1 },
@@ -365,18 +366,27 @@ class MusicBrainzViewModel(application: Application) : AndroidViewModel(applicat
 
     // ------------------------------------------------------------------
 
+    /**
+     * The release's own date, or the release-group's first-release date when the pressing
+     * carries none. Many individual releases have a blank date even though the group has a
+     * year on file, and `release(id)` already includes the group, so this fills the gap.
+     */
+    private fun MbRelease.effectiveDate(): String? =
+        date?.takeIf { it.isNotBlank() } ?: releaseGroup?.firstReleaseDate?.takeIf { it.isNotBlank() }
+
     private fun MbRelease.toUiState() = ReleaseUiState(
         loading = false,
         id = id,
         title = title,
         artist = artistCredit.display().orEmpty(),
         subtitle = listOfNotNull(
-            date?.takeIf { it.isNotBlank() },
+            effectiveDate()?.takeIf { it.isNotBlank() },
             status,
             media.firstOrNull()?.format,
             media.sumOf { it.trackCount }.takeIf { it > 0 }?.let { "$it tracks" },
         ).joinToString(" \u00B7 ").ifEmpty { null },
         coverUrl = CoverArt.release(id),
+        fallbackCoverUrl = releaseGroup?.id?.let { CoverArt.releaseGroup(it) },
         tracks = media.flatMap { medium ->
             medium.tracks.map { track ->
                 TrackRow(
