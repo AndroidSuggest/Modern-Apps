@@ -17,5 +17,4 @@
     <string name="settings_title">Nastavení</string>
     <string name="memories">Vzpomínky</string>
     <string name="no_memories_yet">Zatím žádné vzpomínky.</string>
-    <string name="inference_service_label"></string>
 </resources>
