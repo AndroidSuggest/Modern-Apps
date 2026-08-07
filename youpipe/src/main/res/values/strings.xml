@@ -126,6 +126,8 @@
     <string name="action_delete_playlist">Delete playlist</string>
     <!-- Empty state when a playlist has no videos yet -->
     <string name="playlist_empty">No videos in this playlist yet</string>
+    <!-- Progress text shown while a shared video is being added to Watch later. Present participle -->
+    <string name="adding_to_watch_later">Adding to Watch later…</string>
     <!-- Supporting line under a playlist row: video count. %1$d = number of videos -->
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> videos</string>
 

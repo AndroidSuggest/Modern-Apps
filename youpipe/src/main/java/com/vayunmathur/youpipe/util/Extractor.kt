@@ -60,6 +60,17 @@ fun decodeVideoID(id: Long): String {
 
 fun videoIDtoURL(id: Long): String = "https://www.youtube.com/watch?v=${decodeVideoID(id)}"
 
+/**
+ * Extracts a YouTube video id from arbitrary shared text (a pasted link, a `watch?v=`,
+ * `youtu.be/`, `/shorts/`, or `/embed/` URL, possibly surrounded by other text) and encodes
+ * it to the app's [Long] id. Returns null when no 11-char id can be found.
+ */
+fun parseSharedVideoId(text: String): Long? {
+    val match = Regex("""(?:v=|/shorts/|/embed/|youtu\.be/)([A-Za-z0-9_-]{11})""").find(text)
+        ?: return null
+    return runCatching { encodeVideoID(match.groupValues[1]) }.getOrNull()
+}
+
 fun channelIDtoURL(id: String): String {
     return if (id.startsWith("@")) {
         "https://www.youtube.com/$id"

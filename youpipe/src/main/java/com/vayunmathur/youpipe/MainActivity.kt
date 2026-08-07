@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.res.Configuration
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -52,8 +51,10 @@ import com.vayunmathur.youpipe.ui.VideoPage
 import com.vayunmathur.youpipe.ui.dialogs.CreateSubscriptionCategory
 import com.vayunmathur.youpipe.ui.dialogs.CreatePlaylist
 import com.vayunmathur.youpipe.ui.dialogs.AddToPlaylist
+import com.vayunmathur.youpipe.ui.dialogs.AddToWatchLater
 import kotlinx.serialization.Serializable
 import com.vayunmathur.youpipe.util.videoURLtoID
+import com.vayunmathur.youpipe.util.parseSharedVideoId
 
 internal fun Context.findActivity(): ComponentActivity {
     var context = this
@@ -111,19 +112,33 @@ class MainActivity : ComponentActivity() {
         setContent {
             DynamicTheme {
                 OfflineAware {
-                    Navigation(resolveInitialBackStack(intent.data), youPipeViewModel)
+                    Navigation(resolveInitialBackStack(intent), youPipeViewModel)
                 }
             }
         }
     }
 
     /**
-     * Decide the initial backstack at launch. A `watch` deep-link always wins;
-     * otherwise fall back to the user's chosen default page (see
-     * [DEFAULT_PAGE_KEY]), defaulting to Home. Read synchronously here because
-     * this runs in [onCreate] before `setContent`.
+     * Decide the initial backstack at launch. A shared YouTube URL (ACTION_SEND) routes to the
+     * video, optionally seeding an add-to-Watch-later or add-to-playlist dialog depending on which
+     * share target was tapped. Otherwise a `watch` deep-link wins; failing that, fall back to the
+     * user's chosen default page (see [DEFAULT_PAGE_KEY]), defaulting to Home. Read synchronously
+     * here because this runs in [onCreate] before `setContent`.
      */
-    private fun resolveInitialBackStack(uri: Uri?): List<Route> {
+    private fun resolveInitialBackStack(intent: Intent): List<Route> {
+        if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            val videoID = intent.getStringExtra(Intent.EXTRA_TEXT)?.let { parseSharedVideoId(it) }
+            if (videoID != null) {
+                return when (intent.component?.className) {
+                    "$packageName.ShareWatchLater" ->
+                        listOf(Route.VideoPage(videoID), Route.AddToWatchLater(videoID))
+                    "$packageName.SharePlaylist" ->
+                        listOf(Route.VideoPage(videoID), Route.AddToPlaylist(videoID, includeWatchLater = false))
+                    else -> listOf(Route.VideoPage(videoID))
+                }
+            }
+        }
+        val uri = intent.data
         if (uri != null && "watch" in uri.pathSegments && "v" in uri.queryParameterNames) {
             return listOf(Route.VideoPage(videoURLtoID(uri.toString())))
         }
@@ -226,7 +241,10 @@ sealed interface Route: NavKey {
     data object CreatePlaylist: Route
 
     @Serializable
-    data class AddToPlaylist(val videoID: Long): Route
+    data class AddToPlaylist(val videoID: Long, val includeWatchLater: Boolean = true): Route
+
+    @Serializable
+    data class AddToWatchLater(val videoID: Long): Route
 
     @Serializable
     data object Settings: Route
@@ -275,7 +293,10 @@ fun Navigation(initialBackStack: List<Route>, ypvm: YouPipeViewModel) {
             CreatePlaylist(backStack, ypvm)
         }
         entry<Route.AddToPlaylist>(metadata = DialogPage()) {
-            AddToPlaylist(backStack, ypvm, it.videoID)
+            AddToPlaylist(backStack, ypvm, it.videoID, it.includeWatchLater)
+        }
+        entry<Route.AddToWatchLater>(metadata = DialogPage()) {
+            AddToWatchLater(backStack, ypvm, it.videoID)
         }
         entry<Route.Settings> {
             SettingsPage(backStack, ypvm)

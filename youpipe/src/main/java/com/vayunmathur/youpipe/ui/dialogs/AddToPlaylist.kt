@@ -43,8 +43,10 @@ fun AddToPlaylist(
     backStack: NavBackStack<Route>,
     youPipeViewModel: YouPipeViewModel,
     videoID: Long,
+    includeWatchLater: Boolean = true,
 ) {
-    val playlists by youPipeViewModel.playlists.collectAsStateWithLifecycle()
+    val allPlaylists by youPipeViewModel.playlists.collectAsStateWithLifecycle()
+    val playlists = if (includeWatchLater) allPlaylists else allPlaylists.filter { !it.mandatory }
     val allItems by youPipeViewModel.allPlaylistItems.collectAsStateWithLifecycle()
     val videoState by youPipeViewModel.videoState.collectAsStateWithLifecycle()
 
@@ -117,7 +119,7 @@ fun AddToPlaylist(
                             newPlaylistName = ""
                         },
                         enabled = newPlaylistName.isNotBlank() &&
-                            newPlaylistName.trim() !in playlists.map { it.name },
+                            newPlaylistName.trim() !in allPlaylists.map { it.name },
                     ) {
                         IconAdd()
                     }
