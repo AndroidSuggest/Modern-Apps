@@ -8,11 +8,16 @@
     <string name="recipes">Ricette (%1$d)</string>
     <string name="used_in">Usato in (%1$d)</string>
     <plurals name="locked_recipes">
-        <item quantity="one">+ %1$d ricetta bloccata.</item>
-        <item quantity="many">+ %1$d di ricette bloccate.</item>
         <item quantity="other">+ %1$d ricette bloccate.</item>
     </plurals>
     <string name="locked_description">Sblocca tutti i risultati di queste ricette per vederli.</string>
     <string name="collection">Collezione</string>
     <string name="discovered_counter">%1$d / %2$d scoperte</string>
+    <string name="id"></string>
+    <string name="cd_final_item"></string>
+    <string name="item_discovered"></string>
+    <plurals name="items_discovered">
+    </plurals>
+    <string name="hide_maxed_elements"></string>
+    <string name="cd_delete"></string>
 </resources>
