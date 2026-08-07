@@ -9,4 +9,6 @@
     <string name="restart">Restartovat</string>
     <string name="completed">Dokončené</string>
     <string name="moves">Pohyby</string>
+    <string name="daily_challenge"></string>
+    <string name="daily_streak"></string>
 </resources>
