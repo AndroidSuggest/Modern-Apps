@@ -1,21 +1,12 @@
 package com.vayunmathur.code.ui
 
-import androidx.compose.ui.res.stringResource
-import com.vayunmathur.code.R
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -26,7 +17,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
@@ -36,25 +26,16 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import com.vayunmathur.code.syntax.SyntaxTransformation
 import com.vayunmathur.code.syntax.rememberSyntaxColors
 import com.vayunmathur.code.util.CodeActions
 import com.vayunmathur.code.util.Completion
 import com.vayunmathur.code.util.TabUiState
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.IconButton
-import com.vayunmathur.library.ui.IconChevronRight
-import com.vayunmathur.library.ui.IconClose
-import com.vayunmathur.library.ui.IconKeyboardArrowUp
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
 import kotlin.math.roundToInt
 
 /**
@@ -95,25 +76,7 @@ fun CodeEditor(
         !useRegex || query.isEmpty() || runCatching { Regex(query) }.isSuccess
     }
     val matches = remember(text, query, caseSensitive, useRegex) {
-        if (query.isEmpty()) {
-            emptyList()
-        } else if (useRegex) {
-            runCatching {
-                val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                Regex(query, options).findAll(text)
-                    .map { it.range }
-                    .filter { !it.isEmpty() }
-                    .toList()
-            }.getOrDefault(emptyList())
-        } else {
-            val found = ArrayList<IntRange>()
-            var i = text.indexOf(query, 0, ignoreCase = !caseSensitive)
-            while (i >= 0) {
-                found.add(i until i + query.length)
-                i = text.indexOf(query, i + query.length, ignoreCase = !caseSensitive)
-            }
-            found
-        }
+        findMatchRanges(text, query, caseSensitive, useRegex)
     }
 
     LaunchedEffect(matches.size) {
@@ -203,64 +166,19 @@ fun CodeEditor(
                 )
                 val layout = layoutResult
                 if (showCompletions && completions.isNotEmpty() && caret >= 0 && layout != null) {
+                    val padPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+                    val safeCaret = caret.coerceIn(0, layout.layoutInput.text.length)
+                    val cursorRect = layout.getCursorRect(safeCaret)
+                    val x = (cursorRect.left - horizontalScroll.value + padPx).roundToInt()
+                    val y = (cursorRect.bottom - verticalScroll.value).roundToInt()
                     CompletionPopup(
                         completions = completions,
-                        layout = layout,
-                        caret = caret,
-                        hScroll = horizontalScroll.value,
-                        vScroll = verticalScroll.value,
+                        offsetX = x,
+                        offsetY = y,
                         onAccept = { actions.acceptCompletion(it) },
                         onDismiss = { actions.dismissCompletions() },
                     )
                 }
-            }
-        }
-    }
-}
-
-/**
- * The autocomplete list, anchored just below the caret. Positioned with [TextLayoutResult]'s
- * cursor rect (offset mapping is identity, so no mapping is needed) minus the editor's scroll.
- * The popup is non-focusable so typing keeps driving the text field and the list.
- */
-@Composable
-private fun CompletionPopup(
-    completions: List<Completion>,
-    layout: TextLayoutResult,
-    caret: Int,
-    hScroll: Int,
-    vScroll: Int,
-    onAccept: (Completion) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val padPx = with(LocalDensity.current) { 8.dp.roundToPx() }
-    val safeCaret = caret.coerceIn(0, layout.layoutInput.text.length)
-    val cursorRect = layout.getCursorRect(safeCaret)
-    val x = (cursorRect.left - hScroll + padPx).roundToInt()
-    val y = (cursorRect.bottom - vScroll).roundToInt()
-    Popup(
-        alignment = Alignment.TopStart,
-        offset = IntOffset(x, y),
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = false),
-    ) {
-        Column(
-            Modifier
-                .width(240.dp)
-                .heightIn(max = 200.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            completions.forEach { completion ->
-                Text(
-                    text = completion.label,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onAccept(completion) }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = TextStyle(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }
@@ -285,84 +203,4 @@ private fun LineGutter(lineCount: Int, verticalScroll: androidx.compose.foundati
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Right,
     )
-}
-
-/** The find/replace bar: two fields, prev/next navigation, a match count and replace actions. */
-@Composable
-private fun FindBar(
-    query: String,
-    replacement: String,
-    caseSensitive: Boolean,
-    useRegex: Boolean,
-    regexValid: Boolean,
-    matchCount: Int,
-    activeMatch: Int,
-    onQueryChange: (String) -> Unit,
-    onReplacementChange: (String) -> Unit,
-    onToggleCase: () -> Unit,
-    onToggleRegex: () -> Unit,
-    onNext: () -> Unit,
-    onPrev: () -> Unit,
-    onReplace: () -> Unit,
-    onReplaceAll: () -> Unit,
-    onClose: () -> Unit,
-) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(stringResource(R.string.find)) },
-                singleLine = true,
-                isError = !regexValid,
-                supportingText = if (!regexValid) {
-                    { Text(stringResource(R.string.invalid_regex)) }
-                } else {
-                    null
-                },
-            )
-            val label = if (matchCount == 0) "0/0" else "${activeMatch + 1}/$matchCount"
-            Text(label, modifier = Modifier.padding(horizontal = 8.dp))
-            IconButton(onClick = onPrev, enabled = matchCount > 0) { IconKeyboardArrowUp() }
-            IconButton(onClick = onNext, enabled = matchCount > 0) { IconChevronRight() }
-            IconButton(onClick = onClose) { IconClose() }
-        }
-        Spacer(Modifier.size(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = replacement,
-                onValueChange = onReplacementChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(stringResource(R.string.replace)) },
-                singleLine = true,
-            )
-            TextButton(onClick = onReplace, enabled = matchCount > 0) { Text(stringResource(R.string.replace)) }
-            TextButton(onClick = onReplaceAll, enabled = matchCount > 0) { Text(stringResource(R.string.all)) }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ToggleChip(
-                label = stringResource(R.string.match_case),
-                selected = caseSensitive,
-                onClick = onToggleCase,
-            )
-            ToggleChip(
-                label = stringResource(R.string.use_regex),
-                selected = useRegex,
-                onClick = onToggleRegex,
-            )
-        }
-    }
-}
-
-/** A small text toggle that colours itself when active; used for the find-bar options. */
-@Composable
-private fun ToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    TextButton(onClick = onClick) {
-        Text(
-            label,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }

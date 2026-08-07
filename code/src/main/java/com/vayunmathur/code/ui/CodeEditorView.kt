@@ -8,11 +8,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,16 +50,19 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.vayunmathur.code.syntax.LanguageSpec
 import com.vayunmathur.code.syntax.SyntaxColors
 import com.vayunmathur.code.syntax.rememberSyntaxColors
 import com.vayunmathur.code.util.CodeActions
+import com.vayunmathur.code.util.Completion
 import com.vayunmathur.code.util.Edit
 import com.vayunmathur.code.util.EditorDocument
 import com.vayunmathur.code.util.TabUiState
 import com.vayunmathur.code.util.computeFoldRegions
 import com.vayunmathur.code.util.dedentSelection
 import com.vayunmathur.code.util.indentSelection
+import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.MaterialTheme
 
 /**
@@ -79,6 +86,11 @@ fun CodeEditorView(
     showWhitespace: Boolean = false,
     showIndentGuides: Boolean = false,
     showMinimap: Boolean = false,
+    showFind: Boolean = false,
+    onCloseFind: () -> Unit = {},
+    initialQuery: String = "",
+    completions: List<Completion> = emptyList(),
+    showCompletions: Boolean = false,
     secondaryPane: Boolean = false,
     onValueChangeOverride: ((TextFieldValue) -> Unit)? = null,
 ) {
@@ -155,6 +167,44 @@ fun CodeEditorView(
     }
 
     val emit: (TextFieldValue) -> Unit = onValueChangeOverride ?: actions::onEditorChange
+
+    // ---- Find state (Phase 4): mirrors the classic editor, highlighted in the Canvas below. ----
+    var query by remember(tab.name) { mutableStateOf(initialQuery) }
+    var replacement by remember(tab.name) { mutableStateOf("") }
+    var caseSensitive by remember(tab.name) { mutableStateOf(false) }
+    var useRegex by remember(tab.name) { mutableStateOf(false) }
+    var activeMatch by remember(tab.name) { mutableStateOf(0) }
+    val regexValid = remember(query, useRegex) {
+        !useRegex || query.isEmpty() || runCatching { Regex(query) }.isSuccess
+    }
+    val matches = remember(text, query, caseSensitive, useRegex) {
+        findMatchRanges(text, query, caseSensitive, useRegex)
+    }
+    val highlightMatches = if (showFind) matches else emptyList()
+    LaunchedEffect(matches.size) { if (activeMatch >= matches.size) activeMatch = 0 }
+    val goTo: (Int) -> Unit = { target ->
+        if (matches.isNotEmpty()) {
+            val idx = ((target % matches.size) + matches.size) % matches.size
+            activeMatch = idx
+            val r = matches[idx]
+            actions.setSelection(TextRange(r.first, r.last + 1))
+        }
+    }
+    // Keep the active match scrolled into view as the user navigates.
+    LaunchedEffect(activeMatch, matches.size) {
+        if (showFind && matches.isNotEmpty() && viewport.height > 0) {
+            val r = matches[activeMatch.coerceIn(0, matches.size - 1)]
+            val row = visibleLines.indexOf(lineOfOffset(lineStarts, r.first))
+            if (row >= 0) {
+                val top = row * lineHeight
+                if (top < scrollY) {
+                    scrollY = top
+                } else if (top + lineHeight > scrollY + viewport.height) {
+                    scrollY = (top - viewport.height + lineHeight).coerceAtLeast(0f)
+                }
+            }
+        }
+    }
 
     fun displayRowToSource(row: Int): Int? = visibleLines.getOrNull(row)
 
@@ -241,6 +291,23 @@ fun CodeEditorView(
                     }
                 }
 
+                // Find-match highlight (Phase 4): the active match is drawn more strongly.
+                if (highlightMatches.isNotEmpty()) {
+                    for ((mi, m) in highlightMatches.withIndex()) {
+                        val ms = m.first
+                        val me = m.last + 1
+                        if (me <= lineStart || ms >= lineStart + lineLen) continue
+                        val a = (ms - lineStart).coerceIn(0, lineLen)
+                        val b = (me - lineStart).coerceIn(0, lineLen)
+                        if (b > a) {
+                            val startX = gutterWidth + a * charWidth - scrollX
+                            val w = (b - a) * charWidth
+                            val matchColor = if (mi == activeMatch) caretColor.copy(alpha = 0.35f) else colors.match
+                            drawRect(matchColor, topLeft = Offset(startX, y), size = Size(w, lineHeight))
+                        }
+                    }
+                }
+
                 if (showIndentGuides) {
                     val columns = leadingColumns(lineText, tabWidth)
                     var level = tabWidth
@@ -293,24 +360,83 @@ fun CodeEditorView(
         }
     }
 
-    if (showMinimap) {
-        Row(modifier.fillMaxSize()) {
-            editorCanvas(Modifier.weight(1f).fillMaxHeight())
-            Minimap(
-                lines = lines,
-                lineHeight = lineHeight,
-                scrollY = scrollY,
-                maxScrollY = maxScrollY,
-                viewportHeight = viewport.height.toFloat(),
-                totalHeight = totalHeight,
-                color = gutterColor.copy(alpha = 0.5f),
-                viewportColor = caretColor.copy(alpha = 0.2f),
-                onScrollTo = { fraction -> scrollY = (fraction * maxScrollY).coerceIn(0f, maxScrollY) },
-                modifier = Modifier.width(56.dp).fillMaxHeight(),
+    Column(modifier.fillMaxSize()) {
+        if (showFind) {
+            FindBar(
+                query = query,
+                replacement = replacement,
+                caseSensitive = caseSensitive,
+                useRegex = useRegex,
+                regexValid = regexValid,
+                matchCount = matches.size,
+                activeMatch = activeMatch,
+                onQueryChange = { query = it; activeMatch = 0 },
+                onReplacementChange = { replacement = it },
+                onToggleCase = { caseSensitive = !caseSensitive },
+                onToggleRegex = { useRegex = !useRegex; activeMatch = 0 },
+                onNext = { goTo(activeMatch + 1) },
+                onPrev = { goTo(activeMatch - 1) },
+                onReplace = {
+                    matches.getOrNull(activeMatch)?.let { range ->
+                        if (useRegex) {
+                            actions.replaceMatchRegex(range, query, replacement, caseSensitive)
+                        } else {
+                            actions.replaceRange(range, replacement)
+                        }
+                    }
+                },
+                onReplaceAll = {
+                    if (useRegex) {
+                        actions.replaceAllRegex(query, replacement, caseSensitive)
+                    } else {
+                        actions.replaceAll(matches, replacement)
+                    }
+                },
+                onClose = onCloseFind,
             )
+            HorizontalDivider()
         }
-    } else {
-        editorCanvas(modifier.fillMaxSize())
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (showMinimap) {
+                Row(Modifier.fillMaxSize()) {
+                    editorCanvas(Modifier.weight(1f).fillMaxHeight())
+                    Minimap(
+                        lines = lines,
+                        lineHeight = lineHeight,
+                        scrollY = scrollY,
+                        maxScrollY = maxScrollY,
+                        viewportHeight = viewport.height.toFloat(),
+                        totalHeight = totalHeight,
+                        color = gutterColor.copy(alpha = 0.5f),
+                        viewportColor = caretColor.copy(alpha = 0.2f),
+                        onScrollTo = { fraction -> scrollY = (fraction * maxScrollY).coerceIn(0f, maxScrollY) },
+                        modifier = Modifier.width(56.dp).fillMaxHeight(),
+                    )
+                }
+            } else {
+                editorCanvas(Modifier.fillMaxSize())
+            }
+
+            // Autocomplete popup (Phase 4), anchored at the caret in Canvas coordinates.
+            val caretOffset = value.selection.start
+            if (showCompletions && completions.isNotEmpty() && value.selection.collapsed) {
+                val src = lineOfOffset(lineStarts, caretOffset)
+                val row = visibleLines.indexOf(src)
+                if (row >= 0) {
+                    val col = caretOffset - lineStarts[src]
+                    val px = (gutterWidth + col * charWidth - scrollX).roundToInt()
+                    val py = (row * lineHeight - scrollY + lineHeight).roundToInt()
+                    CompletionPopup(
+                        completions = completions,
+                        offsetX = px,
+                        offsetY = py,
+                        onAccept = { actions.acceptCompletion(it) },
+                        onDismiss = { actions.dismissCompletions() },
+                    )
+                }
+            }
+        }
     }
 }
 

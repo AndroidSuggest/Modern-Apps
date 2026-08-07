@@ -273,6 +273,11 @@ fun EditorScreen(
                                 showWhitespace = state.showWhitespace,
                                 showIndentGuides = state.showIndentGuides,
                                 showMinimap = state.showMinimap,
+                                showFind = showFind,
+                                onCloseFind = { showFind = false },
+                                initialQuery = initialFind.orEmpty(),
+                                completions = state.completions,
+                                showCompletions = state.showCompletions,
                             )
                         } else {
                             CodeEditor(
