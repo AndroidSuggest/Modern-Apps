@@ -33,8 +33,24 @@ fun applyEditorInput(
 ): TextFieldValue {
     if (!new.selection.collapsed) return new
     val caret = new.selection.start
+    val diff = new.text.length - old.text.length
+
+    // Paste: a multi-character insertion containing a newline. Re-base its indentation onto the
+    // caret line so pasted blocks line up with their new surroundings.
+    if (diff > 1 && caret >= diff) {
+        val cleanInsertion =
+            old.text == new.text.substring(0, caret - diff) + new.text.substring(caret)
+        if (cleanInsertion) {
+            val pasted = new.text.substring(caret - diff, caret)
+            if (autoIndent && pasted.contains('\n')) {
+                return reindentPaste(old.text, caret - diff, pasted, indentUnit)
+            }
+        }
+        return new
+    }
+
     // Must be exactly one character longer, inserted so that removing it reproduces the old text.
-    if (new.text.length != old.text.length + 1 || caret < 1) return new
+    if (diff != 1 || caret < 1) return new
     if (old.text != new.text.substring(0, caret - 1) + new.text.substring(caret)) return new
 
     val c = new.text[caret - 1]
@@ -280,3 +296,44 @@ fun findLineMatches(
 }
 
 private const val PREVIEW_LIMIT = 200
+
+// ---- Paste re-indentation & save transforms (pure) ----
+
+private fun leadingWhitespaceLen(line: String): Int {
+    var i = 0
+    while (i < line.length && (line[i] == ' ' || line[i] == '\t')) i++
+    return i
+}
+
+/**
+ * Inserts [pasted] at [caret] in [text], re-basing the block's indentation onto the caret line.
+ *
+ * The minimal common indentation across the pasted block's non-blank lines is stripped, and the
+ * caret line's leading whitespace ([caret]'s line indent) is re-applied to every line after the
+ * first (the first pasted line continues at the caret, which already sits after that indent).
+ * Relative indentation within the block is preserved.
+ */
+fun reindentPaste(text: String, caret: Int, pasted: String, indentUnit: String): TextFieldValue {
+    val lineStart = text.lastIndexOf('\n', caret - 1) + 1
+    val baseIndent = text.substring(lineStart, lineStart + leadingWhitespaceLen(text.substring(lineStart, caret)))
+
+    val lines = pasted.split('\n')
+    val nonBlank = lines.filter { it.isNotBlank() }
+    val common = nonBlank.minOfOrNull { leadingWhitespaceLen(it) } ?: 0
+
+    val reindented = lines.mapIndexed { idx, line ->
+        val stripped = if (line.isBlank()) "" else line.substring(common.coerceAtMost(line.length))
+        if (idx == 0) stripped else baseIndent + stripped
+    }
+    val block = reindented.joinToString("\n")
+    val newText = text.substring(0, caret) + block + text.substring(caret)
+    return TextFieldValue(newText, TextRange(caret + block.length))
+}
+
+/** Removes trailing spaces and tabs from every line (used by the trim-on-save preference). */
+fun trimTrailingWhitespace(text: String): String =
+    text.split('\n').joinToString("\n") { it.trimEnd(' ', '\t') }
+
+/** Ensures the text ends with exactly one trailing newline (used by the final-newline preference). */
+fun ensureFinalNewline(text: String): String =
+    if (text.isEmpty() || text.endsWith('\n')) text else text + "\n"

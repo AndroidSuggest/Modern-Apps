@@ -160,6 +160,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     val autoCloseBrackets: Boolean get() = _autoCloseBrackets.value
     private val _autoSave = mutableStateOf(false)
     val autoSave: Boolean get() = _autoSave.value
+    private val _trimTrailingOnSave = mutableStateOf(false)
+    val trimTrailingOnSave: Boolean get() = _trimTrailingOnSave.value
+    private val _finalNewlineOnSave = mutableStateOf(false)
+    val finalNewlineOnSave: Boolean get() = _finalNewlineOnSave.value
     private val _editorTheme = mutableStateOf(EditorThemes.DEFAULT)
     val editorTheme: String get() = _editorTheme.value
     private val _experimentalEditor = mutableStateOf(false)
@@ -276,6 +280,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _autoIndent.value = prefs.autoIndent.first() }
         viewModelScope.launch { _autoCloseBrackets.value = prefs.autoCloseBrackets.first() }
         viewModelScope.launch { _autoSave.value = prefs.autoSave.first() }
+        viewModelScope.launch { _trimTrailingOnSave.value = prefs.trimTrailingOnSave.first() }
+        viewModelScope.launch { _finalNewlineOnSave.value = prefs.finalNewlineOnSave.first() }
         viewModelScope.launch { _editorTheme.value = prefs.editorTheme.first() }
         viewModelScope.launch { _experimentalEditor.value = prefs.experimentalEditor.first() }
         viewModelScope.launch { _showWhitespace.value = prefs.showWhitespace.first() }
@@ -979,7 +985,18 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     /** Encodes [tab] with its stored charset/BOM/line-ending and writes it, refreshing the snapshot. */
     private fun saveTab(tab: OpenTab) {
         val file = tab.file ?: return // external read-only tabs have no save target
-        val textToSave = tab.value.text
+        var textToSave = tab.value.text
+        if (trimTrailingOnSave) textToSave = trimTrailingWhitespace(textToSave)
+        if (finalNewlineOnSave) textToSave = ensureFinalNewline(textToSave)
+        // Reflect the transformed text back into the buffer so the tab isn't left "dirty".
+        if (textToSave != tab.value.text) {
+            val sel = tab.value.selection
+            val clamped = TextRange(
+                sel.start.coerceAtMost(textToSave.length),
+                sel.end.coerceAtMost(textToSave.length),
+            )
+            tab.value = TextFieldValue(textToSave, clamped)
+        }
         val bytes = TextEncoding.encode(textToSave, tab.charset, tab.lineEnding, tab.hadBom)
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
@@ -1090,6 +1107,16 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         if (enabled) scheduleAutoSave()
     }
 
+    fun setTrimTrailingOnSave(enabled: Boolean) {
+        _trimTrailingOnSave.value = enabled
+        viewModelScope.launch { prefs.setTrimTrailingOnSave(enabled) }
+    }
+
+    fun setFinalNewlineOnSave(enabled: Boolean) {
+        _finalNewlineOnSave.value = enabled
+        viewModelScope.launch { prefs.setFinalNewlineOnSave(enabled) }
+    }
+
     fun setEditorTheme(theme: String) {
         _editorTheme.value = theme
         viewModelScope.launch { prefs.setEditorTheme(theme) }
@@ -1178,6 +1205,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         searchJob = viewModelScope.launch {
             val collected = withContext(Dispatchers.IO) {
                 val out = ArrayList<SearchResult>()
+                val ignore = loadGitIgnore(root)
                 val stack = ArrayDeque<File>()
                 stack.addLast(root)
                 while (stack.isNotEmpty() && out.size < MAX_SEARCH_RESULTS) {
@@ -1186,10 +1214,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                     val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
                     for (child in children) {
                         if (out.size >= MAX_SEARCH_RESULTS) break
+                        val rel = relativeTo(root, child.file)
                         if (child.isDirectory) {
-                            if (child.name !in SKIP_DIRS) stack.addLast(child.file)
+                            if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
                             continue
                         }
+                        if (ignore.isIgnored(rel, false)) continue
                         if (Language.fromFileName(child.name) == Language.PLAINTEXT) continue
                         if (child.file.length() > MAX_SEARCH_FILE_SIZE) continue
                         val text = runCatching { FileFiles.readText(child.file) }.getOrNull() ?: continue
@@ -1236,7 +1266,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         projectFilesJob = viewModelScope.launch {
             val collected = withContext(Dispatchers.IO) {
                 val out = ArrayList<ProjectFileEntry>()
-                val rootPath = root.absolutePath
+                val ignore = loadGitIgnore(root)
                 val stack = ArrayDeque<File>()
                 stack.addLast(root)
                 while (stack.isNotEmpty() && out.size < MAX_PROJECT_FILES) {
@@ -1245,10 +1275,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
                     val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
                     for (child in children) {
                         if (out.size >= MAX_PROJECT_FILES) break
+                        val rel = relativeTo(root, child.file)
                         if (child.isDirectory) {
-                            if (child.name !in SKIP_DIRS) stack.addLast(child.file)
+                            if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
                             continue
                         }
+                        if (ignore.isIgnored(rel, false)) continue
                         out.add(toProjectEntry(child.file))
                     }
                 }
@@ -1257,6 +1289,19 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             projectFiles.clear()
             projectFiles.addAll(collected)
         }
+    }
+
+    /** Reads and parses the project root `.gitignore`, or returns an empty matcher. */
+    private fun loadGitIgnore(root: File): GitIgnore = runCatching {
+        val f = File(root, ".gitignore")
+        if (f.isFile) parseGitIgnore(f.readText()) else GitIgnore.EMPTY
+    }.getOrDefault(GitIgnore.EMPTY)
+
+    /** Path of [file] relative to [root] (falling back to the bare name when not under root). */
+    private fun relativeTo(root: File, file: File): String {
+        val rp = root.absolutePath
+        val ap = file.absolutePath
+        return if (ap.startsWith(rp + File.separator)) ap.substring(rp.length + 1) else file.name
     }
 
     /** Builds the display entry for [file], with a path relative to the open root when possible. */

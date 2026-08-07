@@ -120,6 +120,20 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
+                    title = stringResource(R.string.trim_trailing_whitespace),
+                    supportingText = stringResource(R.string.trim_trailing_whitespace_desc),
+                    checked = viewModel.trimTrailingOnSave,
+                    onCheckedChange = viewModel::setTrimTrailingOnSave,
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = stringResource(R.string.final_newline),
+                    supportingText = stringResource(R.string.final_newline_desc),
+                    checked = viewModel.finalNewlineOnSave,
+                    onCheckedChange = viewModel::setFinalNewlineOnSave,
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
                     title = stringResource(R.string.experimental_editor),
                     supportingText = stringResource(R.string.experimental_editor_desc),
                     checked = viewModel.experimentalEditor,

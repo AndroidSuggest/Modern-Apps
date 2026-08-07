@@ -254,4 +254,57 @@ class EditorInputTest {
         val result = toggleLineComment(value, "//")
         assertEquals("// foo\n\n// bar", result.text)
     }
+
+    // ---- Paste re-indentation ----
+
+    @Test
+    fun pasteReindentsBlockOntoCaretIndent() {
+        // Caret sits after 4 spaces of indentation; the pasted block is de-dented then re-based.
+        val result = reindentPaste("    ", 4, "if (x) {\n    y()\n}", "  ")
+        assertEquals("    if (x) {\n        y()\n    }", result.text)
+    }
+
+    @Test
+    fun pasteStripsCommonLeadingIndent() {
+        val result = reindentPaste("", 0, "    a\n      b", "  ")
+        assertEquals("a\n  b", result.text)
+    }
+
+    @Test
+    fun pasteThroughApplyEditorInputReindents() {
+        val old = TextFieldValue("    ", TextRange(4))
+        val new = TextFieldValue("    a\n    b", TextRange(11))
+        val result = applyEditorInput(old, new, "  ", autoIndent = true, autoCloseBrackets = true)
+        // Base indent "    " is re-applied to the second line (its own indent is common-stripped to 0).
+        assertEquals("    a\n        b", result.text)
+    }
+
+    @Test
+    fun pasteBlankLinesBecomeEmpty() {
+        val result = reindentPaste("", 0, "a\n\nb", "  ")
+        assertEquals("a\n\nb", result.text)
+    }
+
+    // ---- Save transforms ----
+
+    @Test
+    fun trimTrailingWhitespaceRemovesLineEndSpaces() {
+        assertEquals("a\nb", trimTrailingWhitespace("a  \nb\t"))
+    }
+
+    @Test
+    fun trimTrailingWhitespaceKeepsInteriorAndNewlines() {
+        assertEquals("a b\n\n", trimTrailingWhitespace("a b \n \n"))
+    }
+
+    @Test
+    fun ensureFinalNewlineAddsWhenMissing() {
+        assertEquals("a\n", ensureFinalNewline("a"))
+    }
+
+    @Test
+    fun ensureFinalNewlineNoOpWhenPresentOrEmpty() {
+        assertEquals("a\n", ensureFinalNewline("a\n"))
+        assertEquals("", ensureFinalNewline(""))
+    }
 }

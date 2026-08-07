@@ -60,6 +60,10 @@
     <string name="delete_line">Delete line</string>
     <string name="auto_save">Auto-save</string>
     <string name="auto_save_desc">Save automatically a moment after you stop typing</string>
+    <string name="trim_trailing_whitespace">Trim trailing whitespace</string>
+    <string name="trim_trailing_whitespace_desc">Remove trailing spaces and tabs on save</string>
+    <string name="final_newline">Final newline</string>
+    <string name="final_newline_desc">Ensure the file ends with a newline on save</string>
     <string name="source_control">Source control</string>
     <string name="not_a_git_repo">This folder is not a git repository.</string>
     <string name="git_init">Initialize repository</string>

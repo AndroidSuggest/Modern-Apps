@@ -34,6 +34,10 @@ class EditorPrefs(context: Context) {
     val autoCloseBrackets: Flow<Boolean> =
         appContext.editorDataStore.data.map { it[AUTO_CLOSE_KEY] ?: true }
     val autoSave: Flow<Boolean> = appContext.editorDataStore.data.map { it[AUTO_SAVE_KEY] ?: false }
+    val trimTrailingOnSave: Flow<Boolean> =
+        appContext.editorDataStore.data.map { it[TRIM_TRAILING_KEY] ?: false }
+    val finalNewlineOnSave: Flow<Boolean> =
+        appContext.editorDataStore.data.map { it[FINAL_NEWLINE_KEY] ?: false }
     val experimentalEditor: Flow<Boolean> =
         appContext.editorDataStore.data.map { it[EXPERIMENTAL_EDITOR_KEY] ?: false }
     val showWhitespace: Flow<Boolean> =
@@ -102,6 +106,14 @@ class EditorPrefs(context: Context) {
 
     suspend fun setAutoSave(enabled: Boolean) {
         appContext.editorDataStore.edit { it[AUTO_SAVE_KEY] = enabled }
+    }
+
+    suspend fun setTrimTrailingOnSave(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[TRIM_TRAILING_KEY] = enabled }
+    }
+
+    suspend fun setFinalNewlineOnSave(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[FINAL_NEWLINE_KEY] = enabled }
     }
 
     suspend fun setExperimentalEditor(enabled: Boolean) {
@@ -207,6 +219,8 @@ class EditorPrefs(context: Context) {
         private val AUTO_INDENT_KEY = booleanPreferencesKey("auto_indent")
         private val AUTO_CLOSE_KEY = booleanPreferencesKey("auto_close_brackets")
         private val AUTO_SAVE_KEY = booleanPreferencesKey("auto_save")
+        private val TRIM_TRAILING_KEY = booleanPreferencesKey("trim_trailing_on_save")
+        private val FINAL_NEWLINE_KEY = booleanPreferencesKey("final_newline_on_save")
         private val EXPERIMENTAL_EDITOR_KEY = booleanPreferencesKey("experimental_editor")
         private val SHOW_WHITESPACE_KEY = booleanPreferencesKey("show_whitespace")
         private val SHOW_INDENT_GUIDES_KEY = booleanPreferencesKey("show_indent_guides")
