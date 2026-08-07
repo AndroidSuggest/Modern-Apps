@@ -175,13 +175,16 @@ suspend fun syncMusic(context: Context, database: MusicDatabase, uris: List<Uri>
                 }
 
                 val rawTrack = cursor.getInt(trackColumn)
+                // MediaStore encodes multi-disc numbers as disc*1000 + track, so a value of
+                // 2005 is disc 2, track 5. Split them apart instead of discarding the disc.
+                val discNumber = if (rawTrack >= 1000) rawTrack / 1000 else 1
                 val trackNumber = if (rawTrack >= 1000) rawTrack % 1000 else rawTrack
                 // Read the year straight from MediaStore. Only fall back to the
                 // (expensive, per-file) metadata retriever when it's missing.
                 val year = cursor.getInt(yearColumn).takeIf { it > 0 }
                     ?: getAudioYear(context, contentUriObject)
 
-                musicList.add(Music(id, title, artist, artistID, album, albumID, contentUri, duration, trackNumber, year))
+                musicList.add(Music(id, title, artist, artistID, album, albumID, contentUri, duration, trackNumber, year, discNumber))
             }
         }
     } catch (e: Exception) {

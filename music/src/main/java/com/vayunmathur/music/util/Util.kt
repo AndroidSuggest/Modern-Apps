@@ -299,5 +299,9 @@ fun formatDuration(durationMs: Long): String {
 
 fun getAudioYear(context: Context, uri: Uri): Int =
     withAudioMetadata(context, uri, 0) {
-        it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR)?.take(4)?.toIntOrNull() ?: 0
+        // Some containers (e.g. Opus/Vorbis) expose the release date only via DATE, not
+        // YEAR, so fall back to it and pull the first four-digit year out of either.
+        val raw = it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR)
+            ?: it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+        raw?.let { value -> Regex("\\d{4}").find(value)?.value?.toIntOrNull() } ?: 0
     }

@@ -62,7 +62,7 @@ interface PlaylistDao {
 }
 
 @TypeConverters(DefaultConverters::class)
-@Database(entities = [Music::class, Album::class, Artist::class, Playlist::class, ManyManyMatching::class], version = 3, exportSchema = false)
+@Database(entities = [Music::class, Album::class, Artist::class, Playlist::class, ManyManyMatching::class], version = 4, exportSchema = false)
 abstract class MusicDatabase: RoomDatabase() {
     abstract fun musicDao(): MusicDao
     abstract fun albumDao(): AlbumDao
@@ -71,7 +71,7 @@ abstract class MusicDatabase: RoomDatabase() {
     abstract fun matchingDao(): MatchingDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
     }
 }
 
@@ -98,4 +98,8 @@ val MIGRATION_2_3 = Migration(2, 3) {
     it.execSQL("ALTER TABLE Music ADD COLUMN duration INTEGER NOT NULL DEFAULT 0")
     it.execSQL("ALTER TABLE Music ADD COLUMN trackNumber INTEGER NOT NULL DEFAULT 0")
     it.execSQL("ALTER TABLE Music ADD COLUMN year INTEGER NOT NULL DEFAULT 0")
+}
+
+val MIGRATION_3_4 = Migration(3, 4) {
+    it.execSQL("ALTER TABLE Music ADD COLUMN discNumber INTEGER NOT NULL DEFAULT 1")
 }

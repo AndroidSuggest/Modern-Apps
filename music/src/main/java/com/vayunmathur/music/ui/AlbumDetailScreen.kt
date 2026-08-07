@@ -41,7 +41,8 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
     val album = albumValue ?: return
     val allMusic by musicViewModel.music.collectAsState()
     val musicInAlbum = remember(allMusic, albumId) {
-        allMusic.filter { it.albumId == albumId }.sortedBy { it.trackNumber }
+        allMusic.filter { it.albumId == albumId }
+            .sortedWith(compareBy({ it.discNumber }, { it.trackNumber }))
     }
     val totalDurationMs = remember(musicInAlbum) {
         musicInAlbum.sumOf { it.duration }
