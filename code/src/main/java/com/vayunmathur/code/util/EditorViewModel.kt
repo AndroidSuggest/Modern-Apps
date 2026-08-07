@@ -164,6 +164,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     val editorTheme: String get() = _editorTheme.value
     private val _experimentalEditor = mutableStateOf(false)
     val experimentalEditor: Boolean get() = _experimentalEditor.value
+    private val _showWhitespace = mutableStateOf(false)
+    val showWhitespace: Boolean get() = _showWhitespace.value
+    private val _showIndentGuides = mutableStateOf(false)
+    val showIndentGuides: Boolean get() = _showIndentGuides.value
+    private val _showMinimap = mutableStateOf(false)
+    val showMinimap: Boolean get() = _showMinimap.value
     private var autoSaveJob: Job? = null
 
     // ---- Project search ----
@@ -255,6 +261,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             showCompletions = showCompletions,
             editorTheme = editorTheme,
             experimentalEditor = experimentalEditor,
+            showWhitespace = showWhitespace,
+            showIndentGuides = showIndentGuides,
+            showMinimap = showMinimap,
             projectFiles = projectFiles.toList(),
             recentFiles = recentPaths.map { toProjectEntry(File(it)) },
         )
@@ -269,6 +278,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _autoSave.value = prefs.autoSave.first() }
         viewModelScope.launch { _editorTheme.value = prefs.editorTheme.first() }
         viewModelScope.launch { _experimentalEditor.value = prefs.experimentalEditor.first() }
+        viewModelScope.launch { _showWhitespace.value = prefs.showWhitespace.first() }
+        viewModelScope.launch { _showIndentGuides.value = prefs.showIndentGuides.first() }
+        viewModelScope.launch { _showMinimap.value = prefs.showMinimap.first() }
         viewModelScope.launch { _gitUsername.value = prefs.gitUsername.first() }
         viewModelScope.launch { _gitToken.value = prefs.gitToken.first() }
         viewModelScope.launch { _gitAuthorName.value = prefs.gitAuthorName.first() }
@@ -1086,6 +1098,21 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     fun setExperimentalEditor(enabled: Boolean) {
         _experimentalEditor.value = enabled
         viewModelScope.launch { prefs.setExperimentalEditor(enabled) }
+    }
+
+    fun setShowWhitespace(enabled: Boolean) {
+        _showWhitespace.value = enabled
+        viewModelScope.launch { prefs.setShowWhitespace(enabled) }
+    }
+
+    fun setShowIndentGuides(enabled: Boolean) {
+        _showIndentGuides.value = enabled
+        viewModelScope.launch { prefs.setShowIndentGuides(enabled) }
+    }
+
+    fun setShowMinimap(enabled: Boolean) {
+        _showMinimap.value = enabled
+        viewModelScope.launch { prefs.setShowMinimap(enabled) }
     }
 
     // ---- Find & replace ----

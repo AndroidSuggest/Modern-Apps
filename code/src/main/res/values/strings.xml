@@ -125,4 +125,12 @@
     <string name="split_view">Split view</string>
     <string name="experimental_editor">Experimental editor</string>
     <string name="experimental_editor_desc">Use the new virtualized editor engine (hardware keyboard; work in progress)</string>
+    <string name="show_whitespace">Show whitespace</string>
+    <string name="show_whitespace_desc">Mark leading spaces and tabs in the experimental editor</string>
+    <string name="show_indent_guides">Indent guides</string>
+    <string name="show_indent_guides_desc">Draw vertical guides at each indent level</string>
+    <string name="show_minimap">Minimap</string>
+    <string name="show_minimap_desc">Show a code overview beside the experimental editor</string>
+    <string name="fold_all">Fold all</string>
+    <string name="unfold_all">Unfold all</string>
 </resources>

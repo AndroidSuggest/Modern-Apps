@@ -269,6 +269,10 @@ fun EditorScreen(
                                 fontSize = state.fontSize,
                                 editorTheme = state.editorTheme,
                                 modifier = Modifier.weight(1f),
+                                tabWidth = state.tabWidth,
+                                showWhitespace = state.showWhitespace,
+                                showIndentGuides = state.showIndentGuides,
+                                showMinimap = state.showMinimap,
                             )
                         } else {
                             CodeEditor(

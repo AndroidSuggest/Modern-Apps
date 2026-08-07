@@ -36,6 +36,12 @@ class EditorPrefs(context: Context) {
     val autoSave: Flow<Boolean> = appContext.editorDataStore.data.map { it[AUTO_SAVE_KEY] ?: false }
     val experimentalEditor: Flow<Boolean> =
         appContext.editorDataStore.data.map { it[EXPERIMENTAL_EDITOR_KEY] ?: false }
+    val showWhitespace: Flow<Boolean> =
+        appContext.editorDataStore.data.map { it[SHOW_WHITESPACE_KEY] ?: false }
+    val showIndentGuides: Flow<Boolean> =
+        appContext.editorDataStore.data.map { it[SHOW_INDENT_GUIDES_KEY] ?: false }
+    val showMinimap: Flow<Boolean> =
+        appContext.editorDataStore.data.map { it[SHOW_MINIMAP_KEY] ?: false }
     val editorTheme: Flow<String> =
         appContext.editorDataStore.data.map { it[EDITOR_THEME_KEY] ?: EditorThemes.DEFAULT }
 
@@ -100,6 +106,18 @@ class EditorPrefs(context: Context) {
 
     suspend fun setExperimentalEditor(enabled: Boolean) {
         appContext.editorDataStore.edit { it[EXPERIMENTAL_EDITOR_KEY] = enabled }
+    }
+
+    suspend fun setShowWhitespace(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[SHOW_WHITESPACE_KEY] = enabled }
+    }
+
+    suspend fun setShowIndentGuides(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[SHOW_INDENT_GUIDES_KEY] = enabled }
+    }
+
+    suspend fun setShowMinimap(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[SHOW_MINIMAP_KEY] = enabled }
     }
 
     suspend fun setEditorTheme(theme: String) {
@@ -190,6 +208,9 @@ class EditorPrefs(context: Context) {
         private val AUTO_CLOSE_KEY = booleanPreferencesKey("auto_close_brackets")
         private val AUTO_SAVE_KEY = booleanPreferencesKey("auto_save")
         private val EXPERIMENTAL_EDITOR_KEY = booleanPreferencesKey("experimental_editor")
+        private val SHOW_WHITESPACE_KEY = booleanPreferencesKey("show_whitespace")
+        private val SHOW_INDENT_GUIDES_KEY = booleanPreferencesKey("show_indent_guides")
+        private val SHOW_MINIMAP_KEY = booleanPreferencesKey("show_minimap")
         private val EDITOR_THEME_KEY = stringPreferencesKey("editor_theme")
         private val SESSION_PATHS_KEY = stringPreferencesKey("session_paths")
         private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")

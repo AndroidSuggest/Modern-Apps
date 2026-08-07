@@ -125,6 +125,27 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     checked = viewModel.experimentalEditor,
                     onCheckedChange = viewModel::setExperimentalEditor,
                 )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = stringResource(R.string.show_whitespace),
+                    supportingText = stringResource(R.string.show_whitespace_desc),
+                    checked = viewModel.showWhitespace,
+                    onCheckedChange = viewModel::setShowWhitespace,
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = stringResource(R.string.show_indent_guides),
+                    supportingText = stringResource(R.string.show_indent_guides_desc),
+                    checked = viewModel.showIndentGuides,
+                    onCheckedChange = viewModel::setShowIndentGuides,
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = stringResource(R.string.show_minimap),
+                    supportingText = stringResource(R.string.show_minimap_desc),
+                    checked = viewModel.showMinimap,
+                    onCheckedChange = viewModel::setShowMinimap,
+                )
             }
 
             SettingsSection(title = stringResource(R.string.user_snippets)) {

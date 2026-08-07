@@ -186,6 +186,46 @@ fun toggleLineComment(value: TextFieldValue, prefix: String): TextFieldValue {
     return TextFieldValue(newText, TextRange(start, start + newBlock.length))
 }
 
+/**
+ * Indents every line the selection touches by [indentUnit]; the returned selection spans the block.
+ */
+fun indentSelection(value: TextFieldValue, indentUnit: String): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    val newBlock = text.substring(start, end).split('\n').joinToString("\n") { indentUnit + it }
+    val newText = text.substring(0, start) + newBlock + text.substring(end)
+    return TextFieldValue(newText, TextRange(start, start + newBlock.length))
+}
+
+/**
+ * Removes up to [tabWidth] leading spaces (or one leading tab) from every line the selection
+ * touches; the returned selection spans the block.
+ */
+fun dedentSelection(value: TextFieldValue, tabWidth: Int): TextFieldValue {
+    val text = value.text
+    val (start, end) = lineBlock(text, value.selection.min, value.selection.max)
+    val newBlock = text.substring(start, end).split('\n').joinToString("\n") { line ->
+        var removed = 0
+        var i = 0
+        while (i < line.length && removed < tabWidth) {
+            when (line[i]) {
+                ' ' -> {
+                    removed++
+                    i++
+                }
+                '\t' -> {
+                    removed = tabWidth
+                    i++
+                }
+                else -> break
+            }
+        }
+        line.substring(i)
+    }
+    val newText = text.substring(0, start) + newBlock + text.substring(end)
+    return TextFieldValue(newText, TextRange(start, start + newBlock.length))
+}
+
 /** Char offset of the start of a 1-based [line] in [text], clamped to `0..text.length`. */
 fun lineStartOffset(text: String, line: Int): Int {
     val target = line.coerceAtLeast(1)
