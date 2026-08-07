@@ -156,4 +156,8 @@
         <item quantity="many"><xliff:g id="count" example="5">%1$d</xliff:g> zdarzeń gotowych do zaimportowania</item>
         <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> zdarzeń gotowych do zaimportowania</item>
     </plurals>
+    <string name="layout_full_week_compact">Pełny tydzień zwarty</string>
+    <string name="layout_short_full_week_compact">T7Z</string>
+    <string name="layout_short_work_week_compact">T5Z</string>
+    <string name="layout_work_week_compact">Tydzień roboczy zwarty</string>
 </resources>
