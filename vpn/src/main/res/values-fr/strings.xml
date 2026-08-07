@@ -1,3 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="add_a_connection_by_opening_a_conf_file">Ajouter une connexion en ouvrant un fichier .conf</string>
+    <string name="open_conf_file">Ouvrir un fichier .conf</string>
+    <string name="allowedips">Adresses IP autorisées : %1$s</string>
+    <string name="this_will_permanently_remove_all_connect">Tous les journaux de connexion seront définitivement supprimés. Cette action est irréversible.</string>
+    <string name="allowed">Autorisés : %1$s</string>
+    <string name="connected_via_gotatun_wireguard">● Connecté via gotatun (WireGuard)</string>
+    <string name="bypass_list">Liste d’exclusion</string>
+    <string name="imported_from_wireguard_conf_using_gotat">Importé depuis un fichier .conf WireGuard à l’aide de gotatun (mullvad/gotatun) — Noise IK / X25519 + ChaCha20Poly1305. Pour effectuer une mise à jour, importez un nouveau fichier .conf.</string>
+    <string name="vpn_channel_name">Tunnel VPN</string>
+    <string name="name">Nom : %1$s</string>
+    <string name="bypass_loading_apps">Chargement des applications…</string>
+    <string name="open_system_vpn_settings">Ouvrir les paramètres VPN du système</string>
+    <string name="endpoint">Point de terminaison : %1$s</string>
+    <string name="settings_about">Paramètres / À propos</string>
+    <string name="delete_all_logs">Supprimer tous les journaux ?</string>
+    <string name="dns">DNS : %1$s</string>
+    <string name="bypass_lockdown_warning">Si l’option « Bloquer les connexions sans VPN » est activée dans les paramètres VPN d’Android, ces applications n’auront aucun accès à Internet au lieu d’utiliser votre connexion normale. Désactivez cette option pour permettre le contournement du VPN.</string>
+    <string name="privatekey">Clé privée : %1$s…</string>
+    <string name="tunnel">Tunnel — %1$s</string>
+    <string name="peer_publickey">Clé publique du pair : %1$s</string>
+    <string name="address">Adresse : %1$s</string>
+    <string name="export_as_conf">Exporter au format .conf</string>
+    <string name="bypass_list_title">Applications qui contournent le VPN</string>
+    <string name="publickey">Clé publique : %1$s</string>
+    <string name="need_activity_to_grant_vpn_permission">Une activité est nécessaire pour accorder l’autorisation VPN</string>
+    <string name="bypass_selected_count">Applications contournant le VPN : &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="vpn_wireguard_gotatun">VPN — WireGuard (gotatun)</string>
+    <string name="no_tunnels_yet">Aucun tunnel pour le moment</string>
+    <string name="always_on_vpn">VPN permanent</string>
+    <string name="app_name">VPN</string>
+    <string name="mtu_keepalive_s">MTU : %1$s • Maintien de connexion : %2$s s</string>
+</resources>
