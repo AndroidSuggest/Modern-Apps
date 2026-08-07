@@ -1,3 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="heard">Entendu : %1$s</string>
+    <string name="download_model_113_mb">Télécharger le modèle (~113 Mo)</string>
+    <string name="test_microphone">Tester le microphone</string>
+    <string name="try_it">Essayer</string>
+    <string name="tts_engine_label">MA Speech</string>
+    <string name="try_the_voice">Essayer la voix</string>
+    <string name="open_text_to_speech_settings">Ouvrir les paramètres de synthèse vocale</string>
+    <string name="open_voice_input_settings">Ouvrir les paramètres de saisie vocale</string>
+    <string name="recognition_service_label">MA Speech</string>
+    <string name="grant_microphone">Autoriser l’accès au microphone</string>
+    <string name="speak_sample">Lire l’exemple à voix haute</string>
+    <string name="app_name">Voix</string>
+</resources>
