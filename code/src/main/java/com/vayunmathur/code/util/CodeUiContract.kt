@@ -78,6 +78,8 @@ data class CodeUiState(
     val completions: List<Completion> = emptyList(),
     val showCompletions: Boolean = false,
     val editorTheme: String = EditorThemes.DEFAULT,
+    /** When true, the editing surface uses the experimental virtualized [CodeEditorView]. */
+    val experimentalEditor: Boolean = false,
     /** All files under the open project, for quick-open (built lazily, cached in the ViewModel). */
     val projectFiles: List<ProjectFileEntry> = emptyList(),
     /** Most-recently-opened files, newest first, shown in quick-open when the query is empty. */

@@ -118,6 +118,13 @@ fun SettingsPage(viewModel: EditorViewModel, backStack: NavBackStack<Route>) {
                     checked = viewModel.autoSave,
                     onCheckedChange = viewModel::setAutoSave,
                 )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = stringResource(R.string.experimental_editor),
+                    supportingText = stringResource(R.string.experimental_editor_desc),
+                    checked = viewModel.experimentalEditor,
+                    onCheckedChange = viewModel::setExperimentalEditor,
+                )
             }
 
             SettingsSection(title = stringResource(R.string.user_snippets)) {

@@ -123,4 +123,6 @@
     <string name="conflict_keep_theirs">Theirs</string>
     <string name="conflict_keep_both">Both</string>
     <string name="split_view">Split view</string>
+    <string name="experimental_editor">Experimental editor</string>
+    <string name="experimental_editor_desc">Use the new virtualized editor engine (hardware keyboard; work in progress)</string>
 </resources>

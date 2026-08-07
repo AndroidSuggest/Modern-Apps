@@ -162,6 +162,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     val autoSave: Boolean get() = _autoSave.value
     private val _editorTheme = mutableStateOf(EditorThemes.DEFAULT)
     val editorTheme: String get() = _editorTheme.value
+    private val _experimentalEditor = mutableStateOf(false)
+    val experimentalEditor: Boolean get() = _experimentalEditor.value
     private var autoSaveJob: Job? = null
 
     // ---- Project search ----
@@ -252,6 +254,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             completions = completions.toList(),
             showCompletions = showCompletions,
             editorTheme = editorTheme,
+            experimentalEditor = experimentalEditor,
             projectFiles = projectFiles.toList(),
             recentFiles = recentPaths.map { toProjectEntry(File(it)) },
         )
@@ -265,6 +268,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch { _autoCloseBrackets.value = prefs.autoCloseBrackets.first() }
         viewModelScope.launch { _autoSave.value = prefs.autoSave.first() }
         viewModelScope.launch { _editorTheme.value = prefs.editorTheme.first() }
+        viewModelScope.launch { _experimentalEditor.value = prefs.experimentalEditor.first() }
         viewModelScope.launch { _gitUsername.value = prefs.gitUsername.first() }
         viewModelScope.launch { _gitToken.value = prefs.gitToken.first() }
         viewModelScope.launch { _gitAuthorName.value = prefs.gitAuthorName.first() }
@@ -1077,6 +1081,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     fun setEditorTheme(theme: String) {
         _editorTheme.value = theme
         viewModelScope.launch { prefs.setEditorTheme(theme) }
+    }
+
+    fun setExperimentalEditor(enabled: Boolean) {
+        _experimentalEditor.value = enabled
+        viewModelScope.launch { prefs.setExperimentalEditor(enabled) }
     }
 
     // ---- Find & replace ----

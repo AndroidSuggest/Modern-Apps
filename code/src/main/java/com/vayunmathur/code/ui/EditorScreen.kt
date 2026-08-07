@@ -262,19 +262,29 @@ fun EditorScreen(
                             modifier = Modifier.weight(1f),
                         )
                     } else {
-                        CodeEditor(
-                            tab = tab,
-                            actions = actions,
-                            softWrap = state.softWrap,
-                            fontSize = state.fontSize,
-                            showFind = showFind,
-                            onCloseFind = { showFind = false },
-                            modifier = Modifier.weight(1f),
-                            initialQuery = initialFind.orEmpty(),
-                            completions = state.completions,
-                            showCompletions = state.showCompletions,
-                            editorTheme = state.editorTheme,
-                        )
+                        if (state.experimentalEditor) {
+                            CodeEditorView(
+                                tab = tab,
+                                actions = actions,
+                                fontSize = state.fontSize,
+                                editorTheme = state.editorTheme,
+                                modifier = Modifier.weight(1f),
+                            )
+                        } else {
+                            CodeEditor(
+                                tab = tab,
+                                actions = actions,
+                                softWrap = state.softWrap,
+                                fontSize = state.fontSize,
+                                showFind = showFind,
+                                onCloseFind = { showFind = false },
+                                modifier = Modifier.weight(1f),
+                                initialQuery = initialFind.orEmpty(),
+                                completions = state.completions,
+                                showCompletions = state.showCompletions,
+                                editorTheme = state.editorTheme,
+                            )
+                        }
                     }
                 }
             }

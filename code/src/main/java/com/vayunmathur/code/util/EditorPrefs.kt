@@ -34,6 +34,8 @@ class EditorPrefs(context: Context) {
     val autoCloseBrackets: Flow<Boolean> =
         appContext.editorDataStore.data.map { it[AUTO_CLOSE_KEY] ?: true }
     val autoSave: Flow<Boolean> = appContext.editorDataStore.data.map { it[AUTO_SAVE_KEY] ?: false }
+    val experimentalEditor: Flow<Boolean> =
+        appContext.editorDataStore.data.map { it[EXPERIMENTAL_EDITOR_KEY] ?: false }
     val editorTheme: Flow<String> =
         appContext.editorDataStore.data.map { it[EDITOR_THEME_KEY] ?: EditorThemes.DEFAULT }
 
@@ -94,6 +96,10 @@ class EditorPrefs(context: Context) {
 
     suspend fun setAutoSave(enabled: Boolean) {
         appContext.editorDataStore.edit { it[AUTO_SAVE_KEY] = enabled }
+    }
+
+    suspend fun setExperimentalEditor(enabled: Boolean) {
+        appContext.editorDataStore.edit { it[EXPERIMENTAL_EDITOR_KEY] = enabled }
     }
 
     suspend fun setEditorTheme(theme: String) {
@@ -183,6 +189,7 @@ class EditorPrefs(context: Context) {
         private val AUTO_INDENT_KEY = booleanPreferencesKey("auto_indent")
         private val AUTO_CLOSE_KEY = booleanPreferencesKey("auto_close_brackets")
         private val AUTO_SAVE_KEY = booleanPreferencesKey("auto_save")
+        private val EXPERIMENTAL_EDITOR_KEY = booleanPreferencesKey("experimental_editor")
         private val EDITOR_THEME_KEY = stringPreferencesKey("editor_theme")
         private val SESSION_PATHS_KEY = stringPreferencesKey("session_paths")
         private val SESSION_CURRENT_KEY = stringPreferencesKey("session_current")
