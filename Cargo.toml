@@ -100,7 +100,7 @@ smallvec = "1.14.0"
 # the vendored om-file-format-sys C lib (see weather/src/main/rust/Cargo.toml).
 
 # Build
-cc = { version = "1.2.8", features = ["parallel"] }
+cc = { version = "1.2.8" }
 
 # Minimal platform
 chrono = { version = "0.4.39", default-features = false, features = ["clock", "std"] }

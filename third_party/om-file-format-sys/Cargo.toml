@@ -20,5 +20,5 @@ include = [
 libc = "0.2"
 
 [build-dependencies]
-cc = { version = "1.2", features = ["parallel"] }
+cc = { version = "1.2" }
 # bindgen removed – bindings pre-generated into src/bindings.rs to cut ~20 crates from weather lock
