@@ -43,23 +43,4 @@
     <string name="cable_prompt_title">在您的其他设备上登录？</string>
     <string name="cable_prompt_subtitle">验证以批准此通行密钥登录</string>
     <string name="name_required">名称不能为空</string>
-    <string name="sync_section"></string>
-    <string name="sync_create_file"></string>
-    <string name="sync_error_wrong_password"></string>
-    <string name="sync_choose_file"></string>
-    <string name="sync_error_verify_failed"></string>
-    <string name="sync_error_file_missing"></string>
-    <string name="sync_never"></string>
-    <string name="sync_vault_password"></string>
-    <string name="sync_file_none"></string>
-    <string name="sync_enable"></string>
-    <string name="sync_last"></string>
-    <string name="sync_file"></string>
-    <string name="sync_error_generic"></string>
-    <string name="sync_enable_description"></string>
-    <string name="sync_now"></string>
-    <string name="sync_vault_password_unset"></string>
-    <string name="sync_save"></string>
-    <string name="sync_vault_password_set"></string>
-    <string name="sync_cancel"></string>
 </resources>
