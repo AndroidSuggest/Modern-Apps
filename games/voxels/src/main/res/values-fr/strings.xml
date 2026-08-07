@@ -57,4 +57,5 @@
     <string name="busy"></string>
     <string name="no_worlds_yet_create_one_to_start"></string>
     <string name="save_quit_to_menu"></string>
+    <string name="stop">Arrêter</string>
 </resources>
