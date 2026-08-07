@@ -4,7 +4,6 @@ package com.vayunmathur.keyboard.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -412,8 +411,8 @@ fun RowScope.SpecialKey(
 }
 
 /**
- * Space bar: tap inserts a space, long-press switches to the next IME. [label] names the
- * active layout, which is how the user can tell at a glance which language they are typing.
+ * Space bar: tap inserts a space. [label] names the active layout, which is how the user
+ * can tell at a glance which language they are typing.
  */
 @Composable
 fun RowScope.SpaceKey(
@@ -421,7 +420,6 @@ fun RowScope.SpaceKey(
     weight: Float,
     label: String,
     onSpace: () -> Unit,
-    onLongPress: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -432,11 +430,10 @@ fun RowScope.SpaceKey(
             .height(height)
             .clip(KeyShape)
             .background(if (pressed) pressedKeyColor() else charKeyColor())
-            .combinedClickable(
+            .clickable(
                 interactionSource = interaction,
                 indication = null,
                 onClick = onSpace,
-                onLongClick = onLongPress,
             ),
         contentAlignment = Alignment.Center,
     ) {

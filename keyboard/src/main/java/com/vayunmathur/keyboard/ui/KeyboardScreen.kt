@@ -453,7 +453,7 @@ private fun BottomRow(
         }
         // The globe earns its place on the row only once there is somewhere to switch to.
         if (state.settings.layouts.size > 1) {
-            SpecialKey(keyHeight, 1f, onClick = actions::nextLayout) { IconLanguage() }
+            SpecialKey(keyHeight, 1f, onClick = actions::switchKeyboard) { IconLanguage() }
         }
         CharKey(
             label = commaChar,
@@ -468,7 +468,6 @@ private fun BottomRow(
             weight = 4f,
             label = state.settings.activeLayout.name,
             onSpace = actions::onSpace,
-            onLongPress = actions::switchToNextIme,
         )
         CharKey(
             label = periodChar,

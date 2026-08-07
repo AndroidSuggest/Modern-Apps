@@ -101,9 +101,11 @@ interface ImeActions {
     fun setPage(page: KeyboardPage)
     fun commitSuggestion(word: String)
 
-    /** Switch to the next layout the user enabled in settings (the globe key). */
-    fun nextLayout()
-    fun switchToNextIme()
+    /**
+     * The globe/switch key: cycle to the next keyboard the user enabled in this app, then
+     * on to the next IME app once past the last one. Driven through the framework's subtypes.
+     */
+    fun switchKeyboard()
 
     /** Emoji search: the letter keys feed [KeyboardState.emojiQuery] until it ends. */
     fun startEmojiSearch()
@@ -134,8 +136,7 @@ interface ImeActions {
             override fun onCapsLock() {}
             override fun setPage(page: KeyboardPage) {}
             override fun commitSuggestion(word: String) {}
-            override fun nextLayout() {}
-            override fun switchToNextIme() {}
+            override fun switchKeyboard() {}
             override fun startEmojiSearch() {}
             override fun endEmojiSearch() {}
             override fun commitEmoji(emoji: String) {}
